@@ -21,6 +21,7 @@ const Volatile = value_mod.Volatile;
 const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 const err = @import("../runtime/error.zig");
 const thread_pool_mod = @import("../runtime/thread_pool.zig");
 const env_mod = @import("../runtime/env.zig");
@@ -87,7 +88,7 @@ pub fn forceDelay(allocator: Allocator, d: *value_mod.Delay) anyerror!Value {
             // We claimed it — execute the thunk
             const result = bootstrap.callFnVal(allocator, thunk_raw, &.{}) catch |e| {
                 if (e == error.UserException) {
-                    @atomicStore(Value, &d.error_cached, bootstrap.last_thrown_exception orelse Value.nil_val, .release);
+                    @atomicStore(Value, &d.error_cached, dispatch.last_thrown_exception orelse Value.nil_val, .release);
                 }
                 @atomicStore(bool, &d.realized, true, .release);
                 return e;
@@ -109,7 +110,7 @@ pub fn forceDelay(allocator: Allocator, d: *value_mod.Delay) anyerror!Value {
 fn readDelayResult(d: *value_mod.Delay) anyerror!Value {
     const err_val = @atomicLoad(Value, &d.error_cached, .acquire);
     if (err_val != value_mod.NO_VALUE) {
-        bootstrap.last_thrown_exception = err_val;
+        dispatch.last_thrown_exception = err_val;
         return error.UserException;
     }
     const cached_val = @atomicLoad(Value, &d.cached, .acquire);
@@ -342,7 +343,7 @@ fn throwInvalidState(allocator: Allocator) !void {
     entries[9] = Value.initString(allocator, "IllegalStateException");
     const map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
     map.* = .{ .entries = entries };
-    bootstrap.last_thrown_exception = Value.initMap(map);
+    dispatch.last_thrown_exception = Value.initMap(map);
     return error.UserException;
 }
 
@@ -483,7 +484,7 @@ fn futureCallFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return err.setErrorFmt(.eval, .type_error, .{}, "future-call expects a function, got {s}", .{@tagName(func.tag())});
 
     // Get or create the global thread pool
-    const env: *env_mod.Env = bootstrap.macro_eval_env orelse
+    const env: *env_mod.Env = dispatch.macro_eval_env orelse
         return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "future-call: no eval environment" });
     const pool = thread_pool_mod.getGlobalPool(env) catch
         return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "future-call: failed to create thread pool" });
@@ -1209,7 +1210,7 @@ pub fn sendFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     if (!was_processing) {
         // Submit agent work to thread pool
-        const env_ptr = bootstrap.macro_eval_env orelse
+        const env_ptr = dispatch.macro_eval_env orelse
             return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "send: no eval environment" });
         const pool = thread_pool_mod.getGlobalPool(env_ptr) catch
             return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "send: failed to get thread pool" });

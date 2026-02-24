@@ -25,6 +25,7 @@ const HASH_MAP_THRESHOLD = collections_mod.HASH_MAP_THRESHOLD;
 const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 const err = @import("../runtime/error.zig");
 const vm_mod = @import("../vm/vm.zig");
 const sequences_mod = @import("sequences.zig");
@@ -3772,7 +3773,7 @@ fn intoFullFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Look up a builtin function by name from the environment.
 fn lookupBuiltin(allocator: Allocator, name: []const u8) anyerror!?Value {
     _ = allocator;
-    const env = bootstrap.macro_eval_env orelse return null;
+    const env = dispatch.macro_eval_env orelse return null;
     const core = env.findNamespace("clojure.core") orelse return null;
     const v = core.resolve(name) orelse return null;
     return v.deref();
@@ -3941,7 +3942,7 @@ fn tapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// Look up a Var by name in clojure.core namespace.
 fn lookupVar(name: []const u8) ?*var_mod.Var {
-    const env = bootstrap.macro_eval_env orelse return null;
+    const env = dispatch.macro_eval_env orelse return null;
     const core = env.findNamespace("clojure.core") orelse return null;
     return core.resolve(name);
 }

@@ -25,6 +25,7 @@ const Value = value_mod.Value;
 const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 const multimethods_mod = @import("../builtins/multimethods.zig");
 
 const var_mod = @import("../runtime/var.zig");
@@ -298,8 +299,8 @@ pub const TreeWalk = struct {
                 const f = callee.asBuiltinFn();
                 const result = f(self.allocator, args) catch |e| {
                     if (e == error.UserException and self.exception == null) {
-                        self.exception = bootstrap.last_thrown_exception;
-                        bootstrap.last_thrown_exception = null;
+                        self.exception = dispatch.last_thrown_exception;
+                        dispatch.last_thrown_exception = null;
                     }
                     return @errorCast(e);
                 };
@@ -311,8 +312,8 @@ pub const TreeWalk = struct {
                     const result = bootstrap.callFnVal(self.allocator, callee, args) catch |e| {
                         // Preserve exception value from VM → TreeWalk boundary
                         if (e == error.UserException and self.exception == null) {
-                            self.exception = bootstrap.last_thrown_exception;
-                            bootstrap.last_thrown_exception = null;
+                            self.exception = dispatch.last_thrown_exception;
+                            dispatch.last_thrown_exception = null;
                         }
                         return @errorCast(e);
                     };
@@ -565,8 +566,8 @@ pub const TreeWalk = struct {
             const result = bootstrap.callFnVal(self.allocator, callee, arg_vals) catch |e| {
                 // Preserve exception value from VM → TreeWalk boundary
                 if (e == error.UserException and self.exception == null) {
-                    self.exception = bootstrap.last_thrown_exception;
-                    bootstrap.last_thrown_exception = null;
+                    self.exception = dispatch.last_thrown_exception;
+                    dispatch.last_thrown_exception = null;
                 }
                 return @errorCast(e);
             };
@@ -1524,8 +1525,8 @@ pub const TreeWalk = struct {
         } else |e| {
             // Preserve exception value from builtin → TreeWalk boundary
             if (e == error.UserException and self.exception == null) {
-                self.exception = bootstrap.last_thrown_exception;
-                bootstrap.last_thrown_exception = null;
+                self.exception = dispatch.last_thrown_exception;
+                dispatch.last_thrown_exception = null;
             }
             return @errorCast(e);
         }

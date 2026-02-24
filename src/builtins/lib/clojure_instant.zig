@@ -13,6 +13,7 @@ const var_mod = @import("../../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const errmod = @import("../../runtime/error.zig");
 const bootstrap = @import("../../runtime/bootstrap.zig");
+const dispatch = @import("../../runtime/dispatch.zig");
 const registry = @import("../registry.zig");
 const NamespaceDef = registry.NamespaceDef;
 
@@ -21,7 +22,7 @@ const NamespaceDef = registry.NamespaceDef;
 // ============================================================
 
 fn callCore(allocator: Allocator, name: []const u8, args: []const Value) !Value {
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const v = core_ns.mappings.get(name) orelse return error.EvalError;
     return bootstrap.callFnVal(allocator, v.deref(), args);
@@ -220,7 +221,7 @@ fn validatedCallFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (validated new-instance) — returns a fn that validates args then calls new-instance.
 fn validatedFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return errmod.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to validated", .{args.len});
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const instant_ns = env.findNamespace("clojure.instant") orelse return error.EvalError;
     const vc_var = instant_ns.mappings.get("__validated-call") orelse return error.EvalError;
     return callCore(allocator, "partial", &.{ vc_var.deref(), args[0] });

@@ -18,6 +18,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 const Value = @import("../runtime/value.zig").Value;
 const collections = @import("../runtime/collections.zig");
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 const err = @import("../runtime/error.zig");
 
 // ============================================================
@@ -318,7 +319,7 @@ fn loadResource(allocator: Allocator, env: *@import("../runtime/env.zig").Env, r
 pub fn loadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to load", .{});
 
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -360,7 +361,7 @@ pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "the-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -376,7 +377,7 @@ pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Returns a list of all namespace names as symbols.
 pub fn allNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to all-ns", .{args.len});
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -412,7 +413,7 @@ pub fn findNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "find-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -448,7 +449,7 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "create-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -485,7 +486,7 @@ fn setNsDocFn(_: Allocator, args: []const Value) anyerror!Value {
         .string => args[1].asString(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "set-ns-doc expects a string, got {s}", .{@tagName(args[1].tag())}),
     };
-    const env_ptr = bootstrap.macro_eval_env orelse {
+    const env_ptr = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -521,7 +522,7 @@ pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => arg.asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "in-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -572,7 +573,7 @@ fn resolveNs(args: []const Value) !*Namespace {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -689,7 +690,7 @@ pub fn nsResolveFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol as first argument, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -786,7 +787,7 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "refer expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -886,7 +887,7 @@ pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[1].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "alias expects a symbol as second argument, got {s}", .{@tagName(args[1].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -910,7 +911,7 @@ pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (require 'ns :reload)
 /// Loads namespace from file if not already loaded. Supports :reload/:reload-all.
 pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -1229,7 +1230,7 @@ fn requireLib(allocator: Allocator, env: *@import("../runtime/env.zig").Env, ns_
 /// Equivalent to require + refer :all (or :only).
 /// Loads namespace from file if not already loaded.
 pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -1311,7 +1312,7 @@ pub fn removeNsFn(_: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env_ptr = bootstrap.macro_eval_env orelse return Value.nil_val;
+    const env_ptr = dispatch.macro_eval_env orelse return Value.nil_val;
     _ = env_ptr.removeNamespace(name);
     return Value.nil_val;
 }
@@ -1508,7 +1509,7 @@ fn setupTestEnv(alloc: Allocator) !*Env {
     const env = try alloc.create(Env);
     env.* = Env.init(alloc);
     try registry.registerBuiltins(env);
-    bootstrap.macro_eval_env = env;
+    dispatch.macro_eval_env = env;
     return env;
 }
 
@@ -1519,7 +1520,7 @@ test "find-ns - existing namespace" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1535,7 +1536,7 @@ test "find-ns - nonexistent namespace returns nil" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1550,7 +1551,7 @@ test "all-ns - contains clojure.core and user" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1587,7 +1588,7 @@ test "create-ns - creates new namespace" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1609,7 +1610,7 @@ test "the-ns - existing namespace" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1625,7 +1626,7 @@ test "the-ns - nonexistent namespace errors" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1640,7 +1641,7 @@ test "ns-interns - returns map with interned vars" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1660,7 +1661,7 @@ test "ns-publics - same as ns-interns (no private vars)" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1676,7 +1677,7 @@ test "ns-map - includes interns and refers" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1694,7 +1695,7 @@ test "ns-interns - user namespace is initially empty" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 
@@ -1817,7 +1818,7 @@ test "require - loads file from load path" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
     try bootstrap.loadCore(alloc, env);
@@ -1854,7 +1855,7 @@ test "set-ns-doc sets namespace doc field" {
 
     const env = try setupTestEnv(alloc);
     defer {
-        bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = null;
         env.deinit();
     }
 

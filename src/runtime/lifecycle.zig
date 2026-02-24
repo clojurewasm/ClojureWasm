@@ -17,7 +17,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Value = @import("value.zig").Value;
-const bootstrap = @import("bootstrap.zig");
+const dispatch = @import("dispatch.zig");
 const Env = @import("env.zig").Env;
 const thread_pool = @import("thread_pool.zig");
 
@@ -170,13 +170,13 @@ pub fn runShutdownHooks(allocator: Allocator, env_ptr: *Env) void {
     hook_mutex.unlock();
 
     // Set eval context for callFnVal (bytecodeCallBridge needs it)
-    bootstrap.macro_eval_env = env_ptr;
+    dispatch.macro_eval_env = env_ptr;
     const predicates = @import("../builtins/predicates.zig");
     predicates.current_env = env_ptr;
 
     for (&local_hooks) |*slot| {
         if (slot.*) |h| {
-            _ = bootstrap.callFnVal(allocator, h.func, &[0]Value{}) catch |e| {
+            _ = dispatch.callFnVal(allocator, h.func, &[0]Value{}) catch |e| {
                 std.debug.print("shutdown hook error ({s}): {s}\n", .{ h.key[0..h.key_len], @errorName(e) });
             };
         }

@@ -23,6 +23,7 @@ const macro = @import("../runtime/macro.zig");
 const Analyzer = @import("../analyzer/analyzer.zig").Analyzer;
 const Node = @import("../analyzer/node.zig").Node;
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 const TreeWalk = @import("../evaluator/tree_walk.zig").TreeWalk;
 const err = @import("../runtime/error.zig");
 const Env = @import("../runtime/env.zig").Env;
@@ -79,7 +80,7 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Get the current namespace, respecting dynamic bindings of *ns*.
 /// Checks the *ns* Var (which reflects `binding`) first, falls back to env.current_ns.
 fn resolveCurrentNs() ?*const Namespace {
-    const env = bootstrap.macro_eval_env orelse return null;
+    const env = dispatch.macro_eval_env orelse return null;
     if (env.findNamespace("clojure.core")) |core| {
         if (core.resolve("*ns*")) |ns_var| {
             const ns_val = ns_var.deref();
@@ -101,7 +102,7 @@ fn resolveCurrentNs() ?*const Namespace {
 /// side effects (def, declare) are visible to subsequent forms.
 pub fn evalFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to eval", .{args.len});
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -194,7 +195,7 @@ fn macroexpand1(allocator: Allocator, form: Value) anyerror!Value {
     }
 
     // Resolve symbol to Var
-    const env = bootstrap.macro_eval_env orelse return form;
+    const env = dispatch.macro_eval_env orelse return form;
     const ns = env.current_ns orelse return form;
     const v = if (sym.ns) |ns_name| blk: {
         // Try current ns and aliases first
@@ -248,7 +249,7 @@ pub fn loadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
     if (s.len == 0) return Value.nil_val;
 
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };

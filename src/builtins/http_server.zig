@@ -23,6 +23,7 @@ const Value = @import("../runtime/value.zig").Value;
 const PersistentArrayMap = @import("../runtime/value.zig").PersistentArrayMap;
 const collections = @import("../runtime/collections.zig");
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err_mod = @import("../runtime/error.zig");
@@ -107,7 +108,7 @@ pub fn runServerFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     // Root the handler by storing it in a hidden var (GC protection).
-    const env = bootstrap.macro_eval_env orelse return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "run-server: no evaluation environment" });
+    const env = dispatch.macro_eval_env orelse return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "run-server: no evaluation environment" });
     if (env.findNamespace("cljw.http")) |ns| {
         if (ns.resolve("__handler")) |v| {
             v.bindRoot(handler);
@@ -198,7 +199,7 @@ fn handleConnection(state: *ServerState, conn: std.net.Server.Connection) void {
     defer state.mutex.unlock();
 
     // Set up eval context for this thread
-    bootstrap.macro_eval_env = state.env;
+    dispatch.macro_eval_env = state.env;
     const predicates = @import("predicates.zig");
     predicates.current_env = state.env;
 
@@ -634,7 +635,7 @@ pub fn setHandlerFn(_: Allocator, args: []const Value) anyerror!Value {
         .builtin_fn, .fn_val => {},
         else => return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "set-handler!: argument must be a function" }),
     }
-    const env = bootstrap.macro_eval_env orelse return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "set-handler!: no evaluation environment" });
+    const env = dispatch.macro_eval_env orelse return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "set-handler!: no evaluation environment" });
     if (env.findNamespace("cljw.http")) |ns| {
         if (ns.resolve("__handler")) |v| {
             v.bindRoot(new_handler);

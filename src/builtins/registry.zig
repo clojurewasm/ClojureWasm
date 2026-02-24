@@ -209,6 +209,9 @@ pub fn registerNamespace(env: *Env, comptime def: NamespaceDef) !void {
 /// Interns a Var for each BuiltinDef and applies metadata.
 /// Also sets up "user" namespace with refers to clojure.core.
 pub fn registerBuiltins(env: *Env) !void {
+    // Initialize dispatch vtable before any callFnVal usage (D109 R1).
+    @import("../runtime/bootstrap.zig").initDispatch();
+
     const core_ns = try env.findOrCreateNamespace("clojure.core");
 
     for (all_builtins) |b| {

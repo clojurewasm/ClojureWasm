@@ -12,6 +12,7 @@ const var_mod = @import("../../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../../runtime/error.zig");
 const bootstrap = @import("../../runtime/bootstrap.zig");
+const dispatch = @import("../../runtime/dispatch.zig");
 const registry = @import("../registry.zig");
 const NamespaceDef = registry.NamespaceDef;
 
@@ -20,7 +21,7 @@ const NamespaceDef = registry.NamespaceDef;
 // ============================================================
 
 fn callCore(allocator: Allocator, name: []const u8, args: []const Value) !Value {
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const v = core_ns.mappings.get(name) orelse return error.EvalError;
     return bootstrap.callFnVal(allocator, v.deref(), args);
@@ -130,7 +131,7 @@ fn printCauseTraceFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (e) — REPL utility. Prints a brief stack trace for the root cause of *e.
 fn eFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to e", .{args.len});
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const star_e_var = core_ns.mappings.get("*e") orelse return Value.nil_val;
     const star_e = star_e_var.deref();

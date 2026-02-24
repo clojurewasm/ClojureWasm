@@ -11,6 +11,7 @@ const var_mod = @import("../../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../../runtime/error.zig");
 const bootstrap = @import("../../runtime/bootstrap.zig");
+const dispatch = @import("../../runtime/dispatch.zig");
 const metadata = @import("../metadata.zig");
 const registry = @import("../registry.zig");
 const NamespaceDef = registry.NamespaceDef;
@@ -20,7 +21,7 @@ const NamespaceDef = registry.NamespaceDef;
 // ============================================================
 
 fn callCore(allocator: Allocator, name: []const u8, args: []const Value) !Value {
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const v = core_ns.mappings.get(name) orelse return error.EvalError;
     return bootstrap.callFnVal(allocator, v.deref(), args);
@@ -40,7 +41,7 @@ fn isRecord(allocator: Allocator, val: Value) bool {
 /// Resolve a core var's value (not call it).
 fn resolveCore(allocator: Allocator, name: []const u8) !Value {
     _ = allocator;
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const v = core_ns.mappings.get(name) orelse return error.EvalError;
     return v.deref();
@@ -48,7 +49,7 @@ fn resolveCore(allocator: Allocator, name: []const u8) !Value {
 
 /// Resolve a var from clojure.walk namespace.
 fn resolveWalk(name: []const u8) !Value {
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const walk_ns = env.findNamespace("clojure.walk") orelse return error.EvalError;
     const v = walk_ns.mappings.get(name) orelse return error.EvalError;
     return v.deref();

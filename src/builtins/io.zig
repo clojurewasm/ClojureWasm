@@ -23,6 +23,7 @@ const Writer = std.Io.Writer;
 const err = @import("../runtime/error.zig");
 const PersistentList = value_mod.PersistentList;
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 
 // ============================================================
 // Output capture for testing
@@ -493,7 +494,7 @@ pub fn loadFileFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return err.setErrorFmt(.eval, .io_error, .{}, "Could not read file: {s}", .{path});
 
     // Evaluate all forms using bootstrap pipeline
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };

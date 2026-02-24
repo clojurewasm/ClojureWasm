@@ -25,13 +25,13 @@ const collections = @import("collections.zig");
 const builtin_collections = @import("../builtins/collections.zig");
 const metadata = @import("../builtins/metadata.zig");
 const Namespace = @import("namespace.zig").Namespace;
-const bootstrap = @import("bootstrap.zig");
+const dispatch = @import("dispatch.zig");
 const Var = @import("var.zig").Var;
 
 /// Look up a tag name in *data-readers* dynamic binding.
 /// Returns the reader fn if found, null otherwise.
 fn lookupDataReader(allocator: Allocator, tag_name: []const u8) ?Value {
-    const env = bootstrap.macro_eval_env orelse return null;
+    const env = dispatch.macro_eval_env orelse return null;
     const core_ns = env.findNamespace("clojure.core") orelse return null;
     const dr_var = core_ns.resolve("*data-readers*") orelse return null;
     const dr_val = dr_var.deref();
@@ -211,7 +211,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
 
             // Check *data-readers* for custom tag reader
             if (lookupDataReader(allocator, t.tag)) |reader_fn| {
-                return bootstrap.callFnVal(allocator, reader_fn, &.{form_val}) catch Value.nil_val;
+                return dispatch.callFnVal(allocator, reader_fn, &.{form_val}) catch Value.nil_val;
             }
 
             // Built-in #uuid → UUID class instance

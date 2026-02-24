@@ -32,6 +32,7 @@ const VM = vm_mod.VM;
 const gc_mod = @import("gc.zig");
 const builtin_collections = @import("../builtins/collections.zig");
 const ns_loader = @import("ns_loader.zig");
+const dispatch = @import("dispatch.zig");
 
 /// Bootstrap error type.
 pub const BootstrapError = error{
@@ -154,6 +155,16 @@ fn readFormsWithNs(allocator: Allocator, source: []const u8, current_ns: ?*const
     return reader.readAll() catch return error.ReadError;
 }
 
+/// Initialize the dispatch vtable (D109 R1).
+/// Must be called before any callFnVal usage (called from registerBuiltins).
+pub fn initDispatch() void {
+    dispatch.init(
+        &treewalkCallBridge,
+        &bytecodeCallBridge,
+        &TreeWalk.valueTypeKey,
+    );
+}
+
 /// Save and set macro expansion / lazy-seq realization / fn_val dispatch globals.
 /// Returns previous state for restoration via defer.
 pub const MacroEnvState = struct {
@@ -163,16 +174,16 @@ pub const MacroEnvState = struct {
 
 pub fn setupMacroEnv(env: *Env) MacroEnvState {
     const prev = MacroEnvState{
-        .env = macro_eval_env,
+        .env = dispatch.macro_eval_env,
         .pred_env = predicates_mod.current_env,
     };
-    macro_eval_env = env;
+    dispatch.macro_eval_env = env;
     predicates_mod.current_env = env;
     return prev;
 }
 
 pub fn restoreMacroEnv(prev: MacroEnvState) void {
-    macro_eval_env = prev.env;
+    dispatch.macro_eval_env = prev.env;
     predicates_mod.current_env = prev.pred_env;
 }
 
@@ -453,129 +464,29 @@ fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) Bo
     return last_value;
 }
 
-/// Unified fn_val dispatch — single entry point for calling any callable Value.
-///
-/// Routes by Fn.kind: treewalk closures go to TreeWalk, bytecode closures
-/// go to a VM instance, builtin_fn is called directly. Also handles
-/// multimethods, keywords-as-functions, maps/sets-as-functions, var derefs,
-/// and protocol dispatch.
-///
-/// This replaces 5 separate dispatch mechanisms (D36/T10.4):
-///   vm.zig, tree_walk.zig, atom.zig, value.zig, analyzer.zig
-/// all import bootstrap.callFnVal directly (no more callback wiring, ~180 lines saved).
-///
-/// Active VM bridge: When a bytecode closure is called and an active
-/// VM exists (set via vm.zig's execute()), we reuse that VM's stack via
-/// callFunction() instead of creating a new VM instance (~500KB heap alloc).
-/// This is the critical path for fused reduce callbacks and makes deep
-/// predicate chains (sieve's 168 filters) feasible.
-pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
-    switch (fn_val.tag()) {
-        .builtin_fn => return fn_val.asBuiltinFn()(allocator, args),
-        .fn_val => {
-            const fn_obj = fn_val.asFn();
-            if (fn_obj.kind == .bytecode) {
-                // Active VM bridge: reuse existing VM stack (avoids ~500KB heap alloc)
-                if (vm_mod.active_vm) |vm| {
-                    return vm.callFunction(fn_val, args) catch |e| {
-                        return @as(anyerror, @errorCast(e));
-                    };
-                }
-                return bytecodeCallBridge(allocator, fn_val, args);
-            } else {
-                return treewalkCallBridge(allocator, fn_val, args);
-            }
-        },
-        .multi_fn => {
-            const mf = fn_val.asMultiFn();
-            // Dispatch: call dispatch_fn, lookup method, call method
-            const dispatch_val = try callFnVal(allocator, mf.dispatch_fn, args);
-            const method_fn = mf.methods.get(dispatch_val) orelse
-                mf.methods.get(Value.initKeyword(allocator, .{ .ns = null, .name = "default" })) orelse
-                return error.TypeError;
-            return callFnVal(allocator, method_fn, args);
-        },
-        .keyword => {
-            const kw = fn_val.asKeyword();
-            // Keyword-as-function: (:key map) => (get map :key)
-            if (args.len < 1) return error.TypeError;
-            if (args[0].tag() == .wasm_module and args.len == 1) {
-                const wm = args[0].asWasmModule();
-                return if (wm.getExportFn(kw.name)) |wf|
-                    Value.initWasmFn(wf)
-                else
-                    Value.nil_val;
-            }
-            if (args[0].tag() == .map) {
-                return args[0].asMap().get(fn_val) orelse
-                    if (args.len >= 2) args[1] else Value.nil_val;
-            }
-            return if (args.len >= 2) args[1] else Value.nil_val;
-        },
-        .map => {
-            const m = fn_val.asMap();
-            // Map-as-function: ({:a 1} :b) => (get map key)
-            if (args.len < 1) return error.TypeError;
-            return m.get(args[0]) orelse
-                if (args.len >= 2) args[1] else Value.nil_val;
-        },
-        .set => {
-            const s = fn_val.asSet();
-            // Set-as-function: (#{:a :b} :a) => :a or nil
-            if (args.len < 1) return error.TypeError;
-            return if (s.contains(args[0])) args[0] else Value.nil_val;
-        },
-        .wasm_module => {
-            const wm = fn_val.asWasmModule();
-            // Module-as-function: (mod :add) => cached WasmFn
-            if (args.len != 1) return error.ArityError;
-            const name = switch (args[0].tag()) {
-                .keyword => args[0].asKeyword().name,
-                .string => args[0].asString(),
-                else => return error.TypeError,
-            };
-            return if (wm.getExportFn(name)) |wf|
-                Value.initWasmFn(wf)
-            else
-                Value.nil_val;
-        },
-        .wasm_fn => return fn_val.asWasmFn().call(allocator, args),
-        .var_ref => return callFnVal(allocator, fn_val.asVarRef().deref(), args),
-        .protocol_fn => {
-            const pf = fn_val.asProtocolFn();
-            if (args.len == 0) return error.ArityError;
-            const type_key = TreeWalk.valueTypeKey(args[0]);
-            const method_map_val = pf.protocol.impls.getByStringKey(type_key) orelse return error.TypeError;
-            if (method_map_val.tag() != .map) return error.TypeError;
-            const impl_fn = method_map_val.asMap().getByStringKey(pf.method_name) orelse return error.TypeError;
-            return callFnVal(allocator, impl_fn, args);
-        },
-        else => return error.TypeError,
-    }
-}
+/// Re-export callFnVal from dispatch.zig for backward compatibility.
+/// Layer 1+ callers can use bootstrap.callFnVal; Layer 0 callers should
+/// import dispatch.zig directly (D109 R1).
+pub const callFnVal = dispatch.callFnVal;
 
 /// Execute a treewalk fn_val via TreeWalk evaluator.
+/// Called through dispatch vtable (D109 R1).
 fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     // Note: tw is NOT deinit'd here — closures created during evaluation
     // (e.g., lazy-seq thunks) must outlive this scope. Memory is owned by
     // the arena allocator, which handles bulk deallocation.
-    var tw = if (macro_eval_env) |env|
+    var tw = if (dispatch.macro_eval_env) |env|
         TreeWalk.initWithEnv(allocator, env)
     else
         TreeWalk.init(allocator);
     return tw.callValue(fn_val, args) catch |e| {
         // Preserve exception value across TreeWalk → VM boundary
         if (e == error.UserException) {
-            last_thrown_exception = tw.exception;
+            dispatch.last_thrown_exception = tw.exception;
         }
         return @as(anyerror, e);
     };
 }
-
-/// Last exception value thrown by TreeWalk, for VM boundary crossing.
-/// VM reads this in dispatchErrorToHandler to avoid creating generic ExInfo.
-/// Per-thread for concurrency (Phase 48).
-pub threadlocal var last_thrown_exception: ?Value = null;
 
 /// Flag set by apply's lazy variadic path (F99). When true, the single rest arg
 /// in the next variadic call is already a seq and should not be re-wrapped in a list.
@@ -586,7 +497,7 @@ pub threadlocal var apply_rest_is_seq: bool = false;
 /// Heap-allocates the VM to avoid C stack overflow from recursive
 /// VM → TreeWalk → VM calls (VM struct is ~500KB due to fixed-size stack).
 fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
-    const env = macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
         return error.EvalError;
     };
@@ -613,10 +524,8 @@ fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
     return vm.execute();
 }
 
-/// Env reference for macro expansion bridge. Set during evalString.
-/// Public so eval builtins (eval.zig) can access the current Env.
-/// Per-thread for concurrency (Phase 48).
-pub threadlocal var macro_eval_env: ?*Env = null;
+// NOTE: macro_eval_env and last_thrown_exception moved to dispatch.zig (D109 R1).
+// All callers should use dispatch.macro_eval_env / dispatch.last_thrown_exception.
 
 // === AOT Compilation ===
 

@@ -13,6 +13,7 @@ const var_mod = @import("../../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const errmod = @import("../../runtime/error.zig");
 const bootstrap = @import("../../runtime/bootstrap.zig");
+const dispatch = @import("../../runtime/dispatch.zig");
 const es = @import("../../runtime/embedded_sources.zig");
 const registry = @import("../registry.zig");
 const NamespaceDef = registry.NamespaceDef;
@@ -22,7 +23,7 @@ const NamespaceDef = registry.NamespaceDef;
 // ============================================================
 
 fn callCore(allocator: Allocator, name: []const u8, args: []const Value) !Value {
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const v = core_ns.mappings.get(name) orelse return error.EvalError;
     return bootstrap.callFnVal(allocator, v.deref(), args);
@@ -59,7 +60,7 @@ fn stackElementStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (repl-prompt) — prints "ns=> "
 fn replPromptFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return error.EvalError;
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const ns_var = core_ns.resolve("*ns*") orelse return error.EvalError;
     const current_ns = ns_var.deref();
@@ -72,7 +73,7 @@ fn replPromptFn(allocator: Allocator, args: []const Value) anyerror!Value {
 fn replReadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.EvalError;
     const request_exit = args[1];
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const in_var = core_ns.resolve("*in*") orelse return error.EvalError;
     const in_val = in_var.deref();
@@ -104,7 +105,7 @@ fn replCaughtFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.EvalError;
     const msg = try errMsgFn(allocator, args);
     // binding [*out* *err*] — just print to *err*
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const err_var = core_ns.resolve("*err*") orelse return error.EvalError;
     const out_var = core_ns.resolve("*out*") orelse return error.EvalError;

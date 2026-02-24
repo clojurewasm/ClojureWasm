@@ -18,6 +18,7 @@ const value_mod = @import("../runtime/value.zig");
 const Value = value_mod.Value;
 const err = @import("../runtime/error.zig");
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 
 /// Maximum width/precision for format specifiers to prevent DoS via huge padding.
 const MAX_FORMAT_WIDTH: usize = 10_000;
@@ -555,7 +556,7 @@ pub fn findVarFn(_: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "find-var expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -582,7 +583,7 @@ pub fn resolveFn(_: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[args.len - 1].asSymbol(),
         else => return Value.nil_val,
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -646,7 +647,7 @@ pub fn internFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[1].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "intern expects a symbol for name, got {s}", .{@tagName(args[1].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
@@ -672,7 +673,7 @@ const ns_ops = @import("ns_ops.zig");
 pub fn loadedLibsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to loaded-libs", .{args.len});
     // Build a set of loaded lib names
-    const env = bootstrap.macro_eval_env orelse {
+    const env = dispatch.macro_eval_env orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };

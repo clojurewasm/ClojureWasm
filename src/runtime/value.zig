@@ -17,7 +17,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
 const collections = @import("collections.zig");
-const bootstrap = @import("bootstrap.zig");
+const dispatch = @import("dispatch.zig");
 const var_mod = @import("var.zig");
 pub const Var = var_mod.Var;
 
@@ -673,7 +673,7 @@ pub const LazySeq = struct {
         iterate: struct { f: Value, current: Value },
     };
 
-    /// Realize this lazy seq by calling the thunk via bootstrap.callFnVal,
+    /// Realize this lazy seq by calling the thunk via dispatch.callFnVal,
     /// or by computing from structural metadata.
     ///
     /// Iterative unwrapping (D94): if the thunk returns another lazy-seq,
@@ -692,7 +692,7 @@ pub const LazySeq = struct {
         // Clear thunk BEFORE calling it to prevent re-entrancy issues.
         // JVM Clojure's LazySeq.sval() also clears fn before invoking.
         self.thunk = null;
-        var result = try bootstrap.callFnVal(allocator, thunk, &.{});
+        var result = try dispatch.callFnVal(allocator, thunk, &.{});
 
         // Iterative unwrapping: if result is another lazy-seq, realize it
         // in a loop rather than recursing through the call stack.
@@ -713,7 +713,7 @@ pub const LazySeq = struct {
                 break;
             };
             inner.thunk = null;
-            result = try bootstrap.callFnVal(allocator, inner_thunk, &.{});
+            result = try dispatch.callFnVal(allocator, inner_thunk, &.{});
         }
 
         self.realized = result;
@@ -729,7 +729,7 @@ pub const LazySeq = struct {
                 const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{lm.source});
                 if (seq_val.tag() == .nil) return Value.nil_val;
                 const first_elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
-                const mapped = try bootstrap.callFnVal(allocator, lm.f, &[1]Value{first_elem});
+                const mapped = try dispatch.callFnVal(allocator, lm.f, &[1]Value{first_elem});
                 const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
                 const rest_meta = try allocator.create(Meta);
                 rest_meta.* = .{ .lazy_map = .{ .f = lm.f, .source = rest_source } };
@@ -745,7 +745,7 @@ pub const LazySeq = struct {
                     const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{current});
                     if (seq_val.tag() == .nil) return Value.nil_val;
                     const elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
-                    const pred_result = try bootstrap.callFnVal(allocator, lf.pred, &[1]Value{elem});
+                    const pred_result = try dispatch.callFnVal(allocator, lf.pred, &[1]Value{elem});
                     if (pred_result.isTruthy()) {
                         const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
                         const rest_meta = try allocator.create(Meta);
@@ -769,7 +769,7 @@ pub const LazySeq = struct {
                     const elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
                     // Check all predicates (innermost first)
                     for (lfc.preds) |pred| {
-                        const pred_result = try bootstrap.callFnVal(allocator, pred, &[1]Value{elem});
+                        const pred_result = try dispatch.callFnVal(allocator, pred, &[1]Value{elem});
                         if (!pred_result.isTruthy()) {
                             current = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
                             continue :outer;
@@ -825,7 +825,7 @@ pub const LazySeq = struct {
                 return Value.initCons(cons_cell);
             },
             .iterate => |it| {
-                const next_val = try bootstrap.callFnVal(allocator, it.f, &[1]Value{it.current});
+                const next_val = try dispatch.callFnVal(allocator, it.f, &[1]Value{it.current});
                 const rest_meta = try allocator.create(Meta);
                 rest_meta.* = .{ .iterate = .{ .f = it.f, .current = next_val } };
                 const rest_ls = try allocator.create(LazySeq);

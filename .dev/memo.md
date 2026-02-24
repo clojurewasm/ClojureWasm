@@ -27,30 +27,25 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R1: callFnVal dependency inversion (vtable).
+Phase 97 (Architecture Refactoring), sub-task R2: Extract evalString pipeline.
 
-Extract `callFnVal` from `bootstrap.zig` into `runtime/dispatch.zig` using vtable pattern.
-This breaks the core circular dependency (runtime/ → evaluator/ + vm/).
+Move `evalString*`, `readForms*`, `readFormsWithNs` from bootstrap.zig to
+`src/runtime/pipeline.zig` (Layer 1 file in pre-R8 mapping).
 
-Key steps:
-1. Create `src/runtime/dispatch.zig` with function pointer table
-2. Move callFnVal logic to use vtable dispatch
-3. Initialize vtable in bootstrap (Layer 1) or higher
-4. Update all callers: `bootstrap.callFnVal` → `dispatch.callFnVal`
-5. Benchmark — this is the hot path
-
-See `.dev/refactoring-plan.md` R1 section for details.
+See `.dev/refactoring-plan.md` R2 section for details.
 
 ## Previous Task
 
-R0: Baseline + Zone Check Script — COMPLETE.
-- `scripts/zone_check.sh` created, 134 violations baseline recorded.
-- regex/ classified as Layer 0 (self-contained utility).
+R1: callFnVal dependency inversion (vtable) — COMPLETE.
+- Created `src/runtime/dispatch.zig` (Layer 0) with callFnVal + vtable
+- Moved macro_eval_env, last_thrown_exception to dispatch.zig
+- VM bridge via dispatch.active_vm_call function pointer
+- Updated all callers (~30 files)
+- Violations: 134 → 129 (5 L0→L1 bootstrap imports removed)
 
 ## Task Queue
 
 ```
-R1:  callFnVal dependency inversion (vtable) ← CRITICAL PATH
 R2:  Extract evalString pipeline
 R3:  Extract builtin registration
 R4:  Extract namespace loading

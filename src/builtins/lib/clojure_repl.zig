@@ -13,19 +13,20 @@ const var_mod = @import("../../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const errmod = @import("../../runtime/error.zig");
 const bootstrap = @import("../../runtime/bootstrap.zig");
+const dispatch = @import("../../runtime/dispatch.zig");
 const es = @import("../../runtime/embedded_sources.zig");
 const registry = @import("../registry.zig");
 const NamespaceDef = registry.NamespaceDef;
 
 fn callCore(allocator: Allocator, name: []const u8, args: []const Value) !Value {
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const v = core_ns.mappings.get(name) orelse return error.EvalError;
     return bootstrap.callFnVal(allocator, v.deref(), args);
 }
 
 fn callNs(allocator: Allocator, ns_name: []const u8, fn_name: []const u8, args: []const Value) !Value {
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const ns = env.findNamespace(ns_name) orelse return error.EvalError;
     const v = ns.mappings.get(fn_name) orelse return error.EvalError;
     return bootstrap.callFnVal(allocator, v.deref(), args);
@@ -43,7 +44,7 @@ fn str(allocator: Allocator, s: []const u8) Value {
 fn specialDocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.EvalError;
     const name_sym = args[0];
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const repl_ns = env.findNamespace("clojure.repl") orelse return error.EvalError;
     const sdm_var = repl_ns.mappings.get("special-doc-map") orelse return error.EvalError;
     const sdm = sdm_var.deref();
@@ -169,7 +170,7 @@ fn dirFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return errmod.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to dir-fn", .{args.len});
     const ns_arg = args[0];
     // Get *ns* via the var
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
     const ns_var = core_ns.resolve("*ns*") orelse return error.EvalError;
     const current_ns_val = ns_var.deref();
@@ -284,7 +285,7 @@ fn findDocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     // Check special-doc-map entries
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = dispatch.macro_eval_env orelse return error.EvalError;
     const repl_ns = env.findNamespace("clojure.repl") orelse return error.EvalError;
     if (repl_ns.mappings.get("special-doc-map")) |sdm_var| {
         const sdm = sdm_var.deref();

@@ -27,7 +27,7 @@ const RefObj = value_mod.RefObj;
 const RefInner = value_mod.RefInner;
 const TVal = value_mod.TVal;
 const err = @import("error.zig");
-const bootstrap = @import("bootstrap.zig");
+const dispatch = @import("dispatch.zig");
 
 const RETRY_LIMIT: u32 = 10000;
 
@@ -109,7 +109,7 @@ pub const LockingTransaction = struct {
     pub fn runInTransaction(allocator: Allocator, body_fn: Value) anyerror!Value {
         // Nested transactions are a no-op (reuse outer transaction)
         if (current_tx != null) {
-            return bootstrap.callFnVal(allocator, body_fn, &.{});
+            return dispatch.callFnVal(allocator, body_fn, &.{});
         }
 
         var tx = LockingTransaction.init(allocator);
@@ -122,7 +122,7 @@ pub const LockingTransaction = struct {
             defer current_tx = null;
 
             // Execute the body
-            const result = bootstrap.callFnVal(allocator, body_fn, &.{}) catch |e| {
+            const result = dispatch.callFnVal(allocator, body_fn, &.{}) catch |e| {
                 if (e == error.STMRetry) continue;
                 return e;
             };
@@ -187,7 +187,7 @@ pub const LockingTransaction = struct {
         const call_args = try allocator.alloc(Value, args.len + 1);
         call_args[0] = current;
         @memcpy(call_args[1..], args);
-        const new_val = try bootstrap.callFnVal(allocator, func, call_args);
+        const new_val = try dispatch.callFnVal(allocator, func, call_args);
 
         // Cache the result
         self.vals.put(self.allocator, inner, new_val) catch return error.OutOfMemory;
@@ -237,7 +237,7 @@ pub const LockingTransaction = struct {
                 const call_args = try allocator.alloc(Value, cfn.args.len + 1);
                 call_args[0] = current;
                 @memcpy(call_args[1..], cfn.args);
-                current = bootstrap.callFnVal(allocator, cfn.func, call_args) catch |e| {
+                current = dispatch.callFnVal(allocator, cfn.func, call_args) catch |e| {
                     inner.lock.unlock();
                     return e;
                 };
@@ -290,7 +290,7 @@ pub const LockingTransaction = struct {
                 const new_val = entry.value_ptr.*;
                 if (self.sets.contains(inner)) {
                     if (inner.validator) |validator| {
-                        const valid = bootstrap.callFnVal(allocator, validator, &.{new_val}) catch {
+                        const valid = dispatch.callFnVal(allocator, validator, &.{new_val}) catch {
                             self.unlockAll();
                             self.unlockEnsures();
                             return err.setErrorFmt(.eval, .value_error, .{}, "Invalid reference state", .{});
@@ -385,7 +385,7 @@ fn notifyWatches(allocator: Allocator, inner: *RefInner, new_val: Value) void {
     for (0..inner.watch_count) |i| {
         // (watch-fn key ref old-val new-val) — but we don't have the ref Value here
         // For now, just call (watch-fn key nil old-val new-val)
-        _ = bootstrap.callFnVal(allocator, fns[i], &.{ keys[i], Value.nil_val, old_val, new_val }) catch {};
+        _ = dispatch.callFnVal(allocator, fns[i], &.{ keys[i], Value.nil_val, old_val, new_val }) catch {};
     }
 }
 

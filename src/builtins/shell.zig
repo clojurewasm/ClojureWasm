@@ -20,6 +20,7 @@ const Value = @import("../runtime/value.zig").Value;
 const collections = @import("../runtime/collections.zig");
 const err = @import("../runtime/error.zig");
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 
 // ============================================================
 // sh implementation
@@ -79,7 +80,7 @@ pub fn shFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // Check dynamic vars *sh-dir* and *sh-env* if dir not explicitly set
     if (dir == null) {
-        if (bootstrap.macro_eval_env) |env| {
+        if (dispatch.macro_eval_env) |env| {
             if (env.findNamespace("clojure.java.shell")) |shell_ns| {
                 if (shell_ns.resolve("*sh-dir*")) |sh_dir_var| {
                     const dv = sh_dir_var.deref();

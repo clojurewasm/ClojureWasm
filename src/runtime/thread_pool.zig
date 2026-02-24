@@ -19,7 +19,7 @@ const Value = value_mod.Value;
 const env_mod = @import("env.zig");
 const gc_mod = @import("gc.zig");
 const var_mod = @import("var.zig");
-const bootstrap = @import("bootstrap.zig");
+const dispatch = @import("dispatch.zig");
 const ns_mod = @import("namespace.zig");
 const err_mod = @import("error.zig");
 
@@ -153,7 +153,7 @@ pub const ThreadPool = struct {
         result.* = .{};
 
         // Capture parent thread's current namespace and bindings
-        const parent_ns = if (bootstrap.macro_eval_env) |env| env.current_ns else null;
+        const parent_ns = if (dispatch.macro_eval_env) |env| env.current_ns else null;
         const parent_bindings = var_mod.getCurrentBindingFrame();
 
         self.queue_mutex.lock();
@@ -172,7 +172,7 @@ pub const ThreadPool = struct {
     /// Submit agent for processing one action from its queue.
     /// Called when send/send-off adds an action and the agent isn't already processing.
     pub fn submitAgentWork(self: *ThreadPool, agent_obj: *value_mod.AgentObj) !void {
-        const parent_ns = if (bootstrap.macro_eval_env) |env| env.current_ns else null;
+        const parent_ns = if (dispatch.macro_eval_env) |env| env.current_ns else null;
         const parent_bindings = var_mod.getCurrentBindingFrame();
 
         self.queue_mutex.lock();
@@ -210,8 +210,8 @@ pub const ThreadPool = struct {
 
         // Set up per-thread env (shallow clone of source)
         var thread_env = pool.source_env.threadClone();
-        bootstrap.macro_eval_env = &thread_env;
-        defer bootstrap.macro_eval_env = null;
+        dispatch.macro_eval_env = &thread_env;
+        defer dispatch.macro_eval_env = null;
 
         // Get GC allocator for Clojure value allocation
         const gc_ptr: *gc_mod.MarkSweepGc = @ptrCast(@alignCast(pool.source_env.gc orelse return));
@@ -239,8 +239,8 @@ pub const ThreadPool = struct {
             switch (item.kind) {
                 .function => {
                     // Execute the Clojure function (nullary)
-                    const result = bootstrap.callFnVal(gc_alloc, item.func, &.{}) catch {
-                        const err_val = bootstrap.last_thrown_exception orelse Value.nil_val;
+                    const result = dispatch.callFnVal(gc_alloc, item.func, &.{}) catch {
+                        const err_val = dispatch.last_thrown_exception orelse Value.nil_val;
                         item.result.?.setError(err_val);
                         continue;
                     };
@@ -311,11 +311,11 @@ pub const ThreadPool = struct {
             @memcpy(full_args[1..], act.args);
 
             // Execute: (fn current-state arg1 arg2 ...)
-            const new_state = bootstrap.callFnVal(gc_alloc, act.func, full_args) catch |e| {
+            const new_state = dispatch.callFnVal(gc_alloc, act.func, full_args) catch |e| {
                 // Capture error as a Clojure value for agent-error
                 const err_val = blk: {
                     if (e == error.UserException) {
-                        break :blk bootstrap.last_thrown_exception orelse Value.nil_val;
+                        break :blk dispatch.last_thrown_exception orelse Value.nil_val;
                     }
                     // For Zig-level errors, create a string from the error info
                     if (err_mod.getLastError()) |info| {
@@ -330,7 +330,7 @@ pub const ThreadPool = struct {
                     const handler = inner.error_handler;
                     inner.mutex.unlock();
                     const handler_args = [2]Value{ Value.initAgent(agent_obj), err_val };
-                    _ = bootstrap.callFnVal(gc_alloc, handler, &handler_args) catch {};
+                    _ = dispatch.callFnVal(gc_alloc, handler, &handler_args) catch {};
                 } else {
                     // No handler — set error state based on mode
                     switch (inner.error_mode) {

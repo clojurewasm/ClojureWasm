@@ -35,6 +35,7 @@ const PersistentHashSet = collections.PersistentHashSet;
 const builtin_collections = @import("../builtins/collections.zig");
 const arith = @import("../builtins/arithmetic.zig");
 const bootstrap = @import("../runtime/bootstrap.zig");
+const dispatch = @import("../runtime/dispatch.zig");
 const multimethods_mod = @import("../builtins/multimethods.zig");
 const gc_mod = @import("../runtime/gc.zig");
 const build_options = @import("build_options");
@@ -151,6 +152,15 @@ pub fn dumpOpcodeProfile() void {
 /// calls from builtins without creating new VM instances.
 /// Per-thread for concurrency (Phase 48).
 pub threadlocal var active_vm: ?*VM = null;
+
+/// Bridge function for dispatch.active_vm_call vtable (D109 R1).
+/// Reads the threadlocal active_vm and calls its callFunction method.
+fn activeVmCallBridge(fn_val: Value, args: []const Value) anyerror!Value {
+    const vm = active_vm orelse return error.EvalError;
+    return vm.callFunction(fn_val, args) catch |e| {
+        return @as(anyerror, @errorCast(e));
+    };
+}
 
 /// Whether JIT compilation is available on this platform.
 const enable_jit = builtin.cpu.arch == .aarch64;
@@ -282,7 +292,12 @@ pub const VM = struct {
     pub fn execute(self: *VM) VMError!Value {
         const saved_active = active_vm;
         active_vm = self;
-        defer active_vm = saved_active;
+        const saved_dispatch = dispatch.active_vm_call;
+        dispatch.active_vm_call = &activeVmCallBridge;
+        defer {
+            active_vm = saved_active;
+            dispatch.active_vm_call = saved_dispatch;
+        }
         return self.executeUntil(0);
     }
 
@@ -947,7 +962,7 @@ pub const VM = struct {
                 if (!predicates.exceptionMatchesClass(ex_val, class_name)) {
                     // Re-throw: pop exception and propagate
                     const thrown = self.pop();
-                    bootstrap.last_thrown_exception = thrown;
+                    dispatch.last_thrown_exception = thrown;
                     if (self.handler_count > 0) {
                         const handler = self.handlers[self.handler_count - 1];
                         if (handler.saved_frame_count > self.call_target_frame) {
@@ -1009,12 +1024,12 @@ pub const VM = struct {
                         err_mod.clearCallStack();
                     } else {
                         // Handler out of scope — propagate to bridge
-                        bootstrap.last_thrown_exception = thrown;
+                        dispatch.last_thrown_exception = thrown;
                         return error.UserException;
                     }
                 } else {
                     // No handler — save value for cross-backend propagation
-                    bootstrap.last_thrown_exception = thrown;
+                    dispatch.last_thrown_exception = thrown;
                     return error.UserException;
                 }
             },
@@ -1165,8 +1180,8 @@ pub const VM = struct {
 
         // Check for preserved exception value from TreeWalk boundary crossing
         const ex = if (err == error.UserException) blk: {
-            if (bootstrap.last_thrown_exception) |thrown| {
-                bootstrap.last_thrown_exception = null;
+            if (dispatch.last_thrown_exception) |thrown| {
+                dispatch.last_thrown_exception = null;
                 break :blk thrown;
             }
             break :blk try self.createRuntimeException(err);
@@ -1516,7 +1531,7 @@ pub const VM = struct {
         // TreeWalk closures: dispatch via unified callFnVal
         if (fn_obj.kind == .treewalk) {
             const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
-            const result = bootstrap.callFnVal(self.allocator, callee, args) catch |e| {
+            const result = dispatch.callFnVal(self.allocator, callee, args) catch |e| {
                 return @as(VMError, @errorCast(e));
             };
             self.sp = fn_idx;
