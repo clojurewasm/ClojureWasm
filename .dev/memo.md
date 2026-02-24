@@ -25,18 +25,16 @@ CW is a complete, optimized Zig implementation with behavioral Clojure compatibi
 
 ## Current Task
 
-T3: Fix deps E2E stderr messages (3 FAIL → 0)
-- cli.zig error messages don't match expected test output format
-- T3a: `Error: git tag '` → `ERROR: Git tag "`
-- T3b: backticks → single quotes, "fetch" → "download...first"
-- T3c: add "(Leiningen)" to message text
-- File: `src/app/cli.zig`
+T7: Fix GPA memory leaks in protocol initialization
+- `extendType()` replaces `protocol.impls` without freeing old entries
+- File: `src/lang/lib/clojure_core_protocols.zig`
 
 ## Previous Task
 
-T2: Fix `into` + reducers reify dispatch (11 FAIL → 0) — DONE.
-Root cause: `callCollReduce` used `"map"` as type key instead of the reify type string.
-Fix: Use `interop_dispatch.getReifyType(coll)` to get actual reify type for protocol lookup.
+T3-T6: Fix deps E2E (6 FAIL → 0) — DONE.
+T3: stderr format fixes (tag error, cache miss, Leiningen warning).
+T4-T6: Added deps_root to Dep struct, enabled transitive resolution in applyConfig,
+fixed absolute path handling in resolveLocalDep.
 
 ## Task Queue
 
@@ -44,10 +42,10 @@ Fix: Use `interop_dispatch.getReifyType(coll)` to get actual reify type for prot
 Part A: Test/Leak Fixes
 T1: Fix pprint *print-level* (1 FAIL)         ✓ DONE
 T2: Fix into + reducers reify dispatch (11 FAIL)  ✓ DONE
-T3: Fix deps E2E stderr messages (3 FAIL)
-T4: Fix deps E2E :deps/root support (1 FAIL)
-T5: Fix deps E2E transitive local dep (1 FAIL)
-T6: Fix deps E2E transitive git dep (1 FAIL)
+T3: Fix deps E2E stderr messages (3 FAIL)        ✓ DONE
+T4: Fix deps E2E :deps/root support (1 FAIL)      ✓ DONE
+T5: Fix deps E2E transitive local dep (1 FAIL)     ✓ DONE
+T6: Fix deps E2E transitive git dep (1 FAIL)       ✓ DONE
 T7: Fix GPA memory leaks in protocol init
 
 Part B: Zone Violation Reduction (126 → 0)

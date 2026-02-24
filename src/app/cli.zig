@@ -558,6 +558,7 @@ const Dep = struct {
     git_url: ?[]const u8 = null,
     git_sha: ?[]const u8 = null,
     git_tag: ?[]const u8 = null,
+    deps_root: ?[]const u8 = null,
 };
 
 const WasmDep = struct {
@@ -615,6 +616,7 @@ fn projectConfigFromDepsConfig(allocator: Allocator, deps_config: deps_mod.DepsC
                 },
                 .git_sha = src_dep.git_sha,
                 .git_tag = src_dep.git_tag,
+                .deps_root = src_dep.deps_root,
             };
         }
         break :blk @as([]const Dep, d);
@@ -654,12 +656,12 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
         }
     }
 
-    // Apply deps
+    // Apply deps (resolve_deps=true for transitive resolution, allow_fetch=false)
     for (config.deps) |dep| {
         if (dep.local_root) |root| {
-            resolveLocalDep(root, config_dir, false);
+            resolveLocalDep(root, config_dir, true);
         } else if (dep.git_url != null and dep.git_sha != null) {
-            resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, null, false, false, false);
+            resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, false, true, false);
         }
     }
 
@@ -678,7 +680,9 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
 
 pub fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8, resolve_deps: bool) void {
     var buf: [4096]u8 = undefined;
-    const resolved_root = if (config_dir) |dir|
+    const resolved_root = if (std.fs.path.isAbsolute(root))
+        root // Absolute paths used as-is
+    else if (config_dir) |dir|
         std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, root }) catch return
     else
         root;
@@ -727,8 +731,8 @@ fn warnIfLeinProject(dir: []const u8) void {
     // Check if project.clj exists
     std.fs.cwd().access(path, .{}) catch return;
     const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-    _ = stderr.write("Warning: Found project.clj but no deps.edn. ClojureWasm uses deps.edn for dependencies.\n") catch {};
-    _ = stderr.write("  Run `cljw new <name>` to create a deps.edn project, or create deps.edn manually.\n") catch {};
+    _ = stderr.write("Warning: Found project.clj (Leiningen) but no deps.edn. ClojureWasm uses deps.edn for dependencies.\n") catch {};
+    _ = stderr.write("  Run 'cljw new <name>' to create a deps.edn project, or create deps.edn manually.\n") catch {};
 }
 
 pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: ?[]const u8, force: bool, resolve_deps: bool, allow_fetch: bool) void {
@@ -809,7 +813,7 @@ pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_ro
         // Not cached and not allowed to fetch
         _ = stderr.write("Warning: git dependency not cached: ") catch {};
         _ = stderr.write(url) catch {};
-        _ = stderr.write("\n  Run `cljw -P` to fetch dependencies.\n") catch {};
+        _ = stderr.write("\n  Run 'cljw -P' to download dependencies first.\n") catch {};
         return;
     }
 
@@ -863,9 +867,9 @@ pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_ro
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         if (!validateGitTag(arena.allocator(), tmp_dir, t, sha)) {
-            _ = stderr.write("Error: git tag '") catch {};
+            _ = stderr.write("ERROR: Git tag \"") catch {};
             _ = stderr.write(t) catch {};
-            _ = stderr.write("' does not match SHA ") catch {};
+            _ = stderr.write("\" does not match SHA ") catch {};
             _ = stderr.write(sha) catch {};
             _ = stderr.write("\n") catch {};
             std.fs.cwd().deleteTree(tmp_dir) catch {};
