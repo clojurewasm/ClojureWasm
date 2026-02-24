@@ -9,7 +9,7 @@ Session handover document. Read at session start.
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon)
 - 68 upstream test files. 6/6 e2e. 14/14 deps e2e
 - Binary: 4.76MB. Startup: 4.2ms. RSS: 7.6MB
-- Zone violations: 14 (baseline — 12 test-only, 2 architectural)
+- Zone violations: 12 (baseline — 12 test-only, 0 architectural)
 - All test suites: PASS (0 failures)
 
 ## Strategic Direction
@@ -25,16 +25,15 @@ CW is a complete, optimized Zig implementation with behavioral Clojure compatibi
 
 ## Current Task
 
-Zone Cleanup: 16 → 0. Task 3: Vtable-ize interop rewrites/constructors.
+Zone Cleanup: 16 → 0. Task 4: Move integration tests → lang/tests/ (−12 violations).
 See `memory/zone-cleanup-16-to-0.md` for full plan.
 
 ## Previous Task
 
-Zone Cleanup Task 2: Move macro.zig → engine/ with vtable (15 → 14, −1 violation).
+Zone Cleanup Task 3: Vtable-ize interop rewrites/constructors (14 → 12, −2 violations).
 
 ## Task Queue
 
-- Task 3: Vtable-ize interop rewrites/constructors (−2 violations)
 - Task 4: Move integration tests → lang/tests/ (−12 violations)
 
 ## Known Issues
@@ -49,6 +48,6 @@ P3: UPSTREAM-DIFF markers (I-030), stub vars (I-031), stub namespaces (I-032).
 ## Notes
 
 - CLAUDE.md binary threshold updated to 4.8MB (post All-Zig migration)
-- Zone check: `bash scripts/zone_check.sh --gate` (hard block, baseline 14)
-- 14 remaining violations: 12 test-only + 2 architectural
+- Zone check: `bash scripts/zone_check.sh --gate` (hard block, baseline 12)
+- 12 remaining violations: all test-only (tree_walk.zig × 10, bootstrap.zig × 2)
 - Phase 98 plan: `.claude/plans/shiny-frolicking-dijkstra.md` (COMPLETE)

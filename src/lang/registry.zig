@@ -254,6 +254,13 @@ pub fn registerBuiltins(env: *Env) !void {
     dispatch.construct_uuid = &constructUuidBridge;
     dispatch.make_inst_value = &makeInstBridge;
 
+    // Initialize interop rewrite vtable (D109 zone cleanup) — breaks analyzer → interop deps.
+    dispatch.rewrite_static_field = &rewriteStaticFieldBridge;
+    const interop_rewrites = @import("interop/rewrites.zig");
+    dispatch.rewrite_interop_call = &interop_rewrites.rewriteInteropCall;
+    const interop_constructors = @import("interop/constructors.zig");
+    dispatch.resolve_class_name = &interop_constructors.resolveClassName;
+
     const core_ns = try env.findOrCreateNamespace("clojure.core");
 
     for (all_builtins) |b| {
@@ -671,6 +678,15 @@ fn makeInstBridge(allocator: std.mem.Allocator, form_val: Value) anyerror!Value 
         Value.initKeyword(allocator, .{ .ns = null, .name = "inst" }),
         form_val,
     });
+}
+
+/// Interop static field rewrite bridge (D109 zone cleanup).
+/// Bridges nominal type difference between interop_rewrites.StaticFieldRewrite
+/// and dispatch.StaticFieldRewrite (structurally identical).
+fn rewriteStaticFieldBridge(ns: []const u8, name: []const u8) ?dispatch.StaticFieldRewrite {
+    const interop_rewrites = @import("interop/rewrites.zig");
+    const result = interop_rewrites.rewriteStaticField(ns, name) orelse return null;
+    return .{ .ns = result.ns, .name = result.name };
 }
 
 /// GC FnProto tracing bridge (D109 Z3).

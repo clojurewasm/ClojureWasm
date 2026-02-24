@@ -163,6 +163,32 @@ fn defaultMakeInstValue(_: Allocator, _: Value) anyerror!Value {
     return Value.nil_val;
 }
 
+// === Interop rewrite vtable (D109 zone cleanup) ===
+// Breaks analyzer.zig → lang/interop/rewrites.zig, constructors.zig dependencies.
+
+pub const StaticFieldRewrite = struct { ns: ?[]const u8, name: []const u8 };
+
+/// Rewrite Java static field access to CW var reference.
+pub var rewrite_static_field: *const fn ([]const u8, []const u8) ?StaticFieldRewrite = &defaultRewriteStaticField;
+
+fn defaultRewriteStaticField(_: []const u8, _: []const u8) ?StaticFieldRewrite {
+    return null;
+}
+
+/// Rewrite Java static method calls to CW builtins.
+pub var rewrite_interop_call: *const fn ([]const u8, []const u8) ?[]const u8 = &defaultRewriteInteropCall;
+
+fn defaultRewriteInteropCall(_: []const u8, _: []const u8) ?[]const u8 {
+    return null;
+}
+
+/// Resolve a short class name to its FQCN.
+pub var resolve_class_name: *const fn ([]const u8) ?[]const u8 = &defaultResolveClassName;
+
+fn defaultResolveClassName(_: []const u8) ?[]const u8 {
+    return null;
+}
+
 /// Central function dispatch for all callable CW value types.
 ///
 /// Handles: builtin_fn, fn_val (treewalk + bytecode), multi_fn,

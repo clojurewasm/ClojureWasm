@@ -19,7 +19,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 # Baseline: known violation count. Update when violations are fixed.
 # History: 134 (R0) -> 126 (R9) -> 118 (Z1) -> 30 (Z2) -> 16 (Z3)
-BASELINE=14
+BASELINE=12
 
 MODE="info"
 if [[ "${1:-}" == "--strict" ]]; then

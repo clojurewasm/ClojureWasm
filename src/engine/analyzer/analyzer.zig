@@ -33,7 +33,7 @@ const bootstrap = @import("../bootstrap.zig");
 const value_mod = @import("../../runtime/value.zig");
 const regex_matcher = @import("../../regex/matcher.zig");
 const keyword_intern = @import("../../runtime/keyword_intern.zig");
-const interop_rewrites = @import("../../lang/interop/rewrites.zig");
+const dispatch = @import("../../runtime/dispatch.zig");
 const macro_transforms = @import("macro_transforms.zig");
 
 /// Analyzer — stateful Form -> Node transformer.
@@ -315,7 +315,7 @@ pub const Analyzer = struct {
         }
         // Rewrite Java static field access: Math/PI → clojure.math/PI, etc.
         if (sym.ns) |ns| {
-            if (rewriteStaticField(ns, sym.name)) |rewritten| {
+            if (dispatch.rewrite_static_field(ns, sym.name)) |rewritten| {
                 return self.makeVarRef(.{ .ns = rewritten.ns, .name = rewritten.name }, form);
             }
         }
@@ -323,8 +323,7 @@ pub const Analyzer = struct {
         return self.makeVarRef(sym, form);
     }
 
-    const StaticFieldRewrite = interop_rewrites.StaticFieldRewrite;
-    const rewriteStaticField = interop_rewrites.rewriteStaticField;
+    const StaticFieldRewrite = dispatch.StaticFieldRewrite;
 
     // === List analysis ===
 
@@ -404,7 +403,7 @@ pub const Analyzer = struct {
         // Rewrite Math/System static method calls to builtin names
         if (items[0].data == .symbol) {
             if (items[0].data.symbol.ns) |ns_name| {
-                if (rewriteInteropCall(ns_name, items[0].data.symbol.name)) |builtin_name| {
+                if (dispatch.rewrite_interop_call(ns_name, items[0].data.symbol.name)) |builtin_name| {
                     var rewritten = self.allocator.alloc(Form, items.len) catch return error.OutOfMemory;
                     rewritten[0] = .{
                         .data = .{ .symbol = .{ .ns = null, .name = builtin_name } },
@@ -475,13 +474,11 @@ pub const Analyzer = struct {
         return self.analyzeCall(items, form);
     }
 
-    const interop_constructors = @import("../../lang/interop/constructors.zig");
-
     /// Resolve a class short name to its FQCN.
     /// Checks: 1) known_classes comptime table, 2) local Var value matching a FQCN.
     fn resolveClassFqcn(self: *Analyzer, class_short: []const u8) ?[]const u8 {
-        // Check comptime known classes table
-        if (interop_constructors.resolveClassName(class_short)) |fqcn| return fqcn;
+        // Check comptime known classes table (via dispatch vtable)
+        if (dispatch.resolve_class_name(class_short)) |fqcn| return fqcn;
         // Check if there's a local Var whose value is a FQCN string (from :import)
         if (self.env) |env| {
             if (env.current_ns) |ns| {
@@ -492,7 +489,7 @@ pub const Analyzer = struct {
                         const sym = root.asSymbol();
                         if (sym.ns == null) {
                             // Check if the symbol name is a known FQCN
-                            if (interop_constructors.resolveClassName(sym.name)) |_| return sym.name;
+                            if (dispatch.resolve_class_name(sym.name)) |_| return sym.name;
                             // Check if it looks like a FQCN (contains dots)
                             if (std.mem.indexOf(u8, sym.name, ".") != null) return sym.name;
                         }
@@ -517,8 +514,6 @@ pub const Analyzer = struct {
         @memcpy(rewritten[2..], ctor_args);
         return self.analyzeCall(rewritten, form);
     }
-
-    const rewriteInteropCall = interop_rewrites.rewriteInteropCall;
 
     /// Check if a namespace prefix resolves to clojure.core.
     /// Handles: literal "clojure.core" or an alias pointing to clojure.core.
