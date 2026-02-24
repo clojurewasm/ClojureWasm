@@ -16,29 +16,12 @@ const Allocator = std.mem.Allocator;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const Env = @import("env.zig").Env;
-const Namespace = @import("namespace.zig").Namespace;
-const err = @import("error.zig");
-const Compiler = @import("../compiler/compiler.zig").Compiler;
-const vm_mod = @import("../vm/vm.zig");
-const VM = vm_mod.VM;
-const gc_mod = @import("gc.zig");
 const builtin_collections = @import("../builtins/collections.zig");
 const dispatch = @import("dispatch.zig");
 const pipeline = @import("pipeline.zig");
 
 /// Bootstrap error type (canonical definition in pipeline.zig).
 pub const BootstrapError = pipeline.BootstrapError;
-
-/// Embedded Clojure source strings (extracted to embedded_sources.zig, Phase R1.2).
-/// Used by vmRecompileAll and restoreFromBootstrapCache.
-const es = @import("embedded_sources.zig");
-const test_clj_source = es.test_clj_source;
-const repl_macros_source = es.repl_macros_source;
-const pprint_clj_source = es.pprint_clj_source;
-const reducers_macros_source = es.reducers_macros_source;
-const hot_core_defs = es.hot_core_defs;
-const core_hof_defs = es.core_hof_defs;
-const core_seq_defs = es.core_seq_defs;
 
 // Namespace loading functions moved to builtins/loader.zig (D109 R4).
 // Re-exports for backward compatibility:
@@ -78,216 +61,15 @@ pub const callFnVal = dispatch.callFnVal;
 // NOTE: macro_eval_env, last_thrown_exception moved to dispatch.zig (D109 R1).
 // NOTE: apply_rest_is_seq moved to dispatch.zig (D109 R3).
 
-// === AOT Compilation ===
-
-const serialize_mod = @import("../compiler/serialize.zig");
-
-/// Compile source to a serialized bytecode Module.
-///
-/// Parses, analyzes (with macro expansion), and compiles all top-level forms
-/// into a single Chunk. The resulting Module (header + string table + FnProto
-/// table + Chunk) is returned as owned bytes.
-///
-/// Requires bootstrap already loaded (macros must be available for expansion).
-pub fn compileToModule(allocator: Allocator, env: *Env, source: []const u8) BootstrapError![]const u8 {
-    const node_alloc = env.nodeAllocator();
-    const forms = try readForms(node_alloc, source);
-    if (forms.len == 0) return error.CompileError;
-
-    const prev = setupMacroEnv(env);
-    defer restoreMacroEnv(prev);
-
-    // Compile all forms into a single Chunk.
-    // Intermediate form results are popped; final form result is returned by .ret.
-    var compiler = Compiler.init(allocator);
-    if (env.current_ns) |ns| {
-        compiler.current_ns_name = ns.name;
-        compiler.current_ns = ns;
-    }
-    for (forms, 0..) |form, i| {
-        const node = try analyzeForm(node_alloc, env, form);
-        compiler.compile(node) catch return error.CompileError;
-        if (i < forms.len - 1) {
-            compiler.chunk.emitOp(.pop) catch return error.CompileError;
-        }
-    }
-    compiler.chunk.emitOp(.ret) catch return error.CompileError;
-
-    // Serialize the Module
-    var ser: serialize_mod.Serializer = .{};
-    ser.serializeModule(allocator, &compiler.chunk) catch return error.CompileError;
-    const bytes = ser.getBytes();
-    return allocator.dupe(u8, bytes) catch return error.OutOfMemory;
-}
-
-/// Run a compiled bytecode Module in the given Env.
-///
-/// Deserializes the Module, then runs the top-level Chunk via VM.
-/// Returns the value of the last form.
-pub fn runBytecodeModule(allocator: Allocator, env: *Env, module_bytes: []const u8) BootstrapError!Value {
-    const prev = setupMacroEnv(env);
-    defer restoreMacroEnv(prev);
-
-    var de: serialize_mod.Deserializer = .{ .data = module_bytes };
-    const chunk = de.deserializeModule(allocator) catch return error.CompileError;
-
-    const gc: ?*gc_mod.MarkSweepGc = if (env.gc) |g| @ptrCast(@alignCast(g)) else null;
-
-    // Heap-allocate VM (struct is ~1.5MB)
-    const vm = env.allocator.create(VM) catch return error.CompileError;
-    defer env.allocator.destroy(vm);
-    vm.* = VM.initWithEnv(allocator, env);
-    vm.gc = gc;
-    return vm.run(&chunk) catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-}
-
-/// Unified bootstrap: loads all standard library namespaces.
-///
-/// Use this instead of calling each individually.
-/// Pure-zig namespaces are registered in registerBuiltins().
-/// Lazy namespaces (spec, main, etc.) are loaded on first require.
-pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
-    try loadCore(allocator, env);
-    try loadTest(allocator, env);
-    try loadRepl(allocator, env);
-    try loadPprint(allocator, env);
-    try loadReducers(allocator, env);
-}
-
-/// Re-compile all bootstrap functions to bytecode via VM compiler.
-///
-/// After normal TreeWalk bootstrap, vars hold TreeWalk closures (kind=treewalk).
-/// These cannot be serialized because their proto points to TreeWalk.Closure (AST),
-/// not FnProto (bytecode). This function re-evaluates all bootstrap source files
-/// through the VM compiler, replacing all defn/defmacro var roots with bytecode closures.
-///
-/// Must be called after loadBootstrapAll(). After this, all top-level fn_val vars
-/// are bytecode-backed and eligible for serialization.
-pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
-    const saved_ns = env.current_ns;
-
-    // Re-compile core functions to bytecode (core.clj eliminated, Phase C.1)
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    env.current_ns = core_ns;
-    _ = try evalStringVMBootstrap(allocator, env, hot_core_defs);
-    _ = try evalStringVMBootstrap(allocator, env, core_hof_defs);
-    _ = try evalStringVMBootstrap(allocator, env, core_seq_defs);
-
-    // clojure.walk — Zig builtins (Phase B.4), no recompilation needed
-
-    // Re-compile test.clj
-    if (env.findNamespace("clojure.test")) |test_ns| {
-        env.current_ns = test_ns;
-        _ = try evalStringVMBootstrap(allocator, env, test_clj_source);
-    }
-
-    // clojure.set — Zig builtins (Phase B.6), no recompilation needed
-    // clojure.data — Zig builtins (Phase B.5), no recompilation needed
-
-    // Re-compile repl.clj
-    if (env.findNamespace("clojure.repl")) |repl_ns| {
-        env.current_ns = repl_ns;
-        _ = try evalStringVMBootstrap(allocator, env, repl_macros_source);
-    }
-
-    // clojure.java.io — Zig builtins (Phase B.7), no recompilation needed
-
-    // Re-compile pprint.clj
-    if (env.findNamespace("clojure.pprint")) |pprint_ns| {
-        env.current_ns = pprint_ns;
-        _ = try evalStringVMBootstrap(allocator, env, pprint_clj_source);
-    }
-
-    // clojure.stacktrace — Zig builtins (Phase B.4), no recompilation needed
-
-    // clojure.zip — Zig builtins (Phase B.9), no recompilation needed
-
-    // clojure.core.protocols — Zig builtins (Phase B.3), no recompilation needed
-
-    // Re-compile core/reducers.clj
-    if (env.findNamespace("clojure.core.reducers")) |reducers_ns| {
-        env.current_ns = reducers_ns;
-        _ = try evalStringVMBootstrap(allocator, env, reducers_macros_source);
-    }
-
-    // spec.alpha re-compiled lazily on first require (startup time)
-
-    // Restore namespace
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
-
-/// Generate a bootstrap cache: serialized env state with all fns as bytecode.
-///
-/// Performs full bootstrap (TreeWalk), re-compiles all fns to bytecode,
-/// then serializes the entire env state. Returns owned bytes that can
-/// be written to a cache file or embedded in a binary.
-pub fn generateBootstrapCache(allocator: Allocator, env: *Env) BootstrapError![]const u8 {
-    // Re-compile all bootstrap fns to bytecode (required for serialization)
-    try vmRecompileAll(allocator, env);
-
-    // Serialize env snapshot
-    var ser: serialize_mod.Serializer = .{};
-    ser.serializeEnvSnapshot(allocator, env) catch return error.CompileError;
-    // Return a copy of the serialized bytes owned by the caller's allocator
-    const bytes = ser.getBytes();
-    return allocator.dupe(u8, bytes) catch return error.OutOfMemory;
-}
-
-/// Restore bootstrap state from a cache (serialized env snapshot).
-///
-/// Expects registerBuiltins(env) already called. Restores all namespaces,
-/// vars, refers, and aliases from the cache bytes. Reconnects *print-length*
-/// and *print-level* var caches for correct print behavior.
-pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: []const u8) BootstrapError!void {
-    var de: serialize_mod.Deserializer = .{ .data = cache_bytes };
-    de.restoreEnvSnapshotLazy(allocator, env) catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    // Eagerly restore deferred namespaces that already exist from registerBuiltins.
-    // Without this, namespaces created by registerBuiltins() would be marked as loaded
-    // by markBootstrapLibs(), causing requireLib() to skip the deferred cache restore.
-    // This merges cache-defined vars (e.g. macros from evalString) into Zig-builtin namespaces.
-    serialize_mod.restorePreRegisteredDeferredNs(allocator, env);
-
-    // Reconnect printVar caches (value.initPrintVars)
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    if (core_ns.resolve("*print-length*")) |pl_var| {
-        if (core_ns.resolve("*print-level*")) |pv_var| {
-            value_mod.initPrintVars(pl_var, pv_var);
-        }
-    }
-    if (core_ns.resolve("*print-readably*")) |pr_var| {
-        if (core_ns.resolve("*print-meta*")) |pm_var| {
-            value_mod.initPrintFlagVars(pr_var, pm_var);
-        }
-    }
-
-    // Cache *print-dup* var for readable override
-    if (core_ns.resolve("*print-dup*")) |pd_var| {
-        value_mod.initPrintDupVar(pd_var);
-    }
-
-    // Cache *agent* var for binding in agent action processing
-    if (core_ns.resolve("*agent*")) |agent_v| {
-        const thread_pool_mod = @import("thread_pool.zig");
-        thread_pool_mod.initAgentVar(agent_v);
-    }
-
-    // Ensure *ns* is synced
-    syncNsVar(env);
-}
+// Cache/AOT functions moved to cache.zig (D109 R5).
+// Re-exports for backward compatibility:
+const cache = @import("cache.zig");
+pub const compileToModule = cache.compileToModule;
+pub const runBytecodeModule = cache.runBytecodeModule;
+pub const loadBootstrapAll = cache.loadBootstrapAll;
+pub const vmRecompileAll = cache.vmRecompileAll;
+pub const generateBootstrapCache = cache.generateBootstrapCache;
+pub const restoreFromBootstrapCache = cache.restoreFromBootstrapCache;
 
 // === Tests ===
 
@@ -2984,6 +2766,7 @@ test "bootstrap cache - round-trip: generate and restore" {
     var env2 = Env.init(alloc);
     try registry.registerBuiltins(&env2);
     {
+        const serialize_mod = @import("../compiler/serialize.zig");
         var de: serialize_mod.Deserializer = .{ .data = cache_bytes };
         try de.restoreEnvSnapshot(alloc, &env2);
     }

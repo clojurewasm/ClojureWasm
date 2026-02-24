@@ -27,18 +27,19 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R5: Extract cache system.
+Phase 97 (Architecture Refactoring), sub-task R6: Slim down bootstrap.zig.
 
-See `.dev/refactoring-plan.md` R5 section for details.
+Target: < 200 LOC (currently ~2,800 LOC, mostly tests).
+See `.dev/refactoring-plan.md` R6 section for details.
 
 ## Previous Task
 
-R4: Extract namespace loading — COMPLETE.
-- Created `src/builtins/loader.zig` (Layer 2) with loadCore, loadTest, loadRepl,
-  loadPprint, loadReducers, loadEmbeddedLib, syncNsVar
-- Unified BootstrapError: pipeline.zig is canonical, bootstrap.zig re-exports
-- Removed dead ns_loader import from bootstrap.zig
-- Violations: 129 → 126 (3 L1→L2 violations moved to proper layer)
+R5: Extract cache system — COMPLETE.
+- Created `src/runtime/cache.zig` (Layer 1) with compileToModule, runBytecodeModule,
+  loadBootstrapAll, vmRecompileAll, generateBootstrapCache, restoreFromBootstrapCache
+- Removed 8 dead imports from bootstrap.zig (Namespace, err, Compiler, VM, gc_mod,
+  embedded_sources, serialize_mod)
+- Violations: 126 → 127 (+1 from cache.zig→loader.zig, structural)
 
 ## Task Queue
 
