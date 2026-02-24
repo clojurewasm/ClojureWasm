@@ -25,16 +25,14 @@ CW is a complete, optimized Zig implementation with behavioral Clojure compatibi
 
 ## Current Task
 
-T7: Fix GPA memory leaks in protocol initialization
-- `extendType()` replaces `protocol.impls` without freeing old entries
-- File: `src/lang/lib/clojure_core_protocols.zig`
+Part A complete! All test failures and leaks resolved.
+Moving to Part B: Zone Violation Reduction (126 → 0).
+Next: Z1 — Reclassify wasm types → runtime (−8 violations).
 
 ## Previous Task
 
-T3-T6: Fix deps E2E (6 FAIL → 0) — DONE.
-T3: stderr format fixes (tag error, cache miss, Leiningen warning).
-T4-T6: Added deps_root to Dep struct, enabled transitive resolution in applyConfig,
-fixed absolute path handling in resolveLocalDep.
+T7: Fix GPA memory leaks in protocol initialization — DONE.
+`extendType()` now frees old impls map and entries array before replacing.
 
 ## Task Queue
 
@@ -46,7 +44,7 @@ T3: Fix deps E2E stderr messages (3 FAIL)        ✓ DONE
 T4: Fix deps E2E :deps/root support (1 FAIL)      ✓ DONE
 T5: Fix deps E2E transitive local dep (1 FAIL)     ✓ DONE
 T6: Fix deps E2E transitive git dep (1 FAIL)       ✓ DONE
-T7: Fix GPA memory leaks in protocol init
+T7: Fix GPA memory leaks in protocol init        ✓ DONE
 
 Part B: Zone Violation Reduction (126 → 0)
 Z1: Reclassify wasm types → runtime (−8)

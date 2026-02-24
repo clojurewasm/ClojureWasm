@@ -206,12 +206,16 @@ pub fn extendType(
 
     // Add to impls: grow the impls map
     const old_impls = protocol.impls;
-    const new_entries = try allocator.alloc(Value, old_impls.entries.len + 2);
-    @memcpy(new_entries[0..old_impls.entries.len], old_impls.entries);
-    new_entries[old_impls.entries.len] = Value.initString(allocator, type_key);
-    new_entries[old_impls.entries.len + 1] = Value.initMap(method_map);
+    const old_entries = old_impls.entries;
+    const new_entries = try allocator.alloc(Value, old_entries.len + 2);
+    @memcpy(new_entries[0..old_entries.len], old_entries);
+    new_entries[old_entries.len] = Value.initString(allocator, type_key);
+    new_entries[old_entries.len + 1] = Value.initMap(method_map);
     const new_impls = try allocator.create(PersistentArrayMap);
     new_impls.* = .{ .entries = new_entries };
+    // Free old impls (entries Values are copied by value, still referenced from new_entries)
+    if (old_entries.len > 0) allocator.free(old_entries);
+    allocator.destroy(old_impls);
     protocol.impls = new_impls;
     protocol.generation +%= 1;
 }
