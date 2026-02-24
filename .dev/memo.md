@@ -27,26 +27,24 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R2: Extract evalString pipeline.
+Phase 97 (Architecture Refactoring), sub-task R3: Extract builtin registration.
 
-Move `evalString*`, `readForms*`, `readFormsWithNs` from bootstrap.zig to
-`src/runtime/pipeline.zig` (Layer 1 file in pre-R8 mapping).
-
-See `.dev/refactoring-plan.md` R2 section for details.
+See `.dev/refactoring-plan.md` R3 section for details.
 
 ## Previous Task
 
-R1: callFnVal dependency inversion (vtable) — COMPLETE.
-- Created `src/runtime/dispatch.zig` (Layer 0) with callFnVal + vtable
-- Moved macro_eval_env, last_thrown_exception to dispatch.zig
-- VM bridge via dispatch.active_vm_call function pointer
-- Updated all callers (~30 files)
-- Violations: 134 → 129 (5 L0→L1 bootstrap imports removed)
+R2: Extract evalString pipeline — COMPLETE.
+- Created `src/runtime/pipeline.zig` (Layer 1) with all eval pipeline functions
+- Moved: readForms, readFormsWithNs, analyzeForm, evalString, evalStringObserved,
+  evalStringVM, evalStringVMObserved, evalStringVMBootstrap, dumpBytecodeVM,
+  setupMacroEnv, restoreMacroEnv, MacroEnvState, FormObserver, BootstrapError
+- bootstrap.zig re-exports for backward compatibility (no caller changes needed)
+- Removed 5 dead imports from bootstrap.zig (Reader, Form, Analyzer, Node, chunk_mod, predicates_mod)
+- Violations: 129 → 129 (net zero — moved L1→L2 violation from bootstrap to pipeline)
 
 ## Task Queue
 
 ```
-R2:  Extract evalString pipeline
 R3:  Extract builtin registration
 R4:  Extract namespace loading
 R5:  Extract cache system
