@@ -27,19 +27,17 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R6: Slim down bootstrap.zig.
+Phase 97 (Architecture Refactoring), sub-task R7: Fix value.zig upward dependency.
 
-Target: < 200 LOC (currently ~2,800 LOC, mostly tests).
-See `.dev/refactoring-plan.md` R6 section for details.
+See `.dev/refactoring-plan.md` R7 section for details.
 
 ## Previous Task
 
-R5: Extract cache system — COMPLETE.
-- Created `src/runtime/cache.zig` (Layer 1) with compileToModule, runBytecodeModule,
-  loadBootstrapAll, vmRecompileAll, generateBootstrapCache, restoreFromBootstrapCache
-- Removed 8 dead imports from bootstrap.zig (Namespace, err, Compiler, VM, gc_mod,
-  embedded_sources, serialize_mod)
-- Violations: 126 → 127 (+1 from cache.zig→loader.zig, structural)
+R6: Slim down bootstrap.zig — COMPLETE.
+- bootstrap.zig is now 75 LOC production code (re-export hub) + ~2,800 LOC tests
+- Removed dead private re-exports (readForms, analyzeForm, evalStringVMBootstrap)
+- Updated module doc comment to reflect re-export hub role
+- Violations: 127 (unchanged)
 
 ## Task Queue
 

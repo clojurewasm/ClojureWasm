@@ -6,10 +6,16 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-//! Bootstrap — loads and evaluates core.clj to register macros and core functions.
+//! Bootstrap — backward-compatible re-export hub (D109 R1-R5).
 //!
-//! Evaluation pipeline (readForms, evalString*, etc.) extracted to pipeline.zig (D109 R2).
-//! This module retains: bootstrap loading, namespace setup, dispatch init, and bridges.
+//! All logic has been extracted to specialized modules:
+//!   dispatch.zig (R1) — callFnVal vtable + threadlocal state
+//!   pipeline.zig (R2) — read/analyze/eval pipeline
+//!   registry.zig (R3) — builtin registration + dispatch init
+//!   loader.zig   (R4) — namespace loading (loadCore, etc.)
+//!   cache.zig    (R5) — bootstrap cache + AOT compilation
+//!
+//! This file provides pub const re-exports for callers that import bootstrap.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -34,12 +40,7 @@ pub const loadReducers = loader.loadReducers;
 pub const loadEmbeddedLib = loader.loadEmbeddedLib;
 pub const syncNsVar = loader.syncNsVar;
 
-// Pipeline functions (readForms, evalString*, etc.) moved to pipeline.zig (D109 R2).
-// Re-exports for backward compatibility:
-const readForms = pipeline.readForms;
-const readFormsWithNs = pipeline.readFormsWithNs;
-const analyzeForm = pipeline.analyzeForm;
-const evalStringVMBootstrap = pipeline.evalStringVMBootstrap;
+// Pipeline functions moved to pipeline.zig (D109 R2). Public re-exports:
 pub const MacroEnvState = pipeline.MacroEnvState;
 pub const setupMacroEnv = pipeline.setupMacroEnv;
 pub const restoreMacroEnv = pipeline.restoreMacroEnv;
