@@ -59,11 +59,26 @@ fn singleLine(allocator: Allocator, val: Value) ![]const u8 {
     return try allocator.dupe(u8, s);
 }
 
+/// Check if a value is a collection type (for print-level tracking).
+fn isCollection(v: Value) bool {
+    return switch (v.tag()) {
+        .list, .cons, .chunked_cons, .vector, .map, .hash_map, .set => true,
+        else => false,
+    };
+}
+
 /// Recursively pretty-print `val` into writer `w`.
 /// `col` tracks the current column position.
 fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin: usize) !void {
     // Resolve lazy-seq one step (not the entire sequence)
     const v = resolveLazy(allocator, val);
+
+    // Check *print-level*: if depth exceeded, print "#" and return
+    if (isCollection(v) and value_mod.checkPrintLevelExceeded()) {
+        try w.writeByte('#');
+        col.* += 1;
+        return;
+    }
 
     // Try single-line first
     const s = try singleLine(allocator, v);
@@ -83,6 +98,8 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
         .list => {
             try w.writeByte('(');
             col.* += 1;
+            value_mod.incrementPrintDepth();
+            defer value_mod.decrementPrintDepth();
             const new_indent = col.*;
             const list = v.asList();
             for (list.items, 0..) |item, i| {
@@ -112,6 +129,8 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
             // Inline seq walking (avoids mutual recursion with anytype)
             try w.writeByte('(');
             col.* += 1;
+            value_mod.incrementPrintDepth();
+            defer value_mod.decrementPrintDepth();
             const seq_indent = col.*;
             var seq_count: usize = 0;
             var cur = v;
@@ -204,6 +223,8 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
         .vector => {
             try w.writeByte('[');
             col.* += 1;
+            value_mod.incrementPrintDepth();
+            defer value_mod.decrementPrintDepth();
             const new_indent = col.*;
             const vec = v.asVector();
             for (vec.items, 0..) |item, i| {
@@ -232,6 +253,8 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
         .map => {
             try w.writeByte('{');
             col.* += 1;
+            value_mod.incrementPrintDepth();
+            defer value_mod.decrementPrintDepth();
             const new_indent = col.*;
             const am = v.asMap();
             var i: usize = 0;
@@ -252,6 +275,8 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
         .hash_map => {
             try w.writeByte('{');
             col.* += 1;
+            value_mod.incrementPrintDepth();
+            defer value_mod.decrementPrintDepth();
             const new_indent = col.*;
             const entries = try v.asHashMap().toEntries(allocator);
             var i: usize = 0;
@@ -272,6 +297,8 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
         .set => {
             try w.writeAll("#{");
             col.* += 2;
+            value_mod.incrementPrintDepth();
+            defer value_mod.decrementPrintDepth();
             const new_indent = col.*;
             const set = v.asSet();
             for (set.items, 0..) |item, i| {

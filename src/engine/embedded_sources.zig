@@ -1076,16 +1076,19 @@ pub const pprint_clj_source =
     \\
     \\(defn- pprint-map [amap]
     \\  ;; UPSTREAM-DIFF: skip lift-ns (CW doesn't have namespace map lifting)
+    \\  ;; UPSTREAM-DIFF: decrement *current-level* before inner pprint-logical-block
+    \\  ;; so key-value pairs don't double-count level (fixes *print-level* for maps)
     \\  (let [prefix "{"]
     \\    (pprint-logical-block :prefix prefix :suffix "}"
     \\                          (print-length-loop [aseq (seq amap)]
     \\                                             (when aseq
-    \\                                               (pprint-logical-block
-    \\                                                (write-out (ffirst aseq))
-    \\                                                (cw-write " ")
-    \\                                                (pprint-newline :linear)
-    \\                                                (set! *current-length* 0)
-    \\                                                (write-out (fnext (first aseq))))
+    \\                                               (binding [*current-level* (dec *current-level*)]
+    \\                                                 (pprint-logical-block
+    \\                                                  (write-out (ffirst aseq))
+    \\                                                  (cw-write " ")
+    \\                                                  (pprint-newline :linear)
+    \\                                                  (set! *current-length* 0)
+    \\                                                  (write-out (fnext (first aseq)))))
     \\                                               (when (next aseq)
     \\                                                 (cw-write ", ")
     \\                                                 (pprint-newline :linear)

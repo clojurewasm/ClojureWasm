@@ -257,10 +257,24 @@ pub fn getPrintLength() ?i64 {
     return if (v.tag() == .integer) v.asInteger() else null;
 }
 
-fn getPrintLevel() ?u32 {
+pub fn getPrintLevel() ?u32 {
     const v = (print_level_var orelse return null).deref();
     if (v.tag() == .integer and v.asInteger() >= 0) return @intCast(v.asInteger());
     return null;
+}
+
+/// Check *print-level* for pprint: if current depth >= level, return true.
+pub fn checkPrintLevelExceeded() bool {
+    const level = getPrintLevel() orelse return false;
+    return print_depth >= level;
+}
+
+pub fn incrementPrintDepth() void {
+    print_depth += 1;
+}
+
+pub fn decrementPrintDepth() void {
+    print_depth -= 1;
 }
 
 /// Builtin function signature: allocator + args -> Value.
