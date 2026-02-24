@@ -13,17 +13,17 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const node_mod = @import("analyzer/node.zig");
+const node_mod = @import("../engine/analyzer/node.zig");
 const Node = node_mod.Node;
 const value_mod = @import("../runtime/value.zig");
 const Value = value_mod.Value;
 const Env = @import("../runtime/env.zig").Env;
-const Compiler = @import("compiler/compiler.zig").Compiler;
-const VM = @import("vm/vm.zig").VM;
-const TreeWalk = @import("evaluator/tree_walk.zig").TreeWalk;
+const Compiler = @import("../engine/compiler/compiler.zig").Compiler;
+const VM = @import("../engine/vm/vm.zig").VM;
+const TreeWalk = @import("../engine/evaluator/tree_walk.zig").TreeWalk;
 const err_mod = @import("../runtime/error.zig");
-const Reader = @import("reader/reader.zig").Reader;
-const Analyzer = @import("analyzer/analyzer.zig").Analyzer;
+const Reader = @import("../engine/reader/reader.zig").Reader;
+const Analyzer = @import("../engine/analyzer/analyzer.zig").Analyzer;
 
 /// Evaluation backend selector.
 pub const Backend = enum {
@@ -227,7 +227,7 @@ test "EvalEngine compare let_node" {
 
 test "EvalEngine compare arithmetic intrinsic matches" {
     // (+ 1 2) => 3 in both backends (compiler emits add opcode directly)
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -249,7 +249,7 @@ test "EvalEngine compare arithmetic intrinsic matches" {
 
 test "EvalEngine compare division" {
     // (/ 10 2) => 5 in both backends (exact integer division)
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -270,7 +270,7 @@ test "EvalEngine compare division" {
 
 test "EvalEngine compare mod" {
     // (mod 7 3) => 1 in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -291,7 +291,7 @@ test "EvalEngine compare mod" {
 
 test "EvalEngine compare equality" {
     // (= 1 1) => true
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -380,7 +380,7 @@ test "EvalEngine compare multi-arity fn" {
 
 test "EvalEngine compare arithmetic with registry Env" {
     // (+ 3 4) => 7 — builtins registered via registry
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -438,7 +438,7 @@ test "EvalEngine compare def+var_ref" {
 
 test "EvalEngine compare loop/recur" {
     // (loop [x 0] (if (< x 5) (recur (+ x 1)) x)) => 5
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -496,7 +496,7 @@ test "EvalEngine compare loop/recur" {
 
 test "EvalEngine compare collection intrinsic (count)" {
     // (count [1 2 3]) => 3 — both backends via registry
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -523,7 +523,7 @@ test "EvalEngine compare collection intrinsic (count)" {
 
 test "EvalEngine compare first on vector" {
     // (first [10 20 30]) => 10 — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -550,7 +550,7 @@ test "EvalEngine compare first on vector" {
 
 test "EvalEngine compare nil? predicate" {
     // (nil? nil) => true — both backends via registry
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -574,7 +574,7 @@ test "EvalEngine compare nil? predicate" {
 
 test "EvalEngine compare str builtin" {
     // (str 1) => "1" — both backends via registry
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -598,7 +598,7 @@ test "EvalEngine compare str builtin" {
 
 test "EvalEngine compare pr-str builtin" {
     // (pr-str "hello") => "\"hello\"" — both backends via registry
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -622,7 +622,7 @@ test "EvalEngine compare pr-str builtin" {
 
 test "EvalEngine compare atom + deref" {
     // (deref (atom 42)) => 42 — both backends via registry
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -655,7 +655,7 @@ test "EvalEngine compare atom + deref" {
 test "EvalEngine compare reset!" {
     // Test: (let [a (atom 0)] (reset! a 99) (deref a)) => 99
     // Simplified: just test (reset! (atom 0) 99) => 99
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -688,7 +688,7 @@ test "EvalEngine compare reset!" {
 
 test "EvalEngine compare variadic add 3 args" {
     // (+ 1 2 3) => 6 in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -711,7 +711,7 @@ test "EvalEngine compare variadic add 3 args" {
 
 test "EvalEngine compare variadic add 0 args" {
     // (+) => 0 in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -731,7 +731,7 @@ test "EvalEngine compare variadic add 0 args" {
 
 test "EvalEngine compare variadic mul 0 args" {
     // (*) => 1 in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -751,7 +751,7 @@ test "EvalEngine compare variadic mul 0 args" {
 
 test "EvalEngine compare variadic add 1 arg" {
     // (+ 5) => 5 in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -772,7 +772,7 @@ test "EvalEngine compare variadic add 1 arg" {
 
 test "EvalEngine compare variadic sub 1 arg (negation)" {
     // (- 5) => -5 in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -793,7 +793,7 @@ test "EvalEngine compare variadic sub 1 arg (negation)" {
 
 test "EvalEngine compare variadic div 1 arg (reciprocal)" {
     // (/ 4) => 1/4 (Ratio) in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -812,7 +812,7 @@ test "EvalEngine compare variadic div 1 arg (reciprocal)" {
 
 test "EvalEngine compare variadic mul 3 args" {
     // (* 2 3 4) => 24 in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -835,7 +835,7 @@ test "EvalEngine compare variadic mul 3 args" {
 
 test "EvalEngine compare variadic sub 3 args" {
     // (- 10 3 2) => 5 in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -858,7 +858,7 @@ test "EvalEngine compare variadic sub 3 args" {
 
 test "EvalEngine compare variadic div 3 args" {
     // (/ 120 6 4) => 5 (integer) in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -881,7 +881,7 @@ test "EvalEngine compare variadic div 3 args" {
 
 test "EvalEngine compare variadic add 5 args" {
     // (+ 1 2 3 4 5) => 15 in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -909,7 +909,7 @@ test "EvalEngine compare variadic add 5 args" {
 fn makePredicateCompareTest(pred_name: []const u8, arg_val: Value, expected: bool) type {
     return struct {
         fn runTest() !void {
-            const registry = @import("../lang/registry.zig");
+            const registry = @import("registry.zig");
             var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
             const alloc = arena.allocator();
@@ -950,7 +950,7 @@ test "EvalEngine compare number? float" {
 }
 
 test "EvalEngine compare number? string" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -986,7 +986,7 @@ test "EvalEngine compare float? int" {
 }
 
 test "EvalEngine compare string? true" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1010,7 +1010,7 @@ test "EvalEngine compare string? non-string" {
 }
 
 test "EvalEngine compare keyword? true" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1030,7 +1030,7 @@ test "EvalEngine compare keyword? true" {
 }
 
 test "EvalEngine compare keyword? non-keyword" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1050,7 +1050,7 @@ test "EvalEngine compare keyword? non-keyword" {
 }
 
 test "EvalEngine compare symbol? true" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1138,7 +1138,7 @@ test "EvalEngine compare not nil" {
 }
 
 test "EvalEngine compare vector? true" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1165,7 +1165,7 @@ test "EvalEngine compare vector? false" {
 }
 
 test "EvalEngine compare map? true" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1192,7 +1192,7 @@ test "EvalEngine compare map? false" {
 }
 
 test "EvalEngine compare set? true" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1219,7 +1219,7 @@ test "EvalEngine compare set? false" {
 }
 
 test "EvalEngine compare coll? vector" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1246,7 +1246,7 @@ test "EvalEngine compare coll? non-coll" {
 }
 
 test "EvalEngine compare seq? list" {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1276,7 +1276,7 @@ test "EvalEngine compare seq? non-seq" {
 
 test "EvalEngine compare rest on vector" {
     // (rest [10 20 30]) => (20 30) — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1302,7 +1302,7 @@ test "EvalEngine compare rest on vector" {
 
 test "EvalEngine compare cons" {
     // (cons 0 [1 2]) => (0 1 2) — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1329,7 +1329,7 @@ test "EvalEngine compare cons" {
 
 test "EvalEngine compare conj vector" {
     // (conj [1 2] 3) => [1 2 3] — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1355,7 +1355,7 @@ test "EvalEngine compare conj vector" {
 
 test "EvalEngine compare get on map" {
     // (get {:a 1} :a) => 1 — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1383,7 +1383,7 @@ test "EvalEngine compare get on map" {
 
 test "EvalEngine compare nth on vector" {
     // (nth [10 20 30] 1) => 20 — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1408,7 +1408,7 @@ test "EvalEngine compare nth on vector" {
 
 test "EvalEngine compare assoc on map" {
     // (assoc {:a 1} :b 2) => {:a 1 :b 2} — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1439,7 +1439,7 @@ test "EvalEngine compare assoc on map" {
 
 test "EvalEngine compare list constructor" {
     // (list 1 2 3) => (1 2 3) — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1463,7 +1463,7 @@ test "EvalEngine compare list constructor" {
 
 test "EvalEngine compare vector constructor" {
     // (vector 1 2 3) => [1 2 3] — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1487,7 +1487,7 @@ test "EvalEngine compare vector constructor" {
 
 test "EvalEngine compare hash-map constructor" {
     // (hash-map :a 1 :b 2) => {:a 1 :b 2} — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1511,7 +1511,7 @@ test "EvalEngine compare hash-map constructor" {
 
 test "EvalEngine compare seq on vector" {
     // (seq [1 2]) => (1 2) — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1537,7 +1537,7 @@ test "EvalEngine compare seq on vector" {
 
 test "EvalEngine compare seq on empty vector" {
     // (seq []) => nil — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1561,7 +1561,7 @@ test "EvalEngine compare seq on empty vector" {
 
 test "EvalEngine compare reverse on vector" {
     // (reverse [1 2 3]) => (3 2 1) — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections_mod = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1586,7 +1586,7 @@ test "EvalEngine compare reverse on vector" {
 
 test "EvalEngine compare count on empty list" {
     // (count (list)) => 0 — both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1614,8 +1614,8 @@ test "EvalEngine compare count on empty list" {
 
 test "EvalEngine compare println returns nil" {
     // (println 42) => nil in both backends (also prints to stdout)
-    const registry = @import("../lang/registry.zig");
-    const io_mod = @import("../lang/builtins/io.zig");
+    const registry = @import("registry.zig");
+    const io_mod = @import("builtins/io.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1643,8 +1643,8 @@ test "EvalEngine compare println returns nil" {
 
 test "EvalEngine compare prn returns nil" {
     // (prn "hello") => nil in both backends
-    const registry = @import("../lang/registry.zig");
-    const io_mod = @import("../lang/builtins/io.zig");
+    const registry = @import("registry.zig");
+    const io_mod = @import("builtins/io.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1671,7 +1671,7 @@ test "EvalEngine compare prn returns nil" {
 
 test "EvalEngine compare str multi-arg" {
     // (str 1 "hello" nil) => "1hello" in both backends
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1697,7 +1697,7 @@ test "EvalEngine compare str multi-arg" {
 
 test "EvalEngine compare meta on plain vector returns nil" {
     // (meta [1 2]) => nil
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1723,7 +1723,7 @@ test "EvalEngine compare meta on plain vector returns nil" {
 
 test "EvalEngine compare with-meta attaches metadata" {
     // (with-meta [1 2] {:tag :int}) => [1 2] (with metadata)
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1760,7 +1760,7 @@ test "EvalEngine compare with-meta attaches metadata" {
 
 test "EvalEngine compare meta retrieves attached metadata" {
     // (meta (with-meta [1 2] {:tag :int})) => {:tag :int}
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1805,7 +1805,7 @@ test "EvalEngine compare meta retrieves attached metadata" {
 
 test "EvalEngine compare re-find simple match" {
     // (re-find (re-pattern "\\d+") "abc123") => "123"
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1835,7 +1835,7 @@ test "EvalEngine compare re-find simple match" {
 
 test "EvalEngine compare re-find no match returns nil" {
     // (re-find (re-pattern "\\d+") "abc") => nil
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1863,7 +1863,7 @@ test "EvalEngine compare re-find no match returns nil" {
 
 test "EvalEngine compare re-matches full match" {
     // (re-matches (re-pattern "\\d+") "123") => "123"
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1891,7 +1891,7 @@ test "EvalEngine compare re-matches full match" {
 
 test "EvalEngine compare re-matches partial returns nil" {
     // (re-matches (re-pattern "\\d+") "abc123") => nil
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1919,7 +1919,7 @@ test "EvalEngine compare re-matches partial returns nil" {
 
 test "EvalEngine compare re-seq all matches" {
     // (re-seq (re-pattern "\\d+") "a1b22c333") => ("1" "22" "333")
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1952,7 +1952,7 @@ test "EvalEngine compare re-seq all matches" {
 
 test "EvalEngine compare re-find with capture groups" {
     // (re-find (re-pattern "(\\d+)-(\\d+)") "x12-34y") => ["12-34" "12" "34"]
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1987,7 +1987,7 @@ test "EvalEngine compare re-find with capture groups" {
 
 test "EvalEngine compare dissoc removes key" {
     // (dissoc {:a 1 :b 2} :a) => {:b 2}
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -2018,7 +2018,7 @@ test "EvalEngine compare dissoc removes key" {
 
 test "EvalEngine compare find returns MapEntry" {
     // (find {:a 1 :b 2} :a) => [:a 1]
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -2049,7 +2049,7 @@ test "EvalEngine compare find returns MapEntry" {
 
 test "EvalEngine compare peek on vector" {
     // (peek [1 2 3]) => 3
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -2076,7 +2076,7 @@ test "EvalEngine compare peek on vector" {
 
 test "EvalEngine compare empty on vector" {
     // (empty [1 2]) => []
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -2103,7 +2103,7 @@ test "EvalEngine compare empty on vector" {
 
 test "EvalEngine compare subvec" {
     // (subvec [1 2 3 4 5] 1 3) => [2 3]
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     const collections = @import("../runtime/collections.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -2132,7 +2132,7 @@ test "EvalEngine compare subvec" {
 
 test "EvalEngine compare hash-set" {
     // (hash-set 1 2 3) => #{1 2 3}
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2157,7 +2157,7 @@ test "EvalEngine compare hash-set" {
 
 test "EvalEngine compare sorted-map" {
     // (sorted-map :b 2 :a 1) => {:a 1, :b 2}
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2183,7 +2183,7 @@ test "EvalEngine compare sorted-map" {
 
 test "EvalEngine compare hash" {
     // (hash 42) => 42
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2204,7 +2204,7 @@ test "EvalEngine compare hash" {
 
 test "EvalEngine compare ==" {
     // (== 1 1.0) => true
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2226,7 +2226,7 @@ test "EvalEngine compare ==" {
 
 test "EvalEngine compare reduced" {
     // (reduced 42) => 42 (prints as inner value)
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2253,7 +2253,7 @@ test "EvalEngine compare reduced" {
 
 /// Parse source, analyze, and evaluate via TreeWalk. Returns error info if eval fails.
 fn evalExpectErrorTW(source: []const u8) !err_mod.Info {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2277,7 +2277,7 @@ fn evalExpectErrorTW(source: []const u8) !err_mod.Info {
 
 /// Parse source, analyze, and evaluate via VM. Returns error info if eval fails.
 fn evalExpectErrorVM(source: []const u8) !err_mod.Info {
-    const registry = @import("../lang/registry.zig");
+    const registry = @import("registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2365,8 +2365,8 @@ test "E2E error location: (+ 1 [2 3]) points to vector arg" {
 
 /// Multi-form variant: evaluate all forms, return error info from the last failing one.
 fn evalMultiExpectErrorTW(source: []const u8) !err_mod.Info {
-    const registry = @import("../lang/registry.zig");
-    const bootstrap = @import("bootstrap.zig");
+    const registry = @import("registry.zig");
+    const bootstrap = @import("../engine/bootstrap.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2381,8 +2381,8 @@ fn evalMultiExpectErrorTW(source: []const u8) !err_mod.Info {
 }
 
 fn evalMultiExpectErrorVM(source: []const u8) !err_mod.Info {
-    const registry = @import("../lang/registry.zig");
-    const bootstrap = @import("bootstrap.zig");
+    const registry = @import("registry.zig");
+    const bootstrap = @import("../engine/bootstrap.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2424,8 +2424,8 @@ test "E2E error location: let body points to bad arg (special form)" {
 // === letfn tests ===
 
 test "E2E letfn: basic binding" {
-    const registry = @import("../lang/registry.zig");
-    const bootstrap = @import("bootstrap.zig");
+    const registry = @import("registry.zig");
+    const bootstrap = @import("../engine/bootstrap.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2444,8 +2444,8 @@ test "E2E letfn: basic binding" {
 }
 
 test "E2E letfn: mutual recursion" {
-    const registry = @import("../lang/registry.zig");
-    const bootstrap = @import("bootstrap.zig");
+    const registry = @import("registry.zig");
+    const bootstrap = @import("../engine/bootstrap.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2470,8 +2470,8 @@ test "E2E letfn: mutual recursion" {
 }
 
 test "E2E letfn: multi-arity" {
-    const registry = @import("../lang/registry.zig");
-    const bootstrap = @import("bootstrap.zig");
+    const registry = @import("registry.zig");
+    const bootstrap = @import("../engine/bootstrap.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2496,8 +2496,8 @@ test "E2E letfn: multi-arity" {
 }
 
 test "E2E with-local-vars: var-get and var-set" {
-    const registry = @import("../lang/registry.zig");
-    const bootstrap = @import("bootstrap.zig");
+    const registry = @import("registry.zig");
+    const bootstrap = @import("../engine/bootstrap.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -2522,8 +2522,8 @@ test "E2E with-local-vars: var-get and var-set" {
 }
 
 test "E2E extend-via-metadata protocol dispatch" {
-    const registry = @import("../lang/registry.zig");
-    const bootstrap = @import("bootstrap.zig");
+    const registry = @import("registry.zig");
+    const bootstrap = @import("../engine/bootstrap.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();

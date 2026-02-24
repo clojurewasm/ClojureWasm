@@ -19,7 +19,7 @@ const Value = @import("../runtime/value.zig").Value;
 const Env = @import("../runtime/env.zig").Env;
 const err = @import("../runtime/error.zig");
 const pipeline = @import("../engine/pipeline.zig");
-const ns_loader = @import("../runtime/ns_loader.zig");
+const ns_loader = @import("ns_loader.zig");
 
 const BootstrapError = pipeline.BootstrapError;
 
