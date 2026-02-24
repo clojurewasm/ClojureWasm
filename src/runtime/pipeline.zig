@@ -40,6 +40,7 @@ pub const BootstrapError = error{
     AnalyzeError,
     EvalError,
     CompileError,
+    OutOfMemory,
 };
 
 /// Save and set macro expansion / lazy-seq realization / fn_val dispatch globals.

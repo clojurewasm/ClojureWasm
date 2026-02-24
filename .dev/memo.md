@@ -27,20 +27,18 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R4: Extract namespace loading.
+Phase 97 (Architecture Refactoring), sub-task R5: Extract cache system.
 
-See `.dev/refactoring-plan.md` R4 section for details.
+See `.dev/refactoring-plan.md` R5 section for details.
 
 ## Previous Task
 
-R3: Extract builtin registration — COMPLETE.
-- Moved initDispatch + bridge functions (treewalkCallBridge, bytecodeCallBridge)
-  from bootstrap.zig to registry.zig (Layer 2)
-- Moved apply_rest_is_seq to dispatch.zig (Layer 0)
-- Updated callers: tree_walk.zig, vm.zig, collections.zig
-- Removed TreeWalk dead import from bootstrap.zig
-- registry.zig no longer imports bootstrap.zig (was L2→L1 violation resolved)
-- Violations: 129 → 129
+R4: Extract namespace loading — COMPLETE.
+- Created `src/builtins/loader.zig` (Layer 2) with loadCore, loadTest, loadRepl,
+  loadPprint, loadReducers, loadEmbeddedLib, syncNsVar
+- Unified BootstrapError: pipeline.zig is canonical, bootstrap.zig re-exports
+- Removed dead ns_loader import from bootstrap.zig
+- Violations: 129 → 126 (3 L1→L2 violations moved to proper layer)
 
 ## Task Queue
 
