@@ -41,11 +41,11 @@ Wire --compare mode immediately.
 When adding any new feature (builtin, special form, operator), implement it
 in **both** backends and add an `EvalEngine.compare()` test.
 
-| Component  | Path                                 |
-|------------|--------------------------------------|
-| VM         | `src/native/vm/vm.zig`               |
-| TreeWalk   | `src/native/evaluator/tree_walk.zig` |
-| EvalEngine | `src/common/eval_engine.zig`         |
+| Component  | Path (pre-R8)                    | Path (post-R8)                  |
+|------------|----------------------------------|---------------------------------|
+| VM         | `src/vm/vm.zig`                  | `src/engine/vm/vm.zig`          |
+| TreeWalk   | `src/evaluator/tree_walk.zig`    | `src/engine/evaluator/tree_walk.zig` |
+| EvalEngine | `src/runtime/eval_engine.zig`    | `src/engine/eval_engine.zig`    |
 
 ---
 
@@ -881,3 +881,34 @@ elimination, and minimal binary size.
 4. Phase E: Optimize (binary size, startup, benchmarks)
 
 **Status**: In progress. 18 ns_*.zig files to merge into lib/*.zig.
+
+## D109: Zone-Layered Architecture (Phase 97)
+
+**Decision**: Strict 4-zone layered architecture with enforced dependency direction.
+
+**Zones**:
+```
+Layer 0: src/runtime/   — foundational types (Value, collections, Env, GC, Namespace, Var)
+                          NO imports from engine/, lang/, or app/
+Layer 1: src/engine/    — processing pipeline (Reader, Analyzer, Compiler, VM, TreeWalk)
+                          imports runtime/ only
+Layer 2: src/lang/      — Clojure language (builtins, interop, lib namespaces)
+                          imports runtime/ + engine/
+Layer 3: src/app/       — application (main, CLI, REPL, deps, Wasm)
+                          imports anything
+```
+
+**Core technique**: callFnVal vtable (function pointer table in `runtime/dispatch.zig`).
+Eliminates runtime/ → engine/ dependency (bootstrap.zig imported TreeWalk + VM).
+Engine/ sets function pointers at startup. Runtime/ calls through vtable.
+
+**Motivation**: CW's runtime/ had 112 upward imports (95 to builtins/, 2 to evaluator/,
+5 to compiler/, 2 to vm/, 4 to analyzer/, 4 to reader/) — all caused by bootstrap.zig
+(3,624 LOC God object) and eval_engine.zig (2,556 LOC). NextClojureWasm's strict 3-zone
+model demonstrated that layered architecture prevents circular dependencies and makes
+refactoring tractable.
+
+**Plan**: `.dev/refactoring-plan.md` (sub-tasks R0-R12).
+**Rules**: `.claude/rules/zone-deps.md` (auto-loads on src/ edits).
+
+**Result targets**: 0 upward imports, bootstrap.zig < 200 LOC, main.zig < 200 LOC.

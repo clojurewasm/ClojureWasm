@@ -2,116 +2,81 @@
 
 Session handover document. Read at session start.
 
-## Note: Architecture v2 Plan (2026-02-20)
-
-Major roadmap restructuring. Phases 83A-83E inserted before Phase 84.
-Read `.dev/interop-v2-design.md` for full design rationale and approach.
-Decision: D105. Roadmap: `.dev/roadmap.md` Phase Tracker.
-
-Key changes:
-- 83A: Exception System Unification (Exception. returns map, hierarchy, .getMessage)
-- 83B: InterOp Architecture v2 (ClassDef registry, protocol dispatch)
-- 83C: UTF-8 Codepoint Correctness (string ops use codepoints, not bytes)
-- 83D: Handle Memory Safety (use-after-close detection, GC finalization)
-- 83E: Core All-Zig Migration (all std-lib → Zig builtins, eliminate .clj bootstrap)
-
-Phase 84 (Testing Expansion) now active. def/defn return var fixed.
-compilation.clj 8/8 pass. 50 upstream test files, 41 pass.
-
-## Note: zwasm v1.1.0 API Change (APPLIED)
-
-zwasm `loadWasi()` default changed to `Capabilities.cli_default`.
-CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/types.zig:82`.
-
-## Note: Roadmap Restructured (2026-02-19)
-
-- Phase 83 reduced to "Essential Documentation" (no book, no README enrichment)
-- Phase 86 (Distribution/Homebrew) deferred to Tier 4
-- Phase 91 (wasm_rt) marked DEFERRED
-- v0.2.0 scope: GitHub Release with binaries (no Homebrew)
-
 ## Current State
 
-- **All phases through 83 COMPLETE** (Essential Documentation)
+- **All phases through 88C COMPLETE**
+- **Phase 97 (Architecture Refactoring) IN-PROGRESS**
 - Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
-- Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
-- Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 68 upstream test files (68/68 passing individually). 6/6 e2e. 14/14 deps e2e.
-- Benchmarks: `bench/history.yaml` (v1.1.0 entry = latest baseline)
-- Binary: 4.25MB (wasm=true) / 3.68MB (wasm=false) ReleaseSafe. See `.dev/binary-size-audit.md`.
-- Startup: 4.6ms (wasm=true) / 4.3ms (wasm=false). RSS: 7.4MB.
-- Lazy bootstrap: D104. `-Dwasm=false`: D103.
-- Java interop: `src/interop/` module (D101, to be superseded by D105/83B)
+- Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon)
+- 68 upstream test files (68/68 passing). 6/6 e2e. 14/14 deps e2e
+- Binary: 4.52MB (wasm=true). Startup: 4.2ms. RSS: 7.6MB
+- Baselines: `.dev/baselines.md` (threshold 4.8MB binary, 6.0ms startup)
 
 ## Strategic Direction
 
 **Pure Zig Clojure runtime** (D108). NOT a JVM reimplementation, NOT self-hosting.
 CW is a complete, optimized Zig implementation with behavioral Clojure compatibility.
 
-Core philosophy:
-- **Zero embedded Clojure**: No .clj in processing pipeline. All vars are Zig builtins.
-- **1 NS = 1 File**: Each lib/*.zig is self-contained (definition + implementation).
-- **Behavioral compat**: Upstream .clj is reference for behavior, not structure.
-  Zig implementations may optimize freely.
-- **Upstream traceability**: Clojure NS/var → Zig file:function mapping is always clear.
+**Architecture refactoring** (D109). Strict 4-zone layered architecture:
+- Layer 0: `runtime/` — foundational types (no upward imports)
+- Layer 1: `engine/` — processing pipeline (imports runtime/ only)
+- Layer 2: `lang/` — Clojure builtins/interop (imports runtime/ + engine/)
+- Layer 3: `app/` — CLI/REPL/Wasm (imports anything)
 
-Differentiation vs Babashka:
-- Ultra-fast execution (19/20 benchmark wins)
-- Tiny single binary (4.25MB macOS default, 3.68MB wasm=false)
-- Wasm FFI (unique: call .wasm modules from Clojure)
-- deps.edn compatible project model (Clojure CLI subset)
-
-Java interop policy: Library-driven. Test real libraries as-is (no forking/embedding).
+Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Awaiting user direction. All-Zig migration (Phases A-F, C.1) complete.
+Phase 97 (Architecture Refactoring), sub-task R1: callFnVal dependency inversion (vtable).
 
-Binary: 4.52MB (wasm=true), 3.95MB (wasm=false). Startup: 4.2ms.
-All benchmarks within thresholds. Baselines updated.
+Extract `callFnVal` from `bootstrap.zig` into `runtime/dispatch.zig` using vtable pattern.
+This breaks the core circular dependency (runtime/ → evaluator/ + vm/).
 
-NOTE: CLAUDE.md binary threshold (4.3MB) needs updating.
-Post-migration binary is 4.52MB — growth is inherent (Zig builtins > Clojure source).
-baselines.md updated to 4.8MB threshold. User approval needed for CLAUDE.md change.
+Key steps:
+1. Create `src/runtime/dispatch.zig` with function pointer table
+2. Move callFnVal logic to use vtable dispatch
+3. Initialize vtable in bootstrap (Layer 1) or higher
+4. Update all callers: `bootstrap.callFnVal` → `dispatch.callFnVal`
+5. Benchmark — this is the hot path
+
+See `.dev/refactoring-plan.md` R1 section for details.
 
 ## Previous Task
 
-Phase C.1: Zero @embedFile — COMPLETE.
-Phase B: All library .clj → Zig — COMPLETE (B.1-B.16).
-Phase F: 1NS=1File Consolidation — COMPLETE.
+R0: Baseline + Zone Check Script — COMPLETE.
+- `scripts/zone_check.sh` created, 134 violations baseline recorded.
+- regex/ classified as Layer 0 (self-contained utility).
 
 ## Task Queue
 
 ```
-Phase E: Optimization (next, restore baselines)
-Phase 86: Distribution (PENDING)
-Phase 89: Performance Optimization (PENDING)
-Phase 90: JIT Expansion (PENDING)
+R1:  callFnVal dependency inversion (vtable) ← CRITICAL PATH
+R2:  Extract evalString pipeline
+R3:  Extract builtin registration
+R4:  Extract namespace loading
+R5:  Extract cache system
+R6:  Slim down bootstrap.zig (< 200 LOC)
+R7:  Fix value.zig upward dependency
+R8:  Directory rename (runtime/engine/lang/app)
+R9:  Split main.zig (< 200 LOC)
+R10: Zone enforcement in commit gate
+R11: Structural integrity audit
+R12: Known issues resolution (I-011〜I-024)
 ```
-
-## All-Zig Migration Context
-
-User decision: Override audit deferral. Migrate ALL .clj to Zig (zero .clj in pipeline).
-Strategy: Remove constraints → migrate everything → refactor directories → optimize.
-Plan: `.dev/all-zig-plan.md` (Phases A-E). Benchmarks baseline: `83E-v2` in history.yaml.
 
 ## Known Issues
 
-Full list: `.dev/known-issues.md` (P0-P3, with resolution timeline).
+Full list: `.dev/known-issues.md` (P0-P3).
 
-P0: I-001, I-002, I-003 all RESOLVED in 88C.
-P1: I-010 RESOLVED in 88C.
-P1 (fix in Phase B): finally catch (I-011), watch/validator catch (I-012).
-P2 (fix in Phase B): syntax-quote metadata (I-020), CollFold (I-021), spec (I-022), pointer cast (I-023-024).
-P3 (Phase B+ organic): UPSTREAM-DIFF markers (I-030), stub vars (I-031), stub namespaces (I-032).
-
-## Next Phase Queue
-
-Phase B: Library namespaces → Zig. See `.dev/all-zig-plan.md`.
+P0: All RESOLVED.
+P1: finally catch (I-011), watch/validator catch (I-012) → fix in R12.
+P2: CollFold (I-021), spec (I-022), pointer cast (I-023/024) → fix in R12.
+P3: UPSTREAM-DIFF markers (I-030), stub vars (I-031), stub namespaces (I-032).
 
 ## Notes
 
-- CONTRIBUTING.md at `.dev/CONTRIBUTING.md` — restore to repo root when accepting contributions
-- clojure.xml now implemented (pure Clojure XML parser, 13/13 tests pass)
+- CLAUDE.md binary threshold updated to 4.8MB (post All-Zig migration)
+- Refactoring analysis: `private/refactoring-analysis-2026-02-24.md`
+- NextCW retrospective: `../NextClojureWasm/private/retrospective/`
+- CONTRIBUTING.md at `.dev/CONTRIBUTING.md`
 - Architecture v2 design: `.dev/archive/interop-v2-design.md` (archived)
-- Stale docs archived to `.dev/archive/` (9 files)

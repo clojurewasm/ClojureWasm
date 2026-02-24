@@ -7,6 +7,26 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. Memo: `.dev/
 
 - **All code in English**: identifiers, comments, docstrings, commit messages, markdown
 
+## Zone Architecture (D109)
+
+Strict 4-zone layered architecture. **Lower layers NEVER import from higher layers.**
+
+```
+Layer 0: src/runtime/   — foundational types (Value, collections, Env, GC)
+                          NO imports from engine/, lang/, or app/
+Layer 1: src/engine/    — processing pipeline (Reader, Analyzer, Compiler, VM, TreeWalk)
+                          imports runtime/ only
+Layer 2: src/lang/      — Clojure language (builtins, interop, lib namespaces)
+                          imports runtime/ + engine/
+Layer 3: src/app/       — application (main, CLI, REPL, deps, Wasm)
+                          imports anything
+```
+
+Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md` (auto-loads on src/ edits).
+
+**NOTE**: During Phase 97 (before R8 directory rename), use pre-R8 zone mapping
+defined in `.claude/rules/zone-deps.md`.
+
 ## TDD (t-wada style)
 
 1. **Red**: Write exactly one failing test first
@@ -26,9 +46,25 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. Memo: `.dev/
 - **Prototype → discard → implement.** For non-trivial changes, spike first to understand
   the problem space, then revert and implement cleanly with the knowledge gained.
 
+## Structural Integrity Rules
+
+From NextClojureWasm retrospective. Enforced from Phase 97 onward.
+
+1. **No semantic aliasing.** Never register function X under name Y when they have
+   different semantics (e.g., `sorted-set` → `hash-set`). If the real implementation
+   doesn't exist, keep the var as `todo` or `skip`.
+2. **No evaluator special cases for library features.** Evaluator (tree_walk.zig, vm.zig)
+   handles ONLY special forms. Library features (thrown?, are, run-tests) must be
+   macros or builtin functions — never `if (sym == "thrown?")` in the evaluator.
+3. **Zone dependency direction is absolute.** See Zone Architecture above.
+   Verified by `scripts/zone_check.sh`. Use vtable pattern when lower layer needs
+   to call higher layer (see `runtime/dispatch.zig`).
+
 ## Critical Rules
 
 - **One task = one commit**. Never batch multiple tasks.
+- **Structure changes and logic changes in separate commits.** During refactoring,
+  each commit is EITHER a pure structural move OR a logic change — never both.
 - **Architectural decisions only** → `.dev/decisions.md` (D## entry).
   Bug fixes and one-time migrations do NOT need D## entries.
 - **Update `.dev/checklist.md`** when deferred items are resolved or added.
@@ -62,12 +98,14 @@ yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | len
 1. Move current `## Current Task` content → `## Previous Task` (overwrite previous)
 2. Write new task design in `## Current Task`
 3. Check `roadmap.md` Phase Notes for context on the sub-task
+4. For Phase 97 tasks: read `.dev/refactoring-plan.md` for the specific sub-task details
 
 **3. Execute**
 
 - TDD cycle: Red → Green → Refactor
 - Run tests during development: `zig build test`
 - `compiler.zig` modified → `.claude/rules/compiler-check.md` auto-loads
+- `src/**/*.zig` modified → `.claude/rules/zone-deps.md` auto-loads
 - **Upstream test porting** (Phase 42+): Follow `.dev/test-porting-plan.md`
   - Port relevant upstream tests for each sub-task
 
@@ -136,17 +174,17 @@ Run before every commit:
 7. **Wasm bridge** (D92): When modifying `src/wasm/types.zig` (zwasm bridge):
    - Wasm engine changes go in zwasm repo (`../zwasm/`), not CW
    - `bash bench/wasm_bench.sh --quick` — verify wasm benchmarks still work
-8. **Non-functional regression** (when changing execution code: src/vm/, src/evaluator/,
-   src/compiler/, src/runtime/, src/builtins/, src/wasm/, bootstrap):
-   - **Binary size**: `stat -f%z zig-out/bin/cljw` — ≤ 4.3MB
-   - **Startup**: `hyperfine -N --warmup 3 --runs 5 './zig-out/bin/cljw -e nil'` — ≤ 5ms
-   - **RSS**: `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 | grep 'maximum resident'` — ≤ 12MB
+8. **Non-functional regression** (when changing execution code: src/ core files):
+   - **Binary size**: `stat -f%z zig-out/bin/cljw` — ≤ 4.8MB
+   - **Startup**: `hyperfine -N --warmup 3 --runs 5 './zig-out/bin/cljw -e nil'` — ≤ 6ms
+   - **RSS**: `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 | grep 'maximum resident'` — ≤ 10MB
    - **Benchmarks**: `bash bench/run_bench.sh --quick` — no CW benchmark > 1.2x baseline
    - **Hard block**: Do NOT commit if any threshold exceeded.
      Benchmark regression → stop, profile, fix in place or insert optimization phase first.
-   - **All-Zig migration (Phase 88A-88E)**: Binary size threshold SUSPENDED.
-     Benchmarks must not regress > 2x (safety net). See `.dev/baselines.md`.
    - Baselines & policy: `.dev/baselines.md`.
+9. **Zone check** (when modifying src/**/*.zig):
+   - `bash scripts/zone_check.sh` — violations must not increase from baseline
+   - After R10: violations must be 0 (hard block)
 
 ### Phase Completion
 
@@ -203,6 +241,9 @@ Wasm history: `bench/wasm_history.yaml` — CW vs wasmtime wasm benchmark progre
 | TreeWalk   | `src/evaluator/tree_walk.zig`   | Direct AST evaluator   |
 | EvalEngine | `src/runtime/eval_engine.zig`   | Runs both, compares    |
 
+**NOTE**: After Phase 97 R8, paths will be `src/engine/vm/vm.zig`,
+`src/engine/evaluator/tree_walk.zig`, `src/engine/eval_engine.zig`.
+
 **Rules**: Implement in both backends. Add `EvalEngine.compare()` test.
 If Compiler emits a direct opcode, TreeWalk must handle via builtin dispatch.
 When editing `compiler.zig`, `.claude/rules/compiler-check.md` auto-loads.
@@ -245,13 +286,15 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 
 | Topic             | Location                             | When to read                               |
 | ----------------- | ------------------------------------ | ------------------------------------------ |
+| Refactoring plan  | `.dev/refactoring-plan.md`           | Phase 97 task details (R0-R12)             |
+| Zone deps rule    | `.claude/rules/zone-deps.md`         | Auto-loads on src/ edits                   |
 | Zig tips          | `.claude/references/zig-tips.md`     | Before writing Zig code, on compile errors |
 | Impl tiers        | `.claude/references/impl-tiers.md`   | When implementing a new function           |
 | Java interop      | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
 | Test porting      | `.claude/rules/test-porting.md`      | Auto-loads on test file edits              |
 | Roadmap           | `.dev/roadmap.md`                    | Phase Tracker (top) for next task; phase section for details |
 | Deferred items    | `.dev/checklist.md`                  | F## items — blockers to resolve            |
-| Decisions         | `.dev/decisions.md` (D3-D101+)       | Architectural decisions reference          |
+| Decisions         | `.dev/decisions.md` (D3-D109)        | Architectural decisions reference          |
 | Design document   | `.dev/future.md`                     | When planning new phases or major features |
 | All-Zig plan      | `.dev/all-zig-plan.md`               | Full .clj→Zig migration plan (Phases A-E)  |
 | Optimizations     | `.dev/optimizations.md`              | Completed + future optimization catalog    |

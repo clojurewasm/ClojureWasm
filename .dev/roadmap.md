@@ -31,6 +31,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 88A | Correctness Sweep | 3.5 | DONE |
 | 88B | Upstream Test Stabilization | 3.5 | DONE |
 | 88C | P0 Bug Fixes & Test Infrastructure | 3.5 | DONE |
+| 97 | Architecture Refactoring (Zone Layering) | 3.5 | IN-PROGRESS |
 | 86 | Distribution | 4 | PENDING |
 | 89 | Performance Optimization | 4 | PENDING |
 | 90 | JIT Expansion | 4 | PENDING |
@@ -51,6 +52,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 2.5 | Architecture v2 & All-Zig | 83A-83E |
 | 2→ | Production Quality (cont.) | 84-85 |
 | 3 | DX & Release | 87-88 |
+| 3.5 | Architecture Refactoring | 97 |
 | 4 | Advanced Features & Distribution | 86, 89-90, 92-93 |
 | 5 | Toward v1.0 | 94-96 |
 | — | Deferred | 91 (wasm_rt) |
@@ -486,6 +488,33 @@ See `.dev/known-issues.md` for full issue descriptions and resolution timeline.
 | 88C.4 | Create unified test runner | I-010 | P1 | `test/run_all.sh`: run Zig unit + cljw test + e2e + deps e2e. Single pass/fail summary. |
 
 **Exit**: All P0 bugs fixed. `bash test/run_all.sh` passes and is referenced in CLAUDE.md commit gate.
+
+---
+
+## Phase 97: Architecture Refactoring — Zone Layering (Tier 3.5)
+
+Strict 4-zone layered architecture. Decision: D109.
+Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
+Analysis: `private/refactoring-analysis-2026-02-24.md`.
+
+| Sub | Task | Status |
+|-----|------|--------|
+| R0 | Baseline + zone check script | PENDING |
+| R1 | callFnVal dependency inversion (vtable) | PENDING |
+| R2 | Extract evalString pipeline | PENDING |
+| R3 | Extract builtin registration | PENDING |
+| R4 | Extract namespace loading | PENDING |
+| R5 | Extract cache system | PENDING |
+| R6 | Slim down bootstrap.zig (< 200 LOC) | PENDING |
+| R7 | Fix value.zig upward dependency | PENDING |
+| R8 | Directory rename (runtime/engine/lang/app) | PENDING |
+| R9 | Split main.zig (< 200 LOC) | PENDING |
+| R10 | Zone enforcement in commit gate | PENDING |
+| R11 | Structural integrity audit | PENDING |
+| R12 | Known issues resolution (I-011〜I-024) | PENDING |
+
+**Exit**: Zero upward import violations. bootstrap.zig < 200 LOC.
+main.zig < 200 LOC. All tests pass. No benchmark regression.
 
 ---
 
