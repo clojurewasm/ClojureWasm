@@ -27,22 +27,23 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R11: Structural integrity audit.
+Phase 97 (Architecture Refactoring), sub-task R12: Known issues resolution (I-011〜I-024).
 
-See `.dev/refactoring-plan.md` R11 section for details.
+See `.dev/refactoring-plan.md` R12 section and `.dev/known-issues.md` for details.
 
 ## Previous Task
 
-R10: Zone enforcement in commit gate — COMPLETE.
-- Added `--gate` mode to `scripts/zone_check.sh` with baseline=126
-- Updated CLAUDE.md commit gate #9: `--gate` is now a hard block
-- Updated `.claude/rules/zone-deps.md` verification section
-- New upward imports are forbidden; baseline ratchets down as violations are fixed
+R11: Structural integrity audit — COMPLETE.
+- Semantic aliasing scan: CLEAN. No violations found.
+  - int/long/short/byte → intCoerceFn: known CW design (single integer type), not aliasing
+  - float/double → floatCoerceFn: known CW design (f64), not aliasing
+- Evaluator special-case scan: CLEAN. No violations found.
+  - Evaluators use node type tags / opcodes, not library-symbol string comparisons
+  - All library features correctly implemented as macros or builtin functions
 
 ## Task Queue
 
 ```
-R11: Structural integrity audit
 R12: Known issues resolution (I-011〜I-024)
 ```
 
