@@ -15,15 +15,13 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const form_mod = @import("../engine/reader/form.zig");
+const form_mod = @import("reader/form.zig");
 const Form = form_mod.Form;
 const FormData = form_mod.FormData;
 const SymbolRef = form_mod.SymbolRef;
 const value_mod = @import("../runtime/value.zig");
 const Value = value_mod.Value;
 const collections = @import("../runtime/collections.zig");
-const builtin_collections = @import("builtins/collections.zig");
-const metadata = @import("builtins/metadata.zig");
 const Namespace = @import("../runtime/namespace.zig").Namespace;
 const dispatch = @import("../runtime/dispatch.zig");
 const Var = @import("../runtime/var.zig").Var;
@@ -214,22 +212,17 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
                 return dispatch.callFnVal(allocator, reader_fn, &.{form_val}) catch Value.nil_val;
             }
 
-            // Built-in #uuid → UUID class instance
+            // Built-in #uuid → UUID class instance (via vtable)
             if (std.mem.eql(u8, t.tag, "uuid")) {
                 if (form_val.tag() == .string) {
-                    const uuid_class = @import("interop/classes/uuid.zig");
-                    return uuid_class.constructFromString(allocator, form_val.asString()) catch Value.nil_val;
+                    return dispatch.construct_uuid(allocator, form_val.asString()) catch Value.nil_val;
                 }
                 return Value.nil_val;
             }
-            // Built-in #inst → create Date class instance
+            // Built-in #inst → create Date class instance (via vtable)
             if (std.mem.eql(u8, t.tag, "inst")) {
                 if (form_val.tag() == .string) {
-                    const constructors = @import("interop/constructors.zig");
-                    return constructors.makeClassInstance(allocator, "java.util.Date", &.{
-                        Value.initKeyword(allocator, .{ .ns = null, .name = "inst" }),
-                        form_val,
-                    }) catch Value.nil_val;
+                    return dispatch.make_inst_value(allocator, form_val) catch Value.nil_val;
                 }
                 return form_val;
             }
@@ -265,7 +258,7 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
         .string => Form{ .data = .{ .string = try allocator.dupe(u8, val.asString()) } },
         .symbol => blk: {
             const sym = val.asSymbol();
-            const m = metadata.getMeta(val);
+            const m = dispatch.get_meta(val);
             break :blk Form{ .data = .{ .symbol = .{
                 .ns = if (sym.ns) |ns| try allocator.dupe(u8, ns) else null,
                 .name = try allocator.dupe(u8, sym.name),
@@ -293,7 +286,7 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
                     };
                 }
             }
-            const m = metadata.getMeta(val);
+            const m = dispatch.get_meta(val);
             return Form{ .data = .{ .list = forms }, .line = lst.source_line, .column = lst.source_column, .meta_value = if (m.tag() != .nil) m else null };
         },
         .vector => {
@@ -350,7 +343,7 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
         },
         // Lazy seq / cons — realize to list and convert
         .lazy_seq, .cons => {
-            const realized = builtin_collections.realizeValue(allocator, val) catch return Form{ .data = .nil };
+            const realized = dispatch.realize_value(allocator, val) catch return Form{ .data = .nil };
             return valueToForm(allocator, realized);
         },
         // Dupe regex source to node_arena

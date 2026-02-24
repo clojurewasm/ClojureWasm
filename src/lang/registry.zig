@@ -248,6 +248,12 @@ pub fn registerBuiltins(env: *Env) !void {
     dispatch.load_embedded_lib = &loader.loadEmbeddedLib;
     dispatch.sync_ns_var = &loader.syncNsVar;
 
+    // Initialize macro expansion vtable (D109 zone cleanup) — breaks macro.zig → lang/ deps.
+    const builtin_collections = @import("builtins/collections.zig");
+    dispatch.realize_value = &builtin_collections.realizeValue;
+    dispatch.construct_uuid = &constructUuidBridge;
+    dispatch.make_inst_value = &makeInstBridge;
+
     const core_ns = try env.findOrCreateNamespace("clojure.core");
 
     for (all_builtins) |b| {
@@ -650,6 +656,21 @@ fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
     try vm.performCall(@intCast(args.len));
     // Execute until return
     return vm.execute();
+}
+
+/// UUID construction bridge for macro.zig #uuid tagged literals.
+fn constructUuidBridge(allocator: std.mem.Allocator, s: []const u8) anyerror!Value {
+    const uuid_class = @import("interop/classes/uuid.zig");
+    return uuid_class.constructFromString(allocator, s);
+}
+
+/// #inst tagged literal bridge for macro.zig.
+fn makeInstBridge(allocator: std.mem.Allocator, form_val: Value) anyerror!Value {
+    const constructors = @import("interop/constructors.zig");
+    return constructors.makeClassInstance(allocator, "java.util.Date", &.{
+        Value.initKeyword(allocator, .{ .ns = null, .name = "inst" }),
+        form_val,
+    });
 }
 
 /// GC FnProto tracing bridge (D109 Z3).

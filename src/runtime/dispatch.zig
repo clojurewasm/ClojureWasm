@@ -139,6 +139,30 @@ pub var load_reducers: LoaderFn = undefined;
 pub var load_embedded_lib: *const fn (Allocator, *Env, []const u8) anyerror!bool = undefined;
 pub var sync_ns_var: SyncFn = undefined;
 
+// === Macro expansion vtable (D109 zone cleanup) ===
+// Breaks macro.zig → lang/builtins/collections.zig, interop/ dependencies.
+
+/// Realize a lazy value (lazy-seq, cons) to a concrete collection.
+pub var realize_value: *const fn (Allocator, Value) anyerror!Value = &defaultRealizeValue;
+
+fn defaultRealizeValue(_: Allocator, val: Value) anyerror!Value {
+    return val; // Default: return as-is (no realization without lang/ builtins)
+}
+
+/// Construct a UUID from a string (for #uuid tagged literal).
+pub var construct_uuid: *const fn (Allocator, []const u8) anyerror!Value = &defaultConstructUuid;
+
+fn defaultConstructUuid(_: Allocator, _: []const u8) anyerror!Value {
+    return Value.nil_val;
+}
+
+/// Make a class instance (for #inst tagged literal).
+pub var make_inst_value: *const fn (Allocator, Value) anyerror!Value = &defaultMakeInstValue;
+
+fn defaultMakeInstValue(_: Allocator, _: Value) anyerror!Value {
+    return Value.nil_val;
+}
+
 /// Central function dispatch for all callable CW value types.
 ///
 /// Handles: builtin_fn, fn_val (treewalk + bytecode), multi_fn,
