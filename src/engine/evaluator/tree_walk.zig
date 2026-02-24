@@ -1396,7 +1396,7 @@ pub const TreeWalk = struct {
                         // No match — propagate exception
                         self.exception = ex_val;
                         if (try_n.finally_body) |finally| {
-                            _ = self.run(finally) catch {};
+                            _ = self.run(finally) catch |fe| return fe;
                         }
                         return error.UserException;
                     }
@@ -1413,26 +1413,26 @@ pub const TreeWalk = struct {
                     const catch_result = self.run(catch_c.body) catch |e2| {
                         self.local_count = saved;
                         if (try_n.finally_body) |finally| {
-                            _ = self.run(finally) catch {};
+                            _ = self.run(finally) catch |fe| return fe;
                         }
                         return e2;
                     };
                     self.local_count = saved;
 
                     if (try_n.finally_body) |finally| {
-                        _ = self.run(finally) catch {};
+                        _ = self.run(finally) catch |fe| return fe;
                     }
                     return catch_result;
                 }
             }
             if (try_n.finally_body) |finally| {
-                _ = self.run(finally) catch {};
+                _ = self.run(finally) catch |fe| return fe;
             }
             return e;
         };
 
         if (try_n.finally_body) |finally| {
-            _ = self.run(finally) catch {};
+            _ = self.run(finally) catch |fe| return fe;
         }
         return result;
     }

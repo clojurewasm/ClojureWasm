@@ -41,15 +41,13 @@ Also fixed `(char \A)` → identity (was erroring "Cannot cast char to char").
 **Resolution**: Created `test/run_all.sh` — runs all 5 suites (zig test, release build,
 cljw test, e2e, deps e2e) with unified summary. CLAUDE.md commit gate updated.
 
-### I-011: `finally` blocks silently swallow exceptions
+### ~~I-011: `finally` blocks silently swallow exceptions~~ RESOLVED
 
-**Symptom**: In TreeWalk evaluator, `finally` block execution uses `catch {}`
-which discards exceptions thrown inside `finally`. JVM Clojure propagates
-finally-block exceptions (replacing the original exception).
+**Resolution**: Changed all 5 `catch {}` in `runTry` to `catch |fe| return fe`,
+propagating finally-block exceptions per JVM semantics. If finally throws,
+its exception replaces the original (matching Java/JVM Clojure behavior).
 
-**Fix**: Store finally-block exception and propagate it (JVM semantics).
-
-**Files**: `src/evaluator/tree_walk.zig:1398,1415,1422,1428,1434`
+**Files**: `src/engine/evaluator/tree_walk.zig` (runTry function)
 
 ### I-012: Watch/validator callback errors silently swallowed
 
@@ -183,7 +181,7 @@ know about deferred cache roots).
 | I-002 | ~~**Now**~~ RESOLVED (already fixed) | pre-88C |
 | I-003 | ~~**Now**~~ RESOLVED | 88C.3 |
 | I-010 | ~~**Now**~~ RESOLVED | 88C.4 |
-| I-011 | During Phase B | B (TreeWalk touches) |
+| I-011 | ~~During Phase B~~ RESOLVED | R12 |
 | I-012 | During Phase B | B (atom/stm builtins) |
 | I-013 | During Phase C | C (bootstrap simplification) |
 | I-020 | ~~During Phase B~~ RESOLVED | B.3 hotfix |
