@@ -20,6 +20,11 @@ const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const Namespace = @import("../runtime/namespace.zig").Namespace;
 const Value = @import("../runtime/value.zig").Value;
+const dispatch = @import("../runtime/dispatch.zig");
+const err = @import("../runtime/error.zig");
+const TreeWalk = @import("../evaluator/tree_walk.zig").TreeWalk;
+const vm_mod = @import("../vm/vm.zig");
+const VM = vm_mod.VM;
 
 // ============================================================
 // NamespaceDef — self-describing namespace registration
@@ -209,8 +214,12 @@ pub fn registerNamespace(env: *Env, comptime def: NamespaceDef) !void {
 /// Interns a Var for each BuiltinDef and applies metadata.
 /// Also sets up "user" namespace with refers to clojure.core.
 pub fn registerBuiltins(env: *Env) !void {
-    // Initialize dispatch vtable before any callFnVal usage (D109 R1).
-    @import("../runtime/bootstrap.zig").initDispatch();
+    // Initialize dispatch vtable before any callFnVal usage (D109 R1, R3).
+    dispatch.init(
+        &treewalkCallBridge,
+        &bytecodeCallBridge,
+        &TreeWalk.valueTypeKey,
+    );
 
     const core_ns = try env.findOrCreateNamespace("clojure.core");
 
@@ -560,4 +569,58 @@ test "registerNamespace disabled skips registration" {
 
     // Namespace should NOT exist
     try std.testing.expect(env.findNamespace("test.disabled") == null);
+}
+
+// ============================================================
+// Dispatch bridge functions (D109 R1, moved from bootstrap.zig in R3)
+// ============================================================
+
+/// Execute a treewalk fn_val via TreeWalk evaluator.
+/// Called through dispatch vtable.
+fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
+    // Note: tw is NOT deinit'd here — closures created during evaluation
+    // (e.g., lazy-seq thunks) must outlive this scope. Memory is owned by
+    // the arena allocator, which handles bulk deallocation.
+    var tw = if (dispatch.macro_eval_env) |env|
+        TreeWalk.initWithEnv(allocator, env)
+    else
+        TreeWalk.init(allocator);
+    return tw.callValue(fn_val, args) catch |e| {
+        // Preserve exception value across TreeWalk → VM boundary
+        if (e == error.UserException) {
+            dispatch.last_thrown_exception = tw.exception;
+        }
+        return @as(anyerror, e);
+    };
+}
+
+/// Execute a bytecode fn_val via a new VM instance.
+/// Heap-allocates the VM to avoid C stack overflow from recursive
+/// VM → TreeWalk → VM calls (VM struct is ~500KB due to fixed-size stack).
+fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
+    const env = dispatch.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    // Save namespace before VM call — performCall switches to the function's
+    // defining namespace (D68), but if the function throws, the ret opcode
+    // never executes and the namespace stays corrupted.
+    const saved_ns = env.current_ns;
+    errdefer env.current_ns = saved_ns;
+    // Note: VM is NOT deinit'd here — closures created during execution
+    // (e.g., fn values returned from calls) must outlive this scope.
+    // Memory is owned by the arena allocator, which handles bulk deallocation.
+    const vm = try allocator.create(VM);
+    vm.* = VM.initWithEnv(allocator, env);
+
+    // Push fn_val onto stack
+    try vm.push(fn_val);
+    // Push args
+    for (args) |arg| {
+        try vm.push(arg);
+    }
+    // Call the function
+    try vm.performCall(@intCast(args.len));
+    // Execute until return
+    return vm.execute();
 }

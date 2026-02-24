@@ -27,25 +27,24 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R3: Extract builtin registration.
+Phase 97 (Architecture Refactoring), sub-task R4: Extract namespace loading.
 
-See `.dev/refactoring-plan.md` R3 section for details.
+See `.dev/refactoring-plan.md` R4 section for details.
 
 ## Previous Task
 
-R2: Extract evalString pipeline — COMPLETE.
-- Created `src/runtime/pipeline.zig` (Layer 1) with all eval pipeline functions
-- Moved: readForms, readFormsWithNs, analyzeForm, evalString, evalStringObserved,
-  evalStringVM, evalStringVMObserved, evalStringVMBootstrap, dumpBytecodeVM,
-  setupMacroEnv, restoreMacroEnv, MacroEnvState, FormObserver, BootstrapError
-- bootstrap.zig re-exports for backward compatibility (no caller changes needed)
-- Removed 5 dead imports from bootstrap.zig (Reader, Form, Analyzer, Node, chunk_mod, predicates_mod)
-- Violations: 129 → 129 (net zero — moved L1→L2 violation from bootstrap to pipeline)
+R3: Extract builtin registration — COMPLETE.
+- Moved initDispatch + bridge functions (treewalkCallBridge, bytecodeCallBridge)
+  from bootstrap.zig to registry.zig (Layer 2)
+- Moved apply_rest_is_seq to dispatch.zig (Layer 0)
+- Updated callers: tree_walk.zig, vm.zig, collections.zig
+- Removed TreeWalk dead import from bootstrap.zig
+- registry.zig no longer imports bootstrap.zig (was L2→L1 violation resolved)
+- Violations: 129 → 129
 
 ## Task Queue
 
 ```
-R3:  Extract builtin registration
 R4:  Extract namespace loading
 R5:  Extract cache system
 R6:  Slim down bootstrap.zig (< 200 LOC)

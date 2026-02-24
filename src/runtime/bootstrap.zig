@@ -18,7 +18,6 @@ const Value = value_mod.Value;
 const Env = @import("env.zig").Env;
 const Namespace = @import("namespace.zig").Namespace;
 const err = @import("error.zig");
-const TreeWalk = @import("../evaluator/tree_walk.zig").TreeWalk;
 const Compiler = @import("../compiler/compiler.zig").Compiler;
 const vm_mod = @import("../vm/vm.zig");
 const VM = vm_mod.VM;
@@ -148,16 +147,6 @@ pub const setupMacroEnv = pipeline.setupMacroEnv;
 pub const restoreMacroEnv = pipeline.restoreMacroEnv;
 pub const FormObserver = pipeline.FormObserver;
 
-/// Initialize the dispatch vtable (D109 R1).
-/// Must be called before any callFnVal usage (called from registerBuiltins).
-pub fn initDispatch() void {
-    dispatch.init(
-        &treewalkCallBridge,
-        &bytecodeCallBridge,
-        &TreeWalk.valueTypeKey,
-    );
-}
-
 pub const evalString = pipeline.evalString;
 pub const evalStringObserved = pipeline.evalStringObserved;
 
@@ -170,63 +159,9 @@ pub const evalStringVMObserved = pipeline.evalStringVMObserved;
 /// import dispatch.zig directly (D109 R1).
 pub const callFnVal = dispatch.callFnVal;
 
-/// Execute a treewalk fn_val via TreeWalk evaluator.
-/// Called through dispatch vtable (D109 R1).
-fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
-    // Note: tw is NOT deinit'd here — closures created during evaluation
-    // (e.g., lazy-seq thunks) must outlive this scope. Memory is owned by
-    // the arena allocator, which handles bulk deallocation.
-    var tw = if (dispatch.macro_eval_env) |env|
-        TreeWalk.initWithEnv(allocator, env)
-    else
-        TreeWalk.init(allocator);
-    return tw.callValue(fn_val, args) catch |e| {
-        // Preserve exception value across TreeWalk → VM boundary
-        if (e == error.UserException) {
-            dispatch.last_thrown_exception = tw.exception;
-        }
-        return @as(anyerror, e);
-    };
-}
-
-/// Flag set by apply's lazy variadic path (F99). When true, the single rest arg
-/// in the next variadic call is already a seq and should not be re-wrapped in a list.
-/// Consumed (reset to false) by VM/TreeWalk rest packing code.
-pub threadlocal var apply_rest_is_seq: bool = false;
-
-/// Execute a bytecode fn_val via a new VM instance.
-/// Heap-allocates the VM to avoid C stack overflow from recursive
-/// VM → TreeWalk → VM calls (VM struct is ~500KB due to fixed-size stack).
-fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
-    const env = dispatch.macro_eval_env orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    // Save namespace before VM call — performCall switches to the function's
-    // defining namespace (D68), but if the function throws, the ret opcode
-    // never executes and the namespace stays corrupted.
-    const saved_ns = env.current_ns;
-    errdefer env.current_ns = saved_ns;
-    // Note: VM is NOT deinit'd here — closures created during execution
-    // (e.g., fn values returned from calls) must outlive this scope.
-    // Memory is owned by the arena allocator, which handles bulk deallocation.
-    const vm = try allocator.create(VM);
-    vm.* = VM.initWithEnv(allocator, env);
-
-    // Push fn_val onto stack
-    try vm.push(fn_val);
-    // Push args
-    for (args) |arg| {
-        try vm.push(arg);
-    }
-    // Call the function
-    try vm.performCall(@intCast(args.len));
-    // Execute until return
-    return vm.execute();
-}
-
-// NOTE: macro_eval_env and last_thrown_exception moved to dispatch.zig (D109 R1).
-// All callers should use dispatch.macro_eval_env / dispatch.last_thrown_exception.
+// NOTE: initDispatch, bridge functions moved to registry.zig (D109 R3).
+// NOTE: macro_eval_env, last_thrown_exception moved to dispatch.zig (D109 R1).
+// NOTE: apply_rest_is_seq moved to dispatch.zig (D109 R3).
 
 // === AOT Compilation ===
 

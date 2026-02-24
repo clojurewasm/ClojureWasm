@@ -61,6 +61,11 @@ pub threadlocal var macro_eval_env: ?*@import("env.zig").Env = null;
 /// Per-thread for concurrency (Phase 48).
 pub threadlocal var last_thrown_exception: ?Value = null;
 
+/// Flag set by apply's lazy variadic path (F99). When true, the single rest arg
+/// in the next variadic call is already a seq and should not be re-wrapped in a list.
+/// Consumed (reset to false) by VM/TreeWalk rest packing code.
+pub threadlocal var apply_rest_is_seq: bool = false;
+
 /// Central function dispatch for all callable CW value types.
 ///
 /// Handles: builtin_fn, fn_val (treewalk + bytecode), multi_fn,

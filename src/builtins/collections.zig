@@ -997,7 +997,7 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     call_args[fixed_count] = try seqFn(allocator, &.{arg_seq});
 
                     // Signal VM/TreeWalk that the rest arg is already a seq (F99)
-                    bootstrap.apply_rest_is_seq = true;
+                    dispatch.apply_rest_is_seq = true;
                     return bootstrap.callFnVal(allocator, f, call_args);
                 }
                 // Else: seq had fewer than fixed_count items.
