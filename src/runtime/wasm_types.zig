@@ -14,7 +14,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const wit_parser = @import("wit_parser.zig");
+const wit_parser = @import("wasm_wit_parser.zig");
 const build_options = @import("build_options");
 pub const enable_wasm = build_options.enable_wasm;
 const zwasm = if (enable_wasm) @import("zwasm") else struct {};
@@ -288,7 +288,7 @@ pub const WasmFn = struct {
     }
 };
 
-const Value = @import("../../runtime/value.zig").Value;
+const Value = @import("value.zig").Value;
 
 /// Convert a Clojure Value to a Wasm u64 based on the expected type.
 fn valueToWasm(val: Value, wasm_type: WasmValType) !u64 {
@@ -332,7 +332,7 @@ fn wasmToValue(_: Allocator, raw: u64, wasm_type: WasmValType) Value {
 // Host function infrastructure (Clojure → Wasm callbacks)
 // ============================================================
 
-const bootstrap = @import("../../engine/bootstrap.zig");
+const dispatch = @import("dispatch.zig");
 
 const HostContext = struct {
     clj_fn: Value,
@@ -386,7 +386,7 @@ fn hostTrampoline(ctx_ptr: *anyopaque, context_id: usize) anyerror!void {
         args_buf[i] = Value.initInteger(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw))))));
     }
 
-    const result = bootstrap.callFnVal(ctx.allocator, ctx.clj_fn, args_buf[0..pc]) catch {
+    const result = dispatch.callFnVal(ctx.allocator, ctx.clj_fn, args_buf[0..pc]) catch {
         return error.Trap;
     };
 
@@ -582,7 +582,7 @@ const testing = std.testing;
 
 test "smoke test — load and call add(3, 4)" {
     if (!enable_wasm) return;
-    const wasm_bytes = @embedFile("testdata/01_add.wasm");
+    const wasm_bytes = @embedFile("../app/wasm/testdata/01_add.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
 
@@ -595,7 +595,7 @@ test "smoke test — load and call add(3, 4)" {
 
 test "smoke test — fibonacci(10) = 55" {
     if (!enable_wasm) return;
-    const wasm_bytes = @embedFile("testdata/02_fibonacci.wasm");
+    const wasm_bytes = @embedFile("../app/wasm/testdata/02_fibonacci.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
 
@@ -608,7 +608,7 @@ test "smoke test — fibonacci(10) = 55" {
 
 test "memory read/write round-trip" {
     if (!enable_wasm) return;
-    const wasm_bytes = @embedFile("testdata/03_memory.wasm");
+    const wasm_bytes = @embedFile("../app/wasm/testdata/03_memory.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
 
@@ -625,7 +625,7 @@ test "memory read/write round-trip" {
 
 test "memory write then call store/load" {
     if (!enable_wasm) return;
-    const wasm_bytes = @embedFile("testdata/03_memory.wasm");
+    const wasm_bytes = @embedFile("../app/wasm/testdata/03_memory.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
 
@@ -677,7 +677,7 @@ test "allocContext — allocate and reclaim slots" {
 
 test "buildExportInfo — add module exports" {
     if (!enable_wasm) return;
-    const wasm_bytes = @embedFile("testdata/01_add.wasm");
+    const wasm_bytes = @embedFile("../app/wasm/testdata/01_add.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
 
@@ -694,7 +694,7 @@ test "buildExportInfo — add module exports" {
 
 test "buildExportInfo — fibonacci module exports" {
     if (!enable_wasm) return;
-    const wasm_bytes = @embedFile("testdata/02_fibonacci.wasm");
+    const wasm_bytes = @embedFile("../app/wasm/testdata/02_fibonacci.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
 
@@ -709,7 +709,7 @@ test "buildExportInfo — fibonacci module exports" {
 
 test "buildExportInfo — memory module exports" {
     if (!enable_wasm) return;
-    const wasm_bytes = @embedFile("testdata/03_memory.wasm");
+    const wasm_bytes = @embedFile("../app/wasm/testdata/03_memory.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
 
@@ -726,7 +726,7 @@ test "buildExportInfo — memory module exports" {
 
 test "getExportInfo — nonexistent name returns null" {
     if (!enable_wasm) return;
-    const wasm_bytes = @embedFile("testdata/01_add.wasm");
+    const wasm_bytes = @embedFile("../app/wasm/testdata/01_add.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
 
@@ -735,9 +735,9 @@ test "getExportInfo — nonexistent name returns null" {
 
 test "multi-module — two modules, function import" {
     if (!enable_wasm) return;
-    const collections = @import("../../runtime/collections.zig");
+    const collections = @import("collections.zig");
 
-    const math_bytes = @embedFile("testdata/20_math_export.wasm");
+    const math_bytes = @embedFile("../app/wasm/testdata/20_math_export.wasm");
     var math_mod = try WasmModule.load(testing.allocator, math_bytes);
     defer math_mod.deinit();
 
@@ -754,7 +754,7 @@ test "multi-module — two modules, function import" {
     import_map.* = .{ .entries = &import_entries };
     defer testing.allocator.destroy(import_map);
 
-    const app_bytes = @embedFile("testdata/21_app_import.wasm");
+    const app_bytes = @embedFile("../app/wasm/testdata/21_app_import.wasm");
     var app_mod = try WasmModule.loadWithImports(testing.allocator, app_bytes, Value.initMap(import_map));
     defer app_mod.deinit();
 
@@ -766,9 +766,9 @@ test "multi-module — two modules, function import" {
 
 test "multi-module — three module chain" {
     if (!enable_wasm) return;
-    const collections = @import("../../runtime/collections.zig");
+    const collections = @import("collections.zig");
 
-    const base_bytes = @embedFile("testdata/22_base.wasm");
+    const base_bytes = @embedFile("../app/wasm/testdata/22_base.wasm");
     var base_mod = try WasmModule.load(testing.allocator, base_bytes);
     defer base_mod.deinit();
 
@@ -780,7 +780,7 @@ test "multi-module — three module chain" {
     base_map.* = .{ .entries = &base_entries };
     defer testing.allocator.destroy(base_map);
 
-    const mid_bytes = @embedFile("testdata/23_mid.wasm");
+    const mid_bytes = @embedFile("../app/wasm/testdata/23_mid.wasm");
     var mid_mod = try WasmModule.loadWithImports(testing.allocator, mid_bytes, Value.initMap(base_map));
     defer mid_mod.deinit();
 
@@ -797,7 +797,7 @@ test "multi-module — three module chain" {
     mid_map.* = .{ .entries = &mid_entries };
     defer testing.allocator.destroy(mid_map);
 
-    const top_bytes = @embedFile("testdata/24_top.wasm");
+    const top_bytes = @embedFile("../app/wasm/testdata/24_top.wasm");
     var top_mod = try WasmModule.loadWithImports(testing.allocator, top_bytes, Value.initMap(mid_map));
     defer top_mod.deinit();
 

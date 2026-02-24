@@ -17,7 +17,7 @@ const err = @import("../runtime/error.zig");
 const gc_mod = @import("../runtime/gc.zig");
 const nrepl = @import("repl/nrepl.zig");
 const runner = @import("runner.zig");
-const wasm_builtins = @import("wasm/builtins.zig");
+const wasm_builtins = @import("../lang/lib/cljw_wasm_builtins.zig");
 
 const build_options = @import("build_options");
 const enable_wasm = build_options.enable_wasm;

@@ -372,7 +372,7 @@ test "tokenizer — hyphenated identifiers" {
 }
 
 test "parse — greet interface" {
-    const src = @embedFile("testdata/10_greet.wit");
+    const src = @embedFile("../app/wasm/testdata/10_greet.wit");
     const ifaces = try parse(testing.allocator, src);
     defer testing.allocator.free(ifaces);
     defer for (ifaces) |iface| {
@@ -393,7 +393,7 @@ test "parse — greet interface" {
 }
 
 test "parse — math interface with multiple functions" {
-    const src = @embedFile("testdata/11_math.wit");
+    const src = @embedFile("../app/wasm/testdata/11_math.wit");
     const ifaces = try parse(testing.allocator, src);
     defer testing.allocator.free(ifaces);
     defer for (ifaces) |iface| {

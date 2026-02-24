@@ -18,8 +18,8 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 # Baseline: known violation count. Update when violations are fixed.
-# History: 134 (R0) -> 126 (R9)
-BASELINE=126
+# History: 134 (R0) -> 126 (R9) -> 118 (Z1)
+BASELINE=118
 
 MODE="info"
 if [[ "${1:-}" == "--strict" ]]; then

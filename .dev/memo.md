@@ -9,7 +9,7 @@ Session handover document. Read at session start.
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon)
 - 68 upstream test files. 6/6 e2e. 8/14 deps e2e (6 pre-existing)
 - Binary: 4.52MB. Startup: 4.2ms. RSS: 7.6MB
-- Zone violations: 126 (baseline) → target: 0
+- Zone violations: 118 (baseline, Z1 done) → target: 0
 - Plan: `.claude/plans/shiny-frolicking-dijkstra.md`
 
 ## Strategic Direction
@@ -25,14 +25,14 @@ CW is a complete, optimized Zig implementation with behavioral Clojure compatibi
 
 ## Current Task
 
-Part A complete! All test failures and leaks resolved.
-Moving to Part B: Zone Violation Reduction (126 → 0).
-Next: Z1 — Reclassify wasm types → runtime (−8 violations).
+Part B in progress: Zone Violation Reduction.
+Next: Z2 — Reclassify macro/ns_loader → engine (target −13 violations).
 
 ## Previous Task
 
-T7: Fix GPA memory leaks in protocol initialization — DONE.
-`extendType()` now frees old impls map and entries array before replacing.
+Z1: Reclassify wasm types → runtime (−8 violations) — DONE.
+Moved types.zig→runtime/wasm_types.zig, builtins.zig→lang/lib/cljw_wasm_builtins.zig,
+wit_parser.zig→runtime/wasm_wit_parser.zig. Replaced bootstrap.callFnVal→dispatch.callFnVal.
 
 ## Task Queue
 
@@ -47,7 +47,7 @@ T6: Fix deps E2E transitive git dep (1 FAIL)       ✓ DONE
 T7: Fix GPA memory leaks in protocol init        ✓ DONE
 
 Part B: Zone Violation Reduction (126 → 0)
-Z1: Reclassify wasm types → runtime (−8)
+Z1: Reclassify wasm types → runtime (−8)         ✓ DONE (126→118)
 Z2: Reclassify macro/ns_loader → engine (−13)
 Z3: Extract Form/Chunk → runtime (−2)
 Z4: Vtable expansion for tree_walk/vm (−23)

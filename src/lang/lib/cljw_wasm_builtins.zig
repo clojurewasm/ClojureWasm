@@ -18,12 +18,12 @@ const Value = @import("../../runtime/value.zig").Value;
 const var_mod = @import("../../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../../runtime/error.zig");
-const wasm_types = @import("types.zig");
+const wasm_types = @import("../../runtime/wasm_types.zig");
 const enable_wasm = wasm_types.enable_wasm;
 const WasmModule = wasm_types.WasmModule;
 const WasmFn = wasm_types.WasmFn;
 const WasmValType = wasm_types.WasmValType;
-const wit_parser = @import("wit_parser.zig");
+const wit_parser = @import("../../runtime/wasm_wit_parser.zig");
 
 // Wasm module registry: maps module names to resolved file paths.
 // Populated by deps.edn :cljw/wasm-deps processing.

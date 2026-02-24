@@ -6,9 +6,9 @@
 
 const registry = @import("../registry.zig");
 const NamespaceDef = registry.NamespaceDef;
-const wasm_types = @import("../../app/wasm/types.zig");
+const wasm_types = @import("../../runtime/wasm_types.zig");
 
-const impl = @import("../../app/wasm/builtins.zig");
+const impl = @import("cljw_wasm_builtins.zig");
 
 pub const namespace_def = NamespaceDef{
     .name = "cljw.wasm",
