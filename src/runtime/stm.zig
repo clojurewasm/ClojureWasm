@@ -383,8 +383,8 @@ fn notifyWatches(allocator: Allocator, inner: *RefInner, new_val: Value) void {
     // Get the old value (prior to the newest TVal)
     const old_val = if (inner.tvals) |tv| (if (tv.prior) |p| p.val else Value.nil_val) else Value.nil_val;
     for (0..inner.watch_count) |i| {
-        // (watch-fn key ref old-val new-val) — but we don't have the ref Value here
-        // For now, just call (watch-fn key nil old-val new-val)
+        // (watch-fn key ref old-val new-val) — but we don't have the ref Value here.
+        // JVM: Watch callback exceptions are silently caught (ARef.java notifyWatches).
         _ = dispatch.callFnVal(allocator, fns[i], &.{ keys[i], Value.nil_val, old_val, new_val }) catch {};
     }
 }

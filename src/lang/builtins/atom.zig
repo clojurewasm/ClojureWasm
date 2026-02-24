@@ -310,9 +310,11 @@ pub fn volatilePred(_: Allocator, args: []const Value) anyerror!Value {
 // ============================================================
 
 /// Validate new value against atom's validator. Throws on invalid.
+/// JVM: RuntimeException from validator propagates; other exceptions wrap in IllegalStateException.
 fn validate(allocator: Allocator, a: *Atom, new_val: Value) !void {
     if (a.validator) |vfn| {
-        const result = bootstrap.callFnVal(allocator, vfn, &.{new_val}) catch {
+        const result = bootstrap.callFnVal(allocator, vfn, &.{new_val}) catch |e| {
+            if (e == error.UserException) return error.UserException;
             return throwInvalidState(allocator);
         };
         switch (result.tag()) {
@@ -348,6 +350,7 @@ fn throwInvalidState(allocator: Allocator) !void {
 }
 
 /// Notify all watchers: (watch-fn key atom old-val new-val)
+/// JVM: Watch callback exceptions are silently caught (Atom.java notifyWatches).
 fn notifyWatchers(allocator: Allocator, a: *Atom, atom_val: Value, old: Value, new: Value) !void {
     if (a.watch_keys == null or a.watch_count == 0) return;
     const keys = a.watch_keys.?;

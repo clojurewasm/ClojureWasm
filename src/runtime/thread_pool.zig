@@ -330,6 +330,7 @@ pub const ThreadPool = struct {
                     const handler = inner.error_handler;
                     inner.mutex.unlock();
                     const handler_args = [2]Value{ Value.initAgent(agent_obj), err_val };
+                    // JVM: Agent error handler exceptions are silently caught.
                     _ = dispatch.callFnVal(gc_alloc, handler, &handler_args) catch {};
                 } else {
                     // No handler — set error state based on mode

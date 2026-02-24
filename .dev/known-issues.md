@@ -49,16 +49,14 @@ its exception replaces the original (matching Java/JVM Clojure behavior).
 
 **Files**: `src/engine/evaluator/tree_walk.zig` (runTry function)
 
-### I-012: Watch/validator callback errors silently swallowed
+### ~~I-012: Watch/validator callback errors silently swallowed~~ RESOLVED
 
-**Symptom**: `add-watch` and `set-validator!` callback errors are caught with
-`catch {}`. JVM throws the exception to the caller.
+**Resolution**: Validator now propagates UserException (JVM re-throws
+RuntimeException); other errors still convert to InvalidState. Watch callbacks
+in atom.zig, stm.zig, and agent error handler in thread_pool.zig documented
+as matching JVM behavior (Atom.java/ARef.java catch silently).
 
-**Fix**: Propagate callback errors. For watches, JVM prints to `*err*` but
-doesn't throw. For validators, JVM throws.
-
-**Files**: `src/builtins/atom.zig:355`, `src/runtime/stm.zig:388`,
-`src/runtime/thread_pool.zig:333`
+**Files**: `src/lang/builtins/atom.zig`, `src/runtime/stm.zig`, `src/runtime/thread_pool.zig`
 
 ### I-013: Bootstrap namespace refer errors silently swallowed
 
@@ -182,7 +180,7 @@ know about deferred cache roots).
 | I-003 | ~~**Now**~~ RESOLVED | 88C.3 |
 | I-010 | ~~**Now**~~ RESOLVED | 88C.4 |
 | I-011 | ~~During Phase B~~ RESOLVED | R12 |
-| I-012 | During Phase B | B (atom/stm builtins) |
+| I-012 | ~~During Phase B~~ RESOLVED | R12 |
 | I-013 | During Phase C | C (bootstrap simplification) |
 | I-020 | ~~During Phase B~~ RESOLVED | B.3 hotfix |
 | I-021 | Phase B.13 or 89 | B.13 / 89 |
