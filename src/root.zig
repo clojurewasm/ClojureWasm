@@ -63,6 +63,9 @@ pub const thread_pool = @import("runtime/thread_pool.zig");
 pub const concurrency_test = @import("runtime/concurrency_test.zig");
 pub const stm = @import("runtime/stm.zig");
 pub const deps = @import("app/deps.zig");
+pub const cli = @import("app/cli.zig");
+pub const app_runner = @import("app/runner.zig");
+pub const app_test_runner = @import("app/test_runner.zig");
 
 test {
     _ = value;

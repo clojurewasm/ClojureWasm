@@ -27,24 +27,24 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R9: Split main.zig (< 200 LOC).
+Phase 97 (Architecture Refactoring), sub-task R10: Zone enforcement in commit gate.
 
-See `.dev/refactoring-plan.md` R9 section for details.
+See `.dev/refactoring-plan.md` R10 section for details.
 
 ## Previous Task
 
-R8: Directory rename — COMPLETE.
-- Moved dirs to 4-zone layout: runtime/, engine/, lang/, app/
-- main.zig and cache_gen.zig remain at src/ root (Zig module path constraint)
-- Updated all @import paths across entire codebase
-- Updated zone_check.sh, CLAUDE.md, zone-deps.md for post-R8 paths
-- Updated e2e wasm test paths and bench paths
+R9: Split main.zig — COMPLETE.
+- Split 2,343 LOC main.zig into 4 modules:
+  - `src/main.zig` (81 LOC) — entry point, init, subcommand dispatch
+  - `src/app/cli.zig` — arg parsing, help, deps resolution, new command
+  - `src/app/runner.zig` — REPL, eval, error reporting, build, embedded
+  - `src/app/test_runner.zig` — test command handling
+- Pure structural move, no logic changes
 - Violations: 126 (unchanged)
 
 ## Task Queue
 
 ```
-R9:  Split main.zig (< 200 LOC)
 R10: Zone enforcement in commit gate
 R11: Structural integrity audit
 R12: Known issues resolution (I-011〜I-024)
