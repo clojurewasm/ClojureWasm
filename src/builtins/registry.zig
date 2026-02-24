@@ -221,6 +221,10 @@ pub fn registerBuiltins(env: *Env) !void {
         &TreeWalk.valueTypeKey,
     );
 
+    // Initialize seq ops vtable (D109 R7) — breaks value.zig → collections.zig dep.
+    const collections = @import("collections.zig");
+    dispatch.initSeqOps(&collections.seqFn, &collections.firstFn, &collections.restFn);
+
     const core_ns = try env.findOrCreateNamespace("clojure.core");
 
     for (all_builtins) |b| {

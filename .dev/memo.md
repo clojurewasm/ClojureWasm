@@ -27,17 +27,18 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R7: Fix value.zig upward dependency.
+Phase 97 (Architecture Refactoring), sub-task R8: Directory rename.
 
-See `.dev/refactoring-plan.md` R7 section for details.
+See `.dev/refactoring-plan.md` R8 section for details.
+This is the big structural move — zero logic changes, only @import path updates.
 
 ## Previous Task
 
-R6: Slim down bootstrap.zig — COMPLETE.
-- bootstrap.zig is now 75 LOC production code (re-export hub) + ~2,800 LOC tests
-- Removed dead private re-exports (readForms, analyzeForm, evalStringVMBootstrap)
-- Updated module doc comment to reflect re-export hub role
-- Violations: 127 (unchanged)
+R7: Fix value.zig upward dependency — COMPLETE.
+- Added seq ops vtable to dispatch.zig (seq_fn, first_fn, rest_fn)
+- value.zig no longer imports builtins/collections.zig (L0→L2 violation removed)
+- registry.zig initializes seq ops vtable via dispatch.initSeqOps
+- Violations: 127 → 126
 
 ## Task Queue
 

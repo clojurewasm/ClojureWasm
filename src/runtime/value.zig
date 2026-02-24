@@ -723,14 +723,13 @@ pub const LazySeq = struct {
     /// Compute the realized value from structural metadata.
     /// Returns a cons cell (first + rest lazy-seq) or nil.
     fn realizeMeta(allocator: std.mem.Allocator, m: *const Meta) anyerror!Value {
-        const coll_builtins = @import("../builtins/collections.zig");
         switch (m.*) {
             .lazy_map => |lm| {
-                const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{lm.source});
+                const seq_val = try dispatch.seq_fn(allocator, &[1]Value{lm.source});
                 if (seq_val.tag() == .nil) return Value.nil_val;
-                const first_elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
+                const first_elem = try dispatch.first_fn(allocator, &[1]Value{seq_val});
                 const mapped = try dispatch.callFnVal(allocator, lm.f, &[1]Value{first_elem});
-                const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                const rest_source = try dispatch.rest_fn(allocator, &[1]Value{seq_val});
                 const rest_meta = try allocator.create(Meta);
                 rest_meta.* = .{ .lazy_map = .{ .f = lm.f, .source = rest_source } };
                 const rest_ls = try allocator.create(LazySeq);
@@ -742,12 +741,12 @@ pub const LazySeq = struct {
             .lazy_filter => |lf| {
                 var current = lf.source;
                 while (true) {
-                    const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{current});
+                    const seq_val = try dispatch.seq_fn(allocator, &[1]Value{current});
                     if (seq_val.tag() == .nil) return Value.nil_val;
-                    const elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
+                    const elem = try dispatch.first_fn(allocator, &[1]Value{seq_val});
                     const pred_result = try dispatch.callFnVal(allocator, lf.pred, &[1]Value{elem});
                     if (pred_result.isTruthy()) {
-                        const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                        const rest_source = try dispatch.rest_fn(allocator, &[1]Value{seq_val});
                         const rest_meta = try allocator.create(Meta);
                         rest_meta.* = .{ .lazy_filter = .{ .pred = lf.pred, .source = rest_source } };
                         const rest_ls = try allocator.create(LazySeq);
@@ -756,7 +755,7 @@ pub const LazySeq = struct {
                         cons_cell.* = .{ .first = elem, .rest = Value.initLazySeq(rest_ls) };
                         return Value.initCons(cons_cell);
                     }
-                    current = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                    current = try dispatch.rest_fn(allocator, &[1]Value{seq_val});
                 }
             },
             .lazy_filter_chain => |lfc| {
@@ -764,19 +763,19 @@ pub const LazySeq = struct {
                 // This collapses N nested filters into a single-level loop.
                 var current = lfc.source;
                 outer: while (true) {
-                    const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{current});
+                    const seq_val = try dispatch.seq_fn(allocator, &[1]Value{current});
                     if (seq_val.tag() == .nil) return Value.nil_val;
-                    const elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
+                    const elem = try dispatch.first_fn(allocator, &[1]Value{seq_val});
                     // Check all predicates (innermost first)
                     for (lfc.preds) |pred| {
                         const pred_result = try dispatch.callFnVal(allocator, pred, &[1]Value{elem});
                         if (!pred_result.isTruthy()) {
-                            current = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                            current = try dispatch.rest_fn(allocator, &[1]Value{seq_val});
                             continue :outer;
                         }
                     }
                     // All predicates passed — create cons cell with rest chain
-                    const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                    const rest_source = try dispatch.rest_fn(allocator, &[1]Value{seq_val});
                     const rest_meta = try allocator.create(Meta);
                     rest_meta.* = .{ .lazy_filter_chain = .{ .preds = lfc.preds, .source = rest_source } };
                     const rest_ls = try allocator.create(LazySeq);
@@ -788,10 +787,10 @@ pub const LazySeq = struct {
             },
             .lazy_take => |lt| {
                 if (lt.n == 0) return Value.nil_val;
-                const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{lt.source});
+                const seq_val = try dispatch.seq_fn(allocator, &[1]Value{lt.source});
                 if (seq_val.tag() == .nil) return Value.nil_val;
-                const first_elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
-                const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                const first_elem = try dispatch.first_fn(allocator, &[1]Value{seq_val});
+                const rest_source = try dispatch.rest_fn(allocator, &[1]Value{seq_val});
                 const rest_meta = try allocator.create(Meta);
                 rest_meta.* = .{ .lazy_take = .{ .n = lt.n - 1, .source = rest_source } };
                 const rest_ls = try allocator.create(LazySeq);

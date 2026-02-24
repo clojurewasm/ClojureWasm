@@ -66,6 +66,24 @@ pub threadlocal var last_thrown_exception: ?Value = null;
 /// Consumed (reset to false) by VM/TreeWalk rest packing code.
 pub threadlocal var apply_rest_is_seq: bool = false;
 
+// === Seq operations vtable (D109 R7) ===
+// Breaks value.zig → builtins/collections.zig dependency.
+
+/// Builtin function signature: fn(Allocator, []const Value) anyerror!Value
+const BuiltinFn = *const fn (std.mem.Allocator, []const Value) anyerror!Value;
+
+/// Seq operation function pointers, initialized by registry at startup.
+pub var seq_fn: BuiltinFn = undefined;
+pub var first_fn: BuiltinFn = undefined;
+pub var rest_fn: BuiltinFn = undefined;
+
+/// Initialize seq operation vtable. Called from registerBuiltins.
+pub fn initSeqOps(seq: BuiltinFn, first: BuiltinFn, rest: BuiltinFn) void {
+    seq_fn = seq;
+    first_fn = first;
+    rest_fn = rest;
+}
+
 /// Central function dispatch for all callable CW value types.
 ///
 /// Handles: builtin_fn, fn_val (treewalk + bytecode), multi_fn,
