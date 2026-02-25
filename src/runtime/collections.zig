@@ -759,8 +759,21 @@ pub const HAMTNode = struct {
 
     const EMPTY: HAMTNode = .{};
 
+    /// A collision node stores multiple KVs with identical hashes.
+    /// Identified by: data_map == 0, node_map == 0, kvs.len > 0.
+    fn isCollision(self: *const HAMTNode) bool {
+        return self.data_map == 0 and self.node_map == 0 and self.kvs.len > 0;
+    }
+
     /// Get value for key, or null if not found.
     pub fn get(self: *const HAMTNode, hash: u32, shift: u5, key: Value) ?Value {
+        // Collision node — linear scan
+        if (self.isCollision()) {
+            for (self.kvs) |kv| {
+                if (kv.key.eql(key)) return kv.val;
+            }
+            return null;
+        }
         const bit = bitpos(hash, shift);
         if (self.data_map & bit != 0) {
             const idx = bitmapIndex(self.data_map, bit);
@@ -776,6 +789,27 @@ pub const HAMTNode = struct {
 
     /// Return a new node with the key-value pair added/replaced.
     pub fn assoc(self: *const HAMTNode, allocator: std.mem.Allocator, hash: u32, shift: u5, key: Value, val: Value) !*const HAMTNode {
+        // Collision node — linear scan for match, or append
+        if (self.isCollision()) {
+            for (self.kvs, 0..) |kv, i| {
+                if (kv.key.eql(key)) {
+                    if (kv.val.eql(val)) return self;
+                    const new_kvs = try allocator.alloc(KV, self.kvs.len);
+                    @memcpy(new_kvs, self.kvs);
+                    new_kvs[i] = .{ .key = key, .val = val };
+                    const new_node = try allocator.create(HAMTNode);
+                    new_node.* = .{ .kvs = new_kvs };
+                    return new_node;
+                }
+            }
+            const new_kvs = try allocator.alloc(KV, self.kvs.len + 1);
+            @memcpy(new_kvs[0..self.kvs.len], self.kvs);
+            new_kvs[self.kvs.len] = .{ .key = key, .val = val };
+            const new_node = try allocator.create(HAMTNode);
+            new_node.* = .{ .kvs = new_kvs };
+            return new_node;
+        }
+
         const bit = bitpos(hash, shift);
 
         if (self.data_map & bit != 0) {
@@ -851,6 +885,21 @@ pub const HAMTNode = struct {
 
     /// Return a new node without the given key, or null if node becomes empty.
     pub fn dissoc(self: *const HAMTNode, allocator: std.mem.Allocator, hash: u32, shift: u5, key: Value) !?*const HAMTNode {
+        // Collision node — linear scan
+        if (self.isCollision()) {
+            for (self.kvs, 0..) |kv, i| {
+                if (kv.key.eql(key)) {
+                    if (self.kvs.len == 1) return null;
+                    const new_kvs = try allocator.alloc(KV, self.kvs.len - 1);
+                    copyExcept(KV, new_kvs, self.kvs, i);
+                    const new_node = try allocator.create(HAMTNode);
+                    new_node.* = .{ .kvs = new_kvs };
+                    return new_node;
+                }
+            }
+            return self; // key not found
+        }
+
         const bit = bitpos(hash, shift);
 
         if (self.data_map & bit != 0) {
@@ -947,6 +996,17 @@ pub const HAMTNode = struct {
 
 /// Create a node with exactly two key-value pairs.
 fn createTwoNode(allocator: std.mem.Allocator, hash1: u32, key1: Value, val1: Value, hash2: u32, key2: Value, val2: Value, shift: u5) !*const HAMTNode {
+    // Full hash collision — create collision node (flat KV list, linear scan)
+    if (hash1 == hash2) {
+        const node = try allocator.create(HAMTNode);
+        const kvs = try allocator.alloc(HAMTNode.KV, 2);
+        kvs[0] = .{ .key = key1, .val = val1 };
+        kvs[1] = .{ .key = key2, .val = val2 };
+        // data_map = 0, node_map = 0, kvs.len > 0 = collision node marker
+        node.* = .{ .kvs = kvs };
+        return node;
+    }
+
     const bit1 = bitpos(hash1, shift);
     const bit2 = bitpos(hash2, shift);
 

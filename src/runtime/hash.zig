@@ -172,6 +172,16 @@ pub fn computeHash(v: Value) i64 {
             }
             break :blk 42;
         },
-        else => 42,
+        else => blk: {
+            // Identity hash for function types, atoms, vars, etc.
+            // Uses the raw NaN-boxed bits (unique per heap object) with splitmix64 mixing.
+            var x: u64 = @intFromEnum(v);
+            x ^= x >> 30;
+            x *%= 0xbf58476d1ce4e5b9;
+            x ^= x >> 27;
+            x *%= 0x94d049bb133111eb;
+            x ^= x >> 31;
+            break :blk @bitCast(x);
+        },
     };
 }
