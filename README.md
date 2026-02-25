@@ -11,8 +11,8 @@
 > behavioral differences from reference Clojure. Bugs and rough edges are
 > expected. See [DIFFERENCES.md](DIFFERENCES.md) for details.
 >
-> **Verified on**: macOS (Apple Silicon / aarch64). Linux x86_64 and
-> aarch64 builds pass CI but have not been extensively tested.
+> **Verified on**: macOS (Apple Silicon / aarch64) and Linux (x86_64).
+> Cross-compiles to aarch64-linux. All test suites pass on both platforms.
 
 A Clojure runtime written from scratch in Zig. No JVM, no transpilation —
 a native implementation targeting behavioral compatibility with Clojure.
@@ -25,7 +25,7 @@ a native implementation targeting behavioral compatibility with Clojure.
 - **Wasm FFI** — call WebAssembly modules from Clojure (523 opcodes including SIMD + GC)
 - **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
 - **deps.edn compatible** — Clojure CLI subset (-A/-M/-X/-P, git deps, local deps)
-- **1100+ vars** across 30+ namespaces (651/706 clojure.core)
+- **1130+ vars** across 30+ namespaces (651/706 clojure.core)
 
 ## Getting Started
 
@@ -131,7 +131,7 @@ Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 | clojure.test       | 38/39  | Test framework                 |
 | clojure.test.tap   | 7/7    | TAP output formatter           |
 | clojure.repl       | 11/13  | doc, dir, apropos, source, pst |
-| clojure.pprint     | 22/26  | Pretty printing, print-table   |
+| clojure.pprint     | 26/26  | Pretty printing, print-table   |
 | clojure.stacktrace | 6/6    | Stack trace utilities          |
 | clojure.main       | 16/20  | REPL, script loading, ex-triage|
 
@@ -220,25 +220,26 @@ src/
 │   ├── core.clj                Core library (~2400 lines)
 │   └── string.clj, set.clj... Standard library namespaces
 │
-├── reader/                     Stage 1: Source → Form
-├── analyzer/                   Stage 2: Form → Node
-├── compiler/                   Stage 3: Node → Bytecode
-├── vm/                         Stage 4a: Bytecode execution (+ JIT)
-├── evaluator/                  Stage 4b: TreeWalk interpreter
-│
-├── runtime/                    Core types, GC, environment
-├── builtins/                   Built-in functions (27 modules)
-├── regex/                      Regex engine
-├── repl/                       nREPL server, line editor
-└── wasm/                       WebAssembly runtime (523 opcodes)
+├── runtime/                    Layer 0: Value, collections, GC, environment
+├── engine/                     Layer 1: Reader, Analyzer, Compiler, VM, TreeWalk
+│   ├── reader/                   Source → Form
+│   ├── analyzer/                 Form → Node
+│   ├── compiler/                 Node → Bytecode
+│   ├── vm/                       Bytecode execution (+ ARM64 JIT)
+│   └── evaluator/                TreeWalk interpreter
+├── lang/                       Layer 2: Built-in functions, interop, lib namespaces
+├── app/                        Layer 3: CLI, REPL, deps.edn, Wasm bridge
+└── regex/                      Regex engine
 
 bench/                          31 benchmarks, multi-language
-test/                           81 Clojure test files (54 upstream ports)
+test/                           83 Clojure test namespaces (54 upstream ports)
 ```
 
+Strict 4-zone layered architecture: lower layers never import from higher layers.
+Zone dependencies enforced by CI gate (0 violations).
+
 The [`.dev/`](.dev/) directory contains design decisions, optimization logs,
-and development notes. Some may be outdated, but may interest those curious
-about how the project evolved.
+and development notes.
 
 ## Benchmarks
 
@@ -260,14 +261,14 @@ bash test/e2e/run_e2e.sh       # End-to-end tests (6 wasm)
 bash test/e2e/deps/run_deps_e2e.sh  # deps.edn E2E tests (14)
 ```
 
-81 Clojure test files including 54 upstream test ports with 600+ deftests.
+83 Clojure test namespaces including 54 upstream test ports with 600+ deftests.
 All tests verified on both VM and TreeWalk backends.
 
 ## Future Plans
 
 - **JIT expansion** — float operations, function calls, broader loop patterns
 - **Generational GC** — nursery/tenured generations for throughput
-- **Persistent data structures** — HAMT/RRB-Tree implementations
+- **Persistent data structures** — RRB-Tree for vectors (HAMT for maps: done)
 - **wasm_rt** — compile Clojure to run *inside* WebAssembly
 
 ## Potential Use Cases

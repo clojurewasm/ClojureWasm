@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.4.0 (2026-02-25)
+
+### Architecture
+- 4-zone layered architecture (D109): runtime → engine → lang → app
+- Zone dependencies enforced by CI gate (0 violations, down from 126)
+- Vtable pattern for dependency inversion (runtime/dispatch.zig)
+- HAMT (Hash Array Mapped Trie) for persistent hash maps with collision nodes
+
+### Coverage
+- 1,130/1,243 vars implemented (90.9%), 651/706 clojure.core (92.2%)
+- clojure.pprint: 26/26 (was 22/26), full cl-format support
+- clojure.spec.alpha: 87/87, clojure.spec.gen.alpha: 54/54
+- clojure.core.reducers: 22/22, clojure.datafy: 2/2, clojure.instant: 3/5
+
+### Testing
+- 83 Clojure test namespaces (68 upstream ports), all passing
+- Full Mac/Linux test symmetry (macOS aarch64 + Linux x86_64)
+- 6 e2e tests, 14 deps.edn e2e tests
+
+### Bug Fixes
+- HAMT crash when function values used as map keys (>8 entries promote to HashMap)
+- Identity hash (splitmix64) for function types replacing constant hash
+- HAMT collision node support for full 32-bit hash collisions
+
+### Performance
+- Binary: 4.76MB (ReleaseSafe)
+- Startup: ~4ms
+- RSS: ~7.6MB
+
+### CI
+- Cross-platform CI: macOS 14 + Ubuntu 24.04 + 4 cross-compile targets
+- Benchmark smoke tests with portable timeout (perl alarm)
+
 ## v0.3.0 (2026-02-20)
 
 ### Architecture v2

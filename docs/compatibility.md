@@ -107,7 +107,8 @@ Vars that are defined but have limited or no-op behavior:
 
 ## Upstream Test Coverage
 
-63 upstream test files (62 passing, 1 failing: test_fixtures.clj).
+68 upstream test files, all passing.
+83 Clojure test namespaces total (68 upstream + 15 CW-specific).
 146 differential test expressions (CW vs JVM), all passing.
 6 core e2e tests, 14 deps.edn e2e tests.
 

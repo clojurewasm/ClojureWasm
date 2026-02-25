@@ -25,11 +25,11 @@ CW is a complete, optimized Zig implementation with behavioral Clojure compatibi
 
 ## Current Task
 
-None — awaiting user direction.
+v0.4.0 release — all docs updated, ready for tag.
 
 ## Previous Task
 
-Zone Cleanup Task 4: Isolate test-only imports in engine/ (12 → 0 violations).
+HAMT crash fix + CI benchmark timeout fix + full doc update for v0.4.0.
 
 ## Task Queue
 

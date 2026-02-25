@@ -42,41 +42,41 @@ Java standard library functionality is replaced with Zig equivalents:
 
 ## Namespaces
 
-### Not Implemented
+### Not Implemented (JVM-only)
 
 | Namespace                | Reason                               |
 |--------------------------|--------------------------------------|
-| clojure.spec.alpha       | Complexity; out of scope for alpha   |
-| clojure.spec.gen.alpha   | Depends on spec                      |
-| clojure.core.specs.alpha | Depends on spec                      |
-| clojure.core.reducers    | Requires reify + ForkJoin            |
-| clojure.core.server      | Socket REPL (nREPL used instead)     |
 | clojure.reflect          | JVM reflection                       |
 | clojure.inspector        | JVM Swing UI                         |
-| clojure.java.browse      | JVM Desktop class                    |
 | clojure.java.javadoc     | JVM-specific                         |
-| clojure.main             | JVM entry point                      |
-| clojure.instant          | JVM Date/Timestamp                   |
-| clojure.datafy           | Requires protocols not yet available |
+| clojure.test.junit       | JUnit integration                    |
 
 ### Partially Implemented
 
-| Namespace      | Done | Total | Notes                       |
-|----------------|------|-------|-----------------------------|
-| clojure.core   | 637  | 706   | 90% — see skip list below   |
-| clojure.test   | 32   | 39    | No spec integration         |
-| clojure.pprint | 9    | 26    | Core pprint + print-table   |
-| clojure.repl   | 11   | 13    | No spec, no Java reflection |
-| clojure.edn    | 1    | 2     | read-string only (no read)  |
-| clojure.data   | 3    | 5     | No protocol-based dispatch  |
+| Namespace             | Done | Total | Notes                       |
+|-----------------------|------|-------|-----------------------------|
+| clojure.core          | 651  | 706   | 92% — see skip list below   |
+| clojure.core.protocols| 10   | 11    | CollReduce, IKVReduce       |
+| clojure.core.server   | 7    | 11    | No socket REPL              |
+| clojure.instant       | 3    | 5     | No Calendar/Timestamp       |
+| clojure.java.process  | 5    | 9     | No async process            |
+| clojure.main          | 16   | 20    | REPL, script loading        |
+| clojure.repl          | 11   | 13    | No Java reflection          |
+| clojure.test          | 38   | 39    | No spec integration         |
+| clojure.xml           | 7    | 9     | Pure Clojure parser         |
 
 ### Fully Implemented
 
-clojure.string (21), clojure.set (12), clojure.math (45), clojure.walk (10),
-clojure.zip (28), clojure.template (2), clojure.stacktrace (6),
-clojure.java.io (7), clojure.java.shell (5), cljw.http (6).
+clojure.core.reducers (22), clojure.core.specs.alpha (1),
+clojure.data (5), clojure.datafy (2), clojure.edn (2),
+clojure.java.browse (2), clojure.java.io (19), clojure.java.shell (5),
+clojure.math (45), clojure.pprint (26), clojure.repl.deps (3),
+clojure.set (12), clojure.spec.alpha (87), clojure.spec.gen.alpha (54),
+clojure.stacktrace (6), clojure.string (21), clojure.template (2),
+clojure.test.tap (7), clojure.walk (10), clojure.zip (28),
+cljw.wasm (17), cljw.http (6).
 
-## Skipped clojure.core Vars (71 of 706)
+## Skipped clojure.core Vars (55 of 706)
 
 ### JVM Class System (~25 vars)
 
@@ -177,7 +177,7 @@ etc.) is not replicated; use `Exception` for general catches.
 
 ## Platform
 
-- **Verified**: macOS Apple Silicon (aarch64-macos)
-- **CI passes**: Linux x86_64, Linux aarch64
+- **Verified**: macOS Apple Silicon (aarch64-macos), Linux x86_64
+- **Cross-compiles**: Linux aarch64, macOS x86_64
 - **Not tested**: Windows, other architectures
 - **ARM64 JIT**: Only active on aarch64; no-op on other architectures

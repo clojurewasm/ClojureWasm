@@ -2,6 +2,22 @@
 
 This document describes the internal architecture of ClojureWasm.
 
+## Zone Architecture
+
+CW uses a strict 4-zone layered architecture. Lower layers never import
+from higher layers. Zone dependencies are enforced by CI (0 violations).
+
+```
+Layer 0: src/runtime/   — Value, collections, GC, environment
+Layer 1: src/engine/    — Reader, Analyzer, Compiler, VM, TreeWalk
+Layer 2: src/lang/      — Built-in functions, interop, lib namespaces
+Layer 3: src/app/       — CLI, REPL, deps.edn, Wasm bridge
+```
+
+When a lower layer needs to call a higher layer, the vtable pattern
+is used (`runtime/dispatch.zig`): the lower layer defines function
+pointers that the higher layer sets during initialization.
+
 ## Pipeline Overview
 
 ClojureWasm processes Clojure source code through a four-stage pipeline:
@@ -43,7 +59,7 @@ by `EvalEngine.compare()` tests.
 
 ## Reader
 
-**Files**: `src/reader/reader.zig`, `src/reader/tokenizer.zig`, `src/reader/form.zig`
+**Files**: `src/engine/reader/reader.zig`, `src/engine/reader/tokenizer.zig`, `src/engine/reader/form.zig`
 
 The reader converts source text into a Form tree (a syntax tree before
 semantic analysis). It handles:
@@ -57,7 +73,7 @@ semantic analysis). It handles:
 
 ## Analyzer
 
-**Files**: `src/analyzer/analyzer.zig`, `src/analyzer/node.zig`
+**Files**: `src/engine/analyzer/analyzer.zig`, `src/engine/analyzer/node.zig`
 
 The analyzer transforms Forms into Nodes (an executable AST). It resolves
 variable bindings, expands macros, and compiles regex patterns at analysis
@@ -71,8 +87,8 @@ Key responsibilities:
 
 ## Compiler + VM
 
-**Files**: `src/compiler/compiler.zig`, `src/compiler/opcodes.zig`,
-`src/compiler/chunk.zig`, `src/vm/vm.zig`
+**Files**: `src/engine/compiler/compiler.zig`, `src/engine/compiler/opcodes.zig`,
+`src/engine/compiler/chunk.zig`, `src/engine/vm/vm.zig`
 
 The compiler transforms Nodes into bytecode stored in Chunks. Each
 instruction is a fixed 3-byte format: u8 opcode + u16 operand.
@@ -110,7 +126,7 @@ The VM is a stack-based machine with:
 
 ### ARM64 JIT
 
-**File**: `src/vm/jit.zig`
+**File**: `src/engine/vm/jit.zig`
 
 A proof-of-concept JIT compiler for hot integer loops on ARM64.
 
@@ -122,7 +138,7 @@ A proof-of-concept JIT compiler for hot integer loops on ARM64.
 
 ## TreeWalk Interpreter
 
-**File**: `src/evaluator/tree_walk.zig`
+**File**: `src/engine/evaluator/tree_walk.zig`
 
 The TreeWalk interpreter evaluates Nodes directly without compilation.
 It maintains a local binding stack (256 slots) and closure capture.
@@ -173,7 +189,7 @@ allocations are cached (up to 4096 blocks per pool) for O(1) reuse.
 
 ## Bootstrap
 
-**File**: `src/runtime/bootstrap.zig`
+**File**: `src/engine/bootstrap.zig`
 
 ClojureWasm uses a two-phase bootstrap:
 
@@ -193,11 +209,11 @@ in ~4ms by skipping the parse/analyze/eval cycle for core.clj.
 
 ## Wasm Runtime
 
-**Files**: `src/wasm/*.zig`
+**Files**: `src/app/wasm/*.zig`, `src/runtime/wasm_types.zig`
 
-A built-in WebAssembly interpreter supporting 461 opcodes (225 core + 236
-SIMD). Clojure code can load and call Wasm modules via the `cljw.wasm`
-namespace.
+The Wasm runtime is powered by [zwasm](https://github.com/clojurewasm/zwasm),
+supporting 523 opcodes (236 core + 256 SIMD + 31 GC). Clojure code can load
+and call Wasm modules via the `cljw.wasm` namespace.
 
 Key components:
 - **Module parser**: Decodes Wasm binary format (types, functions, tables,
@@ -207,13 +223,11 @@ Key components:
 - **VM**: Stack-based interpreter with switch dispatch over predecoded IR
 - **WASI**: File I/O, clock, random, args, environ
 - **Multi-module linking**: Cross-module function imports
-- **SIMD**: v128 type with 236 SIMD opcodes
+- **SIMD**: v128 type with 256 SIMD opcodes
+- **GC proposal**: 31 GC opcodes (struct, array, ref types)
 
-Performance: The interpreter is ~10-30x slower than wasmtime (JIT compiler)
-for compute-heavy modules. This is the fundamental interpreter-vs-JIT gap —
-wasmtime compiles Wasm to native machine code via Cranelift, while ClojureWasm
-dispatches predecoded instructions one at a time. Module load time is faster
-(~4ms vs ~5ms) since no compilation step is needed.
+Performance: zwasm uses Register IR with ARM64/x86_64 JIT compilation,
+winning 14/23 benchmarks against wasmtime with a ~43x smaller binary.
 
 ## Regex Engine
 
@@ -225,7 +239,7 @@ at runtime.
 
 ## nREPL Server
 
-**Files**: `src/repl/nrepl.zig`, `src/repl/bencode.zig`
+**Files**: `src/app/repl/nrepl.zig`, `src/app/repl/bencode.zig`
 
 A CIDER-compatible nREPL server supporting 14 operations: eval, load-file,
 complete, info, lookup, stacktrace, clone, close, describe, ls-sessions,

@@ -237,7 +237,8 @@ are caught and reported as CW runtime errors:
 
 ## Wasm Engine
 
-CW uses [zwasm](https://github.com/clojurewasm/zwasm) v1.1.0 as its Wasm runtime:
-- WebAssembly 2.0 (100% spec compliance, 62K tests)
-- ARM64 and x86_64 JIT compilation
+CW uses [zwasm](https://github.com/clojurewasm/zwasm) as its Wasm runtime:
+- Full Wasm 3.0 support (all 9 proposals including GC, function references, SIMD, exception handling)
+- 523 opcodes (236 core + 256 SIMD + 31 GC)
+- Register IR with ARM64/x86_64 JIT compilation
 - WASI preview1 support

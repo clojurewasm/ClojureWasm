@@ -11,7 +11,7 @@ Clojure
   The following components are derived from upstream Clojure:
   - src/clj/ — Clojure standard library (core, set, walk, test, etc.)
     with UPSTREAM-DIFF modifications for the Zig runtime
-  - test/upstream/clojure/ — Ported test suite (39 files)
+  - test/upstream/ — Ported test suite (68 files)
 
 SCI (Small Clojure Interpreter)
   Copyright (c) Michiel Borkent. All rights reserved.
