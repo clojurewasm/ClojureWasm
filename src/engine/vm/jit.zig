@@ -16,9 +16,13 @@
 //! Register convention for JIT-compiled code:
 //!   x0  = return value (NaN-boxed)
 //!   x1  = return status (0=ok, 1=deopt)
+//!   x3..x(max_slot+3)  = loop variables (unboxed i64)
+//!   x(max_slot+4)..x15 = scratch temporaries (vstack, const unbox)
 //!   x16 = base pointer (&stack[frame.base])
-//!   x17 = temp (tag checking)
-//!   x3..x15 = loop variables (unboxed i64)
+//!   x17 = tag constant / boxing temp
+//!
+//! Only caller-saved registers (x0-x15) are used. x18 (macOS platform register)
+//! and x19-x28 (callee-saved) are never touched.
 //!
 //! Calling convention (C ABI):
 //!   Input:  x0 = stack ptr, x1 = base (slot count), x2 = constants ptr
@@ -405,6 +409,39 @@ pub const JitCompiler = struct {
         // Max 13 local slots (x3..x15).
         if (max_slot > 12) return null;
 
+        // Temporary register allocation: use caller-saved registers above the
+        // last local slot register, staying within x3..x15. This avoids
+        // clobbering x18 (macOS platform register) and x19-x28 (callee-saved).
+        //
+        // Register map:
+        //   x0: stack ptr / return value
+        //   x1: base offset / return status
+        //   x2: constants ptr
+        //   x3 .. x(max_slot+3): local slot registers
+        //   x(temp_base) .. x15: scratch temporaries (prologue, vstack, const unbox)
+        //   x16: base pointer (&stack[base])
+        //   x17: tag constant / boxing temp
+        const temp_base: u5 = @intCast(@as(u8, max_slot) + 4);
+        // Count max vstack entries needed (one per add/sub op before recur_loop).
+        var max_vsp: u8 = 0;
+        {
+            var cnt: u8 = 0;
+            for (ops[0..op_count]) |op| {
+                switch (op) {
+                    .add_locals, .add_local_const, .sub_locals, .sub_local_const => {
+                        cnt += 1;
+                        max_vsp = @max(max_vsp, cnt);
+                    },
+                    .recur_loop => cnt = 0,
+                    else => {},
+                }
+            }
+        }
+        // Need temp_base + max_vsp - 1 <= 15 (x15 is last caller-saved).
+        // Also need at least 1 temp for prologue/branch_cmp_const.
+        if (@as(u8, temp_base) + max_vsp > 16) return null;
+        if (temp_base > 15) return null;
+
         self.offset = 0;
 
         // --- Prologue: compute base pointer, load and unbox locals ---
@@ -421,18 +458,11 @@ pub const JitCompiler = struct {
             if (used_slots & (@as(u16, 1) << @intCast(slot)) == 0) continue;
             const reg: u5 = @intCast(slot + 3);
             self.emit(ldr(reg, 16, @intCast(slot * 8)));
-            self.emit(lsrImm(18, reg, 48));
-            self.emit(cmpReg(18, 17));
+            self.emit(lsrImm(temp_base, reg, 48));
+            self.emit(cmpReg(temp_base, 17));
             self.emit(0); // placeholder for B.NE deopt
             self.emit(sbfx(reg, reg, 0, 48));
         }
-
-        // Load constants referenced by *_local_const ops into x19..x28 (callee-saved).
-        // For PoC simplicity: unbox constants inline where needed.
-        // Actually, for the PoC, let's just unbox constants during prologue into
-        // a separate set of registers. We have x19-x28 as callee-saved, so we
-        // need to save/restore them. For simplicity, keep constants in memory
-        // and load them fresh in the loop body from x2 (constants pointer).
 
         // --- Main loop ---
         const loop_top = self.offset;
@@ -450,46 +480,27 @@ pub const JitCompiler = struct {
                     const ra: u5 = @intCast(@as(u8, b.slot_a) + 3);
                     const rb: u5 = @intCast(@as(u8, b.slot_b) + 3);
                     self.emit(cmpReg(ra, rb));
-                    // Branch to exit on exit_cond. Offset patched later.
-                    const exit_branch_pos = self.offset;
-                    _ = exit_branch_pos;
-                    self.emit(0); // placeholder
+                    self.emit(0); // placeholder for exit branch
                 },
                 .branch_cmp_const => |b| {
                     const ra: u5 = @intCast(@as(u8, b.slot) + 3);
                     // Load constant from memory, unbox, compare.
-                    // ldr x18, [x2, #const_idx*8]
-                    self.emit(ldr(18, 2, @intCast(@as(u16, b.const_idx) * 8)));
-                    self.emit(sbfx(18, 18, 0, 48));
-                    self.emit(cmpReg(ra, 18));
+                    self.emit(ldr(temp_base, 2, @intCast(@as(u16, b.const_idx) * 8)));
+                    self.emit(sbfx(temp_base, temp_base, 0, 48));
+                    self.emit(cmpReg(ra, temp_base));
                     self.emit(0); // placeholder for exit branch
                 },
                 .add_locals => |a| {
                     const ra: u5 = @intCast(@as(u8, a.slot_a) + 3);
                     const rb: u5 = @intCast(@as(u8, a.slot_b) + 3);
-                    // Result into x18 (temp), push to vstack.
-                    self.emit(addReg(18, ra, rb));
-                    vstack[vsp] = 18;
-                    // But we might need multiple vstack entries, so store in
-                    // different temp registers. Use x18, x19, x20...
-                    // For PoC: max 2 vstack entries (arith_loop).
-                    const dst: u5 = @intCast(18 + vsp);
-                    if (dst > 20) return null; // too many temporaries
-                    self.emit(addReg(dst, ra, rb));
-                    // Fix: we emitted twice. Remove the first emit.
-                    // Actually let me restructure.
-                    // Re-do: emit into the correct register directly.
-                    self.offset -= 8; // undo both emits
-                    const tmp: u5 = @intCast(18 + vsp);
-                    if (tmp > 20) return null;
+                    const tmp: u5 = @intCast(@as(u8, temp_base) + @as(u8, @intCast(vsp)));
                     self.emit(addReg(tmp, ra, rb));
                     vstack[vsp] = tmp;
                     vsp += 1;
                 },
                 .add_local_const => |a| {
                     const ra: u5 = @intCast(@as(u8, a.slot) + 3);
-                    const tmp: u5 = @intCast(18 + vsp);
-                    if (tmp > 20) return null;
+                    const tmp: u5 = @intCast(@as(u8, temp_base) + @as(u8, @intCast(vsp)));
                     // Load constant, unbox, add.
                     self.emit(ldr(tmp, 2, @intCast(@as(u16, a.const_idx) * 8)));
                     self.emit(sbfx(tmp, tmp, 0, 48));
@@ -500,16 +511,14 @@ pub const JitCompiler = struct {
                 .sub_locals => |a| {
                     const ra: u5 = @intCast(@as(u8, a.slot_a) + 3);
                     const rb: u5 = @intCast(@as(u8, a.slot_b) + 3);
-                    const tmp: u5 = @intCast(18 + vsp);
-                    if (tmp > 20) return null;
+                    const tmp: u5 = @intCast(@as(u8, temp_base) + @as(u8, @intCast(vsp)));
                     self.emit(subReg(tmp, ra, rb));
                     vstack[vsp] = tmp;
                     vsp += 1;
                 },
                 .sub_local_const => |a| {
                     const ra: u5 = @intCast(@as(u8, a.slot) + 3);
-                    const tmp: u5 = @intCast(18 + vsp);
-                    if (tmp > 20) return null;
+                    const tmp: u5 = @intCast(@as(u8, temp_base) + @as(u8, @intCast(vsp)));
                     self.emit(ldr(tmp, 2, @intCast(@as(u16, a.const_idx) * 8)));
                     self.emit(sbfx(tmp, tmp, 0, 48));
                     self.emit(subReg(tmp, ra, tmp));
