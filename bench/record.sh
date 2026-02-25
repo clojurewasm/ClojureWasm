@@ -25,8 +25,8 @@ REASON=""
 OVERWRITE=false
 DELETE_ID=""
 BENCH_FILTER=""
-RUNS=5
-WARMUP=2
+RUNS=10
+WARMUP=5
 
 # --- Parse arguments ---
 for arg in "$@"; do

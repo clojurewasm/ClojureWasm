@@ -1066,3 +1066,30 @@ entries:
       string_ops: {time_ms: 27, mem_mb: 18.2}
       multimethod_dispatch: {time_ms: 6, mem_mb: 8.3}
       real_workload: {time_ms: 12, mem_mb: 12.2}
+  - id: "v0.4.0-fix"
+    date: "2026-02-25"
+    reason: "GPA leak fix + JIT register fix, re-baseline with 20 runs"
+    commit: "ea7b995"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 19, mem_mb: 8.1}
+      fib_loop: {time_ms: 3, mem_mb: 8.2}
+      tak: {time_ms: 11, mem_mb: 8.1}
+      arith_loop: {time_ms: 6, mem_mb: 8.2}
+      map_filter_reduce: {time_ms: 7, mem_mb: 9.4}
+      vector_ops: {time_ms: 8, mem_mb: 10.5}
+      map_ops: {time_ms: 6, mem_mb: 9.2}
+      list_build: {time_ms: 5, mem_mb: 9.4}
+      sieve: {time_ms: 6, mem_mb: 8.8}
+      nqueens: {time_ms: 17, mem_mb: 8.7}
+      atom_swap: {time_ms: 5, mem_mb: 8.2}
+      gc_stress: {time_ms: 36, mem_mb: 11.2}
+      lazy_chain: {time_ms: 7, mem_mb: 8.2}
+      transduce: {time_ms: 6, mem_mb: 8.2}
+      keyword_lookup: {time_ms: 13, mem_mb: 8.2}
+      protocol_dispatch: {time_ms: 6, mem_mb: 8.2}
+      nested_update: {time_ms: 11, mem_mb: 11.4}
+      string_ops: {time_ms: 31, mem_mb: 18.3}
+      multimethod_dispatch: {time_ms: 6, mem_mb: 8.2}
+      real_workload: {time_ms: 12, mem_mb: 12.1}

@@ -54,8 +54,8 @@ bash bench/wasm_bench.sh --bench=fib
 | `--id=ID`       | Entry identifier (required)       |
 | `--reason=TEXT` | Reason for measurement (required) |
 | `--bench=NAME`  | Single benchmark                  |
-| `--runs=N`      | Hyperfine runs (default: 5)       |
-| `--warmup=N`    | Warmup runs (default: 2)          |
+| `--runs=N`      | Hyperfine runs (default: 10)      |
+| `--warmup=N`    | Warmup runs (default: 5)          |
 | `--overwrite`   | Replace existing entry            |
 | `--delete=ID`   | Delete entry                      |
 
@@ -188,41 +188,42 @@ bench/
   simd/                 # SIMD benchmark programs
 ```
 
-## Latest Clojure Results (2026-02-14)
+## Latest Clojure Results (2026-02-25)
 
 Apple M4 Pro, 48GB RAM, macOS 15. hyperfine 5 runs + 2 warmup.
 All times in milliseconds. These are **cold start** measurements (process
 launch to exit) — languages with heavy runtimes (JVM, V8) pay startup cost.
 
-| Benchmark            | CW   | Python | Ruby | Node | Java* | C   | Zig | TinyGo |
-|----------------------|------|--------|------|------|-------|-----|-----|--------|
-| fib_recursive        | 19   | 17.1   | 37.7 | 25.2 | 20.3  | 1.2 | 1.7 | 3.3    |
-| fib_loop             | 5    | 12.7   | 37.9 | 21.8 | 20.6  | 3.8 | 0.6 | 2.6    |
-| tak                  | 8    | 13.2   | 33.6 | 24.2 | 21.0  | 1.7 | 2.9 | 2.0    |
-| arith_loop           | 5    | 60.7   | 54.5 | 25.2 | 21.4  | 1.7 | 1.2 | 1.7    |
-| map_filter_reduce    | 6    | 13.0   | 35.9 | 23.7 | 21.4  | 1.4 | 1.4 | 2.6    |
-| vector_ops           | 6    | 13.5   | 31.6 | 22.7 | 24.1  | 1.3 | 1.4 | 2.3    |
-| map_ops              | 6    | 12.8   | 30.8 | 22.3 | 18.7  | 1.0 | 1.7 | 2.4    |
-| list_build           | 6    | 14.6   | 34.6 | 25.7 | 21.9  | 1.5 | 1.8 | 2.5    |
-| sieve                | 6    | 12.2   | 35.8 | 24.4 | 23.8  | 1.4 | 1.2 | 1.6    |
-| nqueens              | 15   | 16.2   | 51.6 | 23.5 | 20.9  | 0.5 | 0.9 | 1.9    |
-| atom_swap            | 5    | 11.7   | 36.2 | 24.0 | 20.9  | 1.4 | 2.9 | 3.5    |
-| gc_stress            | 26   | 30.5   | 41.4 | 26.7 | 30.5  | 2.6 | --- | 20.2   |
-| lazy_chain           | 7    | 15.4   | 33.0 | 26.1 | 22.2  | 2.6 | 1.6 | 2.2    |
-| transduce            | 6    | 12.6   | 36.2 | 23.5 | 23.7  | 1.3 | 1.7 | 1.9    |
-| keyword_lookup       | 11   | 19.4   | 37.0 | 27.4 | 23.9  | 1.6 | 0.0 | 4.9    |
-| protocol_dispatch    | 6    | 12.7   | 32.8 | 24.3 | 22.0  | 2.3 | 1.7 | 2.2    |
-| nested_update        | 10   | 12.6   | 32.9 | 24.0 | 23.7  | 0.2 | 1.3 | 3.1    |
-| string_ops           | 25   | 25.2   | 38.0 | 24.5 | 24.8  | 4.3 | 2.0 | 1.5    |
-| multimethod_dispatch | 6    | 13.3   | 33.8 | 24.6 | 20.0  | 2.6 | 0.9 | 2.1    |
-| real_workload        | 10   | 13.6   | 37.1 | 24.7 | 26.6  | 0.9 | 1.0 | 1.7    |
+| Benchmark            | CW   | Python | Ruby | Node | Java* | C   | Zig | TinyGo | BB   |
+|----------------------|------|--------|------|------|-------|-----|-----|--------|------|
+| fib_recursive        | 16   | 20.1   | 42.9 | 23.5 | 21.2  | 2.5 | 1.9 | 1.8    | 39.7 |
+| fib_loop             | 5    | 12.5   | 29.1 | 21.5 | 21.0  | 1.4 | 2.9 | 0.9    | 12.7 |
+| tak                  | 8    | 14.1   | 31.8 | 25.3 | 20.5  | 0.6 | 2.8 | 2.9    | 20.9 |
+| arith_loop           | 5    | 61.5   | 53.3 | 25.2 | 22.3  | 2.1 | 1.5 | 1.9    | 76.7 |
+| map_filter_reduce    | 6    | 12.9   | 35.4 | 23.8 | 20.8  | 1.9 | 1.7 | 2.4    | 18.8 |
+| vector_ops           | 7    | 14.9   | 31.5 | 22.6 | 20.5  | 0.3 | 1.7 | 2.6    | 18.1 |
+| map_ops              | 7    | 12.5   | 31.8 | 26.4 | 21.9  | 2.4 | 2.1 | 1.3    | 12.7 |
+| list_build           | 8    | 16.2   | 33.8 | 24.9 | 22.2  | 1.0 | 0.2 | 2.2    | 12.4 |
+| sieve                | 9    | 13.1   | 35.5 | 26.2 | 24.0  | 0.9 | 2.3 | 2.7    | 18.5 |
+| nqueens              | 15   | 15.9   | 50.7 | 21.1 | 19.5  | 4.6 | 2.2 | 2.5    | 24.5 |
+| atom_swap            | 8    | 12.2   | 32.5 | 25.8 | 21.5  | 2.1 | 1.6 | 2.2    | 16.6 |
+| gc_stress            | 35   | 27.3   | 39.1 | 25.6 | 32.9  | 2.4 | --- | 18.8   | 37.1 |
+| lazy_chain           | 7    | 104.0  | 33.8 | 24.9 | 21.5  | 1.3 | 1.7 | 1.9    | 16.9 |
+| transduce            | 5    | 13.2   | 34.5 | 26.6 | 21.3  | 1.8 | 1.5 | 1.0    | 16.7 |
+| keyword_lookup       | 13   | 17.3   | 36.3 | 23.7 | 22.9  | 1.3 | 2.3 | 4.6    | 21.0 |
+| protocol_dispatch    | 7    | 12.4   | 34.2 | 24.3 | 20.7  | 1.4 | 1.5 | 0.7    | ---  |
+| nested_update        | 12   | 13.6   | 29.0 | 26.5 | 22.9  | 0.8 | 2.2 | 3.8    | 18.4 |
+| string_ops           | 30   | 24.9   | 39.2 | 27.4 | 23.3  | 8.5 | 2.6 | 1.6    | 21.3 |
+| multimethod_dispatch | 8    | 14.9   | 34.5 | 23.2 | 21.1  | 0.9 | 1.8 | 2.3    | 17.7 |
+| real_workload        | 15   | 13.4   | 36.9 | 23.7 | 31.2  | 1.3 | 1.4 | 5.2    | 18.0 |
 
-CW wins vs Java: 20/20, vs Python: 18/20, vs Ruby: 20/20, vs Node: 20/20.
+CW wins vs Java: 20/20, vs Python: 17/20, vs Ruby: 20/20, vs Node: 20/20, vs BB: 18/19.
 
 \* Java times are dominated by JVM startup (~20ms). Warm JVM execution
 is significantly faster. C/Zig/TinyGo are native-compiled (AOT) baselines.
+BB = Babashka (GraalVM native-image Clojure).
 
-Note: gc_stress Zig value (462.7ms) omitted — Zig benchmark uses
+Note: gc_stress Zig value (493ms) omitted — Zig benchmark uses
 `std.AutoArrayHashMap` which is not comparable to GC-managed collections.
 
 ## Binary Size Comparison

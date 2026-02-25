@@ -1,270 +1,270 @@
 # Cross-language benchmark comparison
-# Generated: 2026-02-12T11:24:36+09:00
+# Generated: 2026-02-25T11:56:57+09:00
 
 env:
   cpu: Apple M4 Pro
   ram: 48 GB
-  os: Darwin 25.2.0
+  os: Darwin 25.3.0
   tool: hyperfine
   runs: 5
   warmup: 2
 
-date: "2026-02-12"
+date: "2026-02-25"
 
 benchmarks:
   fib_recursive:
     cold:
-      cw: 18.7
-      c: 1.2
-      zig: 1.7
-      java: 20.3
-      tgo: 3.3
-      py: 17.1
-      rb: 37.7
-      js: 25.2
-      bb: 31.4
+      cw: 16.3
+      c: 2.5
+      zig: 1.9
+      java: 21.2
+      tgo: 1.8
+      py: 20.1
+      rb: 42.9
+      js: 23.5
+      bb: 39.7
   fib_loop:
     cold:
-      cw: 7.0
-      c: 3.8
-      zig: 0.6
-      java: 20.6
-      tgo: 2.6
-      py: 12.7
-      rb: 37.9
-      js: 21.8
-      bb: 14.0
-  tak:
-    cold:
-      cw: 4.0
-      c: 1.7
+      cw: 4.5
+      c: 1.4
       zig: 2.9
       java: 21.0
-      tgo: 2.0
-      py: 13.2
-      rb: 33.6
-      js: 24.2
-      bb: 17.1
+      tgo: 0.9
+      py: 12.5
+      rb: 29.1
+      js: 21.5
+      bb: 12.7
+  tak:
+    cold:
+      cw: 8.3
+      c: 0.6
+      zig: 2.8
+      java: 20.5
+      tgo: 2.9
+      py: 14.1
+      rb: 31.8
+      js: 25.3
+      bb: 20.9
   arith_loop:
     cold:
-      cw: 5.5
-      c: 1.7
-      zig: 1.2
-      java: 21.4
-      tgo: 1.7
-      py: 60.7
-      rb: 54.5
+      cw: 5.4
+      c: 2.1
+      zig: 1.5
+      java: 22.3
+      tgo: 1.9
+      py: 61.5
+      rb: 53.3
       js: 25.2
-      bb: 76.8
+      bb: 76.7
   map_filter_reduce:
     cold:
-      cw: 7.1
-      c: 1.4
-      zig: 1.4
-      java: 21.4
-      tgo: 2.6
-      py: 13.0
-      rb: 35.9
-      js: 23.7
-      bb: 16.5
+      cw: 6.3
+      c: 1.9
+      zig: 1.7
+      java: 20.8
+      tgo: 2.4
+      py: 12.9
+      rb: 35.4
+      js: 23.8
+      bb: 18.8
   vector_ops:
+    cold:
+      cw: 6.8
+      c: 0.3
+      zig: 1.7
+      java: 20.5
+      tgo: 2.6
+      py: 14.9
+      rb: 31.5
+      js: 22.6
+      bb: 18.1
+  map_ops:
+    cold:
+      cw: 6.5
+      c: 2.4
+      zig: 2.1
+      java: 21.9
+      tgo: 1.3
+      py: 12.5
+      rb: 31.8
+      js: 26.4
+      bb: 12.7
+  list_build:
+    cold:
+      cw: 8.3
+      c: 1.0
+      zig: 0.2
+      java: 22.2
+      tgo: 2.2
+      py: 16.2
+      rb: 33.8
+      js: 24.9
+      bb: 12.4
+  sieve:
+    cold:
+      cw: 9.1
+      c: 0.9
+      zig: 2.3
+      java: 24.0
+      tgo: 2.7
+      py: 13.1
+      rb: 35.5
+      js: 26.2
+      bb: 18.5
+  nqueens:
+    cold:
+      cw: 15.1
+      c: 4.6
+      zig: 2.2
+      java: 19.5
+      tgo: 2.5
+      py: 15.9
+      rb: 50.7
+      js: 21.1
+      bb: 24.5
+  atom_swap:
+    cold:
+      cw: 7.6
+      c: 2.1
+      zig: 1.6
+      java: 21.5
+      tgo: 2.2
+      py: 12.2
+      rb: 32.5
+      js: 25.8
+      bb: 16.6
+  gc_stress:
+    cold:
+      cw: 34.6
+      c: 2.4
+      zig: 493.0
+      java: 32.9
+      tgo: 18.8
+      py: 27.3
+      rb: 39.1
+      js: 25.6
+      bb: 37.1
+  lazy_chain:
     cold:
       cw: 7.0
       c: 1.3
-      zig: 1.4
-      java: 24.1
-      tgo: 2.3
-      py: 13.5
-      rb: 31.6
-      js: 22.7
-      bb: 12.8
-  map_ops:
-    cold:
-      cw: 4.8
-      c: 1.0
       zig: 1.7
-      java: 18.7
-      tgo: 2.4
-      py: 12.8
-      rb: 30.8
-      js: 22.3
-      bb: 15.0
-  list_build:
-    cold:
-      cw: 5.1
-      c: 1.5
-      zig: 1.8
-      java: 21.9
-      tgo: 2.5
-      py: 14.6
-      rb: 34.6
-      js: 25.7
-      bb: 16.3
-  sieve:
-    cold:
-      cw: 7.2
-      c: 1.4
-      zig: 1.2
-      java: 23.8
-      tgo: 1.6
-      py: 12.2
-      rb: 35.8
-      js: 24.4
-      bb: 17.5
-  nqueens:
-    cold:
-      cw: 14.5
-      c: 0.5
-      zig: 0.9
-      java: 20.9
+      java: 21.5
       tgo: 1.9
-      py: 16.2
-      rb: 51.6
-      js: 23.5
-      bb: 24.6
-  atom_swap:
-    cold:
-      cw: 5.5
-      c: 1.4
-      zig: 2.9
-      java: 20.9
-      tgo: 3.5
-      py: 11.7
-      rb: 36.2
-      js: 24.0
-      bb: 14.6
-  gc_stress:
-    cold:
-      cw: 26.9
-      c: 2.6
-      zig: 462.7
-      java: 30.5
-      tgo: 20.2
-      py: 30.5
-      rb: 41.4
-      js: 26.7
-      bb: 40.3
-  lazy_chain:
-    cold:
-      cw: 7.5
-      c: 2.6
-      zig: 1.6
-      java: 22.2
-      tgo: 2.2
-      py: 15.4
-      rb: 33.0
-      js: 26.1
-      bb: 17.3
+      py: 104.0
+      rb: 33.8
+      js: 24.9
+      bb: 16.9
   transduce:
     cold:
-      cw: 6.3
-      c: 1.3
-      zig: 1.7
-      java: 23.7
-      tgo: 1.9
-      py: 12.6
-      rb: 36.2
-      js: 23.5
-      bb: 15.7
+      cw: 5.2
+      c: 1.8
+      zig: 1.5
+      java: 21.3
+      tgo: 1.0
+      py: 13.2
+      rb: 34.5
+      js: 26.6
+      bb: 16.7
   keyword_lookup:
     cold:
-      cw: 13.3
-      c: 1.6
-      zig: 0.0
-      java: 23.9
-      tgo: 4.9
-      py: 19.4
-      rb: 37.0
-      js: 27.4
-      bb: 20.8
+      cw: 12.8
+      c: 1.3
+      zig: 2.3
+      java: 22.9
+      tgo: 4.6
+      py: 17.3
+      rb: 36.3
+      js: 23.7
+      bb: 21.0
   protocol_dispatch:
     cold:
       cw: 6.7
-      c: 2.3
-      zig: 1.7
-      java: 22.0
-      tgo: 2.2
-      py: 12.7
-      rb: 32.8
+      c: 1.4
+      zig: 1.5
+      java: 20.7
+      tgo: 0.7
+      py: 12.4
+      rb: 34.2
       js: 24.3
   nested_update:
     cold:
-      cw: 10.4
-      c: 0.2
-      zig: 1.3
-      java: 23.7
-      tgo: 3.1
-      py: 12.6
-      rb: 32.9
-      js: 24.0
-      bb: 15.2
+      cw: 11.5
+      c: 0.8
+      zig: 2.2
+      java: 22.9
+      tgo: 3.8
+      py: 13.6
+      rb: 29.0
+      js: 26.5
+      bb: 18.4
   string_ops:
     cold:
-      cw: 25.3
-      c: 4.3
-      zig: 2.0
-      java: 24.8
-      tgo: 1.5
-      py: 25.2
-      rb: 38.0
-      js: 24.5
-      bb: 24.9
+      cw: 29.8
+      c: 8.5
+      zig: 2.6
+      java: 23.3
+      tgo: 1.6
+      py: 24.9
+      rb: 39.2
+      js: 27.4
+      bb: 21.3
   multimethod_dispatch:
     cold:
-      cw: 6.1
-      c: 2.6
-      zig: 0.9
-      java: 20.0
-      tgo: 2.1
-      py: 13.3
-      rb: 33.8
-      js: 24.6
-      bb: 33.3
+      cw: 8.2
+      c: 0.9
+      zig: 1.8
+      java: 21.1
+      tgo: 2.3
+      py: 14.9
+      rb: 34.5
+      js: 23.2
+      bb: 17.7
   real_workload:
     cold:
-      cw: 10.8
-      c: 0.9
-      zig: 1.0
-      java: 26.6
-      tgo: 1.7
-      py: 13.6
-      rb: 37.1
-      js: 24.7
-      bb: 18.7
+      cw: 14.5
+      c: 1.3
+      zig: 1.4
+      java: 31.2
+      tgo: 5.2
+      py: 13.4
+      rb: 36.9
+      js: 23.7
+      bb: 18.0
   wasm_load:
     cold:
-      cw: 15.2
+      cw: 17.0
   wasm_call:
     cold:
-      cw: 128.9
+      cw: 96.6
   wasm_memory:
     cold:
-      cw: 34.1
+      cw: 27.0
   wasm_fib:
     cold:
-      cw: 673.8
+      cw: 384.0
   wasm_sieve:
     cold:
-      cw: 16.7
+      cw: 15.8
   gc_alloc_rate:
     cold:
-      cw: 50.7
-      js: 25.8
-      bb: 45.4
+      cw: 55.5
+      js: 23.6
+      bb: 44.0
   gc_large_heap:
     cold:
-      cw: 31.4
-      js: 29.7
-      bb: 48.8
+      cw: 91.0
+      js: 29.0
+      bb: 45.8
   wasm_tgo_fib:
     cold:
-      cw: 358.5
+      cw: 273.2
   wasm_tgo_tak:
     cold:
-      cw: 1829.3
+      cw: 1464.1
   wasm_tgo_arith:
     cold:
-      cw: 3.5
+      cw: 4.9
   wasm_tgo_sieve:
     cold:
-      cw: 10.6
+      cw: 8.9

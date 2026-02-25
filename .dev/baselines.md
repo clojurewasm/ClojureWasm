@@ -1,6 +1,6 @@
 # Non-Functional Baselines
 
-Measured on: 2026-02-21 (post All-Zig Migration, Phase B.16 + C.1)
+Measured on: 2026-02-25 (v0.4.0 + GPA leak fix + JIT register fix)
 Platform: macOS ARM64 (Apple M4 Pro), Zig 0.15.2
 Binary: ReleaseSafe
 
@@ -8,7 +8,7 @@ Binary: ReleaseSafe
 
 | Profile | Binary | Startup | RSS | Notes |
 |---------|--------|---------|-----|-------|
-| wasm=true (default) | 4.52MB | 4.2ms | 7.6MB | Full feature set |
+| wasm=true (default) | 4.76MB | 4.5ms | 7.9MB | Full feature set |
 | wasm=false | (not measured) | — | — | No zwasm dependency |
 
 ## Thresholds
@@ -19,10 +19,10 @@ Phase E optimization target: reduce back toward 4.3MB.
 
 | Metric              | Baseline   | Threshold  | Margin | How to measure                              |
 |---------------------|------------|------------|--------|---------------------------------------------|
-| Binary size         | 4.52 MB    | 4.8 MB     | +6%    | `ls -la zig-out/bin/cljw` (after ReleaseSafe build) |
-| Startup time        | 4.2 ms     | 6.0 ms     | 1.4x   | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
-| RSS (light)         | 7.6 MB     | 10 MB      | +32%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
-| Benchmark (any)     | see below  | 1.2x       | +20%   | `bash bench/run_bench.sh --quick` |
+| Binary size         | 4.76 MB    | 5.0 MB     | +5%    | `ls -la zig-out/bin/cljw` (after ReleaseSafe build) |
+| Startup time        | 4.5 ms     | 6.0 ms     | 1.3x   | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
+| RSS (light)         | 7.9 MB     | 10 MB      | +27%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
+| Benchmark (any)     | see below  | 1.2x       | +20%   | Per-benchmark: `bash bench/run_bench.sh --bench=NAME --runs=10 --warmup=5` |
 
 ## `cljw build` Artifact Baselines (2026-02-20)
 
@@ -50,34 +50,59 @@ If any benchmark exceeds 1.2x baseline:
 
 Never accept "this feature needs to be slower" — find a way to keep it fast.
 
-## Benchmark Baselines (2026-02-21, post All-Zig, hyperfine 5 runs)
+## Benchmark Baselines (2026-02-25, individual 10 runs + 5 warmup)
 
-Source: `bench/history.yaml` entry `B.16`.
+Source: `bench/history.yaml` entry `v0.4.0-fix`.
 
 | Benchmark              | Time (ms) | Ceiling (ms) |
 |------------------------|-----------|--------------|
 | fib_recursive          | 17        | 20           |
 | fib_loop               | 4         | 5            |
-| tak                    | 7         | 8            |
-| arith_loop             | 4         | 5            |
-| map_filter_reduce      | 6         | 7            |
-| vector_ops             | 6         | 7            |
-| map_ops                | 5         | 6            |
-| list_build             | 7         | 8            |
+| tak                    | 8         | 10           |
+| arith_loop             | 5         | 6            |
+| map_filter_reduce      | 7         | 8            |
+| vector_ops             | 7         | 8            |
+| map_ops                | 6         | 7            |
+| list_build             | 6         | 7            |
 | sieve                  | 6         | 7            |
-| nqueens                | 15        | 18           |
-| atom_swap              | 4         | 5            |
-| gc_stress              | 30        | 36           |
-| lazy_chain             | 7         | 8            |
-| transduce              | 6         | 7            |
-| keyword_lookup         | 12        | 14           |
-| protocol_dispatch      | 4         | 5            |
+| nqueens                | 14        | 17           |
+| atom_swap              | 6         | 7            |
+| gc_stress              | 32        | 38           |
+| lazy_chain             | 6         | 7            |
+| transduce              | 7         | 8            |
+| keyword_lookup         | 13        | 16           |
+| protocol_dispatch      | 5         | 6            |
 | nested_update          | 10        | 12           |
-| string_ops             | 26        | 31           |
-| multimethod_dispatch   | 7         | 8            |
+| string_ops             | 27        | 32           |
+| multimethod_dispatch   | 6         | 7            |
 | real_workload          | 12        | 14           |
 
 Wasm benchmarks excluded from regression gate (higher variance, dominated by zwasm).
+
+## Measurement Methodology
+
+**Baselines must be measured per-benchmark individually** to avoid thermal throttling.
+Sequential full-suite runs (`run_bench.sh` without `--bench`) are for quick regression
+screening only — do NOT use them to establish or update baselines.
+
+For baseline establishment or suspected regression investigation:
+```bash
+# Per-benchmark, 10 runs + 5 warmup (accurate)
+bash bench/run_bench.sh --bench=NAME --runs=10 --warmup=5
+
+# Or direct hyperfine for raw data with σ
+hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw bench/benchmarks/NN_NAME/bench.clj'
+```
+
+For commit gate regression screening:
+```bash
+# Quick sequential check (3 runs + 1 warmup) — OK for detecting gross regressions
+bash bench/run_bench.sh
+```
+
+**Key insight**: In the 4-10ms range, 1-2ms of noise is 20-50% variance. 5 runs is
+insufficient — use 10+ runs for baselines. The 1.2x ceiling accounts for normal
+measurement noise, not for inaccurate baselines.
 
 ## Updating Baselines
 

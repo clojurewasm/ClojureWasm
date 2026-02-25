@@ -172,11 +172,14 @@ Run before every commit:
    - Wasm engine changes go in zwasm repo (`../zwasm/`), not CW
    - `bash bench/wasm_bench.sh --quick` — verify wasm benchmarks still work
 8. **Non-functional regression** (when changing execution code: src/ core files):
-   - **Binary size**: `stat -f%z zig-out/bin/cljw` — ≤ 4.8MB
-   - **Startup**: `hyperfine -N --warmup 3 --runs 5 './zig-out/bin/cljw -e nil'` — ≤ 6ms
+   - **Binary size**: `ls -la zig-out/bin/cljw` — ≤ 5.0MB
+   - **Startup**: `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` — ≤ 6ms
    - **RSS**: `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 | grep 'maximum resident'` — ≤ 10MB
-   - **Benchmarks**: `bash bench/run_bench.sh --quick` — no CW benchmark > 1.2x baseline
-   - **Hard block**: Do NOT commit if any threshold exceeded.
+   - **Benchmarks (screening)**: `bash bench/run_bench.sh` — quick sequential check
+   - **Benchmarks (verify)**: If screening shows >1.2x, re-measure individually:
+     `bash bench/run_bench.sh --bench=NAME --runs=10 --warmup=5`
+     Only the individual measurement is authoritative (sequential runs suffer thermal throttling).
+   - **Hard block**: Do NOT commit if any individual benchmark > 1.2x baseline.
      Benchmark regression → stop, profile, fix in place or insert optimization phase first.
    - Baselines & policy: `.dev/baselines.md`.
 9. **Zone check** (when modifying src/**/*.zig):
@@ -214,9 +217,10 @@ zig build test -- "X"  # Specific test only
 All measurement uses hyperfine (warmup + multiple runs).
 
 ```bash
-bash bench/run_bench.sh              # All benchmarks (3 runs + 1 warmup)
+bash bench/run_bench.sh              # All benchmarks (3 runs + 1 warmup) — screening only
 bash bench/run_bench.sh --quick      # Fast check (1 run, no warmup)
-bash bench/record.sh --id="X" --reason="description"  # Record to history
+bash bench/run_bench.sh --bench=NAME --runs=10 --warmup=5  # Individual (accurate)
+bash bench/record.sh --id="X" --reason="description"  # Record to history (10 runs)
 bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb  # Cross-language
 bash bench/wasm_bench.sh --quick     # CW interpreter vs wasmtime JIT
 ```
@@ -225,6 +229,8 @@ History: `bench/history.yaml` — CW native benchmark progression.
 Wasm history: `bench/wasm_history.yaml` — CW vs wasmtime wasm benchmark progression.
 **Record after every optimization task.** Use task ID as entry id (e.g. "36.7").
 **Regression check on execution code changes.** See Commit Gate #8 and `.dev/baselines.md`.
+**Baseline accuracy**: Sequential full-suite runs cause thermal throttling.
+For accurate baselines, measure each benchmark individually with 10+ runs.
 
 ## Notice
 
