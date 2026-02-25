@@ -256,17 +256,19 @@ fn registerProtocols(allocator: Allocator, env: *Env) anyerror!void {
 
 fn makeDefaultStreamsImpl(allocator: Allocator) !Value {
     // Build a PersistentArrayMap directly (no callCore at registration time)
+    // Use protocol arena for permanent bootstrap allocations.
+    const alloc = clojure_core_protocols.getArenaAllocator(allocator);
     const runtime_collections = @import("../../runtime/collections.zig");
-    const entries = try allocator.alloc(Value, 8);
-    entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "make-reader" });
+    const entries = try alloc.alloc(Value, 8);
+    entries[0] = Value.initKeyword(alloc, .{ .ns = null, .name = "make-reader" });
     entries[1] = Value.initBuiltinFn(&defaultMakeReaderFn);
-    entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "make-writer" });
+    entries[2] = Value.initKeyword(alloc, .{ .ns = null, .name = "make-writer" });
     entries[3] = Value.initBuiltinFn(&defaultMakeWriterFn);
-    entries[4] = Value.initKeyword(allocator, .{ .ns = null, .name = "make-input-stream" });
+    entries[4] = Value.initKeyword(alloc, .{ .ns = null, .name = "make-input-stream" });
     entries[5] = Value.initBuiltinFn(&defaultMakeInputStreamFn);
-    entries[6] = Value.initKeyword(allocator, .{ .ns = null, .name = "make-output-stream" });
+    entries[6] = Value.initKeyword(alloc, .{ .ns = null, .name = "make-output-stream" });
     entries[7] = Value.initBuiltinFn(&defaultMakeOutputStreamFn);
-    const map = try allocator.create(runtime_collections.PersistentArrayMap);
+    const map = try alloc.create(runtime_collections.PersistentArrayMap);
     map.* = .{ .entries = entries };
     return Value.initMap(map);
 }

@@ -26,6 +26,31 @@ const predicates = @import("../builtins/predicates.zig");
 const registry = @import("../registry.zig");
 const NamespaceDef = registry.NamespaceDef;
 
+// Arena allocator for protocol registration data.
+// Protocol data (Protocol, PersistentArrayMap, HeapString, ProtocolFn, Value arrays)
+// lives for the entire process lifetime. Using an arena allows bulk deallocation
+// at shutdown, preventing GPA leak reports without individual tracking.
+var protocol_arena: ?std.heap.ArenaAllocator = null;
+
+/// Initialize the protocol arena. Must be called before any protocol registration.
+pub fn initArena(backing: Allocator) void {
+    protocol_arena = std.heap.ArenaAllocator.init(backing);
+}
+
+/// Free all protocol registration data. Called at shutdown.
+pub fn deinitArena() void {
+    if (protocol_arena) |*arena| {
+        arena.deinit();
+        protocol_arena = null;
+    }
+}
+
+/// Get the protocol arena allocator. Falls back to the given allocator if arena not initialized.
+pub fn getArenaAllocator(fallback: Allocator) Allocator {
+    if (protocol_arena) |*arena| return arena.allocator();
+    return fallback;
+}
+
 // ============================================================
 // Protocol method implementations (extend-type functions)
 // ============================================================
@@ -151,8 +176,9 @@ pub fn createProtocol(
     sigs: []const MethodSig,
     extend_via_meta: bool,
 ) !*Protocol {
-    const protocol = try allocator.create(Protocol);
-    const empty_map = try allocator.create(PersistentArrayMap);
+    const alloc = getArenaAllocator(allocator);
+    const protocol = try alloc.create(Protocol);
+    const empty_map = try alloc.create(PersistentArrayMap);
     empty_map.* = .{ .entries = &.{} };
     protocol.* = .{
         .name = name,
@@ -170,7 +196,7 @@ pub fn createProtocol(
     var i: usize = 0;
     while (i < sigs.len) {
         const method_name = sigs[i].name;
-        const pf = try allocator.create(ProtocolFn);
+        const pf = try alloc.create(ProtocolFn);
         pf.* = .{
             .protocol = protocol,
             .method_name = method_name,
@@ -195,27 +221,29 @@ pub fn extendType(
     type_key: []const u8,
     methods: []const struct { name: []const u8, func: *const fn (Allocator, []const Value) anyerror!Value },
 ) !void {
+    const alloc = getArenaAllocator(allocator);
     // Build method map: [name1, fn1, name2, fn2, ...]
-    const method_entries = try allocator.alloc(Value, methods.len * 2);
+    const method_entries = try alloc.alloc(Value, methods.len * 2);
     for (methods, 0..) |m, i| {
-        method_entries[i * 2] = Value.initString(allocator, m.name);
+        method_entries[i * 2] = Value.initString(alloc, m.name);
         method_entries[i * 2 + 1] = Value.initBuiltinFn(m.func);
     }
-    const method_map = try allocator.create(PersistentArrayMap);
+    const method_map = try alloc.create(PersistentArrayMap);
     method_map.* = .{ .entries = method_entries };
 
     // Add to impls: grow the impls map
     const old_impls = protocol.impls;
     const old_entries = old_impls.entries;
-    const new_entries = try allocator.alloc(Value, old_entries.len + 2);
+    const new_entries = try alloc.alloc(Value, old_entries.len + 2);
     @memcpy(new_entries[0..old_entries.len], old_entries);
-    new_entries[old_entries.len] = Value.initString(allocator, type_key);
+    new_entries[old_entries.len] = Value.initString(alloc, type_key);
     new_entries[old_entries.len + 1] = Value.initMap(method_map);
-    const new_impls = try allocator.create(PersistentArrayMap);
+    const new_impls = try alloc.create(PersistentArrayMap);
     new_impls.* = .{ .entries = new_entries };
-    // Free old impls (entries Values are copied by value, still referenced from new_entries)
-    if (old_entries.len > 0) allocator.free(old_entries);
-    allocator.destroy(old_impls);
+    // With arena allocator, individual frees are no-ops (arena frees everything at once).
+    // Keep the free calls for correctness when used without arena.
+    if (old_entries.len > 0) alloc.free(old_entries);
+    alloc.destroy(old_impls);
     protocol.impls = new_impls;
     protocol.generation +%= 1;
 }

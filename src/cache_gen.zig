@@ -21,6 +21,7 @@ const registry = @import("lang/registry.zig");
 const bootstrap = @import("engine/bootstrap.zig");
 const gc_mod = @import("runtime/gc.zig");
 const keyword_intern = @import("runtime/keyword_intern.zig");
+const clojure_core_protocols = @import("lang/lib/clojure_core_protocols.zig");
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
@@ -42,6 +43,9 @@ pub fn main() !void {
     // Initialize subsystems
     keyword_intern.init(allocator);
     defer keyword_intern.deinit();
+
+    clojure_core_protocols.initArena(allocator);
+    defer clojure_core_protocols.deinitArena();
 
     // Bootstrap from source
     var env = Env.init(allocator);

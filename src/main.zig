@@ -23,6 +23,7 @@ const lifecycle = @import("runtime/lifecycle.zig");
 const runner = @import("app/runner.zig");
 const cli = @import("app/cli.zig");
 const test_runner = @import("app/test_runner.zig");
+const clojure_core_protocols = @import("lang/lib/clojure_core_protocols.zig");
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
@@ -44,6 +45,10 @@ pub fn main() !void {
     // Initialize keyword intern table (uses GPA for permanent keyword strings)
     keyword_intern.init(allocator);
     defer keyword_intern.deinit();
+
+    // Initialize protocol arena (for protocol registration data)
+    clojure_core_protocols.initArena(allocator);
+    defer clojure_core_protocols.deinitArena();
 
     // Initialize load path infrastructure for require/load
     ns_ops.init(allocator);

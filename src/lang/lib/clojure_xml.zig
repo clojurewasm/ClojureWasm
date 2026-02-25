@@ -375,14 +375,17 @@ fn emitFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Post-registration: bind tag/attrs/content to their keyword values.
 fn postRegisterImpl(allocator: Allocator, ns: anytype) void {
     // tag = :tag, attrs = :attrs, content = :content
+    // Use protocol arena for permanent bootstrap allocations.
+    const clojure_core_protocols = @import("clojure_core_protocols.zig");
+    const alloc = clojure_core_protocols.getArenaAllocator(allocator);
     if (ns.mappings.get("tag")) |v| {
-        v.bindRoot(kw(allocator, "tag"));
+        v.bindRoot(kw(alloc, "tag"));
     }
     if (ns.mappings.get("attrs")) |v| {
-        v.bindRoot(kw(allocator, "attrs"));
+        v.bindRoot(kw(alloc, "attrs"));
     }
     if (ns.mappings.get("content")) |v| {
-        v.bindRoot(kw(allocator, "content"));
+        v.bindRoot(kw(alloc, "content"));
     }
 }
 
