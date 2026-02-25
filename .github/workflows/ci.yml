@@ -39,6 +39,10 @@ jobs:
       - name: Benchmark smoke test
         run: |
           echo "Running benchmark smoke tests (10s timeout per benchmark)..."
+          # macOS doesn't have GNU timeout; use perl-based fallback
+          run_with_timeout() {
+            perl -e 'alarm 10; exec @ARGV' -- "$@"
+          }
           PASS=0
           FAIL=0
           for dir in bench/benchmarks/*/; do
@@ -47,7 +51,7 @@ jobs:
             # Skip wasm benchmarks (require wasm test files)
             case "$name" in wasm_*) continue ;; esac
             printf "  %-24s " "$name"
-            if timeout 10 ./zig-out/bin/cljw "$dir/bench.clj" >/dev/null 2>&1; then
+            if run_with_timeout ./zig-out/bin/cljw "$dir/bench.clj" >/dev/null 2>&1; then
               echo "OK"
               PASS=$((PASS + 1))
             else
