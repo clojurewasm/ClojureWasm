@@ -13,7 +13,7 @@ Plan: `.dev/references/plan_ja.md`.
 ```
 Layer 0: src/runtime/    -- Value (NaN boxing), Collections, GC, Env, Dispatch
                             ~160 kernel functions. NO upward imports.
-Layer 1: src/eval/       -- Reader, Analyzer, Compiler, VM, TreeWalk
+Layer 1: src/eval/       -- Reader, Analyzer, Compiler, VM, TreeWalk, Evaluator
                             imports runtime/ only
 Layer 2: src/lang/       -- Primitives (rt/ NS), Interop, Bootstrap, NS Loader
                             imports runtime/ + eval/

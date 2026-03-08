@@ -11,7 +11,7 @@ paths:
 ```
 Layer 0: src/runtime/    -- Value, Collections, GC, Env, Dispatch, ExtensionDef
                             NO upward imports
-Layer 1: src/eval/       -- Reader, Analyzer, Compiler, VM, TreeWalk, EvalEngine
+Layer 1: src/eval/       -- Reader, Analyzer, Compiler, VM, TreeWalk, Evaluator
                             imports runtime/ only
 Layer 2: src/lang/       -- Primitives, Interop, Bootstrap, NS Loader
                             imports runtime/ + eval/

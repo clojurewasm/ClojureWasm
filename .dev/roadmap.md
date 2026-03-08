@@ -49,7 +49,7 @@ CW lesson: recording was forgotten → regressions went unnoticed. Single `bench
 | 5     | Collections (HAMT, Vector) + Mark-Sweep GC    | PENDING     |
 | 6     | LazySeq + concat + higher-order foundation    | PENDING     |
 | 7     | map/filter/reduce/range + Transducers base    | PENDING     |
-| 8     | EvalEngine.compare() + dual backend verify    | PENDING     |
+| 8     | Evaluator.compare() + dual backend verify      | PENDING     |
 | 9     | Protocols + Multimethods                      | PENDING     |
 | 10    | Namespaces + require + standard libraries     | PENDING     |
 | 11    | clojure.test framework                        | PENDING     |
@@ -97,7 +97,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - Error formatting (ANSI, no I/O dependency)
   - All threadlocal: last_error, call_stack, msg_buf
   - Plan ref: plan_ja.md lines 361-387
-- [ ] **1.4** src/runtime/gc.zig — Arena GC interface
+- [ ] **1.4** src/runtime/gc/arena.zig — Arena GC interface
   - Arena allocator for heap objects
   - gc_mutex: std.Thread.Mutex = .{} (Day 1, unused until threads)
   - suppress_count: u32 (for macro expansion GC suppression)
@@ -243,6 +243,11 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
   - Mark Phase 2 rt/ primitives as `done`
   - Script: .dev/scripts/generate_vars_yaml.clj (CW ref: same path)
   - CW ref: ~/Documents/MyProducts/ClojureWasm/.dev/status/vars.yaml
+- [ ] **2.20** scripts/zone_check.sh — Zone dependency checker
+  - Verify no upward imports (runtime/ ← eval/ etc.)
+  - Used as commit gate (plan_ja.md §11.2)
+- [ ] **2.21** scripts/coverage.sh — vars.yaml coverage report
+  - Reports done/wip/todo/skip counts and percentages
 
 ---
 
@@ -365,18 +370,18 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
 
 ---
 
-## Phase 8: EvalEngine.compare() + dual backend verify
+## Phase 8: Evaluator.compare() + dual backend verify
 
-> Plan ref: `.dev/references/plan_ja.md` §4.7 (EvalEngine)
+> Plan ref: `.dev/references/plan_ja.md` §4.7 (Evaluator)
 
 **Goal**: Verify VM and TreeWalk produce identical results for all tests.
 
-**Exit criteria**: `EvalEngine.compare()` runs all tests. Zero divergences.
+**Exit criteria**: `Evaluator.compare()` runs all tests. Zero divergences.
 
 ### Tasks
 
 - [ ] **8.1** src/eval/backend/evaluator.zig — compare(form): run on both backends, assert equal. Plan ref: plan_ja.md lines 537-548
-- [ ] **8.2** Add EvalEngine test mode — flag to select: vm-only, treewalk-only, compare
+- [ ] **8.2** Add Evaluator test mode — flag to select: vm-only, treewalk-only, compare
 - [ ] **8.3** Fix any divergences found — VM/TreeWalk differences are bugs
 - [ ] **8.4** Benchmark infrastructure setup
   - bench/bench.sh — single entry point (run / record / compare subcommands)
@@ -390,7 +395,7 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
 - [ ] **8.5** Record baseline — `bash bench/bench.sh record --id="8.0" --reason="Phase 8 baseline"`
   - First official benchmark snapshot. All future optimizations measured against this
 - [ ] **8.6** vars.yaml update — Mark Phase 5-8 vars as `done`
-- [ ] **8.7** 🔒 x86_64 Gate — EvalEngine.compare() + benchmarks on OrbStack Ubuntu
+- [ ] **8.7** 🔒 x86_64 Gate — Evaluator.compare() + benchmarks on OrbStack Ubuntu
   - Full dual-backend verification on x86_64
   - Run benchmarks on x86_64 too — record as separate column in history.yaml
   - This is the last gate before high-level phases — all low-level code must work
@@ -600,19 +605,27 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
 
 ---
 
-## Phase 18: ext: C FFI
+## Phase 18: Extension System + C FFI
 
 > Plan ref: `.dev/references/plan_ja.md` §7 (ext system)
 
-**Goal**: Call C functions from Clojure. Expose Clojure functions to C.
+**Goal**: Extension infrastructure + default math extension + C FFI.
 
-**Exit criteria**: `(cffi/call "strlen" :long [:string] "hello")` => `5`.
+**Exit criteria**: `(math/sin 1.0)` works. `(cffi/call "strlen" :long [:string] "hello")` => `5`.
 
 ### Tasks
 
-- [ ] **18.1** ext/c_ffi/ext.zig — ExtensionDef
-- [ ] **18.2** ext/c_ffi/exports.zig — C ABI export
-- [ ] **18.3** build.zig: -Dc-ffi=true flag
+- [ ] **18.1** src/runtime/extension.zig — ExtensionDef interface
+  - Registration API for extensions. Core code never imports ext/
+  - Plan ref: plan_ja.md §7.1
+- [ ] **18.2** ext/math/ext.zig + ext/math/builtins.zig — Default math extension
+  - 45 math functions (sin, cos, tan, abs, ceil, floor, etc.)
+  - Default-enabled (`-Dmath=false` to disable)
+  - Plan ref: plan_ja.md §7.2
+- [ ] **18.3** build.zig: Extension comptime flags (-Dmath, -Dc-ffi, -Dwasm)
+- [ ] **18.4** ext/c_ffi/ext.zig — ExtensionDef
+- [ ] **18.5** ext/c_ffi/exports.zig — C ABI export
+- [ ] **18.6** build.zig: -Dc-ffi=true flag
 
 ---
 

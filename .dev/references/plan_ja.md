@@ -761,7 +761,7 @@ Phase  4: VM + Compiler + opcode.zig
 Phase  5: Collections (HAMT, Vector, ArrayMap) + Mark-Sweep GC 導入
 Phase  6: LazySeq + concat + core.clj higher-order 基盤
 Phase  7: map/filter/reduce/range/iterate + Transducers 基盤
-Phase  8: EvalEngine.compare() + デュアルバックエンド検証
+Phase  8: Evaluator.compare() + デュアルバックエンド検証
 Phase  9: Protocols + Multimethods + extend-type + reify
 Phase 10: Namespaces + require + ns マクロ + clojure.string/set/walk
 Phase 11: clojure.test + テストフレームワーク
