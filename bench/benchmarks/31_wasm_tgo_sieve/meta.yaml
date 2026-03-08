@@ -1,4 +1,0 @@
-name: "Wasm TinyGo sieve"
-category: wasm
-expected_output: "6542"
-description: "sieve(65536) x 100 via TinyGo-compiled .wasm — memory-heavy workload"

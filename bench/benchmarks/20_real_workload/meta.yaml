@@ -1,4 +1,0 @@
-name: "Real Workload"
-category: composite
-expected_output: "33336666"
-description: "Data transform pipeline: build records, filter active, map value, reduce — composite benchmark"

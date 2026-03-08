@@ -1,4 +1,0 @@
-name: "Wasm fibonacci"
-category: wasm
-expected_output: "6765"
-description: "fib(20) via Wasm vs native Clojure — measures compute-in-wasm overhead"
