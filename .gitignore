@@ -1,0 +1,16 @@
+# Zig
+.zig-cache/
+zig-out/
+
+# Clojure
+.clj-kondo/.cache/
+.lsp/.cache/
+
+# Claude Code
+.claude/settings.local.json
+
+# Private notes
+private/
+
+# macOS
+.DS_Store
