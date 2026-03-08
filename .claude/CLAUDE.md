@@ -232,6 +232,15 @@ Wasm history: `bench/wasm_history.yaml` — CW vs wasmtime wasm benchmark progre
 **Baseline accuracy**: Sequential full-suite runs cause thermal throttling.
 For accurate baselines, measure each benchmark individually with 10+ runs.
 
+## Cross-Platform Testing (Ubuntu x86_64)
+
+Test on Ubuntu x86_64 via OrbStack before releases. See:
+- Setup: `.dev/references/setup-orbstack.md` (shared VM with zwasm)
+- Commands: `.dev/references/ubuntu-testing-guide.md`
+
+**Critical**: `zig build test --seed 0` required on Rosetta (crashes without it).
+3 float-format test failures are known/accepted platform differences.
+
 ## Notice
 
 **Shell escaping**: For `swap!`, `nil?` etc., write a temp .clj file instead of `-e`.
@@ -302,3 +311,5 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Known issues      | `.dev/known-issues.md`               | Bug/workaround/debt tracking (P0-P3)       |
 | Baselines         | `.dev/baselines.md`                  | Non-functional regression thresholds       |
 | Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
+| Ubuntu testing    | `.dev/references/ubuntu-testing-guide.md` | OrbStack VM test commands + --seed 0 |
+| OrbStack setup    | `.dev/references/setup-orbstack.md`  | VM creation (shared with zwasm)            |

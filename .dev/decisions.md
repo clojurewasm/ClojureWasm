@@ -912,3 +912,29 @@ refactoring tractable.
 **Rules**: `.claude/rules/zone-deps.md` (auto-loads on src/ edits).
 
 **Result targets**: 0 upward imports, bootstrap.zig < 200 LOC, main.zig < 200 LOC.
+
+## D110: zwasm Allocator Injection — Eliminate Dual-GC
+
+**Date**: 2026-03-08
+**Status**: Future (depends on zwasm D128)
+**Decision**: When zwasm implements allocator injection (D128), CW will pass its
+own GC-managed allocator to zwasm instead of letting zwasm use an internal Arena.
+This eliminates the dual-GC lifecycle mismatch.
+
+**Current problem**: CW GC (Mark-Sweep) manages wasm Value objects (wasm_module,
+wasm_fn, wasm_instance). When CW GC sweeps these, it frees the CW-side wrapper,
+but zwasm's internal Arena retains the underlying memory. The Arena only frees
+on full deinit (process exit), so long-running CW processes that load/unload
+Wasm modules will leak zwasm-side memory.
+
+**Target state**: CW passes its allocator to `zwasm.Engine.init(cw_allocator)`.
+zwasm allocations become CW GC-visible. When CW GC sweeps a wasm Value, the
+underlying zwasm memory is also reclaimable.
+
+**Scope**: Only zwasm's internal bookkeeping (module metadata, function tables,
+instance state). Wasm linear memory remains separately managed per spec.
+
+**Migration**: Minimal CW changes — update `wasm_types.zig` to pass allocator
+at Engine construction. Requires zwasm D128 to be implemented first.
+
+Related: zwasm D128, cw-new D13.
