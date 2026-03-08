@@ -517,6 +517,8 @@ pub fn bootstrapFromCache(gc_alloc: Allocator, env: *Env, gc: ?*gc_mod.MarkSweep
     if (gc) |g| {
         g.threshold = @max(g.bytes_allocated * 2, g.threshold);
         env.gc = @ptrCast(g);
+        // Register GC reference for Wasm module finalizer support
+        @import("../runtime/wasm_types.zig").setGc(g);
     }
 }
 

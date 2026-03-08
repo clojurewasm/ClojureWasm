@@ -76,6 +76,7 @@ pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
     var env = Env.init(gpa_allocator);
     defer env.deinit();
     env.gc = @ptrCast(&gc);
+    @import("../../runtime/wasm_types.zig").setGc(&gc);
 
     registry.registerBuiltins(&env) catch {
         std.debug.print("Error: failed to register builtins\n", .{});

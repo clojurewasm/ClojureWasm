@@ -172,6 +172,11 @@ pub const MarkSweepGc = struct {
     const MAX_FREE_POOLS = 16; // Up to 16 distinct (size, alignment) pairs
     const MAX_FREE_PER_POOL = 4096; // Max cached blocks per pool
 
+    pub const FinalizerEntry = struct {
+        marked: bool = false,
+        deinit_fn: *const fn (usize) void,
+    };
+
     pub const AllocInfo = struct {
         len: usize,
         alignment: Alignment,
@@ -213,6 +218,16 @@ pub const MarkSweepGc = struct {
     free_pools: [MAX_FREE_POOLS]FreePool = [_]FreePool{.{}} ** MAX_FREE_POOLS,
     free_pool_count: u8 = 0,
 
+    // --- Finalizer registry for non-GC-managed objects (e.g. WasmModule) ---
+    //
+    // Objects allocated outside the GC (via wasm_alloc, page_allocator, etc.)
+    // cannot be tracked by the normal mark-sweep allocations map. To ensure
+    // their deinit() is called when no GC roots reference them, we maintain
+    // a separate finalizer registry. Each entry stores a pointer and a
+    // deinit callback. During traceValue, live finalizable objects are marked
+    // via markFinalizer(). After sweep, unmarked finalizers are invoked.
+    finalizers: std.AutoArrayHashMapUnmanaged(usize, FinalizerEntry) = .empty,
+
     // --- Allocation profiling (37.1) ---
     alloc_buckets: if (profile_alloc) [MAX_ALLOC_BUCKETS]AllocBucket else void =
         if (profile_alloc) .{AllocBucket{ .size = 0, .count = 0, .total_bytes = 0 }} ** MAX_ALLOC_BUCKETS else {},
@@ -239,6 +254,11 @@ pub const MarkSweepGc = struct {
     }
 
     pub fn deinit(self: *MarkSweepGc) void {
+        // Run finalizers for all remaining finalizable objects
+        for (self.finalizers.keys(), self.finalizers.values()) |addr, entry| {
+            entry.deinit_fn(addr);
+        }
+        self.finalizers.deinit(self.backing);
         // Free all tracked allocations through backing
         const keys = self.allocations.keys();
         const vals = self.allocations.values();
@@ -294,6 +314,41 @@ pub const MarkSweepGc = struct {
     pub fn markSlice(self: *MarkSweepGc, slice: anytype) void {
         if (slice.len > 0) {
             self.markPtr(slice.ptr);
+        }
+    }
+
+    /// Register a non-GC-managed object for finalizer-based cleanup.
+    /// When the object is no longer reachable (not marked during trace),
+    /// deinit_fn is called with the pointer address, then the entry is removed.
+    pub fn registerFinalizer(self: *MarkSweepGc, ptr: anytype, deinit_fn: *const fn (usize) void) void {
+        const addr = @intFromPtr(ptr);
+        self.finalizers.put(self.backing, addr, .{ .deinit_fn = deinit_fn }) catch {};
+    }
+
+    /// Mark a finalizable object as live during the trace phase.
+    pub fn markFinalizer(self: *MarkSweepGc, ptr: anytype) void {
+        const addr = @intFromPtr(ptr);
+        if (self.finalizers.getPtr(addr)) |entry| {
+            entry.marked = true;
+        }
+    }
+
+    /// Sweep finalizers: invoke deinit on unmarked entries, reset marks on live ones.
+    fn sweepFinalizers(self: *MarkSweepGc) void {
+        var i: usize = 0;
+        while (i < self.finalizers.count()) {
+            const vals = self.finalizers.values();
+            if (!vals[i].marked) {
+                const keys = self.finalizers.keys();
+                const addr = keys[i];
+                const entry = vals[i];
+                self.finalizers.swapRemoveAt(i);
+                entry.deinit_fn(addr);
+                // Don't increment — swapRemove moved last element to i
+            } else {
+                vals[i].marked = false;
+                i += 1;
+            }
         }
     }
 
@@ -493,6 +548,7 @@ pub const MarkSweepGc = struct {
         defer self.gc_mutex.unlock();
         traceRoots(self, roots);
         self.sweep();
+        self.sweepFinalizers();
     }
 
     fn gcShouldCollect(ptr: *anyopaque) bool {
@@ -519,6 +575,7 @@ pub const MarkSweepGc = struct {
         if (self.bytes_allocated < self.threshold) return;
         traceRoots(self, roots);
         self.sweep();
+        self.sweepFinalizers();
         // Grow threshold if live set is still above it (avoid re-triggering every cycle)
         if (self.bytes_allocated >= self.threshold) {
             self.threshold = self.bytes_allocated * 2;
@@ -1032,9 +1089,10 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
             }
         },
 
-        // Wasm InterOp — opaque native objects, not GC-traced
-        .wasm_module => gc.markPtr(val.asWasmModule()),
-        .wasm_fn => gc.markPtr(val.asWasmFn()),
+        // Wasm InterOp — WasmModule allocated via wasm_alloc (non-GC), tracked by finalizer registry.
+        // WasmFn is a view into WasmModule — keep module alive when fn is reachable.
+        .wasm_module => gc.markFinalizer(val.asWasmModule()),
+        .wasm_fn => gc.markFinalizer(val.asWasmFn().module),
 
         .matcher => {
             const m = val.asMatcher();

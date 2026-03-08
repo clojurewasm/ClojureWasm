@@ -25,6 +25,16 @@ const zwasm = if (enable_wasm) @import("zwasm") else struct {};
 /// Without this, GC sweeps the ~1MB zwasm VM causing segfaults.
 const wasm_alloc = if (enable_wasm) std.heap.smp_allocator else std.heap.page_allocator;
 
+const gc_mod = @import("gc.zig");
+
+/// GC reference for finalizer registration. Set by main.zig after bootstrap.
+var gc_ref: ?*gc_mod.MarkSweepGc = null;
+
+/// Set the GC reference so WasmModule can register finalizers.
+pub fn setGc(gc: *gc_mod.MarkSweepGc) void {
+    gc_ref = gc;
+}
+
 // ============================================================
 // CW-specific types
 // ============================================================
@@ -117,7 +127,16 @@ pub const WasmModule = struct {
         self.export_fns = buildExportInfo(wasm_alloc, inner) catch &[_]ExportInfo{};
         self.cached_fns = buildCachedFns(wasm_alloc, self) catch &[_]WasmFn{};
         self.wit_funcs = &[_]wit_parser.WitFunc{};
+        // Register GC finalizer so deinit() is called when no roots reference this module
+        if (gc_ref) |gc| {
+            gc.registerFinalizer(self, wasmModuleFinalizer);
+        }
         return self;
+    }
+
+    fn wasmModuleFinalizer(addr: usize) void {
+        const self: *WasmModule = @ptrFromInt(addr);
+        self.deinit();
     }
 
     pub fn deinit(self: *WasmModule) void {
