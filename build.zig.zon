@@ -1,0 +1,12 @@
+.{
+    .name = .clojure_wasm,
+    .version = "0.0.1",
+    .dependencies = .{},
+    .fingerprint = 0x62a7be48cb2f1f98,
+    .minimum_zig_version = "0.15.2",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

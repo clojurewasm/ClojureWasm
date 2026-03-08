@@ -29,11 +29,11 @@ echo 'export PATH="/opt/zig:$PATH"' >> ~/.bashrc
 
 ```bash
 # Option 1: Direct (uses Mac filesystem — slower)
-orb run -m my-ubuntu-amd64 bash -lc "cd /Users/shota.508/Documents/MyProducts/ClojureWasm-new && zig build test"
+orb run -m my-ubuntu-amd64 bash -lc "cd ${HOME}/Documents/MyProducts/ClojureWasm-new && zig build test"
 
 # Option 2: rsync to VM-local storage (faster for large builds)
 orb run -m my-ubuntu-amd64 bash -lc "
-  rsync -a --delete /Users/shota.508/Documents/MyProducts/ClojureWasm-new/ ~/ClojureWasm-new/ --exclude .zig-cache --exclude zig-out
+  rsync -a --delete ${HOME}/Documents/MyProducts/ClojureWasm-new/ ~/ClojureWasm-new/ --exclude .zig-cache --exclude zig-out
   cd ~/ClojureWasm-new && zig build test
 "
 ```

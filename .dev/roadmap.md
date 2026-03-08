@@ -42,7 +42,7 @@ CW lesson: recording was forgotten → regressions went unnoticed. Single `bench
 
 | Phase | Name                                          | Status      |
 |-------|-----------------------------------------------|-------------|
-| 1     | Value + Reader + Error + Arena GC             | PENDING     |
+| 1     | Value + Reader + Error + Arena GC             | IN-PROGRESS |
 | 2     | TreeWalk + Analyzer + Bootstrap Stage 0       | PENDING     |
 | 3     | defn + Bootstrap Stage 1-3 + ExceptionInfo    | PENDING     |
 | 4     | VM + Compiler + Opcodes                       | PENDING     |
@@ -77,7 +77,7 @@ Error infrastructure and Arena GC are built in from Day 1.
 
 ### Tasks
 
-- [ ] **1.1** build.zig + build.zig.zon + main.zig skeleton + flake.nix
+- [x] **1.1** build.zig + build.zig.zon + main.zig skeleton + flake.nix
   - `zig build` / `zig build test` / `zig build run` must work
   - main.zig prints "ClojureWasm" and exits
   - flake.nix: Zig 0.15.2, hyperfine, yq-go (benchmark tooling from Day 1)
@@ -388,7 +388,6 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
   - bench/history.yaml — baseline recording (CW ref: bench/history.yaml)
   - bench/compare.yaml — cross-language comparison snapshot (not history)
   - bench/suite/NN_name/ structure: meta.yaml + bench.clj per benchmark
-  - .dev/baselines.md — threshold policy (binary size, startup, RSS, 1.2x ceiling)
   - Initial suite: fib_recursive, fib_loop, map_filter_reduce, vector_ops
   - Suite should be complete before first recording
   - CW ref: ~/Documents/MyProducts/ClojureWasm/bench/ (31 benchmarks)
@@ -501,7 +500,7 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
 - [ ] **13.2** Compiler integration — optimizer as post-pass. comptime optimize_level
 - [ ] **13.3** Record pre-optimization baseline — `bash bench/bench.sh record --id="13.0" --reason="Pre-peephole"`
 - [ ] **13.4** Record post-optimization — `bash bench/bench.sh record --id="13.1" --reason="Peephole pass"`
-  - Compare against 13.0. Document speedup in .dev/baselines.md
+  - Compare against 13.0
   - CW lesson: recording was forgotten after optimizations → regressions went unnoticed
   - **Rule**: Every optimization commit = benchmark record. No exceptions
 
@@ -535,12 +534,11 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
   - Record: `bash bench/bench.sh record --id="v0.1.0" --reason="v0.1.0 release"`
   - Run on both Mac ARM64 + Ubuntu x86_64
   - Cross-language comparison: `bash bench/bench.sh compare --lang=cw,c,zig,java,python,node`
-  - Update .dev/baselines.md with release thresholds
 - [ ] **14.11** 🔒 x86_64 Gate — Full test suite + CLI on OrbStack Ubuntu
   - v0.1.0 release gate: `bash test/run_all.sh` on x86_64
   - REPL, nREPL, file execution, deps.edn — all must work
   - Benchmarks on x86_64 — record in history.yaml
-- [ ] **14.12** v0.1.0 release — README, version tagging, full test suite, baselines
+- [ ] **14.12** v0.1.0 release — README, version tagging, full test suite
 
 ---
 

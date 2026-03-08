@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **Phase**: Pre-implementation (Phase 1 PENDING)
+- **Phase**: Phase 1 IN-PROGRESS
 - Architecture: 4-layer (runtime/ → eval/ → lang/ → app/)
 
 ## Current Task
@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-Project infrastructure: .claude/, .gitignore, .dev/ setup.
+**1.1** build.zig + build.zig.zon + main.zig skeleton + flake.nix
 
 ## Handover Notes
 

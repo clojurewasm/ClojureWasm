@@ -7,154 +7,111 @@ paths:
 
 # Zig 0.15.2 Tips & Pitfalls
 
-Common mistakes and workarounds discovered during CW/zwasm development.
-
-## tagged union comparison: use switch, not ==
+## tagged union: use switch, not ==
 
 ```zig
 // OK
 return switch (self) { .nil => true, else => false };
-// NG — unreliable for tagged unions
+// NG — unreliable
 return self == .nil;
 ```
 
-Also, initialize with type annotation, not enum tag:
+Initialize with type annotation: `const nil: Value = .nil;` (not `Value.nil`).
 
-```zig
-// OK
-const nil: Value = .nil;
-// NG — may be interpreted as enum tag
-const nil = Value.nil;
-```
-
-## ArrayList / HashMap init: use .empty
+## ArrayList / HashMap: .empty + per-call allocator
 
 ```zig
 var list: std.ArrayList(u8) = .empty;  // not .init(allocator)
-defer list.deinit(allocator);
-try list.append(allocator, 42);        // allocator passed per call
+defer list.deinit(allocator);          // allocator required
+try list.append(allocator, 42);        // allocator required per call
+const val = list.pop();                // returns ?T, not T
 ```
 
-## stdout: buffered writer required
+Same pattern for HashMap: `.empty`, `put(alloc, k, v)`, `deinit(alloc)`.
+
+## stdout: no getStdOut() in 0.15.2
 
 ```zig
-// NG — does not exist in 0.15.2
+// NG
 const stdout = std.io.getStdOut().writer();
 
-// OK — buffer + flush required
+// OK (simple) — direct write
+const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+_ = try stdout.write("hello\n");
+
+// OK (buffered) — for formatted output
 var buf: [4096]u8 = undefined;
 var writer = std.fs.File.stdout().writer(&buf);
-const stdout = &writer.interface;
-// ... write ...
-try stdout.flush();  // don't forget
+const w = &writer.interface;
+try w.flush();  // don't forget
 ```
 
-## Use std.Io.Writer (type-erased) instead of anytype for writers
+## std.Io.Writer: type-erased writer
 
-In 0.15.2, `std.Io.Writer` is the new type-erased writer.
-`GenericWriter` and `fixedBufferStream` are deprecated.
-
-Prefer `*std.Io.Writer` over `anytype` for writer parameters.
-This avoids the "unable to resolve inferred error set" problem
-with recursive functions, and the error type is a concrete
-`error{WriteFailed}` instead of `anyerror`.
+Use `*std.Io.Writer` instead of `anytype` for writer params.
+Avoids "unable to resolve inferred error set" with recursion.
 
 ```zig
 const Writer = std.Io.Writer;
 
-// OK — concrete type, works with recursion, precise error set
-pub fn formatPrStr(self: Form, w: *Writer) Writer.Error!void {
-    try inner.formatPrStr(w);
-}
+pub fn format(self: Form, w: *Writer) Writer.Error!void { ... }
 
-// In tests: use Writer.fixed + w.buffered()
+// In tests:
 var buf: [256]u8 = undefined;
 var w: Writer = .fixed(&buf);
-try form.formatPrStr(&w);
+try form.format(&w);
 try std.testing.expectEqualStrings("expected", w.buffered());
 ```
 
-## @branchHint, not @branch
+## @branchHint (not @branch)
+
+Hint goes INSIDE the branch body:
 
 ```zig
-// OK — hint goes INSIDE the branch body
-if (likely_condition) {
+if (cond) {
     @branchHint(.likely);
-    // hot path
 } else {
     @branchHint(.unlikely);
     return error.Fail;
 }
-
-// NG — @branch(.likely, cond) does not exist
 ```
 
-Use `.likely` for normal path, `.unlikely` / `.cold` for error path.
-Most effective in loops, opcode dispatch, and parser branches.
+## Custom format: use {f}, not {}
 
-## Custom format method: use {f}, not {}
-
-Types with a `format` method cause "ambiguous format string"
-compile error when printed with `{}`. Use `{f}` or `{any}`,
-or call format explicitly.
+Types with `format` method → `{}` causes "ambiguous format string".
 
 ```zig
-// NG — compile error: ambiguous format string
-try w.print("{}", .{my_value});
-
-// OK — explicitly calls format method
-try w.print("{f}", .{my_value});
-
-// OK — call format directly (most reliable)
-try w.writeAll("value: ");
-try my_value.format("", .{}, w);
+try w.print("{f}", .{my_value});   // OK
+try w.print("{}", .{my_value});    // NG — compile error
 ```
 
-## Variable name shadowing with method names
+## Variable name shadowing
 
-Zig disallows local variables that shadow struct method names.
+Zig disallows locals that shadow struct method names.
 
 ```zig
 pub fn next(self: *Tokenizer) Token {
-    // NG — shadows method name "next"
-    // const next = self.peek();
-
-    // OK — use a different name
-    const next_char = self.peek();
+    const next_char = self.peek();  // OK — "next" would shadow
 }
 ```
 
-## comptime StaticStringMap for keyword/opcode tables
+## comptime StaticStringMap
 
-Zero-cost lookup tables built at compile time.
+Zero-cost compile-time lookup. Use for keyword/opcode tables.
 
 ```zig
 const keywords = std.StaticStringMap(Keyword).initComptime(.{
     .{ "if", .if_kw },
     .{ "def", .def_kw },
-    .{ "fn", .fn_kw },
 });
-
-pub fn lookupKeyword(str: []const u8) ?Keyword {
-    return keywords.get(str);
-}
 ```
-
-Zero runtime cost, zero heap allocation. Use for keyword tables,
-opcode metadata, special form dispatch.
 
 ## ArenaAllocator for phase-based memory
 
-Language processors generate many small allocations (AST nodes, tokens)
-that can be bulk-freed at phase boundaries.
+Bulk-free at phase boundaries. No individual free calls needed.
 
 ```zig
 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-defer arena.deinit();  // bulk free everything
-const allocator = arena.allocator();
-
-const node = try allocator.create(AstNode);  // no individual free needed
+defer arena.deinit();
+const alloc = arena.allocator();
 ```
-
-Benefits: no free calls, no fragmentation, cache-friendly.
-Pattern: separate arenas per phase (lex, parse, compile), deinit at phase end.

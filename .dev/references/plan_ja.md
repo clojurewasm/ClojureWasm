@@ -196,9 +196,6 @@ ClojureWasm/
 ├── .dev/                           開発管理
 │   ├── design/                     設計ドキュメント
 │   ├── status/vars.yaml            vars 実装追跡
-│   ├── baselines.md                非機能要件
-│   ├── checklist.md                延期アイテム
-│   ├── decisions.md                アーキテクチャ決定
 │   ├── known-issues.md             既知問題
 │   ├── memo.md                     セッションハンドオーバー
 │   └── roadmap.md                  Phase トラッカー
@@ -894,7 +891,7 @@ gc/mark_sweep.zig に集約:
 1. `zig build test` + `zig build -Doptimize=ReleaseSafe` — 全テスト PASS
 2. `bash scripts/zone_check.sh --gate` — ゾーン違反 0
 3. バイナリサイズ ≤ 5.0MB, 起動 ≤ 10ms, RSS ≤ 15MB
-4. decisions.md, checklist.md, vars.yaml, memo.md 更新
+4. vars.yaml, memo.md 更新
 
 ### 11.3 テスト構造 (A5)
 
