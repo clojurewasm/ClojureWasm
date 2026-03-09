@@ -581,6 +581,15 @@ CW の collections.zig (6,268 LOC) の問題を回避するため、
 | primitive/lazy.zig     | lazy-seq thunk creation, realized?                | ~3     | 6     |
 | primitive.zig          | 登録エントリポイント(全 `primitive/*.zig` を統合) | —      | 1     |
 
+**算術 (primitive/math.zig) と clojure.math (modules/math/) の棲み分け:**
+
+- `primitive/math.zig` = `clojure.core` の算術（`+`, `-`, `*`, `/`, `abs`, `mod`, `rem`, `compare`）。
+  i48 整数演算 + オーバーフロー時の float 昇格。rt/ カーネルプリミティブとして常時バイナリに含まれる。
+- `modules/math/` = `clojure.math` NS（`sin`, `cos`, `sqrt`, `pow`, `log`, `E`, `PI` 等）。
+  upstream は `java.lang.Math` ラッパー。cljw では Zig の `@sin` 等を使用。comptime フラグで除外可能。
+- VM 最適化時: `add`/`sub`/`mul`/`div` opcode は VM ディスパッチ内で直接 i48 演算を行う
+  （`eval/backend/vm.zig` 内）。`primitive/math.zig` の関数はフォールバックパス用に残る。
+
 ### 5.2 primitive.zig — 登録エントリポイント
 
 ```zig
