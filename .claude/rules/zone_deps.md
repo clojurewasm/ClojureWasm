@@ -54,6 +54,25 @@ Modules register via `runtime/module.zig` ModuleDef.
 Core code (`runtime/`, `eval/`, `lang/`) never imports `modules/`.
 `modules/` may import `runtime/` and `eval/` but not `lang/` or `app/`.
 
+## Zone Checker (`scripts/zone_check.sh`)
+
+Automated script that verifies zone dependency rules. Parses `@import` paths
+in all Zig source files and detects upward-direction violations.
+
+**Key behaviors:**
+- Skips test-only imports: everything after the first `test "..."` block in a file
+  is excluded, since test code legitimately imports across zones
+- Classifies files by directory path into zones 0-3
+- Flags any import where source zone < target zone
+
+**Modes:**
+- `bash scripts/zone_check.sh` — informational: prints violations, always exits 0
+- `bash scripts/zone_check.sh --strict` — exits 1 if any violations exist
+- `bash scripts/zone_check.sh --gate` — exits 1 if violation count exceeds BASELINE
+  (BASELINE is a constant in the script, updated as violations are fixed)
+
+**Usage:** Run `--gate` mode before every commit. Target: BASELINE=0.
+
 ## Common Patterns
 
 ### Adding a new builtin function
