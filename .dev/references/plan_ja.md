@@ -178,13 +178,11 @@ ClojureWasm/
 │       ├── builtins.zig            Wasm 操作
 │       └── wasm.clj                cljw.wasm NS
 │
-├── test/                           テスト (src/ 鏡像構造)
-│   ├── runtime/                    Layer 0 ユニットテスト
-│   ├── eval/                       Layer 1 ユニットテスト
-│   ├── lang/                       Layer 2 統合テスト
-│   ├── app/                        Layer 3 E2E テスト
-│   ├── clj/test_core.clj           Clojure レベルテスト
-│   └── e2e/run_e2e.sh              E2E テストランナー
+├── test/                           テスト
+│   ├── run_all.sh                  統一テストランナー (Phase 2.18+)
+│   ├── upstream/                   upstream Clojure JVM テスト移植 (.clj)
+│   ├── clj/                        Clojure レベルテスト (clojure.test)
+│   └── e2e/                        E2E テスト (CLI, エラー出力, ファイル実行)
 │
 ├── build.zig                       ビルドスクリプト
 ├── build.zig.zon                   パッケージ定義
@@ -901,14 +899,15 @@ gc/mark_sweep.zig に集約:
 
 ### 11.3 テスト構造 (A5)
 
+Zig ユニットテストは各 `src/**/*.zig` ファイル末尾にインラインで記述（Zig 慣例）。
+`test/` ディレクトリは Zig 外のテスト成果物を格納:
+
 ```
 test/
-├── runtime/        Layer 0 ユニットテスト
-├── eval/           Layer 1 ユニットテスト
-├── lang/           Layer 2 統合テスト
-├── app/            Layer 3 E2E テスト
-├── clj/            Clojure レベルテスト
-└── e2e/            エンドツーエンドシナリオテスト
+├── run_all.sh      統一テストランナー (zig build test + upstream + e2e)
+├── upstream/       upstream Clojure JVM テスト移植 (.clj, CLJW: マーカー付き)
+├── clj/            Clojure レベルテスト (clojure.test で記述)
+└── e2e/            E2E テスト (CLI フラグ, ファイル実行, エラー出力)
 ```
 
 ---
