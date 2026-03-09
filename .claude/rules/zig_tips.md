@@ -1,7 +1,7 @@
 ---
 paths:
   - "src/**/*.zig"
-  - "ext/**/*.zig"
+  - "modules/**/*.zig"
   - "build.zig"
 ---
 

@@ -14,7 +14,7 @@
 4. [Layer 1: eval/](#4-layer-1-eval)
 5. [Layer 2: lang/](#5-layer-2-lang)
 6. [Layer 3: app/](#6-layer-3-app)
-7. [ext/ 拡張システム](#7-ext-拡張システム)
+7. [modules/ モジュールシステム](#7-modules-モジュールシステム)
 8. [Phase 実装順序（監査済み）](#8-phase-実装順序監査済み)
 9. [ユーザー体験設計](#9-ユーザー体験設計)
 10. [最適化戦略の集約](#10-最適化戦略の集約)
@@ -33,11 +33,11 @@
 |----|-------------------------|--------------------------------------------------|
 | P1 | 理解しながら進める      | Claude Code 対話型。一晩自動実行しない           |
 | P2 | 完成形を最初に見通す    | ディレクトリ・ファイル構成を Day 1 で確定        |
-| P3 | コアは安定              | 一度作ったら変更不要。拡張は ext/ に閉じる       |
+| P3 | コアは安定              | 一度作ったら変更不要。拡張は modules/ に閉じる   |
 | P4 | 「都度対応」の忌避      | 散発パッチではなく構造的解決                     |
-| P5 | モジュラリティ          | 必要な機能のみバイナリに含める（comptime flags） |
+| P5 | モジュラリティ          | 必要な機能のみバイナリに含める（modules/ + comptime flags） |
 | P6 | エラー品質最優先        | file, ns, line, col, 周辺コード, 色, stack trace |
-| P7 | upstream 忠実性は非制約 | 実用性優先。互換性は ext/ 経由                   |
+| P7 | upstream 忠実性は非制約 | 実用性優先。互換性は modules/ 経由                |
 | P8 | cljw バイナリ主体       | 一つのバイナリで REPL, nREPL, 評価, build, js    |
 
 ### 1.2 アーキテクチャ原則
@@ -45,7 +45,7 @@
 | #  | 原則                                      | 検証方法                                      |
 |----|-------------------------------------------|-----------------------------------------------|
 | A1 | 下位層は上位層を知らない                  | zone_check.sh --gate (CI ゲート)              |
-| A2 | 機能追加は既存コードをいじらない          | ExtensionDef + comptime flags                 |
+| A2 | 機能追加は既存コードをいじらない          | ModuleDef + comptime flags                    |
 | A3 | 最適化コードは明確に分離                  | src/eval/optimize/ に集約                     |
 | A4 | GC は独立したサブシステム                 | gc/arena.zig, gc/mark_sweep.zig, gc/roots.zig |
 | A5 | テストは実装と鏡像構造                    | test/ が src/ を反映                          |
@@ -63,7 +63,7 @@
 | エラーに SourceLocation なし          | Day 1 から全 Form に loc             | §3.7           |
 | GC ルート追跡漏れ（D100）             | suppress_count, HeapHeader mark bit  | §3.4           |
 | builtins/collections.zig が 6K LOC    | primitive/, collection/ に意味分割   | §5.2           |
-| 拡張性なし（WASM/regex がコア埋込み） | ext/ + ExtensionDef + comptime flags | §7             |
+| 拡張性なし（WASM/regex がコア埋込み） | modules/ + ModuleDef + comptime flags | §7            |
 | nREPL がアプリ層に密結合              | app/repl/ サブディレクトリに整理     | §6.2           |
 
 ---
@@ -84,7 +84,7 @@ ClojureWasm/
 │   │   ├── dispatch.zig            vtable (下位→上位の関数ポインタ)
 │   │   ├── error.zig               エラー型・ヘルパー・フォーマッタ
 │   │   ├── keyword.zig             キーワードインターン (mutex 付き)
-│   │   ├── extension.zig           ExtensionDef インターフェース
+│   │   ├── module.zig              ModuleDef インターフェース
 │   │   ├── gc/                     GC サブシステム
 │   │   │   ├── arena.zig           Arena GC インターフェース
 │   │   │   ├── mark_sweep.zig      Mark-Sweep GC (Phase 5 末で実装)
@@ -166,15 +166,15 @@ ClojureWasm/
 │   │
 │   └── main.zig                    エントリポイント
 │
-├── ext/                            拡張 (comptime フラグで有効/無効)
+├── modules/                        optional modules (comptime フラグで有効/無効)
 │   ├── math/                       clojure.math
-│   │   ├── ext.zig                 ExtensionDef
+│   │   ├── module.zig              ModuleDef
 │   │   └── builtins.zig            45 数学関数
 │   ├── c_ffi/
-│   │   ├── ext.zig                 ExtensionDef
+│   │   ├── module.zig              ModuleDef
 │   │   └── exports.zig             C ABI エクスポート
 │   └── wasm/
-│       ├── ext.zig                 ExtensionDef
+│       ├── module.zig              ModuleDef
 │       ├── builtins.zig            Wasm 操作
 │       └── wasm.clj                cljw.wasm NS
 │
@@ -230,7 +230,7 @@ ClojureWasm/
 | eval/        | 18        | 15 (12+3 opt)       | Reader 3 分割、optimize/ 追加 |
 | lang/        | 74        | 21 (Zig) + 13 (clj) | prim 分割で可読性向上         |
 | app/         | 7         | 8                   | repl/ サブディレクトリ化      |
-| ext/         | 0 (!)     | 7                   | 拡張システム新設              |
+| modules/     | 0 (!)     | 7                   | モジュールシステム新設        |
 | **合計 Zig** | 120       | 64                  | **47% 削減**（責務集約）      |
 
 ---
@@ -703,12 +703,12 @@ Maven/Git 依存は Phase 14+ で段階的に追加。
 
 ---
 
-## 7. ext/ — 拡張システム
+## 7. modules/ — モジュールシステム
 
-### 7.1 ExtensionDef インターフェース
+### 7.1 ModuleDef インターフェース
 
 ```zig
-pub const ExtensionDef = struct {
+pub const ModuleDef = struct {
     name: []const u8,
     ns_name: []const u8,
     builtins: []const BuiltinEntry,
@@ -726,10 +726,10 @@ zig build -Dwasm=true           # math + Wasm
 zig build -Dmath=false           # 最小バイナリ
 ```
 
-### 7.3 拡張追加の手順
+### 7.3 モジュール追加の手順
 
-1. `ext/foo/ext.zig` に ExtensionDef を定義
-2. `ext/foo/builtins.zig` に関数を実装
+1. `modules/foo/module.zig` に ModuleDef を定義
+2. `modules/foo/builtins.zig` に関数を実装
 3. `build.zig` に comptime フラグを追加
 4. **src/ 内のコードは一切変更しない (A2)**
 
@@ -768,9 +768,9 @@ Phase 14: CLI + REPL + nREPL + deps.edn + Single Binary + v0.1.0
 Phase 15: Concurrency (future, promise, pmap, STM, agent)
 Phase 16: ClojureScript → JS Emit (analyzer/emitter/resolver in .clj)
 Phase 17: Optimization Phase 2 (super_instruction.zig)
-Phase 18: ext: C FFI
-Phase 19: ext: Wasm FFI (zwasm)
-Phase 20: ext: JIT ARM64 + x86_64 (jit_arm64.zig, jit_x86_64.zig)
+Phase 18: Module system + math + C FFI
+Phase 19: module: Wasm FFI (zwasm)
+Phase 20: module: JIT ARM64 + x86_64 (jit_arm64.zig, jit_x86_64.zig)
 ```
 
 ### 8.3 Phase 1 詳細（最重要）
@@ -922,7 +922,7 @@ test/
 | L9  | ホットパスの一時アロケーション   | §10.2          | ✓    |
 | L10 | バイトコードキャッシュ           | §8.2 Phase 12  | ✓    |
 | L11 | 「都度対応」の蓄積は破綻         | §1.1 P4        | ✓    |
-| L12 | 拡張は ext/ に閉じる             | §7             | ✓    |
+| L12 | 拡張は modules/ に閉じる         | §7             | ✓    |
 | L13 | ファイル構成は最初に決める       | §2             | ✓    |
 | L14 | デュアルバックエンドで品質保証   | §4.7           | ✓    |
 | L15 | 非機能要件は基準値で管理         | §11.2          | ✓    |

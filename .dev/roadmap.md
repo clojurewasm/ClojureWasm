@@ -59,9 +59,9 @@ CW lesson: recording was forgotten → regressions went unnoticed. Single `bench
 | 15    | Concurrency (future, promise, pmap, agent) | PENDING     |
 | 16    | ClojureScript -> JS compiler               | PENDING     |
 | 17    | VM Optimization: super_instruction.zig     | PENDING     |
-| 18    | ext: C FFI                                 | PENDING     |
-| 19    | ext: Wasm FFI (zwasm)                      | PENDING     |
-| 20    | ext: JIT ARM64                             | PENDING     |
+| 18    | Module system + math + C FFI               | PENDING     |
+| 19    | module: Wasm FFI (zwasm)                   | PENDING     |
+| 20    | module: JIT ARM64                          | PENDING     |
 
 ---
 
@@ -603,31 +603,31 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
 
 ---
 
-## Phase 18: Extension System + C FFI
+## Phase 18: Module System + math + C FFI
 
-> Plan ref: `.dev/references/plan_ja.md` §7 (ext system)
+> Plan ref: `.dev/references/plan_ja.md` §7 (module system)
 
-**Goal**: Extension infrastructure + default math extension + C FFI.
+**Goal**: Module infrastructure + default math module + C FFI.
 
 **Exit criteria**: `(math/sin 1.0)` works. `(cffi/call "strlen" :long [:string] "hello")` => `5`.
 
 ### Tasks
 
-- [ ] **18.1** src/runtime/extension.zig — ExtensionDef interface
-  - Registration API for extensions. Core code never imports ext/
+- [ ] **18.1** src/runtime/module.zig — ModuleDef interface
+  - Registration API for modules. Core code never imports modules/
   - Plan ref: plan_ja.md §7.1
-- [ ] **18.2** ext/math/ext.zig + ext/math/builtins.zig — Default math extension
+- [ ] **18.2** modules/math/module.zig + modules/math/builtins.zig — Default math module
   - 45 math functions (sin, cos, tan, abs, ceil, floor, etc.)
   - Default-enabled (`-Dmath=false` to disable)
   - Plan ref: plan_ja.md §7.2
-- [ ] **18.3** build.zig: Extension comptime flags (-Dmath, -Dc-ffi, -Dwasm)
-- [ ] **18.4** ext/c_ffi/ext.zig — ExtensionDef
-- [ ] **18.5** ext/c_ffi/exports.zig — C ABI export
+- [ ] **18.3** build.zig: Module comptime flags (-Dmath, -Dc-ffi, -Dwasm)
+- [ ] **18.4** modules/c_ffi/module.zig — ModuleDef
+- [ ] **18.5** modules/c_ffi/exports.zig — C ABI export
 - [ ] **18.6** build.zig: -Dc-ffi=true flag
 
 ---
 
-## Phase 19: ext: Wasm FFI (zwasm)
+## Phase 19: module: Wasm FFI (zwasm)
 
 > zwasm ref: `~/Documents/MyProducts/zwasm/`
 
@@ -637,14 +637,14 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
 
 ### Tasks
 
-- [ ] **19.1** ext/wasm/ext.zig — ExtensionDef
-- [ ] **19.2** ext/wasm/builtins.zig — Wasm operations
-- [ ] **19.3** ext/wasm/wasm.clj — cljw.wasm namespace
+- [ ] **19.1** modules/wasm/module.zig — ModuleDef
+- [ ] **19.2** modules/wasm/builtins.zig — Wasm operations
+- [ ] **19.3** modules/wasm/wasm.clj — cljw.wasm namespace
 - [ ] **19.4** build.zig: -Dwasm=true flag + zwasm dependency
 
 ---
 
-## Phase 20: ext: JIT ARM64
+## Phase 20: module: JIT ARM64
 
 > Plan ref: `.dev/references/plan_ja.md` §10 (optimization strategy)
 > zwasm ref: `~/Documents/MyProducts/zwasm/.claude/rules/jit-check.md`

@@ -21,9 +21,9 @@ Layer 3: src/app/        -- CLI, REPL, nREPL
                             imports anything
          src/main.zig    -- entry point (Layer 3)
 
-ext/                     -- comptime-gated extensions
-                            Each ext/xxx/ext.zig exports ExtensionDef
-                            Registered via runtime/extension.zig interface
+modules/                 -- comptime-gated optional modules
+                            Each modules/xxx/module.zig exports ModuleDef
+                            Registered via runtime/module.zig interface
 ```
 
 **Key design**: Kernel has ~160 primitives in `rt` namespace.
@@ -51,7 +51,7 @@ Zig pitfalls: `.claude/rules/zig_tips.md` (auto-loads on `src/**/*.zig` edits).
 1. **No semantic aliasing.** Never register function X under name Y with different semantics.
 2. **No evaluator special cases for library features.** Evaluator handles ONLY special forms.
 3. **Zone dependency direction is absolute.** Lower layers NEVER import higher layers.
-4. **Extension isolation.** Core code never imports ext/. Extensions register via ExtensionDef.
+4. **Module isolation.** Core code never imports modules/. Modules register via ModuleDef.
 
 ## Critical Rules
 

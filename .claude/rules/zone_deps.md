@@ -1,7 +1,7 @@
 ---
 paths:
   - "src/**/*.zig"
-  - "ext/**/*.zig"
+  - "modules/**/*.zig"
 ---
 
 # Zone Dependency Rules
@@ -9,7 +9,7 @@ paths:
 ## Zone Architecture
 
 ```
-Layer 0: src/runtime/    -- Value, Collections, GC, Env, Dispatch, ExtensionDef
+Layer 0: src/runtime/    -- Value, Collections, GC, Env, Dispatch, ModuleDef
                             NO upward imports
 Layer 1: src/eval/       -- Reader, Analyzer, Compiler, VM, TreeWalk, Evaluator
                             imports runtime/ only
@@ -18,7 +18,7 @@ Layer 2: src/lang/       -- Primitives, Interop, Bootstrap, NS Loader
 Layer 3: src/app/, src/main.zig
                             imports anything
 
-ext/                     -- imports runtime/ + eval/ (same as Layer 2)
+modules/                 -- imports runtime/ + eval/ (same as Layer 2)
                             must NOT import lang/ or app/
 ```
 
@@ -27,10 +27,10 @@ ext/                     -- imports runtime/ + eval/ (same as Layer 2)
 ### NEVER: Upward imports
 
 ```
-runtime/  must NOT import from eval/, lang/, ext/, or app/
-eval/     must NOT import from lang/, ext/, or app/
+runtime/  must NOT import from eval/, lang/, modules/, or app/
+eval/     must NOT import from lang/, modules/, or app/
 lang/     must NOT import from app/
-ext/      must NOT import from lang/ or app/
+modules/  must NOT import from lang/ or app/
 ```
 
 ### When you need a lower layer to call a higher layer
@@ -48,11 +48,11 @@ dispatch.callFn = &vmCallFunction;
 This preserves the dependency direction: eval/ imports runtime/ to set
 the pointer. runtime/ never imports eval/.
 
-### Extension isolation
+### Module isolation
 
-Extensions register via `runtime/extension.zig` ExtensionDef.
-Core code (`runtime/`, `eval/`, `lang/`) never imports `ext/`.
-`ext/` may import `runtime/` and `eval/` but not `lang/` or `app/`.
+Modules register via `runtime/module.zig` ModuleDef.
+Core code (`runtime/`, `eval/`, `lang/`) never imports `modules/`.
+`modules/` may import `runtime/` and `eval/` but not `lang/` or `app/`.
 
 ## Common Patterns
 
