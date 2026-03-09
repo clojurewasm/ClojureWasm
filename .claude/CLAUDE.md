@@ -113,6 +113,15 @@ Read `.dev/memo.md`. Check:
   Also update memo.md `## Current State` with new phase status.
 - One task = one commit.
 
+### 4a. Code Reading Doc (Japanese)
+
+After each task commit, generate a Japanese explanation in `private/code_reading/task_XX_YY.md`
+(XX = phase, YY = task number, e.g. `task_01_02.md`).
+
+Contents: annotated walkthrough of the code written in the task.
+Target audience: the author reviewing later. Include bit layouts, Zig syntax notes,
+design rationale, CW diffs, and pointers to future extensions.
+
 ### 5. Repeat
 
 Loop back to Orient. Continue until:
