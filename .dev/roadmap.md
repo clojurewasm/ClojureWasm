@@ -40,28 +40,28 @@ CW lesson: recording was forgotten → regressions went unnoticed. Single `bench
 
 ## Phase Tracker
 
-| Phase | Name                                          | Status      |
-|-------|-----------------------------------------------|-------------|
-| 1     | Value + Reader + Error + Arena GC             | IN-PROGRESS |
-| 2     | TreeWalk + Analyzer + Bootstrap Stage 0       | PENDING     |
-| 3     | defn + Bootstrap Stage 1-3 + ExceptionInfo    | PENDING     |
-| 4     | VM + Compiler + Opcodes                       | PENDING     |
-| 5     | Collections (HAMT, Vector) + Mark-Sweep GC    | PENDING     |
-| 6     | LazySeq + concat + higher-order foundation    | PENDING     |
-| 7     | map/filter/reduce/range + Transducers base    | PENDING     |
-| 8     | Evaluator.compare() + dual backend verify      | PENDING     |
-| 9     | Protocols + Multimethods                      | PENDING     |
-| 10    | Namespaces + require + standard libraries     | PENDING     |
-| 11    | clojure.test framework                        | PENDING     |
-| 12    | Bytecode Cache (serialize + cache_gen)        | PENDING     |
-| 13    | VM Optimization: peephole.zig                 | PENDING     |
-| 14    | CLI + REPL + nREPL + deps.edn + v0.1.0       | PENDING     |
-| 15    | Concurrency (future, promise, pmap, agent)    | PENDING     |
-| 16    | ClojureScript -> JS compiler                  | PENDING     |
-| 17    | VM Optimization: super_instruction.zig         | PENDING     |
-| 18    | ext: C FFI                                    | PENDING     |
-| 19    | ext: Wasm FFI (zwasm)                         | PENDING     |
-| 20    | ext: JIT ARM64                                | PENDING     |
+| Phase | Name                                       | Status      |
+|-------|--------------------------------------------|-------------|
+| 1     | Value + Reader + Error + Arena GC          | IN-PROGRESS |
+| 2     | TreeWalk + Analyzer + Bootstrap Stage 0    | PENDING     |
+| 3     | defn + Bootstrap Stage 1-3 + ExceptionInfo | PENDING     |
+| 4     | VM + Compiler + Opcodes                    | PENDING     |
+| 5     | Collections (HAMT, Vector) + Mark-Sweep GC | PENDING     |
+| 6     | LazySeq + concat + higher-order foundation | PENDING     |
+| 7     | map/filter/reduce/range + Transducers base | PENDING     |
+| 8     | Evaluator.compare() + dual backend verify  | PENDING     |
+| 9     | Protocols + Multimethods                   | PENDING     |
+| 10    | Namespaces + require + standard libraries  | PENDING     |
+| 11    | clojure.test framework                     | PENDING     |
+| 12    | Bytecode Cache (serialize + cache_gen)     | PENDING     |
+| 13    | VM Optimization: peephole.zig              | PENDING     |
+| 14    | CLI + REPL + nREPL + deps.edn + v0.1.0     | PENDING     |
+| 15    | Concurrency (future, promise, pmap, agent) | PENDING     |
+| 16    | ClojureScript -> JS compiler               | PENDING     |
+| 17    | VM Optimization: super_instruction.zig     | PENDING     |
+| 18    | ext: C FFI                                 | PENDING     |
+| 19    | ext: Wasm FFI (zwasm)                      | PENDING     |
+| 20    | ext: JIT ARM64                             | PENDING     |
 
 ---
 

@@ -51,8 +51,7 @@ Zig pitfalls: `.claude/rules/zig-tips.md` (auto-loads on `src/**/*.zig` edits).
 1. **No semantic aliasing.** Never register function X under name Y with different semantics.
 2. **No evaluator special cases for library features.** Evaluator handles ONLY special forms.
 3. **Zone dependency direction is absolute.** Lower layers NEVER import higher layers.
-4. **Upstream fidelity.** core.clj changes are minimal (`RT/xxx` -> `rt/xxx` substitution only).
-5. **Extension isolation.** Core code never imports ext/. Extensions register via ExtensionDef.
+4. **Extension isolation.** Core code never imports ext/. Extensions register via ExtensionDef.
 
 ## Critical Rules
 
@@ -79,9 +78,9 @@ Every task follows this loop. **Do not skip steps.**
 
 Read `.dev/memo.md`. Check:
 - **Handover notes**: Resolve and delete any remaining items first.
-- **Current Task**: If set, continue it. If `(none)`, go to step 1b.
+- **Current Task**: If set, continue it. If `(none)`, go to step 1a.
 
-**1b. Pick next task from roadmap**:
+**1a. Pick next task from roadmap**:
 - Read `.dev/roadmap.md` **Phase Tracker table only** (top of file).
 - Find the first phase with status `IN-PROGRESS` or `PENDING`.
 - Search `## Phase N:` to jump to that phase's task list.
@@ -107,6 +106,7 @@ Read `.dev/memo.md`. Check:
 - Update memo.md: set `## Current Task` to `(none)` or next task.
 - Add handover notes only if there is context the next iteration needs.
 - If implementing a var → update `.dev/status/vars.yaml` status to `done`.
+  - Do not mark it as `done` until it is fully implemented and behaviorally equivalent to upstream.
 - If optimization/feature affects performance → `bash bench/bench.sh record` (Phase 8+).
 - If a known issue was resolved → **delete it** from known-issues.md.
 - If all tasks in a phase are done → update Phase Tracker: `IN-PROGRESS` → `DONE`.
@@ -129,7 +129,7 @@ Loop back to Orient. Continue until:
 
 | Topic            | Location                                   | When to read                   |
 |------------------|--------------------------------------------|--------------------------------|
-| Plan             | `.dev/references/plan_ja.md`                       | Architecture, phases, schedule |
+| Plan             | `.dev/references/plan_ja.md`               | Architecture, phases, schedule |
 | CW reference     | `~/Documents/MyProducts/ClojureWasm/`      | Zig implementation reference   |
 | Clojure upstream | `~/Documents/OSS/clojure/src/clj/clojure/` | Read before implementing vars  |
 | Zig stdlib       | `/opt/homebrew/Cellar/zig/0.15.2/lib`      | Before writing Zig code        |

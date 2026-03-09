@@ -29,42 +29,42 @@
 
 01_myself_audit.md から抽出した不可侵の原則:
 
-| #  | 原則                          | 設計への影響                                    |
-|----|------------------------------|-------------------------------------------------|
-| P1 | 理解しながら進める            | Claude Code 対話型。一晩自動実行しない           |
-| P2 | 完成形を最初に見通す          | ディレクトリ・ファイル構成を Day 1 で確定         |
-| P3 | コアは安定                    | 一度作ったら変更不要。拡張は ext/ に閉じる       |
-| P4 | 「都度対応」の忌避            | 散発パッチではなく構造的解決                     |
-| P5 | モジュラリティ                | 必要な機能のみバイナリに含める（comptime flags） |
-| P6 | エラー品質最優先              | file, ns, line, col, 周辺コード, 色, stack trace |
-| P7 | upstream 忠実性は非制約       | 実用性優先。互換性は ext/ 経由                   |
-| P8 | cljw バイナリ主体             | 一つのバイナリで REPL, nREPL, 評価, build, js    |
+| #  | 原則                    | 設計への影響                                     |
+|----|-------------------------|--------------------------------------------------|
+| P1 | 理解しながら進める      | Claude Code 対話型。一晩自動実行しない           |
+| P2 | 完成形を最初に見通す    | ディレクトリ・ファイル構成を Day 1 で確定        |
+| P3 | コアは安定              | 一度作ったら変更不要。拡張は ext/ に閉じる       |
+| P4 | 「都度対応」の忌避      | 散発パッチではなく構造的解決                     |
+| P5 | モジュラリティ          | 必要な機能のみバイナリに含める（comptime flags） |
+| P6 | エラー品質最優先        | file, ns, line, col, 周辺コード, 色, stack trace |
+| P7 | upstream 忠実性は非制約 | 実用性優先。互換性は ext/ 経由                   |
+| P8 | cljw バイナリ主体       | 一つのバイナリで REPL, nREPL, 評価, build, js    |
 
 ### 1.2 アーキテクチャ原則
 
-| #  | 原則                                    | 検証方法                              |
-|----|-----------------------------------------|---------------------------------------|
-| A1 | 下位層は上位層を知らない                | zone_check.sh --gate (CI ゲート)      |
-| A2 | 機能追加は既存コードをいじらない        | ExtensionDef + comptime flags         |
-| A3 | 最適化コードは明確に分離                | src/eval/optimize/ に集約             |
-| A4 | GC は独立したサブシステム               | gc/arena.zig, gc/mark_sweep.zig, gc/roots.zig |
-| A5 | テストは実装と鏡像構造                  | test/ が src/ を反映                  |
-| A6 | 各ファイル 1,000 行以下（ソフトリミット）| CW collections.zig 6K LOC の二の舞防止|
-| A7 | 並行性・エラーは Day 1 から設計に組込み | threadlocal, SourceLocation, mutex    |
+| #  | 原則                                      | 検証方法                                      |
+|----|-------------------------------------------|-----------------------------------------------|
+| A1 | 下位層は上位層を知らない                  | zone_check.sh --gate (CI ゲート)              |
+| A2 | 機能追加は既存コードをいじらない          | ExtensionDef + comptime flags                 |
+| A3 | 最適化コードは明確に分離                  | src/eval/optimize/ に集約                     |
+| A4 | GC は独立したサブシステム                 | gc/arena.zig, gc/mark_sweep.zig, gc/roots.zig |
+| A5 | テストは実装と鏡像構造                    | test/ が src/ を反映                          |
+| A6 | 各ファイル 1,000 行以下（ソフトリミット） | CW collections.zig 6K LOC の二の舞防止        |
+| A7 | 並行性・エラーは Day 1 から設計に組込み   | threadlocal, SourceLocation, mutex            |
 
 ### 1.3 CW からの教訓（設計に反映済み）
 
-| CW の問題                              | ClojureWasm (新) の対策                | 検証セクション |
-|----------------------------------------|----------------------------------------|---------------|
-| カーネル 410+ 関数に肥大化             | ~160 関数。残りは .clj                  | §5             |
-| core.clj を独自記述で車輪の再発明      | upstream core.clj を rt/ 置換で適応     | §5.3           |
-| NaN Boxing を Phase 35 で後付け        | Day 1 から NaN Boxing                   | §3.1           |
-| 並行性を Phase 48 で 15 ファイル改修   | Day 1 から threadlocal + mutex          | §3.6           |
-| エラーに SourceLocation なし            | Day 1 から全 Form に loc               | §3.7           |
-| GC ルート追跡漏れ（D100）             | suppress_count, HeapHeader mark bit     | §3.4           |
-| builtins/collections.zig が 6K LOC     | primitive/, collection/ に意味分割      | §5.2           |
-| 拡張性なし（WASM/regex がコア埋込み）  | ext/ + ExtensionDef + comptime flags    | §7             |
-| nREPL がアプリ層に密結合               | app/repl/ サブディレクトリに整理        | §6.2           |
+| CW の問題                             | ClojureWasm (新) の対策              | 検証セクション |
+|---------------------------------------|--------------------------------------|----------------|
+| カーネル 410+ 関数に肥大化            | ~160 関数。残りは .clj               | §5             |
+| core.clj を独自記述で車輪の再発明     | upstream core.clj を rt/ 置換で適応  | §5.3           |
+| NaN Boxing を Phase 35 で後付け       | Day 1 から NaN Boxing                | §3.1           |
+| 並行性を Phase 48 で 15 ファイル改修  | Day 1 から threadlocal + mutex       | §3.6           |
+| エラーに SourceLocation なし          | Day 1 から全 Form に loc             | §3.7           |
+| GC ルート追跡漏れ（D100）             | suppress_count, HeapHeader mark bit  | §3.4           |
+| builtins/collections.zig が 6K LOC    | primitive/, collection/ に意味分割   | §5.2           |
+| 拡張性なし（WASM/regex がコア埋込み） | ext/ + ExtensionDef + comptime flags | §7             |
+| nREPL がアプリ層に密結合              | app/repl/ サブディレクトリに整理     | §6.2           |
 
 ---
 
@@ -167,7 +167,7 @@ ClojureWasm/
 │   └── main.zig                    エントリポイント
 │
 ├── ext/                            拡張 (comptime フラグで有効/無効)
-│   ├── math/
+│   ├── math/                       clojure.math
 │   │   ├── ext.zig                 ExtensionDef
 │   │   └── builtins.zig            45 数学関数
 │   ├── c_ffi/
@@ -208,30 +208,30 @@ ClojureWasm/
 
 ### 2.1 現行構造からの変更点
 
-| 変更                              | 理由                                                |
-|----------------------------------|-----------------------------------------------------|
-| Reader を 3 ファイルに分割        | CW で実証済み: tokenizer/reader/form の責務分離      |
-| Analyzer + Node を追加            | 特殊形式のディスパッチに tagged union Node が必要    |
-| lang/primitive/ ディレクトリに 15 分割 | CW collections.zig 6K LOC 問題の回避             |
-| eval/optimize/ ディレクトリ追加   | 最適化コードの明確な分離 (A3)                        |
-| runtime/gc/ サブディレクトリ      | GC アルゴリズムの独立性 (A4)                         |
-| runtime/collection/ サブディレクトリ | collection 肥大化防止                             |
-| app/repl/ サブディレクトリ        | REPL + nREPL + line_editor の整理                    |
-| app/runner.zig 追加              | CLI とエラー出力の責務分離                            |
-| app/deps.zig 追加                | deps.edn 解決ロジックの独立                          |
-| macro_transforms.zig 追加        | ns マクロ等の Zig レベル変換を明示化                  |
-| keyword.zig 分離                 | キーワードインターンのスレッド安全性管理              |
+| 変更                                   | 理由                                              |
+|----------------------------------------|---------------------------------------------------|
+| Reader を 3 ファイルに分割             | CW で実証済み: tokenizer/reader/form の責務分離   |
+| Analyzer + Node を追加                 | 特殊形式のディスパッチに tagged union Node が必要 |
+| lang/primitive/ ディレクトリに 15 分割 | CW collections.zig 6K LOC 問題の回避              |
+| eval/optimize/ ディレクトリ追加        | 最適化コードの明確な分離 (A3)                     |
+| runtime/gc/ サブディレクトリ           | GC アルゴリズムの独立性 (A4)                      |
+| runtime/collection/ サブディレクトリ   | collection 肥大化防止                             |
+| app/repl/ サブディレクトリ             | REPL + nREPL + line_editor の整理                 |
+| app/runner.zig 追加                    | CLI とエラー出力の責務分離                        |
+| app/deps.zig 追加                      | deps.edn 解決ロジックの独立                       |
+| macro_transforms.zig 追加              | ns マクロ等の Zig レベル変換を明示化              |
+| keyword.zig 分離                       | キーワードインターンのスレッド安全性管理          |
 
 ### 2.2 ファイル数の比較
 
-| レイヤー      | CW (現行) | ClojureWasm (新) | 備考                       |
-|--------------|----------|---------------|-------------------------------|
-| runtime/     | 18       | 13            | GC 分離、HAMT/Vector 分離     |
-| eval/        | 18       | 15 (12+3 opt) | Reader 3 分割、optimize/ 追加 |
-| lang/        | 74       | 21 (Zig) + 13 (clj) | prim 分割で可読性向上    |
-| app/         | 7        | 8             | repl/ サブディレクトリ化      |
-| ext/         | 0 (!)    | 7             | 拡張システム新設              |
-| **合計 Zig** | 120      | 64            | **47% 削減**（責務集約）      |
+| レイヤー     | CW (現行) | ClojureWasm (新)    | 備考                          |
+|--------------|-----------|---------------------|-------------------------------|
+| runtime/     | 18        | 13                  | GC 分離、HAMT/Vector 分離     |
+| eval/        | 18        | 15 (12+3 opt)       | Reader 3 分割、optimize/ 追加 |
+| lang/        | 74        | 21 (Zig) + 13 (clj) | prim 分割で可読性向上         |
+| app/         | 7         | 8                   | repl/ サブディレクトリ化      |
+| ext/         | 0 (!)     | 7                   | 拡張システム新設              |
+| **合計 Zig** | 120       | 64                  | **47% 削減**（責務集約）      |
 
 ---
 
@@ -243,12 +243,12 @@ ClojureWasm/
 
 **ヒープ型スロット割り当て（1:1 マッピング、CW のスロット共有を回避）:**
 
-| Group (tag)   | Sub 0    | Sub 1    | Sub 2     | Sub 3    | Sub 4     | Sub 5      | Sub 6      | Sub 7      |
-|---------------|----------|----------|-----------|----------|-----------|------------|------------|------------|
-| A (0xFFFA)    | string   | symbol   | keyword   | list     | vector    | array_map  | hash_map   | hash_set   |
-| B (0xFFFE)    | fn_val   | atom     | var_ref   | regex    | protocol  | multi_fn   | protocol_fn| delay      |
-| C (0xFFF8)    | lazy_seq | cons     | reduced   | ex_info  | ns        | agent      | ref        | volatile   |
-| D (0xFFFF)    | t_vector | t_map    | t_set     | chunk_buf| chunked_c | wasm_mod   | wasm_fn    | class_inst |
+| Group (tag) | Sub 0    | Sub 1  | Sub 2   | Sub 3     | Sub 4     | Sub 5     | Sub 6       | Sub 7      |
+|-------------|----------|--------|---------|-----------|-----------|-----------|-------------|------------|
+| A (0xFFFA)  | string   | symbol | keyword | list      | vector    | array_map | hash_map    | hash_set   |
+| B (0xFFFE)  | fn_val   | atom   | var_ref | regex     | protocol  | multi_fn  | protocol_fn | delay      |
+| C (0xFFF8)  | lazy_seq | cons   | reduced | ex_info   | ns        | agent     | ref         | volatile   |
+| D (0xFFFF)  | t_vector | t_map  | t_set   | chunk_buf | chunked_c | wasm_mod  | wasm_fn     | class_inst |
 
 **CW との差分:**
 - array_map と hash_map を別スロット（CW は map スロットを共有 + discriminant）
@@ -296,11 +296,11 @@ Phase 5 で ArrayMap (≤8 エントリ) を追加。Vector/HashMap は別ファ
 **分離の理由 (A4)**: CW の gc.zig は 1,948 LOC の単一ファイル。
 ClojureWasm (新) では gc/ ディレクトリに 3 ファイルで分離:
 
-| ファイル             | 責務                              | Phase |
-|---------------------|-----------------------------------|-------|
-| gc/arena.zig        | GC インターフェース + Arena GC     | 1     |
-| gc/mark_sweep.zig   | Mark-Sweep + Free Pool            | 5 末  |
-| gc/roots.zig        | RootSet 定義 + 型別マーク走査      | 5 末  |
+| ファイル          | 責務                           | Phase |
+|-------------------|--------------------------------|-------|
+| gc/arena.zig      | GC インターフェース + Arena GC | 1     |
+| gc/mark_sweep.zig | Mark-Sweep + Free Pool         | 5 末  |
+| gc/roots.zig      | RootSet 定義 + 型別マーク走査  | 5 末  |
 
 **Mark-Sweep 導入タイミングの修正:**
 
@@ -409,11 +409,11 @@ pub fn intern(ns: ?[]const u8, name: []const u8) *Keyword {
 
 CW の 3 ファイル分離（2,881 行合計）が成功しているため、同じ構造を採用:
 
-| ファイル         | 責務                          | LOC 目標 |
-|-----------------|-------------------------------|---------|
-| tokenizer.zig   | テキスト → トークン列          | ~500    |
-| reader.zig      | トークン → Form ツリー         | ~1,000  |
-| form.zig        | Form 構造体 + SourceLocation   | ~200    |
+| ファイル      | 責務                         | LOC 目標 |
+|---------------|------------------------------|----------|
+| tokenizer.zig | テキスト → トークン列        | ~500     |
+| reader.zig    | トークン → Form ツリー       | ~1,000   |
+| form.zig      | Form 構造体 + SourceLocation | ~200     |
 
 **Reader の段階的スコープ** (04_super_detail.md §5.11):
 
@@ -518,8 +518,8 @@ fn evalForm(self: *TreeWalk, form: Form) !Value {
 
 **全ての最適化コードを独立ファイルに分離。compiler.zig に混ぜない。**
 
-| ファイル          | 内容                      | Phase |
-|------------------|---------------------------|-------|
+| ファイル              | 内容                       | Phase |
+|-----------------------|----------------------------|-------|
 | peephole.zig          | ピープホール最適化         | 13    |
 | super_instruction.zig | スーパーインストラクション | 17    |
 | jit_arm64.zig         | ARM64 JIT コンパイラ       | 20    |
@@ -559,23 +559,23 @@ pub fn compare(form: Form) !Value {
 CW の collections.zig (6,268 LOC) の問題を回避するため、
 プリミティブを **primitive/ ディレクトリに 15 ファイルで分割**:
 
-| ファイル               | 内容                                        | 関数数 | Phase |
-|-----------------------|---------------------------------------------|-------|-------|
-| primitive/core.zig    | apply, type, identical?                      | ~10   | 2     |
-| primitive/seq.zig     | first, rest, next, cons, seq, empty?         | ~15   | 1     |
-| primitive/coll.zig    | assoc, dissoc, get, conj, count, nth, into   | ~20   | 1     |
-| primitive/math.zig    | +, -, *, /, mod, rem, inc, dec, compare      | ~15   | 1     |
-| primitive/string.zig  | str, subs, string?, char, name, namespace    | ~10   | 1     |
-| primitive/pred.zig    | nil?, number?, keyword?, fn?, coll?, seq?    | ~20   | 1     |
-| primitive/io.zig      | println, pr, prn, print, newline, flush      | ~10   | 2     |
-| primitive/meta.zig    | meta, with-meta, vary-meta, alter-meta!      | ~5    | 3     |
-| primitive/ns.zig      | in-ns, require, refer, alias, all-ns         | ~10   | 4     |
-| primitive/atom.zig    | atom, deref, swap!, reset!, compare-and-set! | ~8    | 5     |
-| primitive/protocol.zig| defprotocol, extend-type, satisfies?         | ~10   | 9     |
-| primitive/error.zig   | ex-info, ex-message, ex-data, ex-cause       | ~5    | 3     |
-| primitive/regex.zig   | re-find, re-matches, re-seq, re-pattern      | ~5    | 10    |
-| primitive/lazy.zig    | lazy-seq thunk creation, realized?           | ~3    | 6     |
-| primitive.zig         | 登録エントリポイント（全 primitive/*.zig を統合）| —    | 1     |
+| ファイル               | 内容                                              | 関数数 | Phase |
+|------------------------|---------------------------------------------------|--------|-------|
+| primitive/core.zig     | apply, type, identical?                           | ~10    | 2     |
+| primitive/seq.zig      | first, rest, next, cons, seq, empty?              | ~15    | 1     |
+| primitive/coll.zig     | assoc, dissoc, get, conj, count, nth, into        | ~20    | 1     |
+| primitive/math.zig     | +, -, `*`, /, mod, rem, inc, dec, compare         | ~15    | 1     |
+| primitive/string.zig   | str, subs, string?, char, name, namespace         | ~10    | 1     |
+| primitive/pred.zig     | nil?, number?, keyword?, fn?, coll?, seq?         | ~20    | 1     |
+| primitive/io.zig       | println, pr, prn, print, newline, flush           | ~10    | 2     |
+| primitive/meta.zig     | meta, with-meta, vary-meta, alter-meta!           | ~5     | 3     |
+| primitive/ns.zig       | in-ns, require, refer, alias, all-ns              | ~10    | 4     |
+| primitive/atom.zig     | atom, deref, swap!, reset!, compare-and-set!      | ~8     | 5     |
+| primitive/protocol.zig | defprotocol, extend-type, satisfies?              | ~10    | 9     |
+| primitive/error.zig    | ex-info, ex-message, ex-data, ex-cause            | ~5     | 3     |
+| primitive/regex.zig    | re-find, re-matches, re-seq, re-pattern           | ~5     | 10    |
+| primitive/lazy.zig     | lazy-seq thunk creation, realized?                | ~3     | 6     |
+| primitive.zig          | 登録エントリポイント(全 `primitive/*.zig` を統合) | —      | 1     |
 
 ### 5.2 primitive.zig — 登録エントリポイント
 
@@ -622,10 +622,10 @@ Stage 6: clojure.test, clojure.edn, clojure.pprint
 
 core.clj の defmacro では実装できない変換:
 
-| マクロ      | 理由                                        | Phase |
-|------------|---------------------------------------------|-------|
-| `defmacro` | .setMacro() が Java メソッド → 特殊形式化    | 2     |
-| `ns`       | ブートストラップ前に必要                     | 4     |
+| マクロ     | 理由                                      | Phase |
+|------------|-------------------------------------------|-------|
+| `defmacro` | .setMacro() が Java メソッド → 特殊形式化 | 2     |
+| `ns`       | ブートストラップ前に必要                  | 4     |
 
 ---
 
@@ -667,22 +667,22 @@ ClojureWasm (新) でも同等機能を提供。**
 - クライアントごとにスレッド生成
 - サポートする nREPL オペレーション（14 個）:
 
-| Op           | 機能                    | 優先度 |
-|-------------|------------------------|--------|
-| clone       | セッション複製          | 必須   |
-| close       | セッション終了          | 必須   |
-| describe    | サーバー情報            | 必須   |
-| eval        | コード評価              | 必須   |
-| load-file   | ファイルロード          | 必須   |
-| completions | 補完候補                | 高     |
-| info        | シンボル情報            | 高     |
-| lookup      | ドキュメント検索        | 高     |
-| eldoc       | 関数シグネチャ          | 高     |
-| ls-sessions | セッション一覧          | 中     |
-| ns-list     | 名前空間一覧            | 中     |
-| stacktrace  | スタックトレース        | 中     |
-| stdin       | 標準入力転送            | 低     |
-| interrupt   | 評価中断                | 低     |
+| Op          | 機能             | 優先度 |
+|-------------|------------------|--------|
+| clone       | セッション複製   | 必須   |
+| close       | セッション終了   | 必須   |
+| describe    | サーバー情報     | 必須   |
+| eval        | コード評価       | 必須   |
+| load-file   | ファイルロード   | 必須   |
+| completions | 補完候補         | 高     |
+| info        | シンボル情報     | 高     |
+| lookup      | ドキュメント検索 | 高     |
+| eldoc       | 関数シグネチャ   | 高     |
+| ls-sessions | セッション一覧   | 中     |
+| ns-list     | 名前空間一覧     | 中     |
+| stacktrace  | スタックトレース | 中     |
+| stdin       | 標準入力転送     | 低     |
+| interrupt   | 評価中断         | 低     |
 
 **line_editor.zig:**
 - ANSI ターミナル制御、履歴、Emacs キーバインド、Tab 補完
@@ -739,14 +739,14 @@ zig build -Dmath=false           # 最小バイナリ
 
 ### 8.1 Phase 再編成のポイント
 
-| 変更点                              | 理由                                         |
-|-------------------------------------|----------------------------------------------|
-| Reader を Phase 1 で 3 ファイル分割 | CW で実証済み。後から分割は困難               |
-| Analyzer + Node を Phase 2 に前倒し | 特殊形式の型安全なディスパッチに必要          |
-| Mark-Sweep GC を Phase 5 末に移動  | HAMT transient の一時オブジェクトに必要       |
-| nREPL を Phase 14 に追加           | CW が持つ機能。エディタ連携に必須             |
-| optimize/ を Phase 13, 17, 20 に分散| 各最適化を独立 Phase で実装                   |
-| deps.zig を Phase 14 に含める      | CLI リリースと同時に deps.edn 基本対応        |
+| 変更点                               | 理由                                    |
+|--------------------------------------|-----------------------------------------|
+| Reader を Phase 1 で 3 ファイル分割  | CW で実証済み。後から分割は困難         |
+| Analyzer + Node を Phase 2 に前倒し  | 特殊形式の型安全なディスパッチに必要    |
+| Mark-Sweep GC を Phase 5 末に移動    | HAMT transient の一時オブジェクトに必要 |
+| nREPL を Phase 14 に追加             | CW が持つ機能。エディタ連携に必須       |
+| optimize/ を Phase 13, 17, 20 に分散 | 各最適化を独立 Phase で実装             |
+| deps.zig を Phase 14 に含める        | CLI リリースと同時に deps.edn 基本対応  |
 
 ### 8.2 完全 Phase リスト
 
@@ -862,12 +862,12 @@ CIDER/Calva/Conjure で:
 **全ての最適化コードは src/eval/optimize/ に集約。
 コア実装（compiler.zig, vm.zig）に最適化ロジックを混ぜない。**
 
-| ファイル               | 内容                      | Phase | CW 実測効果    |
-|----------------------|---------------------------|-------|---------------|
-| peephole.zig         | ピープホール最適化         | 13    | —             |
-| super_instruction.zig| スーパーインストラクション | 17    | VM +15-20%    |
-| jit_arm64.zig        | ARM64 JIT                  | 20    | ループ 10.3x  |
-| jit_x86_64.zig       | x86_64 JIT                 | 20+   | —             |
+| ファイル              | 内容                       | Phase | CW 実測効果  |
+|-----------------------|----------------------------|-------|--------------|
+| peephole.zig          | ピープホール最適化         | 13    | —            |
+| super_instruction.zig | スーパーインストラクション | 17    | VM +15-20%   |
+| jit_arm64.zig         | ARM64 JIT                  | 20    | ループ 10.3x |
+| jit_x86_64.zig        | x86_64 JIT                 | 20+   | —            |
 
 ### 10.2 GC 最適化
 
@@ -910,27 +910,27 @@ test/
 ## 12. CW 教訓の設計反映チェックリスト
 
 | #   | CW 教訓                          | 反映セクション | 状態 |
-|-----|----------------------------------|---------------|------|
-| L1  | レイヤー依存方向の厳守            | §2, §3.6      | ✓    |
-| L2  | 並行性は後付けできない            | §3.4, §3.5    | ✓    |
-| L3  | エラー基盤は後付けできない        | §3.7           | ✓    |
+|-----|----------------------------------|----------------|------|
+| L1  | レイヤー依存方向の厳守           | §2, §3.6       | ✓    |
+| L2  | 並行性は後付けできない           | §3.4, §3.5     | ✓    |
+| L3  | エラー基盤は後付けできない       | §3.7           | ✓    |
 | L4  | core.clj 捨てて車輪の再発明      | §5.3           | ✓    |
-| L5  | テスト駆動でないと品質低下        | §11.1          | ✓    |
-| L6  | i48 オーバーフローの暗黙変換      | §3.1           | ✓    |
+| L5  | テスト駆動でないと品質低下       | §11.1          | ✓    |
+| L6  | i48 オーバーフローの暗黙変換     | §3.1           | ✓    |
 | L7  | GC ルート追跡漏れ                | §3.4           | ✓    |
-| L8  | Protocol キャッシュに generation  | §5.1           | ✓    |
-| L9  | ホットパスの一時アロケーション    | §10.2          | ✓    |
-| L10 | バイトコードキャッシュ            | §8.2 Phase 12  | ✓    |
-| L11 | 「都度対応」の蓄積は破綻          | §1.1 P4        | ✓    |
-| L12 | 拡張は ext/ に閉じる              | §7             | ✓    |
-| L13 | ファイル構成は最初に決める        | §2             | ✓    |
-| L14 | デュアルバックエンドで品質保証    | §4.7           | ✓    |
-| L15 | 非機能要件は基準値で管理          | §11.2          | ✓    |
+| L8  | Protocol キャッシュに generation | §5.1           | ✓    |
+| L9  | ホットパスの一時アロケーション   | §10.2          | ✓    |
+| L10 | バイトコードキャッシュ           | §8.2 Phase 12  | ✓    |
+| L11 | 「都度対応」の蓄積は破綻         | §1.1 P4        | ✓    |
+| L12 | 拡張は ext/ に閉じる             | §7             | ✓    |
+| L13 | ファイル構成は最初に決める       | §2             | ✓    |
+| L14 | デュアルバックエンドで品質保証   | §4.7           | ✓    |
+| L15 | 非機能要件は基準値で管理         | §11.2          | ✓    |
 | NEW | builtins 6K LOC モノリス回避     | §5.1           | ✓    |
-| NEW | nREPL サーバーの実装              | §6.2           | ✓    |
-| NEW | Reader 3 ファイル分離             | §4.1           | ✓    |
-| NEW | 最適化コードの明確な分離          | §4.6, §10      | ✓    |
-| NEW | GC サブシステムのファイル分離     | §3.4           | ✓    |
+| NEW | nREPL サーバーの実装             | §6.2           | ✓    |
+| NEW | Reader 3 ファイル分離            | §4.1           | ✓    |
+| NEW | 最適化コードの明確な分離         | §4.6, §10      | ✓    |
+| NEW | GC サブシステムのファイル分離    | §3.4           | ✓    |
 | NEW | Mark-Sweep GC の導入タイミング   | §8.2 Phase 5末 | ✓    |
 
 ---

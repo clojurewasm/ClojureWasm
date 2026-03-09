@@ -14,3 +14,6 @@ private/
 
 # macOS
 .DS_Store
+
+# direnv / nix
+.direnv/
