@@ -29,21 +29,18 @@ const val = list.pop();                // returns ?T, not T
 
 Same pattern for HashMap: `.empty`, `put(alloc, k, v)`, `deinit(alloc)`.
 
-## stdout: no getStdOut() in 0.15.2
+## stdout: use std.fs.File.stdout()
 
 ```zig
-// NG
+// NG — does not exist in 0.15.2
 const stdout = std.io.getStdOut().writer();
 
-// OK (simple) — direct write
-const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-_ = try stdout.write("hello\n");
-
-// OK (buffered) — for formatted output
-var buf: [4096]u8 = undefined;
-var writer = std.fs.File.stdout().writer(&buf);
-const w = &writer.interface;
-try w.flush();  // don't forget
+// OK — buffered writer (official zig init pattern)
+var stdout_buffer: [4096]u8 = undefined;
+var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+const stdout = &stdout_writer.interface;
+try stdout.print("hello {s}\n", .{"world"});
+try stdout.flush();  // don't forget
 ```
 
 ## std.Io.Writer: type-erased writer
