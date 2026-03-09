@@ -189,6 +189,12 @@ ClojureWasm/
 ├── build.zig                       ビルドスクリプト
 ├── build.zig.zon                   パッケージ定義
 ├── flake.nix                       Nix 開発環境
+├── bench/                          ベンチマーク (Phase 8+)
+│   ├── bench.sh                    統一エントリポイント (run/record/compare)
+│   ├── history.yaml                ベースライン記録
+│   ├── compare.yaml                クロス言語比較スナップショット
+│   └── suite/                      ベンチマークスイート
+│       └── NN_name/                各ベンチマーク (meta.yaml + bench.clj)
 ├── scripts/
 │   ├── zone_check.sh               ゾーン依存チェッカー
 │   └── coverage.sh                 vars カバレッジレポート
