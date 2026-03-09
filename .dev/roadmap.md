@@ -518,6 +518,11 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
 ### Tasks
 
 - [ ] **14.1** src/app/cli.zig — CLI argument parser. Plan ref: plan_ja.md lines 626-643
+  - Commands: `cljw` (REPL), `cljw file.clj` (file exec), `cljw js src/ -o dist/` (CLJS), `cljw build -o myapp src/main.clj` (single binary)
+  - Flags: `-e EXPR` (inline eval), `-i FILE` (load before eval), `-m NS` (run -main), `-r` (REPL after load), `-P` (deps resolve), `-h` (help), `--version`
+  - nREPL: `--nrepl-server`, `--port PORT`
+  - Backend: `--tree-walk` (TreeWalk instead of VM)
+  - Combinable: `cljw -i a.clj -e '...' b.clj` (sequential, shared state)
 - [ ] **14.2** src/app/runner.zig — Error output formatting (stderr, ANSI colors)
 - [ ] **14.3** src/app/repl/repl.zig — NS-aware prompt, multi-line, *1/*2/*3/*e, ANSI. Plan ref: plan_ja.md lines 650-654
 - [ ] **14.4** src/app/repl/line_editor.zig — history, Emacs keybindings, Tab completion. CW ref: line_editor.zig
