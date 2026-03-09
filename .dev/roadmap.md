@@ -11,7 +11,7 @@ OrbStack Ubuntu x86_64 (Rosetta emulation on Apple Silicon). Gate tasks MUST pas
 moving to the next phase. Lesson from zwasm: ARM64-only development caused painful x86_64
 regressions, especially in JIT, GC, and bytecode dispatch.
 
-**Setup**: See `.dev/references/setup-orbstack.md` for one-time VM setup.
+**Setup**: See `.dev/references/setup_orbstack.md` for one-time VM setup.
 **Run tests**: `orb run -m my-ubuntu-amd64 bash -lc "cd /path/to/ClojureWasm && zig build test"`
 **When gate fails**: Fix the issue before proceeding. Do NOT defer x86_64 fixes.
 
@@ -141,7 +141,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - Read + print (no eval yet): read form, print it back
   - Verify round-trip: (+ 1 2) -> reads as list -> prints as (+ 1 2)
 - [ ] **1.12** 🔒 x86_64 Gate — OrbStack Ubuntu x86_64 setup + `zig build test`
-  - One-time: create VM, install Zig 0.15.2 (see `.dev/references/setup-orbstack.md`)
+  - One-time: create VM, install Zig 0.15.2 (see `.dev/references/setup_orbstack.md`)
   - NaN boxing bit ops are architecture-sensitive — verify all value.zig tests pass
   - All tests must pass on both ARM64 (Mac) and x86_64 (Ubuntu)
 
@@ -209,7 +209,7 @@ Bootstrap Stage 0: the ~20 rt/ functions needed before defn exists.
   - Plan ref: plan_ja.md line 566
 - [ ] **2.11** src/lang/primitive/io.zig — IO primitives
   - rt/println, rt/pr, rt/prn
-  - Uses std.Io.Writer (see zig-tips.md)
+  - Uses std.Io.Writer (see zig_tips.md)
   - Plan ref: plan_ja.md line 567
 - [ ] **2.12** src/lang/primitive/core.zig — Core primitives
   - rt/apply, rt/type, rt/identical?

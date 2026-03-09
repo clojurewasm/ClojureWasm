@@ -196,7 +196,7 @@ ClojureWasm/
 ├── .dev/                           開発管理
 │   ├── design/                     設計ドキュメント
 │   ├── status/vars.yaml            vars 実装追跡
-│   ├── known-issues.md             既知問題
+│   ├── known_issues.md             既知問題
 │   ├── memo.md                     セッションハンドオーバー
 │   └── roadmap.md                  Phase トラッカー
 │

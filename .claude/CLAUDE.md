@@ -29,8 +29,8 @@ ext/                     -- comptime-gated extensions
 **Key design**: Kernel has ~160 primitives in `rt` namespace.
 core.clj references them as `rt/first`, `rt/cons`, etc. (~600 vars in .clj).
 
-Zone details: `.claude/rules/zone-deps.md` (auto-loads on `src/**/*.zig` edits).
-Zig pitfalls: `.claude/rules/zig-tips.md` (auto-loads on `src/**/*.zig` edits).
+Zone details: `.claude/rules/zone_deps.md` (auto-loads on `src/**/*.zig` edits).
+Zig pitfalls: `.claude/rules/zig_tips.md` (auto-loads on `src/**/*.zig` edits).
 
 ## TDD (t-wada style)
 
@@ -93,7 +93,7 @@ Read `.dev/memo.md`. Check:
 - Move previous current task to `## Previous Task`.
 - If you discover a bug or debt during planning:
   - **Can fix now?** → fix as a separate preceding commit.
-  - **Cannot fix now?** → add to `.dev/known-issues.md` with priority (P0-P3).
+  - **Cannot fix now?** → add to `.dev/known_issues.md` with priority (P0-P3).
 
 ### 3. Execute (TDD)
 
@@ -108,7 +108,7 @@ Read `.dev/memo.md`. Check:
 - If implementing a var → update `.dev/status/vars.yaml` status to `done`.
   - Do not mark it as `done` until it is fully implemented and behaviorally equivalent to upstream.
 - If optimization/feature affects performance → `bash bench/bench.sh record` (Phase 8+).
-- If a known issue was resolved → **delete it** from known-issues.md.
+- If a known issue was resolved → **delete it** from known_issues.md.
 - If all tasks in a phase are done → update Phase Tracker: `IN-PROGRESS` → `DONE`.
   Also update memo.md `## Current State` with new phase status.
 - One task = one commit.
@@ -122,7 +122,7 @@ Loop back to Orient. Continue until:
 ### Housekeeping
 
 - **memo.md handover notes are ephemeral.** Resolve and delete, don't accumulate.
-- **known-issues.md entries should shrink over time.** Fix when opportunity arises.
+- **known_issues.md entries should shrink over time.** Fix when opportunity arises.
 - **roadmap.md is the source of truth** for task ordering and completion status.
 
 ## References
