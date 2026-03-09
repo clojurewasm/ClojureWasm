@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.1** build.zig + build.zig.zon + main.zig skeleton + flake.nix
+**1.2** src/runtime/value.zig — NaN Boxing Value type
 
 ## Handover Notes
 

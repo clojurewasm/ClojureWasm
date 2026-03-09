@@ -82,7 +82,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - main.zig prints "ClojureWasm" and exits
   - flake.nix: Zig 0.15.2, hyperfine, yq-go (benchmark tooling from Day 1)
   - CW ref: ~/Documents/MyProducts/ClojureWasm/flake.nix
-- [ ] **1.2** src/runtime/value.zig — NaN Boxing Value type
+- [x] **1.2** src/runtime/value.zig — NaN Boxing Value type
   - u64 representation: inline nil/true/false/int(i48)/float(f64)
   - Heap pointer encoding: 4 groups x 8 sub-types = 32 slots
   - HeapHeader with mark bit + frozen flag
