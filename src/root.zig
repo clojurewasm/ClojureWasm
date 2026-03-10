@@ -3,4 +3,5 @@
 
 test {
     _ = @import("runtime/value.zig");
+    _ = @import("runtime/error.zig");
 }

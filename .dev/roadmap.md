@@ -89,7 +89,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - Type check functions: isNil(), isInt(), isFloat(), isString(), etc.
   - CW ref: value.zig. Key diff: 1:1 slot mapping (no slot sharing)
   - Plan ref: plan_ja.md lines 238-267
-- [ ] **1.3** src/runtime/error.zig — Error infrastructure
+- [x] **1.3** src/runtime/error.zig — Error infrastructure
   - SourceLocation struct (file, line, column)
   - BuiltinFn signature: fn(args, loc) anyerror!Value
   - Type assertion helpers: expectNumber, expectString, etc.

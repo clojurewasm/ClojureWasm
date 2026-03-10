@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.2** src/runtime/value.zig — NaN Boxing Value type
+**1.3** src/runtime/error.zig — Error infrastructure
 
 ## Handover Notes
 
