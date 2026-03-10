@@ -7,4 +7,5 @@ test {
     _ = @import("runtime/gc/arena.zig");
     _ = @import("runtime/collection/list.zig");
     _ = @import("runtime/hash.zig");
+    _ = @import("runtime/keyword.zig");
 }

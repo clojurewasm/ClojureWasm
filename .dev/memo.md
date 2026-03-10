@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.6** src/runtime/hash.zig — Murmur3 hash
+**1.7** src/runtime/keyword.zig — Keyword interning
 
 ## Handover Notes
 

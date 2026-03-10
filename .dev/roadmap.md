@@ -113,7 +113,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - Hash function for strings (keywords, symbols)
   - Clojure-compatible hash values
   - CW ref: hash.zig. Clojure ref: ~/Documents/OSS/clojure Murmur3.java
-- [ ] **1.7** src/runtime/keyword.zig — Keyword interning
+- [x] **1.7** src/runtime/keyword.zig — Keyword interning
   - Global intern table with mutex
   - intern(ns, name) -> *Keyword
   - Namespace-qualified and unqualified keywords
