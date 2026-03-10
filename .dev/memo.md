@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.5** src/runtime/collection/list.zig — PersistentList (cons cell only)
+**1.6** src/runtime/hash.zig — Murmur3 hash
 
 ## Handover Notes
 

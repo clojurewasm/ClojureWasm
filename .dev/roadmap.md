@@ -109,7 +109,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - cons(), first(), rest(), seq(), count() operations
   - List printing support
   - Plan ref: plan_ja.md lines 269-282
-- [ ] **1.6** src/runtime/hash.zig — Murmur3 hash
+- [x] **1.6** src/runtime/hash.zig — Murmur3 hash
   - Hash function for strings (keywords, symbols)
   - Clojure-compatible hash values
   - CW ref: hash.zig. Clojure ref: ~/Documents/OSS/clojure Murmur3.java
