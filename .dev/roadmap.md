@@ -97,7 +97,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - Error formatting (ANSI, no I/O dependency)
   - All threadlocal: last_error, call_stack, msg_buf
   - Plan ref: plan_ja.md lines 361-387
-- [ ] **1.4** src/runtime/gc/arena.zig — Arena GC interface
+- [x] **1.4** src/runtime/gc/arena.zig — Arena GC interface
   - Arena allocator for heap objects
   - gc_mutex: std.Thread.Mutex = .{} (Day 1, unused until threads)
   - suppress_count: u32 (for macro expansion GC suppression)

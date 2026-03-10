@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.3** src/runtime/error.zig — Error infrastructure
+**1.4** src/runtime/gc/arena.zig — Arena GC interface
 
 ## Handover Notes
 
