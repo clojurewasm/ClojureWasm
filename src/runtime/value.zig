@@ -1,30 +1,43 @@
-// Value type — Runtime value representation for ClojureWasm.
-//
-// Uses NaN boxing for compact 8-byte representation.
-// IEEE 754 double NaN space encodes tagged values:
-//   top16 < 0xFFF8 → float (raw f64 bits pass-through)
-//   0xFFF8 → heap C (sub-type[47:45] + addr>>3[44:0]), types 16-23
-//   0xFFF9 → integer (i48 signed, overflow → float promotion)
-//   0xFFFA → heap A (sub-type[47:45] + addr>>3[44:0]), types 0-7
-//   0xFFFB → constant (0=nil, 1=true, 2=false)
-//   0xFFFC → char (u21 codepoint)
-//   0xFFFD → builtin_fn (48-bit function pointer)
-//   0xFFFE → heap B (sub-type[47:45] + addr>>3[44:0]), types 8-15
-//   0xFFFF → heap D (sub-type[47:45] + addr>>3[44:0]), types 24-31
+//! NaN boxing Value type for ClojureWasm runtime.
+//!
+//! Every Clojure value is represented as a single `u64` using IEEE 754
+//! NaN boxing. The upper 16 bits of the f64 bit pattern serve as a tag:
+//!
+//!   top16 < 0xFFF8 → float (raw f64 pass-through)
+//!
+//!   Heap groups (contiguous 0xFFF8-0xFFFB):
+//!     0xFFF8  heap A  Core Data            sub-type[47:45] + addr>>3[44:0]
+//!     0xFFF9  heap B  Callable & Binding   sub-type[47:45] + addr>>3[44:0]
+//!     0xFFFA  heap C  Sequence & State     sub-type[47:45] + addr>>3[44:0]
+//!     0xFFFB  heap D  Transient & Ext      sub-type[47:45] + addr>>3[44:0]
+//!
+//!   Immediate types (contiguous 0xFFFC-0xFFFF):
+//!     0xFFFC  integer     i48 signed, overflow → float promotion
+//!     0xFFFD  constant    0=nil, 1=true, 2=false
+//!     0xFFFE  char        u21 codepoint
+//!     0xFFFF  builtin_fn  48-bit function pointer
+//!
+//! Contiguous layout enables single-op classification:
+//!   isHeap:      (top16 & 0xFFFC) == 0xFFF8
+//!   isImmediate: (top16 & 0xFFFC) == 0xFFFC
 
 const std = @import("std");
 const testing = std.testing;
 
 // --- NaN boxing constants ---
 
-const NB_HEAP_TAG_C: u64 = 0xFFF8_0000_0000_0000; // heap types 16-23
-const NB_INT_TAG: u64 = 0xFFF9_0000_0000_0000;
-const NB_HEAP_TAG_A: u64 = 0xFFFA_0000_0000_0000; // heap types 0-7
-const NB_CONST_TAG: u64 = 0xFFFB_0000_0000_0000;
-const NB_CHAR_TAG: u64 = 0xFFFC_0000_0000_0000;
-const NB_BUILTIN_FN_TAG: u64 = 0xFFFD_0000_0000_0000;
-const NB_HEAP_TAG_B: u64 = 0xFFFE_0000_0000_0000; // heap types 8-15
-const NB_HEAP_TAG_D: u64 = 0xFFFF_0000_0000_0000; // heap types 24-31
+// Heap group tags (contiguous: 0xFFF8-0xFFFB)
+const NB_HEAP_TAG_A: u64 = 0xFFF8_0000_0000_0000; // Core Data (types 0-7)
+const NB_HEAP_TAG_B: u64 = 0xFFF9_0000_0000_0000; // Callable & Binding (types 8-15)
+const NB_HEAP_TAG_C: u64 = 0xFFFA_0000_0000_0000; // Sequence & State (types 16-23)
+const NB_HEAP_TAG_D: u64 = 0xFFFB_0000_0000_0000; // Transient & Extension (types 24-31)
+
+// Immediate type tags (contiguous: 0xFFFC-0xFFFF)
+const NB_INT_TAG: u64 = 0xFFFC_0000_0000_0000;
+const NB_CONST_TAG: u64 = 0xFFFD_0000_0000_0000;
+const NB_CHAR_TAG: u64 = 0xFFFE_0000_0000_0000;
+const NB_BUILTIN_FN_TAG: u64 = 0xFFFF_0000_0000_0000;
+
 const NB_TAG_SHIFT: u6 = 48;
 const NB_PAYLOAD_MASK: u64 = 0x0000_FFFF_FFFF_FFFF;
 const NB_ADDR_SHIFTED_MASK: u64 = 0x0000_1FFF_FFFF_FFFF; // 45 bits for addr >> 3
@@ -34,15 +47,15 @@ const NB_HEAP_GROUP_SIZE: u8 = 8;
 
 // --- Heap type slot assignment (1:1 mapping, no sharing) ---
 //
-// | Group (tag) | Sub 0    | Sub 1  | Sub 2   | Sub 3     | Sub 4     | Sub 5     | Sub 6       | Sub 7      |
-// |-------------|----------|--------|---------|-----------|-----------|-----------|-------------|------------|
-// | A (0xFFFA)  | string   | symbol | keyword | list      | vector    | array_map | hash_map    | hash_set   |
-// | B (0xFFFE)  | fn_val   | atom   | var_ref | regex     | protocol  | multi_fn  | protocol_fn | delay      |
-// | C (0xFFF8)  | lazy_seq | cons   | reduced | ex_info   | ns        | agent     | ref         | volatile   |
-// | D (0xFFFF)  | t_vector | t_map  | t_set   | chunk_buf | chunked_c | wasm_mod  | wasm_fn     | class_inst |
+// | Group (tag)           | Sub 0    | Sub 1    | Sub 2     | Sub 3       | Sub 4   | Sub 5   | Sub 6    | Sub 7      |
+// |-----------------------|----------|----------|-----------|-------------|---------|---------|----------|------------|
+// | A: Core Data (0xFFF8) | string   | symbol   | keyword   | list        | vector  | arr_map | hash_map | hash_set   |
+// | B: Call/Bind (0xFFF9) | fn_val   | multi_fn | protocol  | protocol_fn | var_ref | ns      | delay    | regex      |
+// | C: Seq/State (0xFFFA) | lazy_seq | cons     | chunked_c | chunk_buf   | atom    | agent   | ref      | volatile   |
+// | D: Trans/Ext (0xFFFB) | t_vector | t_map    | t_set     | reduced     | ex_info | wasm_m  | wasm_fn  | class_inst |
 
 const HeapTag = enum(u8) {
-    // Group A (0-7)
+    // Group A: Core Data — immutable literals and persistent collections
     string = 0,
     symbol = 1,
     keyword = 2,
@@ -51,45 +64,48 @@ const HeapTag = enum(u8) {
     array_map = 5,
     hash_map = 6,
     hash_set = 7,
-    // Group B (8-15)
+    // Group B: Callable & Binding — invocable, dispatch, name resolution
     fn_val = 8,
-    atom = 9,
-    var_ref = 10,
-    regex = 11,
-    protocol = 12,
-    multi_fn = 13,
-    protocol_fn = 14,
-    delay = 15,
-    // Group C (16-23)
+    multi_fn = 9,
+    protocol = 10,
+    protocol_fn = 11,
+    var_ref = 12,
+    ns = 13,
+    delay = 14,
+    regex = 15,
+    // Group C: Sequence & State — lazy evaluation, mutable references
     lazy_seq = 16,
     cons = 17,
-    reduced = 18,
-    ex_info = 19,
-    ns = 20,
+    chunked_cons = 18,
+    chunk_buffer = 19,
+    atom = 20,
     agent = 21,
     ref = 22,
     @"volatile" = 23,
-    // Group D (24-31)
+    // Group D: Transient & Extension — mutable collections, control, wasm, escape hatch
     transient_vector = 24,
     transient_map = 25,
     transient_set = 26,
-    chunk_buffer = 27,
-    chunked_cons = 28,
+    reduced = 27,
+    ex_info = 28,
     wasm_module = 29,
     wasm_fn = 30,
     class_inst = 31,
 };
 
-// --- HeapHeader ---
-// Prefixed to every heap-allocated object for GC and metadata.
-
+/// 2-byte header prefixed to every heap-allocated object.
+/// Used by GC for mark/sweep and by the runtime for type dispatch.
 pub const HeapHeader = extern struct {
-    tag: u8, // HeapTag discriminant
+    /// HeapTag discriminant (0-31).
+    tag: u8,
     flags: Flags,
 
+    /// Per-object GC and lifecycle flags.
     pub const Flags = packed struct(u8) {
-        marked: bool = false, // GC mark bit
-        frozen: bool = false, // Arena freeze flag
+        /// GC mark bit for mark-sweep collection.
+        marked: bool = false,
+        /// Arena freeze flag — prevents mutation after snapshot.
+        frozen: bool = false,
         _pad: u6 = 0,
     };
 
@@ -98,21 +114,26 @@ pub const HeapHeader = extern struct {
     }
 };
 
-// --- Value ---
-
+/// NaN-boxed runtime value. Every Clojure value fits in 8 bytes.
+///
+/// Use `tag()` to classify, constructors (`initInteger`, `initFloat`, etc.)
+/// to create, and accessors (`asInteger`, `asFloat`, etc.) to extract.
 pub const Value = enum(u64) {
     nil_val = NB_CONST_TAG | 0,
     true_val = NB_CONST_TAG | 1,
     false_val = NB_CONST_TAG | 2,
     _,
 
-    /// Runtime type tag for dispatch.
+    /// High-level type tag returned by `tag()`. Used for runtime dispatch.
     pub const Tag = enum {
+        // Immediates
         nil,
         boolean,
         integer,
         float,
         char,
+        builtin_fn,
+        // Group A: Core Data
         string,
         symbol,
         keyword,
@@ -121,35 +142,36 @@ pub const Value = enum(u64) {
         array_map,
         hash_map,
         hash_set,
+        // Group B: Callable & Binding
         fn_val,
-        builtin_fn,
-        atom,
-        var_ref,
-        regex,
-        protocol,
         multi_fn,
+        protocol,
         protocol_fn,
+        var_ref,
+        ns,
         delay,
+        regex,
+        // Group C: Sequence & State
         lazy_seq,
         cons,
-        reduced,
-        ex_info,
-        ns,
+        chunked_cons,
+        chunk_buffer,
+        atom,
         agent,
         ref,
         @"volatile",
+        // Group D: Transient & Extension
         transient_vector,
         transient_map,
         transient_set,
-        chunk_buffer,
-        chunked_cons,
+        reduced,
+        ex_info,
         wasm_module,
         wasm_fn,
         class_inst,
     };
 
-    // --- Encoding helpers ---
-
+    /// Pack a heap pointer into a Value. The pointer must be 8-byte aligned.
     fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
         const addr: u64 = @intFromPtr(ptr);
         std.debug.assert(addr & 0x7 == 0); // 8-byte aligned
@@ -168,6 +190,7 @@ pub const Value = enum(u64) {
         return @enumFromInt(tag_base | (sub_type << NB_HEAP_SUBTYPE_SHIFT) | shifted);
     }
 
+    /// Extract the heap pointer from a heap-tagged Value.
     fn decodePtr(self: Value, comptime T: type) T {
         const shifted = @intFromEnum(self) & NB_ADDR_SHIFTED_MASK;
         return @ptrFromInt(@as(usize, shifted) << NB_ADDR_ALIGN_SHIFT);
@@ -175,6 +198,7 @@ pub const Value = enum(u64) {
 
     fn heapTagToTag(ht_raw: u8) Tag {
         return switch (@as(HeapTag, @enumFromInt(ht_raw))) {
+            // Group A: Core Data
             .string => .string,
             .symbol => .symbol,
             .keyword => .keyword,
@@ -183,62 +207,65 @@ pub const Value = enum(u64) {
             .array_map => .array_map,
             .hash_map => .hash_map,
             .hash_set => .hash_set,
+            // Group B: Callable & Binding
             .fn_val => .fn_val,
-            .atom => .atom,
-            .var_ref => .var_ref,
-            .regex => .regex,
-            .protocol => .protocol,
             .multi_fn => .multi_fn,
+            .protocol => .protocol,
             .protocol_fn => .protocol_fn,
+            .var_ref => .var_ref,
+            .ns => .ns,
             .delay => .delay,
+            .regex => .regex,
+            // Group C: Sequence & State
             .lazy_seq => .lazy_seq,
             .cons => .cons,
-            .reduced => .reduced,
-            .ex_info => .ex_info,
-            .ns => .ns,
+            .chunked_cons => .chunked_cons,
+            .chunk_buffer => .chunk_buffer,
+            .atom => .atom,
             .agent => .agent,
             .ref => .ref,
             .@"volatile" => .@"volatile",
+            // Group D: Transient & Extension
             .transient_vector => .transient_vector,
             .transient_map => .transient_map,
             .transient_set => .transient_set,
-            .chunk_buffer => .chunk_buffer,
-            .chunked_cons => .chunked_cons,
+            .reduced => .reduced,
+            .ex_info => .ex_info,
             .wasm_module => .wasm_module,
             .wasm_fn => .wasm_fn,
             .class_inst => .class_inst,
         };
     }
 
-    // --- Tag query ---
-
+    /// Classify this Value into a Tag by inspecting the upper 16 bits.
     pub fn tag(self: Value) Tag {
         const bits = @intFromEnum(self);
         const top16: u16 = @truncate(bits >> NB_TAG_SHIFT);
         if (top16 < 0xFFF8) return .float;
         return switch (top16) {
-            0xFFF8 => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 16),
-            0xFFF9 => .integer,
-            0xFFFA => heapTagToTag(@truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)),
-            0xFFFB => switch (bits & NB_PAYLOAD_MASK) {
+            // Heap groups (contiguous 0xFFF8-0xFFFB)
+            0xFFF8 => heapTagToTag(@truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)),
+            0xFFF9 => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 8),
+            0xFFFA => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 16),
+            0xFFFB => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 24),
+            // Immediate types (contiguous 0xFFFC-0xFFFF)
+            0xFFFC => .integer,
+            0xFFFD => switch (bits & NB_PAYLOAD_MASK) {
                 0 => .nil,
                 1, 2 => .boolean,
                 else => unreachable,
             },
-            0xFFFC => .char,
-            0xFFFD => .builtin_fn,
-            0xFFFE => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 8),
-            0xFFFF => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 24),
+            0xFFFE => .char,
+            0xFFFF => .builtin_fn,
             else => unreachable,
         };
     }
-
-    // --- Constructors ---
 
     pub fn initBoolean(b: bool) Value {
         return if (b) Value.true_val else Value.false_val;
     }
 
+    /// Encode an integer. Values outside i48 range are promoted to float.
     pub fn initInteger(i: i64) Value {
         // i48 range: -2^47 .. 2^47-1
         if (i < -(1 << 47) or i > (1 << 47) - 1) {
@@ -248,6 +275,7 @@ pub const Value = enum(u64) {
         return @enumFromInt(NB_INT_TAG | @as(u64, raw));
     }
 
+    /// Encode a float. Negative NaN patterns are canonicalized to avoid tag collision.
     pub fn initFloat(f: f64) Value {
         const bits: u64 = @bitCast(f);
         // Canonicalize NaN values whose top16 >= 0xFFF8 to positive quiet NaN,
@@ -262,12 +290,11 @@ pub const Value = enum(u64) {
         return @enumFromInt(NB_CHAR_TAG | @as(u64, c));
     }
 
-    // --- Accessors ---
-
     pub fn isNil(self: Value) bool {
         return self == Value.nil_val;
     }
 
+    /// Clojure truthiness: everything except nil and false is truthy.
     pub fn isTruthy(self: Value) bool {
         return self != Value.nil_val and self != Value.false_val;
     }
@@ -288,8 +315,6 @@ pub const Value = enum(u64) {
     pub fn asChar(self: Value) u21 {
         return @truncate(@intFromEnum(self));
     }
-
-    // --- Type predicates ---
 
     pub fn isInt(self: Value) bool {
         return self.tag() == .integer;
@@ -467,10 +492,10 @@ test "heap pointer round-trip" {
 
 test "heap pointer tags for all groups" {
     // Test one type from each heap group
-    var obj_a: u64 align(8) = 0; // Group A
-    var obj_b: u64 align(8) = 0; // Group B
-    var obj_c: u64 align(8) = 0; // Group C
-    var obj_d: u64 align(8) = 0; // Group D
+    var obj_a: u64 align(8) = 0; // Group A: Core Data
+    var obj_b: u64 align(8) = 0; // Group B: Callable & Binding
+    var obj_c: u64 align(8) = 0; // Group C: Sequence & State
+    var obj_d: u64 align(8) = 0; // Group D: Transient & Extension
 
     const a = Value.encodeHeapPtr(.keyword, &obj_a); // slot 2, Group A
     const b = Value.encodeHeapPtr(.fn_val, &obj_b); // slot 8, Group B

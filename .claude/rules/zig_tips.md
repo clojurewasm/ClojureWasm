@@ -112,3 +112,12 @@ var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
 defer arena.deinit();
 const alloc = arena.allocator();
 ```
+
+## Doc comments
+
+- `//!` — module doc (top of file, before imports). ZLS hover on module.
+- `///` — declaration doc (on `pub` types/fns/fields). ZLS hover on symbol.
+- `//`  — inline notes (inside bodies only). Not shown by ZLS.
+
+Rules: every file gets `//!`. Every `pub` gets `///` unless self-evident.
+No `///` on private items. No decorative banners (`// ---`).

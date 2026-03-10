@@ -247,12 +247,15 @@ ClojureWasm/
 
 **ヒープ型スロット割り当て（1:1 マッピング、CW のスロット共有を回避）:**
 
-| Group (tag) | Sub 0    | Sub 1  | Sub 2   | Sub 3     | Sub 4     | Sub 5     | Sub 6       | Sub 7      |
-|-------------|----------|--------|---------|-----------|-----------|-----------|-------------|------------|
-| A (0xFFFA)  | string   | symbol | keyword | list      | vector    | array_map | hash_map    | hash_set   |
-| B (0xFFFE)  | fn_val   | atom   | var_ref | regex     | protocol  | multi_fn  | protocol_fn | delay      |
-| C (0xFFF8)  | lazy_seq | cons   | reduced | ex_info   | ns        | agent     | ref         | volatile   |
-| D (0xFFFF)  | t_vector | t_map  | t_set   | chunk_buf | chunked_c | wasm_mod  | wasm_fn     | class_inst |
+ヒープグループは連続配置 (0xFFF8-0xFFFB)、即値タグも連続 (0xFFFC-0xFFFF)。
+`(top16 & 0xFFFC) == 0xFFF8` でヒープ型判定が単一演算で可能。
+
+| Group (tag)                    | Sub 0    | Sub 1    | Sub 2       | Sub 3        | Sub 4       | Sub 5  | Sub 6   | Sub 7      |
+|--------------------------------|----------|----------|-------------|--------------|-------------|--------|---------|------------|
+| A: Core Data (0xFFF8)          | string   | symbol   | keyword     | list         | vector      | arr_map| hash_map| hash_set   |
+| B: Callable & Binding (0xFFF9) | fn_val   | multi_fn | protocol    | protocol_fn  | var_ref     | ns     | delay   | regex      |
+| C: Sequence & State (0xFFFA)   | lazy_seq | cons     | chunked_c   | chunk_buf    | atom        | agent  | ref     | volatile   |
+| D: Transient & Ext (0xFFFB)    | t_vector | t_map    | t_set       | reduced      | ex_info     | wasm_m | wasm_fn | class_inst |
 
 **CW との差分:**
 - array_map と hash_map を別スロット（CW は map スロットを共有 + discriminant）
