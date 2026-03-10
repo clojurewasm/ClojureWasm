@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.4** src/runtime/gc/arena.zig — Arena GC interface
+**1.5** src/runtime/collection/list.zig — PersistentList (cons cell only)
 
 ## Handover Notes
 

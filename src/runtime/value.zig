@@ -54,7 +54,7 @@ const NB_HEAP_GROUP_SIZE: u8 = 8;
 // | C: Seq/State (0xFFFA) | lazy_seq | cons     | chunked_c | chunk_buf   | atom    | agent   | ref      | volatile   |
 // | D: Trans/Ext (0xFFFB) | t_vector | t_map    | t_set     | reduced     | ex_info | wasm_m  | wasm_fn  | class_inst |
 
-const HeapTag = enum(u8) {
+pub const HeapTag = enum(u8) {
     // Group A: Core Data — immutable literals and persistent collections
     string = 0,
     symbol = 1,
@@ -172,7 +172,7 @@ pub const Value = enum(u64) {
     };
 
     /// Pack a heap pointer into a Value. The pointer must be 8-byte aligned.
-    fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
+    pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
         const addr: u64 = @intFromPtr(ptr);
         std.debug.assert(addr & 0x7 == 0); // 8-byte aligned
         const shifted = addr >> NB_ADDR_ALIGN_SHIFT;
@@ -191,7 +191,7 @@ pub const Value = enum(u64) {
     }
 
     /// Extract the heap pointer from a heap-tagged Value.
-    fn decodePtr(self: Value, comptime T: type) T {
+    pub fn decodePtr(self: Value, comptime T: type) T {
         const shifted = @intFromEnum(self) & NB_ADDR_SHIFTED_MASK;
         return @ptrFromInt(@as(usize, shifted) << NB_ADDR_ALIGN_SHIFT);
     }

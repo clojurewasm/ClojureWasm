@@ -104,7 +104,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - alloc/free interface (Arena mode: alloc only, bulk free)
   - --gc-stress flag preparation (comptime or runtime flag)
   - Plan ref: plan_ja.md lines 292-321
-- [ ] **1.5** src/runtime/collection/list.zig — PersistentList (cons cell only)
+- [x] **1.5** src/runtime/collection/list.zig — PersistentList (cons cell only)
   - Cons struct: first, rest, meta, count
   - cons(), first(), rest(), seq(), count() operations
   - List printing support
