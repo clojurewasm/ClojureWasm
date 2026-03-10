@@ -8,4 +8,5 @@ test {
     _ = @import("runtime/collection/list.zig");
     _ = @import("runtime/hash.zig");
     _ = @import("runtime/keyword.zig");
+    _ = @import("eval/form.zig");
 }

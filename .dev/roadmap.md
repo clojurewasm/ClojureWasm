@@ -118,7 +118,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - intern(ns, name) -> *Keyword
   - Namespace-qualified and unqualified keywords
   - Plan ref: plan_ja.md lines 389-400
-- [ ] **1.8** src/eval/form.zig — Form structure + SourceLocation
+- [x] **1.8** src/eval/form.zig — Form structure + SourceLocation
   - Form tagged union: nil, bool, int, float, string, symbol, keyword, list, vector, map
   - Every Form carries SourceLocation
   - Plan ref: plan_ja.md lines 406-414

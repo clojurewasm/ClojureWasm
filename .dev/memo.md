@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.7** src/runtime/keyword.zig — Keyword interning
+**1.8** src/eval/form.zig — Form structure + SourceLocation
 
 ## Handover Notes
 
