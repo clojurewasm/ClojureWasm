@@ -136,7 +136,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - readString(source, file_name) API from Day 1
   - CW ref: ~/Documents/MyProducts/ClojureWasm/src/engine/reader/reader.zig
   - Plan ref: plan_ja.md lines 416-422
-- [ ] **1.11** src/main.zig — Minimal CLI
+- [x] **1.11** src/main.zig — Minimal CLI
   - Parse -e flag only
   - Read + print (no eval yet): read form, print it back
   - Verify round-trip: (+ 1 2) -> reads as list -> prints as (+ 1 2)

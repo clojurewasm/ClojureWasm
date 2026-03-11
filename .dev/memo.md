@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.10** src/eval/reader.zig — Parser (token → Form tree)
+**1.11** src/main.zig — Minimal CLI (-e flag, read+print)
 
 ## Handover Notes
 
