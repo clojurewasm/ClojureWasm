@@ -42,7 +42,7 @@ CW lesson: recording was forgotten → regressions went unnoticed. Single `bench
 
 | Phase | Name                                       | Status      |
 |-------|--------------------------------------------|-------------|
-| 1     | Value + Reader + Error + Arena GC          | IN-PROGRESS |
+| 1     | Value + Reader + Error + Arena GC          | DONE        |
 | 2     | TreeWalk + Analyzer + Bootstrap Stage 0    | PENDING     |
 | 3     | defn + Bootstrap Stage 1-3 + ExceptionInfo | PENDING     |
 | 4     | VM + Compiler + Opcodes                    | PENDING     |
@@ -140,7 +140,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - Parse -e flag only
   - Read + print (no eval yet): read form, print it back
   - Verify round-trip: (+ 1 2) -> reads as list -> prints as (+ 1 2)
-- [ ] **1.12** 🔒 x86_64 Gate — OrbStack Ubuntu x86_64 setup + `zig build test`
+- [x] **1.12** 🔒 x86_64 Gate — OrbStack Ubuntu x86_64 setup + `zig build test`
   - One-time: create VM, install Zig 0.15.2 (see `.dev/references/setup_orbstack.md`)
   - NaN boxing bit ops are architecture-sensitive — verify all value.zig tests pass
   - All tests must pass on both ARM64 (Mac) and x86_64 (Ubuntu)
