@@ -122,7 +122,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - Form tagged union: nil, bool, int, float, string, symbol, keyword, list, vector, map
   - Every Form carries SourceLocation
   - Plan ref: plan_ja.md lines 406-414
-- [ ] **1.9** src/eval/tokenizer.zig — Lexer
+- [x] **1.9** src/eval/tokenizer.zig — Lexer
   - Text -> token stream
   - Tokens: lparen, rparen, lbracket, rbracket, lbrace, rbrace, number, string, symbol, keyword, quote, deref, comment, whitespace
   - SourceLocation tracking per token

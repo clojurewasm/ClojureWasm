@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.8** src/eval/form.zig — Form structure + SourceLocation
+**1.9** src/eval/tokenizer.zig — Lexer (text → token stream)
 
 ## Handover Notes
 
