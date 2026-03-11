@@ -94,9 +94,9 @@ pub const Form = struct {
 
     /// Format into an allocated string.
     pub fn toString(self: Form, alloc: std.mem.Allocator) ![]u8 {
-        var buf = std.ArrayList(u8).init(alloc);
-        try self.formatPrStr(buf.writer().any());
-        return buf.toOwnedSlice();
+        var buf: std.ArrayList(u8) = .empty;
+        try self.formatPrStr(buf.writer(alloc).any());
+        return buf.toOwnedSlice(alloc);
     }
 };
 

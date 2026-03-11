@@ -13,7 +13,7 @@ Session handover document. Read at session start.
 
 ## Previous Task
 
-**1.9** src/eval/tokenizer.zig — Lexer (text → token stream)
+**1.10** src/eval/reader.zig — Parser (token → Form tree)
 
 ## Handover Notes
 

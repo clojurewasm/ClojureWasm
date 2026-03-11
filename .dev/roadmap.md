@@ -128,7 +128,7 @@ Error infrastructure and Arena GC are built in from Day 1.
   - SourceLocation tracking per token
   - CW ref: ~/Documents/MyProducts/ClojureWasm/src/engine/reader/tokenizer.zig
   - Clojure ref: ~/Documents/OSS/clojure LispReader.java read dispatch
-- [ ] **1.10** src/eval/reader.zig — Parser (Phase 1 scope)
+- [x] **1.10** src/eval/reader.zig — Parser (Phase 1 scope)
   - Token stream -> Form tree
   - Phase 1 scope: nil, true, false, integers, floats, strings (all escapes), keywords (bare + ns-qualified), symbols (bare + ns-qualified), lists (), vectors [], maps {}, comments ;, quote ', ##Inf/##-Inf/##NaN, #_ discard, #! shebang
   - Deferred to Phase 2: syntax-quote, unquote, fn literal, char literal
