@@ -122,6 +122,8 @@ Contents: annotated walkthrough of the code written in the task.
 Target audience: the author reviewing later. Include bit layouts, Zig syntax notes,
 design rationale, CW diffs, and pointers to future extensions.
 
+**Note**: `private/` is gitignored and NOT tracked. Never use `git add -f` for these files.
+
 ### 5. Repeat
 
 Loop back to Orient. Continue until:
