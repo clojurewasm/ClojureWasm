@@ -45,6 +45,22 @@ const NB_HEAP_SUBTYPE_SHIFT: u6 = 45; // 3-bit sub-type in bits 47-45
 const NB_ADDR_ALIGN_SHIFT: u3 = 3; // 8-byte alignment (>>3)
 const NB_HEAP_GROUP_SIZE: u8 = 8;
 
+// Derived constants (kept in sync via expressions, not hand-written literals)
+const NB_ADDR_ALIGN_MASK: u64 = (@as(u64, 1) << NB_ADDR_ALIGN_SHIFT) - 1; // 0x7
+const NB_HEAP_SUBTYPE_MASK: u64 = NB_HEAP_GROUP_SIZE - 1; // 0x7 (3-bit sub-type)
+const NB_FLOAT_TAG_BOUNDARY: u16 = @truncate(NB_HEAP_TAG_A >> NB_TAG_SHIFT); // 0xFFF8
+const NB_TAG_A: u16 = @truncate(NB_HEAP_TAG_A >> NB_TAG_SHIFT); // 0xFFF8
+const NB_TAG_B: u16 = @truncate(NB_HEAP_TAG_B >> NB_TAG_SHIFT); // 0xFFF9
+const NB_TAG_C: u16 = @truncate(NB_HEAP_TAG_C >> NB_TAG_SHIFT); // 0xFFFA
+const NB_TAG_D: u16 = @truncate(NB_HEAP_TAG_D >> NB_TAG_SHIFT); // 0xFFFB
+const NB_TAG_INT: u16 = @truncate(NB_INT_TAG >> NB_TAG_SHIFT); // 0xFFFC
+const NB_TAG_CONST: u16 = @truncate(NB_CONST_TAG >> NB_TAG_SHIFT); // 0xFFFD
+const NB_TAG_CHAR: u16 = @truncate(NB_CHAR_TAG >> NB_TAG_SHIFT); // 0xFFFE
+const NB_TAG_BUILTIN: u16 = @truncate(NB_BUILTIN_FN_TAG >> NB_TAG_SHIFT); // 0xFFFF
+const NB_I48_MIN: i64 = -(1 << (NB_TAG_SHIFT - 1)); // -2^47
+const NB_I48_MAX: i64 = (1 << (NB_TAG_SHIFT - 1)) - 1; // 2^47 - 1
+const NB_CANONICAL_NAN: u64 = 0x7FF8_0000_0000_0000; // IEEE 754 positive quiet NaN
+
 // --- Heap type slot assignment (1:1 mapping, no sharing) ---
 //
 // | Group (tag)           | Sub 0    | Sub 1    | Sub 2     | Sub 3       | Sub 4   | Sub 5   | Sub 6    | Sub 7      |
@@ -174,7 +190,7 @@ pub const Value = enum(u64) {
     /// Pack a heap pointer into a Value. The pointer must be 8-byte aligned.
     pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
         const addr: u64 = @intFromPtr(ptr);
-        std.debug.assert(addr & 0x7 == 0); // 8-byte aligned
+        std.debug.assert(addr & NB_ADDR_ALIGN_MASK == 0); // 8-byte aligned
         const shifted = addr >> NB_ADDR_ALIGN_SHIFT;
         std.debug.assert(shifted <= NB_ADDR_SHIFTED_MASK);
         const type_val = @intFromEnum(ht);
@@ -241,22 +257,23 @@ pub const Value = enum(u64) {
     pub fn tag(self: Value) Tag {
         const bits = @intFromEnum(self);
         const top16: u16 = @truncate(bits >> NB_TAG_SHIFT);
-        if (top16 < 0xFFF8) return .float;
+        if (top16 < NB_FLOAT_TAG_BOUNDARY) return .float;
+        const sub: u8 = @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & NB_HEAP_SUBTYPE_MASK);
         return switch (top16) {
             // Heap groups (contiguous 0xFFF8-0xFFFB)
-            0xFFF8 => heapTagToTag(@truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)),
-            0xFFF9 => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 8),
-            0xFFFA => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 16),
-            0xFFFB => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 24),
+            NB_TAG_A => heapTagToTag(sub),
+            NB_TAG_B => heapTagToTag(sub + NB_HEAP_GROUP_SIZE),
+            NB_TAG_C => heapTagToTag(sub + NB_HEAP_GROUP_SIZE * 2),
+            NB_TAG_D => heapTagToTag(sub + NB_HEAP_GROUP_SIZE * 3),
             // Immediate types (contiguous 0xFFFC-0xFFFF)
-            0xFFFC => .integer,
-            0xFFFD => switch (bits & NB_PAYLOAD_MASK) {
+            NB_TAG_INT => .integer,
+            NB_TAG_CONST => switch (bits & NB_PAYLOAD_MASK) {
                 0 => .nil,
                 1, 2 => .boolean,
                 else => unreachable,
             },
-            0xFFFE => .char,
-            0xFFFF => .builtin_fn,
+            NB_TAG_CHAR => .char,
+            NB_TAG_BUILTIN => .builtin_fn,
             else => unreachable,
         };
     }
@@ -267,8 +284,7 @@ pub const Value = enum(u64) {
 
     /// Encode an integer. Values outside i48 range are promoted to float.
     pub fn initInteger(i: i64) Value {
-        // i48 range: -2^47 .. 2^47-1
-        if (i < -(1 << 47) or i > (1 << 47) - 1) {
+        if (i < NB_I48_MIN or i > NB_I48_MAX) {
             return initFloat(@floatFromInt(i));
         }
         const raw: u48 = @truncate(@as(u64, @bitCast(i)));
@@ -280,8 +296,8 @@ pub const Value = enum(u64) {
         const bits: u64 = @bitCast(f);
         // Canonicalize NaN values whose top16 >= 0xFFF8 to positive quiet NaN,
         // because those bit patterns are reserved for tagged values.
-        if ((bits >> NB_TAG_SHIFT) >= 0xFFF8) {
-            return @enumFromInt(@as(u64, 0x7FF8_0000_0000_0000));
+        if ((bits >> NB_TAG_SHIFT) >= NB_FLOAT_TAG_BOUNDARY) {
+            return @enumFromInt(NB_CANONICAL_NAN);
         }
         return @enumFromInt(bits);
     }
