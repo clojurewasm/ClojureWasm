@@ -115,7 +115,7 @@ Read `.dev/memo.md`. Check:
 
 ### 4a. Code Reading Doc (Japanese)
 
-After each task commit, generate a Japanese explanation in `private/code_reading/task_XX_YY.md`
+After each task commit, generate a Japanese explanation in `private/learn-clojurewasm/code_reading/task_XX_YY.md`
 (XX = phase, YY = task number, e.g. `task_01_02.md`).
 
 Contents: annotated walkthrough of the code written in the task.
