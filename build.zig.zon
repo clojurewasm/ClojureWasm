@@ -3,8 +3,8 @@
     .version = "0.3.0",
     .dependencies = .{
         .zwasm = .{
-            .url = "https://github.com/clojurewasm/zwasm/archive/v1.8.0.tar.gz",
-            .hash = "zwasm-1.8.0-IBbzF7LPKQAqq50dY7Kj8RQhPulvoxIf7dEkHcvp27Ix",
+            .url = "https://github.com/clojurewasm/zwasm/archive/v1.9.0.tar.gz",
+            .hash = "zwasm-1.9.0-IBbzFxntKQBZIPIaEPtYBnhXFLpwfmz0X5q_2nhZ1Zkd",
         },
     },
     .fingerprint = 0x62a7be489d633543,
