@@ -31,10 +31,13 @@ produces a value whose `tag()` reads back as `.string`.
 
 ## Notes for the next session
 
-- `/continue` slash command is wired (`.claude/commands/continue.md`).
-  Invoke it when starting a new session and the user says "続けて" /
-  "resume" / similar.
+- Skill `continue` (`.claude/skills/continue/SKILL.md`) handles "続けて"
+  / "/continue" / "resume". It auto-triggers on those phrases.
+- Skill `code-learning-doc` defines the doc-commit pairing; the gate
+  `scripts/check_learning_doc.sh` enforces it.
+- Skill `audit-scaffolding` runs at every Phase boundary or every ~10
+  ja docs to catch staleness / bloat / drift.
 - After 1.1 lands as a source commit, **do not write the doc immediately**
   — keep going with 1.2, 1.3, … as small commits, then one
-  `docs/ja/0004-phase-1-runtime-foundations.md` covering all of Phase 1
-  Layer-0 work when it makes a coherent story (or split as makes sense).
+  `docs/ja/00NN-phase-1-runtime-foundations.md` (next available index)
+  covering all of Phase 1 Layer-0 work when it makes a coherent story.

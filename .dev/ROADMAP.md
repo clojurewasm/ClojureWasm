@@ -785,36 +785,47 @@ Phases marked 🔒 (x86_64 Gate): `zig build test` must pass on OrbStack Ubuntu
 x86_64 (Rosetta on Apple Silicon) before moving on. NaN boxing, HAMT, GC,
 VM dispatch, and packed-struct alignment are all arch-sensitive.
 
-### 11.6 Quality gate timeline (active + future)
+### 11.6 Quality gate timeline
 
-A single table of every quality gate this project will need. **Active** gates
-must pass before commit / push at the listed scope. **Planned** gates have a
-"prepare-by" phase: the gate file/script is added by that phase even if it
-is no-op until the relevant feature exists. Listing them here prevents
-forgetting them.
+Every quality gate this project will need, listed here so they cannot be
+forgotten when their phase arrives. Move rows from Planned → Active as
+they are wired.
 
-| # | Gate                                            | Scope (when it must pass)        | Wired as                                        | Status (this commit)              | Prepare by    |
-|---|--------------------------------------------------|----------------------------------|-------------------------------------------------|------------------------------------|--------------|
-| 1 | Learning-doc gate: source-commit → doc-commit pairing | the commit *after* every source-bearing commit | `scripts/check_learning_doc.sh` PreToolUse hook | **Active**                          | —            |
-| 2 | Zone-dependency check (`zone_check.sh --gate`)   | every commit touching src/ or modules/ | `scripts/zone_check.sh` (runs from `test/run_all.sh` later; manual now) | **Active** (informational; 0 violations on empty src/) | Phase 2.20 wires --gate as PreToolUse |
-| 3 | `zig build test` green                            | every commit                     | `test/run_all.sh` then `bash test/run_all.sh` | **Active**                          | —            |
-| 4 | `zig fmt --check src/`                            | every commit touching src/       | `scripts/format_check.sh` (TODO)                | **Planned**                         | Phase 1 (when src/ grows beyond bootstrap) |
-| 5 | x86_64 cross-arch test (OrbStack Ubuntu)          | end of phases marked 🔒          | manual: `orb run ... bash -lc "zig build test"` | **Planned** (no VM yet)             | Phase 1.12   |
-| 6 | Dual-backend `--compare` (TreeWalk == VM)         | every test, Phase 8+             | inline in test runner                            | **Planned**                         | Phase 8      |
-| 7 | Bench regression ≤ 1.2x                           | every optimisation commit        | `bench/bench.sh record` + history.yaml diff      | **Planned**                         | Phase 8 (full); Phase 4 quick harness |
-| 8 | Tier-A upstream test green                        | every commit touching `src/lang/clj/` or related Zig | inline in `test/run_all.sh`     | **Planned**                         | Phase 11     |
-| 9 | Tier-change ADR present                           | any change to `compat_tiers.yaml`| `scripts/tier_check.sh` (TODO)                  | **Planned**                         | Phase 9      |
-|10 | `compat_tiers.yaml` complete (all listed namespaces have impl) | v0.1.0 release | `scripts/tier_check.sh` (TODO)                  | **Planned**                         | Phase 14     |
-|11 | GC root coverage (every heap type traced)        | end of Phase 5                   | unit tests + `--gc-stress`                       | **Planned**                         | Phase 5      |
-|12 | Bytecode cache versioning                         | every cache format change        | inline cache header + version field              | **Planned**                         | Phase 12     |
-|13 | JIT go/no-go ADR                                  | end of Phase 17                  | `.dev/decisions/NNNN-jit-decision.md`            | **Planned**                         | Phase 17 end |
-|14 | Wasm Component build green (`zig build -Dcomponent`) | every commit touching wasm bits | `test/run_all.sh` extension                      | **Planned**                         | Phase 14     |
-|15 | WIT auto-binding correctness                      | every commit to wit bindgen path | inline test                                       | **Planned**                         | Phase 19     |
-|16 | nREPL operation parity (CIDER 14 ops)             | every commit touching `app/repl/nrepl.zig` | inline test                              | **Planned**                         | Phase 14     |
+#### Active
 
-Each "Planned" row will move to "Active" by its prepare-by phase. Add the
-row to `test/run_all.sh` (or wire as a hook in `.claude/settings.json`)
-when activating; do not leave the table out of sync with reality.
+| # | Gate                                       | Wired as                                                  |
+|---|--------------------------------------------|-----------------------------------------------------------|
+| 1 | Source-commit → doc-commit pairing          | `scripts/check_learning_doc.sh` (PreToolUse hook on Bash). Defined by skill `code-learning-doc`. |
+| 2 | Zone-dependency check                       | `scripts/zone_check.sh --gate` invoked from `test/run_all.sh`. |
+| 3 | `zig build test` green                      | `test/run_all.sh`.                                         |
+
+#### Planned
+
+| #  | Gate                                                            | Owner / wiring (planned)                       | Prepare by    |
+|----|------------------------------------------------------------------|------------------------------------------------|---------------|
+| 4  | `zig fmt --check src/`                                          | `scripts/format_check.sh`, called from `test/run_all.sh` | Phase 1 (when src/ grows past bootstrap) |
+| 5  | x86_64 cross-arch test (OrbStack Ubuntu)                        | manual `orb run ... zig build test`            | Phase 1.12    |
+| 6  | Dual-backend `--compare` (TreeWalk == VM)                       | inline in test runner                          | Phase 8       |
+| 7  | Bench regression ≤ 1.2x                                          | `bench/bench.sh record` + `bench/history.yaml` diff | Phase 8 (full); Phase 4 quick harness |
+| 8  | Tier-A upstream test green                                      | inline in `test/run_all.sh`                    | Phase 11      |
+| 9  | Tier-change ADR present                                         | `scripts/tier_check.sh`                        | Phase 9       |
+| 10 | `compat_tiers.yaml` complete (every listed namespace has impl)  | `scripts/tier_check.sh`                        | Phase 14      |
+| 11 | GC root coverage (every heap type traced)                       | unit tests + `--gc-stress`                     | Phase 5       |
+| 12 | Bytecode cache versioning                                        | cache header version field                     | Phase 12      |
+| 13 | JIT go/no-go ADR                                                | `.dev/decisions/NNNN-jit-decision.md`          | Phase 17 end  |
+| 14 | Wasm Component build green                                      | `test/run_all.sh` extension                    | Phase 14      |
+| 15 | WIT auto-binding correctness                                     | inline test                                    | Phase 19      |
+| 16 | nREPL operation parity (CIDER 14 ops)                           | inline test                                    | Phase 14      |
+
+### 11.7 Periodic scaffolding audit
+
+Every Phase boundary (or every ~10 ja docs, or before a release tag),
+invoke skill `audit-scaffolding`. It detects four rot patterns across
+CLAUDE.md / .dev/ / .claude/ / docs/ / scripts/: **staleness** (refs
+that don't match reality), **bloat** (files past their soft limit,
+duplicated facts drifting), **lies** (absolute claims overtaken by
+reality), **false positives** (gate / rule triggers firing when they
+shouldn't). The audit produces a report; the user decides what to fix.
 
 ---
 
@@ -829,37 +840,17 @@ when activating; do not leave the table out of sync with reality.
 - Never commit when tests are red.
 - Never bypass the pre-commit hook with `--no-verify` — fix the issue.
 
-### 12.2 Commit pairing: source commits → one doc commit
+### 12.2 Commit pairing (skill `code-learning-doc` is canonical)
 
-Source-bearing commits accumulate freely. When a unit of work is ready to
-be told as one story, write `docs/ja/NNNN-<slug>.md` in a **separate**
-commit. The doc's `commits:` front-matter list cites every source SHA it
-covers. The doc commit lands AFTER the source commits, so every cited SHA
-is already known — no "TBD then patch" cycle.
+Source-bearing commits accumulate freely; when a unit of work is ready
+to be told as one story, write `docs/ja/NNNN-<slug>.md` in a separate
+commit whose `commits:` front-matter cites every source SHA it covers.
 
-"Source-bearing" means staging any of:
-
-- `src/**/*.zig`
-- `build.zig`, `build.zig.zon`
-- `.dev/decisions/NNNN-<slug>.md` (real ADRs — `README.md` and
-  `0000-template.md` under `.dev/decisions/` are excluded)
-
-```
-commit N      feat(scope): step 1            # source only
-commit N+1    refactor(scope): step 2        # source only
-commit N+2    fix(scope): step 3             # source only
-commit N+3    docs(ja): NNNN — title         # commits: [N, N+1, N+2]
-```
-
-- **Skill / template**: `.claude/skills/code-learning-doc/SKILL.md`
-- **Gate**: `scripts/check_learning_doc.sh` (Claude Code PreToolUse hook on `Bash`)
-  - **Rule 1**: a doc commit must not contain source-bearing files.
-  - **Rule 2**: a doc commit's `commits:` list must cover every
-    source-bearing commit since the previous doc commit. (Extra SHAs in
-    the doc are allowed — voluntary documentation.)
-
-The doc is Japanese, captures the code snapshot at the moment, the why,
-and takeaways — material for a future technical book and talks.
+The full definition (source-bearing file set, the two gate rules, the
+template, the workflow) lives in
+[`.claude/skills/code-learning-doc/SKILL.md`](../.claude/skills/code-learning-doc/SKILL.md).
+Do not duplicate it here — point to the skill instead. The gate
+(`scripts/check_learning_doc.sh`) is the executable specification.
 
 ### 12.3 Message format
 
@@ -878,24 +869,17 @@ Doc commits use:
 docs(ja): NNNN — <title> (#<first-sha>..<last-sha>)
 ```
 
-### 12.4 Iteration loop
+### 12.4 Iteration loop (skill `continue` is canonical)
 
-For every unit of work:
+The full resume procedure + per-task TDD loop lives in
+[`.claude/skills/continue/SKILL.md`](../.claude/skills/continue/SKILL.md).
+The user invokes it with "続けて" / "/continue" / "resume"; the skill
+reads handover, finds the next task, runs tests, and waits for "go".
 
-1. **Orient**: read `.dev/handover.md`. Confirm phase + next task in
-   `.dev/ROADMAP.md` §9.3 (or §9.<N>).
-2. **TDD steps**: red → green → refactor. Each natural step is its own
-   source commit. `bash test/run_all.sh` must be green at every commit.
-3. **Doc commit**: when the unit of work is told-able, write
-   `docs/ja/NNNN-<slug>.md` with `commits: [...]` covering every source
-   SHA since the previous doc, then commit it alone.
-4. **Update handover**: 1–2 lines in `.dev/handover.md` (next task,
-   blocker if any).
-5. **Push (after explicit approval)**: pushing to the long-lived
-   `cw-from-scratch` branch always requires the user's confirmation.
+The audit step (skill `audit-scaffolding`) is invoked at every Phase
+boundary or every ~10 ja docs (see §11.7).
 
-The `/continue` slash command (`.claude/commands/continue.md`) wraps
-step 1 + a brief summary so a new session can pick up cleanly.
+Pushing to `cw-from-scratch` always requires explicit user approval.
 
 ---
 
