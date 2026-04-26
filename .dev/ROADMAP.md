@@ -874,7 +874,11 @@ docs(ja): NNNN — <title> (#<first-sha>..<last-sha>)
 The full resume procedure + per-task TDD loop lives in
 [`.claude/skills/continue/SKILL.md`](../.claude/skills/continue/SKILL.md).
 The user invokes it with "続けて" / "/continue" / "resume"; the skill
-reads handover, finds the next task, runs tests, and waits for "go".
+reads handover, finds the next task, runs tests, prints a brief
+summary, then **immediately enters the TDD loop and runs autonomously
+until the user intervenes** (no "go" gate, no per-Phase confirmation).
+It only stops for: a `git push`, an ambiguous test failure, an
+audit-scaffolding `block` finding, or an ADR-level decision.
 
 The audit step (skill `audit-scaffolding`) is invoked at every Phase
 boundary or every ~10 ja docs (see §11.7).

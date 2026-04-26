@@ -42,6 +42,13 @@ learning narratives.
 Don't mix Japanese into English docs. In `docs/ja/`, body is Japanese;
 code blocks keep their original English identifiers.
 
+The chat-reply-in-Japanese rule is enforced by the project output style
+[`.claude/output-styles/japanese.md`](.claude/output-styles/japanese.md)
+(activated via `outputStyle: "Japanese"` in `.claude/settings.json`)
+plus a SessionStart hook that re-injects the directive on every session.
+Even with a slash command (e.g. `/continue`) as the very first input,
+turn 1 must be Japanese.
+
 ## Working agreement
 
 - TDD: red → green → refactor.
@@ -60,8 +67,9 @@ These hold the canonical procedures; CLAUDE.md only points to them.
   commit pairing.
 - **`continue`** — resume procedure + per-task TDD loop + Phase-boundary
   review chain. Auto-triggers on "続けて" / "/continue" / "resume".
-  Drives the loop autonomously between user checkpoints (initial "go",
-  Phase-close report, push approval).
+  **Fully autonomous from invocation**: no "go" gate, no Phase-boundary
+  stop, no per-task confirmation. Stops only for `git push`, ambiguous
+  test failure, audit `block` finding, or an ADR-level decision.
 - **`audit-scaffolding`** — periodic audit (CLAUDE.md, .dev/, .claude/,
   docs/, scripts/) for staleness, bloat, lies, false positives.
   Auto-invoked by `continue` at every Phase boundary; can also be run
