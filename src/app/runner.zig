@@ -26,6 +26,7 @@ const ns_ops = @import("../lang/builtins/ns_ops.zig");
 const http_server = @import("../lang/builtins/http_server.zig");
 const lifecycle = @import("../runtime/lifecycle.zig");
 const deps_mod = @import("deps.zig");
+const io_default = @import("../runtime/io_default.zig");
 
 const build_options = @import("build_options");
 pub const version_string = "ClojureWasm v" ++ build_options.version ++ "\n";
@@ -82,7 +83,7 @@ pub fn handleEmbedded(alloc: Allocator, allocator: Allocator, gc: *gc_mod.MarkSw
 // === REPL ===
 
 pub fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
-    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    const stdout = std.Io.File.stdout();
     const is_tty = std.posix.isatty(std.posix.STDOUT_FILENO);
 
     // Use line editor if stdin is a TTY, otherwise fall back to simple reader
@@ -91,7 +92,7 @@ pub fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
         return;
     }
 
-    _ = stdout.write(version_string) catch {};
+    stdout.writeStreamingAll(io_default.get(),version_string) catch {};
 
     var editor = line_editor.LineEditor.init(allocator, env);
     defer editor.deinit();
@@ -102,7 +103,7 @@ pub fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
         editor.setNsPrompt(ns_name);
 
         const source = editor.readInput() orelse {
-            _ = stdout.write("\n") catch {};
+            stdout.writeStreamingAll(io_default.get(),"\n") catch {};
             break;
         };
 
@@ -116,7 +117,7 @@ pub fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
             break;
         }
         if (std.mem.eql(u8, trimmed, ":help") or std.mem.eql(u8, trimmed, ":h")) {
-            _ = stdout.write(
+            stdout.writeStreamingAll(io_default.get(),
                 \\REPL commands:
                 \\  :quit, :exit, :q   Exit REPL
                 \\  :help, :h          Show this help
@@ -160,8 +161,8 @@ pub fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
 
 /// Simple REPL for non-TTY stdin (piped input).
 fn runReplSimple(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
-    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
-    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    const stdin = std.Io.File.stdin();
+    const stdout = std.Io.File.stdout();
 
     var line_buf: [65536]u8 = undefined;
     var input_buf: [65536]u8 = undefined;
@@ -196,7 +197,7 @@ fn runReplSimple(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void 
             input_len += 1;
         }
         if (input_len + trimmed.len > input_buf.len) {
-            _ = stdout.write("Error: input too long\n") catch {};
+            stdout.writeStreamingAll(io_default.get(),"Error: input too long\n") catch {};
             input_len = 0;
             depth = 0;
             continue;
@@ -291,11 +292,11 @@ const ExprPrintCtx = struct {
     fn onResult(ctx_ptr: *anyopaque, val: Value) void {
         const self: *ExprPrintCtx = @ptrCast(@alignCast(ctx_ptr));
         if (val.isNil()) return;
-        const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+        const stdout = std.Io.File.stdout();
         var buf: [65536]u8 = undefined;
         const output = formatValue(&buf, val, self.allocator, self.env);
-        _ = stdout.write(output) catch {};
-        _ = stdout.write("\n") catch {};
+        stdout.writeStreamingAll(io_default.get(),output) catch {};
+        stdout.writeStreamingAll(io_default.get(),"\n") catch {};
     }
 };
 
@@ -307,17 +308,17 @@ const ReplPrintCtx = struct {
 
     fn onResult(ctx_ptr: *anyopaque, val: Value) void {
         const self: *ReplPrintCtx = @ptrCast(@alignCast(ctx_ptr));
-        const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+        const stdout = std.Io.File.stdout();
         var buf: [65536]u8 = undefined;
         const output = formatValue(&buf, val, self.allocator, self.env);
         if (self.is_tty) {
             var color_buf: [65536 + 32]u8 = undefined;
             const colored = colorizeValue(&color_buf, output, val);
-            _ = stdout.write(colored) catch {};
+            stdout.writeStreamingAll(io_default.get(),colored) catch {};
         } else {
-            _ = stdout.write(output) catch {};
+            stdout.writeStreamingAll(io_default.get(),output) catch {};
         }
-        _ = stdout.write("\n") catch {};
+        stdout.writeStreamingAll(io_default.get(),"\n") catch {};
     }
 };
 
@@ -413,7 +414,7 @@ pub fn runExecFn(
     var env = Env.init(infra_alloc);
     defer env.deinit();
     bootstrapFromCache(gc_alloc, &env, gc);
-    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    const stderr = std.Io.File.stderr();
 
     // Parse fn_name: "ns/fn" → require ns, call ns/fn
     const slash_idx = std.mem.indexOf(u8, fn_name, "/");
@@ -422,7 +423,7 @@ pub fn runExecFn(
         // Require the namespace
         var req_buf: [4096]u8 = undefined;
         const require_expr = std.fmt.bufPrint(&req_buf, "(require '{s})", .{ns_part}) catch {
-            _ = stderr.write("Error: namespace name too long\n") catch {};
+            stderr.writeStreamingAll(io_default.get(),"Error: namespace name too long\n") catch {};
             std.process.exit(1);
         };
         _ = bootstrap.evalString(gc_alloc, &env, require_expr) catch |e| {
@@ -433,8 +434,8 @@ pub fn runExecFn(
 
     // Build the invocation expression: (fn-name {:key "val" ...})
     var call_buf: [8192]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&call_buf);
-    const w = stream.writer();
+    var w_inst: std.Io.Writer = .fixed(&call_buf);
+    const w = &w_inst;
     w.print("({s}", .{fn_name}) catch {};
 
     // Build args map from alias exec-args + CLI override args.
@@ -484,7 +485,7 @@ pub fn runExecFn(
     }
     w.writeAll(")") catch {};
 
-    const call_expr = stream.getWritten();
+    const call_expr = w.buffered();
     _ = bootstrap.evalString(gc_alloc, &env, call_expr) catch |e| {
         reportError(e);
         std.process.exit(1);
@@ -578,11 +579,11 @@ const Ansi = struct {
 };
 
 pub fn reportError(eval_err: anyerror) void {
-    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    const stderr = std.Io.File.stderr();
     var buf: [4096]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    const w = stream.writer();
-    const c = if (std.posix.isatty(std.posix.STDERR_FILENO)) Ansi.color else Ansi.plain;
+    var w_inst: std.Io.Writer = .fixed(&buf);
+    const w = &w_inst;
+    const c = if (std.Io.File.stderr().isTty(io_default.get()) catch false) Ansi.color else Ansi.plain;
 
     if (err.getLastError()) |info| {
         // Header: "Type error at REPL:1:5" or "Type error"
@@ -648,7 +649,7 @@ pub fn reportError(eval_err: anyerror) void {
         err.clearCallStack();
     }
 
-    _ = stderr.write(stream.getWritten()) catch {};
+    stderr.writeStreamingAll(io_default.get(), w.buffered()) catch {};
 }
 
 fn kindToLabel(kind: err.Kind) []const u8 {
@@ -772,10 +773,10 @@ fn getSourceForLocation(location: err.SourceLocation) ?[]const u8 {
 
 threadlocal var file_read_buf: [64 * 1024]u8 = undefined;
 fn readFileForError(path: []const u8) ?[]const u8 {
-    const file = std.fs.cwd().openFile(path, .{}) catch return null;
-    defer file.close();
-    const bytes_read = file.readAll(&file_read_buf) catch return null;
-    return file_read_buf[0..bytes_read];
+    const fio = io_default.get();
+    const cwd = std.Io.Dir.cwd();
+    const data = cwd.readFile(fio, path, &file_read_buf) catch return null;
+    return data;
 }
 
 // === Value formatting ===
@@ -807,52 +808,28 @@ fn colorizeValue(buf: []u8, text: []const u8, val: Value) []const u8 {
         return buf[0..text.len];
     }
     const reset = "\x1b[0m";
-    var stream = std.io.fixedBufferStream(buf);
-    const w = stream.writer();
+    var w_inst: std.Io.Writer = .fixed(buf);
+    const w = &w_inst;
     w.writeAll(color) catch {};
     w.writeAll(text) catch {};
     w.writeAll(reset) catch {};
-    return stream.getWritten();
+    return w.buffered();
 }
 
 // === Single Binary Builder (Phase 28) ===
 
 /// Read embedded source from this binary's CLJW trailer.
 /// Returns null if no trailer found (normal cljw binary).
+///
+/// Temporarily disabled while migrating off std.fs.selfExePath /
+/// std.fs.openFileAbsolute (both removed in Zig 0.16). Phase 7 follow-up
+/// will re-implement self-path resolution via argv[0] + std.c.realpath
+/// and switch to std.Io.Dir.openFileAbsolute. Until then, `cljw build`
+/// output binaries report "no embedded payload" and fall through to the
+/// normal CLI dispatch.
 pub fn readEmbeddedSource(allocator: Allocator) ?[]const u8 {
-    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const self_path = std.fs.selfExePath(&path_buf) catch return null;
-    const file = std.fs.openFileAbsolute(self_path, .{}) catch return null;
-    defer file.close();
-    const stat = file.stat() catch return null;
-    const file_size = stat.size;
-    if (file_size < embed_trailer_size) return null;
-
-    // Read trailer (last 12 bytes)
-    file.seekTo(file_size - embed_trailer_size) catch return null;
-    var trailer: [embed_trailer_size]u8 = undefined;
-    const n = file.readAll(&trailer) catch return null;
-    if (n != embed_trailer_size) return null;
-
-    // Check magic
-    if (!std.mem.eql(u8, trailer[8..12], embed_magic)) return null;
-
-    // Extract payload size
-    const payload_size = std.mem.readInt(u64, trailer[0..8], .little);
-    if (payload_size == 0 or payload_size > file_size - embed_trailer_size) return null;
-
-    // Read payload
-    file.seekTo(file_size - embed_trailer_size - payload_size) catch return null;
-    const source = allocator.alloc(u8, @intCast(payload_size)) catch return null;
-    const bytes_read = file.readAll(source) catch {
-        allocator.free(source);
-        return null;
-    };
-    if (bytes_read != @as(usize, @intCast(payload_size))) {
-        allocator.free(source);
-        return null;
-    }
-    return source;
+    _ = allocator;
+    return null;
 }
 
 /// Evaluate embedded source and exit. Used by built binaries.
@@ -889,9 +866,9 @@ pub fn startNreplWithFile(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_m
     ns_ops.detectAndAddSrcPath(dir) catch {};
 
     const max_file_size = 10 * 1024 * 1024;
-    const file_bytes = std.fs.cwd().readFileAlloc(infra_alloc, filepath, max_file_size) catch {
-        const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-        _ = stderr.write("Error: could not read file\n") catch {};
+    const file_bytes = std.Io.Dir.cwd().readFileAlloc(io_default.get(), filepath, infra_alloc, .limited(max_file_size)) catch {
+        const stderr = std.Io.File.stderr();
+        stderr.writeStreamingAll(io_default.get(),"Error: could not read file\n") catch {};
         std.process.exit(1);
     };
     defer infra_alloc.free(file_bytes);
@@ -910,10 +887,10 @@ pub fn startNreplWithFile(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_m
 
     // Start nREPL server with user's Env (blocking accept loop).
     nrepl.startServerWithEnv(infra_alloc, &env, gc, nrepl_port) catch |e| {
-        const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-        _ = stderr.write("Error: nREPL server failed: ") catch {};
-        _ = stderr.write(@errorName(e)) catch {};
-        _ = stderr.write("\n") catch {};
+        const stderr = std.Io.File.stderr();
+        stderr.writeStreamingAll(io_default.get(),"Error: nREPL server failed: ") catch {};
+        stderr.writeStreamingAll(io_default.get(),@errorName(e)) catch {};
+        stderr.writeStreamingAll(io_default.get(),"\n") catch {};
         std.process.exit(1);
     };
 
@@ -941,10 +918,10 @@ fn evalEmbeddedWithNrepl(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mo
     // Start nREPL server with user's Env (blocking accept loop).
     // Returns when shutdown signal is received.
     nrepl.startServerWithEnv(infra_alloc, &env, gc, nrepl_port) catch |e| {
-        const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-        _ = stderr.write("Error: nREPL server failed: ") catch {};
-        _ = stderr.write(@errorName(e)) catch {};
-        _ = stderr.write("\n") catch {};
+        const stderr = std.Io.File.stderr();
+        stderr.writeStreamingAll(io_default.get(),"Error: nREPL server failed: ") catch {};
+        stderr.writeStreamingAll(io_default.get(),@errorName(e)) catch {};
+        stderr.writeStreamingAll(io_default.get(),"\n") catch {};
         std.process.exit(1);
     };
 
@@ -974,8 +951,8 @@ fn setCommandLineArgs(gc_alloc: Allocator, env: *Env, cli_args: []const [:0]cons
 /// Evaluates the entry file to resolve all requires, then bundles dependency
 /// sources (in load order) + entry source into a single binary.
 pub fn handleBuildCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, build_args: []const [:0]const u8) void {
-    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    const stderr = std.Io.File.stderr();
+    const stdout = std.Io.File.stdout();
 
     var source_file: ?[]const u8 = null;
     var output_file: ?[]const u8 = null;
@@ -984,7 +961,7 @@ pub fn handleBuildCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_m
         if (std.mem.eql(u8, build_args[i], "-o")) {
             i += 1;
             if (i >= build_args.len) {
-                _ = stderr.write("Error: -o requires an output file argument\n") catch {};
+                stderr.writeStreamingAll(io_default.get(),"Error: -o requires an output file argument\n") catch {};
                 std.process.exit(1);
             }
             output_file = build_args[i];
@@ -994,14 +971,14 @@ pub fn handleBuildCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_m
     }
 
     if (source_file == null) {
-        _ = stderr.write("Usage: cljw build <source.clj> [-o <output>]\n") catch {};
+        stderr.writeStreamingAll(io_default.get(),"Usage: cljw build <source.clj> [-o <output>]\n") catch {};
         std.process.exit(1);
     }
 
     // Read entry file source
     const max_file_size = 10 * 1024 * 1024; // 10MB
-    const user_source = std.fs.cwd().readFileAlloc(infra_alloc, source_file.?, max_file_size) catch {
-        _ = stderr.write("Error: could not read source file\n") catch {};
+    const user_source = std.Io.Dir.cwd().readFileAlloc(io_default.get(), source_file.?, infra_alloc, .limited(max_file_size)) catch {
+        stderr.writeStreamingAll(io_default.get(),"Error: could not read source file\n") catch {};
         std.process.exit(1);
     };
     defer infra_alloc.free(user_source);
@@ -1032,7 +1009,7 @@ pub fn handleBuildCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_m
         bundled_size += rec.content.len + 1; // +1 for newline separator
     }
     const bundled = infra_alloc.alloc(u8, bundled_size) catch {
-        _ = stderr.write("Error: out of memory\n") catch {};
+        stderr.writeStreamingAll(io_default.get(),"Error: out of memory\n") catch {};
         std.process.exit(1);
     };
     defer infra_alloc.free(bundled);
@@ -1055,55 +1032,14 @@ pub fn handleBuildCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_m
         break :blk src;
     };
 
-    // Read self binary
-    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const self_path = std.fs.selfExePath(&path_buf) catch {
-        _ = stderr.write("Error: could not determine self executable path\n") catch {};
-        std.process.exit(1);
-    };
-    const self_bytes = std.fs.cwd().readFileAlloc(infra_alloc, self_path, 100 * 1024 * 1024) catch {
-        _ = stderr.write("Error: could not read self executable\n") catch {};
-        std.process.exit(1);
-    };
-    defer infra_alloc.free(self_bytes);
-
-    // Write output: [self binary] + [bundled source] + [u64 size] + "CLJW"
-    const out_file = std.fs.cwd().createFile(out_name, .{ .mode = 0o755 }) catch {
-        _ = stderr.write("Error: could not create output file\n") catch {};
-        std.process.exit(1);
-    };
-    defer out_file.close();
-
-    out_file.writeAll(self_bytes) catch {
-        _ = stderr.write("Error: write failed\n") catch {};
-        std.process.exit(1);
-    };
-    out_file.writeAll(bundled) catch {
-        _ = stderr.write("Error: write failed\n") catch {};
-        std.process.exit(1);
-    };
-    const size_bytes = std.mem.toBytes(std.mem.nativeTo(u64, @as(u64, @intCast(bundled.len)), .little));
-    out_file.writeAll(&size_bytes) catch {
-        _ = stderr.write("Error: write failed\n") catch {};
-        std.process.exit(1);
-    };
-    out_file.writeAll(embed_magic) catch {
-        _ = stderr.write("Error: write failed\n") catch {};
-        std.process.exit(1);
-    };
-
-    // Report success
-    const dep_count = loaded_files.len;
-    const total_size = self_bytes.len + bundled.len + embed_trailer_size;
-    var msg_buf: [512]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&msg_buf);
-    const w = stream.writer();
-    if (dep_count > 0) {
-        w.print("Built: {s} ({d} bytes, {d} deps, source: {d} bytes)\n", .{ out_name, total_size, dep_count, bundled.len }) catch {};
-    } else {
-        w.print("Built: {s} ({d} bytes, source: {d} bytes)\n", .{ out_name, total_size, bundled.len }) catch {};
-    }
-    _ = stdout.write(stream.getWritten()) catch {};
+    // `cljw build` is temporarily disabled while the std.fs.selfExePath /
+    // std.fs.openFileAbsolute migration lands. Both APIs were removed in
+    // Zig 0.16; reimplementing self-path resolution requires either argv[0]
+    // + std.c.realpath or platform-specific calls (_NSGetExecutablePath
+    // on macOS, /proc/self/exe on Linux). Phase 7 follow-up F##.
+    _ = .{ bundled, out_name, stdout };
+    stderr.writeStreamingAll(io_default.get(), "cljw build: temporarily disabled while the std.fs.selfExePath migration lands (Phase 7 follow-up). Use `zig build && cljw <file.clj>` instead.\n") catch {};
+    std.process.exit(1);
 }
 
 /// Run embedded bytecode payload (built binary with compiled .cljc).
