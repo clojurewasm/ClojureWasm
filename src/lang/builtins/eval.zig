@@ -28,6 +28,7 @@ const TreeWalk = @import("../../engine/evaluator/tree_walk.zig").TreeWalk;
 const err = @import("../../runtime/error.zig");
 const Env = @import("../../runtime/env.zig").Env;
 const io = @import("io.zig");
+const io_default = @import("../../runtime/io_default.zig");
 const value_mod = @import("../../runtime/value.zig");
 const PersistentVector = value_mod.PersistentVector;
 const Namespace = @import("../../runtime/namespace.zig").Namespace;
@@ -318,7 +319,8 @@ fn readFromSource(allocator: Allocator, eof_error: bool, eof_value: Value) anyer
     }
 
     // Read from stdin — read lines and try parsing after each
-    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
+    const stdin = std.Io.File.stdin();
+    const stdin_io = io_default.get();
     var buf = std.ArrayList(u8).empty;
     defer buf.deinit(allocator);
 
@@ -331,7 +333,8 @@ fn readFromSource(allocator: Allocator, eof_error: bool, eof_value: Value) anyer
         var pos: usize = 0;
         while (pos < line_buf.len) {
             var byte: [1]u8 = undefined;
-            const n = stdin.read(&byte) catch {
+            const buffers = [_][]u8{&byte};
+            const n = stdin.readStreaming(stdin_io, &buffers) catch {
                 if (eof_error) {
                     return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
                 }
@@ -433,7 +436,7 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
         };
         const consumed = reader.position();
         // Capture the consumed source text (trimmed)
-        const src_text = std.mem.trimLeft(u8, remaining[0..consumed], " \t\n\r,");
+        const src_text = std.mem.trimStart(u8, remaining[0..consumed], " \t\n\r,");
         const text_str = Value.initString(allocator, try allocator.dupe(u8, src_text));
         io.advanceCurrentInput(consumed);
         const val = try macro.formToValueWithNs(allocator, form, resolveCurrentNs());
@@ -447,7 +450,8 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
     }
 
     // stdin path — accumulate lines and return [form string]
-    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
+    const stdin = std.Io.File.stdin();
+    const stdin_io = io_default.get();
     var buf = std.ArrayList(u8).empty;
     defer buf.deinit(allocator);
 
@@ -459,7 +463,8 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
         var pos: usize = 0;
         while (pos < line_buf.len) {
             var byte: [1]u8 = undefined;
-            const n = stdin.read(&byte) catch {
+            const buffers = [_][]u8{&byte};
+            const n = stdin.readStreaming(stdin_io, &buffers) catch {
                 if (eof_error) {
                     return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
                 }
@@ -494,7 +499,7 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
             };
             if (form_opt) |form| {
                 const consumed = reader.position();
-                const src_text = std.mem.trimLeft(u8, buf.items[0..consumed], " \t\n\r,");
+                const src_text = std.mem.trimStart(u8, buf.items[0..consumed], " \t\n\r,");
                 const text_str = Value.initString(allocator, try allocator.dupe(u8, src_text));
                 const val = try macro.formToValueWithNs(allocator, form, resolveCurrentNs());
                 const items = try allocator.alloc(Value, 2);

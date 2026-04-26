@@ -24,6 +24,7 @@ const BigInt = collections.BigInt;
 const BigDecimal = collections.BigDecimal;
 const Ratio = collections.Ratio;
 const err = @import("../../runtime/error.zig");
+const io_default = @import("../../runtime/io_default.zig");
 
 // Core arithmetic ops live in runtime/ (D109). Re-export for lang/ consumers.
 const runtime_arith = @import("../../runtime/arithmetic.zig");
@@ -436,20 +437,22 @@ pub fn quotFn(_: Allocator, args: []const Value) anyerror!Value {
 // PRNG state for rand/rand-int (module-level, deterministic seed for testing)
 // Protected by mutex for thread-safe access.
 var prng = std.Random.DefaultPrng.init(0);
-var prng_mutex: std.Thread.Mutex = .{};
+var prng_mutex: std.Io.Mutex = .init;
 
 /// Set PRNG seed (for testing reproducibility).
 pub fn setSeed(seed: u64) void {
-    prng_mutex.lock();
-    defer prng_mutex.unlock();
+    const io = io_default.get();
+    prng_mutex.lockUncancelable(io);
+    defer prng_mutex.unlock(io);
     prng = std.Random.DefaultPrng.init(seed);
 }
 
 /// (rand) — returns a random float between 0 (inclusive) and 1 (exclusive).
 pub fn randFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rand", .{args.len});
-    prng_mutex.lock();
-    defer prng_mutex.unlock();
+    const io = io_default.get();
+    prng_mutex.lockUncancelable(io);
+    defer prng_mutex.unlock(io);
     const f = prng.random().float(f64);
     return Value.initFloat(f);
 }
@@ -463,8 +466,9 @@ pub fn randIntFn(_: Allocator, args: []const Value) anyerror!Value {
     };
     if (n <= 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "rand-int argument must be positive, got {d}", .{n});
     const un: u64 = @intCast(n);
-    prng_mutex.lock();
-    defer prng_mutex.unlock();
+    const io = io_default.get();
+    prng_mutex.lockUncancelable(io);
+    defer prng_mutex.unlock(io);
     const result = prng.random().intRangeLessThan(u64, 0, un);
     return Value.initInteger(@intCast(result));
 }

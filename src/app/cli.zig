@@ -18,14 +18,15 @@ const gc_mod = @import("../runtime/gc.zig");
 const nrepl = @import("repl/nrepl.zig");
 const runner = @import("runner.zig");
 const wasm_builtins = @import("../lang/lib/cljw_wasm_builtins.zig");
+const io_default = @import("../runtime/io_default.zig");
 
 const build_options = @import("build_options");
 const enable_wasm = build_options.enable_wasm;
 
 fn printHelp() void {
-    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-    _ = stdout.write(runner.version_string) catch {};
-    _ = stdout.write(
+    const stdout = std.Io.File.stdout();
+    stdout.writeStreamingAll(io_default.get(),runner.version_string) catch {};
+    stdout.writeStreamingAll(io_default.get(),
         \\
         \\Usage:
         \\  cljw [options] [file.clj]
@@ -102,8 +103,8 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
             printHelp();
             return;
         } else if (std.mem.eql(u8, arg, "--version")) {
-            const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-            _ = stdout.write(runner.version_string) catch {};
+            const stdout = std.Io.File.stdout();
+            stdout.writeStreamingAll(io_default.get(),runner.version_string) catch {};
             return;
         } else if (std.mem.eql(u8, arg, "--tree-walk")) {
             use_vm = false;
@@ -116,8 +117,8 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
         } else if (std.mem.eql(u8, arg, "-e")) {
             i += 1;
             if (i >= args.len) {
-                const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-                _ = stderr.write("Error: -e requires an expression argument\n") catch {};
+                const stderr = std.Io.File.stderr();
+                stderr.writeStreamingAll(io_default.get(),"Error: -e requires an expression argument\n") catch {};
                 std.process.exit(1);
             }
             expr = args[i];
@@ -125,8 +126,8 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
             // -m namespace (for -M mode)
             i += 1;
             if (i >= args.len) {
-                const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-                _ = stderr.write("Error: -m requires a namespace argument\n") catch {};
+                const stderr = std.Io.File.stderr();
+                stderr.writeStreamingAll(io_default.get(),"Error: -m requires a namespace argument\n") catch {};
                 std.process.exit(1);
             }
             main_ns_flag = args[i];
@@ -185,10 +186,10 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
             runner.startNreplWithFile(gc_alloc, infra_alloc, gc, f, nrepl_port);
         } else {
             nrepl.startServer(infra_alloc, nrepl_port) catch |e| {
-                const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-                _ = stderr.write("Error: nREPL server failed: ") catch {};
-                _ = stderr.write(@errorName(e)) catch {};
-                _ = stderr.write("\n") catch {};
+                const stderr = std.Io.File.stderr();
+                stderr.writeStreamingAll(io_default.get(),"Error: nREPL server failed: ") catch {};
+                stderr.writeStreamingAll(io_default.get(),@errorName(e)) catch {};
+                stderr.writeStreamingAll(io_default.get(),"\n") catch {};
                 std.process.exit(1);
             };
         }
@@ -221,14 +222,14 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
         const deps_config = deps_config_opt orelse {
             // deps.edn flags used but no deps.edn found
             if (mode != .resolve_only and mode != .show_path) {
-                const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-                _ = stderr.write("Error: No deps.edn found. -A/-M/-X flags require deps.edn.\n") catch {};
+                const stderr = std.Io.File.stderr();
+                stderr.writeStreamingAll(io_default.get(),"Error: No deps.edn found. -A/-M/-X flags require deps.edn.\n") catch {};
                 std.process.exit(1);
             }
             // -P with no deps.edn is a no-op, -Spath shows "."
             if (mode == .show_path) {
-                const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-                _ = stdout.write(".\n") catch {};
+                const stdout = std.Io.File.stdout();
+                stdout.writeStreamingAll(io_default.get(),".\n") catch {};
             }
             return;
         };
@@ -241,16 +242,16 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
         const resolved = deps_mod.resolveAliases(config_alloc, deps_config, alias_names);
 
         // Print warnings
-        const stderr_file: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+        const stderr_file = std.Io.File.stderr();
         for (resolved.warnings) |warning| {
-            _ = stderr_file.write(warning) catch {};
-            _ = stderr_file.write("\n") catch {};
+            stderr_file.writeStreamingAll(io_default.get(),warning) catch {};
+            stderr_file.writeStreamingAll(io_default.get(),"\n") catch {};
         }
 
         if (s_verbose) {
-            _ = stderr_file.write("Resolved aliases: ") catch {};
-            if (alias_str) |s| _ = stderr_file.write(s) catch {};
-            _ = stderr_file.write("\n") catch {};
+            stderr_file.writeStreamingAll(io_default.get(),"Resolved aliases: ") catch {};
+            if (alias_str) |s| stderr_file.writeStreamingAll(io_default.get(),s) catch {};
+            stderr_file.writeStreamingAll(io_default.get(),"\n") catch {};
         }
 
         // Apply resolved paths
@@ -295,24 +296,24 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
         switch (mode) {
             .resolve_only => {
                 // -P: Dependencies resolved above. Done.
-                const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-                _ = stdout.write("Dependencies resolved.\n") catch {};
+                const stdout = std.Io.File.stdout();
+                stdout.writeStreamingAll(io_default.get(),"Dependencies resolved.\n") catch {};
                 return;
             },
             .show_path => {
                 // -Spath: Print all load paths
-                const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+                const stdout = std.Io.File.stdout();
                 for (resolved.paths, 0..) |path, pi| {
-                    if (pi > 0) _ = stdout.write(":") catch {};
+                    if (pi > 0) stdout.writeStreamingAll(io_default.get(), ":") catch {};
                     if (config_dir) |dir| {
                         var buf: [4096]u8 = undefined;
                         const full = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, path }) catch continue;
-                        _ = stdout.write(full) catch {};
+                        stdout.writeStreamingAll(io_default.get(),full) catch {};
                     } else {
-                        _ = stdout.write(path) catch {};
+                        stdout.writeStreamingAll(io_default.get(),path) catch {};
                     }
                 }
-                _ = stdout.write("\n") catch {};
+                stdout.writeStreamingAll(io_default.get(),"\n") catch {};
                 return;
             },
             .alias_repl => {
@@ -325,8 +326,8 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
                     const dir = std.fs.path.dirname(f) orelse ".";
                     ns_ops.addLoadPath(dir) catch {};
                     const max_file_size = 10 * 1024 * 1024;
-                    const file_bytes = std.fs.cwd().readFileAlloc(infra_alloc, f, max_file_size) catch {
-                        _ = stderr_file.write("Error: could not read file\n") catch {};
+                    const file_bytes = std.Io.Dir.cwd().readFileAlloc(io_default.get(), f, infra_alloc, .limited(max_file_size)) catch {
+                        stderr_file.writeStreamingAll(io_default.get(),"Error: could not read file\n") catch {};
                         std.process.exit(1);
                     };
                     defer infra_alloc.free(file_bytes);
@@ -353,8 +354,8 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
                         const dir = std.fs.path.dirname(f) orelse ".";
                         ns_ops.addLoadPath(dir) catch {};
                         const max_file_size = 10 * 1024 * 1024;
-                        const file_bytes = std.fs.cwd().readFileAlloc(infra_alloc, f, max_file_size) catch {
-                            _ = stderr_file.write("Error: could not read file\n") catch {};
+                        const file_bytes = std.Io.Dir.cwd().readFileAlloc(io_default.get(), f, infra_alloc, .limited(max_file_size)) catch {
+                            stderr_file.writeStreamingAll(io_default.get(),"Error: could not read file\n") catch {};
                             std.process.exit(1);
                         };
                         defer infra_alloc.free(file_bytes);
@@ -363,7 +364,7 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
                         runner.evalAndPrint(gc_alloc, infra_alloc, gc, file_bytes, use_vm, dump_bytecode, .file);
                         return;
                     }
-                    _ = stderr_file.write("Error: -M requires -m <namespace> or a file argument\n") catch {};
+                    stderr_file.writeStreamingAll(io_default.get(),"Error: -M requires -m <namespace> or a file argument\n") catch {};
                     std.process.exit(1);
                 };
                 runner.runMainNs(gc_alloc, infra_alloc, gc, ns, use_vm);
@@ -372,7 +373,7 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
             .exec_mode => {
                 // -X: Exec mode — invoke a function
                 const fn_name = exec_fn_arg orelse resolved.exec_fn orelse {
-                    _ = stderr_file.write("Error: -X requires a function name\n") catch {};
+                    stderr_file.writeStreamingAll(io_default.get(),"Error: -X requires a function name\n") catch {};
                     std.process.exit(1);
                 };
                 runner.runExecFn(gc_alloc, infra_alloc, gc, fn_name, exec_extra_args[0..exec_extra_count], resolved.exec_args, use_vm);
@@ -394,8 +395,8 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
     applyConfig(config, config_dir);
 
     if (s_verbose) {
-        const stderr_out: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-        _ = stderr_out.write("Verbose: standard mode (no alias flags)\n") catch {};
+        const stderr_out = std.Io.File.stderr();
+        stderr_out.writeStreamingAll(io_default.get(), "Verbose: standard mode (no alias flags)\n") catch {};
     }
     if (s_repro) {
         // -Srepro: exclude user config (no-op for now, CW has no user config dir yet)
@@ -413,9 +414,9 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
         ns_ops.detectAndAddSrcPath(dir) catch {};
 
         const max_file_size = 10 * 1024 * 1024; // 10MB
-        const file_bytes = std.fs.cwd().readFileAlloc(infra_alloc, f, max_file_size) catch {
-            const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-            _ = stderr.write("Error: could not read file (max 10MB)\n") catch {};
+        const file_bytes = std.Io.Dir.cwd().readFileAlloc(io_default.get(), f, infra_alloc, .limited(max_file_size)) catch {
+            const stderr = std.Io.File.stderr();
+            stderr.writeStreamingAll(io_default.get(),"Error: could not read file (max 10MB)\n") catch {};
             std.process.exit(1);
         };
         defer infra_alloc.free(file_bytes);
@@ -440,11 +441,11 @@ pub fn run(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc,
 /// Handle `cljw new <project-name>` subcommand.
 /// Creates a new project directory with deps.edn, src/, and test/ scaffolding.
 pub fn handleNewCommand(new_args: []const [:0]const u8) void {
-    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    const stderr = std.Io.File.stderr();
+    const stdout = std.Io.File.stdout();
 
     if (new_args.len == 0) {
-        _ = stderr.write("Usage: cljw new <project-name>\n") catch {};
+        stderr.writeStreamingAll(io_default.get(),"Usage: cljw new <project-name>\n") catch {};
         std.process.exit(1);
     }
 
@@ -453,7 +454,7 @@ pub fn handleNewCommand(new_args: []const [:0]const u8) void {
     // Validate project name (alphanumeric, hyphens, underscores)
     for (project_name) |c| {
         if (!std.ascii.isAlphanumeric(c) and c != '-' and c != '_' and c != '.') {
-            _ = stderr.write("Error: invalid project name (use alphanumeric, hyphens, underscores)\n") catch {};
+            stderr.writeStreamingAll(io_default.get(),"Error: invalid project name (use alphanumeric, hyphens, underscores)\n") catch {};
             std.process.exit(1);
         }
     }
@@ -462,7 +463,7 @@ pub fn handleNewCommand(new_args: []const [:0]const u8) void {
     var ns_name_buf: [256]u8 = undefined;
     const ns_name = blk: {
         if (project_name.len > ns_name_buf.len) {
-            _ = stderr.write("Error: project name too long\n") catch {};
+            stderr.writeStreamingAll(io_default.get(),"Error: project name too long\n") catch {};
             std.process.exit(1);
         }
         @memcpy(ns_name_buf[0..project_name.len], project_name);
@@ -481,68 +482,65 @@ pub fn handleNewCommand(new_args: []const [:0]const u8) void {
     };
 
     // Create project directory
-    std.fs.cwd().makeDir(project_name) catch |e| {
+    std.Io.Dir.cwd().createDir(io_default.get(), project_name, .default_dir) catch |e| {
         if (e == error.PathAlreadyExists) {
-            _ = stderr.write("Error: directory already exists\n") catch {};
+            stderr.writeStreamingAll(io_default.get(),"Error: directory already exists\n") catch {};
         } else {
-            _ = stderr.write("Error creating directory\n") catch {};
+            stderr.writeStreamingAll(io_default.get(),"Error creating directory\n") catch {};
         }
         std.process.exit(1);
     };
 
-    var project_dir = std.fs.cwd().openDir(project_name, .{}) catch {
-        _ = stderr.write("Error: cannot open project directory\n") catch {};
+    var project_dir = std.Io.Dir.cwd().openDir(io_default.get(), project_name, .{}) catch {
+        stderr.writeStreamingAll(io_default.get(),"Error: cannot open project directory\n") catch {};
         std.process.exit(1);
     };
-    defer project_dir.close();
+    defer project_dir.close(io_default.get());
+
+    const proj_io = io_default.get();
 
     // Create subdirectories
-    project_dir.makePath("src") catch {};
-    project_dir.makePath("test") catch {};
+    project_dir.createDirPath(proj_io, "src") catch {};
+    project_dir.createDirPath(proj_io, "test") catch {};
+
+    // Helper: write a file inside project_dir with the given contents.
+    const writeProjectFile = struct {
+        fn run(dir: *std.Io.Dir, w_io: std.Io, sub_path: []const u8, contents: []const u8) void {
+            const f = dir.createFile(w_io, sub_path, .{}) catch return;
+            defer f.close(w_io);
+            f.writeStreamingAll(w_io, contents) catch {};
+        }
+    }.run;
 
     // Write deps.edn
     {
         var buf: [1024]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buf);
-        const w = stream.writer();
-        w.print("{{:paths [\"src\"]\n :deps {{}}\n :aliases\n {{:test {{:extra-paths [\"test\"]}}}}}}\n", .{}) catch {};
-        project_dir.writeFile(.{ .sub_path = "deps.edn", .data = stream.getWritten() }) catch {};
+        const data = std.fmt.bufPrint(&buf, "{{:paths [\"src\"]\n :deps {{}}\n :aliases\n {{:test {{:extra-paths [\"test\"]}}}}}}\n", .{}) catch return;
+        writeProjectFile(&project_dir, proj_io, "deps.edn", data);
     }
 
     // Write src/<file_name>.clj
     {
         var path_buf: [512]u8 = undefined;
-        var path_stream = std.io.fixedBufferStream(&path_buf);
-        path_stream.writer().print("src/{s}.clj", .{file_name}) catch {};
-        const src_path = path_stream.getWritten();
-
+        const src_path = std.fmt.bufPrint(&path_buf, "src/{s}.clj", .{file_name}) catch return;
         var buf: [1024]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buf);
-        const w = stream.writer();
-        w.print("(ns {s})\n\n(defn -main [& args]\n  (println \"Hello from {s}!\"))\n", .{ ns_name, ns_name }) catch {};
-        project_dir.writeFile(.{ .sub_path = src_path, .data = stream.getWritten() }) catch {};
+        const data = std.fmt.bufPrint(&buf, "(ns {s})\n\n(defn -main [& args]\n  (println \"Hello from {s}!\"))\n", .{ ns_name, ns_name }) catch return;
+        writeProjectFile(&project_dir, proj_io, src_path, data);
     }
 
     // Write test/<file_name>_test.clj
     {
         var path_buf: [512]u8 = undefined;
-        var path_stream = std.io.fixedBufferStream(&path_buf);
-        path_stream.writer().print("test/{s}_test.clj", .{file_name}) catch {};
-        const test_path = path_stream.getWritten();
-
+        const test_path = std.fmt.bufPrint(&path_buf, "test/{s}_test.clj", .{file_name}) catch return;
         var buf: [1024]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buf);
-        const w = stream.writer();
-        w.print("(ns {s}-test\n  (:require [clojure.test :refer [deftest is testing run-tests]]\n            [{s} :refer :all]))\n\n(deftest greeting-test\n  (testing \"main function\"\n    (is (= 1 1))))\n\n(run-tests)\n", .{ ns_name, ns_name }) catch {};
-        project_dir.writeFile(.{ .sub_path = test_path, .data = stream.getWritten() }) catch {};
+        const data = std.fmt.bufPrint(&buf, "(ns {s}-test\n  (:require [clojure.test :refer [deftest is testing run-tests]]\n            [{s} :refer :all]))\n\n(deftest greeting-test\n  (testing \"main function\"\n    (is (= 1 1))))\n\n(run-tests)\n", .{ ns_name, ns_name }) catch return;
+        writeProjectFile(&project_dir, proj_io, test_path, data);
     }
 
     {
         var msg_buf: [1024]u8 = undefined;
-        var msg_stream = std.io.fixedBufferStream(&msg_buf);
-        const w = msg_stream.writer();
-        w.print("Project '{s}' created!\n\n  cd {s}\n  cljw -M -m {s}    # Run main\n  cljw test          # Run tests\n  cljw               # Start REPL\n", .{ project_name, project_name, ns_name }) catch {};
-        _ = stdout.write(msg_stream.getWritten()) catch {};
+        const msg = std.fmt.bufPrint(&msg_buf, "Project '{s}' created!\n\n  cd {s}\n  cljw -M -m {s}    # Run main\n  cljw test          # Run tests\n  cljw               # Start REPL\n", .{ project_name, project_name, ns_name }) catch return;
+        stdout.writeStreamingAll(proj_io, msg) catch {};
     }
 }
 
@@ -592,16 +590,16 @@ pub fn findDepsEdnFile(allocator: Allocator, start_dir: ?[]const u8) ?DepsEdnFil
 fn readFileFromDir(allocator: Allocator, dir: []const u8, filename: []const u8) ?[]const u8 {
     var buf: [4096]u8 = undefined;
     const path = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, filename }) catch return null;
-    return std.fs.cwd().readFileAlloc(allocator, path, 10_000) catch null;
+    return std.Io.Dir.cwd().readFileAlloc(io_default.get(), path, allocator, .limited(10_000)) catch null;
 }
 
 /// Convert a DepsConfig (from deps.zig parser) to ProjectConfig for applyConfig.
 fn projectConfigFromDepsConfig(allocator: Allocator, deps_config: deps_mod.DepsConfig) ProjectConfig {
     // Print warnings to stderr
-    const stderr_file: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    const stderr_file = std.Io.File.stderr();
     for (deps_config.warnings) |warning| {
-        _ = stderr_file.write(warning) catch {};
-        _ = stderr_file.write("\n") catch {};
+        stderr_file.writeStreamingAll(io_default.get(),warning) catch {};
+        stderr_file.writeStreamingAll(io_default.get(),"\n") catch {};
     }
 
     // Convert deps
@@ -729,17 +727,17 @@ fn warnIfLeinProject(dir: []const u8) void {
     var buf: [4096]u8 = undefined;
     const path = std.fmt.bufPrint(&buf, "{s}/project.clj", .{dir}) catch return;
     // Check if project.clj exists
-    std.fs.cwd().access(path, .{}) catch return;
-    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-    _ = stderr.write("Warning: Found project.clj (Leiningen) but no deps.edn. ClojureWasm uses deps.edn for dependencies.\n") catch {};
-    _ = stderr.write("  Run 'cljw new <name>' to create a deps.edn project, or create deps.edn manually.\n") catch {};
+    std.Io.Dir.cwd().access(io_default.get(),path, .{}) catch return;
+    const stderr = std.Io.File.stderr();
+    stderr.writeStreamingAll(io_default.get(),"Warning: Found project.clj (Leiningen) but no deps.edn. ClojureWasm uses deps.edn for dependencies.\n") catch {};
+    stderr.writeStreamingAll(io_default.get(),"  Run 'cljw new <name>' to create a deps.edn project, or create deps.edn manually.\n") catch {};
 }
 
 pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: ?[]const u8, force: bool, resolve_deps: bool, allow_fetch: bool) void {
-    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    const stderr = std.Io.File.stderr();
 
     // Cache location: ~/.cljw/gitlibs/<sha-prefix>/<repo-name>
-    const home = std.posix.getenv("HOME") orelse return;
+    const home = io_default.getEnv("HOME") orelse return;
     var dir_buf: [4096]u8 = undefined;
 
     // Extract repo name from URL (last path component, without .git)
@@ -757,7 +755,7 @@ pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_ro
 
     // Check if already cached
     if (!force) {
-        if (std.fs.cwd().access(cache_dir, .{})) |_| {
+        if (std.Io.Dir.cwd().access(io_default.get(),cache_dir, .{})) |_| {
             // Already cached — add to load path
             if (deps_root) |root| {
                 var root_buf: [4096]u8 = undefined;
@@ -811,23 +809,23 @@ pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_ro
 
     if (!allow_fetch) {
         // Not cached and not allowed to fetch
-        _ = stderr.write("Warning: git dependency not cached: ") catch {};
-        _ = stderr.write(url) catch {};
-        _ = stderr.write("\n  Run 'cljw -P' to download dependencies first.\n") catch {};
+        stderr.writeStreamingAll(io_default.get(),"Warning: git dependency not cached: ") catch {};
+        stderr.writeStreamingAll(io_default.get(),url) catch {};
+        stderr.writeStreamingAll(io_default.get(),"\n  Run 'cljw -P' to download dependencies first.\n") catch {};
         return;
     }
 
     // Clone the repo
-    _ = stderr.write("Fetching: ") catch {};
-    _ = stderr.write(url) catch {};
-    _ = stderr.write(" @ ") catch {};
-    _ = stderr.write(sha) catch {};
-    _ = stderr.write("\n") catch {};
+    stderr.writeStreamingAll(io_default.get(),"Fetching: ") catch {};
+    stderr.writeStreamingAll(io_default.get(),url) catch {};
+    stderr.writeStreamingAll(io_default.get()," @ ") catch {};
+    stderr.writeStreamingAll(io_default.get(),sha) catch {};
+    stderr.writeStreamingAll(io_default.get(),"\n") catch {};
 
     // Create parent directories
     var parent_buf: [4096]u8 = undefined;
     const parent_dir = std.fmt.bufPrint(&parent_buf, "{s}/.cljw/gitlibs/{s}", .{ home, sha_prefix }) catch return;
-    std.fs.cwd().makePath(parent_dir) catch {};
+    std.Io.Dir.cwd().createDirPath(io_default.get(),parent_dir) catch {};
 
     // Clone and checkout specific SHA
     // Use a temp dir, then rename to final location
@@ -835,7 +833,7 @@ pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_ro
     const tmp_dir = std.fmt.bufPrint(&tmp_buf, "{s}/.cljw/gitlibs/.tmp-{s}", .{ home, sha_prefix }) catch return;
 
     // Clean up any leftover tmp dir
-    std.fs.cwd().deleteTree(tmp_dir) catch {};
+    std.Io.Dir.cwd().deleteTree(io_default.get(),tmp_dir) catch {};
 
     // git clone --depth 1 (for tag) or full clone (for arbitrary sha)
     var clone_buf: [8192]u8 = undefined;
@@ -844,21 +842,20 @@ pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_ro
     else
         std.fmt.bufPrint(&clone_buf, "git clone {s} {s} 2>&1", .{ url, tmp_dir }) catch return;
 
-    const clone_result = std.process.Child.run(.{
-        .allocator = std.heap.page_allocator,
+    const clone_result = std.process.run(std.heap.page_allocator, io_default.get(), .{
         .argv = &.{ "/bin/sh", "-c", clone_cmd },
     }) catch {
-        _ = stderr.write("Error: git clone failed\n") catch {};
+        stderr.writeStreamingAll(io_default.get(),"Error: git clone failed\n") catch {};
         return;
     };
     defer std.heap.page_allocator.free(clone_result.stdout);
     defer std.heap.page_allocator.free(clone_result.stderr);
 
-    if (clone_result.term.Exited != 0) {
-        _ = stderr.write("Error: git clone failed: ") catch {};
-        _ = stderr.write(clone_result.stderr) catch {};
-        _ = stderr.write("\n") catch {};
-        std.fs.cwd().deleteTree(tmp_dir) catch {};
+    if (clone_result.term.exited != 0) {
+        stderr.writeStreamingAll(io_default.get(),"Error: git clone failed: ") catch {};
+        stderr.writeStreamingAll(io_default.get(),clone_result.stderr) catch {};
+        stderr.writeStreamingAll(io_default.get(),"\n") catch {};
+        std.Io.Dir.cwd().deleteTree(io_default.get(),tmp_dir) catch {};
         return;
     }
 
@@ -867,12 +864,12 @@ pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_ro
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         if (!validateGitTag(arena.allocator(), tmp_dir, t, sha)) {
-            _ = stderr.write("ERROR: Git tag \"") catch {};
-            _ = stderr.write(t) catch {};
-            _ = stderr.write("\" does not match SHA ") catch {};
-            _ = stderr.write(sha) catch {};
-            _ = stderr.write("\n") catch {};
-            std.fs.cwd().deleteTree(tmp_dir) catch {};
+            stderr.writeStreamingAll(io_default.get(),"ERROR: Git tag \"") catch {};
+            stderr.writeStreamingAll(io_default.get(),t) catch {};
+            stderr.writeStreamingAll(io_default.get(),"\" does not match SHA ") catch {};
+            stderr.writeStreamingAll(io_default.get(),sha) catch {};
+            stderr.writeStreamingAll(io_default.get(),"\n") catch {};
+            std.Io.Dir.cwd().deleteTree(io_default.get(),tmp_dir) catch {};
             return;
         }
     }
@@ -881,30 +878,29 @@ pub fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_ro
     if (tag == null) {
         var checkout_buf: [8192]u8 = undefined;
         const checkout_cmd = std.fmt.bufPrint(&checkout_buf, "cd {s} && git checkout {s} 2>&1", .{ tmp_dir, sha }) catch return;
-        const checkout_result = std.process.Child.run(.{
-            .allocator = std.heap.page_allocator,
+        const checkout_result = std.process.run(std.heap.page_allocator, io_default.get(), .{
             .argv = &.{ "/bin/sh", "-c", checkout_cmd },
         }) catch {
-            _ = stderr.write("Error: git checkout failed\n") catch {};
-            std.fs.cwd().deleteTree(tmp_dir) catch {};
+            stderr.writeStreamingAll(io_default.get(),"Error: git checkout failed\n") catch {};
+            std.Io.Dir.cwd().deleteTree(io_default.get(),tmp_dir) catch {};
             return;
         };
         defer std.heap.page_allocator.free(checkout_result.stdout);
         defer std.heap.page_allocator.free(checkout_result.stderr);
 
-        if (checkout_result.term.Exited != 0) {
-            _ = stderr.write("Error: git checkout failed: ") catch {};
-            _ = stderr.write(checkout_result.stderr) catch {};
-            _ = stderr.write("\n") catch {};
-            std.fs.cwd().deleteTree(tmp_dir) catch {};
+        if (checkout_result.term.exited != 0) {
+            stderr.writeStreamingAll(io_default.get(),"Error: git checkout failed: ") catch {};
+            stderr.writeStreamingAll(io_default.get(),checkout_result.stderr) catch {};
+            stderr.writeStreamingAll(io_default.get(),"\n") catch {};
+            std.Io.Dir.cwd().deleteTree(io_default.get(),tmp_dir) catch {};
             return;
         }
     }
 
     // Rename to final location
-    std.fs.cwd().rename(tmp_dir, cache_dir) catch {
+    std.Io.Dir.rename(std.Io.Dir.cwd(), tmp_dir, std.Io.Dir.cwd(), cache_dir, io_default.get()) catch {
         // If target already exists (race condition), that's fine — use it
-        std.fs.cwd().deleteTree(tmp_dir) catch {};
+        std.Io.Dir.cwd().deleteTree(io_default.get(),tmp_dir) catch {};
     };
 
     // Add to load path
@@ -961,14 +957,13 @@ fn validateGitTag(alloc: Allocator, repo_dir: []const u8, tag_name: []const u8, 
     var cmd_buf: [8192]u8 = undefined;
     const cmd = std.fmt.bufPrint(&cmd_buf, "cd {s} && git rev-parse {s}^{{commit}} 2>/dev/null || git rev-parse {s} 2>/dev/null", .{ repo_dir, tag_name, tag_name }) catch return false;
 
-    const result = std.process.Child.run(.{
-        .allocator = alloc,
+    const result = std.process.run(alloc, io_default.get(), .{
         .argv = &.{ "/bin/sh", "-c", cmd },
     }) catch return false;
     defer alloc.free(result.stdout);
     defer alloc.free(result.stderr);
 
-    if (result.term.Exited != 0) return false;
+    if (result.term.exited != 0) return false;
 
     const tag_sha = std.mem.trim(u8, result.stdout, " \t\r\n");
     if (tag_sha.len == 0) return false;

@@ -15,6 +15,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../../runtime/error.zig");
 const registry = @import("../registry.zig");
 const NamespaceDef = registry.NamespaceDef;
+const io_default = @import("../../runtime/io_default.zig");
 
 // ============================================================
 // Implementation
@@ -30,11 +31,14 @@ fn browseUrlFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "browse-url: argument must be a string", .{}),
     };
 
+    _ = allocator;
     const open_cmd = openCommand();
     if (open_cmd) |cmd| {
-        var child = std.process.Child.init(&.{ cmd, url_str }, allocator);
-        child.spawn() catch return args[0]; // silently fail if spawn fails
-        _ = child.wait() catch {};
+        const proc_io = io_default.get();
+        var child = std.process.spawn(proc_io, .{
+            .argv = &.{ cmd, url_str },
+        }) catch return args[0]; // silently fail if spawn fails
+        _ = child.wait(proc_io) catch {};
         return args[0];
     }
 

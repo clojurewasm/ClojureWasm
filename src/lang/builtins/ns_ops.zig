@@ -20,6 +20,7 @@ const collections = @import("../../runtime/collections.zig");
 const bootstrap = @import("../../engine/bootstrap.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
 const err = @import("../../runtime/error.zig");
+const io_default = @import("../../runtime/io_default.zig");
 
 // ============================================================
 // Load path infrastructure
@@ -49,7 +50,7 @@ var loaded_file_records: std.ArrayList(LoadedFileRecord) = .empty;
 var track_loaded_files: bool = false;
 
 /// Mutex protecting loaded_libs, loading_libs, and loaded_file_records.
-var ns_mutex: std.Thread.Mutex = .{};
+var ns_mutex: std.Io.Mutex = .init;
 
 /// Enable file tracking for cljw build. Call before evaluating entry file.
 pub fn enableFileTracking() void {
@@ -117,8 +118,9 @@ pub fn deinit() void {
 /// (each file gets a fresh Env + bootstrap, so loaded_libs must match).
 pub fn resetLoadedLibs() void {
     const alloc = loaded_libs_allocator orelse return;
-    ns_mutex.lock();
-    defer ns_mutex.unlock();
+    const io = io_default.get();
+    ns_mutex.lockUncancelable(io);
+    defer ns_mutex.unlock(io);
 
     // Free loaded_libs keys
     var iter = loaded_libs.iterator();
@@ -179,9 +181,10 @@ pub fn detectAndAddSrcPath(start_dir: []const u8) !void {
         var current = start_dir;
         for (0..10) |_| {
             const src_path = std.fmt.bufPrint(&buf, "{s}/src", .{current}) catch break;
-            if (std.fs.cwd().openDir(src_path, .{})) |dir| {
+            const lp_io = io_default.get();
+            if (std.Io.Dir.cwd().openDir(lp_io, src_path, .{})) |dir| {
                 var d = dir;
-                d.close();
+                d.close(lp_io);
                 try addLoadPath(src_path);
                 return;
             } else |_| {}
@@ -194,15 +197,17 @@ pub fn detectAndAddSrcPath(start_dir: []const u8) !void {
 }
 
 pub fn isLibLoaded(name: []const u8) bool {
-    ns_mutex.lock();
-    defer ns_mutex.unlock();
+    const io = io_default.get();
+    ns_mutex.lockUncancelable(io);
+    defer ns_mutex.unlock(io);
     return loaded_libs.contains(name);
 }
 
 pub fn markLibLoaded(name: []const u8) !void {
     const alloc = loaded_libs_allocator orelse return;
-    ns_mutex.lock();
-    defer ns_mutex.unlock();
+    const io = io_default.get();
+    ns_mutex.lockUncancelable(io);
+    defer ns_mutex.unlock(io);
     if (!loaded_libs.contains(name)) {
         const owned = try alloc.dupe(u8, name);
         try loaded_libs.put(alloc, owned, {});
@@ -260,10 +265,8 @@ fn loadResource(allocator: Allocator, env: *@import("../../runtime/env.zig").Env
         for (extensions) |ext| {
             const full_path = std.fmt.bufPrint(&buf, "{s}/{s}{s}", .{ base, resource, ext }) catch continue;
 
-            const cwd = std.fs.cwd();
-            if (cwd.openFile(full_path, .{})) |file| {
-                defer file.close();
-                const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch continue;
+            const lf_io = io_default.get();
+            if (std.Io.Dir.cwd().readFileAlloc(lf_io, full_path, allocator, .limited(10 * 1024 * 1024))) |content| {
 
                 // Dupe content for build tracking before evaluation (content
                 // allocated by GC allocator may not survive evaluation).
@@ -288,8 +291,9 @@ fn loadResource(allocator: Allocator, env: *@import("../../runtime/env.zig").Env
                 // (depth-first order: lib.util.math before lib.core).
                 if (tracked_content) |tc| {
                     if (loaded_libs_allocator) |tracking_alloc| {
-                        ns_mutex.lock();
-                        defer ns_mutex.unlock();
+                        const tio = io_default.get();
+                        ns_mutex.lockUncancelable(tio);
+                        defer ns_mutex.unlock(tio);
                         loaded_file_records.append(tracking_alloc, .{ .content = tc }) catch {};
                     }
                 }
@@ -1166,8 +1170,9 @@ fn requireLib(allocator: Allocator, env: *@import("../../runtime/env.zig").Env, 
     // top of the file. This matches JVM Clojure behavior where circular
     // requires see partially-loaded namespaces.
     {
-        ns_mutex.lock();
-        defer ns_mutex.unlock();
+        const io = io_default.get();
+        ns_mutex.lockUncancelable(io);
+        defer ns_mutex.unlock(io);
         if (loading_libs.contains(ns_name)) {
             return;
         }
@@ -1177,13 +1182,15 @@ fn requireLib(allocator: Allocator, env: *@import("../../runtime/env.zig").Env, 
     const alloc = loaded_libs_allocator orelse return;
     const loading_key = try alloc.dupe(u8, ns_name);
     {
-        ns_mutex.lock();
-        defer ns_mutex.unlock();
+        const io = io_default.get();
+        ns_mutex.lockUncancelable(io);
+        defer ns_mutex.unlock(io);
         try loading_libs.put(alloc, loading_key, {});
     }
     defer {
-        ns_mutex.lock();
-        defer ns_mutex.unlock();
+        const io = io_default.get();
+        ns_mutex.lockUncancelable(io);
+        defer ns_mutex.unlock(io);
         // Remove from loading set when done (whether success or error)
         if (loading_libs.fetchRemove(ns_name)) |kv| {
             alloc.free(kv.key);
@@ -1776,8 +1783,9 @@ test "detectAndAddSrcPath - finds src/ directory" {
     defer deinit();
 
     // Create temp project structure: .zig-cache/test-src-detect/src/
-    std.fs.cwd().makePath(".zig-cache/test-src-detect/src") catch {};
-    defer std.fs.cwd().deleteTree(".zig-cache/test-src-detect") catch {};
+    const t1_io = io_default.get();
+    std.Io.Dir.cwd().createDirPath(t1_io, ".zig-cache/test-src-detect/src") catch {};
+    defer std.Io.Dir.cwd().deleteTree(t1_io, ".zig-cache/test-src-detect") catch {};
 
     try detectAndAddSrcPath(".zig-cache/test-src-detect");
 
@@ -1794,9 +1802,10 @@ test "detectAndAddSrcPath - walks up to find src/" {
     defer deinit();
 
     // Create: .zig-cache/test-src-walk/src/ and .zig-cache/test-src-walk/deep/nested/
-    std.fs.cwd().makePath(".zig-cache/test-src-walk/src") catch {};
-    std.fs.cwd().makePath(".zig-cache/test-src-walk/deep/nested") catch {};
-    defer std.fs.cwd().deleteTree(".zig-cache/test-src-walk") catch {};
+    const t2_io = io_default.get();
+    std.Io.Dir.cwd().createDirPath(t2_io, ".zig-cache/test-src-walk/src") catch {};
+    std.Io.Dir.cwd().createDirPath(t2_io, ".zig-cache/test-src-walk/deep/nested") catch {};
+    defer std.Io.Dir.cwd().deleteTree(t2_io, ".zig-cache/test-src-walk") catch {};
 
     // Starting from deep/nested, should walk up and find src/
     try detectAndAddSrcPath(".zig-cache/test-src-walk/deep/nested");
@@ -1824,11 +1833,13 @@ test "require - loads file from load path" {
     try bootstrap.loadCore(alloc, env);
 
     // Create a temp directory with a .clj file
-    const tmp_dir = std.fs.cwd().makeOpenPath("zig-cache/test-require", .{}) catch return;
-    defer std.fs.cwd().deleteTree("zig-cache/test-require") catch {};
+    const t3_io = io_default.get();
+    var tmp_dir = std.Io.Dir.cwd().createDirPathOpen(t3_io, "zig-cache/test-require", .{}) catch return;
+    defer tmp_dir.close(t3_io);
+    defer std.Io.Dir.cwd().deleteTree(t3_io, "zig-cache/test-require") catch {};
 
     // Write test_util.clj: (ns test-util) (def greeting "hello from test-util")
-    tmp_dir.writeFile(.{
+    tmp_dir.writeFile(t3_io, .{
         .sub_path = "test_util.clj",
         .data = "(ns test-util)\n(def greeting \"hello from test-util\")\n",
     }) catch return;

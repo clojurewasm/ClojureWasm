@@ -22,18 +22,19 @@ const bootstrap = @import("engine/bootstrap.zig");
 const gc_mod = @import("runtime/gc.zig");
 const keyword_intern = @import("runtime/keyword_intern.zig");
 const clojure_core_protocols = @import("lang/lib/clojure_core_protocols.zig");
+const io_default = @import("runtime/io_default.zig");
 
-pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
+    io_default.set(io);
+    io_default.setEnvironMap(init.environ_map);
 
     var gc = gc_mod.MarkSweepGc.init(allocator);
     defer gc.deinit();
     const alloc = gc.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     if (args.len < 2) {
         std.debug.print("Usage: cache_gen <output_file>\n", .{});
@@ -61,7 +62,7 @@ pub fn main() !void {
     std.debug.print("cache_gen: generateBootstrapCache OK\n", .{});
 
     // Write to output file
-    const out_file = try std.fs.cwd().createFile(args[1], .{});
-    defer out_file.close();
-    try out_file.writeAll(cache_bytes);
+    const out_file = try std.Io.Dir.cwd().createFile(io, args[1], .{});
+    defer out_file.close(io);
+    try out_file.writePositionalAll(io, cache_bytes, 0);
 }

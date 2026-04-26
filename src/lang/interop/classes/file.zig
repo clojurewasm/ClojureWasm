@@ -19,6 +19,7 @@ const value_mod = @import("../../../runtime/value.zig");
 const Value = value_mod.Value;
 const err = @import("../../../runtime/error.zig");
 const constructors = @import("../constructors.zig");
+const io_default = @import("../../../runtime/io_default.zig");
 
 pub const class_name = "java.io.File";
 
@@ -69,78 +70,83 @@ pub fn dispatchMethod(allocator: Allocator, method: []const u8, obj: Value, rest
         }
         return Value.nil_val;
     } else if (std.mem.eql(u8, method, "getAbsolutePath")) {
-        const cwd = std.fs.cwd();
-        const abs = cwd.realpathAlloc(allocator, path) catch {
-            // If path doesn't exist, try to construct absolute from cwd
-            if (std.fs.path.isAbsolute(path)) {
-                return Value.initString(allocator, try allocator.dupe(u8, path));
-            }
-            var buf: [std.fs.max_path_bytes]u8 = undefined;
-            const cwd_path = cwd.realpath(".", &buf) catch return Value.initString(allocator, try allocator.dupe(u8, path));
-            const joined = try std.fs.path.join(allocator, &.{ cwd_path, path });
-            return Value.initString(allocator, joined);
-        };
-        return Value.initString(allocator, abs);
-    } else if (std.mem.eql(u8, method, "exists")) {
-        const cwd = std.fs.cwd();
+        // Zig 0.16's std.Io.Dir lacks realpath. Use libc realpath via std.c
+        // (we link libc) for resolution; fall back to a manual cwd-join when
+        // the path doesn't exist yet.
         if (std.fs.path.isAbsolute(path)) {
-            const stat = std.fs.openDirAbsolute(path, .{});
-            if (stat) |d| {
-                var dir = d;
-                dir.close();
-                return Value.true_val;
-            } else |_| {}
-            // Try as file
-            const file = std.fs.openFileAbsolute(path, .{}) catch return Value.false_val;
-            file.close();
-            return Value.true_val;
+            return Value.initString(allocator, try allocator.dupe(u8, path));
         }
-        // Relative path
-        _ = cwd.statFile(path) catch return Value.false_val;
+        var buf: [4096]u8 = undefined;
+        const path_z = try allocator.dupeZ(u8, path);
+        defer allocator.free(path_z);
+        if (std.c.realpath(path_z, &buf)) |resolved| {
+            const len = std.mem.indexOfScalar(u8, &buf, 0) orelse buf.len;
+            _ = resolved;
+            return Value.initString(allocator, try allocator.dupe(u8, buf[0..len]));
+        }
+        // Fall back: cwd-join
+        var cwd_buf: [4096]u8 = undefined;
+        if (std.c.getcwd(&cwd_buf, cwd_buf.len)) |_| {
+            const cwd_len = std.mem.indexOfScalar(u8, &cwd_buf, 0) orelse cwd_buf.len;
+            const joined = try std.fs.path.join(allocator, &.{ cwd_buf[0..cwd_len], path });
+            return Value.initString(allocator, joined);
+        }
+        return Value.initString(allocator, try allocator.dupe(u8, path));
+    } else if (std.mem.eql(u8, method, "exists")) {
+        const fio = io_default.get();
+        const cwd = std.Io.Dir.cwd();
+        _ = cwd.statFile(fio, path, .{}) catch return Value.false_val;
         return Value.true_val;
     } else if (std.mem.eql(u8, method, "isDirectory")) {
-        const cwd = std.fs.cwd();
-        const stat = cwd.statFile(path) catch return Value.false_val;
+        const fio = io_default.get();
+        const cwd = std.Io.Dir.cwd();
+        const stat = cwd.statFile(fio, path, .{}) catch return Value.false_val;
         return Value.initBoolean(stat.kind == .directory);
     } else if (std.mem.eql(u8, method, "isFile")) {
-        const cwd = std.fs.cwd();
-        const stat = cwd.statFile(path) catch return Value.false_val;
+        const fio = io_default.get();
+        const cwd = std.Io.Dir.cwd();
+        const stat = cwd.statFile(fio, path, .{}) catch return Value.false_val;
         return Value.initBoolean(stat.kind == .file);
     } else if (std.mem.eql(u8, method, "canRead")) {
-        const cwd = std.fs.cwd();
-        const file = cwd.openFile(path, .{}) catch return Value.false_val;
-        file.close();
+        const fio = io_default.get();
+        const cwd = std.Io.Dir.cwd();
+        const file = cwd.openFile(fio, path, .{}) catch return Value.false_val;
+        file.close(fio);
         return Value.true_val;
     } else if (std.mem.eql(u8, method, "canWrite")) {
-        const cwd = std.fs.cwd();
-        const file = cwd.openFile(path, .{ .mode = .write_only }) catch return Value.false_val;
-        file.close();
+        const fio = io_default.get();
+        const cwd = std.Io.Dir.cwd();
+        const file = cwd.openFile(fio, path, .{ .mode = .write_only }) catch return Value.false_val;
+        file.close(fio);
         return Value.true_val;
     } else if (std.mem.eql(u8, method, "length")) {
-        const cwd = std.fs.cwd();
-        const stat = cwd.statFile(path) catch return Value.initInteger(0);
+        const fio = io_default.get();
+        const cwd = std.Io.Dir.cwd();
+        const stat = cwd.statFile(fio, path, .{}) catch return Value.initInteger(0);
         return Value.initInteger(@intCast(stat.size));
     } else if (std.mem.eql(u8, method, "delete")) {
-        const cwd = std.fs.cwd();
-        cwd.deleteFile(path) catch {
-            cwd.deleteDir(path) catch return Value.false_val;
+        const fio = io_default.get();
+        const cwd = std.Io.Dir.cwd();
+        cwd.deleteFile(fio, path) catch {
+            cwd.deleteDir(fio, path) catch return Value.false_val;
         };
         return Value.true_val;
     } else if (std.mem.eql(u8, method, "mkdir")) {
-        const cwd = std.fs.cwd();
-        cwd.makeDir(path) catch return Value.false_val;
+        const fio = io_default.get();
+        std.Io.Dir.cwd().createDir(fio, path, .default_dir) catch return Value.false_val;
         return Value.true_val;
     } else if (std.mem.eql(u8, method, "mkdirs")) {
-        const cwd = std.fs.cwd();
-        cwd.makePath(path) catch return Value.false_val;
+        const fio = io_default.get();
+        std.Io.Dir.cwd().createDirPath(fio, path) catch return Value.false_val;
         return Value.true_val;
     } else if (std.mem.eql(u8, method, "list")) {
         return listDir(allocator, path);
     } else if (std.mem.eql(u8, method, "lastModified")) {
-        const cwd = std.fs.cwd();
-        const stat = cwd.statFile(path) catch return Value.initInteger(0);
+        const fio = io_default.get();
+        const cwd = std.Io.Dir.cwd();
+        const stat = cwd.statFile(fio, path, .{}) catch return Value.initInteger(0);
         // Convert nanoseconds to milliseconds
-        const mtime_ns: i128 = stat.mtime;
+        const mtime_ns: i128 = @intCast(stat.mtime.nanoseconds);
         const mtime_ms: i64 = @intCast(@divTrunc(mtime_ns, 1_000_000));
         return Value.initInteger(mtime_ms);
     }
@@ -150,13 +156,14 @@ pub fn dispatchMethod(allocator: Allocator, method: []const u8, obj: Value, rest
 
 /// List directory entries, returning a Clojure vector of filename strings.
 fn listDir(allocator: Allocator, path: []const u8) anyerror!Value {
-    const cwd = std.fs.cwd();
-    var dir = cwd.openDir(path, .{ .iterate = true }) catch return Value.nil_val;
-    defer dir.close();
+    const fio = io_default.get();
+    const cwd = std.Io.Dir.cwd();
+    var dir = cwd.openDir(fio, path, .{ .iterate = true }) catch return Value.nil_val;
+    defer dir.close(fio);
 
     var names = std.ArrayList(Value).empty;
     var iter = dir.iterate();
-    while (iter.next() catch null) |entry| {
+    while (iter.next(fio) catch null) |entry| {
         const name = try allocator.dupe(u8, entry.name);
         try names.append(allocator, Value.initString(allocator, name));
     }

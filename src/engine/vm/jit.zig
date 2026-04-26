@@ -55,11 +55,10 @@ pub const JitCompiler = struct {
     const BUFFER_SIZE = PAGE_SIZE; // 1 page for PoC
 
     pub fn init() !JitCompiler {
-        const PROT = std.posix.PROT;
         const mem = std.posix.mmap(
             null,
             BUFFER_SIZE,
-            PROT.READ | PROT.WRITE,
+            .{ .READ = true, .WRITE = true },
             .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
             -1,
             0,
@@ -80,9 +79,12 @@ pub const JitCompiler = struct {
 
     /// Make the buffer executable (W^X transition).
     fn makeExecutable(self: *JitCompiler) !void {
-        const PROT = std.posix.PROT;
-        std.posix.mprotect(@alignCast(self.buffer), PROT.READ | PROT.EXEC) catch
+        // Zig 0.16 removed std.posix.mprotect; use libc directly.
+        const region: []align(PAGE_SIZE) u8 = @alignCast(self.buffer);
+        const prot: std.posix.PROT = .{ .READ = true, .EXEC = true };
+        if (std.c.mprotect(region.ptr, region.len, prot) != 0) {
             return error.MprotectFailed;
+        }
         // Flush instruction cache (required on ARM64).
         icacheInvalidate(self.buffer.ptr, self.offset);
     }

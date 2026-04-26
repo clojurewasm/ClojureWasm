@@ -20,6 +20,7 @@ const Value = @import("value.zig").Value;
 const dispatch = @import("dispatch.zig");
 const Env = @import("env.zig").Env;
 const thread_pool = @import("thread_pool.zig");
+const io_default = @import("io_default.zig");
 
 // ============================================================
 // Shutdown flag
@@ -60,11 +61,11 @@ pub fn installSignalHandlers() void {
     std.posix.sigaction(std.posix.SIG.PIPE, &ignore_action, null);
 }
 
-fn handleShutdownSignal(_: i32) callconv(.c) void {
+fn handleShutdownSignal(_: std.posix.SIG) callconv(.c) void {
     shutdown_requested.store(true, .release);
     // Write newline to stderr so the shell prompt appears cleanly.
     // write() is async-signal-safe.
-    _ = std.posix.write(std.posix.STDERR_FILENO, "\n") catch {};
+    _ = std.c.write(std.posix.STDERR_FILENO, "\n", 1);
 }
 
 // ============================================================
@@ -73,27 +74,13 @@ fn handleShutdownSignal(_: i32) callconv(.c) void {
 
 /// Wait for a connection on the listener socket, checking shutdown flag
 /// every ~1 second. Returns null if shutdown was requested.
-pub fn acceptWithShutdownCheck(server: *std.net.Server) ?std.net.Server.Connection {
-    const fd = server.stream.handle;
-    var fds = [1]std.posix.pollfd{
-        .{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 },
-    };
-
-    while (!isShutdownRequested()) {
-        const ready = std.posix.poll(&fds, 1000) catch |e| {
-            std.debug.print("poll error: {s}\n", .{@errorName(e)});
-            if (isShutdownRequested()) return null;
-            continue;
-        };
-        if (ready == 0) continue; // timeout — check flag and retry
-
-        // Socket is ready for accept
-        return server.accept() catch |e| {
-            if (isShutdownRequested()) return null;
-            std.debug.print("accept error: {s}\n", .{@errorName(e)});
-            continue;
-        };
-    }
+///
+/// Stubbed during the Zig 0.16 migration: std.net.Server (and the matching
+/// std.posix.poll) was removed in 0.16. Re-implement on top of std.Io.net
+/// once the network rewrite lands (Phase 7 follow-up F##). The only callers
+/// were http_server (already stubbed) and the nREPL accept loop.
+pub fn acceptWithShutdownCheck(server: anytype) @TypeOf(null) {
+    _ = server;
     return null;
 }
 
@@ -110,13 +97,14 @@ const ShutdownHook = struct {
 };
 
 var hooks: [MAX_HOOKS]?ShutdownHook = .{null} ** MAX_HOOKS;
-var hook_mutex: std.Thread.Mutex = .{};
+var hook_mutex: std.Io.Mutex = .init;
 
 /// Register a shutdown hook. Returns true on success, false if table is full
 /// or key already exists.
 pub fn addShutdownHook(key: []const u8, func: Value) bool {
-    hook_mutex.lock();
-    defer hook_mutex.unlock();
+    const io = io_default.get();
+    hook_mutex.lockUncancelable(io);
+    defer hook_mutex.unlock(io);
 
     // Check for duplicate key
     for (&hooks) |*slot| {
@@ -147,8 +135,9 @@ pub fn addShutdownHook(key: []const u8, func: Value) bool {
 
 /// Remove a shutdown hook by key. Returns true if found and removed.
 pub fn removeShutdownHook(key: []const u8) bool {
-    hook_mutex.lock();
-    defer hook_mutex.unlock();
+    const io = io_default.get();
+    hook_mutex.lockUncancelable(io);
+    defer hook_mutex.unlock(io);
 
     for (&hooks) |*slot| {
         if (slot.*) |h| {
@@ -164,10 +153,11 @@ pub fn removeShutdownHook(key: []const u8) bool {
 /// Run all registered shutdown hooks. Call before process exit.
 /// env must be provided to set up eval context for Clojure fn calls.
 pub fn runShutdownHooks(allocator: Allocator, env_ptr: *Env) void {
-    hook_mutex.lock();
+    const hooks_io = io_default.get();
+    hook_mutex.lockUncancelable(hooks_io);
     // Copy hooks to local array to release mutex before calling Clojure fns
     var local_hooks: [MAX_HOOKS]?ShutdownHook = hooks;
-    hook_mutex.unlock();
+    hook_mutex.unlock(hooks_io);
 
     // Set eval context for callFnVal (bytecodeCallBridge needs it)
     dispatch.macro_eval_env = env_ptr;

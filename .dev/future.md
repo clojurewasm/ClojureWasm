@@ -362,7 +362,7 @@ Two tracks that do not fully converge. GC and bytecode diverge.
 
 - MarkSweepGc works on wasm32-wasi as-is (GPA→WasmPageAllocator, PoC validated)
 - Free-pool recycling ideal for Wasm (memory grows only, never shrinks)
-- WasmGC not usable: Zig 0.15.2 can't emit WasmGC instructions (struct.new, i31ref)
+- WasmGC not usable: Zig 0.16.0 can't emit WasmGC instructions (struct.new, i31ref)
 - Dynamic languages on Wasm (Python, Ruby) all use self-managed GC in linear memory
 - No comptime GC switching needed for MVP — same MarkSweepGc on both tracks
 

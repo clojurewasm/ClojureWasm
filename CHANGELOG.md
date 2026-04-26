@@ -1,5 +1,74 @@
 # Changelog
 
+## Unreleased
+
+### Toolchain
+- Migrate from Zig 0.15.2 to Zig 0.16.0 (D111). All `std.Io` reshapes
+  centralized behind `runtime/io_default.zig`: process-wide io accessor
+  populated by `main(init: std.process.Init)` from `init.io` /
+  `init.environ_map`, with helper wrappers (`lockMutex`, `unlockMutex`,
+  `condWait`, `condTimedWait`, `condSignal`, `condBroadcast`, `sleep`,
+  `getEnv`, `nanoTimestamp`, `milliTimestamp`) so existing module-level
+  mutexes, time helpers, env lookups, and sleeps don't have to thread
+  `io` through every call site.
+- Bump zwasm dependency from v1.9.1 to v1.11.0 (first 0.16-compatible
+  tag). The wasm bridge in `src/runtime/wasm_types.zig` migrates inline
+  with the rest of the codebase; all six wasm e2e tests stay green.
+- `flake.nix` pin moved from 0.15.2 to 0.16.0; `build.zig.zon`
+  `minimum_zig_version = "0.16.0"`; `.github/workflows/{ci,nightly,release}.yml`
+  setup-zig version pin → 0.16.0.
+- `link_libc = true` is enabled (inherited from zwasm v1.11.0). Several
+  std stdlib removals (`std.posix.{getenv,write,isatty,mprotect}`,
+  `std.fs.cwd().realpath`) are bridged to libc via `std.c.*` for now;
+  stripping libc back out is tracked as F146.
+- `-Dwasm` build option (default true) was confirmed working under 0.16;
+  the `--no-wasm` flag in `bash test/run_all.sh` / `test/e2e/run_e2e.sh`
+  / `bench/run_bench.sh` / `bench/wasm_bench.sh` propagates it through
+  test/bench harnesses.
+
+### Migration test gate
+- 1324 / 1324 unit tests (`zig build test`) — green
+- 83 / 83 namespaces in `cljw test` — green
+- 6 / 6 wasm e2e tests + deps.edn e2e — green
+- `bench/history.yaml` records `pre-zig-016` and `post-zig-016` entries;
+  no individual benchmark regressed beyond noise (`lazy_chain` actually
+  improved).
+
+### Performance (post-migration ReleaseSafe, macOS aarch64)
+- Binary: 4.12 MB (smaller than 0.15.2 because four features below are
+  temporarily stubbed; expect ~+300-500 KB once they are restored).
+- Startup: 4.1 ms
+- RSS: 8.2 MB
+
+### Temporarily disabled, tracked as Phase 7 follow-ups
+The 0.16 stdlib reshapes are large enough that four features were
+collapsed to runtime-error stubs to land the migration cleanly. Each
+returns a clear error message and is preserved either in source or in
+git history.
+- `cljw.http/run-server` (Ring-compatible HTTP server) — F140
+- `cljw.http/get|post|put|delete` (HTTP client built on `std.http.Client`) — F141
+- `--nrepl-server` (CIDER-compatible nREPL with bencode dispatch and
+  14 ops) — F142
+- Raw-mode line editor (Emacs keybindings, history, multiline) — F143
+- `cljw build` standalone-binary self-bundling — F144
+- OrbStack Ubuntu re-validation under 0.16 — F145
+- Strip `link_libc = true` once `std.Io` and the `std.c.*` shims have
+  pure-Zig replacements — F146
+
+### `|_|` switch capture syntax
+- Two switch prongs (`analyzer.zig`, `node.zig`) updated for Zig 0.16's
+  rule that switch arms which don't actually use the capture must omit
+  the `|...|` clause entirely.
+
+### Misc renames
+- `std.mem.{trimLeft,trimRight}` → `std.mem.{trimStart,trimEnd}`
+- `std.process.Child.run(.{...})` → `std.process.run(allocator, io, .{...})`
+- `std.process.Child.Term` variants are now lowercase
+  (`.exited`/`.signal`/`.stopped`/`.unknown`) and signal/stopped carry
+  `std.posix.SIG` instead of raw integers.
+- `std.testing.fuzz`'s `testOne` now takes `*std.testing.Smith`
+  instead of `[]const u8`.
+
 ## v0.4.0 (2026-02-25)
 
 ### Architecture

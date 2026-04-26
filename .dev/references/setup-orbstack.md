@@ -16,7 +16,7 @@ The same VM and tools are used for both projects:
 
 | Tool       | Version  | Path                     |
 | ---------- | -------- | ------------------------ |
-| Zig        | 0.15.2   | /opt/zig/zig             |
+| Zig        | 0.16.0   | /opt/zig/zig             |
 | wasmtime   | 42.0.1   | ~/.wasmtime/bin/wasmtime |
 | wasm-tools | 1.245.1  | /usr/local/bin/wasm-tools|
 | WASI SDK   | 25       | /opt/wasi-sdk            |
@@ -27,7 +27,7 @@ The same VM and tools are used for both projects:
 
 ```bash
 orb run -m my-ubuntu-amd64 bash -lc "zig version && wasmtime --version"
-# Expected: 0.15.2, wasmtime-cli 42.0.1
+# Expected: 0.16.0, wasmtime-cli 42.0.1
 ```
 
 ## Notes

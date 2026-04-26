@@ -24,11 +24,12 @@ const runner = @import("app/runner.zig");
 const cli = @import("app/cli.zig");
 const test_runner = @import("app/test_runner.zig");
 const clojure_core_protocols = @import("lang/lib/clojure_core_protocols.zig");
+const io_default = @import("runtime/io_default.zig");
 
-pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    io_default.set(init.io);
+    io_default.setEnvironMap(init.environ_map);
 
     // Two allocators:
     //   allocator (GPA)   — for infrastructure (Env, Namespace, Var, HashMaps)
@@ -39,8 +40,7 @@ pub fn main() !void {
     defer gc.dumpAllocProfile(); // 37.1: dump allocation profile at exit
     const alloc = gc.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     // Initialize keyword intern table (uses GPA for permanent keyword strings)
     keyword_intern.init(allocator);

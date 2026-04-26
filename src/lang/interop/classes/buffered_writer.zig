@@ -22,6 +22,7 @@ const value_mod = @import("../../../runtime/value.zig");
 const Value = value_mod.Value;
 const err = @import("../../../runtime/error.zig");
 const constructors = @import("../constructors.zig");
+const io_default = @import("../../../runtime/io_default.zig");
 
 pub const class_name = "java.io.BufferedWriter";
 
@@ -48,14 +49,21 @@ const State = struct {
 
     fn flush(self: *State) !void {
         if (self.closed) return error.Closed;
-        const file = if (self.append_mode)
-            std.fs.cwd().openFile(self.path, .{ .mode = .write_only }) catch
-                std.fs.cwd().createFile(self.path, .{}) catch return error.FileNotFound
-        else
-            std.fs.cwd().createFile(self.path, .{}) catch return error.FileNotFound;
-        defer file.close();
-        if (self.append_mode) file.seekFromEnd(0) catch {};
-        file.writeAll(self.buf.items) catch return error.FileNotFound;
+        const io = io_default.get();
+        const cwd = std.Io.Dir.cwd();
+        if (self.append_mode) {
+            // Append: read existing content, then rewrite with new bytes appended.
+            const existing = cwd.readFileAlloc(io, self.path, std.heap.smp_allocator, .unlimited) catch null;
+            defer if (existing) |e| std.heap.smp_allocator.free(e);
+            const file = cwd.createFile(io, self.path, .{}) catch return error.FileNotFound;
+            defer file.close(io);
+            if (existing) |e| file.writeStreamingAll(io, e) catch return error.FileNotFound;
+            file.writeStreamingAll(io, self.buf.items) catch return error.FileNotFound;
+        } else {
+            const file = cwd.createFile(io, self.path, .{}) catch return error.FileNotFound;
+            defer file.close(io);
+            file.writeStreamingAll(io, self.buf.items) catch return error.FileNotFound;
+        }
         self.buf.clearRetainingCapacity();
     }
 

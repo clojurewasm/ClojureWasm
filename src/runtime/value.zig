@@ -412,8 +412,8 @@ pub const AgentInner = struct {
     error_val: Value = Value.nil_val,
     error_handler: Value = Value.nil_val,
     error_mode: ErrorMode = .continue_mode,
-    mutex: std.Thread.Mutex = .{},
-    await_cond: std.Thread.Condition = .{},
+    mutex: std.Io.Mutex = .init,
+    await_cond: std.Io.Condition = .init,
     pending_count: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
     processing: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     action_head: ?*AgentAction = null,
@@ -481,7 +481,7 @@ pub const RefInner = struct {
     faults: u32, // read fault counter (triggers history growth)
     min_history: u32,
     max_history: u32,
-    lock: std.Thread.Mutex,
+    lock: std.Io.Mutex,
     tinfo: ?*anyopaque, // *TxInfo if write-locked by a transaction
     validator: ?Value,
     meta_val: Value, // metadata map

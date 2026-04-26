@@ -356,7 +356,7 @@ pub const Node = union(enum) {
     /// Return the node kind name for debugging.
     pub fn kindName(self: Node) []const u8 {
         return switch (self) {
-            .constant => |_| "constant",
+            .constant => "constant",
             .var_ref => "var-ref",
             .local_ref => "local-ref",
             .if_node => "if",

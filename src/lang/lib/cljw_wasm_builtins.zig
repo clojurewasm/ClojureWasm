@@ -24,6 +24,7 @@ const WasmModule = wasm_types.WasmModule;
 const WasmFn = wasm_types.WasmFn;
 const WasmValType = wasm_types.WasmValType;
 const wit_parser = @import("../../runtime/wasm_wit_parser.zig");
+const io_default = @import("../../runtime/io_default.zig");
 
 // Wasm module registry: maps module names to resolved file paths.
 // Populated by deps.edn :cljw/wasm-deps processing.
@@ -59,22 +60,19 @@ pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load expects a string path, got {s}", .{@tagName(args[0].tag())}),
     };
 
+    const wio = io_default.get();
+    const cwd = std.Io.Dir.cwd();
+
     // Try direct path first, then wasm dep registry
     const path = blk: {
-        const cwd = std.fs.cwd();
-        if (cwd.access(path_arg, .{})) |_| break :blk path_arg else |_| {}
+        if (cwd.access(wio, path_arg, .{})) |_| break :blk path_arg else |_| {}
         if (resolveWasmPath(path_arg)) |resolved| break :blk resolved;
         break :blk path_arg; // fall through to get standard error
     };
 
     // Read .wasm binary from disk
-    const cwd = std.fs.cwd();
-    const file = cwd.openFile(path, .{}) catch
+    const wasm_bytes = cwd.readFileAlloc(wio, path, allocator, .limited(64 * 1024 * 1024)) catch
         return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: file not found: {s}", .{path});
-    defer file.close();
-
-    const wasm_bytes = file.readToEndAlloc(allocator, 64 * 1024 * 1024) catch
-        return error.IOError;
 
     // Parse opts map if present
     var imports_val_opt: ?Value = null;
@@ -111,12 +109,8 @@ pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // Parse and attach WIT info if :wit provided
     if (wit_path_opt) |wit_path| {
-        const wit_file = cwd.openFile(wit_path, .{}) catch
+        const wit_src = cwd.readFileAlloc(wio, wit_path, allocator, .limited(1 * 1024 * 1024)) catch
             return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: WIT file not found: {s}", .{wit_path});
-        defer wit_file.close();
-
-        const wit_src = wit_file.readToEndAlloc(allocator, 1 * 1024 * 1024) catch
-            return error.IOError;
 
         const ifaces = wit_parser.parse(allocator, wit_src) catch
             return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: failed to parse WIT file: {s}", .{wit_path});
@@ -154,13 +148,9 @@ pub fn wasmLoadWasiFn(allocator: Allocator, args: []const Value) anyerror!Value 
         else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load-wasi expects a string path, got {s}", .{@tagName(args[0].tag())}),
     };
 
-    const cwd = std.fs.cwd();
-    const file = cwd.openFile(path, .{}) catch
+    const wasi_io = io_default.get();
+    const wasm_bytes = std.Io.Dir.cwd().readFileAlloc(wasi_io, path, allocator, .limited(64 * 1024 * 1024)) catch
         return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load-wasi: file not found: {s}", .{path});
-    defer file.close();
-
-    const wasm_bytes = file.readToEndAlloc(allocator, 64 * 1024 * 1024) catch
-        return error.IOError;
 
     const wasm_mod = WasmModule.loadWasi(allocator, wasm_bytes) catch
         return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load-wasi: failed to instantiate module: {s}", .{path});

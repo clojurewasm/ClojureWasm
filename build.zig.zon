@@ -3,12 +3,12 @@
     .version = "0.3.0",
     .dependencies = .{
         .zwasm = .{
-            .url = "https://github.com/clojurewasm/zwasm/archive/v1.9.1.tar.gz",
-            .hash = "zwasm-1.9.1-IBbzF1D2KQCmEFwFC9sSN_ZmwuBTxKSu3jNvd6k96PNT",
+            .url = "https://github.com/clojurewasm/zwasm/archive/v1.11.0.tar.gz",
+            .hash = "zwasm-1.11.0-IBbzF-auKgDerx9eX2J2vf84n0YoWX_IyWeqf3E4uNNb",
         },
     },
     .fingerprint = 0x62a7be489d633543,
-    .minimum_zig_version = "0.15.2",
+    .minimum_zig_version = "0.16.0",
     .paths = .{
         "build.zig",
         "build.zig.zon",

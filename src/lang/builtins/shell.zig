@@ -21,6 +21,7 @@ const collections = @import("../../runtime/collections.zig");
 const err = @import("../../runtime/error.zig");
 const bootstrap = @import("../../engine/bootstrap.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
+const io_default = @import("../../runtime/io_default.zig");
 
 // ============================================================
 // sh implementation
@@ -92,46 +93,58 @@ pub fn shFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
-    // Spawn subprocess
-    var child = std.process.Child.init(argv, allocator);
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-    child.stdin_behavior = if (input != null) .Pipe else .Close;
-    if (dir) |d| child.cwd = d;
+    // Spawn subprocess via std.process.run (collects stdout+stderr+wait in one call).
+    // For input mode, std.process.spawn is used so we can write stdin manually.
+    const proc_io = io_default.get();
+    var stdout_data: []u8 = "";
+    var stderr_data: []u8 = "";
+    var term: std.process.Child.Term = .{ .exited = 0 };
 
-    try child.spawn();
-
-    // Write stdin if provided
     if (input) |in_data| {
+        var child = try std.process.spawn(proc_io, .{
+            .argv = argv,
+            .cwd = if (dir) |d| .{ .path = d } else .inherit,
+            .stdin = .pipe,
+            .stdout = .pipe,
+            .stderr = .pipe,
+        });
         if (child.stdin) |stdin_file| {
-            var stdin = stdin_file;
-            stdin.writeAll(in_data) catch {};
-            stdin.close();
+            stdin_file.writeStreamingAll(proc_io, in_data) catch {};
+            stdin_file.close(proc_io);
             child.stdin = null;
         }
+        if (child.stdout) |stdout_file| {
+            var rbuf: [4096]u8 = undefined;
+            var r = stdout_file.reader(proc_io, &rbuf);
+            stdout_data = r.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)) catch "";
+        }
+        if (child.stderr) |stderr_file| {
+            var rbuf: [4096]u8 = undefined;
+            var r = stderr_file.reader(proc_io, &rbuf);
+            stderr_data = r.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)) catch "";
+        }
+        term = child.wait(proc_io) catch |e| {
+            return err.setErrorFmt(.eval, .io_error, .{}, "sh: wait failed: {s}", .{@errorName(e)});
+        };
+    } else {
+        const result = std.process.run(allocator, proc_io, .{
+            .argv = argv,
+            .cwd = if (dir) |d| .{ .path = d } else .inherit,
+            .stdout_limit = .limited(10 * 1024 * 1024),
+            .stderr_limit = .limited(10 * 1024 * 1024),
+        }) catch |e| {
+            return err.setErrorFmt(.eval, .io_error, .{}, "sh: spawn failed: {s}", .{@errorName(e)});
+        };
+        stdout_data = result.stdout;
+        stderr_data = result.stderr;
+        term = result.term;
     }
 
-    // Read stdout and stderr
-    const stdout_data = if (child.stdout) |stdout_file| blk: {
-        var stdout = stdout_file;
-        break :blk stdout.readToEndAlloc(allocator, 10 * 1024 * 1024) catch "";
-    } else "";
-
-    const stderr_data = if (child.stderr) |stderr_file| blk: {
-        var stderr = stderr_file;
-        break :blk stderr.readToEndAlloc(allocator, 10 * 1024 * 1024) catch "";
-    } else "";
-
-    // Wait for exit
-    const term = child.wait() catch |e| {
-        return err.setErrorFmt(.eval, .io_error, .{}, "sh: wait failed: {s}", .{@errorName(e)});
-    };
-
     const exit_code: i64 = switch (term) {
-        .Exited => |code| @intCast(code),
-        .Signal => |sig| -@as(i64, @intCast(sig)),
-        .Stopped => |sig| -@as(i64, @intCast(sig)),
-        .Unknown => |code| -@as(i64, @intCast(code)),
+        .exited => |code| @intCast(code),
+        .signal => |sig| -@as(i64, @intCast(@intFromEnum(sig))),
+        .stopped => |sig| -@as(i64, @intCast(@intFromEnum(sig))),
+        .unknown => |code| -@as(i64, @intCast(code)),
     };
 
     // Build result map: {:exit N :out "..." :err "..."}
@@ -232,10 +245,23 @@ pub const with_sh_env_def = BuiltinDef{
 
 const testing = std.testing;
 
+/// Test helper: set up a real std.Io.Threaded and install it as the default
+/// io for the duration of the calling test. The default io_default points
+/// at `std.Io.Threaded.init_single_threaded`, whose allocator is `.failing`
+/// — fine for mutex-only paths but not for `std.process.spawn`, which needs
+/// to allocate Future closures.
+fn setupTestIo(alloc: Allocator, threaded: *std.Io.Threaded) void {
+    threaded.* = std.Io.Threaded.init(alloc, .{});
+    io_default.set(threaded.io());
+}
+
 test "sh - echo hello" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
+    var th: std.Io.Threaded = undefined;
+    setupTestIo(alloc, &th);
+    defer th.deinit();
 
     const result = try shFn(alloc, &[_]Value{
         Value.initString(alloc, "echo"),
@@ -262,6 +288,9 @@ test "sh - with :in" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
+    var th: std.Io.Threaded = undefined;
+    setupTestIo(alloc, &th);
+    defer th.deinit();
 
     const result = try shFn(alloc, &[_]Value{
         Value.initString(alloc, "cat"),
@@ -282,6 +311,9 @@ test "sh - with :dir" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
+    var th: std.Io.Threaded = undefined;
+    setupTestIo(alloc, &th);
+    defer th.deinit();
 
     const result = try shFn(alloc, &[_]Value{
         Value.initString(alloc, "pwd"),
@@ -304,6 +336,9 @@ test "sh - nonexistent command returns non-zero exit" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
+    var th: std.Io.Threaded = undefined;
+    setupTestIo(alloc, &th);
+    defer th.deinit();
 
     const result = try shFn(alloc, &[_]Value{
         Value.initString(alloc, "false"),

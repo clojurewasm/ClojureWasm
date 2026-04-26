@@ -22,14 +22,15 @@ const var_mod = @import("var.zig");
 const dispatch = @import("dispatch.zig");
 const ns_mod = @import("namespace.zig");
 const err_mod = @import("error.zig");
+const io_default = @import("io_default.zig");
 
 /// Result of an asynchronous computation.
 ///
 /// Thread-safe: guarded by internal mutex + condition variable.
 /// deref blocks until result is available (or timeout).
 pub const FutureResult = struct {
-    mutex: std.Thread.Mutex = .{},
-    cond: std.Thread.Condition = .{},
+    mutex: std.Io.Mutex = .init,
+    cond: std.Io.Condition = .init,
     state: State = .pending,
     value: Value = Value.nil_val,
     err_value: Value = Value.nil_val,
@@ -38,10 +39,10 @@ pub const FutureResult = struct {
 
     /// Block until result is available, then return it.
     pub fn get(self: *FutureResult) Value {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        io_default.lockMutex(&self.mutex);
+        defer io_default.unlockMutex(&self.mutex);
         while (self.state == .pending) {
-            self.cond.wait(&self.mutex);
+            io_default.condWait(&self.cond, &self.mutex);
         }
         return self.value;
     }
@@ -49,37 +50,37 @@ pub const FutureResult = struct {
     /// Block until result is available or timeout (nanoseconds).
     /// Returns null on timeout.
     pub fn getWithTimeout(self: *FutureResult, timeout_ns: u64) ?Value {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        io_default.lockMutex(&self.mutex);
+        defer io_default.unlockMutex(&self.mutex);
         if (self.state != .pending) return self.value;
-        self.cond.timedWait(&self.mutex, timeout_ns) catch {};
+        _ = io_default.condTimedWait(&self.cond, &self.mutex, timeout_ns);
         if (self.state != .pending) return self.value;
         return null;
     }
 
     /// Check if result is available without blocking.
     pub fn isDone(self: *FutureResult) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        io_default.lockMutex(&self.mutex);
+        defer io_default.unlockMutex(&self.mutex);
         return self.state != .pending;
     }
 
     /// Set successful result and wake all waiters.
     pub fn setResult(self: *FutureResult, val: Value) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        io_default.lockMutex(&self.mutex);
+        defer io_default.unlockMutex(&self.mutex);
         self.value = val;
         self.state = .done;
-        self.cond.broadcast();
+        io_default.condBroadcast(&self.cond);
     }
 
     /// Set error result and wake all waiters.
     pub fn setError(self: *FutureResult, err_val: Value) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        io_default.lockMutex(&self.mutex);
+        defer io_default.unlockMutex(&self.mutex);
         self.err_value = err_val;
         self.state = .@"error";
-        self.cond.broadcast();
+        io_default.condBroadcast(&self.cond);
     }
 };
 
@@ -109,8 +110,8 @@ const WorkItem = struct {
 /// the GC from sweeping the thread handles during collection.
 pub const ThreadPool = struct {
     threads: []std.Thread,
-    queue_mutex: std.Thread.Mutex = .{},
-    queue_cond: std.Thread.Condition = .{},
+    queue_mutex: std.Io.Mutex = .init,
+    queue_cond: std.Io.Condition = .init,
     work_items: std.ArrayList(WorkItem),
     shutdown_flag: std.atomic.Value(bool),
     source_env: *env_mod.Env,
@@ -133,7 +134,7 @@ pub const ThreadPool = struct {
         var spawned: usize = 0;
         errdefer {
             pool.shutdown_flag.store(true, .release);
-            pool.queue_cond.broadcast();
+            io_default.condBroadcast(&pool.queue_cond);
             for (threads[0..spawned]) |t| t.join();
             pool_allocator.free(threads);
             pool_allocator.destroy(pool);
@@ -156,8 +157,8 @@ pub const ThreadPool = struct {
         const parent_ns = if (dispatch.macro_eval_env) |env| env.current_ns else null;
         const parent_bindings = var_mod.getCurrentBindingFrame();
 
-        self.queue_mutex.lock();
-        defer self.queue_mutex.unlock();
+        io_default.lockMutex(&self.queue_mutex);
+        defer io_default.unlockMutex(&self.queue_mutex);
         try self.work_items.append(pool_allocator, .{
             .kind = .function,
             .func = func,
@@ -165,7 +166,7 @@ pub const ThreadPool = struct {
             .parent_ns = parent_ns,
             .parent_bindings = parent_bindings,
         });
-        self.queue_cond.signal();
+        io_default.condSignal(&self.queue_cond);
         return result;
     }
 
@@ -175,15 +176,15 @@ pub const ThreadPool = struct {
         const parent_ns = if (dispatch.macro_eval_env) |env| env.current_ns else null;
         const parent_bindings = var_mod.getCurrentBindingFrame();
 
-        self.queue_mutex.lock();
-        defer self.queue_mutex.unlock();
+        io_default.lockMutex(&self.queue_mutex);
+        defer io_default.unlockMutex(&self.queue_mutex);
         try self.work_items.append(pool_allocator, .{
             .kind = .agent,
             .agent_obj = agent_obj,
             .parent_ns = parent_ns,
             .parent_bindings = parent_bindings,
         });
-        self.queue_cond.signal();
+        io_default.condSignal(&self.queue_cond);
     }
 
     /// Shut down the pool: signal workers to exit, then join all threads.
@@ -191,9 +192,9 @@ pub const ThreadPool = struct {
         self.shutdown_flag.store(true, .release);
         // Wake all waiting workers
         {
-            self.queue_mutex.lock();
-            defer self.queue_mutex.unlock();
-            self.queue_cond.broadcast();
+            io_default.lockMutex(&self.queue_mutex);
+            defer io_default.unlockMutex(&self.queue_mutex);
+            io_default.condBroadcast(&self.queue_cond);
         }
         for (self.threads) |t| {
             t.join();
@@ -219,16 +220,16 @@ pub const ThreadPool = struct {
 
         while (true) {
             // Get next work item (blocking)
-            pool.queue_mutex.lock();
+            io_default.lockMutex(&pool.queue_mutex);
             while (pool.work_items.items.len == 0) {
                 if (pool.shutdown_flag.load(.acquire)) {
-                    pool.queue_mutex.unlock();
+                    io_default.unlockMutex(&pool.queue_mutex);
                     return;
                 }
-                pool.queue_cond.wait(&pool.queue_mutex);
+                io_default.condWait(&pool.queue_cond, &pool.queue_mutex);
             }
             const item = pool.work_items.orderedRemove(0);
-            pool.queue_mutex.unlock();
+            io_default.unlockMutex(&pool.queue_mutex);
 
             // Set up thread context from parent
             thread_env.current_ns = item.parent_ns;
@@ -281,16 +282,16 @@ pub const ThreadPool = struct {
 
         while (true) {
             // Dequeue next action under lock
-            inner.mutex.lock();
+            io_default.lockMutex(&inner.mutex);
             const action = inner.dequeue();
             if (action == null) {
                 // Queue empty — clear processing flag and wake await waiters
                 inner.processing.store(false, .release);
-                inner.await_cond.broadcast();
-                inner.mutex.unlock();
+                io_default.condBroadcast(&inner.await_cond);
+                io_default.unlockMutex(&inner.mutex);
                 return;
             }
-            inner.mutex.unlock();
+            io_default.unlockMutex(&inner.mutex);
 
             const act = action.?;
 
@@ -324,11 +325,11 @@ pub const ThreadPool = struct {
                     break :blk Value.initString(gc_alloc, @errorName(e));
                 };
 
-                inner.mutex.lock();
+                io_default.lockMutex(&inner.mutex);
                 if (inner.error_handler.tag() != .nil) {
                     // Call error handler: (handler agent exception)
                     const handler = inner.error_handler;
-                    inner.mutex.unlock();
+                    io_default.unlockMutex(&inner.mutex);
                     const handler_args = [2]Value{ Value.initAgent(agent_obj), err_val };
                     // JVM: Agent error handler exceptions are silently caught.
                     _ = dispatch.callFnVal(gc_alloc, handler, &handler_args) catch {};
@@ -342,7 +343,7 @@ pub const ThreadPool = struct {
                             // :continue mode — ignore error, keep going
                         },
                     }
-                    inner.mutex.unlock();
+                    io_default.unlockMutex(&inner.mutex);
                 }
 
                 pool_allocator.free(full_args);
@@ -352,9 +353,9 @@ pub const ThreadPool = struct {
             };
 
             // Update state
-            inner.mutex.lock();
+            io_default.lockMutex(&inner.mutex);
             inner.state = new_state;
-            inner.mutex.unlock();
+            io_default.unlockMutex(&inner.mutex);
 
             pool_allocator.free(full_args);
             pool_allocator.free(act.args);
@@ -372,7 +373,7 @@ pub const ThreadPool = struct {
 
 /// Global thread pool instance. Initialized lazily on first future/pmap call.
 var global_pool: ?*ThreadPool = null;
-var pool_mutex: std.Thread.Mutex = .{};
+var pool_mutex: std.Io.Mutex = .init;
 
 /// Cached *agent* dynamic var pointer (set by bootstrap after core.clj loads).
 var agent_var: ?*var_mod.Var = null;
@@ -384,8 +385,8 @@ pub fn initAgentVar(v: *var_mod.Var) void {
 
 /// Get or create the global thread pool.
 pub fn getGlobalPool(env: *env_mod.Env) !*ThreadPool {
-    pool_mutex.lock();
-    defer pool_mutex.unlock();
+    io_default.lockMutex(&pool_mutex);
+    defer io_default.unlockMutex(&pool_mutex);
     if (global_pool) |pool| return pool;
     const pool = try ThreadPool.init(env, 0);
     global_pool = pool;
@@ -394,13 +395,13 @@ pub fn getGlobalPool(env: *env_mod.Env) !*ThreadPool {
 
 /// Shut down the global thread pool (call at program exit).
 pub fn shutdownGlobalPool() void {
-    pool_mutex.lock();
+    io_default.lockMutex(&pool_mutex);
     const pool = global_pool orelse {
-        pool_mutex.unlock();
+        io_default.unlockMutex(&pool_mutex);
         return;
     };
     global_pool = null;
-    pool_mutex.unlock();
+    io_default.unlockMutex(&pool_mutex);
     pool.shutdown();
 }
 
@@ -431,7 +432,7 @@ test "FutureResult — concurrent set and get" {
     // Spawn a thread that sets the result after a brief delay
     const t = try std.Thread.spawn(.{}, struct {
         fn run(r: *FutureResult) void {
-            std.Thread.sleep(5_000_000); // 5ms
+            io_default.sleep(5_000_000); // 5ms
             r.setResult(Value.initInteger(99));
         }
     }.run, .{&result});

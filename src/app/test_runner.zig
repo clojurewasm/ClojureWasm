@@ -22,6 +22,7 @@ const wasm_builtins = @import("../lang/lib/cljw_wasm_builtins.zig");
 const thread_pool = @import("../runtime/thread_pool.zig");
 const runner = @import("runner.zig");
 const cli = @import("cli.zig");
+const io_default = @import("../runtime/io_default.zig");
 
 const build_options = @import("build_options");
 const enable_wasm = build_options.enable_wasm;
@@ -31,8 +32,8 @@ const enable_wasm = build_options.enable_wasm;
 /// Otherwise, searches :test-paths (or "test/") for .clj files and runs all tests.
 /// Supports -A:alias for extra paths/deps via deps.edn aliases.
 pub fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, test_args: []const [:0]const u8) void {
-    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    const stderr = std.Io.File.stderr();
+    const stdout = std.Io.File.stdout();
 
     // Parse test subcommand flags: -A:alias, --tree-walk, and file paths
     var test_alias_str: ?[]const u8 = null;
@@ -70,8 +71,8 @@ pub fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mo
 
         // Print warnings
         for (resolved.warnings) |warning| {
-            _ = stderr.write(warning) catch {};
-            _ = stderr.write("\n") catch {};
+            stderr.writeStreamingAll(io_default.get(),warning) catch {};
+            stderr.writeStreamingAll(io_default.get(),"\n") catch {};
         }
 
         // Apply paths
@@ -140,7 +141,7 @@ pub fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mo
     }
 
     if (test_files.items.len == 0) {
-        _ = stderr.write("No test files found.\n") catch {};
+        stderr.writeStreamingAll(io_default.get(),"No test files found.\n") catch {};
         std.process.exit(1);
     }
 
@@ -153,10 +154,10 @@ pub fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mo
     var loaded: usize = 0;
     var total_failures = false;
     for (test_files.items) |tf| {
-        const file_bytes = std.fs.cwd().readFileAlloc(file_alloc, tf, max_file_size) catch {
-            _ = stderr.write("Error: could not read ") catch {};
-            _ = stderr.write(tf) catch {};
-            _ = stderr.write("\n") catch {};
+        const file_bytes = std.Io.Dir.cwd().readFileAlloc(io_default.get(), tf, file_alloc, .limited(max_file_size)) catch {
+            stderr.writeStreamingAll(io_default.get(),"Error: could not read ") catch {};
+            stderr.writeStreamingAll(io_default.get(),tf) catch {};
+            stderr.writeStreamingAll(io_default.get(),"\n") catch {};
             continue;
         };
 
@@ -185,12 +186,12 @@ pub fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mo
     }
 
     if (loaded == 0) {
-        _ = stderr.write("Error: no test files loaded successfully.\n") catch {};
+        stderr.writeStreamingAll(io_default.get(),"Error: no test files loaded successfully.\n") catch {};
         std.process.exit(1);
     }
 
     // Print newline after test output
-    _ = stdout.write("\n") catch {};
+    stdout.writeStreamingAll(io_default.get(),"\n") catch {};
 
     if (total_failures) {
         std.process.exit(1);
@@ -219,13 +220,14 @@ fn checkTestFailures(result: Value) bool {
 /// str_alloc: arena for path strings (long-lived), list_alloc: for ArrayList backing.
 /// Skips directories not suitable for `cljw test` (e2e, compat, etc.).
 fn collectTestFiles(str_alloc: Allocator, list_alloc: Allocator, dir_path: []const u8, out: *std.ArrayList([]const u8)) void {
-    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch return;
-    defer dir.close();
+    const td_io = io_default.get();
+    var dir = std.Io.Dir.cwd().openDir(td_io, dir_path, .{ .iterate = true }) catch return;
+    defer dir.close(td_io);
 
     const skip_dirs = [_][]const u8{ "e2e", "compat", "diff", "wasm" };
 
     var it = dir.iterate();
-    while (it.next() catch null) |entry| {
+    while (it.next(td_io) catch null) |entry| {
         if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".clj")) {
             const full = std.fmt.allocPrint(str_alloc, "{s}/{s}", .{ dir_path, entry.name }) catch continue;
             out.append(list_alloc, full) catch {};

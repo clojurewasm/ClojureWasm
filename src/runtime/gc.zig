@@ -23,6 +23,7 @@ const ns_mod = @import("namespace.zig");
 const var_mod = @import("var.zig");
 const collections = @import("collections.zig");
 const HAMTNode = collections.HAMTNode;
+const io_default = @import("io_default.zig");
 
 /// GC root set — references to all live value sources.
 ///
@@ -195,8 +196,9 @@ pub const MarkSweepGc = struct {
     threshold: usize = 1024 * 1024, // 1MB initial; grows via threshold *= 2
 
     /// Mutex protecting all GC state (allocations, free pools, counters).
-    /// Serializes allocation and collection across threads.
-    gc_mutex: std.Thread.Mutex = .{},
+    /// Serializes allocation and collection across threads. Uses the
+    /// process-wide `runtime/io_default` for lock/unlock io.
+    gc_mutex: std.Io.Mutex = .init,
 
     /// When > 0, collectIfNeeded() skips collection.
     /// Used during valueToForm to prevent GC from collecting the macro
@@ -436,8 +438,9 @@ pub const MarkSweepGc = struct {
     /// participate in future mark-sweep cycles normally.
     fn msAlloc(ptr: *anyopaque, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
-        self.gc_mutex.lock();
-        defer self.gc_mutex.unlock();
+        const io = io_default.get();
+        self.gc_mutex.lockUncancelable(io);
+        defer self.gc_mutex.unlock(io);
         // Fast path: try free pool first — exact (size, alignment) match, O(1) pop
         for (self.free_pools[0..self.free_pool_count]) |*pool| {
             if (pool.size == len and pool.alignment == alignment) {
@@ -478,8 +481,9 @@ pub const MarkSweepGc = struct {
 
     fn msResize(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
-        self.gc_mutex.lock();
-        defer self.gc_mutex.unlock();
+        const io = io_default.get();
+        self.gc_mutex.lockUncancelable(io);
+        defer self.gc_mutex.unlock(io);
         if (self.backing.rawResize(memory, alignment, new_len, ret_addr)) {
             const addr = @intFromPtr(memory.ptr);
             if (self.allocations.getPtr(addr)) |info| {
@@ -493,8 +497,9 @@ pub const MarkSweepGc = struct {
 
     fn msRemap(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
-        self.gc_mutex.lock();
-        defer self.gc_mutex.unlock();
+        const io = io_default.get();
+        self.gc_mutex.lockUncancelable(io);
+        defer self.gc_mutex.unlock(io);
         const result = self.backing.rawRemap(memory, alignment, new_len, ret_addr) orelse return null;
         const old_addr = @intFromPtr(memory.ptr);
         const new_addr = @intFromPtr(result);
@@ -523,8 +528,9 @@ pub const MarkSweepGc = struct {
 
     fn msFree(ptr: *anyopaque, memory: []u8, alignment: Alignment, ret_addr: usize) void {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
-        self.gc_mutex.lock();
-        defer self.gc_mutex.unlock();
+        const io = io_default.get();
+        self.gc_mutex.lockUncancelable(io);
+        defer self.gc_mutex.unlock(io);
         const addr = @intFromPtr(memory.ptr);
         if (self.allocations.get(addr)) |info| {
             self.bytes_allocated -|= info.len;
@@ -544,8 +550,9 @@ pub const MarkSweepGc = struct {
 
     fn gcCollect(ptr: *anyopaque, roots: RootSet) void {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
-        self.gc_mutex.lock();
-        defer self.gc_mutex.unlock();
+        const io = io_default.get();
+        self.gc_mutex.lockUncancelable(io);
+        defer self.gc_mutex.unlock(io);
         traceRoots(self, roots);
         self.sweep();
         self.sweepFinalizers();
@@ -553,8 +560,9 @@ pub const MarkSweepGc = struct {
 
     fn gcShouldCollect(ptr: *anyopaque) bool {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
-        self.gc_mutex.lock();
-        defer self.gc_mutex.unlock();
+        const io = io_default.get();
+        self.gc_mutex.lockUncancelable(io);
+        defer self.gc_mutex.unlock(io);
         return self.bytes_allocated >= self.threshold;
     }
 
@@ -569,8 +577,9 @@ pub const MarkSweepGc = struct {
     /// Run a GC cycle if the allocation threshold has been reached.
     /// Traces roots, sweeps dead allocations, and grows threshold if needed.
     pub fn collectIfNeeded(self: *MarkSweepGc, roots: RootSet) void {
-        self.gc_mutex.lock();
-        defer self.gc_mutex.unlock();
+        const io = io_default.get();
+        self.gc_mutex.lockUncancelable(io);
+        defer self.gc_mutex.unlock(io);
         if (self.suppress_count > 0) return; // Suppressed (e.g. during valueToForm)
         if (self.bytes_allocated < self.threshold) return;
         traceRoots(self, roots);
