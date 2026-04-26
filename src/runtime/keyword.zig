@@ -1,15 +1,25 @@
-//! Keyword interning — Phase-1 single-threaded stub.
+//! Keyword interning — Phase-2 rt-aware.
 //!
 //! Keywords are interned: identical (ns, name) pairs share one heap
 //! pointer, so equality reduces to a pointer comparison.
 //!
-//! ### Phase-1 scope
+//! ### Phase-1 vs Phase-2.2 shape
 //!
-//! This is a self-contained `KeywordInterner` that owns its allocator
-//! and table. Phase 2.0 widens the public API to take a `*Runtime` and
-//! wraps the table with `std.Io.Mutex.lockUncancelable(rt.io)`. Pinning
-//! the *struct shape* now (header + ns + name + hash_cache) means
-//! Phase 2.0 only changes call sites, not memory layout.
+//! Phase 1 exposed `KeywordInterner.intern(self, ns, name)` directly.
+//! Phase 2.2 keeps that low-level method (so single-threaded tests
+//! and tooling can still drive the table without going through a
+//! Runtime), and adds top-level `intern(rt, ns, name)` / `find(rt,
+//! ns, name)` that acquire `std.Io.Mutex.lockUncancelable(rt.io)`
+//! around the call. The cell layout (header + ns + name +
+//! hash_cache) is unchanged from Phase 1.
+//!
+//! ### Why a mutex when Phase 2 is still single-threaded?
+//!
+//! Wiring `std.Io.Mutex` through the call site now means the
+//! Phase-15 concurrency rollout doesn't need to touch this file —
+//! the lock just starts blocking. Cost in Phase 2 is one
+//! uncontended `lockUncancelable` per intern, which is on the order
+//! of a load + store.
 
 const std = @import("std");
 const value = @import("value.zig");
@@ -17,9 +27,10 @@ const Value = value.Value;
 const HeapHeader = value.HeapHeader;
 const HeapTag = value.HeapTag;
 const hash = @import("hash.zig");
+const Runtime = @import("runtime.zig").Runtime;
 
-/// Heap-allocated keyword. Layout-stable across Phase 1 → Phase 2.0
-/// (Phase 2.0 only changes how the interner is reached, not the cell).
+/// Heap-allocated keyword. Layout-stable from Phase 1; Phase 2.2
+/// only changed how the interner is reached, not the cell.
 pub const Keyword = struct {
     header: HeapHeader,
     _pad: [6]u8 = undefined,
@@ -39,15 +50,16 @@ pub const Keyword = struct {
     }
 };
 
-/// Process-unique keyword table. Phase-1 single-threaded; Phase 2.0
-/// embeds a `std.Io.Mutex` and switches `intern` / `find` to take
-/// `*Runtime` rather than `*KeywordInterner` directly.
+/// Process-unique keyword table. Owned by `Runtime.keywords`.
 pub const KeywordInterner = struct {
-    /// Backing allocator for both the table and the interned strings.
-    /// In Phase-2 production this will equal `Runtime.gpa`.
+    /// Backing allocator. In production this aliases `Runtime.gpa`.
     alloc: std.mem.Allocator,
     /// Composite key (`"ns/name"` or `"name"`) → `*Keyword`.
     table: std.StringArrayHashMapUnmanaged(*Keyword) = .empty,
+    /// Guards `table` against concurrent intern / find calls. Phase
+    /// 2 is single-threaded so this is effectively free; wiring it
+    /// now means Phase 15 doesn't need to touch this file.
+    mutex: std.Io.Mutex = .init,
 
     pub fn init(alloc: std.mem.Allocator) KeywordInterner {
         return .{ .alloc = alloc };
@@ -64,10 +76,13 @@ pub const KeywordInterner = struct {
         self.table = .empty;
     }
 
-    /// Intern `(ns, name)`. Identical inputs always return the same
-    /// pointer-equal Value.
-    pub fn intern(self: *KeywordInterner, ns: ?[]const u8, name: []const u8) !Value {
-        const key = try formatKey(self.alloc, ns, name);
+    /// Low-level intern — does **not** lock. Most callers should use
+    /// the top-level `intern(rt, ns, name)` instead, which acquires
+    /// `mutex` first. This entry is preserved for callers that
+    /// already hold the lock or are running in a known-single-threaded
+    /// path (tests, fixed-input bootstrap).
+    pub fn internUnlocked(self: *KeywordInterner, ns: ?[]const u8, name_: []const u8) !Value {
+        const key = try formatKey(self.alloc, ns, name_);
 
         if (self.table.get(key)) |existing| {
             self.alloc.free(key);
@@ -78,17 +93,18 @@ pub const KeywordInterner = struct {
         kw.* = .{
             .header = HeapHeader.init(.keyword),
             .ns = if (ns) |n| (try self.alloc.dupe(u8, n)) else null,
-            .name = try self.alloc.dupe(u8, name),
-            .hash_cache = computeHash(ns, name),
+            .name = try self.alloc.dupe(u8, name_),
+            .hash_cache = computeHash(ns, name_),
         };
 
         try self.table.put(self.alloc, key, kw);
         return Value.encodeHeapPtr(.keyword, kw);
     }
 
-    /// Lookup without insertion. Returns `null` if not yet interned.
-    pub fn find(self: *KeywordInterner, ns: ?[]const u8, name: []const u8) ?Value {
-        const key = formatKey(self.alloc, ns, name) catch return null;
+    /// Low-level lookup — does not lock. See `internUnlocked` for
+    /// when to prefer this over the rt-aware top-level `find`.
+    pub fn findUnlocked(self: *KeywordInterner, ns: ?[]const u8, name_: []const u8) ?Value {
+        const key = formatKey(self.alloc, ns, name_) catch return null;
         defer self.alloc.free(key);
 
         if (self.table.get(key)) |kw| {
@@ -98,7 +114,22 @@ pub const KeywordInterner = struct {
     }
 };
 
-/// Decode a keyword Value to a `*const Keyword`. No table lookup.
+/// Intern `(ns, name)` against `rt.keywords`, locking via `rt.io`.
+pub fn intern(rt: *Runtime, ns: ?[]const u8, name_: []const u8) !Value {
+    rt.keywords.mutex.lockUncancelable(rt.io);
+    defer rt.keywords.mutex.unlock(rt.io);
+    return rt.keywords.internUnlocked(ns, name_);
+}
+
+/// Look up an existing interning. Returns `null` if not yet present.
+pub fn find(rt: *Runtime, ns: ?[]const u8, name_: []const u8) ?Value {
+    rt.keywords.mutex.lockUncancelable(rt.io);
+    defer rt.keywords.mutex.unlock(rt.io);
+    return rt.keywords.findUnlocked(ns, name_);
+}
+
+/// Decode a keyword Value to a `*const Keyword`. No table lookup —
+/// pure pointer arithmetic, so no lock needed.
 pub fn asKeyword(val: Value) *const Keyword {
     std.debug.assert(val.tag() == .keyword);
     return val.decodePtr(*const Keyword);
@@ -106,36 +137,53 @@ pub fn asKeyword(val: Value) *const Keyword {
 
 // --- internal helpers ---
 
-fn formatKey(alloc: std.mem.Allocator, ns: ?[]const u8, name: []const u8) ![]u8 {
+fn formatKey(alloc: std.mem.Allocator, ns: ?[]const u8, name_: []const u8) ![]u8 {
     if (ns) |n| {
-        const key = try alloc.alloc(u8, n.len + 1 + name.len);
+        const key = try alloc.alloc(u8, n.len + 1 + name_.len);
         @memcpy(key[0..n.len], n);
         key[n.len] = '/';
-        @memcpy(key[n.len + 1 ..], name);
+        @memcpy(key[n.len + 1 ..], name_);
         return key;
     }
-    return try alloc.dupe(u8, name);
+    return try alloc.dupe(u8, name_);
 }
 
-fn computeHash(ns: ?[]const u8, name: []const u8) u32 {
+fn computeHash(ns: ?[]const u8, name_: []const u8) u32 {
     if (ns) |n| {
         var h: u32 = hash.hashString(n);
         h = h *% 31 +% hash.hashString("/");
-        h = h *% 31 +% hash.hashString(name);
+        h = h *% 31 +% hash.hashString(name_);
         return h;
     }
-    return hash.hashString(name);
+    return hash.hashString(name_);
 }
 
 // --- tests ---
 
 const testing = std.testing;
 
-test "intern creates a keyword Value" {
+const TestFixture = struct {
+    threaded: std.Io.Threaded,
+    rt: Runtime,
+
+    fn init(self: *TestFixture, alloc: std.mem.Allocator) void {
+        self.threaded = std.Io.Threaded.init(alloc, .{});
+        self.rt = Runtime.init(self.threaded.io(), alloc);
+    }
+
+    fn deinit(self: *TestFixture) void {
+        self.rt.deinit();
+        self.threaded.deinit();
+    }
+};
+
+// --- low-level interner tests (unchanged from Phase 1) ---
+
+test "internUnlocked creates a keyword Value" {
     var interner = KeywordInterner.init(testing.allocator);
     defer interner.deinit();
 
-    const kw = try interner.intern(null, "foo");
+    const kw = try interner.internUnlocked(null, "foo");
     try testing.expect(kw.tag() == .keyword);
 
     const k = asKeyword(kw);
@@ -143,30 +191,21 @@ test "intern creates a keyword Value" {
     try testing.expectEqualStrings("foo", k.name);
 }
 
-test "intern returns the same pointer for repeats" {
+test "internUnlocked returns the same pointer for repeats" {
     var interner = KeywordInterner.init(testing.allocator);
     defer interner.deinit();
 
-    const a = try interner.intern(null, "bar");
-    const b = try interner.intern(null, "bar");
+    const a = try interner.internUnlocked(null, "bar");
+    const b = try interner.internUnlocked(null, "bar");
     try testing.expectEqual(@intFromEnum(a), @intFromEnum(b));
 }
 
-test "different keywords have different pointers" {
+test "qualified keywords are distinct from bare via internUnlocked" {
     var interner = KeywordInterner.init(testing.allocator);
     defer interner.deinit();
 
-    const a = try interner.intern(null, "foo");
-    const b = try interner.intern(null, "bar");
-    try testing.expect(@intFromEnum(a) != @intFromEnum(b));
-}
-
-test "qualified keywords are distinct from bare" {
-    var interner = KeywordInterner.init(testing.allocator);
-    defer interner.deinit();
-
-    const bare = try interner.intern(null, "foo");
-    const qualified = try interner.intern("ns", "foo");
+    const bare = try interner.internUnlocked(null, "foo");
+    const qualified = try interner.internUnlocked("ns", "foo");
     try testing.expect(@intFromEnum(bare) != @intFromEnum(qualified));
 
     const k = asKeyword(qualified);
@@ -174,35 +213,35 @@ test "qualified keywords are distinct from bare" {
     try testing.expectEqualStrings("foo", k.name);
 }
 
-test "find returns interned keyword and null for missing" {
+test "findUnlocked: hits an interned keyword, misses an unknown one" {
     var interner = KeywordInterner.init(testing.allocator);
     defer interner.deinit();
 
-    _ = try interner.intern(null, "findme");
-    const result = interner.find(null, "findme");
+    _ = try interner.internUnlocked(null, "findme");
+    const result = interner.findUnlocked(null, "findme");
     try testing.expect(result != null);
     try testing.expectEqualStrings("findme", asKeyword(result.?).name);
 
-    try testing.expect(interner.find(null, "nonexistent") == null);
+    try testing.expect(interner.findUnlocked(null, "nonexistent") == null);
 }
 
 test "formatQualified renders both bare and qualified" {
     var interner = KeywordInterner.init(testing.allocator);
     defer interner.deinit();
 
-    const bare = try interner.intern(null, "foo");
+    const bare = try interner.internUnlocked(null, "foo");
     var buf: [64]u8 = undefined;
     try testing.expectEqualStrings(":foo", asKeyword(bare).formatQualified(&buf));
 
-    const qualified = try interner.intern("clojure.core", "map");
+    const qualified = try interner.internUnlocked("clojure.core", "map");
     try testing.expectEqualStrings(":clojure.core/map", asKeyword(qualified).formatQualified(&buf));
 }
 
-test "hash_cache is precomputed and non-trivial" {
+test "hash_cache is precomputed" {
     var interner = KeywordInterner.init(testing.allocator);
     defer interner.deinit();
 
-    const kw = try interner.intern(null, "test");
+    const kw = try interner.internUnlocked(null, "test");
     try testing.expect(asKeyword(kw).hash_cache != 0);
 }
 
@@ -210,18 +249,55 @@ test "HeapHeader carries the keyword tag" {
     var interner = KeywordInterner.init(testing.allocator);
     defer interner.deinit();
 
-    const kw = try interner.intern(null, "x");
-    const k = asKeyword(kw);
-    try testing.expectEqual(@as(u8, @intFromEnum(HeapTag.keyword)), k.header.tag);
+    const kw = try interner.internUnlocked(null, "x");
+    try testing.expectEqual(@as(u8, @intFromEnum(HeapTag.keyword)), asKeyword(kw).header.tag);
 }
 
-test "two interners are independent (no global table)" {
-    var a = KeywordInterner.init(testing.allocator);
-    defer a.deinit();
-    var b = KeywordInterner.init(testing.allocator);
-    defer b.deinit();
+// --- rt-aware tests (Phase 2.2 surface) ---
 
-    const ka = try a.intern(null, "foo");
-    const kb = try b.intern(null, "foo");
-    try testing.expect(@intFromEnum(ka) != @intFromEnum(kb));
+test "intern(rt, ...) creates a keyword and round-trips" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const kw = try intern(&fix.rt, null, "foo");
+    try testing.expect(kw.tag() == .keyword);
+    try testing.expectEqualStrings("foo", asKeyword(kw).name);
+}
+
+test "intern(rt, ...) is idempotent across calls" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const a = try intern(&fix.rt, null, "bar");
+    const b = try intern(&fix.rt, null, "bar");
+    try testing.expectEqual(@intFromEnum(a), @intFromEnum(b));
+}
+
+test "find(rt, ...) returns interned and null for missing" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    _ = try intern(&fix.rt, null, "findme");
+    const hit = find(&fix.rt, null, "findme");
+    try testing.expect(hit != null);
+    try testing.expectEqualStrings("findme", asKeyword(hit.?).name);
+
+    try testing.expect(find(&fix.rt, null, "nope") == null);
+}
+
+test "two Runtimes maintain independent keyword tables" {
+    var fix1: TestFixture = undefined;
+    fix1.init(testing.allocator);
+    defer fix1.deinit();
+    var fix2: TestFixture = undefined;
+    fix2.init(testing.allocator);
+    defer fix2.deinit();
+
+    const k1 = try intern(&fix1.rt, null, "shared");
+    const k2 = try intern(&fix2.rt, null, "shared");
+    // Same name, different process-wide tables → distinct pointers.
+    try testing.expect(@intFromEnum(k1) != @intFromEnum(k2));
 }
