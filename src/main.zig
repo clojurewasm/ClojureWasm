@@ -96,4 +96,5 @@ test {
     _ = @import("eval/tokenizer.zig");
     _ = @import("eval/reader.zig");
     _ = @import("eval/node.zig");
+    _ = @import("eval/analyzer.zig");
 }
