@@ -452,7 +452,9 @@ ClojureWasm/                         (working dir on disk: ClojureWasmFromScratc
 │   ├── README.md
 │   ├── ROADMAP.md                  ← this document
 │   ├── compat_tiers.yaml           per-namespace tier
-│   ├── decisions/                  ADRs
+│   ├── concurrency_design.md       pre-Phase-15 deep dive
+│   ├── wasm_strategy.md            pre-Phase-19 deep dive
+│   ├── decisions/                  ADRs (NNNN-<slug>.md + 0000-template.md)
 │   ├── status/
 │   │   └── vars.yaml               var implementation tracker
 │   ├── handover.md                 session-to-session notes
@@ -460,13 +462,16 @@ ClojureWasm/                         (working dir on disk: ClojureWasmFromScratc
 │
 ├── .claude/
 │   ├── settings.json               permissions, env, hooks
+│   ├── rules/                      auto-loaded path-matched rules
+│   │   ├── zone_deps.md            (loads on src/**/*.zig, build.zig)
+│   │   ├── zig_tips.md             (loads on src/**/*.zig, build.zig)
+│   │   └── compat_tiers.md         (loads on src/lang/**, .dev/compat_tiers.yaml)
 │   └── skills/code-learning-doc/   skill defining the docs/ja/ workflow
 │
 ├── build.zig
 ├── build.zig.zon
 ├── flake.nix
 ├── .envrc
-├── .editorconfig
 ├── .gitignore
 ├── README.md
 └── LICENSE
@@ -742,6 +747,37 @@ Phases marked 🔒 (x86_64 Gate): `zig build test` must pass on OrbStack Ubuntu
 x86_64 (Rosetta on Apple Silicon) before moving on. NaN boxing, HAMT, GC,
 VM dispatch, and packed-struct alignment are all arch-sensitive.
 
+### 11.6 Quality gate timeline (active + future)
+
+A single table of every quality gate this project will need. **Active** gates
+must pass before commit / push at the listed scope. **Planned** gates have a
+"prepare-by" phase: the gate file/script is added by that phase even if it
+is no-op until the relevant feature exists. Listing them here prevents
+forgetting them.
+
+| # | Gate                                            | Scope (when it must pass)        | Wired as                                        | Status (this commit)              | Prepare by    |
+|---|--------------------------------------------------|----------------------------------|-------------------------------------------------|------------------------------------|--------------|
+| 1 | Learning-doc gate (`docs/ja/NNNN-*.md`)          | every source-touching commit     | `scripts/check_learning_doc.sh` PreToolUse hook | **Active**                          | —            |
+| 2 | Zone-dependency check (`zone_check.sh --gate`)   | every commit touching src/ or modules/ | `scripts/zone_check.sh` (runs from `test/run_all.sh` later; manual now) | **Active** (informational; 0 violations on empty src/) | Phase 2.20 wires --gate as PreToolUse |
+| 3 | `zig build test` green                            | every commit                     | `test/run_all.sh` then `bash test/run_all.sh` | **Active**                          | —            |
+| 4 | `zig fmt --check src/`                            | every commit touching src/       | `scripts/format_check.sh` (TODO)                | **Planned**                         | Phase 1 (when src/ grows beyond bootstrap) |
+| 5 | x86_64 cross-arch test (OrbStack Ubuntu)          | end of phases marked 🔒          | manual: `orb run ... bash -lc "zig build test"` | **Planned** (no VM yet)             | Phase 1.12   |
+| 6 | Dual-backend `--compare` (TreeWalk == VM)         | every test, Phase 8+             | inline in test runner                            | **Planned**                         | Phase 8      |
+| 7 | Bench regression ≤ 1.2x                           | every optimisation commit        | `bench/bench.sh record` + history.yaml diff      | **Planned**                         | Phase 8 (full); Phase 4 quick harness |
+| 8 | Tier-A upstream test green                        | every commit touching `src/lang/clj/` or related Zig | inline in `test/run_all.sh`     | **Planned**                         | Phase 11     |
+| 9 | Tier-change ADR present                           | any change to `compat_tiers.yaml`| `scripts/tier_check.sh` (TODO)                  | **Planned**                         | Phase 9      |
+|10 | `compat_tiers.yaml` complete (all listed namespaces have impl) | v0.1.0 release | `scripts/tier_check.sh` (TODO)                  | **Planned**                         | Phase 14     |
+|11 | GC root coverage (every heap type traced)        | end of Phase 5                   | unit tests + `--gc-stress`                       | **Planned**                         | Phase 5      |
+|12 | Bytecode cache versioning                         | every cache format change        | inline cache header + version field              | **Planned**                         | Phase 12     |
+|13 | JIT go/no-go ADR                                  | end of Phase 17                  | `.dev/decisions/NNNN-jit-decision.md`            | **Planned**                         | Phase 17 end |
+|14 | Wasm Component build green (`zig build -Dcomponent`) | every commit touching wasm bits | `test/run_all.sh` extension                      | **Planned**                         | Phase 14     |
+|15 | WIT auto-binding correctness                      | every commit to wit bindgen path | inline test                                       | **Planned**                         | Phase 19     |
+|16 | nREPL operation parity (CIDER 14 ops)             | every commit touching `app/repl/nrepl.zig` | inline test                              | **Planned**                         | Phase 14     |
+
+Each "Planned" row will move to "Active" by its prepare-by phase. Add the
+row to `test/run_all.sh` (or wire as a hook in `.claude/settings.json`)
+when activating; do not leave the table out of sync with reality.
+
 ---
 
 ## 12. Commit discipline and work loop
@@ -861,13 +897,21 @@ Porting cljs.analyzer + cljs.compiler is large. If yes, dedicate v0.2 to it.
 
 - `CLAUDE.md` — Claude Code project memory (short, points to this file)
 - `README.md` — public-facing description
-- `.dev/decisions/` — ADRs (load-bearing decisions only)
+- `.dev/decisions/` — ADRs (load-bearing decisions only) + `0000-template.md`
 - `.dev/compat_tiers.yaml` — per-namespace tier
-- `.dev/status/vars.yaml` — var implementation tracker
+- `.dev/concurrency_design.md` — pre-Phase-15 deep dive on Clojure-prim ↔ std.Io mapping
+- `.dev/wasm_strategy.md` — pre-Phase-19 deep dive on the hybrid native+component plan
+- `.dev/status/vars.yaml` — var implementation tracker (created when Phase 2 vars.yaml lands)
 - `.dev/handover.md` — session-to-session notes
 - `.dev/known_issues.md` — long-lived bugs and debt
 - `docs/ja/` — Japanese commit-snapshot tutorials
+- `.claude/rules/zone_deps.md` — auto-loaded layering rules for src/**/*.zig
+- `.claude/rules/zig_tips.md` — auto-loaded Zig 0.16 idioms for src/**/*.zig
+- `.claude/rules/compat_tiers.md` — auto-loaded tier rules for src/lang/**
 - `.claude/skills/code-learning-doc/SKILL.md` — tutorial skill / template
+- `scripts/check_learning_doc.sh` — commit gate for docs/ja/
+- `scripts/zone_check.sh` — zone-dependency checker (info / --strict / --gate)
+- `test/run_all.sh` — unified test runner (single entry point)
 
 ### 15.2 Local reference clones (already present)
 
@@ -931,3 +975,4 @@ Project-specific:
 |------------|--------------------------------------------------------------------------------------------------|
 | 2026-04-27 | Initial version. Synthesised from ClojureWasm v1, prior redesign attempt, Clojure, Babashka, Wasm 2026, mattpocock's vocabulary, and the strategic review. |
 | 2026-04-27 | Translated to English. Added §12.2 (commit-snapshot learning doc gate) and added `docs/ja/` to §5 / §15. |
+| 2026-04-27 | Audit pass: added §11.6 (Quality gate timeline, active + future). Added `.claude/rules/`, `.dev/{decisions,compat_tiers.yaml,handover.md,known_issues.md,concurrency_design.md,wasm_strategy.md}`, `scripts/zone_check.sh`, `test/run_all.sh` to §5 / §15. Removed `.editorconfig` (Emacs handles formatting; format gate listed as #4 in §11.6 pending). |
