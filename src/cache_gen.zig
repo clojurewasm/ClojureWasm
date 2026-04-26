@@ -22,13 +22,14 @@ const bootstrap = @import("engine/bootstrap.zig");
 const gc_mod = @import("runtime/gc.zig");
 const keyword_intern = @import("runtime/keyword_intern.zig");
 const clojure_core_protocols = @import("lang/lib/clojure_core_protocols.zig");
+const io_default = @import("runtime/io_default.zig");
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const io = init.io;
+    io_default.set(io);
 
     var gc = gc_mod.MarkSweepGc.init(allocator);
-    gc.io = io;
     defer gc.deinit();
     const alloc = gc.allocator();
 

@@ -26,6 +26,7 @@ const zwasm = if (enable_wasm) @import("zwasm") else struct {};
 const wasm_alloc = if (enable_wasm) std.heap.smp_allocator else std.heap.page_allocator;
 
 const gc_mod = @import("gc.zig");
+const io_default = @import("io_default.zig");
 
 /// GC reference for finalizer registration. Set by main.zig after bootstrap.
 var gc_ref: ?*gc_mod.MarkSweepGc = null;
@@ -363,11 +364,12 @@ const HostContext = struct {
 const MAX_CONTEXTS = 256;
 var host_contexts: [MAX_CONTEXTS]?HostContext = [_]?HostContext{null} ** MAX_CONTEXTS;
 var next_context_id: usize = 0;
-var context_mutex: std.Thread.Mutex = .{};
+var context_mutex: std.Io.Mutex = .init;
 
 fn allocContext(ctx: HostContext) !usize {
-    context_mutex.lock();
-    defer context_mutex.unlock();
+    const io = io_default.get();
+    context_mutex.lockUncancelable(io);
+    defer context_mutex.unlock(io);
     var id = next_context_id;
     var tried: usize = 0;
     while (tried < MAX_CONTEXTS) : ({
@@ -387,12 +389,13 @@ fn allocContext(ctx: HostContext) !usize {
 fn hostTrampoline(ctx_ptr: *anyopaque, context_id: usize) anyerror!void {
     if (comptime !enable_wasm) unreachable;
     const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx_ptr));
-    context_mutex.lock();
+    const io = io_default.get();
+    context_mutex.lockUncancelable(io);
     const ctx = host_contexts[context_id] orelse {
-        context_mutex.unlock();
+        context_mutex.unlock(io);
         return error.Trap;
     };
-    context_mutex.unlock();
+    context_mutex.unlock(io);
 
     var args_buf: [16]Value = undefined;
     const pc = ctx.param_count;

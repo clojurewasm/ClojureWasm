@@ -24,15 +24,16 @@ const runner = @import("app/runner.zig");
 const cli = @import("app/cli.zig");
 const test_runner = @import("app/test_runner.zig");
 const clojure_core_protocols = @import("lang/lib/clojure_core_protocols.zig");
+const io_default = @import("runtime/io_default.zig");
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
+    io_default.set(init.io);
 
     // Two allocators:
     //   allocator (GPA)   — for infrastructure (Env, Namespace, Var, HashMaps)
     //   alloc (GC)        — for Values (Fn, collections, strings, reader/analyzer)
     var gc = gc_mod.MarkSweepGc.init(allocator);
-    gc.io = init.io;
     defer gc.deinit();
     defer vm_mod.dumpOpcodeProfile(); // 37.1: dump opcode profile at exit
     defer gc.dumpAllocProfile(); // 37.1: dump allocation profile at exit

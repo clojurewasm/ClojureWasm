@@ -20,6 +20,7 @@ const Value = @import("value.zig").Value;
 const dispatch = @import("dispatch.zig");
 const Env = @import("env.zig").Env;
 const thread_pool = @import("thread_pool.zig");
+const io_default = @import("io_default.zig");
 
 // ============================================================
 // Shutdown flag
@@ -110,13 +111,14 @@ const ShutdownHook = struct {
 };
 
 var hooks: [MAX_HOOKS]?ShutdownHook = .{null} ** MAX_HOOKS;
-var hook_mutex: std.Thread.Mutex = .{};
+var hook_mutex: std.Io.Mutex = .init;
 
 /// Register a shutdown hook. Returns true on success, false if table is full
 /// or key already exists.
 pub fn addShutdownHook(key: []const u8, func: Value) bool {
-    hook_mutex.lock();
-    defer hook_mutex.unlock();
+    const io = io_default.get();
+    hook_mutex.lockUncancelable(io);
+    defer hook_mutex.unlock(io);
 
     // Check for duplicate key
     for (&hooks) |*slot| {
@@ -147,8 +149,9 @@ pub fn addShutdownHook(key: []const u8, func: Value) bool {
 
 /// Remove a shutdown hook by key. Returns true if found and removed.
 pub fn removeShutdownHook(key: []const u8) bool {
-    hook_mutex.lock();
-    defer hook_mutex.unlock();
+    const io = io_default.get();
+    hook_mutex.lockUncancelable(io);
+    defer hook_mutex.unlock(io);
 
     for (&hooks) |*slot| {
         if (slot.*) |h| {
@@ -164,10 +167,11 @@ pub fn removeShutdownHook(key: []const u8) bool {
 /// Run all registered shutdown hooks. Call before process exit.
 /// env must be provided to set up eval context for Clojure fn calls.
 pub fn runShutdownHooks(allocator: Allocator, env_ptr: *Env) void {
-    hook_mutex.lock();
+    const hooks_io = io_default.get();
+    hook_mutex.lockUncancelable(hooks_io);
     // Copy hooks to local array to release mutex before calling Clojure fns
     var local_hooks: [MAX_HOOKS]?ShutdownHook = hooks;
-    hook_mutex.unlock();
+    hook_mutex.unlock(hooks_io);
 
     // Set eval context for callFnVal (bytecodeCallBridge needs it)
     dispatch.macro_eval_env = env_ptr;

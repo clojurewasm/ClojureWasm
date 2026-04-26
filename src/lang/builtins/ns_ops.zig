@@ -20,6 +20,7 @@ const collections = @import("../../runtime/collections.zig");
 const bootstrap = @import("../../engine/bootstrap.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
 const err = @import("../../runtime/error.zig");
+const io_default = @import("../../runtime/io_default.zig");
 
 // ============================================================
 // Load path infrastructure
@@ -49,7 +50,7 @@ var loaded_file_records: std.ArrayList(LoadedFileRecord) = .empty;
 var track_loaded_files: bool = false;
 
 /// Mutex protecting loaded_libs, loading_libs, and loaded_file_records.
-var ns_mutex: std.Thread.Mutex = .{};
+var ns_mutex: std.Io.Mutex = .init;
 
 /// Enable file tracking for cljw build. Call before evaluating entry file.
 pub fn enableFileTracking() void {
@@ -117,8 +118,9 @@ pub fn deinit() void {
 /// (each file gets a fresh Env + bootstrap, so loaded_libs must match).
 pub fn resetLoadedLibs() void {
     const alloc = loaded_libs_allocator orelse return;
-    ns_mutex.lock();
-    defer ns_mutex.unlock();
+    const io = io_default.get();
+    ns_mutex.lockUncancelable(io);
+    defer ns_mutex.unlock(io);
 
     // Free loaded_libs keys
     var iter = loaded_libs.iterator();
@@ -194,15 +196,17 @@ pub fn detectAndAddSrcPath(start_dir: []const u8) !void {
 }
 
 pub fn isLibLoaded(name: []const u8) bool {
-    ns_mutex.lock();
-    defer ns_mutex.unlock();
+    const io = io_default.get();
+    ns_mutex.lockUncancelable(io);
+    defer ns_mutex.unlock(io);
     return loaded_libs.contains(name);
 }
 
 pub fn markLibLoaded(name: []const u8) !void {
     const alloc = loaded_libs_allocator orelse return;
-    ns_mutex.lock();
-    defer ns_mutex.unlock();
+    const io = io_default.get();
+    ns_mutex.lockUncancelable(io);
+    defer ns_mutex.unlock(io);
     if (!loaded_libs.contains(name)) {
         const owned = try alloc.dupe(u8, name);
         try loaded_libs.put(alloc, owned, {});
@@ -288,8 +292,9 @@ fn loadResource(allocator: Allocator, env: *@import("../../runtime/env.zig").Env
                 // (depth-first order: lib.util.math before lib.core).
                 if (tracked_content) |tc| {
                     if (loaded_libs_allocator) |tracking_alloc| {
-                        ns_mutex.lock();
-                        defer ns_mutex.unlock();
+                        const tio = io_default.get();
+                        ns_mutex.lockUncancelable(tio);
+                        defer ns_mutex.unlock(tio);
                         loaded_file_records.append(tracking_alloc, .{ .content = tc }) catch {};
                     }
                 }
@@ -1166,8 +1171,9 @@ fn requireLib(allocator: Allocator, env: *@import("../../runtime/env.zig").Env, 
     // top of the file. This matches JVM Clojure behavior where circular
     // requires see partially-loaded namespaces.
     {
-        ns_mutex.lock();
-        defer ns_mutex.unlock();
+        const io = io_default.get();
+        ns_mutex.lockUncancelable(io);
+        defer ns_mutex.unlock(io);
         if (loading_libs.contains(ns_name)) {
             return;
         }
@@ -1177,13 +1183,15 @@ fn requireLib(allocator: Allocator, env: *@import("../../runtime/env.zig").Env, 
     const alloc = loaded_libs_allocator orelse return;
     const loading_key = try alloc.dupe(u8, ns_name);
     {
-        ns_mutex.lock();
-        defer ns_mutex.unlock();
+        const io = io_default.get();
+        ns_mutex.lockUncancelable(io);
+        defer ns_mutex.unlock(io);
         try loading_libs.put(alloc, loading_key, {});
     }
     defer {
-        ns_mutex.lock();
-        defer ns_mutex.unlock();
+        const io = io_default.get();
+        ns_mutex.lockUncancelable(io);
+        defer ns_mutex.unlock(io);
         // Remove from loading set when done (whether success or error)
         if (loading_libs.fetchRemove(ns_name)) |kv| {
             alloc.free(kv.key);
