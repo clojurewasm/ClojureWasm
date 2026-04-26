@@ -4,36 +4,32 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-
-    # Zig source pin (not used directly, just for tracking)
-    zig-overlay.url = "github:ziglang/zig/0.15.2";
-    zig-overlay.flake = false;
   };
 
-  outputs = { self, nixpkgs, flake-utils, zig-overlay }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
         };
 
-        # Zig 0.15.2 binary (per-architecture URLs and hashes)
+        # Zig 0.16.0 binary (per-architecture URLs and hashes — sha256 mirrored from zwasm flake.nix)
         zigArchInfo = {
           "aarch64-darwin" = {
-            url = "https://ziglang.org/download/0.15.2/zig-aarch64-macos-0.15.2.tar.xz";
-            sha256 = "1csy5ch8aym67w06ffmlwamrzkfq8zwv4kcl6bcpc5vn1cbhd31g";
+            url = "https://ziglang.org/download/0.16.0/zig-aarch64-macos-0.16.0.tar.xz";
+            sha256 = "0yqiq1nrjfawh1k24mf969q1w9bhwfbwqi2x8f9zklca7bsyza26";
           };
           "x86_64-darwin" = {
-            url = "https://ziglang.org/download/0.15.2/zig-x86_64-macos-0.15.2.tar.xz";
-            sha256 = ""; # untested
+            url = "https://ziglang.org/download/0.16.0/zig-x86_64-macos-0.16.0.tar.xz";
+            sha256 = "0dibmghlqrr8qi5cqs9n0nl25qdnb5jvr542dyljfqdyy2bzzh2x";
           };
           "x86_64-linux" = {
-            url = "https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz";
-            sha256 = "0skmy2qjg2z4bsxnkdzqp1hjzwwgnvqhw4qjfnsdpv6qm23p4wm0";
+            url = "https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz";
+            sha256 = "1kgamnyy7vsw5alb5r4xk8nmgvmgbmxkza5hs7b51x6dbgags1h6";
           };
           "aarch64-linux" = {
-            url = "https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz";
-            sha256 = ""; # untested
+            url = "https://ziglang.org/download/0.16.0/zig-aarch64-linux-0.16.0.tar.xz";
+            sha256 = "12gf4d1rjncc8r4i32sfdmnwdl0d6hg717hb3801zxjlmzmpsns0";
           };
         }.${system} or (throw "Unsupported system: ${system}");
 
@@ -43,7 +39,7 @@
         };
 
         # Path wrapper: expose zig binary from nix store
-        zigBin = pkgs.runCommand "zig-0.15.2-wrapper" {} ''
+        zigBin = pkgs.runCommand "zig-0.16.0-wrapper" {} ''
           mkdir -p $out/bin
           ln -s ${zigSrc}/zig $out/bin/zig
           ln -s ${zigSrc}/lib $out/lib
@@ -55,7 +51,7 @@
 
           buildInputs = with pkgs; [
             # Compiler
-            zigBin                    # Zig 0.15.2
+            zigBin                    # Zig 0.16.0
 
             # Wasm runtime
             wasmtime
