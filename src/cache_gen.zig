@@ -28,6 +28,7 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const io = init.io;
     io_default.set(io);
+    io_default.setEnvironMap(init.environ_map);
 
     var gc = gc_mod.MarkSweepGc.init(allocator);
     defer gc.deinit();

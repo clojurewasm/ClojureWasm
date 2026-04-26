@@ -407,7 +407,7 @@ pub fn createRef(allocator: Allocator, initial_val: Value, opts: RefOptions) !Va
         .faults = 0,
         .min_history = opts.min_history,
         .max_history = opts.max_history,
-        .lock = .{},
+        .lock = .init,
         .tinfo = null,
         .validator = opts.validator,
         .meta_val = opts.meta orelse Value.nil_val,

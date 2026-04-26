@@ -17,6 +17,7 @@ const Value = @import("../../runtime/value.zig").Value;
 const var_mod = @import("../../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../../runtime/error.zig");
+const io_default = @import("../../runtime/io_default.zig");
 
 // ============================================================
 // Builtins
@@ -26,7 +27,7 @@ const err = @import("../../runtime/error.zig");
 /// Returns nanosecond timestamp (monotonic clock).
 pub fn nanoTimeFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to System/nanoTime", .{args.len});
-    const ns: i128 = std.time.nanoTimestamp();
+    const ns: i128 = io_default.nanoTimestamp();
     // Clojure returns long (64-bit), truncate i128 to i64
     const truncated: i64 = @intCast(@as(i128, @rem(ns, std.math.maxInt(i64))));
     return Value.initInteger(truncated);
@@ -36,7 +37,7 @@ pub fn nanoTimeFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Returns milliseconds since epoch (wall clock).
 pub fn currentTimeMillisFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to System/currentTimeMillis", .{args.len});
-    const ms = std.time.milliTimestamp();
+    const ms = io_default.milliTimestamp();
     return Value.initInteger(ms);
 }
 
@@ -49,14 +50,7 @@ pub fn getenvFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "System/getenv expects a string, got {s}", .{@tagName(args[0].tag())}),
     };
 
-    // Need null-terminated key for posix getenv
-    const key_z = try allocator.alloc(u8, key.len + 1);
-    defer allocator.free(key_z);
-    @memcpy(key_z[0..key.len], key);
-    key_z[key.len] = 0;
-
-    const result = std.posix.getenv(key_z[0..key.len]);
-    if (result) |val| {
+    if (io_default.getEnv(key)) |val| {
         const owned = try allocator.alloc(u8, val.len);
         @memcpy(owned, val);
         return Value.initString(allocator, owned);
@@ -101,18 +95,21 @@ fn getSystemProperty(allocator: Allocator, key: []const u8) !?Value {
     const builtin = @import("builtin");
 
     if (std.mem.eql(u8, key, "user.dir")) {
-        // Current working directory
+        // Current working directory — std.fs.cwd().realpath was removed in 0.16.
+        // Use libc getcwd via std.c (we link libc anyway after the migration).
         var buf: [4096]u8 = undefined;
-        const cwd = std.fs.cwd().realpath(".", &buf) catch return null;
-        return Value.initString(allocator, try allocator.dupe(u8, cwd));
+        const ptr = std.c.getcwd(&buf, buf.len) orelse return null;
+        const len = std.mem.indexOfScalar(u8, &buf, 0) orelse buf.len;
+        _ = ptr;
+        return Value.initString(allocator, try allocator.dupe(u8, buf[0..len]));
     } else if (std.mem.eql(u8, key, "user.home")) {
         // Home directory
-        if (std.posix.getenv("HOME")) |home| {
+        if (io_default.getEnv("HOME")) |home| {
             return Value.initString(allocator, try allocator.dupe(u8, home));
         }
         return null;
     } else if (std.mem.eql(u8, key, "user.name")) {
-        if (std.posix.getenv("USER")) |user| {
+        if (io_default.getEnv("USER")) |user| {
             return Value.initString(allocator, try allocator.dupe(u8, user));
         }
         return null;
@@ -146,7 +143,7 @@ fn getSystemProperty(allocator: Allocator, key: []const u8) !?Value {
         }
         return Value.initString(allocator, "\n");
     } else if (std.mem.eql(u8, key, "java.io.tmpdir")) {
-        if (std.posix.getenv("TMPDIR")) |tmpdir| {
+        if (io_default.getEnv("TMPDIR")) |tmpdir| {
             return Value.initString(allocator, try allocator.dupe(u8, tmpdir));
         }
         return Value.initString(allocator, "/tmp");
@@ -181,7 +178,7 @@ fn threadSleepFn(_: Allocator, args: []const Value) anyerror!Value {
         else => return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "Thread/sleep expects a number" }),
     };
     if (ms > 0) {
-        std.Thread.sleep(@intCast(ms * std.time.ns_per_ms));
+        io_default.sleep(@intCast(ms * std.time.ns_per_ms));
     }
     return Value.nil_val;
 }

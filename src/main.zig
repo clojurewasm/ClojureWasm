@@ -29,6 +29,7 @@ const io_default = @import("runtime/io_default.zig");
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     io_default.set(init.io);
+    io_default.setEnvironMap(init.environ_map);
 
     // Two allocators:
     //   allocator (GPA)   — for infrastructure (Env, Namespace, Var, HashMaps)

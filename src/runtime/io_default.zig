@@ -114,3 +114,38 @@ pub fn condBroadcast(cond: *std.Io.Condition) void {
 pub fn sleep(ns: u64) void {
     std.Io.sleep(get(), .fromNanoseconds(@intCast(ns)), .awake) catch {};
 }
+
+// =====================================================================
+// Environment access — mirrors zwasm/platform.setEnvironMap. The Process
+// init block carries an `environ_map` we can borrow from main/cache_gen
+// so other modules can read env vars without calling libc's getenv.
+// =====================================================================
+
+var env_map_ref: ?*const std.process.Environ.Map = null;
+
+pub fn setEnvironMap(m: *const std.process.Environ.Map) void {
+    env_map_ref = m;
+}
+
+/// Look up an environment variable. Returns null when the var is unset
+/// or `setEnvironMap` was never called (tests, pre-init).
+pub fn getEnv(name: []const u8) ?[]const u8 {
+    const m = env_map_ref orelse return null;
+    return m.get(name);
+}
+
+// =====================================================================
+// Time helpers
+// =====================================================================
+
+/// Nanoseconds since some monotonic epoch. Replaces std.time.nanoTimestamp().
+pub fn nanoTimestamp() i128 {
+    const ts = std.Io.Timestamp.now(get(), .real);
+    return @intCast(ts.nanoseconds);
+}
+
+/// Milliseconds since the wall-clock epoch. Replaces std.time.milliTimestamp().
+pub fn milliTimestamp() i64 {
+    const ts = std.Io.Timestamp.now(get(), .real);
+    return @intCast(@divTrunc(ts.nanoseconds, std.time.ns_per_ms));
+}

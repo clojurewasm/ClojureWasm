@@ -27,6 +27,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 const bootstrap = @import("../../engine/bootstrap.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
 const err = @import("../../runtime/error.zig");
+const io_default = @import("../../runtime/io_default.zig");
 const vm_mod = @import("../../engine/vm/vm.zig");
 const sequences_mod = @import("sequences.zig");
 const transient_mod = @import("transient.zig");
@@ -919,7 +920,7 @@ pub fn shuffleFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Fisher-Yates shuffle
     const mutable = try allocator.alloc(Value, items.len);
     @memcpy(mutable, items);
-    var prng = std.Random.DefaultPrng.init(@truncate(@as(u128, @bitCast(std.time.nanoTimestamp()))));
+    var prng = std.Random.DefaultPrng.init(@truncate(@as(u128, @bitCast(io_default.nanoTimestamp()))));
     const random = prng.random();
     var i: usize = mutable.len - 1;
     while (i > 0) : (i -= 1) {
