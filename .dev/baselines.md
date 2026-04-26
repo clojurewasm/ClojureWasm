@@ -17,9 +17,16 @@ All-Zig migration complete (Phases A-F, C.1). Binary size threshold RESTORED.
 Binary grew ~0.5MB due to embedded Clojure multiline strings (pprint, spec.alpha).
 Phase E optimization target: reduce back toward 4.3MB.
 
+> **Migration note (Zig 0.15.2 → 0.16.0)**: binary size ceiling temporarily
+> raised to 5.5 MB while the migration is in progress. Zwasm v1.10.0+ adds
+> `link_libc = true` for stdlib symbols removed from `std.posix`, costing
+> ~290 KB on Linux (~150 KB on macOS). Final ceiling will be reset in Phase 7
+> after measuring the post-migration binary, with a follow-up task to strip
+> libc back out (cf. zwasm W46).
+
 | Metric              | Baseline   | Threshold  | Margin | How to measure                              |
 |---------------------|------------|------------|--------|---------------------------------------------|
-| Binary size         | 4.76 MB    | 5.0 MB     | +5%    | `ls -la zig-out/bin/cljw` (after ReleaseSafe build) |
+| Binary size         | 4.76 MB    | 5.5 MB     | +15%   | `ls -la zig-out/bin/cljw` (after ReleaseSafe build) — temporarily relaxed for Zig 0.16 migration |
 | Startup time        | 4.5 ms     | 6.0 ms     | 1.3x   | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
 | RSS (light)         | 7.9 MB     | 10 MB      | +27%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
 | Benchmark (any)     | see below  | 1.2x       | +20%   | Per-benchmark: `bash bench/run_bench.sh --bench=NAME --runs=10 --warmup=5` |

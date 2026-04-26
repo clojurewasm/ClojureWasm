@@ -128,3 +128,43 @@ with `--no-wasm`, and skip `wasm_bench.sh` entirely.
   to absorb at the `wasm_types.zig` bridge?
 - Action: read `~/Documents/MyProducts/zwasm/CHANGELOG.md` v1.10.0 + v1.11.0
   notes when entering Phase 6.
+
+## Phase 7: Atomic Toolchain Flip (deferred)
+
+Once code migration is complete and tests are green on Zig 0.16.0,
+flip all toolchain pins and version-mention strings in a single commit.
+Doing this earlier creates a window where neither 0.15.2 nor 0.16.0 builds
+cleanly.
+
+Files to update:
+
+| File | Lines | Change |
+|---|---|---|
+| `build.zig.zon` | 11 | `.minimum_zig_version = "0.16.0"` |
+| `flake.nix` | 9, 20, 23, 27, 31, 35, 46, 58 | URLs and comments → 0.16.0 |
+| `flake.lock` | 71 | regenerate via `nix flake update zig-overlay` |
+| `.github/workflows/ci.yml` | 16, 74, 117 | `version: 0.16.0` |
+| `.github/workflows/nightly.yml` | 15, 59 | `version: 0.16.0` |
+| `.github/workflows/release.yml` | 32 | `version: 0.16.0` |
+| `README.md` | 5, 34 | badge + install link |
+| `.claude/CLAUDE.md` | 3, 290, 293 | intro + "Pitfalls" section header + path hint |
+| `.claude/references/zig-tips.md` | 1, 34 | title + body content |
+| `.dev/baselines.md` | 4 | "Zig 0.15.2" → "Zig 0.16.0" platform line |
+| `.dev/CONTRIBUTING.md` | 33 | install requirement |
+| `.dev/references/setup-orbstack.md` | 19, 30 | install + version check |
+| `.dev/references/ubuntu-testing-guide.md` | 56 | describe 0.16-specific behavior if changed |
+| `docs/differences.md` | 10 | runtime row |
+| `.dev/future.md` | 365 | check if still relevant |
+
+DO NOT touch:
+- `.dev/archive/**` — historical phase notes
+- `.dev/decisions.md` D## entries that reference 0.15.2 — these are immutable history
+  (D## about ArenaAllocator.free, @call always_tail, etc. — those decisions remain valid context)
+
+After flip:
+- Re-run `bash test/run_all.sh` (no --no-wasm) on Zig 0.16.0
+- OrbStack Ubuntu validation: `--seed 0` still required? Re-test
+- Update binary size baseline to actual measured value
+- Add D## entry in `.dev/decisions.md` for the migration
+- Add F## in `.dev/checklist.md` for the libc strip follow-up (zwasm W46 equivalent)
+- Delete this file (`.dev/zig-016-migration.md`)
