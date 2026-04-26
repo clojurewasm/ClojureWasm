@@ -1,10 +1,23 @@
 {
+  "defaultMode": "acceptEdits",
   "permissions": {
+    "additionalDirectories": [
+      "~/Documents/MyProducts/ClojureWasm",
+      "~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref",
+      "~/Documents/OSS/clojure",
+      "~/Documents/OSS/babashka",
+      "~/Documents/OSS/zig",
+      "~/Documents/OSS/spec.alpha",
+      "~/Documents/OSS/wasmtime",
+      "~/Documents/OSS/malli",
+      "~/Documents/OSS/mattpocock_skills"
+    ],
     "allow": [
       "Bash(zig:*)",
       "Bash(nix develop:*)",
       "Bash(nix flake:*)",
       "Bash(direnv:*)",
+
       "Bash(git status:*)",
       "Bash(git log:*)",
       "Bash(git diff:*)",
@@ -12,22 +25,73 @@
       "Bash(git branch:*)",
       "Bash(git switch:*)",
       "Bash(git stash:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git remote:*)",
+      "Bash(git fetch:*)",
+      "Bash(git config --get:*)",
+      "Bash(git restore:*)",
+      "Bash(git diff-tree:*)",
+      "Bash(git show:*)",
+
+      "Bash(bash:*)",
+      "Bash(python3:*)",
       "Bash(rg:*)",
       "Bash(fd:*)",
+      "Bash(grep:*)",
+      "Bash(awk:*)",
+      "Bash(sed:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(diff:*)",
+      "Bash(mkdir:*)",
+      "Bash(touch:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(chmod:*)",
+      "Bash(printf:*)",
+      "Bash(echo:*)",
+
       "Bash(hyperfine:*)",
-      "Bash(yq:*)"
+      "Bash(yq:*)",
+      "Bash(say:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
       "Bash(git reset --hard:*)",
-      "Bash(rm -rf /:*)"
+      "Bash(git rebase:*)",
+      "Bash(rm -rf /:*)",
+      "Bash(rm -rf ~/:*)",
+      "Bash(rm -rf $HOME:*)",
+      "Bash(rm -rf .git:*)"
     ]
   },
   "env": {
     "ZIG_LOCAL_CACHE_DIR": ".zig-cache"
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f $CLAUDE_PROJECT_DIR/.dev/handover.md && printf '\\n=== .dev/handover.md ===\\n' && cat $CLAUDE_PROJECT_DIR/.dev/handover.md && printf '\\n=== git log -3 ===\\n' && git -C $CLAUDE_PROJECT_DIR log -3 --decorate --oneline || true"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",

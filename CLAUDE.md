@@ -58,11 +58,19 @@ These hold the canonical procedures; CLAUDE.md only points to them.
 - **`code-learning-doc`** — when to write `docs/ja/NNNN-*.md`, the
   template, and the gate's two rules. Single source of truth for
   commit pairing.
-- **`continue`** — resume procedure for a new session ("続けて" /
-  "/continue"). Includes the per-task TDD loop.
-- **`audit-scaffolding`** — periodic audit of CLAUDE.md, .dev/,
-  .claude/, docs/, scripts/ for staleness, bloat, lies, false
-  positives. Runs at every Phase boundary or on user request.
+- **`continue`** — resume procedure + per-task TDD loop + Phase-boundary
+  review chain. Auto-triggers on "続けて" / "/continue" / "resume".
+  Drives the loop autonomously between user checkpoints (initial "go",
+  Phase-close report, push approval).
+- **`audit-scaffolding`** — periodic audit (CLAUDE.md, .dev/, .claude/,
+  docs/, scripts/) for staleness, bloat, lies, false positives.
+  Auto-invoked by `continue` at every Phase boundary; can also be run
+  on demand.
+
+The Phase-boundary review chain (auto-run by `continue` when a Phase
+closes) also invokes the built-in `simplify` and `security-review`
+skills on the Phase's diff — no manual `/simplify` / `/security-review`
+per commit needed.
 
 ## Layout
 
