@@ -24,6 +24,7 @@ const err = @import("../../runtime/error.zig");
 const PersistentList = value_mod.PersistentList;
 const bootstrap = @import("../../engine/bootstrap.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
+const io_default = @import("../../runtime/io_default.zig");
 
 // ============================================================
 // Output capture for testing
@@ -42,8 +43,7 @@ pub fn writeOutput(data: []const u8) void {
     if (capture_buf) |buf| {
         buf.appendSlice(capture_alloc.?, data) catch {};
     } else {
-        const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-        _ = stdout.writeAll(data) catch {};
+        std.Io.File.stdout().writeStreamingAll(io_default.get(), data) catch {};
     }
 }
 
@@ -367,11 +367,9 @@ pub fn slurpFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "slurp expects a string filename, got {s}", .{@tagName(args[0].tag())}),
     };
 
-    const cwd = std.fs.cwd();
-    const file = cwd.openFile(path, .{}) catch return error.FileNotFound;
-    defer file.close();
-
-    const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch return error.IOError;
+    const io = io_default.get();
+    const content = std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(10 * 1024 * 1024)) catch
+        return error.FileNotFound;
     return Value.initString(allocator, content);
 }
 
@@ -413,22 +411,22 @@ pub fn spitFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
-    const cwd = std.fs.cwd();
+    const io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
     if (append) {
-        const file = cwd.openFile(path, .{ .mode = .write_only }) catch {
-            // File doesn't exist, create it
-            const new_file = cwd.createFile(path, .{}) catch return error.IOError;
-            defer new_file.close();
-            new_file.writeAll(content) catch return error.IOError;
-            return Value.nil_val;
-        };
-        defer file.close();
-        file.seekFromEnd(0) catch return error.IOError;
-        file.writeAll(content) catch return error.IOError;
+        // Read existing content if any, then rewrite atomically
+        const existing = cwd.readFileAlloc(io, path, allocator, .unlimited) catch null;
+        defer if (existing) |e| allocator.free(e);
+        const file = cwd.createFile(io, path, .{}) catch return error.IOError;
+        defer file.close(io);
+        if (existing) |e| {
+            file.writeStreamingAll(io, e) catch return error.IOError;
+        }
+        file.writeStreamingAll(io, content) catch return error.IOError;
     } else {
-        const file = cwd.createFile(path, .{}) catch return error.IOError;
-        defer file.close();
-        file.writeAll(content) catch return error.IOError;
+        const file = cwd.createFile(io, path, .{}) catch return error.IOError;
+        defer file.close(io);
+        file.writeStreamingAll(io, content) catch return error.IOError;
     }
 
     return Value.nil_val;
@@ -445,13 +443,15 @@ pub fn readLineFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return maybe_val orelse Value.nil_val;
     }
 
-    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
+    const stdin = std.Io.File.stdin();
+    const io = io_default.get();
     var buf: [8192]u8 = undefined;
     var pos: usize = 0;
 
     while (pos < buf.len) {
         var byte: [1]u8 = undefined;
-        const n = stdin.read(&byte) catch return Value.nil_val;
+        const buffers = [_][]u8{&byte};
+        const n = stdin.readStreaming(io, &buffers) catch return Value.nil_val;
         if (n == 0) {
             // EOF
             if (pos > 0) break;
@@ -485,12 +485,8 @@ pub fn loadFileFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 
     // Read file content
-    const cwd = std.fs.cwd();
-    const file = cwd.openFile(path, .{}) catch
-        return err.setErrorFmt(.eval, .io_error, .{}, "Could not open file: {s}", .{path});
-    defer file.close();
-
-    const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch
+    const io = io_default.get();
+    const content = std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(10 * 1024 * 1024)) catch
         return err.setErrorFmt(.eval, .io_error, .{}, "Could not read file: {s}", .{path});
 
     // Evaluate all forms using bootstrap pipeline
@@ -514,11 +510,9 @@ pub fn lineSeqFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "line-seq expects a string filename, got {s}", .{@tagName(args[0].tag())}),
     };
 
-    const cwd = std.fs.cwd();
-    const file = cwd.openFile(path, .{}) catch return error.FileNotFound;
-    defer file.close();
-
-    const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch return error.IOError;
+    const io = io_default.get();
+    const content = std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(10 * 1024 * 1024)) catch
+        return error.FileNotFound;
     if (content.len == 0) return Value.nil_val;
 
     // Split by newlines
@@ -641,10 +635,11 @@ pub fn deleteFileFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     const silently = if (args.len > 1) args[1].isTruthy() else false;
 
-    const cwd = std.fs.cwd();
-    cwd.deleteFile(path) catch |e| {
+    const io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
+    cwd.deleteFile(io, path) catch |e| {
         // Try as directory
-        cwd.deleteDir(path) catch {
+        cwd.deleteDir(io, path) catch {
             if (!silently) {
                 return err.setErrorFmt(.eval, .io_error, .{}, "Could not delete file: {s} ({s})", .{ path, @errorName(e) });
             }
@@ -682,8 +677,8 @@ pub fn makeParentsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Get parent directory
     const parent = std.fs.path.dirname(path) orelse return Value.initBoolean(false);
 
-    const cwd = std.fs.cwd();
-    cwd.makePath(parent) catch |e| {
+    const io = io_default.get();
+    std.Io.Dir.cwd().createDirPath(io, parent) catch |e| {
         return err.setErrorFmt(.eval, .io_error, .{}, "Could not create parent directories: {s} ({s})", .{ parent, @errorName(e) });
     };
 
@@ -735,20 +730,21 @@ pub fn copyFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "copy expects string paths, got {s}", .{@tagName(args[1].tag())}),
     };
 
-    const cwd = std.fs.cwd();
+    const io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
 
     // Read source file
-    const content = cwd.readFileAlloc(allocator, src_path, 100 * 1024 * 1024) catch |e| {
+    const content = cwd.readFileAlloc(io, src_path, allocator, .limited(100 * 1024 * 1024)) catch |e| {
         return err.setErrorFmt(.eval, .io_error, .{}, "copy: could not read {s} ({s})", .{ src_path, @errorName(e) });
     };
 
     // Write to destination
-    const dst_file = cwd.createFile(dst_path, .{}) catch |e| {
+    const dst_file = cwd.createFile(io, dst_path, .{}) catch |e| {
         return err.setErrorFmt(.eval, .io_error, .{}, "copy: could not create {s} ({s})", .{ dst_path, @errorName(e) });
     };
-    defer dst_file.close();
+    defer dst_file.close(io);
 
-    dst_file.writeAll(content) catch |e| {
+    dst_file.writeStreamingAll(io, content) catch |e| {
         return err.setErrorFmt(.eval, .io_error, .{}, "copy: could not write to {s} ({s})", .{ dst_path, @errorName(e) });
     };
 
@@ -768,8 +764,8 @@ pub fn resourceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 
     // Check if file exists relative to cwd
-    const cwd = std.fs.cwd();
-    const stat = cwd.statFile(name) catch return Value.nil_val;
+    const io = io_default.get();
+    const stat = std.Io.Dir.cwd().statFile(io, name, .{}) catch return Value.nil_val;
     _ = stat;
 
     return args[0];
@@ -1039,11 +1035,12 @@ test "slurp - read existing file" {
     defer arena.deinit();
     const alloc = arena.allocator();
     // Create a temp file
-    const cwd = std.fs.cwd();
+    const test_io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
     const tmp_path = "/tmp/cljw_test_slurp.txt";
-    const file = try cwd.createFile(tmp_path, .{});
-    defer file.close();
-    try file.writeAll("hello world");
+    const file = try cwd.createFile(test_io, tmp_path, .{});
+    defer file.close(test_io);
+    try file.writeStreamingAll(test_io,"hello world");
 
     const args = [_]Value{Value.initString(alloc, tmp_path)};
     const result = try slurpFn(alloc, &args);
@@ -1083,10 +1080,9 @@ test "spit - write new file" {
     try testing.expect(result.isNil());
 
     // Verify content
-    const cwd = std.fs.cwd();
-    const file = try cwd.openFile(tmp_path, .{});
-    defer file.close();
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    const test_io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
+    const content = try cwd.readFileAlloc(test_io, tmp_path, testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
     try testing.expectEqualStrings("hello spit", content);
 }
@@ -1109,10 +1105,9 @@ test "spit - overwrite existing file" {
     };
     _ = try spitFn(alloc, &args2);
 
-    const cwd = std.fs.cwd();
-    const file = try cwd.openFile(tmp_path, .{});
-    defer file.close();
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    const test_io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
+    const content = try cwd.readFileAlloc(test_io, tmp_path, testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
     try testing.expectEqualStrings("second", content);
 }
@@ -1137,10 +1132,9 @@ test "spit - append mode" {
     };
     _ = try spitFn(alloc, &args2);
 
-    const cwd = std.fs.cwd();
-    const file = try cwd.openFile(tmp_path, .{});
-    defer file.close();
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    const test_io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
+    const content = try cwd.readFileAlloc(test_io, tmp_path, testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
     try testing.expectEqualStrings("hello world", content);
 }
@@ -1166,11 +1160,12 @@ test "line-seq - read file as list of lines" {
     const alloc = arena.allocator();
 
     // Create a temp file with multiple lines
-    const cwd = std.fs.cwd();
+    const test_io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
     const tmp_path = "/tmp/cljw_test_line_seq.txt";
-    const file = try cwd.createFile(tmp_path, .{});
-    try file.writeAll("line1\nline2\nline3\n");
-    file.close();
+    const file = try cwd.createFile(test_io, tmp_path, .{});
+    try file.writeStreamingAll(test_io,"line1\nline2\nline3\n");
+    file.close(test_io);
 
     const args = [_]Value{Value.initString(alloc, tmp_path)};
     const result = try lineSeqFn(alloc, &args);
@@ -1189,11 +1184,12 @@ test "line-seq - no trailing newline" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const cwd = std.fs.cwd();
+    const test_io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
     const tmp_path = "/tmp/cljw_test_line_seq2.txt";
-    const file = try cwd.createFile(tmp_path, .{});
-    try file.writeAll("line1\nline2");
-    file.close();
+    const file = try cwd.createFile(test_io, tmp_path, .{});
+    try file.writeStreamingAll(test_io,"line1\nline2");
+    file.close(test_io);
 
     const args = [_]Value{Value.initString(alloc, tmp_path)};
     const result = try lineSeqFn(alloc, &args);
@@ -1209,10 +1205,11 @@ test "line-seq - empty file" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const cwd = std.fs.cwd();
+    const test_io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
     const tmp_path = "/tmp/cljw_test_line_seq3.txt";
     const file = try cwd.createFile(tmp_path, .{});
-    file.close();
+    file.close(test_io);
 
     const args = [_]Value{Value.initString(alloc, tmp_path)};
     const result = try lineSeqFn(alloc, &args);
@@ -1285,12 +1282,13 @@ test "make-parents and delete-file" {
     try testing.expect(mk_result.isTruthy());
 
     // Verify parent dir exists
-    const cwd = std.fs.cwd();
-    const stat = try cwd.statFile("/tmp/cljw_test_mkp/sub");
+    const test_io = io_default.get();
+    const cwd = std.Io.Dir.cwd();
+    const stat = try cwd.statFile(test_io, "/tmp/cljw_test_mkp/sub", .{});
     try testing.expect(stat.kind == .directory);
 
     // Clean up
-    try cwd.deleteDir("/tmp/cljw_test_mkp/sub");
-    try cwd.deleteDir("/tmp/cljw_test_mkp");
+    try cwd.deleteDir(test_io, "/tmp/cljw_test_mkp/sub");
+    try cwd.deleteDir(test_io, "/tmp/cljw_test_mkp");
 }
 
