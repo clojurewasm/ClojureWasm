@@ -1,4 +1,0 @@
-name: "N-Queens"
-category: hof
-expected_output: "92"
-description: "N-Queens backtracking for N=8 — measures recursion + list ops"

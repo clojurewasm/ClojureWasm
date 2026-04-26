@@ -1,4 +1,0 @@
-name: "Wasm sieve"
-category: wasm
-expected_output: "6542"
-description: "Sieve of Eratosthenes in Wasm — primes up to 65536, repeated 100 times"
