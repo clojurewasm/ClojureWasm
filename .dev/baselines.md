@@ -1,34 +1,31 @@
 # Non-Functional Baselines
 
-Measured on: 2026-02-25 (v0.4.0 + GPA leak fix + JIT register fix)
-Platform: macOS ARM64 (Apple M4 Pro), Zig 0.15.2
+Measured on: 2026-04-27 (Zig 0.16.0 migration complete; HTTP / nREPL / line
+editor / `cljw build` runtime stubs remain — see Phase 7 follow-ups in
+.dev/checklist.md F##).
+Platform: macOS ARM64 (Apple M4 Pro), Zig 0.16.0
 Binary: ReleaseSafe
 
 ## Profiles
 
 | Profile | Binary | Startup | RSS | Notes |
 |---------|--------|---------|-----|-------|
-| wasm=true (default) | 4.76MB | 4.5ms | 7.9MB | Full feature set |
+| wasm=true (default) | 4.12MB | 4.1ms | 8.2MB | Full feature set, libc linked |
 | wasm=false | (not measured) | — | — | No zwasm dependency |
 
 ## Thresholds
 
-All-Zig migration complete (Phases A-F, C.1). Binary size threshold RESTORED.
-Binary grew ~0.5MB due to embedded Clojure multiline strings (pprint, spec.alpha).
-Phase E optimization target: reduce back toward 4.3MB.
-
-> **Migration note (Zig 0.15.2 → 0.16.0)**: binary size ceiling temporarily
-> raised to 5.5 MB while the migration is in progress. Zwasm v1.10.0+ adds
-> `link_libc = true` for stdlib symbols removed from `std.posix`, costing
-> ~290 KB on Linux (~150 KB on macOS). Final ceiling will be reset in Phase 7
-> after measuring the post-migration binary, with a follow-up task to strip
-> libc back out (cf. zwasm W46).
+Post-migration baselines (matched against pre-zig-016 history.yaml entry —
+no benchmark regressed beyond noise; lazy_chain actually improved).
+Binary is currently smaller than 0.15.2 because http_server / nrepl / the
+fancy line editor / `cljw build` were stubbed during the migration; restoring
+them under std.Io.net will likely add several hundred KB back.
 
 | Metric              | Baseline   | Threshold  | Margin | How to measure                              |
 |---------------------|------------|------------|--------|---------------------------------------------|
-| Binary size         | 4.76 MB    | 5.5 MB     | +15%   | `ls -la zig-out/bin/cljw` (after ReleaseSafe build) — temporarily relaxed for Zig 0.16 migration |
-| Startup time        | 4.5 ms     | 6.0 ms     | 1.3x   | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
-| RSS (light)         | 7.9 MB     | 10 MB      | +27%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
+| Binary size         | 4.12 MB    | 5.5 MB     | +33%   | `ls -la zig-out/bin/cljw` (after ReleaseSafe build) — slack for stub-restoration + libc |
+| Startup time        | 4.1 ms     | 6.0 ms     | 1.5x   | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
+| RSS (light)         | 8.2 MB     | 10 MB      | +22%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
 | Benchmark (any)     | see below  | 1.2x       | +20%   | Per-benchmark: `bash bench/run_bench.sh --bench=NAME --runs=10 --warmup=5` |
 
 ## `cljw build` Artifact Baselines (2026-02-20)

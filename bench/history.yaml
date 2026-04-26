@@ -1120,3 +1120,30 @@ entries:
       string_ops: {time_ms: 27, mem_mb: 18.3}
       multimethod_dispatch: {time_ms: 6, mem_mb: 8.2}
       real_workload: {time_ms: 12, mem_mb: 12.2}
+  - id: "post-zig-016"
+    date: "2026-04-27"
+    reason: "After Zig 0.16.0 migration (network/build/repl stubbed)"
+    commit: "e58850c"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 17, mem_mb: 8.5}
+      fib_loop: {time_ms: 4, mem_mb: 8.5}
+      tak: {time_ms: 7, mem_mb: 8.5}
+      arith_loop: {time_ms: 4, mem_mb: 8.6}
+      map_filter_reduce: {time_ms: 7, mem_mb: 9.7}
+      vector_ops: {time_ms: 7, mem_mb: 9.8}
+      map_ops: {time_ms: 5, mem_mb: 9.8}
+      list_build: {time_ms: 5, mem_mb: 9.3}
+      sieve: {time_ms: 5, mem_mb: 8.9}
+      nqueens: {time_ms: 15, mem_mb: 8.6}
+      atom_swap: {time_ms: 6, mem_mb: 9.1}
+      gc_stress: {time_ms: 32, mem_mb: 11.3}
+      lazy_chain: {time_ms: 7, mem_mb: 8.6}
+      transduce: {time_ms: 6, mem_mb: 8.7}
+      keyword_lookup: {time_ms: 12, mem_mb: 8.5}
+      protocol_dispatch: {time_ms: 5, mem_mb: 8.5}
+      nested_update: {time_ms: 11, mem_mb: 13.6}
+      string_ops: {time_ms: 28, mem_mb: 21.5}
+      multimethod_dispatch: {time_ms: 5, mem_mb: 8.5}
+      real_workload: {time_ms: 12, mem_mb: 14.6}

@@ -53,9 +53,10 @@ orb run -m my-ubuntu-amd64 bash -lc "cd ~/ClojureWasm && bash bench/run_bench.sh
 
 **`zig build test` crashes without `--seed 0` on Rosetta x86_64 emulation.**
 
-Root cause: Zig 0.15.2 build runner's `shuffleWithIndex` (Random.zig:375) produces
-an index out of bounds under Rosetta's Random implementation. The `--seed 0` flag
-disables test shuffling, avoiding the crash entirely.
+Root cause: Zig's build runner's `shuffleWithIndex` produces an index out of bounds
+under Rosetta's Random implementation. Originally seen on Zig 0.15.2; needs
+re-verification on Zig 0.16.0 — line numbers in std/Random.zig may have shifted.
+The `--seed 0` flag disables test shuffling, avoiding the crash entirely.
 
 This is 100% reproducible without the flag and 100% fixed with it.
 

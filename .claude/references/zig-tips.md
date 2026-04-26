@@ -1,4 +1,4 @@
-# Zig 0.15.2 Tips & Pitfalls
+# Zig 0.16.0 Tips & Pitfalls
 
 Common mistakes and workarounds discovered during development.
 
@@ -23,7 +23,7 @@ try list.append(allocator, 42);        // allocator passed per call
 
 ```zig
 var buf: [4096]u8 = undefined;
-var writer = std.fs.File.stdout().writer(&buf);
+var writer = std.Io.File.stdout().writer(io_default.get(), &buf);
 const stdout = &writer.interface;
 // ... write ...
 try stdout.flush();  // don't forget
@@ -31,7 +31,7 @@ try stdout.flush();  // don't forget
 
 ## Use std.Io.Writer (type-erased) instead of anytype for writers
 
-In 0.15.2, `std.Io.Writer` is the new type-erased writer.
+In 0.16.0, `std.Io.Writer` is the new type-erased writer.
 `GenericWriter` and `fixedBufferStream` are deprecated.
 
 Prefer `*std.Io.Writer` over `anytype` for writer parameters.

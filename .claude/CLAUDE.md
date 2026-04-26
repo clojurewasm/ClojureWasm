@@ -1,6 +1,6 @@
 # ClojureWasm
 
-Full-scratch Clojure implementation in Zig 0.15.2. Behavioral compatibility target.
+Full-scratch Clojure implementation in Zig 0.16.0. Behavioral compatibility target.
 Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. Memo: `.dev/memo.md`.
 
 ## Language Policy
@@ -287,10 +287,10 @@ Notes: `"JVM interop"`, `"builtin (upstream is pure clj)"`, `"stub"`, `"UPSTREAM
 See `.claude/rules/java-interop.md` (auto-loads on .clj/analyzer/builtin edits).
 Do NOT skip features that look JVM-specific — try Zig equivalents first.
 
-## Zig 0.15.2 Pitfalls
+## Zig 0.16.0 Pitfalls
 
 Check `.claude/references/zig-tips.md` first, then Zig stdlib at
-`/opt/homebrew/Cellar/zig/0.15.2/lib` or Beta's `docs/reference/zig_guide.md`.
+`/opt/homebrew/Cellar/zig/0.16.0/lib` or Beta's `docs/reference/zig_guide.md`.
 
 ## References
 

@@ -32,3 +32,15 @@ Target Phase references: see `.dev/roadmap.md` Phase Tracker + Open Checklist It
 | F104 | Profile-guided optimization (extend IC)     | 89     | Extend inline caching beyond monomorphic                                 |
 | F105 | JIT compilation (expand beyond ARM64 PoC)   | 90     | ARM64 hot-loop JIT done (Phase 37.4, D87). Future: x86_64 port, expand beyond integer loops. |
 | F120 | Native SIMD optimization (CW internals)     | 89     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
+
+## Open follow-ups from the Zig 0.16.0 migration (D111)
+
+| ID   | Item                                                       | Trigger / notes                                                                |
+|------|------------------------------------------------------------|--------------------------------------------------------------------------------|
+| F140 | Restore HTTP server (`cljw.http/run-server`) on `std.Io.net` | Server / Stream / Connection were stubbed in `lang/builtins/http_server.zig` (D111). Reimplement accept loop on `std.Io.net.Server`, plumb `io` through handler dispatch, restore Ring request/response building. Original logic preserved in git history pre-`40d2f20`. |
+| F141 | Restore HTTP client (`cljw.http/get|post|put|delete`)        | `std.http.Client` now has a `.io` field (D111). Wire `io_default.get()` and unstub `doHttpRequest`.                                              |
+| F142 | Restore nREPL server                                       | Whole `src/app/repl/nrepl.zig` (~1818 lines) collapsed to a stub during D111. Needs the same `std.Io.net` + accept loop work as F140 plus `std.posix.poll` replacement; sessions / mutex use `io_default` helpers. |
+| F143 | Restore raw-mode line editor                               | `src/app/repl/line_editor.zig` not yet ported (still on `std.fs.File` + `std.io.fixedBufferStream`). `runRepl` falls through to `runReplSimple` until this is done. |
+| F144 | Restore `cljw build` self-bundling                         | `std.fs.selfExePath` + `std.fs.openFileAbsolute` were removed in 0.16. Reimplement via argv[0] + `std.c.realpath` (or `_NSGetExecutablePath` / `/proc/self/exe`) and migrate file write loop. Stub in `runner.zig handleBuildCommand`. |
+| F145 | OrbStack Ubuntu re-validation under Zig 0.16.0             | `--seed 0` workaround was discovered on 0.15.2; re-test on 0.16.0 (Random.zig line numbers may have shifted). Run full `bash test/run_all.sh` + `bash bench/run_bench.sh` on Linux ARM64 + x86_64. |
+| F146 | Strip libc back out (`link_libc = false`)                  | zwasm v1.11.0 enables libc to satisfy the `std.posix.*` removals (D111). cf. zwasm W46. Once `std.Io` and the std.c usages in CW (`getcwd`, `getenv`, `realpath`, `mprotect`, `write`) all get pure-zig equivalents, drop libc to recover the pre-migration ~290 KB on Linux. |

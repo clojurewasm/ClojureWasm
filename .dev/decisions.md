@@ -938,3 +938,49 @@ instance state). Wasm linear memory remains separately managed per spec.
 at Engine construction. Requires zwasm D128 to be implemented first.
 
 Related: zwasm D128, cw-new D13.
+
+## D111: Zig 0.15.2 → 0.16.0 Migration
+
+**Date**: 2026-04-27
+**Status**: Done
+**Decision**: Migrate the entire ClojureWasm tree from Zig 0.15.2 to 0.16.0,
+together with bumping zwasm to v1.11.0 (the first 0.16-compatible tag).
+Centralize the new `std.Io` model behind a process-wide accessor module
+`runtime/io_default.zig` so existing module-level mutexes, time helpers,
+env lookups, and sleeps don't have to thread `io` through every call site.
+
+**Why now**: Zig 0.16 reshapes `std.Io` (Mutex/Condition/sleep/Timestamp
+all take `io: Io`), removes `std.fs.cwd` (replaced by `std.Io.Dir`), removes
+`std.posix.{getenv,write,isatty}`, and changes `pub fn main()` to
+`pub fn main(init: std.process.Init)`. Staying on 0.15.2 indefinitely
+forfeits stdlib improvements and forces zwasm to maintain a parallel branch.
+
+**Approach**:
+
+- *zwasm-first vs detach-then-reattach*: chose to upgrade zwasm to v1.11.0
+  from the start (rejected the original "detach + Phase 6 reattach" plan).
+  Reason: v1.11.0 is already 0.16-ready, so keeping zwasm in saved a whole
+  reattach phase and let wasm e2e/bridge tests stay green throughout.
+- *io_default module*: production entry points (main, cache_gen) call
+  `io_default.set(init.io)` at startup, so all module-level mutexes /
+  Condition variables / nanoTimestamp / sleep / getenv pick up the real
+  cancelable io. Tests fall through to a process-wide
+  `std.Io.Threaded.init_single_threaded` default, except for the few that
+  need real spawn semantics (shell tests) which install a local Threaded.
+- *libc linkage*: zwasm v1.11.0 enables `link_libc = true` by default
+  (D135 in zwasm). CW inherits the libc-linked binary; we use std.c.getenv
+  / std.c.realpath / std.c.write / std.c.mprotect / std.c.getcwd in places
+  where stdlib equivalents were removed. Stripping libc back out is a
+  follow-up (F##; cf. zwasm's W46 sequence).
+- *temporary stubs*: HTTP server, nREPL, fancy line editor, and `cljw build`
+  rely on `std.net` / `std.posix.poll` / raw-mode termios / `std.fs.selfExePath`
+  — all gone or reshaped in 0.16. The full rewrite to `std.Io.net` + Smith
+  fuzzing is non-trivial and was scoped out of this migration. Each is
+  stubbed with a clear runtime error and tracked as a separate F## item.
+
+**Verification**: 1324/1324 unit tests, 83/83 cljw test namespaces, 6/6 wasm
+e2e, deps.edn e2e all green on macOS aarch64. Bench history records
+`pre-zig-016` and `post-zig-016` entries; no individual benchmark regressed
+beyond noise; lazy_chain actually improved.
+
+Related: zwasm D135 (Vm.io infra), Phase 7 follow-ups in `.dev/checklist.md`.

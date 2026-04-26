@@ -7,7 +7,7 @@ This document lists concrete behavioral differences.
 
 | Aspect | JVM Clojure | CW |
 |--------|-------------|-----|
-| Runtime | JVM (HotSpot) | Native (Zig 0.15.2) |
+| Runtime | JVM (HotSpot) | Native (Zig 0.16.0) |
 | Compilation | Bytecode → JIT | Custom bytecode → VM |
 | GC | JVM GC (G1/ZGC) | Mark-and-sweep |
 | Concurrency | Threads + STM | Single-threaded |

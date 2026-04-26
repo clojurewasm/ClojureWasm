@@ -2,7 +2,7 @@
 
 ![Status: Pre-Alpha](https://img.shields.io/badge/status-pre--alpha-orange)
 ![License: EPL-1.0](https://img.shields.io/badge/license-EPL--1.0-blue)
-![Zig 0.15.2](https://img.shields.io/badge/zig-0.15.2-f7a41d)
+![Zig 0.16.0](https://img.shields.io/badge/zig-0.16.0-f7a41d)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/chaploud?logo=githubsponsors&logoColor=white&color=ea4aaa)](https://github.com/sponsors/chaploud)
 
 > **Status: Pre-Alpha / Experimental**
@@ -31,7 +31,7 @@ a native implementation targeting behavioral compatibility with Clojure.
 
 ### Prerequisites
 
-- [Zig 0.15.2](https://ziglang.org/download/) (or `nix develop` for a pinned environment)
+- [Zig 0.16.0](https://ziglang.org/download/) (or `nix develop` for a pinned environment)
 
 ### Build
 

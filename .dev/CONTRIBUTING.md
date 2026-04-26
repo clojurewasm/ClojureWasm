@@ -30,7 +30,7 @@ the project direction.
 
 ### Prerequisites
 
-- [Zig 0.15.2](https://ziglang.org/download/) (exact version required)
+- [Zig 0.16.0](https://ziglang.org/download/) (exact version required)
 - macOS Apple Silicon (primary development platform)
 
 ### Build & Test
