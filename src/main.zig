@@ -16,4 +16,5 @@ test "smoke: main module loads" {
 // src/runtime/, add them here so the unified `zig build test` discovers them.
 test {
     _ = @import("runtime/value.zig");
+    _ = @import("runtime/error.zig");
 }
