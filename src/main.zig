@@ -89,6 +89,9 @@ test {
     _ = @import("runtime/collection/list.zig");
     _ = @import("runtime/hash.zig");
     _ = @import("runtime/keyword.zig");
+    _ = @import("runtime/runtime.zig");
+    _ = @import("runtime/dispatch.zig");
+    _ = @import("runtime/env.zig");
     _ = @import("eval/form.zig");
     _ = @import("eval/tokenizer.zig");
     _ = @import("eval/reader.zig");
