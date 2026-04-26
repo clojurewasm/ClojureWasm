@@ -1,5 +1,6 @@
 ---
-commit: 83a4f1b
+commits:
+  - 83a4f1b
 date: 2026-04-27
 scope:
   - .dev/handover.md (deleted)

@@ -8,6 +8,8 @@ Project-level design and operational metadata. Tracked in git. English.
   architecture, phase plan, success criteria, and quality-gate timeline.
   Single source of truth. If anything elsewhere disagrees with this file,
   this file wins.
+- [`handover.md`](./handover.md) — short, mutable, current session state.
+  Read at session start, updated 1–2 lines at session end.
 - [`decisions/`](./decisions/) — Architectural Decision Records.
   - `README.md` — convention.
   - `0000-template.md` — copy this when adding a new ADR.
@@ -18,8 +20,6 @@ Project-level design and operational metadata. Tracked in git. English.
 Empty files rot. Create them when they have real content, using the
 templates in **ROADMAP §15.2**:
 
-- `handover.md` — session-state memo, when mid-task pickup needs more than
-  `git log` + ROADMAP to convey.
 - `known_issues.md` — long-lived debt log, when the first P0–P3 item appears.
 - `compat_tiers.yaml` — per-namespace Clojure tier table, when the first
   `src/lang/clj/<ns>.clj` lands (≈ Phase 10).

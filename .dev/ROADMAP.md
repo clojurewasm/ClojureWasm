@@ -11,7 +11,9 @@
 > that contradicts it must go through an ADR (`.dev/decisions/`); ad-hoc
 > deviations are not allowed.
 >
-> Revisions are appended to §17.
+> History lives in git — see `git log -- .dev/ROADMAP.md` for diffs,
+> `docs/ja/NNNN-*.md` for the story behind each change, and
+> `.dev/decisions/` for load-bearing decisions.
 
 ---
 
@@ -33,7 +35,6 @@
 14. [Future go/no-go decision points](#14-future-gono-go-decision-points)
 15. [References](#15-references)
 16. [Glossary](#16-glossary)
-17. [Revision history](#17-revision-history)
 
 ---
 
@@ -670,6 +671,44 @@ Phase 14 = first publishable v0.1.0. **Minimum line for a Conj talk.**
 - Phase 17-19 (super_instruction + module + advanced Wasm): v0.3.0
 - Phase 20 (JIT): v0.4.0 or skipped
 
+### 9.3 Phase 1 — task list (expanded; this is the active phase)
+
+> Convention: each `[ ]` becomes one or more source commits, eventually
+> followed by a `docs/ja/NNNN-<slug>.md`. Mark complete with `[x]` when
+> the doc commit lands. Commit SHAs are listed alongside for traceability.
+>
+> When Phase 2 starts, expand it inline below in §9.4 and apply the same
+> convention. Do not pre-expand future phases.
+
+**Goal**: Read Clojure source text, produce a Form AST. NaN-boxed Value
+type, error infrastructure with `SourceLocation`, and an Arena GC are all
+in place from day 1.
+
+**Exit criterion**: `cljw -e "(+ 1 2)"` reads, parses, prints back as `(+ 1 2)`.
+
+| Task | Description                                                                | Status     |
+|------|----------------------------------------------------------------------------|------------|
+| 1.0  | Build skeleton + flake.nix + main.zig prints "ClojureWasm"                 | [x] (`116b874`) |
+| 1.1  | `src/runtime/value.zig` — NaN boxing Value type, HeapTag (32 slots), HeapHeader | [ ] |
+| 1.2  | `src/runtime/error.zig` — SourceLocation, BuiltinFn signature, expect* / checkArity helpers, threadlocal last_error / call_stack | [ ] |
+| 1.3  | `src/runtime/gc/arena.zig` — Arena GC interface, suppress_count, --gc-stress prep | [ ] |
+| 1.4  | `src/runtime/collection/list.zig` — PersistentList (cons cell only)        | [ ] |
+| 1.5  | `src/runtime/hash.zig` — Murmur3 (Clojure-compatible hash values)          | [ ] |
+| 1.6  | `src/runtime/keyword.zig` — Keyword interning (single-thread Phase-1 stub; rt-aware in Phase 2.0) | [ ] |
+| 1.7  | `src/eval/form.zig` — Form tagged union with SourceLocation                | [ ] |
+| 1.8  | `src/eval/tokenizer.zig` — Lexer (text → token stream); SourceLocation per token | [ ] |
+| 1.9  | `src/eval/reader.zig` — Parser (token stream → Form); Phase-1 reader scope (no syntax-quote yet) | [ ] |
+| 1.10 | `src/main.zig` — minimal CLI with `-e` flag; reads + prints (no eval yet)   | [ ] |
+| 1.11 | `bench/quick.sh` — 5–6 microbenchmarks (fib, arith_loop, list_build, etc.); first sample run recorded | [ ] |
+| 1.12 | 🔒 x86_64 Gate — OrbStack Ubuntu x86_64; `zig build test` green             | [ ] |
+
+After 1.12 is checked, the Phase Tracker (§9 table top) flips Phase 1
+from PENDING to DONE and Phase 2 IN-PROGRESS; expand Phase 2 in §9.4.
+
+### 9.4 Phase 2 — task list (expanded when Phase 1 closes)
+
+(empty until Phase 1 closes; will be expanded then)
+
 ---
 
 ## 10. Performance and benchmarks
@@ -781,18 +820,22 @@ when activating; do not leave the table out of sync with reality.
 
 ## 12. Commit discipline and work loop
 
-### 12.1 One task = one commit
+### 12.1 Commit at the natural granularity of code changes
 
+- One source commit per logical step — red, green, refactor each get their
+  own commit if that maps to the work.
 - Structural changes (rename / move / split) and behavioural changes go in
   separate commits.
 - Never commit when tests are red.
 - Never bypass the pre-commit hook with `--no-verify` — fix the issue.
 
-### 12.2 Commit pairing: source commit → doc commit
+### 12.2 Commit pairing: source commits → one doc commit
 
-Every source-bearing commit is **immediately followed** by a separate
-commit that adds the paired `docs/ja/NNNN-<slug>.md`. The pair is the
-atomic unit of progress.
+Source-bearing commits accumulate freely. When a unit of work is ready to
+be told as one story, write `docs/ja/NNNN-<slug>.md` in a **separate**
+commit. The doc's `commits:` front-matter list cites every source SHA it
+covers. The doc commit lands AFTER the source commits, so every cited SHA
+is already known — no "TBD then patch" cycle.
 
 "Source-bearing" means staging any of:
 
@@ -802,20 +845,21 @@ atomic unit of progress.
   `0000-template.md` under `.dev/decisions/` are excluded)
 
 ```
-commit N      feat(scope): ...        # source only
-commit N+1    docs(ja): NNNN — ...    # docs/ja/NNNN-*.md only
+commit N      feat(scope): step 1            # source only
+commit N+1    refactor(scope): step 2        # source only
+commit N+2    fix(scope): step 3             # source only
+commit N+3    docs(ja): NNNN — title         # commits: [N, N+1, N+2]
 ```
-
-Writing the doc as the *next* commit lets its `commit:` front-matter field
-reference the source commit's actual SHA — no "TBD then patch" cycle.
 
 - **Skill / template**: `.claude/skills/code-learning-doc/SKILL.md`
 - **Gate**: `scripts/check_learning_doc.sh` (Claude Code PreToolUse hook on `Bash`)
-  - Rule 1: a doc commit must not contain source.
-  - Rule 2: a commit following an unpaired source commit must be the doc.
+  - **Rule 1**: a doc commit must not contain source-bearing files.
+  - **Rule 2**: a doc commit's `commits:` list must cover every
+    source-bearing commit since the previous doc commit. (Extra SHAs in
+    the doc are allowed — voluntary documentation.)
 
-The doc is Japanese, captures a code snapshot at that commit, the why, and
-takeaways — material for a future technical book and talks.
+The doc is Japanese, captures the code snapshot at the moment, the why,
+and takeaways — material for a future technical book and talks.
 
 ### 12.3 Message format
 
@@ -828,27 +872,30 @@ takeaways — material for a future technical book and talks.
 `<type>`: `feat | fix | refactor | docs | chore | test | bench`
 `<scope>`: `runtime | eval | lang | app | build | tests | bench | dev`
 
-Example:
+Doc commits use:
 
 ```
-feat(eval): add tree_walk evaluator for Phase 2
-
-Direct AST evaluation via Node tagged-union dispatch. Special forms
-(def, if, do, fn*, let*, loop*, recur) handled inline; function calls
-go through rt.vtable.callFn.
+docs(ja): NNNN — <title> (#<first-sha>..<last-sha>)
 ```
 
 ### 12.4 Iteration loop
 
-For every task:
+For every unit of work:
 
-1. **Orient**: read `.dev/handover.md`. Confirm phase in `.dev/ROADMAP.md`.
-2. **Plan**: pick the next task. Update the handover note.
-3. **Execute (TDD)**: red → green → refactor. `bash test/run_all.sh` must be green.
-4. **Document**: write `docs/ja/NNNN-<slug>.md` (mandatory for source-touching commits, see §12.2).
-5. **Commit**: one task, one commit. Update handover and any ADR.
-6. **Push (after approval)**: pushing to the long-lived `cw-from-scratch`
-   branch requires explicit user approval.
+1. **Orient**: read `.dev/handover.md`. Confirm phase + next task in
+   `.dev/ROADMAP.md` §9.3 (or §9.<N>).
+2. **TDD steps**: red → green → refactor. Each natural step is its own
+   source commit. `bash test/run_all.sh` must be green at every commit.
+3. **Doc commit**: when the unit of work is told-able, write
+   `docs/ja/NNNN-<slug>.md` with `commits: [...]` covering every source
+   SHA since the previous doc, then commit it alone.
+4. **Update handover**: 1–2 lines in `.dev/handover.md` (next task,
+   blocker if any).
+5. **Push (after explicit approval)**: pushing to the long-lived
+   `cw-from-scratch` branch always requires the user's confirmation.
+
+The `/continue` slash command (`.claude/commands/continue.md`) wraps
+step 1 + a brief summary so a new session can pick up cleanly.
 
 ---
 
@@ -869,7 +916,8 @@ If `.claude/CLAUDE.md` and this file conflict, this file wins.
 - ❌ Letting any single file drift past 1,000 lines indefinitely
 - ❌ Running with only one backend after Phase 8
 - ❌ Pushing to remote without user approval
-- ❌ Committing source changes without the corresponding `docs/ja/NNNN-*.md` (§12.2)
+- ❌ Writing a doc commit that omits any unpaired source SHA from `commits:` (§12.2 Rule 2)
+- ❌ Mixing source and a `docs/ja/NNNN-*.md` in the same commit (§12.2 Rule 1)
 
 ---
 
@@ -1025,15 +1073,13 @@ Project-specific:
 | **Bootstrap stage** | How far core.clj is evaluated by TreeWalk before the VM takes over (Stage 0–6). |
 | **x86_64 Gate**     | A phase-completion gate: `zig build test` on OrbStack Ubuntu x86_64.       |
 | **Juicy Main**      | `pub fn main(init: std.process.Init)` (a Zig 0.16 idiom).                 |
-| **Learning doc**    | `docs/ja/NNNN-<slug>.md`, the Japanese commit snapshot required by §12.2. |
+| **Learning doc**    | `docs/ja/NNNN-<slug>.md`, the Japanese learning narrative required by §12.2. |
 
 ---
 
-## 17. Revision history
-
-| Date       | Change                                                                                           |
-|------------|--------------------------------------------------------------------------------------------------|
-| 2026-04-27 | Initial version. Synthesised from ClojureWasm v1, prior redesign attempt, Clojure, Babashka, Wasm 2026, mattpocock's vocabulary, and the strategic review. |
-| 2026-04-27 | Translated to English. Added §12.2 (commit-snapshot learning doc gate) and added `docs/ja/` to §5 / §15. |
-| 2026-04-27 | Audit pass: added §11.6 (Quality gate timeline, active + future). Added `.claude/rules/`, `.dev/{decisions,compat_tiers.yaml,handover.md,known_issues.md,concurrency_design.md,wasm_strategy.md}`, `scripts/zone_check.sh`, `test/run_all.sh` to §5 / §15. Removed `.editorconfig` (Emacs handles formatting; format gate listed as #4 in §11.6 pending). |
-| 2026-04-27 | Self-review + simplification: removed 7 high-rot-risk files (`.dev/handover.md`, `.dev/known_issues.md`, `.dev/compat_tiers.yaml`, `.dev/concurrency_design.md`, `.dev/wasm_strategy.md`, `.claude/rules/compat_tiers.md`, `docs/README.md`) and listed them in new §15.2 "create on demand". Reworked §12.2 / gate (#1) to "source commit → doc commit pairing": doc is the next commit, not the same commit; gate enforces both rules; SHA in doc front matter is the actual previous-commit SHA, no TBD/patch cycle. Patched 0001/0002 SHAs accordingly. |
+> **Note on history**: this document is a "now" snapshot, not a changelog.
+> What changed and why lives in `git log -- .dev/ROADMAP.md` (mechanical
+> diff), the corresponding `docs/ja/NNNN-<slug>.md` learning docs (the
+> story behind the change), and `.dev/decisions/NNNN-<slug>.md` ADRs
+> (load-bearing rationale). Keeping a §17 revision history here was found
+> to be redundant and to drift; it has been removed deliberately.

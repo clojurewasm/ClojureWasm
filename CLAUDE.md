@@ -44,7 +44,7 @@ This project is public.
 - **English by default**: code, comments, identifiers, commit messages,
   README, ROADMAP, ADRs, `.dev/`, `.claude/`, all configuration.
 - **Japanese**: chat replies (between user and Claude) and **commit-snapshot
-  learning docs under `docs/ja/`** (see workflow below).
+  learning docs under `docs/ja/`**.
 
 When updating any English doc, do **not** mix Japanese into it. When writing
 a `docs/ja/NNNN-*.md`, body is Japanese; code blocks keep their original
@@ -53,31 +53,76 @@ English identifiers.
 ## Working agreement
 
 - All code, comments, and commit messages in English.
-- One task = one commit. Never bundle unrelated changes.
 - TDD: red → green → refactor.
-- Run `zig build test` before every commit. Do not bypass hooks.
+- Run `bash test/run_all.sh` (or `zig build test`) before every commit.
+  Do not bypass the hook.
+- Commit at the natural granularity of code changes; do **not** inflate a
+  single commit to also carry the narrative — that's what the doc commit
+  is for (see "Commit pairing" below).
 
-### Commit pairing: source commit → doc commit
+### Commit pairing: source commits → doc commit
 
-Every source-bearing commit (`src/**/*.zig`, `build.zig`, `build.zig.zon`,
-or `.dev/decisions/NNNN-<slug>.md` — `README.md` and `0000-template.md`
-under `.dev/decisions/` are excluded) is **immediately followed** by a
-separate commit that adds the paired `docs/ja/NNNN-<slug>.md` (Japanese,
-sequenced). The pair forms the unit of progress.
+Source-bearing commits (`src/**/*.zig`, `build.zig`, `build.zig.zon`,
+`.dev/decisions/NNNN-<slug>.md` — `README.md` and `0000-template.md`
+under `.dev/decisions/` are excluded) accumulate freely. When a unit of
+work is ready to be told as one story, write a `docs/ja/NNNN-<slug>.md`
+in a **separate** commit. The doc's `commits:` front-matter list cites
+all source SHAs it covers.
 
 ```
-commit N      feat(scope): ...           # source only
-commit N+1    docs(ja): NNNN — ...       # docs/ja/NNNN-*.md only
+commit N      feat(scope): step 1            # source only
+commit N+1    refactor(scope): step 2        # source only
+commit N+2    fix(scope): step 3             # source only
+commit N+3    docs(ja): NNNN — title         # commits: [N, N+1, N+2]
 ```
 
-Writing the doc *after* the source commit lets the doc's `commit:` front
-matter reference the actual SHA — no "TBD then patch" cycle.
+The doc lands AFTER the source commits, so every SHA it cites is already
+known — no "TBD then patch" cycle.
 
 - **Skill / template**: [`.claude/skills/code-learning-doc/SKILL.md`](.claude/skills/code-learning-doc/SKILL.md)
-- **Gate**: [`scripts/check_learning_doc.sh`](scripts/check_learning_doc.sh) runs as a `PreToolUse` hook on every Bash invocation. It blocks (a) any commit that mixes source and a learning doc, and (b) any commit that follows an unpaired source commit without supplying the doc.
+- **Gate**: [`scripts/check_learning_doc.sh`](scripts/check_learning_doc.sh) (PreToolUse hook on Bash) blocks (a) commits that mix source and a doc, and (b) doc commits whose `commits:` list omits any unpaired source SHA since the previous doc.
 
-The doc captures background, the code snapshot at that moment, the why,
-and takeaways — material for a future technical book and conference talks.
+## Iteration loop (resume / "続けて" procedure)
+
+When you (Claude) start a new session and the user says "続けて" or
+"resume" or anything that implies "pick up where we left off":
+
+1. **Read** `.dev/handover.md` (if it exists) — this is the explicit
+   session-to-session memo.
+2. **Read** `.dev/ROADMAP.md` — find the IN-PROGRESS phase in §9 (or the
+   first PENDING phase if none is in-progress). Inside that phase, find
+   the first `[ ]` (incomplete) task.
+3. **Inspect** `git log --oneline -10` for recent commits and any
+   unpaired source commits (use `bash scripts/check_learning_doc.sh`'s
+   logic mentally: walk back to the last `docs/ja/NNNN-*.md` commit).
+4. **Summarise** to the user in 4–6 lines:
+   - Phase (number + name)
+   - Last commit (`git log -1 --format='%h %s'`)
+   - Unpaired source commits (if any) — these need a doc next
+   - Next task (number + name + exit criterion)
+5. **Wait for user "go"** before starting TDD on the next task.
+   (Do not start coding without confirmation; the user may want to
+   adjust direction.)
+
+A `/continue` slash command exists at `.claude/commands/continue.md`
+that wraps this procedure for explicit invocation.
+
+### Per-task TDD loop
+
+1. **Plan** the smallest red test (1 sentence in chat).
+2. **Red**: write the failing test.
+3. **Green**: minimal code to pass.
+4. **Refactor** while green.
+5. `bash test/run_all.sh` must be green.
+6. **Source commit**: `git add` only the source files; `git commit -m
+   "<type>(<scope>): <one line>"`.
+7. Repeat 1–6 as many times as the unit of work needs (the gate does
+   not block).
+8. **Doc commit**: when the story is ready, write
+   `docs/ja/NNNN-<slug>.md` per the `code-learning-doc` skill; commit
+   with `commits: [...]` listing every source SHA since the last doc.
+9. **Update** `.dev/handover.md` with one line per session (current
+   task, blocker if any).
 
 ## Layout
 
@@ -85,10 +130,11 @@ and takeaways — material for a future technical book and conference talks.
 src/         Zig source
 build.zig    Build script (Zig 0.16 idiom)
 flake.nix    Nix dev shell pinned to Zig 0.16.0
-.dev/        Design docs (English): ROADMAP, decisions, status, handover
-docs/        Public docs. `docs/ja/` holds Japanese commit-snapshot tutorials.
-.claude/     Claude Code project settings, skills, hooks
+.dev/        Design docs (English): ROADMAP, decisions, handover
+docs/        Public docs. `docs/ja/` holds Japanese learning tutorials.
+.claude/     Claude Code project settings, skills, commands, hooks
 scripts/     Project scripts (gate, checks)
+test/        Test entry point + future suites
 ```
 
 ## Build & test
@@ -105,3 +151,5 @@ zig fmt src/      # format
 - [`.dev/ROADMAP.md`](.dev/ROADMAP.md) — the authoritative mission, principles,
   phases, and success criteria. **Single source of truth**; if anything in
   this file conflicts with the roadmap, the roadmap wins.
+- [`.dev/handover.md`](.dev/handover.md) — short, mutable, current session state.
+- [`.dev/decisions/`](.dev/decisions/) — ADRs (load-bearing decisions).

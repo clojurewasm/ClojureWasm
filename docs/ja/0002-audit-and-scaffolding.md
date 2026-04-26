@@ -1,5 +1,6 @@
 ---
-commit: ac2e2b9
+commits:
+  - ac2e2b9
 date: 2026-04-27
 scope:
   - .claude/rules/zone_deps.md
