@@ -18,6 +18,7 @@ const value_mod = @import("../../../runtime/value.zig");
 const Value = value_mod.Value;
 const err = @import("../../../runtime/error.zig");
 const constructors = @import("../constructors.zig");
+const io_default = @import("../../../runtime/io_default.zig");
 
 pub const class_name = "java.util.UUID";
 
@@ -65,7 +66,7 @@ pub fn construct(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn randomUUID(allocator: Allocator) anyerror!Value {
     // Generate 16 random bytes
     var bytes: [16]u8 = undefined;
-    std.crypto.random.bytes(&bytes);
+    std.Io.randomSecure(io_default.get(), &bytes) catch std.Io.random(io_default.get(), &bytes);
 
     // Set version 4: byte[6] = (byte[6] & 0x0f) | 0x40
     bytes[6] = (bytes[6] & 0x0f) | 0x40;

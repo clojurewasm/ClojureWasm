@@ -181,9 +181,10 @@ pub fn detectAndAddSrcPath(start_dir: []const u8) !void {
         var current = start_dir;
         for (0..10) |_| {
             const src_path = std.fmt.bufPrint(&buf, "{s}/src", .{current}) catch break;
-            if (std.fs.cwd().openDir(src_path, .{})) |dir| {
+            const lp_io = io_default.get();
+            if (std.Io.Dir.cwd().openDir(lp_io, src_path, .{})) |dir| {
                 var d = dir;
-                d.close();
+                d.close(lp_io);
                 try addLoadPath(src_path);
                 return;
             } else |_| {}
@@ -264,10 +265,8 @@ fn loadResource(allocator: Allocator, env: *@import("../../runtime/env.zig").Env
         for (extensions) |ext| {
             const full_path = std.fmt.bufPrint(&buf, "{s}/{s}{s}", .{ base, resource, ext }) catch continue;
 
-            const cwd = std.fs.cwd();
-            if (cwd.openFile(full_path, .{})) |file| {
-                defer file.close();
-                const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch continue;
+            const lf_io = io_default.get();
+            if (std.Io.Dir.cwd().readFileAlloc(lf_io, full_path, allocator, .limited(10 * 1024 * 1024))) |content| {
 
                 // Dupe content for build tracking before evaluation (content
                 // allocated by GC allocator may not survive evaluation).

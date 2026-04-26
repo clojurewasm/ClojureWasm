@@ -21,6 +21,7 @@ const collections = @import("../../runtime/collections.zig");
 const err = @import("../../runtime/error.zig");
 const bootstrap = @import("../../engine/bootstrap.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
+const io_default = @import("../../runtime/io_default.zig");
 
 // ============================================================
 // sh implementation
@@ -92,46 +93,58 @@ pub fn shFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
-    // Spawn subprocess
-    var child = std.process.Child.init(argv, allocator);
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-    child.stdin_behavior = if (input != null) .Pipe else .Close;
-    if (dir) |d| child.cwd = d;
+    // Spawn subprocess via std.process.run (collects stdout+stderr+wait in one call).
+    // For input mode, std.process.spawn is used so we can write stdin manually.
+    const proc_io = io_default.get();
+    var stdout_data: []u8 = "";
+    var stderr_data: []u8 = "";
+    var term: std.process.Child.Term = .{ .exited = 0 };
 
-    try child.spawn();
-
-    // Write stdin if provided
     if (input) |in_data| {
+        var child = try std.process.spawn(proc_io, .{
+            .argv = argv,
+            .cwd = if (dir) |d| .{ .path = d } else .inherit,
+            .stdin = .pipe,
+            .stdout = .pipe,
+            .stderr = .pipe,
+        });
         if (child.stdin) |stdin_file| {
-            var stdin = stdin_file;
-            stdin.writeAll(in_data) catch {};
-            stdin.close();
+            stdin_file.writeStreamingAll(proc_io, in_data) catch {};
+            stdin_file.close(proc_io);
             child.stdin = null;
         }
+        if (child.stdout) |stdout_file| {
+            var rbuf: [4096]u8 = undefined;
+            var r = stdout_file.reader(proc_io, &rbuf);
+            stdout_data = r.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)) catch "";
+        }
+        if (child.stderr) |stderr_file| {
+            var rbuf: [4096]u8 = undefined;
+            var r = stderr_file.reader(proc_io, &rbuf);
+            stderr_data = r.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)) catch "";
+        }
+        term = child.wait(proc_io) catch |e| {
+            return err.setErrorFmt(.eval, .io_error, .{}, "sh: wait failed: {s}", .{@errorName(e)});
+        };
+    } else {
+        const result = std.process.run(allocator, proc_io, .{
+            .argv = argv,
+            .cwd = if (dir) |d| .{ .path = d } else .inherit,
+            .stdout_limit = .limited(10 * 1024 * 1024),
+            .stderr_limit = .limited(10 * 1024 * 1024),
+        }) catch |e| {
+            return err.setErrorFmt(.eval, .io_error, .{}, "sh: spawn failed: {s}", .{@errorName(e)});
+        };
+        stdout_data = result.stdout;
+        stderr_data = result.stderr;
+        term = result.term;
     }
 
-    // Read stdout and stderr
-    const stdout_data = if (child.stdout) |stdout_file| blk: {
-        var stdout = stdout_file;
-        break :blk stdout.readToEndAlloc(allocator, 10 * 1024 * 1024) catch "";
-    } else "";
-
-    const stderr_data = if (child.stderr) |stderr_file| blk: {
-        var stderr = stderr_file;
-        break :blk stderr.readToEndAlloc(allocator, 10 * 1024 * 1024) catch "";
-    } else "";
-
-    // Wait for exit
-    const term = child.wait() catch |e| {
-        return err.setErrorFmt(.eval, .io_error, .{}, "sh: wait failed: {s}", .{@errorName(e)});
-    };
-
     const exit_code: i64 = switch (term) {
-        .Exited => |code| @intCast(code),
-        .Signal => |sig| -@as(i64, @intCast(sig)),
-        .Stopped => |sig| -@as(i64, @intCast(sig)),
-        .Unknown => |code| -@as(i64, @intCast(code)),
+        .exited => |code| @intCast(code),
+        .signal => |sig| -@as(i64, @intCast(@intFromEnum(sig))),
+        .stopped => |sig| -@as(i64, @intCast(@intFromEnum(sig))),
+        .unknown => |code| -@as(i64, @intCast(code)),
     };
 
     // Build result map: {:exit N :out "..." :err "..."}
