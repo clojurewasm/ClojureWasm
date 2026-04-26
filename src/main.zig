@@ -99,4 +99,5 @@ test {
     _ = @import("eval/analyzer.zig");
     _ = @import("eval/backend/tree_walk.zig");
     _ = @import("lang/primitive/math.zig");
+    _ = @import("lang/primitive/core.zig");
 }
