@@ -2,8 +2,9 @@
 # Unified test runner for ClojureWasm.
 # Runs all test suites and reports a unified summary.
 #
-# Usage: bash test/run_all.sh [--quick]
-#   --quick: skip release build and benchmarks (faster iteration)
+# Usage: bash test/run_all.sh [--quick] [--no-wasm]
+#   --quick:   skip release build and benchmarks (faster iteration)
+#   --no-wasm: skip wasm-dependent suites (use when binary built with -Dwasm=false)
 
 set -euo pipefail
 
@@ -12,9 +13,14 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
 QUICK=false
-if [[ "${1:-}" == "--quick" ]]; then
-    QUICK=true
-fi
+NO_WASM=false
+ZIG_BUILD_FLAGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --quick)   QUICK=true ;;
+        --no-wasm) NO_WASM=true; ZIG_BUILD_FLAGS+=("-Dwasm=false") ;;
+    esac
+done
 
 PASS=0
 FAIL=0
@@ -39,11 +45,11 @@ echo "=== ClojureWasm Full Test Suite ==="
 echo ""
 
 # 1. Zig unit tests
-run_suite "zig build test" zig build test
+run_suite "zig build test" zig build test "${ZIG_BUILD_FLAGS[@]}"
 
 # 2. Release build
 if [[ "$QUICK" == false ]]; then
-    run_suite "zig build -Doptimize=ReleaseSafe" zig build -Doptimize=ReleaseSafe
+    run_suite "zig build -Doptimize=ReleaseSafe" zig build -Doptimize=ReleaseSafe "${ZIG_BUILD_FLAGS[@]}"
 fi
 
 # 3. Upstream regression suite (cljw test)
@@ -73,8 +79,10 @@ else
     fi
 fi
 
-# 4. Core e2e tests (wasm)
-run_suite "e2e tests (wasm)" bash test/e2e/run_e2e.sh
+# 4. Core e2e tests
+E2E_FLAGS=()
+[[ "$NO_WASM" == true ]] && E2E_FLAGS+=("--no-wasm")
+run_suite "e2e tests" bash test/e2e/run_e2e.sh "${E2E_FLAGS[@]}"
 
 # 5. Deps e2e tests
 run_suite "deps.edn e2e tests" bash test/e2e/deps/run_deps_e2e.sh

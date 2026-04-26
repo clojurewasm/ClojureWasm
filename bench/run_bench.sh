@@ -6,6 +6,7 @@
 #   bash bench/run_bench.sh --bench=fib_recursive  # Single benchmark
 #   bash bench/run_bench.sh --quick                # Fast check (1 run, no warmup)
 #   bash bench/run_bench.sh --runs=10 --warmup=3   # Custom hyperfine settings
+#   bash bench/run_bench.sh --no-wasm              # Skip wasm benchmarks (binary -Dwasm=false)
 #
 # Always: ReleaseSafe, VM backend, hyperfine measurement.
 # For multi-language comparison: use bench/compare_langs.sh
@@ -28,6 +29,8 @@ RESET='\033[0m'
 BENCH_FILTER=""
 RUNS=3
 WARMUP=1
+NO_WASM=false
+ZIG_BUILD_FLAGS=()
 
 # --- Parse arguments ---
 for arg in "$@"; do
@@ -36,6 +39,7 @@ for arg in "$@"; do
     --runs=*)     RUNS="${arg#--runs=}" ;;
     --warmup=*)   WARMUP="${arg#--warmup=}" ;;
     --quick)      RUNS=1; WARMUP=0 ;;
+    --no-wasm)    NO_WASM=true; ZIG_BUILD_FLAGS+=("-Dwasm=false") ;;
     -h|--help)
       echo "Usage: bash bench/run_bench.sh [OPTIONS]"
       echo ""
@@ -44,6 +48,7 @@ for arg in "$@"; do
       echo "  --runs=N         Hyperfine runs (default: 3)"
       echo "  --warmup=N       Hyperfine warmup runs (default: 1)"
       echo "  --quick          Fast check: 1 run, no warmup"
+      echo "  --no-wasm        Skip wasm_* benchmarks; build with -Dwasm=false"
       echo "  -h, --help       Show this help"
       echo ""
       echo "Always builds ReleaseSafe, uses VM backend."
@@ -66,7 +71,7 @@ fi
 
 # --- Build ReleaseSafe ---
 echo -e "${CYAN}Building ClojureWasm (ReleaseSafe)...${RESET}"
-(cd "$PROJECT_ROOT" && zig build -Doptimize=ReleaseSafe) || {
+(cd "$PROJECT_ROOT" && zig build -Doptimize=ReleaseSafe "${ZIG_BUILD_FLAGS[@]}") || {
   echo -e "${RED}Build failed${RESET}" >&2
   exit 1
 }
@@ -76,9 +81,12 @@ BENCH_DIRS=()
 for dir in "$SCRIPT_DIR/benchmarks"/*/; do
   [[ -f "$dir/meta.yaml" ]] || continue
   [[ -f "$dir/bench.clj" ]] || continue
+  local_name=$(basename "$dir" | sed 's/^[0-9]*_//')
   if [[ -n "$BENCH_FILTER" ]]; then
-    local_name=$(basename "$dir" | sed 's/^[0-9]*_//')
     [[ "$local_name" == "$BENCH_FILTER" ]] || continue
+  fi
+  if [[ "$NO_WASM" == true && "$local_name" == wasm_* ]]; then
+    continue
   fi
   BENCH_DIRS+=("$dir")
 done

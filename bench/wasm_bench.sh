@@ -10,8 +10,17 @@
 #   bash bench/wasm_bench.sh --quick      # Single run, no warmup
 #   bash bench/wasm_bench.sh --bench=fib  # Specific benchmark
 #   bash bench/wasm_bench.sh --rebuild    # Rebuild .wasm files from .go sources
+#   bash bench/wasm_bench.sh --no-wasm    # Early exit (binary built with -Dwasm=false)
 
 set -euo pipefail
+
+# --- Early exit if wasm disabled ---
+for arg in "$@"; do
+  if [[ "$arg" == "--no-wasm" ]]; then
+    echo "wasm_bench.sh: --no-wasm specified, skipping wasm benchmarks."
+    exit 0
+  fi
+done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

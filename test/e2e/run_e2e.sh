@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # E2E test runner for ClojureWasm
 # Runs all .clj test files in test/e2e/ subdirectories
-# Usage: bash test/e2e/run_e2e.sh [--tree-walk] [--dir=wasm]
+# Usage: bash test/e2e/run_e2e.sh [--tree-walk] [--dir=wasm] [--no-wasm]
+#   --no-wasm: skip test/e2e/wasm/ (when binary built with -Dwasm=false)
 
 set -euo pipefail
 
@@ -12,10 +13,12 @@ CLJW="$ROOT_DIR/zig-out/bin/cljw"
 # Parse args
 TREE_WALK=""
 TEST_DIR=""
+NO_WASM=false
 for arg in "$@"; do
   case "$arg" in
     --tree-walk) TREE_WALK="--tree-walk" ;;
     --dir=*) TEST_DIR="${arg#--dir=}" ;;
+    --no-wasm) NO_WASM=true ;;
   esac
 done
 
@@ -32,7 +35,14 @@ else
   TEST_FILES=$(find "$SCRIPT_DIR" -name '*_test.clj' -type f | sort)
 fi
 
-if [ -z "$TEST_FILES" ]; then
+# Filter out wasm/ tests when --no-wasm
+if [ "$NO_WASM" = true ]; then
+  TEST_FILES=$(echo "$TEST_FILES" | grep -v "/wasm/" || true)
+  if [ -z "$TEST_FILES" ]; then
+    echo "No non-wasm e2e tests to run (--no-wasm)."
+    exit 0
+  fi
+elif [ -z "$TEST_FILES" ]; then
   echo "No test files found."
   exit 1
 fi
