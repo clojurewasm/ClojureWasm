@@ -19,13 +19,14 @@
 
 ## Next task
 
-Open Phase 2 (`TreeWalk + Analyzer + Bootstrap Stage 0`). First step:
-expand §9.4 inline in `.dev/ROADMAP.md` mirroring the §9.3 structure
-(task table with one row per `[ ]` step), then resume the per-task TDD
-loop on §9.4.1.
+`§9.4 / 2.1` — `src/runtime/dispatch.zig`: a `VTable` struct (NOT a
+`pub var`) declaring the function-pointer table the Layer-1 backend
+will inject into Layer-0 at startup. Phase-2 entries: `callFn`,
+`expandMacro` placeholders are enough to compile; later phases extend
+the struct.
 
-Phase-2 exit criterion (from §9 phase tracker):
-  `(let [x 1] (+ x 2))` → 3 and `((fn* [x] (+ x 1)) 41)` → 42.
+Exit criterion for 2.1: a unit test constructs a synthetic `VTable`
+literal and verifies the call succeeds (no upward import to eval/).
 
 ## Open questions / blockers
 

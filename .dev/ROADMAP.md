@@ -705,9 +705,39 @@ in place from day 1.
 After 1.12 is checked, the Phase Tracker (§9 table top) flips Phase 1
 from PENDING to DONE and Phase 2 IN-PROGRESS; expand Phase 2 in §9.4.
 
-### 9.4 Phase 2 — task list (expanded when Phase 1 closes)
+### 9.4 Phase 2 — task list (expanded; this is the active phase)
 
-(empty until Phase 1 closes; will be expanded then)
+> Same convention as §9.3: each `[ ]` becomes one or more source
+> commits, eventually followed by a `docs/ja/00NN-*.md`. Mark complete
+> with `[x]` and the SHA when the doc lands.
+
+**Goal**: Wire the Runtime handle, the analyzer, and the TreeWalk
+backend so that the Phase-1 read–print loop becomes a real
+read–analyse–eval–print loop. Bootstrap Stage 0 = primitives in `rt/`
+namespace + `(refer 'rt)` into `user/` (no `.clj` source yet).
+
+**Exit criterion** (verified end-to-end via `cljw -e`):
+
+  `(let [x 1] (+ x 2))` → `3`
+  `((fn* [x] (+ x 1)) 41)` → `42`
+
+| Task | Description                                                                | Status |
+|------|----------------------------------------------------------------------------|--------|
+| 2.1  | `src/runtime/dispatch.zig` — `VTable` type (struct, not `pub var`) for backend dispatch | [ ] |
+| 2.2  | `src/runtime/runtime.zig` — `Runtime` handle (`io`, `gpa`, `keywords`, `gc`, `vtable`)  | [ ] |
+| 2.3  | `src/runtime/keyword.zig` — promote to rt-aware (`*Runtime` API + `std.Io.Mutex`)       | [ ] |
+| 2.4  | `src/runtime/env.zig` — `Namespace`, `Var`, threadlocal `current_frame` binding stack    | [ ] |
+| 2.5  | `src/eval/node.zig` — `Node` tagged union (analysed AST: const / local-ref / var-ref / if / do / let / fn / invoke / quote) | [ ] |
+| 2.6  | `src/eval/analyzer.zig` — `Form → Node` + Phase-2 special forms (`quote`, `if`, `do`, `let*`, `fn*`, `def`) | [ ] |
+| 2.7  | `src/eval/backend/tree_walk.zig` — `Node → Value` tree-walk interpreter; `installVTable` | [ ] |
+| 2.8  | `src/lang/primitive.zig` — `registerAll(env)` into the `rt/` namespace; `(refer 'rt)` into `user/` | [ ] |
+| 2.9  | `src/lang/primitive/math.zig` — `+`, `-`, `*`, `=`, `<`, `>`, `<=`, `>=`                 | [ ] |
+| 2.10 | `src/lang/primitive/core.zig` — `nil?`, `true?`, `false?`, `identical?`                   | [ ] |
+| 2.11 | `src/main.zig` — wire CLI through analyser + TreeWalk; `cljw -e "(+ 1 2)"` → `3`         | [ ] |
+| 2.12 | Phase-2 exit smoke: `(let [x 1] (+ x 2))` → `3` and `((fn* [x] (+ x 1)) 41)` → `42`       | [ ] |
+
+After 2.12 lands as a `[x]`, the §9 phase tracker flips Phase 2 from
+PENDING to DONE and Phase 3 IN-PROGRESS; expand Phase 3 inline in §9.5.
 
 ---
 
