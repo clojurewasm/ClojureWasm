@@ -433,7 +433,7 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
         };
         const consumed = reader.position();
         // Capture the consumed source text (trimmed)
-        const src_text = std.mem.trimLeft(u8, remaining[0..consumed], " \t\n\r,");
+        const src_text = std.mem.trimStart(u8, remaining[0..consumed], " \t\n\r,");
         const text_str = Value.initString(allocator, try allocator.dupe(u8, src_text));
         io.advanceCurrentInput(consumed);
         const val = try macro.formToValueWithNs(allocator, form, resolveCurrentNs());
@@ -494,7 +494,7 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
             };
             if (form_opt) |form| {
                 const consumed = reader.position();
-                const src_text = std.mem.trimLeft(u8, buf.items[0..consumed], " \t\n\r,");
+                const src_text = std.mem.trimStart(u8, buf.items[0..consumed], " \t\n\r,");
                 const text_str = Value.initString(allocator, try allocator.dupe(u8, src_text));
                 const val = try macro.formToValueWithNs(allocator, form, resolveCurrentNs());
                 const items = try allocator.alloc(Value, 2);

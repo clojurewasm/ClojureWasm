@@ -1079,7 +1079,7 @@ pub fn trimNewlineFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trim-newline", .{args.len});
     if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trim-newline expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
-    const trimmed = std.mem.trimRight(u8, s, "\r\n");
+    const trimmed = std.mem.trimEnd(u8, s, "\r\n");
     return Value.initString(allocator, trimmed);
 }
 
