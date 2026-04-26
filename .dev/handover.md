@@ -7,8 +7,8 @@
 
 - **Phase**: Phase 1 IN-PROGRESS (1.0 done; 1.1 next).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
-- **Last paired commit**: `docs(ja): 0005 — skill-refactor-and-scaffolding-audit`
-  (covers commit d35a612 — scaffolding refactor with audit skill).
+- **Last paired commit**: `docs(ja): 0006 — autonomous-loop-readiness`
+  (covers commit 6b93222 — permissions / SessionStart hook / Phase-boundary chain).
 - **Build**: `zig build` / `zig build test` / `zig build run` are green
   on the bootstrap (`cljw` prints `ClojureWasm`).
 
