@@ -121,11 +121,17 @@ zig build run -- "..."
 ## What triggers the gate
 
 `scripts/check_learning_doc.sh` (PreToolUse hook on Bash) examines every
-`git commit` invocation. It enforces two rules:
+`git commit` invocation. The "source-bearing" file set is:
+
+- `src/**/*.zig`
+- `build.zig`, `build.zig.zon`
+- `.dev/decisions/NNNN-<slug>.md` (real ADRs only — `README.md` and
+  `0000-template.md` under `.dev/decisions/` are excluded)
+
+Two rules:
 
 - **Rule 1**: a commit that stages a `docs/ja/NNNN-*.md` MUST NOT also
-  stage source-bearing files (`src/**/*.zig`, `build.zig`, `build.zig.zon`,
-  `.dev/decisions/*.md`). Mixing defeats the SHA-pairing scheme.
+  stage source-bearing files. Mixing defeats the SHA-pairing scheme.
 - **Rule 2**: if HEAD added source-bearing files without a doc, the next
   commit MUST add the paired `docs/ja/NNNN-*.md`. Any other shape is
   blocked until the doc lands.

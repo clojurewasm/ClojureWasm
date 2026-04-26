@@ -37,9 +37,14 @@ cd "${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
 # --- 3. Helpers --------------------------------------------------------------
 is_source_path() {
+  # `src/*.zig|build.zig|build.zig.zon` are obvious source-bearing changes.
+  # Real ADRs (`.dev/decisions/NNNN-<slug>.md`) also count; the README and
+  # the 0000 template under `.dev/decisions/` do NOT (meta-metadata).
   case "$1" in
-    src/*.zig|build.zig|build.zig.zon|.dev/decisions/*.md) return 0 ;;
-    *)                                                       return 1 ;;
+    src/*.zig|build.zig|build.zig.zon)        return 0 ;;
+    .dev/decisions/0000-*.md)                  return 1 ;;
+    .dev/decisions/[0-9][0-9][0-9][0-9]-*.md) return 0 ;;
+    *)                                         return 1 ;;
   esac
 }
 

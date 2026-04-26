@@ -790,10 +790,16 @@ when activating; do not leave the table out of sync with reality.
 
 ### 12.2 Commit pairing: source commit → doc commit
 
-Every source-bearing commit (`src/**/*.zig`, `build.zig`, `build.zig.zon`,
-`.dev/decisions/*.md`) is **immediately followed** by a separate commit that
-adds the paired `docs/ja/NNNN-<slug>.md`. The pair is the atomic unit of
-progress.
+Every source-bearing commit is **immediately followed** by a separate
+commit that adds the paired `docs/ja/NNNN-<slug>.md`. The pair is the
+atomic unit of progress.
+
+"Source-bearing" means staging any of:
+
+- `src/**/*.zig`
+- `build.zig`, `build.zig.zon`
+- `.dev/decisions/NNNN-<slug>.md` (real ADRs — `README.md` and
+  `0000-template.md` under `.dev/decisions/` are excluded)
 
 ```
 commit N      feat(scope): ...        # source only

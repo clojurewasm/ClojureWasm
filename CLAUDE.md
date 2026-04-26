@@ -60,9 +60,10 @@ English identifiers.
 ### Commit pairing: source commit → doc commit
 
 Every source-bearing commit (`src/**/*.zig`, `build.zig`, `build.zig.zon`,
-or `.dev/decisions/*.md`) is **immediately followed** by a separate commit
-that adds the paired `docs/ja/NNNN-<slug>.md` (Japanese, sequenced). The
-pair forms the unit of progress.
+or `.dev/decisions/NNNN-<slug>.md` — `README.md` and `0000-template.md`
+under `.dev/decisions/` are excluded) is **immediately followed** by a
+separate commit that adds the paired `docs/ja/NNNN-<slug>.md` (Japanese,
+sequenced). The pair forms the unit of progress.
 
 ```
 commit N      feat(scope): ...           # source only
