@@ -1,0 +1,25 @@
+# Zig build artifacts
+zig-out/
+.zig-cache/
+
+# Nix build outputs
+result
+result-*
+
+# direnv local cache
+.direnv/
+
+# macOS
+.DS_Store
+
+# Editor / IDE
+*.swp
+*~
+.vscode/
+.idea/
+
+# Local-only docs and scratch (per-developer)
+private/
+
+# Claude Code local-only settings (per-developer)
+.claude/settings.local.json

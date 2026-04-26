@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(zig:*)",
+      "Bash(nix develop:*)",
+      "Bash(nix flake:*)",
+      "Bash(direnv:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git switch:*)",
+      "Bash(git stash:*)",
+      "Bash(rg:*)",
+      "Bash(fd:*)",
+      "Bash(hyperfine:*)",
+      "Bash(yq:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(rm -rf /:*)"
+    ]
+  },
+  "env": {
+    "ZIG_LOCAL_CACHE_DIR": ".zig-cache"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_learning_doc.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
