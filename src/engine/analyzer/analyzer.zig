@@ -4002,7 +4002,8 @@ test "fuzz analyzer" {
     try std.testing.fuzz(
         {},
         struct {
-            fn testOne(_: @TypeOf({}), input: []const u8) anyerror!void {
+            fn testOne(_: @TypeOf({}), smith: *std.testing.Smith) anyerror!void {
+                const input = smith.in orelse return;
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
                 const alloc = arena.allocator();

@@ -1208,7 +1208,7 @@ test "line-seq - empty file" {
     const test_io = io_default.get();
     const cwd = std.Io.Dir.cwd();
     const tmp_path = "/tmp/cljw_test_line_seq3.txt";
-    const file = try cwd.createFile(tmp_path, .{});
+    const file = try cwd.createFile(test_io, tmp_path, .{});
     file.close(test_io);
 
     const args = [_]Value{Value.initString(alloc, tmp_path)};

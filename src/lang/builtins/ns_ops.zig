@@ -1783,8 +1783,9 @@ test "detectAndAddSrcPath - finds src/ directory" {
     defer deinit();
 
     // Create temp project structure: .zig-cache/test-src-detect/src/
-    std.fs.cwd().makePath(".zig-cache/test-src-detect/src") catch {};
-    defer std.fs.cwd().deleteTree(".zig-cache/test-src-detect") catch {};
+    const t1_io = io_default.get();
+    std.Io.Dir.cwd().createDirPath(t1_io, ".zig-cache/test-src-detect/src") catch {};
+    defer std.Io.Dir.cwd().deleteTree(t1_io, ".zig-cache/test-src-detect") catch {};
 
     try detectAndAddSrcPath(".zig-cache/test-src-detect");
 
@@ -1801,9 +1802,10 @@ test "detectAndAddSrcPath - walks up to find src/" {
     defer deinit();
 
     // Create: .zig-cache/test-src-walk/src/ and .zig-cache/test-src-walk/deep/nested/
-    std.fs.cwd().makePath(".zig-cache/test-src-walk/src") catch {};
-    std.fs.cwd().makePath(".zig-cache/test-src-walk/deep/nested") catch {};
-    defer std.fs.cwd().deleteTree(".zig-cache/test-src-walk") catch {};
+    const t2_io = io_default.get();
+    std.Io.Dir.cwd().createDirPath(t2_io, ".zig-cache/test-src-walk/src") catch {};
+    std.Io.Dir.cwd().createDirPath(t2_io, ".zig-cache/test-src-walk/deep/nested") catch {};
+    defer std.Io.Dir.cwd().deleteTree(t2_io, ".zig-cache/test-src-walk") catch {};
 
     // Starting from deep/nested, should walk up and find src/
     try detectAndAddSrcPath(".zig-cache/test-src-walk/deep/nested");
@@ -1831,11 +1833,13 @@ test "require - loads file from load path" {
     try bootstrap.loadCore(alloc, env);
 
     // Create a temp directory with a .clj file
-    const tmp_dir = std.fs.cwd().makeOpenPath("zig-cache/test-require", .{}) catch return;
-    defer std.fs.cwd().deleteTree("zig-cache/test-require") catch {};
+    const t3_io = io_default.get();
+    var tmp_dir = std.Io.Dir.cwd().createDirPathOpen(t3_io, "zig-cache/test-require", .{}) catch return;
+    defer tmp_dir.close(t3_io);
+    defer std.Io.Dir.cwd().deleteTree(t3_io, "zig-cache/test-require") catch {};
 
     // Write test_util.clj: (ns test-util) (def greeting "hello from test-util")
-    tmp_dir.writeFile(.{
+    tmp_dir.writeFile(t3_io, .{
         .sub_path = "test_util.clj",
         .data = "(ns test-util)\n(def greeting \"hello from test-util\")\n",
     }) catch return;

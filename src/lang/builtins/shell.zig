@@ -245,10 +245,23 @@ pub const with_sh_env_def = BuiltinDef{
 
 const testing = std.testing;
 
+/// Test helper: set up a real std.Io.Threaded and install it as the default
+/// io for the duration of the calling test. The default io_default points
+/// at `std.Io.Threaded.init_single_threaded`, whose allocator is `.failing`
+/// — fine for mutex-only paths but not for `std.process.spawn`, which needs
+/// to allocate Future closures.
+fn setupTestIo(alloc: Allocator, threaded: *std.Io.Threaded) void {
+    threaded.* = std.Io.Threaded.init(alloc, .{});
+    io_default.set(threaded.io());
+}
+
 test "sh - echo hello" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
+    var th: std.Io.Threaded = undefined;
+    setupTestIo(alloc, &th);
+    defer th.deinit();
 
     const result = try shFn(alloc, &[_]Value{
         Value.initString(alloc, "echo"),
@@ -275,6 +288,9 @@ test "sh - with :in" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
+    var th: std.Io.Threaded = undefined;
+    setupTestIo(alloc, &th);
+    defer th.deinit();
 
     const result = try shFn(alloc, &[_]Value{
         Value.initString(alloc, "cat"),
@@ -295,6 +311,9 @@ test "sh - with :dir" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
+    var th: std.Io.Threaded = undefined;
+    setupTestIo(alloc, &th);
+    defer th.deinit();
 
     const result = try shFn(alloc, &[_]Value{
         Value.initString(alloc, "pwd"),
@@ -317,6 +336,9 @@ test "sh - nonexistent command returns non-zero exit" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
+    var th: std.Io.Threaded = undefined;
+    setupTestIo(alloc, &th);
+    defer th.deinit();
 
     const result = try shFn(alloc, &[_]Value{
         Value.initString(alloc, "false"),

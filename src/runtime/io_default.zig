@@ -127,11 +127,20 @@ pub fn setEnvironMap(m: *const std.process.Environ.Map) void {
     env_map_ref = m;
 }
 
-/// Look up an environment variable. Returns null when the var is unset
-/// or `setEnvironMap` was never called (tests, pre-init).
+/// Look up an environment variable. Falls back to libc's getenv when
+/// `setEnvironMap` was never called (tests, pre-init code) — we always
+/// link libc as part of the 0.16 migration.
 pub fn getEnv(name: []const u8) ?[]const u8 {
-    const m = env_map_ref orelse return null;
-    return m.get(name);
+    if (env_map_ref) |m| {
+        return m.get(name);
+    }
+    var stack_buf: [512]u8 = undefined;
+    if (name.len >= stack_buf.len) return null;
+    @memcpy(stack_buf[0..name.len], name);
+    stack_buf[name.len] = 0;
+    const z_ptr: [*:0]const u8 = @ptrCast(&stack_buf);
+    const raw = std.c.getenv(z_ptr) orelse return null;
+    return std.mem.span(@as([*:0]const u8, @ptrCast(raw)));
 }
 
 // =====================================================================

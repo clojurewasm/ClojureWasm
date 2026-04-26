@@ -16,6 +16,7 @@ const std = @import("std");
 const gc_mod = @import("gc.zig");
 const MarkSweepGc = gc_mod.MarkSweepGc;
 const thread_pool = @import("thread_pool.zig");
+const io_default = @import("io_default.zig");
 const FutureResult = thread_pool.FutureResult;
 
 const testing = std.testing;
@@ -96,12 +97,12 @@ test "57.2 — GC collection during concurrent allocation" {
         fn run(gc: *MarkSweepGc, stop: *std.atomic.Value(bool), count: *std.atomic.Value(u32)) void {
             while (!stop.load(.acquire)) {
                 // Force collection (no marking — all allocations are unreachable)
-                gc.gc_mutex.lock();
-                gc.gc_mutex.unlock();
+                io_default.lockMutex(&gc.gc_mutex);
+                io_default.unlockMutex(&gc.gc_mutex);
                 // Calling full collect would sweep everything since nothing is marked.
                 // Instead, just verify we can acquire the lock safely while others allocate.
                 _ = count.fetchAdd(1, .monotonic);
-                std.Thread.sleep(1_000_000); // 1ms between "collections"
+                io_default.sleep(1_000_000); // 1ms between "collections"
             }
         }
     };
@@ -124,7 +125,7 @@ test "57.2 — GC collection during concurrent allocation" {
     spawned += 1;
 
     // Let them run for 50ms
-    std.Thread.sleep(50_000_000);
+    io_default.sleep(50_000_000);
     stop_flag.store(true, .release);
 
     for (threads[0..spawned]) |t| t.join();
@@ -148,7 +149,7 @@ test "57.3 — FutureResult stress: many concurrent set/get pairs" {
     const Producer = struct {
         fn run(r: *FutureResult, id: usize) void {
             // Simulate some work
-            std.Thread.sleep(@as(u64, @intCast(id)) * 500_000); // 0.5ms * id
+            io_default.sleep(@as(u64, @intCast(id)) * 500_000); // 0.5ms * id
             const val = @import("value.zig").Value.initInteger(@intCast(id * 42));
             r.setResult(val);
         }
