@@ -2,22 +2,26 @@
 
 Project-level design and operational metadata. Tracked in git. English.
 
-## Files
+## Always present (load-bearing)
 
 - [`ROADMAP.md`](./ROADMAP.md) — **the** authoritative mission, principles,
-  architecture, phase plan, and success criteria. Single source of truth.
-  If anything elsewhere disagrees with this file, this file wins.
+  architecture, phase plan, success criteria, and quality-gate timeline.
+  Single source of truth. If anything elsewhere disagrees with this file,
+  this file wins.
+- [`decisions/`](./decisions/) — Architectural Decision Records.
+  - `README.md` — convention.
+  - `0000-template.md` — copy this when adding a new ADR.
+  - `NNNN-<slug>.md` — accumulated decisions.
 
-## Conventions for additions
+## Created on demand (do NOT pre-create as empty stubs)
 
-Future files should each have a clear, narrow responsibility:
+Empty files rot. Create them when they have real content, using the
+templates in **ROADMAP §15.2**:
 
-- `decisions/` — Architectural Decision Records (ADRs), one per file.
-  Files added here trigger the commit-snapshot doc gate
-  (see `.claude/skills/code-learning-doc/SKILL.md`).
-- `status/` — Tracker YAMLs (e.g., per-namespace implementation status).
-- `handover.md` — Short-lived session-to-session notes.
-- `known_issues.md` — Long-lived bugs, workarounds, debt.
-- `compat_tiers.yaml` — Per-namespace Clojure compatibility tier (A/B/C/D).
-
-Add only when needed; do not pre-create empty placeholders.
+- `handover.md` — session-state memo, when mid-task pickup needs more than
+  `git log` + ROADMAP to convey.
+- `known_issues.md` — long-lived debt log, when the first P0–P3 item appears.
+- `compat_tiers.yaml` — per-namespace Clojure tier table, when the first
+  `src/lang/clj/<ns>.clj` lands (≈ Phase 10).
+- `status/vars.yaml` — per-var implementation tracker, when Phase 2's
+  generator script lands (Phase 2.19).

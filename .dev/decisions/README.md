@@ -34,6 +34,7 @@ ADR has:
 
 ## Commit gate trigger
 
-Adding a file under `.dev/decisions/` triggers the
-`scripts/check_learning_doc.sh` gate. Pair every ADR with the corresponding
-`docs/ja/NNNN-<slug>.md` learning doc.
+Adding a file under `.dev/decisions/` makes the commit "source-bearing"
+in the eyes of `scripts/check_learning_doc.sh`. The next commit must be
+the paired `docs/ja/NNNN-<slug>.md` learning doc (see ROADMAP §12.2 and
+the `code-learning-doc` skill).

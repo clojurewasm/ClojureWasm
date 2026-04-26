@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 # scripts/check_learning_doc.sh
 #
-# Pre-commit gate that requires a `docs/ja/NNNN-<slug>.md` for every commit
-# whose staged changes touch the source tree. Wired as a Claude Code
-# PreToolUse hook on `Bash`; safely no-ops for any non-`git commit` Bash call.
+# Pre-commit gate that enforces the source-commit → doc-commit pairing.
 #
-# See .claude/skills/code-learning-doc/SKILL.md for the full workflow.
+# Workflow:
+#   1. Source commit:  git add src/...  &&  git commit -m "feat(...): ..."
+#   2. Doc commit:     write docs/ja/NNNN-<slug>.md with `commit: <SHA from step 1>`
+#                       git add docs/ja/...  &&  git commit -m "docs(ja): NNNN — ..."
+#
+# Wired as a Claude Code PreToolUse hook on Bash (settings.json). Safe
+# no-op for any non-`git commit` Bash invocation.
+#
+# See .claude/skills/code-learning-doc/SKILL.md for the full skill.
 
 set -euo pipefail
 
 # --- 1. Read the Claude Code hook payload from stdin -------------------------
 INPUT="$(cat)"
 
-# Extract the actual shell command being invoked. The PreToolUse hook payload
-# carries `tool_input.command` for `Bash`. Use python3 (always present on
-# macOS/Linux) so we don't depend on jq/yq being on PATH.
 COMMAND="$(printf '%s' "$INPUT" | python3 -c '
 import sys, json
 try:
@@ -22,64 +25,91 @@ try:
 except Exception:
     print("")
     sys.exit(0)
-cmd = (data.get("tool_input") or {}).get("command", "") or ""
-print(cmd)
+print((data.get("tool_input") or {}).get("command", "") or "")
 ' 2>/dev/null || echo "")"
 
 # --- 2. Only enforce on `git commit` -----------------------------------------
-# Match `git commit ...` but not `git commit-tree`, etc. Allow leading env
-# vars (e.g. `FOO=bar git commit ...`).
 if ! printf '%s' "$COMMAND" | grep -qE '(^|[ ;&|])git[[:space:]]+commit([[:space:]]|$)'; then
   exit 0
 fi
 
-# --- 3. Identify staged files ------------------------------------------------
-# Run from the project root (Claude Code provides $CLAUDE_PROJECT_DIR).
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
+# --- 3. Helpers --------------------------------------------------------------
+is_source_path() {
+  case "$1" in
+    src/*.zig|build.zig|build.zig.zon|.dev/decisions/*.md) return 0 ;;
+    *)                                                       return 1 ;;
+  esac
+}
+
+is_doc_path() {
+  [[ "$1" =~ ^docs/ja/[0-9]{4}-.+\.md$ ]]
+}
+
+# --- 4. Classify this commit -------------------------------------------------
 STAGED="$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)"
+[[ -z "$STAGED" ]] && exit 0
 
-if [[ -z "$STAGED" ]]; then
-  exit 0
-fi
-
-# --- 4. Decide whether the commit needs a learning doc ----------------------
-needs_doc=0
+this_has_source=0
+this_has_doc=0
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
-  case "$f" in
-    src/*.zig|build.zig|build.zig.zon|.dev/decisions/*.md)
-      needs_doc=1
-      break
-      ;;
-  esac
+  if is_source_path "$f"; then this_has_source=1; fi
+  if is_doc_path   "$f"; then this_has_doc=1;   fi
 done <<< "$STAGED"
 
-if [[ $needs_doc -eq 0 ]]; then
-  exit 0
+# --- 5. Classify HEAD --------------------------------------------------------
+prev_has_source=0
+prev_has_doc=0
+LAST_FILES="$(git log -1 --name-only --format= HEAD 2>/dev/null || true)"
+while IFS= read -r f; do
+  [[ -z "$f" ]] && continue
+  if is_source_path "$f"; then prev_has_source=1; fi
+  if is_doc_path   "$f"; then prev_has_doc=1;   fi
+done <<< "$LAST_FILES"
+
+prev_is_unpaired_source=0
+if [ $prev_has_source -eq 1 ] && [ $prev_has_doc -eq 0 ]; then
+  prev_is_unpaired_source=1
 fi
 
-# --- 5. Verify a new docs/ja/NNNN-*.md is staged in the same commit --------
-new_doc="$(git diff --cached --name-only --diff-filter=A 2>/dev/null \
-            | grep -E '^docs/ja/[0-9]{4}-.+\.md$' || true)"
-
-if [[ -n "$new_doc" ]]; then
-  exit 0
-fi
-
-# --- 6. Block with a helpful message ----------------------------------------
-last="$(ls docs/ja/ 2>/dev/null | grep -oE '^[0-9]{4}' | sort -n | tail -1 || echo "0000")"
-next="$(printf '%04d' $((10#$last + 1)))"
-
-cat >&2 <<EOF
+# --- 6. Rule 1: doc commits must not contain source -------------------------
+if [ $this_has_doc -eq 1 ] && [ $this_has_source -eq 1 ]; then
+  cat >&2 <<'EOF'
 ✗ commit blocked by scripts/check_learning_doc.sh
 
-Source-bearing files are staged but no new docs/ja/NNNN-<slug>.md was added.
+A learning-doc commit must NOT also contain source-bearing files
+(src/*.zig, build.zig, build.zig.zon, .dev/decisions/*.md). Split into
+two commits:
 
-Next index to use: ${next}-<slug>.md
-Skill / template:  .claude/skills/code-learning-doc/SKILL.md
+    git commit -m "feat(...): ..."   # source only (commit N)
+    git commit -m "docs(ja): ..."    # docs/ja/NNNN-*.md only (commit N+1)
 
-Either add the learning doc and stage it, or split the commit so the
-source changes ride with their doc.
+Mixing them defeats the SHA-pairing scheme.
 EOF
-exit 1
+  exit 1
+fi
+
+# --- 7. Rule 2: previous source commit must be paired in this commit -------
+if [ $prev_is_unpaired_source -eq 1 ] && [ $this_has_doc -eq 0 ]; then
+  prev_sha="$(git log -1 --format=%h HEAD)"
+  last_idx="$(ls docs/ja/ 2>/dev/null | grep -oE '^[0-9]{4}' | sort -n | tail -1 || echo "0000")"
+  next="$(printf '%04d' $((10#$last_idx + 1)))"
+  cat >&2 <<EOF
+✗ commit blocked by scripts/check_learning_doc.sh
+
+The previous commit (${prev_sha}) added source-bearing files but no
+learning doc accompanied it. The next commit MUST be the paired doc:
+
+    docs/ja/${next}-<slug>.md   with front matter \`commit: ${prev_sha}\`
+
+Skill / template: .claude/skills/code-learning-doc/SKILL.md
+
+The commit you are attempting now stages something else, which would
+leave the source commit unpaired permanently.
+EOF
+  exit 1
+fi
+
+exit 0

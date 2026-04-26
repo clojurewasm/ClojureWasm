@@ -451,21 +451,20 @@ ClojureWasm/                         (working dir on disk: ClojureWasmFromScratc
 ├── .dev/
 │   ├── README.md
 │   ├── ROADMAP.md                  ← this document
-│   ├── compat_tiers.yaml           per-namespace tier
-│   ├── concurrency_design.md       pre-Phase-15 deep dive
-│   ├── wasm_strategy.md            pre-Phase-19 deep dive
-│   ├── decisions/                  ADRs (NNNN-<slug>.md + 0000-template.md)
-│   ├── status/
-│   │   └── vars.yaml               var implementation tracker
-│   ├── handover.md                 session-to-session notes
-│   └── known_issues.md
+│   └── decisions/                  ADRs (NNNN-<slug>.md + 0000-template.md)
+│
+│   (created on demand; see §15.2)
+│   ├── compat_tiers.yaml           per-namespace tier (created at Phase 10)
+│   ├── handover.md                 session-state memo (created when needed mid-task)
+│   ├── known_issues.md             debt log (created at first issue)
+│   └── status/vars.yaml            var implementation tracker (created at Phase 2.19)
 │
 ├── .claude/
 │   ├── settings.json               permissions, env, hooks
 │   ├── rules/                      auto-loaded path-matched rules
 │   │   ├── zone_deps.md            (loads on src/**/*.zig, build.zig)
-│   │   ├── zig_tips.md             (loads on src/**/*.zig, build.zig)
-│   │   └── compat_tiers.md         (loads on src/lang/**, .dev/compat_tiers.yaml)
+│   │   └── zig_tips.md             (loads on src/**/*.zig, build.zig)
+│   │   (compat_tiers.md is added at Phase 10 when src/lang/ starts)
 │   └── skills/code-learning-doc/   skill defining the docs/ja/ workflow
 │
 ├── build.zig
@@ -757,7 +756,7 @@ forgetting them.
 
 | # | Gate                                            | Scope (when it must pass)        | Wired as                                        | Status (this commit)              | Prepare by    |
 |---|--------------------------------------------------|----------------------------------|-------------------------------------------------|------------------------------------|--------------|
-| 1 | Learning-doc gate (`docs/ja/NNNN-*.md`)          | every source-touching commit     | `scripts/check_learning_doc.sh` PreToolUse hook | **Active**                          | —            |
+| 1 | Learning-doc gate: source-commit → doc-commit pairing | the commit *after* every source-bearing commit | `scripts/check_learning_doc.sh` PreToolUse hook | **Active**                          | —            |
 | 2 | Zone-dependency check (`zone_check.sh --gate`)   | every commit touching src/ or modules/ | `scripts/zone_check.sh` (runs from `test/run_all.sh` later; manual now) | **Active** (informational; 0 violations on empty src/) | Phase 2.20 wires --gate as PreToolUse |
 | 3 | `zig build test` green                            | every commit                     | `test/run_all.sh` then `bash test/run_all.sh` | **Active**                          | —            |
 | 4 | `zig fmt --check src/`                            | every commit touching src/       | `scripts/format_check.sh` (TODO)                | **Planned**                         | Phase 1 (when src/ grows beyond bootstrap) |
@@ -789,18 +788,28 @@ when activating; do not leave the table out of sync with reality.
 - Never commit when tests are red.
 - Never bypass the pre-commit hook with `--no-verify` — fix the issue.
 
-### 12.2 Commit-snapshot learning doc gate
+### 12.2 Commit pairing: source commit → doc commit
 
-Every commit that stages **any of** `src/**/*.zig`, `build.zig`,
-`build.zig.zon`, or `.dev/decisions/*.md` MUST also stage a new
-`docs/ja/NNNN-<slug>.md`.
+Every source-bearing commit (`src/**/*.zig`, `build.zig`, `build.zig.zon`,
+`.dev/decisions/*.md`) is **immediately followed** by a separate commit that
+adds the paired `docs/ja/NNNN-<slug>.md`. The pair is the atomic unit of
+progress.
+
+```
+commit N      feat(scope): ...        # source only
+commit N+1    docs(ja): NNNN — ...    # docs/ja/NNNN-*.md only
+```
+
+Writing the doc as the *next* commit lets its `commit:` front-matter field
+reference the source commit's actual SHA — no "TBD then patch" cycle.
 
 - **Skill / template**: `.claude/skills/code-learning-doc/SKILL.md`
 - **Gate**: `scripts/check_learning_doc.sh` (Claude Code PreToolUse hook on `Bash`)
+  - Rule 1: a doc commit must not contain source.
+  - Rule 2: a commit following an unpaired source commit must be the doc.
 
-The doc is **Japanese**, captures the snapshot of code at that commit, the
-why, and takeaways. It doubles as material for a future technical book and
-talks. Code is overwritten over time; the doc preserves the moment.
+The doc is Japanese, captures a code snapshot at that commit, the why, and
+takeaways — material for a future technical book and talks.
 
 ### 12.3 Message format
 
@@ -893,25 +902,70 @@ Porting cljs.analyzer + cljs.compiler is large. If yes, dedicate v0.2 to it.
 
 ## 15. References
 
-### 15.1 Internal (committed)
+### 15.1 Internal (committed; load-bearing)
+
+The minimum surface that must always exist:
 
 - `CLAUDE.md` — Claude Code project memory (short, points to this file)
 - `README.md` — public-facing description
-- `.dev/decisions/` — ADRs (load-bearing decisions only) + `0000-template.md`
-- `.dev/compat_tiers.yaml` — per-namespace tier
-- `.dev/concurrency_design.md` — pre-Phase-15 deep dive on Clojure-prim ↔ std.Io mapping
-- `.dev/wasm_strategy.md` — pre-Phase-19 deep dive on the hybrid native+component plan
-- `.dev/status/vars.yaml` — var implementation tracker (created when Phase 2 vars.yaml lands)
-- `.dev/handover.md` — session-to-session notes
-- `.dev/known_issues.md` — long-lived bugs and debt
-- `docs/ja/` — Japanese commit-snapshot tutorials
-- `.claude/rules/zone_deps.md` — auto-loaded layering rules for src/**/*.zig
-- `.claude/rules/zig_tips.md` — auto-loaded Zig 0.16 idioms for src/**/*.zig
-- `.claude/rules/compat_tiers.md` — auto-loaded tier rules for src/lang/**
-- `.claude/skills/code-learning-doc/SKILL.md` — tutorial skill / template
-- `scripts/check_learning_doc.sh` — commit gate for docs/ja/
-- `scripts/zone_check.sh` — zone-dependency checker (info / --strict / --gate)
-- `test/run_all.sh` — unified test runner (single entry point)
+- `LICENSE` — EPL-2.0
+- `.dev/ROADMAP.md` (this file) — single source of truth
+- `.dev/README.md` — index / convention pointer
+- `.dev/decisions/{README.md, 0000-template.md}` — ADR infrastructure
+- `.claude/settings.json` — permissions / hooks
+- `.claude/rules/zone_deps.md` — auto-loaded layering rules
+- `.claude/rules/zig_tips.md` — auto-loaded Zig 0.16 idioms
+- `.claude/skills/code-learning-doc/SKILL.md` — doc-pairing skill
+- `scripts/check_learning_doc.sh` — pairing gate (PreToolUse hook)
+- `scripts/zone_check.sh` — zone checker (info / --strict / --gate)
+- `test/run_all.sh` — unified test runner
+- `docs/ja/` + `docs/ja/README.md` + `docs/ja/NNNN-*.md` — learning docs
+- `build.zig`, `build.zig.zon`, `flake.nix`, `.envrc`, `.gitignore`
+- `src/main.zig` and the rest of `src/`
+
+### 15.2 Files created on demand (do not pre-create as empty stubs)
+
+Empty files rot. These are created the moment they have real content,
+using the templates below.
+
+#### `.dev/handover.md` — when a session ends mid-task and the next session needs context that `git log` + ROADMAP cannot convey
+
+```markdown
+# Session handover
+- Phase:       <Phase N — name>
+- Last commit: <SHA — title>
+- In-progress: <what is half-done>
+- Next step:   <single concrete next move>
+- Open Qs:     <one-liners only>
+```
+
+#### `.dev/known_issues.md` — when the first long-lived issue surfaces
+
+```markdown
+# Known issues & technical debt
+## P0 — User-facing bugs        (none)
+## P1 — Development infrastructure  (none)
+## P2 — Correctness gaps         (none)
+## P3 — Design debt
+- **<title>** (<file:line>) — what is wrong, why we live with it now, trigger to fix
+```
+
+#### `.dev/compat_tiers.yaml` — when the first `src/lang/clj/<ns>.clj` lands (≈ Phase 10)
+
+```yaml
+clojure.core:           { tier: A, phase: 14 }
+clojure.string:         { tier: A, phase: 10 }
+# ... one line per namespace; java.* default to D
+```
+
+When this file appears, also create `.claude/rules/compat_tiers.md`
+(auto-loaded for `src/lang/**` and the yaml itself) — content lives in
+ROADMAP §6 / §13.
+
+#### `.dev/status/vars.yaml` — when Phase 2's var-tracking script lands (Phase 2.19)
+
+Per-var status: `{type: function|macro|special|var, status: todo|wip|done|skip, note: ...}`.
+Generator: `.dev/scripts/generate_vars_yaml.clj`.
 
 ### 15.2 Local reference clones (already present)
 
@@ -976,3 +1030,4 @@ Project-specific:
 | 2026-04-27 | Initial version. Synthesised from ClojureWasm v1, prior redesign attempt, Clojure, Babashka, Wasm 2026, mattpocock's vocabulary, and the strategic review. |
 | 2026-04-27 | Translated to English. Added §12.2 (commit-snapshot learning doc gate) and added `docs/ja/` to §5 / §15. |
 | 2026-04-27 | Audit pass: added §11.6 (Quality gate timeline, active + future). Added `.claude/rules/`, `.dev/{decisions,compat_tiers.yaml,handover.md,known_issues.md,concurrency_design.md,wasm_strategy.md}`, `scripts/zone_check.sh`, `test/run_all.sh` to §5 / §15. Removed `.editorconfig` (Emacs handles formatting; format gate listed as #4 in §11.6 pending). |
+| 2026-04-27 | Self-review + simplification: removed 7 high-rot-risk files (`.dev/handover.md`, `.dev/known_issues.md`, `.dev/compat_tiers.yaml`, `.dev/concurrency_design.md`, `.dev/wasm_strategy.md`, `.claude/rules/compat_tiers.md`, `docs/README.md`) and listed them in new §15.2 "create on demand". Reworked §12.2 / gate (#1) to "source commit → doc commit pairing": doc is the next commit, not the same commit; gate enforces both rules; SHA in doc front matter is the actual previous-commit SHA, no TBD/patch cycle. Patched 0001/0002 SHAs accordingly. |

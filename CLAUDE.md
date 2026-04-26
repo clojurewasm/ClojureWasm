@@ -57,17 +57,26 @@ English identifiers.
 - TDD: red → green → refactor.
 - Run `zig build test` before every commit. Do not bypass hooks.
 
-### Commit-snapshot learning doc (REQUIRED for source-touching commits)
+### Commit pairing: source commit → doc commit
 
-Every commit that stages any of `src/**/*.zig`, `build.zig`, `build.zig.zon`,
-or `.dev/decisions/*.md` MUST also stage a new
-`docs/ja/NNNN-<slug>.md` (Japanese, sequenced).
+Every source-bearing commit (`src/**/*.zig`, `build.zig`, `build.zig.zon`,
+or `.dev/decisions/*.md`) is **immediately followed** by a separate commit
+that adds the paired `docs/ja/NNNN-<slug>.md` (Japanese, sequenced). The
+pair forms the unit of progress.
+
+```
+commit N      feat(scope): ...           # source only
+commit N+1    docs(ja): NNNN — ...       # docs/ja/NNNN-*.md only
+```
+
+Writing the doc *after* the source commit lets the doc's `commit:` front
+matter reference the actual SHA — no "TBD then patch" cycle.
 
 - **Skill / template**: [`.claude/skills/code-learning-doc/SKILL.md`](.claude/skills/code-learning-doc/SKILL.md)
-- **Gate**: [`scripts/check_learning_doc.sh`](scripts/check_learning_doc.sh) runs as a `PreToolUse` hook on every Bash invocation; it blocks `git commit` if the pairing is missing.
+- **Gate**: [`scripts/check_learning_doc.sh`](scripts/check_learning_doc.sh) runs as a `PreToolUse` hook on every Bash invocation. It blocks (a) any commit that mixes source and a learning doc, and (b) any commit that follows an unpaired source commit without supplying the doc.
 
-The doc captures background, the code snapshot at that moment, the why, and
-takeaways — material for a future technical book and conference talks.
+The doc captures background, the code snapshot at that moment, the why,
+and takeaways — material for a future technical book and conference talks.
 
 ## Layout
 

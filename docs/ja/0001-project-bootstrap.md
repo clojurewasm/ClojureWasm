@@ -1,5 +1,5 @@
 ---
-commit: TBD (このコミット直後に SHA を埋める)
+commit: 116b874
 date: 2026-04-27
 scope:
   - build.zig
