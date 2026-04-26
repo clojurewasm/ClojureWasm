@@ -46,6 +46,12 @@ pub var background_mode: bool = false;
 // Server state
 // ============================================================
 
+// Network-bound server state. The std.net APIs were removed in Zig 0.16; the
+// listener field's old type (std.net.Server) is no longer available. The
+// server runtime is stubbed below until the std.Io.net migration lands as
+// a follow-up task. The state struct is kept so that the public API surface
+// (run-server / set-handler!) doesn't change shape.
+
 /// Module-level storage for background server (nREPL mode).
 var bg_server: ?ServerState = null;
 
@@ -54,180 +60,25 @@ const ServerState = struct {
     handler: Value,
     alloc: Allocator,
     running: bool,
-    mutex: std.Thread.Mutex,
     port: u16,
-    listener: std.net.Server,
 };
 
 // ============================================================
 // Builtins
 // ============================================================
 
-/// (run-server handler opts)
-/// Starts an HTTP server that calls handler for each request.
-/// handler: (fn [request-map]) -> response-map
-/// opts: {:port N} (default 8080)
-/// Blocks until the server is stopped (e.g. via SIGINT).
-pub fn runServerFn(allocator: Allocator, args: []const Value) anyerror!Value {
+/// (run-server handler opts) — stubbed during the Zig 0.16 migration.
+/// std.net.Address/Server/Stream were all removed; the std.Io.net replacement
+/// requires substantial rework (futex-based accept, no acceptWithShutdownCheck,
+/// stream reader/writer interface). Tracked as a Phase 7 follow-up F## item.
+pub fn runServerFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2) return err_mod.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to run-server", .{args.len});
-
-    // Skip during `cljw build` — allow require resolution without blocking.
     if (build_mode) return Value.nil_val;
-
-    const handler = args[0];
-    const opts = args[1];
-
-    // Validate handler is callable
-    switch (handler.tag()) {
-        .builtin_fn, .fn_val => {},
-        else => return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "run-server: first argument must be a function" }),
-    }
-
-    // Extract :port and :background from opts map
-    var port: u16 = 8080;
-    var use_background = background_mode;
-    if (opts.tag() == .map) {
-        const m = opts.asMap();
-        for (0..m.entries.len / 2) |i| {
-            const k = m.entries[i * 2];
-            const v = m.entries[i * 2 + 1];
-            if (k.tag() == .keyword) {
-                const name = k.asKeyword().name;
-                if (std.mem.eql(u8, name, "port")) {
-                    if (v.tag() == .integer) {
-                        const p = v.asInteger();
-                        if (p > 0 and p <= 65535) {
-                            port = @intCast(p);
-                        }
-                    }
-                } else if (std.mem.eql(u8, name, "background")) {
-                    use_background = v.isTruthy();
-                }
-            }
-        }
-    }
-
-    // Root the handler by storing it in a hidden var (GC protection).
-    const env = dispatch.macro_eval_env orelse return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "run-server: no evaluation environment" });
-    if (env.findNamespace("cljw.http")) |ns| {
-        if (ns.resolve("__handler")) |v| {
-            v.bindRoot(handler);
-        }
-    }
-
-    // Bind TCP socket
-    const address = std.net.Address.parseIp("0.0.0.0", port) catch {
-        return err_mod.setErrorFmt(.eval, .value_error, .{}, "run-server: failed to parse address for port {d}", .{port});
-    };
-    const listener = address.listen(.{ .reuse_address = true }) catch {
-        return err_mod.setErrorFmt(.eval, .value_error, .{}, "run-server: failed to listen on port {d}", .{port});
-    };
-
-    const actual_port = listener.listen_address.getPort();
-    std.debug.print("cljw.http server running on port {d}\n", .{actual_port});
-
-    if (use_background) {
-        // Non-blocking: store state in module-level static, run accept loop
-        // in background thread. Used with --nrepl so nREPL can start after eval.
-        bg_server = .{
-            .env = env,
-            .handler = handler,
-            .alloc = allocator,
-            .running = true,
-            .mutex = .{},
-            .port = actual_port,
-            .listener = listener,
-        };
-        const thread = std.Thread.spawn(.{}, acceptLoop, .{&bg_server.?}) catch {
-            return err_mod.setError(.{ .kind = .value_error, .phase = .eval, .message = "run-server: failed to spawn server thread" });
-        };
-        thread.detach();
-        return Value.nil_val;
-    }
-
-    // Blocking mode: state on stack, accept loop runs in current thread.
-    var state = ServerState{
-        .env = env,
-        .handler = handler,
-        .alloc = allocator,
-        .running = true,
-        .mutex = .{},
-        .port = actual_port,
-        .listener = listener,
-    };
-    defer state.listener.deinit();
-
-    acceptLoop(&state);
-    return Value.nil_val;
-}
-
-// ============================================================
-// Connection handler
-// ============================================================
-
-fn acceptLoop(state: *ServerState) void {
-    while (state.running and !lifecycle.isShutdownRequested()) {
-        const conn = lifecycle.acceptWithShutdownCheck(&state.listener) orelse break;
-        const thread = std.Thread.spawn(.{}, handleConnection, .{ state, conn }) catch |e| {
-            std.debug.print("thread spawn error: {s}\n", .{@errorName(e)});
-            conn.stream.close();
-            continue;
-        };
-        thread.detach();
-    }
-    std.debug.print("cljw.http server shutting down\n", .{});
-}
-
-fn handleConnection(state: *ServerState, conn: std.net.Server.Connection) void {
-    defer conn.stream.close();
-
-    // Read HTTP request (up to 64KB)
-    var buf: [65536]u8 = undefined;
-    const n = conn.stream.read(&buf) catch return;
-    if (n == 0) return;
-    const request = buf[0..n];
-
-    // Parse HTTP request
-    const parsed = parseHttpRequest(request) orelse {
-        sendErrorResponse(conn.stream, 400, "Bad Request");
-        return;
-    };
-
-    // Build Ring request map and call handler under mutex.
-    // Must set macro_eval_env for callFnVal (bytecodeCallBridge needs it).
-    state.mutex.lock();
-    defer state.mutex.unlock();
-
-    // Set up eval context for this thread
-    dispatch.macro_eval_env = state.env;
-    dispatch.current_env = state.env;
-
-    const ring_req = buildRingRequest(state.alloc, parsed, state.port, conn.address) catch {
-        sendErrorResponse(conn.stream, 500, "Internal Server Error");
-        return;
-    };
-
-    // Resolve handler: re-read from __handler Var to support live reload via nREPL.
-    // When user does (defn handler ...), the Var is rebound, and we pick it up here.
-    const current_handler = blk: {
-        if (state.env.findNamespace("cljw.http")) |ns| {
-            if (ns.resolve("__handler")) |v| {
-                const val = v.deref();
-                if (val.tag() == .fn_val or val.tag() == .builtin_fn) break :blk val;
-            }
-        }
-        break :blk state.handler; // fallback to captured handler
-    };
-
-    // Call handler function
-    const response = bootstrap.callFnVal(state.alloc, current_handler, &[1]Value{ring_req}) catch |e| {
-        std.debug.print("handler error: {s}\n", .{@errorName(e)});
-        sendErrorResponse(conn.stream, 500, "Internal Server Error");
-        return;
-    };
-
-    // Format and send HTTP response
-    sendRingResponse(conn.stream, state.alloc, response);
+    return err_mod.setError(.{
+        .kind = .internal_error,
+        .phase = .eval,
+        .message = "run-server: HTTP server is temporarily disabled while the std.net → std.Io.net migration is in progress",
+    });
 }
 
 // ============================================================
@@ -311,10 +162,12 @@ fn parseHttpRequest(raw: []const u8) ?ParsedRequest {
 }
 
 // ============================================================
-// Ring request map construction
+// Ring request map construction (kept for future restoration; the remote
+// address argument no longer carries a network type since the server is
+// stubbed for the migration).
 // ============================================================
 
-fn buildRingRequest(allocator: Allocator, parsed: ParsedRequest, server_port: u16, remote: std.net.Address) !Value {
+fn buildRingRequest(allocator: Allocator, parsed: ParsedRequest, server_port: u16, remote_addr: []const u8) !Value {
     // Build headers map
     const hdr_entries = try allocator.alloc(Value, parsed.header_count * 2);
     for (0..parsed.header_count) |i| {
@@ -338,16 +191,7 @@ fn buildRingRequest(allocator: Allocator, parsed: ParsedRequest, server_port: u1
     }
     const method_str = try allocator.dupe(u8, method_lower_buf[0..method_len]);
 
-    // Remote address string (IPv4 only for now)
-    var addr_buf: [64]u8 = undefined;
-    const ip_bytes = remote.in.sa.addr;
-    const addr_str = std.fmt.bufPrint(&addr_buf, "{d}.{d}.{d}.{d}", .{
-        @as(u8, @truncate(ip_bytes)),
-        @as(u8, @truncate(ip_bytes >> 8)),
-        @as(u8, @truncate(ip_bytes >> 16)),
-        @as(u8, @truncate(ip_bytes >> 24)),
-    }) catch "unknown";
-    const addr_dup = try allocator.dupe(u8, addr_str);
+    const addr_dup = try allocator.dupe(u8, remote_addr);
 
     // URI and query string
     const uri_dup = try allocator.dupe(u8, parsed.uri);
@@ -427,10 +271,12 @@ fn buildRingRequest(allocator: Allocator, parsed: ParsedRequest, server_port: u1
 }
 
 // ============================================================
-// Ring response formatting
+// Ring response formatting — currently unused (server runtime is stubbed).
+// Kept compiling against std.Io.Writer so it can be wired up once the
+// std.Io.net migration is implemented in a follow-up task.
 // ============================================================
 
-fn sendRingResponse(stream: std.net.Stream, allocator: Allocator, response: Value) void {
+fn sendRingResponseToBuffer(buf: []u8, allocator: Allocator, response: Value) []const u8 {
     // Extract :status, :headers, :body from response map
     var status: i64 = 200;
     var body: []const u8 = "";
@@ -454,14 +300,12 @@ fn sendRingResponse(stream: std.net.Stream, allocator: Allocator, response: Valu
         }
     }
 
-    // Format HTTP response
-    var buf: [65536]u8 = undefined;
-    var w: std.Io.Writer = .fixed(&buf);
+    // Format HTTP response into the caller-provided buffer.
+    _ = allocator;
+    var w: std.Io.Writer = .fixed(buf);
 
-    // Status line
-    w.print("HTTP/1.1 {d} {s}\r\n", .{ status, statusText(status) }) catch return;
+    w.print("HTTP/1.1 {d} {s}\r\n", .{ status, statusText(status) }) catch return w.buffered();
 
-    // Headers from response map
     var has_content_type = false;
     var has_content_length = false;
     if (resp_headers) |hdrs| {
@@ -470,38 +314,16 @@ fn sendRingResponse(stream: std.net.Stream, allocator: Allocator, response: Valu
             const v = hdrs.entries[i * 2 + 1];
             const hdr_name = if (k.tag() == .string) k.asString() else if (k.tag() == .keyword) k.asKeyword().name else continue;
             const hdr_val = if (v.tag() == .string) v.asString() else continue;
-            w.print("{s}: {s}\r\n", .{ hdr_name, hdr_val }) catch return;
+            w.print("{s}: {s}\r\n", .{ hdr_name, hdr_val }) catch return w.buffered();
             if (std.ascii.eqlIgnoreCase(hdr_name, "content-type")) has_content_type = true;
             if (std.ascii.eqlIgnoreCase(hdr_name, "content-length")) has_content_length = true;
         }
     }
-
-    // Default headers
-    if (!has_content_type) {
-        w.print("Content-Type: text/plain; charset=utf-8\r\n", .{}) catch return;
-    }
-    if (!has_content_length) {
-        w.print("Content-Length: {d}\r\n", .{body.len}) catch return;
-    }
-    w.print("Connection: close\r\n", .{}) catch return;
-    w.print("\r\n", .{}) catch return;
-
-    // Send header + body
-    const header_bytes = w.buffered();
-    stream.writeAll(header_bytes) catch return;
-    if (body.len > 0) {
-        stream.writeAll(body) catch return;
-    }
-    _ = allocator;
-}
-
-fn sendErrorResponse(stream: std.net.Stream, status: u16, message: []const u8) void {
-    var buf: [512]u8 = undefined;
-    var w: std.Io.Writer = .fixed(&buf);
-    w.print("HTTP/1.1 {d} {s}\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n{s}", .{
-        status, statusText(status), message.len, message,
-    }) catch return;
-    stream.writeAll(w.buffered()) catch {};
+    if (!has_content_type) w.print("Content-Type: text/plain; charset=utf-8\r\n", .{}) catch return w.buffered();
+    if (!has_content_length) w.print("Content-Length: {d}\r\n", .{body.len}) catch return w.buffered();
+    w.print("Connection: close\r\n\r\n", .{}) catch return w.buffered();
+    w.writeAll(body) catch return w.buffered();
+    return w.buffered();
 }
 
 fn statusText(code: i64) []const u8 {
@@ -525,99 +347,34 @@ fn statusText(code: i64) []const u8 {
 }
 
 // ============================================================
-// HTTP client
+// HTTP client — temporarily disabled while std.http.Client migrates to the
+// std.Io interface (Client now requires an `.io` field). Tracked as a
+// Phase 7 follow-up F## item.
 // ============================================================
 
-/// Shared implementation for HTTP client requests.
-/// method: .GET, .POST, .PUT, .DELETE
-/// args[0]: url (string)
-/// args[1]: opts (map, optional) — {:body "..." :headers {...}}
-fn doHttpRequest(allocator: Allocator, method: std.http.Method, args: []const Value) anyerror!Value {
+fn httpRequestStub(args: []const Value) anyerror!Value {
     if (args.len < 1) return err_mod.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to http request", .{args.len});
-
-    const url_val = args[0];
-    if (url_val.tag() != .string) return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "http request: url must be a string" });
-    const url = url_val.asString();
-
-    // Extract :body and :headers from opts
-    var payload: ?[]const u8 = null;
-    var extra_headers_buf: [32]std.http.Header = undefined;
-    var extra_header_count: usize = 0;
-    if (args.len >= 2 and args[1].tag() == .map) {
-        const opts = args[1].asMap();
-        for (0..opts.entries.len / 2) |i| {
-            const k = opts.entries[i * 2];
-            const v = opts.entries[i * 2 + 1];
-            if (k.tag() == .keyword) {
-                const name = k.asKeyword().name;
-                if (std.mem.eql(u8, name, "body") and v.tag() == .string) {
-                    payload = v.asString();
-                } else if (std.mem.eql(u8, name, "headers") and v.tag() == .map) {
-                    const hdrs = v.asMap();
-                    for (0..hdrs.entries.len / 2) |j| {
-                        if (extra_header_count >= extra_headers_buf.len) break;
-                        const hk = hdrs.entries[j * 2];
-                        const hv = hdrs.entries[j * 2 + 1];
-                        if (hk.tag() == .string and hv.tag() == .string) {
-                            extra_headers_buf[extra_header_count] = .{
-                                .name = hk.asString(),
-                                .value = hv.asString(),
-                            };
-                            extra_header_count += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Perform HTTP request using Zig std.http.Client
-    var client: std.http.Client = .{ .allocator = allocator };
-    defer client.deinit();
-
-    var response_buf = std.Io.Writer.Allocating.init(allocator);
-    defer response_buf.deinit();
-
-    const result = client.fetch(.{
-        .location = .{ .url = url },
-        .method = method,
-        .payload = payload,
-        .extra_headers = extra_headers_buf[0..extra_header_count],
-        .response_writer = &response_buf.writer,
-    }) catch {
-        return err_mod.setErrorFmt(.eval, .value_error, .{}, "HTTP request failed for {s}", .{url});
-    };
-
-    // Build response map: {:status N :body "..."}
-    const body_data = response_buf.toOwnedSlice() catch "";
-    const entries = try allocator.alloc(Value, 4);
-    entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "status" });
-    entries[1] = Value.initInteger(@intFromEnum(result.status));
-    entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "body" });
-    entries[3] = Value.initString(allocator, body_data);
-    const resp_map = try allocator.create(PersistentArrayMap);
-    resp_map.* = .{ .entries = entries };
-    return Value.initMap(resp_map);
+    return err_mod.setError(.{
+        .kind = .internal_error,
+        .phase = .eval,
+        .message = "http client (get/post/put/delete) is temporarily disabled while the std.http.Client → std.Io migration is in progress",
+    });
 }
 
-/// (http/get url) or (http/get url opts) -> {:status N :body "..."}
-pub fn getFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    return doHttpRequest(allocator, .GET, args);
+pub fn getFn(_: Allocator, args: []const Value) anyerror!Value {
+    return httpRequestStub(args);
 }
 
-/// (http/post url opts) -> {:status N :body "..."}
-pub fn postFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    return doHttpRequest(allocator, .POST, args);
+pub fn postFn(_: Allocator, args: []const Value) anyerror!Value {
+    return httpRequestStub(args);
 }
 
-/// (http/put url opts) -> {:status N :body "..."}
-pub fn putFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    return doHttpRequest(allocator, .PUT, args);
+pub fn putFn(_: Allocator, args: []const Value) anyerror!Value {
+    return httpRequestStub(args);
 }
 
-/// (http/delete url) or (http/delete url opts) -> {:status N :body "..."}
-pub fn deleteFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    return doHttpRequest(allocator, .DELETE, args);
+pub fn deleteFn(_: Allocator, args: []const Value) anyerror!Value {
+    return httpRequestStub(args);
 }
 
 // ============================================================
