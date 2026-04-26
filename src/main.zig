@@ -25,22 +25,20 @@ const cli = @import("app/cli.zig");
 const test_runner = @import("app/test_runner.zig");
 const clojure_core_protocols = @import("lang/lib/clojure_core_protocols.zig");
 
-pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
     // Two allocators:
     //   allocator (GPA)   — for infrastructure (Env, Namespace, Var, HashMaps)
     //   alloc (GC)        — for Values (Fn, collections, strings, reader/analyzer)
     var gc = gc_mod.MarkSweepGc.init(allocator);
+    gc.io = init.io;
     defer gc.deinit();
     defer vm_mod.dumpOpcodeProfile(); // 37.1: dump opcode profile at exit
     defer gc.dumpAllocProfile(); // 37.1: dump allocation profile at exit
     const alloc = gc.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     // Initialize keyword intern table (uses GPA for permanent keyword strings)
     keyword_intern.init(allocator);
