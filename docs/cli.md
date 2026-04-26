@@ -1,5 +1,12 @@
 # CLI Reference
 
+> **Status note (Zig 0.16 migration)**: `cljw build`, `--nrepl-server`, the
+> raw-mode line editor, and the embedded HTTP server/client are temporarily
+> disabled and emit a clear runtime error when invoked. Each is preserved in
+> source (or git history) and tracked as `F140`-`F144` in
+> `.dev/checklist.md` for restoration once the `std.Io.net` /
+> `std.fs.selfExePath` migration follow-ups land.
+
 ## Usage
 
 ```
@@ -73,6 +80,12 @@ cljw build app.clj -o myapp     # Build with custom name
 Produces a single self-contained binary that embeds the CW runtime,
 bootstrap, and your source code. The resulting binary starts up in ~18ms.
 
+> *Temporarily disabled during the Zig 0.16 migration (F144 in
+> `.dev/checklist.md`). The bundling routine relies on
+> `std.fs.selfExePath` + `std.fs.openFileAbsolute`, both removed in
+> 0.16; restoring it is a follow-up after `std.c.realpath` /
+> `_NSGetExecutablePath` plumbing lands.*
+
 ### Dependency Resolution
 
 ```bash
@@ -102,7 +115,7 @@ cljw -Sforce -P   # Force re-fetch
 | `-e <expr>` | Evaluate expression and print result |
 | `--tree-walk` | Use TreeWalk interpreter instead of VM |
 | `--dump-bytecode` | Dump compiled bytecode (VM only) |
-| `--nrepl-server` | Start nREPL server |
+| `--nrepl-server` | Start nREPL server *(temp. disabled — F142)* |
 | `--port=<N>` | nREPL server port (default: auto) |
 | `--version` | Print version and exit |
 | `-h`, `--help` | Show help |

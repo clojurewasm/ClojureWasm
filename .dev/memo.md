@@ -4,13 +4,20 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **Zone Cleanup COMPLETE** (16 → 0 violations)
-- Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
-- Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon)
-- 68 upstream test files. 6/6 e2e. 14/14 deps e2e
-- Binary: 4.76MB. Startup: 4.2ms. RSS: 7.6MB
+- **Zig 0.16.0 migration COMPLETE** (D111, branch `develop/zig-016-migration`)
+- Wasm engine: zwasm v1.11.0 (first 0.16-compatible tag)
+- All test suites green: 1324/1324 unit, 83/83 cljw test, 6/6 wasm e2e, deps.edn e2e
+- Binary: 4.12MB. Startup: 4.1ms. RSS: 8.2MB (post-migration ReleaseSafe, macOS aarch64)
 - Zone violations: 0 (zero — fully clean architecture)
-- All test suites: PASS (0 failures)
+- Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
+- 68 upstream test files
+
+Temporarily stubbed during the migration (each prints a runtime error and
+is tracked as a Phase 7 follow-up F## in `.dev/checklist.md`):
+- HTTP server (F140), HTTP client (F141)
+- nREPL server (F142)
+- Raw-mode line editor (F143; runRepl falls through to runReplSimple)
+- `cljw build` self-bundling (F144)
 
 ## Strategic Direction
 
@@ -25,15 +32,21 @@ CW is a complete, optimized Zig implementation with behavioral Clojure compatibi
 
 ## Current Task
 
-v0.4.0 release — all docs updated, ready for tag.
+v0.5.0 release prep — Zig 0.16.0 migration is in CHANGELOG `Unreleased`,
+docs audited. Ready to tag once `develop/zig-016-migration` lands on main.
 
 ## Previous Task
 
-HAMT crash fix + CI benchmark timeout fix + full doc update for v0.4.0.
+Zig 0.15.2 → 0.16.0 migration (D111). 18 commits on
+`develop/zig-016-migration` from `f752739` (Phase -1 audit) through
+`aa9dbca` (toolchain flip + Phase 7 follow-ups).
 
 ## Task Queue
 
-(empty)
+- Restore stubbed features: F140-F144 (HTTP server/client, nREPL,
+  line editor, `cljw build`)
+- F145: OrbStack Ubuntu re-validation under 0.16
+- F146: strip libc back out
 
 ## Known Issues
 
@@ -46,7 +59,9 @@ P3: UPSTREAM-DIFF markers (I-030), stub vars (I-031), stub namespaces (I-032).
 
 ## Notes
 
-- CLAUDE.md binary threshold updated to 4.8MB (post All-Zig migration)
+- Binary threshold raised to 5.5 MB during the Zig 0.16 migration (gives
+  headroom for restoring the four stubbed features and absorbing libc).
 - Zone check: `bash scripts/zone_check.sh --gate` (hard block, baseline 0)
 - Zone checker now excludes test-only imports (after first `test "..."` in file)
 - Phase 98 plan: `.claude/plans/shiny-frolicking-dijkstra.md` (COMPLETE)
+- Migration working doc archived: `.dev/archive/zig-016-migration.md`

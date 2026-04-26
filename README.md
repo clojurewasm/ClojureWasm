@@ -19,9 +19,9 @@ a native implementation targeting behavioral compatibility with Clojure.
 
 ## Highlights
 
-- **Fast startup** — ~5ms to evaluate an expression (ReleaseSafe)
+- **Fast startup** — ~4ms to evaluate an expression (ReleaseSafe)
 - **Small binary** — ~4MB single executable (ReleaseSafe)
-- **Single binary distribution** — `cljw build app.clj -o app`, runs without cljw installed
+- **Single binary distribution** — `cljw build app.clj -o app`, runs without cljw installed *(temporarily disabled during the Zig 0.16 migration; see note below)*
 - **Wasm FFI** — call WebAssembly modules from Clojure (523 opcodes including SIMD + GC)
 - **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
 - **deps.edn compatible** — Clojure CLI subset (-A/-M/-X/-P, git deps, local deps)
@@ -75,6 +75,14 @@ No Maven/Clojars support (git deps and local deps only).
 ./myapp                         # Runs without cljw
 ```
 
+> **Note (Zig 0.16 migration)**: `cljw build`, the nREPL server, and the
+> built-in HTTP server/client are temporarily disabled while their backing
+> stdlib APIs (`std.fs.selfExePath`, `std.net.Server`, `std.http.Client`)
+> migrate to the new `std.Io` model. Each prints a clear runtime error
+> when invoked. Tracked in `.dev/checklist.md` F140-F144 (target: next
+> minor release after this one). Use `zig build && cljw <file.clj>` to
+> run apps in the meantime.
+
 ### nREPL / CIDER
 
 ```bash
@@ -82,7 +90,8 @@ No Maven/Clojars support (git deps and local deps only).
 ```
 
 Connect from Emacs CIDER or any nREPL client. 14 ops supported (eval, complete,
-info, stacktrace, eldoc, etc.).
+info, stacktrace, eldoc, etc.). *(See the build note above — temporarily
+unavailable while the std.net migration lands.)*
 
 ## Features
 
@@ -200,6 +209,10 @@ Call WebAssembly modules directly from Clojure:
 - HTTP client: `http/get`, `http/post`, `http/put`, `http/delete`
 - nREPL in built binaries (`./myapp --nrepl 7888`)
 - SIGINT/SIGTERM graceful shutdown with hooks
+
+> *Temporarily disabled during the Zig 0.16 migration — see the build note
+> earlier in this README. Tracked as `F140`/`F141`/`F142` in
+> `.dev/checklist.md`.*
 
 ### Internals
 

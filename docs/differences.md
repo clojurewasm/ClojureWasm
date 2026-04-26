@@ -87,10 +87,11 @@ This document lists concrete behavioral differences.
 | Feature | Namespace | Description |
 |---------|-----------|-------------|
 | Wasm FFI | `cljw.wasm` | Load and call WebAssembly modules |
-| HTTP client | `cljw.http` | Native HTTP client |
-| `cljw build` | CLI | Build standalone single-binary executables |
+| HTTP client | `cljw.http` | Native HTTP client *(temp. disabled — Zig 0.16 migration F141)* |
+| HTTP server | `cljw.http` | Ring-compatible server *(temp. disabled — F140)* |
+| `cljw build` | CLI | Build standalone single-binary executables *(temp. disabled — F144)* |
 | `cljw test` | CLI | Built-in test runner |
-| nREPL server | CLI | `--nrepl-server` flag |
+| nREPL server | CLI | `--nrepl-server` flag *(temp. disabled — F142)* |
 
 ## Reader Differences
 

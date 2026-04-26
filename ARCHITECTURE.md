@@ -244,3 +244,11 @@ at runtime.
 A CIDER-compatible nREPL server supporting 14 operations: eval, load-file,
 complete, info, lookup, stacktrace, clone, close, describe, ls-sessions,
 interrupt, stdin, eldoc, and ns-list.
+
+> **Status (Zig 0.16 migration)**: temporarily stubbed. The full
+> implementation was built on `std.net.{Server,Stream}` and
+> `std.posix.poll`, both removed in Zig 0.16. Calls to
+> `nrepl.startServer` currently return a runtime error pointing at
+> the Phase 7 follow-up (`.dev/checklist.md` F142). The original code
+> is preserved in git history pre-`e9b65f3` and will be ported back
+> on top of `std.Io.net` once the network rewrite lands.
