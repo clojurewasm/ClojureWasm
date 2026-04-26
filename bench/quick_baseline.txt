@@ -1,0 +1,4 @@
+2026-04-26T18:45:42Z	phase1	cold_start_us	2400
+2026-04-26T18:45:42Z	phase1	e_plus_round_trip_us	2300
+2026-04-26T18:45:42Z	phase1	read_100_forms_us	2300
+2026-04-26T18:45:42Z	phase1	binary_size_bytes	455848
