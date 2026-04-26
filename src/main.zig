@@ -95,4 +95,5 @@ test {
     _ = @import("eval/form.zig");
     _ = @import("eval/tokenizer.zig");
     _ = @import("eval/reader.zig");
+    _ = @import("eval/node.zig");
 }
