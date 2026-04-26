@@ -754,20 +754,36 @@ the special-form-only Phase-2 surface.
   `(defn f [x] (+ x 1)) (f 2)` → `3`
   `(try (throw (ex-info "boom" {})) (catch ExceptionInfo e (ex-message e)))` → `"boom"`
 
+> Tasks 3.1–3.4 land **first** because they activate principle P6
+> ("Error quality is non-negotiable"): the runtime/error.zig
+> infrastructure (SourceLocation / Kind / Phase / threadlocal
+> last_error / setErrorFmt) was put in place at Phase 1.2 but the
+> Reader / Analyzer / TreeWalk error sites still discard the
+> location and the CLI just prints `@errorName(err)`. Wiring P6
+> end-to-end before stacking `defn` / `try` / `catch` on top means
+> debugging Phase 3 itself becomes tractable. CLI ergonomics
+> (file / stdin execution) ride alongside 3.1 because `-e` strings
+> hit zsh history expansion (`!`), `$`, backticks etc., and
+> heredoc / file invocation is the safer path for tests and skills.
+
 | Task | Description                                                                                                                                                                                                                                                                       | Status |
 |------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
-| 3.1  | `src/runtime/collection/string.zig` — String heap type (`HeapTag.string`); analyzer lifts string Form atoms into Value via `runtime.string.alloc(rt, bytes)`; `printValue` renders quoted                                                                                          | [ ]    |
-| 3.2  | `src/runtime/collection/list.zig` — list literal as a Value: `(quote (1 2 3))` returns a heap List; analyzer's `formToValue` walks Form `.list` recursively                                                                                                                       | [ ]    |
-| 3.3  | `src/lang/macro_transforms.zig` — Zig-level expansions for the bootstrap macros (`let` → `let*`, `when` → `(if c (do ...) nil)`, `if-let` / `when-let` / `and` / `or` / `cond` / `->` / `->>`); analyzer detects `^:macro` Vars and routes through `vtable.expandMacro`            | [ ]    |
-| 3.4  | `src/runtime/print.zig` — extract `printValue` from main.zig; add list / string / fn / keyword / symbol pr-str renderers; main.zig switches to `print.printValue`                                                                                                                  | [ ]    |
-| 3.5  | `src/eval/analyzer.zig` — add `try` / `catch` / `throw` / `loop*` / `recur` special forms; `eval/node.zig` gains `try_node` / `throw_node` / `loop_node` / `recur_node` variants                                                                                                  | [ ]    |
-| 3.6  | `src/runtime/value.zig` — add `ex_info` heap struct (message + data map); `lang/primitive/error.zig` exposes `ex-info` / `ex-message` / `ex-data` builtins                                                                                                                         | [ ]    |
-| 3.7  | `src/eval/backend/tree_walk.zig` — implement `evalLoop` / `evalRecur` (threadlocal pending_recur signal), `evalTry` / `evalThrow` (`error.ThrownValue` + threadlocal `last_thrown`); closure capture for `fn*` (slot-vector style)                                                | [ ]    |
-| 3.8  | `src/lang/bootstrap.zig` + `src/lang/clj/clojure/core.clj` (Stage 1) — Read + Analyse + Eval `core.clj` after `primitive.registerAll`; Stage-1 content: `defn`, `defmacro`, `let`, `when`, `cond`, `if-let`, `when-let`, `not`, `and`, `or`, `->`, `->>`                          | [ ]    |
-| 3.9  | `src/main.zig` — wire bootstrap into startup; `cljw -e "(defn f [x] (+ x 1)) (f 2)"` → `3`                                                                                                                                                                                       | [ ]    |
-| 3.10 | Phase-3 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` and `(try (throw (ex-info "boom" {})) (catch ExceptionInfo e (ex-message e)))` → `"boom"`. e2e script in `test/e2e/phase3_exit.sh` wired into `run_all.sh`                                                                  | [ ]    |
+| 3.1  | `src/runtime/error_print.zig` — `formatErrorWithContext(info, source, w)` renders `<file>:<line>:<col>: <kind> [<phase>]\n  <source line>\n  <caret>\n  <message>` with optional ANSI; **also extends `src/main.zig` with `cljw <file.clj>` and `cljw -` (stdin / heredoc)** — `-e` is preserved but no longer the only safe path; `main.zig` switches its catch sites to `formatErrorWithContext` | [ ]    |
+| 3.2  | `src/eval/reader.zig` — replace direct `error.SyntaxError` / `error.NumberError` / `error.StringError` returns with `setErrorFmt(.parse, kind, tok-derived loc, fmt, args)`; existing tests still pass because the public error tags are unchanged                                | [ ]    |
+| 3.3  | `src/eval/analyzer.zig` — replace `AnalyzeError.SyntaxError` / `NameError` / `NotImplemented` returns with `setErrorFmt(.analysis, kind, form.location, ...)`; symbol resolution failures cite the offending symbol's location                                                    | [ ]    |
+| 3.4  | `src/eval/backend/tree_walk.zig` — replace `EvalError.NotCallable` / `ArityMismatch` / `SlotOutOfRange` returns with `setErrorFmt(.eval, kind, node.loc(), ...)`; primitives in `lang/primitive/{math,core}.zig` already match the `BuiltinFn` shape, so route their errors too   | [ ]    |
+| 3.5  | `src/runtime/collection/string.zig` — String heap type (`HeapTag.string`); analyzer lifts string Form atoms into Value via `runtime.string.alloc(rt, bytes)`; `printValue` renders quoted                                                                                          | [ ]    |
+| 3.6  | `src/runtime/collection/list.zig` — list literal as a Value: `(quote (1 2 3))` returns a heap List; analyzer's `formToValue` walks Form `.list` recursively                                                                                                                       | [ ]    |
+| 3.7  | `src/lang/macro_transforms.zig` — Zig-level expansions for the bootstrap macros (`let` → `let*`, `when` → `(if c (do ...) nil)`, `if-let` / `when-let` / `and` / `or` / `cond` / `->` / `->>`); analyzer detects `^:macro` Vars and routes through `vtable.expandMacro`            | [ ]    |
+| 3.8  | `src/runtime/print.zig` — extract `printValue` from main.zig; add list / string / fn / keyword / symbol pr-str renderers; main.zig switches to `print.printValue`                                                                                                                  | [ ]    |
+| 3.9  | `src/eval/analyzer.zig` — add `try` / `catch` / `throw` / `loop*` / `recur` special forms; `eval/node.zig` gains `try_node` / `throw_node` / `loop_node` / `recur_node` variants                                                                                                  | [ ]    |
+| 3.10 | `src/runtime/value.zig` — add `ex_info` heap struct (message + data map); `lang/primitive/error.zig` exposes `ex-info` / `ex-message` / `ex-data` builtins                                                                                                                        | [ ]    |
+| 3.11 | `src/eval/backend/tree_walk.zig` — implement `evalLoop` / `evalRecur` (threadlocal pending_recur signal), `evalTry` / `evalThrow` (`error.ThrownValue` + threadlocal `last_thrown`); closure capture for `fn*` (slot-vector style)                                                | [ ]    |
+| 3.12 | `src/lang/bootstrap.zig` + `src/lang/clj/clojure/core.clj` (Stage 1) — Read + Analyse + Eval `core.clj` after `primitive.registerAll`; Stage-1 content: `defn`, `defmacro`, `let`, `when`, `cond`, `if-let`, `when-let`, `not`, `and`, `or`, `->`, `->>`                          | [ ]    |
+| 3.13 | `src/main.zig` — wire bootstrap into startup; `cljw -e "(defn f [x] (+ x 1)) (f 2)"` → `3`                                                                                                                                                                                       | [ ]    |
+| 3.14 | Phase-3 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` and `(try (throw (ex-info "boom" {})) (catch ExceptionInfo e (ex-message e)))` → `"boom"`. e2e script in `test/e2e/phase3_exit.sh` wired into `run_all.sh`                                                                  | [ ]    |
 
-After 3.10 lands as a `[x]`, the §9 phase tracker flips Phase 3 from
+After 3.14 lands as a `[x]`, the §9 phase tracker flips Phase 3 from
 PENDING to DONE and Phase 4 IN-PROGRESS (🔒 x86_64 gate); expand
 Phase 4 inline in §9.6.
 

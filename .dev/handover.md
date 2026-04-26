@@ -20,16 +20,33 @@
 
 ## Next task
 
-`§9.5 / 3.1` — `src/runtime/collection/string.zig`: heap-backed
-String type. The Phase-1 Reader returns `.string` Form atoms, but
-the Phase-2 analyzer treats them as `NotImplemented`. 3.1 lifts
-them: a `String` heap struct (HeapHeader + len + bytes), a
-`runtime.string.alloc(rt, bytes)` helper that registers via
-`rt.trackHeap`, and an analyzer change so `.string` Forms become
-`ConstantNode { value = string-Value }`.
+`§9.5 / 3.1` — `src/runtime/error_print.zig`: `formatErrorWithContext
+(info, source, w)` plus a CLI overhaul of `src/main.zig`.
 
-Exit criterion for 3.1: `cljw -e "\"hello\""` reads, lifts, and
-prints `"hello"` (with the surrounding quotes).
+Two motivations land together:
+
+1. **Activate principle P6.** Phase 1.2 put SourceLocation /
+   threadlocal `last_error` / `setErrorFmt` infrastructure in place,
+   but Reader / Analyzer / TreeWalk error sites still discard the
+   location and `main.zig` just prints `@errorName(err)`. 3.1 builds
+   the rendering side (`error_print.zig`) and switches `main.zig`'s
+   catch sites to it; 3.2–3.4 then re-route the error producers
+   through `setErrorFmt` so `last_error` actually carries `Info`.
+2. **Safer cljw invocation.** `-e "..."` collides with zsh history
+   expansion (`!`), shell variable expansion (`$`), backticks etc.
+   Add `cljw <file.clj>` and `cljw -` (stdin / heredoc) as
+   first-class entry points. `-e` stays as a quick path; the dev
+   rule `.claude/rules/cljw-invocation.md` documents which to use
+   when.
+
+Exit criterion for 3.1:
+  - A bad expression like `cljw -e "(+ 1 :foo)"` prints
+    `<-e>:1:4: type_error [eval]\n  (+ 1 :foo)\n      ^^^^\n
+    +: expected number, got keyword` to stderr (or similar shape)
+    rather than just `@errorName`.
+  - `cljw script.clj` reads the file and runs RAEP over each top-level
+    form.
+  - `cljw -` reads stdin and runs RAEP — heredoc invocations work.
 
 ## Open questions / blockers
 
