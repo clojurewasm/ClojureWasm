@@ -3320,7 +3320,7 @@ pub fn formToValue(allocator: Allocator, form: Form) Value {
         .keyword => |sym| Value.initKeyword(allocator, .{ .ns = sym.ns, .name = sym.name }),
         // Collections/regex not supported here — use macro.formToValue instead.
         .list, .vector, .map, .set => Value.nil_val,
-        .regex => |_| Value.nil_val,
+        .regex => Value.nil_val,
         .tag => Value.nil_val,
     };
 }
