@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 (2026-04-27)
 
 ### Toolchain
 - Migrate from Zig 0.15.2 to Zig 0.16.0 (D111). All `std.Io` reshapes
