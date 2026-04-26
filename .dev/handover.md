@@ -7,9 +7,8 @@
 
 - **Phase**: Phase 1 IN-PROGRESS (1.0 done; 1.1 next).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
-- **Last paired commit**: doc commit covering bootstrap / audit /
-  simplification / continuity-fixes — see `git log --oneline` for the
-  exact head.
+- **Last paired commit**: `docs(ja): 0004 — relaxed-pairing-and-continuity-restoration`
+  (covers commit 5750e91 — improvements bundle).
 - **Build**: `zig build` / `zig build test` / `zig build run` are green
   on the bootstrap (`cljw` prints `ClojureWasm`).
 
