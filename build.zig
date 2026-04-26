@@ -36,9 +36,13 @@ pub fn build(b: *std.Build) void {
     } else null;
 
     // Library module (test root)
+    // link_libc: std.c.{getcwd,getenv,realpath,mprotect,write} are used by
+    // runtime/lifecycle, lang/builtins/system, lang/interop/classes/file,
+    // engine/vm/jit, runtime/io_default. Tracked for removal in F146.
     const mod = b.addModule("ClojureWasm", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
+        .link_libc = true,
     });
     mod.addImport("build_options", options_module);
     if (zwasm_mod) |m| mod.addImport("zwasm", m);
@@ -53,6 +57,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/cache_gen.zig"),
             .target = b.resolveTargetQuery(.{}),
             .optimize = .ReleaseSafe,
+            .link_libc = true,
         }),
     });
     cache_gen.root_module.addImport("build_options", options_module);
@@ -78,6 +83,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         }),
     });
     exe.root_module.addImport("build_options", options_module);
