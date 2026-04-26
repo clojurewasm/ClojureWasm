@@ -4,11 +4,11 @@
 # do not add ad-hoc test scripts elsewhere — wire them in here.
 #
 # Active suites:
-#   1. zig build test           Zig unit tests in each src/**/*.zig
-#   2. scripts/zone_check.sh    zone-dependency gate (--gate mode)
+#   1. zig build test                  Zig unit tests in each src/**/*.zig
+#   2. scripts/zone_check.sh           zone-dependency gate (--gate mode)
+#   3. test/e2e/phase2_exit.sh         Phase-2 CLI exit criteria
 #
 # Future suites (uncomment as their phase lands):
-#   - test/e2e/*.sh             CLI round-trip checks               (Phase 2)
 #   - test/clj/**/*.clj         clojure.test suites                 (Phase 11)
 #   - test/upstream/**/*.clj    upstream-ported Tier-A verification (Phase 11)
 #   - bash scripts/tier_check.sh                                    (Phase 14)
@@ -27,11 +27,9 @@ echo "==> 2. zone_check --gate"
 bash scripts/zone_check.sh --gate
 echo "    OK"
 
-# if [ -x test/e2e/cli_smoke.sh ]; then
-#     echo "==> 3. CLI smoke (test/e2e/cli_smoke.sh)"
-#     bash test/e2e/cli_smoke.sh
-#     echo "    OK"
-# fi
+echo "==> 3. e2e: Phase-2 exit criteria"
+bash test/e2e/phase2_exit.sh
+echo "    OK"
 
 echo
 echo "All test suites passed."
