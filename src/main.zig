@@ -11,3 +11,9 @@ pub fn main(init: std.process.Init) !void {
 test "smoke: main module loads" {
     try std.testing.expect(true);
 }
+
+// Pull in tests from the runtime tree. As more files appear under
+// src/runtime/, add them here so the unified `zig build test` discovers them.
+test {
+    _ = @import("runtime/value.zig");
+}
