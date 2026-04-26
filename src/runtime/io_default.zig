@@ -43,3 +43,74 @@ pub fn set(io: std.Io) void {
     current_io = io;
     initialized = true;
 }
+
+// =====================================================================
+// Convenience helpers — mirror the deleted std.Thread.{Mutex,Condition}
+// API surface so call sites that previously passed no io argument keep
+// roughly the same shape.
+// =====================================================================
+
+/// Lock a mutex using the default io. Uncancelable variant: never
+/// returns an error, matching the old std.Thread.Mutex.lock() shape.
+pub fn lockMutex(m: *std.Io.Mutex) void {
+    m.lockUncancelable(get());
+}
+
+pub fn unlockMutex(m: *std.Io.Mutex) void {
+    m.unlock(get());
+}
+
+/// std.Io.Condition.wait, but uncancelable and uses default io.
+pub fn condWait(cond: *std.Io.Condition, mutex: *std.Io.Mutex) void {
+    cond.waitUncancelable(get(), mutex);
+}
+
+/// Timed wait on a condition. Returns true on timeout, false on signal/broadcast.
+/// Mirrors zwasm's `condTimedWait` (D135). The deadline is computed once
+/// outside the loop so spurious wake-ups don't extend the wait.
+pub fn condTimedWait(cond: *std.Io.Condition, mutex: *std.Io.Mutex, timeout_ns: u64) bool {
+    const io = get();
+    var epoch = cond.epoch.load(.acquire);
+    _ = cond.state.fetchAdd(.{ .waiters = 1, .signals = 0 }, .monotonic);
+    mutex.unlock(io);
+    defer mutex.lockUncancelable(io);
+
+    const start = std.Io.Timestamp.now(io, .awake);
+    const deadline_ts = start.addDuration(.fromNanoseconds(@intCast(timeout_ns)));
+    const deadline_clock_ts: std.Io.Clock.Timestamp = .{ .raw = deadline_ts, .clock = .awake };
+    const timeout: std.Io.Timeout = .{ .deadline = deadline_clock_ts };
+
+    while (true) {
+        // futexWaitTimeout returns Cancelable!void — error.Timeout is not in
+        // that error set, so the timeout case is detected by checking the
+        // current Timestamp against the deadline rather than via the error.
+        std.Io.futexWaitTimeout(io, u32, &cond.epoch.raw, epoch, timeout) catch {};
+        epoch = cond.epoch.load(.acquire);
+        const cur = cond.state.load(.monotonic);
+        if (cur.signals > 0) {
+            const new_state: @TypeOf(cur) = .{
+                .waiters = cur.waiters - 1,
+                .signals = cur.signals - 1,
+            };
+            if (cond.state.cmpxchgWeak(cur, new_state, .acquire, .monotonic) == null) {
+                return false;
+            }
+        }
+        // Check if deadline passed (timeout case)
+        const now_ts = std.Io.Timestamp.now(io, .awake);
+        if (now_ts.nanoseconds >= deadline_ts.nanoseconds) return true;
+    }
+}
+
+pub fn condSignal(cond: *std.Io.Condition) void {
+    cond.signal(get());
+}
+
+pub fn condBroadcast(cond: *std.Io.Condition) void {
+    cond.broadcast(get());
+}
+
+/// Sleep for `ns` nanoseconds. Replaces std.Thread.sleep(ns).
+pub fn sleep(ns: u64) void {
+    std.Io.sleep(get(), .fromNanoseconds(@intCast(ns)), .awake) catch {};
+}

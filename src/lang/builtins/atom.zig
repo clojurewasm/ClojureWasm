@@ -25,6 +25,7 @@ const dispatch = @import("../../runtime/dispatch.zig");
 const err = @import("../../runtime/error.zig");
 const thread_pool_mod = @import("../../runtime/thread_pool.zig");
 const env_mod = @import("../../runtime/env.zig");
+const io_default = @import("../../runtime/io_default.zig");
 
 /// (atom val) => #<atom val>
 pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -1008,8 +1009,8 @@ pub fn refHistoryCountFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ref-history-count", .{args.len});
     if (args[0].tag() != .ref) return err.setErrorFmt(.eval, .type_error, .{}, "ref-history-count expects a ref, got {s}", .{@tagName(args[0].tag())});
     const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
-    inner.lock.lock();
-    defer inner.lock.unlock();
+    io_default.lockMutex(&inner.lock);
+    defer io_default.unlockMutex(&inner.lock);
     var count: i64 = 0;
     var tval = inner.tvals;
     while (tval) |tv| {
@@ -1111,8 +1112,8 @@ pub fn restartAgentFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to restart-agent", .{args.len});
     if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "restart-agent expects an agent" });
     const inner = args[0].asAgent().getInner();
-    inner.mutex.lock();
-    defer inner.mutex.unlock();
+    io_default.lockMutex(&inner.mutex);
+    defer io_default.unlockMutex(&inner.mutex);
     if (!inner.isInErrorState()) {
         return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "Agent does not need restart" });
     }
@@ -1126,8 +1127,8 @@ pub fn setErrorHandlerFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set-error-handler!", .{args.len});
     if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "set-error-handler! expects an agent" });
     const inner = args[0].asAgent().getInner();
-    inner.mutex.lock();
-    defer inner.mutex.unlock();
+    io_default.lockMutex(&inner.mutex);
+    defer io_default.unlockMutex(&inner.mutex);
     inner.error_handler = args[1];
     return args[0];
 }
@@ -1137,8 +1138,8 @@ pub fn errorHandlerFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to error-handler", .{args.len});
     if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "error-handler expects an agent" });
     const inner = args[0].asAgent().getInner();
-    inner.mutex.lock();
-    defer inner.mutex.unlock();
+    io_default.lockMutex(&inner.mutex);
+    defer io_default.unlockMutex(&inner.mutex);
     const handler = inner.error_handler;
     if (handler.tag() == .nil) return Value.nil_val;
     return handler;
@@ -1149,8 +1150,8 @@ pub fn errorModeFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to error-mode", .{args.len});
     if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "error-mode expects an agent" });
     const inner = args[0].asAgent().getInner();
-    inner.mutex.lock();
-    defer inner.mutex.unlock();
+    io_default.lockMutex(&inner.mutex);
+    defer io_default.unlockMutex(&inner.mutex);
     return switch (inner.error_mode) {
         .continue_mode => Value.initKeyword(allocator, .{ .ns = null, .name = "continue" }),
         .fail_mode => Value.initKeyword(allocator, .{ .ns = null, .name = "fail" }),
@@ -1165,8 +1166,8 @@ pub fn setErrorModeFn(_: Allocator, args: []const Value) anyerror!Value {
     const mode_kw = args[1].asKeyword();
     if (mode_kw.ns != null) return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "Invalid agent error mode" });
     const inner = args[0].asAgent().getInner();
-    inner.mutex.lock();
-    defer inner.mutex.unlock();
+    io_default.lockMutex(&inner.mutex);
+    defer io_default.unlockMutex(&inner.mutex);
     if (std.mem.eql(u8, mode_kw.name, "continue")) {
         inner.error_mode = .continue_mode;
     } else if (std.mem.eql(u8, mode_kw.name, "fail")) {
@@ -1206,10 +1207,10 @@ pub fn sendFn(allocator: Allocator, args: []const Value) anyerror!Value {
     action.* = .{ .func = args[1], .args = extra_args };
 
     // Enqueue and trigger processing
-    inner.mutex.lock();
+    io_default.lockMutex(&inner.mutex);
     inner.enqueue(action);
     const was_processing = inner.processing.swap(true, .acq_rel);
-    inner.mutex.unlock();
+    io_default.unlockMutex(&inner.mutex);
 
     if (!was_processing) {
         // Submit agent work to thread pool
@@ -1237,11 +1238,11 @@ pub fn awaitFn(_: Allocator, args: []const Value) anyerror!Value {
     for (args) |arg| {
         if (arg.tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "await expects agents" });
         const inner = arg.asAgent().getInner();
-        inner.mutex.lock();
+        io_default.lockMutex(&inner.mutex);
         while (inner.processing.load(.acquire) or inner.action_head != null) {
-            inner.await_cond.wait(&inner.mutex);
+            io_default.condWait(&inner.await_cond, &inner.mutex);
         }
-        inner.mutex.unlock();
+        io_default.unlockMutex(&inner.mutex);
     }
     return Value.nil_val;
 }
@@ -1257,18 +1258,19 @@ pub fn awaitForFn(_: Allocator, args: []const Value) anyerror!Value {
     for (args[1..]) |arg| {
         if (arg.tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "await-for expects agents" });
         const inner = arg.asAgent().getInner();
-        inner.mutex.lock();
-        const start = std.time.nanoTimestamp();
+        io_default.lockMutex(&inner.mutex);
+        const start_ts = std.Io.Timestamp.now(io_default.get(), .awake);
         while (inner.processing.load(.acquire) or inner.action_head != null) {
-            const elapsed: u64 = @intCast(@max(0, std.time.nanoTimestamp() - start));
+            const now_ts = std.Io.Timestamp.now(io_default.get(), .awake);
+            const elapsed: u64 = @intCast(@max(0, now_ts.nanoseconds - start_ts.nanoseconds));
             if (elapsed >= timeout_ns) {
-                inner.mutex.unlock();
+                io_default.unlockMutex(&inner.mutex);
                 return Value.nil_val; // timeout — return nil (logical false)
             }
             const remaining = timeout_ns - elapsed;
-            inner.await_cond.timedWait(&inner.mutex, remaining) catch {};
+            _ = io_default.condTimedWait(&inner.await_cond, &inner.mutex, remaining);
         }
-        inner.mutex.unlock();
+        io_default.unlockMutex(&inner.mutex);
     }
     return Value.true_val; // all completed
 }
@@ -1302,8 +1304,8 @@ pub fn clearAgentErrorsFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to clear-agent-errors", .{args.len});
     if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "clear-agent-errors expects an agent" });
     const inner = args[0].asAgent().getInner();
-    inner.mutex.lock();
-    defer inner.mutex.unlock();
+    io_default.lockMutex(&inner.mutex);
+    defer io_default.unlockMutex(&inner.mutex);
     inner.error_val = Value.nil_val;
     return args[0];
 }

@@ -28,6 +28,7 @@ const RefInner = value_mod.RefInner;
 const TVal = value_mod.TVal;
 const err = @import("error.zig");
 const dispatch = @import("dispatch.zig");
+const io_default = @import("io_default.zig");
 
 const RETRY_LIMIT: u32 = 10000;
 
@@ -145,8 +146,8 @@ pub const LockingTransaction = struct {
         if (self.vals.get(inner)) |v| return v;
 
         // Walk history chain for version at or before read_point
-        inner.lock.lock();
-        defer inner.lock.unlock();
+        io_default.lockMutex(&inner.lock);
+        defer io_default.unlockMutex(&inner.lock);
 
         var tval = inner.tvals;
         while (tval) |tv| {
@@ -163,12 +164,12 @@ pub const LockingTransaction = struct {
     /// Set a ref's value within this transaction.
     pub fn doSet(self: *LockingTransaction, inner: *RefInner, val: Value) !void {
         // Check for write-write conflict
-        inner.lock.lock();
+        io_default.lockMutex(&inner.lock);
         if (inner.currentPoint() > self.read_point) {
-            inner.lock.unlock();
+            io_default.unlockMutex(&inner.lock);
             return error.STMRetry;
         }
-        inner.lock.unlock();
+        io_default.unlockMutex(&inner.lock);
 
         self.vals.put(self.allocator, inner, val) catch return error.OutOfMemory;
         self.sets.put(self.allocator, inner, {}) catch return error.OutOfMemory;
@@ -178,8 +179,8 @@ pub const LockingTransaction = struct {
     pub fn doCommute(self: *LockingTransaction, allocator: Allocator, inner: *RefInner, func: Value, args: []const Value) anyerror!Value {
         // Get current in-transaction value (or read from ref)
         const current = self.vals.get(inner) orelse blk: {
-            inner.lock.lock();
-            defer inner.lock.unlock();
+            io_default.lockMutex(&inner.lock);
+            defer io_default.unlockMutex(&inner.lock);
             break :blk inner.currentVal();
         };
 
@@ -208,12 +209,12 @@ pub const LockingTransaction = struct {
         // If already set in this transaction, ensure is implicit
         if (self.sets.contains(inner)) return;
 
-        inner.lock.lock();
+        io_default.lockMutex(&inner.lock);
         if (inner.currentPoint() > self.read_point) {
-            inner.lock.unlock();
+            io_default.unlockMutex(&inner.lock);
             return error.STMRetry;
         }
-        inner.lock.unlock();
+        io_default.unlockMutex(&inner.lock);
 
         self.ensures.put(self.allocator, inner, {}) catch return error.OutOfMemory;
     }
@@ -229,7 +230,7 @@ pub const LockingTransaction = struct {
             // Skip if also in sets (alter takes precedence)
             if (self.sets.contains(inner)) continue;
 
-            inner.lock.lock();
+            io_default.lockMutex(&inner.lock);
 
             // Replay all commute fns against the current committed value
             var current = inner.currentVal();
@@ -238,21 +239,21 @@ pub const LockingTransaction = struct {
                 call_args[0] = current;
                 @memcpy(call_args[1..], cfn.args);
                 current = dispatch.callFnVal(allocator, cfn.func, call_args) catch |e| {
-                    inner.lock.unlock();
+                    io_default.unlockMutex(&inner.lock);
                     return e;
                 };
             }
 
             self.vals.put(self.allocator, inner, current) catch {
-                inner.lock.unlock();
+                io_default.unlockMutex(&inner.lock);
                 return error.OutOfMemory;
             };
             self.sets.put(self.allocator, inner, {}) catch {
-                inner.lock.unlock();
+                io_default.unlockMutex(&inner.lock);
                 return error.OutOfMemory;
             };
 
-            inner.lock.unlock();
+            io_default.unlockMutex(&inner.lock);
         }
 
         // Phase 2: Validate and acquire locks on all modified refs
@@ -260,7 +261,7 @@ pub const LockingTransaction = struct {
         var sets_iter = self.sets.iterator();
         while (sets_iter.next()) |entry| {
             const inner = entry.key_ptr.*;
-            inner.lock.lock();
+            io_default.lockMutex(&inner.lock);
             if (inner.currentPoint() > self.read_point) {
                 // Conflict — unlock all and retry
                 self.unlockAll();
@@ -273,7 +274,7 @@ pub const LockingTransaction = struct {
         while (ensures_iter.next()) |entry| {
             const inner = entry.key_ptr.*;
             if (!self.sets.contains(inner)) {
-                inner.lock.lock();
+                io_default.lockMutex(&inner.lock);
                 if (inner.currentPoint() > self.read_point) {
                     self.unlockAll();
                     self.unlockEnsures();
@@ -343,7 +344,7 @@ pub const LockingTransaction = struct {
     fn unlockAll(self: *LockingTransaction) void {
         var it = self.sets.iterator();
         while (it.next()) |entry| {
-            entry.key_ptr.*.lock.unlock();
+            io_default.unlockMutex(&entry.key_ptr.*.lock);
         }
     }
 
@@ -351,7 +352,7 @@ pub const LockingTransaction = struct {
         var it = self.ensures.iterator();
         while (it.next()) |entry| {
             if (!self.sets.contains(entry.key_ptr.*)) {
-                entry.key_ptr.*.lock.unlock();
+                io_default.unlockMutex(&entry.key_ptr.*.lock);
             }
         }
     }
