@@ -22,4 +22,5 @@ test {
     _ = @import("runtime/hash.zig");
     _ = @import("runtime/keyword.zig");
     _ = @import("eval/form.zig");
+    _ = @import("eval/tokenizer.zig");
 }
