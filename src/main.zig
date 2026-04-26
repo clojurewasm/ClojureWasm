@@ -18,4 +18,5 @@ test {
     _ = @import("runtime/value.zig");
     _ = @import("runtime/error.zig");
     _ = @import("runtime/gc/arena.zig");
+    _ = @import("runtime/collection/list.zig");
 }
