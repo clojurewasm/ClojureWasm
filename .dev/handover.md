@@ -5,25 +5,27 @@
 
 ## Current state
 
-- **Phase**: Phase 1 IN-PROGRESS (1.0 done; 1.1 next).
+- **Phase**: Phase 1 DONE; Phase 2 next (§9.4 to be expanded).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
-- **Last paired commit**: `docs(ja): 0006 — autonomous-loop-readiness`
-  (covers commit 6b93222 — permissions / SessionStart hook / Phase-boundary chain).
-- **Build**: `zig build` / `zig build test` / `zig build run` are green
-  on the bootstrap (`cljw` prints `ClojureWasm`).
+- **Last paired commit**: `docs(ja): 0007 — phase-1-runtime-foundations`
+  (covers Phase-1 source commits 8b487f9..04476ac).
+- **Build**: 94 tests passing (`zig build test`); `zone_check --gate` green;
+  x86_64 gate (1.12) verified on `my-ubuntu-amd64` via OrbStack.
+- **Phase-1 exit criterion**: `cljw -e "(+ 1 2)"` → `(+ 1 2)` ✓.
 
 ## Unpaired source commits awaiting a doc
 
-(none — last commit is the doc commit)
+(none — 0007 closes Phase 1)
 
 ## Next task
 
-`§9.3 / 1.1` — `src/runtime/value.zig`: NaN-boxed `Value` type, `HeapTag`
-(32 slots), `HeapHeader` (`packed struct(u8) { marked, frozen, _pad: u6 }`).
+Open Phase 2 (`TreeWalk + Analyzer + Bootstrap Stage 0`). First step:
+expand §9.4 inline in `.dev/ROADMAP.md` mirroring the §9.3 structure
+(task table with one row per `[ ]` step), then resume the per-task TDD
+loop on §9.4.1.
 
-Exit criterion for 1.1: unit tests demonstrate `Value.initInteger(42)`
-round-trips through `tag()` correctly, and `encodeHeapPtr(.string, ...)`
-produces a value whose `tag()` reads back as `.string`.
+Phase-2 exit criterion (from §9 phase tracker):
+  `(let [x 1] (+ x 2))` → 3 and `((fn* [x] (+ x 1)) 41)` → 42.
 
 ## Open questions / blockers
 

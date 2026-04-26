@@ -689,18 +689,18 @@ in place from day 1.
 | Task | Description                                                                | Status     |
 |------|----------------------------------------------------------------------------|------------|
 | 1.0  | Build skeleton + flake.nix + main.zig prints "ClojureWasm"                 | [x] (`116b874`) |
-| 1.1  | `src/runtime/value.zig` — NaN boxing Value type, HeapTag (32 slots), HeapHeader | [ ] |
-| 1.2  | `src/runtime/error.zig` — SourceLocation, BuiltinFn signature, expect* / checkArity helpers, threadlocal last_error / call_stack | [ ] |
-| 1.3  | `src/runtime/gc/arena.zig` — Arena GC interface, suppress_count, --gc-stress prep | [ ] |
-| 1.4  | `src/runtime/collection/list.zig` — PersistentList (cons cell only)        | [ ] |
-| 1.5  | `src/runtime/hash.zig` — Murmur3 (Clojure-compatible hash values)          | [ ] |
-| 1.6  | `src/runtime/keyword.zig` — Keyword interning (single-thread Phase-1 stub; rt-aware in Phase 2.0) | [ ] |
-| 1.7  | `src/eval/form.zig` — Form tagged union with SourceLocation                | [ ] |
-| 1.8  | `src/eval/tokenizer.zig` — Lexer (text → token stream); SourceLocation per token | [ ] |
-| 1.9  | `src/eval/reader.zig` — Parser (token stream → Form); Phase-1 reader scope (no syntax-quote yet) | [ ] |
-| 1.10 | `src/main.zig` — minimal CLI with `-e` flag; reads + prints (no eval yet)   | [ ] |
-| 1.11 | `bench/quick.sh` — 5–6 microbenchmarks (fib, arith_loop, list_build, etc.); first sample run recorded | [ ] |
-| 1.12 | 🔒 x86_64 Gate — OrbStack Ubuntu x86_64; `zig build test` green             | [ ] |
+| 1.1  | `src/runtime/value.zig` — NaN boxing Value type, HeapTag (32 slots), HeapHeader | [x] (`8b487f9`) |
+| 1.2  | `src/runtime/error.zig` — SourceLocation, BuiltinFn signature, expect* / checkArity helpers, threadlocal last_error / call_stack | [x] (`61ccbf8`) |
+| 1.3  | `src/runtime/gc/arena.zig` — Arena GC interface, suppress_count, --gc-stress prep | [x] (`c22f900`) |
+| 1.4  | `src/runtime/collection/list.zig` — PersistentList (cons cell only)        | [x] (`902e22d`) |
+| 1.5  | `src/runtime/hash.zig` — Murmur3 (Clojure-compatible hash values)          | [x] (`1825f24`) |
+| 1.6  | `src/runtime/keyword.zig` — Keyword interning (single-thread Phase-1 stub; rt-aware in Phase 2.0) | [x] (`b60924b`) |
+| 1.7  | `src/eval/form.zig` — Form tagged union with SourceLocation                | [x] (`6a09869`) |
+| 1.8  | `src/eval/tokenizer.zig` — Lexer (text → token stream); SourceLocation per token | [x] (`615fd46`) |
+| 1.9  | `src/eval/reader.zig` — Parser (token stream → Form); Phase-1 reader scope (no syntax-quote yet) | [x] (`b6efa7f`) |
+| 1.10 | `src/main.zig` — minimal CLI with `-e` flag; reads + prints (no eval yet)   | [x] (`eead562`) |
+| 1.11 | `bench/quick.sh` — 5–6 microbenchmarks (fib, arith_loop, list_build, etc.); first sample run recorded | [x] (`04476ac`) |
+| 1.12 | 🔒 x86_64 Gate — OrbStack Ubuntu x86_64; `zig build test` green             | [x] (94/94 on `my-ubuntu-amd64`) |
 
 After 1.12 is checked, the Phase Tracker (§9 table top) flips Phase 1
 from PENDING to DONE and Phase 2 IN-PROGRESS; expand Phase 2 in §9.4.
