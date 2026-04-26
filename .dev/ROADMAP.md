@@ -721,22 +721,21 @@ namespace + `(refer 'rt)` into `user/` (no `.clj` source yet).
   `(let [x 1] (+ x 2))` → `3`
   `((fn* [x] (+ x 1)) 41)` → `42`
 
-| Task | Description                                                                | Status |
-|------|----------------------------------------------------------------------------|--------|
-| 2.1  | `src/runtime/dispatch.zig` — `VTable` type (struct, not `pub var`) for backend dispatch | [ ] |
-| 2.2  | `src/runtime/runtime.zig` — `Runtime` handle (`io`, `gpa`, `keywords`, `gc`, `vtable`)  | [ ] |
-| 2.3  | `src/runtime/keyword.zig` — promote to rt-aware (`*Runtime` API + `std.Io.Mutex`)       | [ ] |
-| 2.4  | `src/runtime/env.zig` — `Namespace`, `Var`, threadlocal `current_frame` binding stack    | [ ] |
-| 2.5  | `src/eval/node.zig` — `Node` tagged union (analysed AST: const / local-ref / var-ref / if / do / let / fn / invoke / quote) | [ ] |
-| 2.6  | `src/eval/analyzer.zig` — `Form → Node` + Phase-2 special forms (`quote`, `if`, `do`, `let*`, `fn*`, `def`) | [ ] |
-| 2.7  | `src/eval/backend/tree_walk.zig` — `Node → Value` tree-walk interpreter; `installVTable` | [ ] |
-| 2.8  | `src/lang/primitive.zig` — `registerAll(env)` into the `rt/` namespace; `(refer 'rt)` into `user/` | [ ] |
-| 2.9  | `src/lang/primitive/math.zig` — `+`, `-`, `*`, `=`, `<`, `>`, `<=`, `>=`                 | [ ] |
-| 2.10 | `src/lang/primitive/core.zig` — `nil?`, `true?`, `false?`, `identical?`                   | [ ] |
-| 2.11 | `src/main.zig` — wire CLI through analyser + TreeWalk; `cljw -e "(+ 1 2)"` → `3`         | [ ] |
-| 2.12 | Phase-2 exit smoke: `(let [x 1] (+ x 2))` → `3` and `((fn* [x] (+ x 1)) 41)` → `42`       | [ ] |
+| Task | Description                                                                                                                                                                                                                                                                                                                                                  | Status          |
+|------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
+| 2.1  | `runtime/dispatch.zig` + `runtime/runtime.zig` + `runtime/env.zig` skeletons — all three files land together because `dispatch.VTable` references `*Runtime` and `*Env`, so the import graph only compiles when all three exist. Phase 2.1 leaves Env at the minimum needed for dispatch tests to compile; namespaces / vars / binding frames arrive in 2.3. | [x] (`91feef0`) |
+| 2.2  | `src/runtime/keyword.zig` — promote to rt-aware (`*Runtime` API + `std.Io.Mutex`)                                                                                                                                                                                                                                                                            | [x] (`07d5c34`) |
+| 2.3  | `src/runtime/env.zig` — flesh out `Namespace`, `Var`, threadlocal `current_frame` binding stack                                                                                                                                                                                                                                                              | [ ]             |
+| 2.4  | `src/eval/node.zig` — `Node` tagged union (analysed AST: const / local-ref / var-ref / if / do / let / fn / invoke / quote)                                                                                                                                                                                                                                  | [ ]             |
+| 2.5  | `src/eval/analyzer.zig` — `Form → Node` + Phase-2 special forms (`quote`, `if`, `do`, `let*`, `fn*`, `def`)                                                                                                                                                                                                                                                  | [ ]             |
+| 2.6  | `src/eval/backend/tree_walk.zig` — `Node → Value` tree-walk interpreter; `installVTable`                                                                                                                                                                                                                                                                     | [ ]             |
+| 2.7  | `src/lang/primitive.zig` — `registerAll(env)` into the `rt/` namespace; `(refer 'rt)` into `user/`                                                                                                                                                                                                                                                           | [ ]             |
+| 2.8  | `src/lang/primitive/math.zig` — `+`, `-`, `*`, `=`, `<`, `>`, `<=`, `>=`                                                                                                                                                                                                                                                                                     | [ ]             |
+| 2.9  | `src/lang/primitive/core.zig` — `nil?`, `true?`, `false?`, `identical?`                                                                                                                                                                                                                                                                                      | [ ]             |
+| 2.10 | `src/main.zig` — wire CLI through analyser + TreeWalk; `cljw -e "(+ 1 2)"` → `3`                                                                                                                                                                                                                                                                             | [ ]             |
+| 2.11 | Phase-2 exit smoke: `(let [x 1] (+ x 2))` → `3` and `((fn* [x] (+ x 1)) 41)` → `42`                                                                                                                                                                                                                                                                          | [ ]             |
 
-After 2.12 lands as a `[x]`, the §9 phase tracker flips Phase 2 from
+After 2.11 lands as a `[x]`, the §9 phase tracker flips Phase 2 from
 PENDING to DONE and Phase 3 IN-PROGRESS; expand Phase 3 inline in §9.5.
 
 ---

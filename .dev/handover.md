@@ -5,28 +5,29 @@
 
 ## Current state
 
-- **Phase**: Phase 1 DONE; Phase 2 next (§9.4 to be expanded).
+- **Phase**: Phase 2 IN-PROGRESS (2.1, 2.2 done; 2.3 next).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
 - **Last paired commit**: `docs(ja): 0007 — phase-1-runtime-foundations`
   (covers Phase-1 source commits 8b487f9..04476ac).
-- **Build**: 94 tests passing (`zig build test`); `zone_check --gate` green;
-  x86_64 gate (1.12) verified on `my-ubuntu-amd64` via OrbStack.
-- **Phase-1 exit criterion**: `cljw -e "(+ 1 2)"` → `(+ 1 2)` ✓.
+- **Build**: 107 tests passing (`zig build test`); `zone_check --gate` green.
 
 ## Unpaired source commits awaiting a doc
 
-(none — 0007 closes Phase 1)
+- `91feef0` feat(runtime): land dispatch + Runtime + Env skeletons together
+- `07d5c34` refactor(runtime): promote KeywordInterner to rt-aware (mutex via rt.io)
 
 ## Next task
 
-`§9.4 / 2.1` — `src/runtime/dispatch.zig`: a `VTable` struct (NOT a
-`pub var`) declaring the function-pointer table the Layer-1 backend
-will inject into Layer-0 at startup. Phase-2 entries: `callFn`,
-`expandMacro` placeholders are enough to compile; later phases extend
-the struct.
+`§9.4 / 2.3` — `src/runtime/env.zig`: flesh out the Phase-2.1
+skeleton with `Namespace`, `Var` (root binding + dynamic / macro /
+private flags), `findNs` / `findOrCreateNs`, the threadlocal
+`current_frame` binding stack, and `(refer src dst)`-style helpers
+the bootstrap will need for `(refer 'rt)` into `user/`.
 
-Exit criterion for 2.1: a unit test constructs a synthetic `VTable`
-literal and verifies the call succeeds (no upward import to eval/).
+Exit criterion for 2.3: unit tests cover (a) defining a Var via a
+namespace and resolving it back, (b) `current_frame` push / pop
+behaving like a stack, (c) `referAll(rt_ns, user_ns)` exposing rt's
+mappings under user/ without copying the Vars themselves.
 
 ## Open questions / blockers
 
