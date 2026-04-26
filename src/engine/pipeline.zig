@@ -26,6 +26,7 @@ const Env = @import("../runtime/env.zig").Env;
 const Namespace = @import("../runtime/namespace.zig").Namespace;
 const err = @import("../runtime/error.zig");
 const TreeWalk = @import("evaluator/tree_walk.zig").TreeWalk;
+const io_default = @import("../runtime/io_default.zig");
 // predicates_mod removed — current_env now in dispatch.zig (D109 Z3)
 const chunk_mod = @import("compiler/chunk.zig");
 const Compiler = @import("compiler/compiler.zig").Compiler;
@@ -174,8 +175,7 @@ pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) Boots
 
     // Write collected output to stderr
     const output = w.buffered();
-    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-    _ = stderr.write(output) catch {};
+    std.Io.File.stderr().writeStreamingAll(io_default.get(), output) catch {};
 }
 
 pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {

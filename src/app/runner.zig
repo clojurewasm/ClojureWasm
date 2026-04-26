@@ -84,10 +84,14 @@ pub fn handleEmbedded(alloc: Allocator, allocator: Allocator, gc: *gc_mod.MarkSw
 
 pub fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
     const stdout = std.Io.File.stdout();
-    const is_tty = std.posix.isatty(std.posix.STDOUT_FILENO);
+    const repl_io = io_default.get();
+    const is_tty = stdout.isTty(repl_io) catch false;
 
-    // Use line editor if stdin is a TTY, otherwise fall back to simple reader
-    if (!std.posix.isatty(std.posix.STDIN_FILENO)) {
+    // Always use the simple reader during the Zig 0.16 migration. The
+    // line_editor module needs porting (raw-mode termios + fs.File +
+    // std.io.fixedBufferStream all changed in 0.16) and is tracked as a
+    // Phase 7 follow-up. The simple reader provides functional REPL.
+    if (true) {
         runReplSimple(allocator, env, gc);
         return;
     }
@@ -226,11 +230,13 @@ fn runReplSimple(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void 
 }
 
 /// Read a line from file into buf. Returns line length, or null on EOF with no data.
-fn readLine(file: std.fs.File, buf: []u8) ?usize {
+fn readLine(file: std.Io.File, buf: []u8) ?usize {
+    const rl_io = io_default.get();
     var pos: usize = 0;
     while (pos < buf.len) {
         var byte: [1]u8 = undefined;
-        const n = file.read(&byte) catch return null;
+        const buffers = [_][]u8{&byte};
+        const n = file.readStreaming(rl_io, &buffers) catch return null;
         if (n == 0) {
             // EOF
             if (pos > 0) return pos;

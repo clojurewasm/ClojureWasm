@@ -61,11 +61,11 @@ pub fn installSignalHandlers() void {
     std.posix.sigaction(std.posix.SIG.PIPE, &ignore_action, null);
 }
 
-fn handleShutdownSignal(_: i32) callconv(.c) void {
+fn handleShutdownSignal(_: std.posix.SIG) callconv(.c) void {
     shutdown_requested.store(true, .release);
     // Write newline to stderr so the shell prompt appears cleanly.
     // write() is async-signal-safe.
-    _ = std.posix.write(std.posix.STDERR_FILENO, "\n") catch {};
+    _ = std.c.write(std.posix.STDERR_FILENO, "\n", 1);
 }
 
 // ============================================================
@@ -74,27 +74,13 @@ fn handleShutdownSignal(_: i32) callconv(.c) void {
 
 /// Wait for a connection on the listener socket, checking shutdown flag
 /// every ~1 second. Returns null if shutdown was requested.
-pub fn acceptWithShutdownCheck(server: *std.net.Server) ?std.net.Server.Connection {
-    const fd = server.stream.handle;
-    var fds = [1]std.posix.pollfd{
-        .{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 },
-    };
-
-    while (!isShutdownRequested()) {
-        const ready = std.posix.poll(&fds, 1000) catch |e| {
-            std.debug.print("poll error: {s}\n", .{@errorName(e)});
-            if (isShutdownRequested()) return null;
-            continue;
-        };
-        if (ready == 0) continue; // timeout — check flag and retry
-
-        // Socket is ready for accept
-        return server.accept() catch |e| {
-            if (isShutdownRequested()) return null;
-            std.debug.print("accept error: {s}\n", .{@errorName(e)});
-            continue;
-        };
-    }
+///
+/// Stubbed during the Zig 0.16 migration: std.net.Server (and the matching
+/// std.posix.poll) was removed in 0.16. Re-implement on top of std.Io.net
+/// once the network rewrite lands (Phase 7 follow-up F##). The only callers
+/// were http_server (already stubbed) and the nREPL accept loop.
+pub fn acceptWithShutdownCheck(server: anytype) @TypeOf(null) {
+    _ = server;
     return null;
 }
 
