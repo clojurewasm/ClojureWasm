@@ -18,14 +18,16 @@ const tok_mod = @import("tokenizer.zig");
 const Tokenizer = tok_mod.Tokenizer;
 const Token = tok_mod.Token;
 const TokenKind = tok_mod.TokenKind;
-const SourceLocation = @import("../runtime/error.zig").SourceLocation;
+const error_mod = @import("../runtime/error.zig");
+const SourceLocation = error_mod.SourceLocation;
 
-pub const ReadError = error{
-    SyntaxError,
-    NumberError,
-    StringError,
-    OutOfMemory,
-};
+/// Reader error surface. Aliases `error_mod.Error` so that the
+/// `setErrorFmt` rendezvous (which returns the full `Error` enum) is
+/// type-compatible. Callers continue to match on the specific tags
+/// `SyntaxError` / `NumberError` / `StringError` / `OutOfMemory` —
+/// the wider set just admits future kinds without churning every
+/// signature.
+pub const ReadError = error_mod.Error;
 
 pub const Reader = struct {
     tokenizer: Tokenizer,
@@ -85,7 +87,9 @@ pub const Reader = struct {
             .quote => self.readQuote(tok),
             .symbolic => self.readSymbolic(tok),
             .discard => self.readDiscard(tok),
-            .rparen, .rbracket, .rbrace, .eof, .invalid => error.SyntaxError,
+            .rparen, .rbracket, .rbrace => error_mod.setErrorFmt(.parse, .syntax_error, self.locOf(tok), "Unexpected delimiter '{s}'", .{tok.text(self.source)}),
+            .eof => error_mod.setErrorFmt(.parse, .syntax_error, self.locOf(tok), "Unexpected EOF while reading form", .{}),
+            .invalid => error_mod.setErrorFmt(.parse, .syntax_error, self.locOf(tok), "Invalid token '{s}'", .{tok.text(self.source)}),
         };
     }
 
@@ -106,7 +110,8 @@ pub const Reader = struct {
         // Phase 1 accepts the BigInt `N` suffix syntactically without
         // preserving precision — strip it before std.fmt parses.
         if (s.len > 0 and s[s.len - 1] == 'N') s = s[0 .. s.len - 1];
-        const val = std.fmt.parseInt(i64, s, 0) catch return error.NumberError;
+        const val = std.fmt.parseInt(i64, s, 0) catch
+            return error_mod.setErrorFmt(.parse, .number_error, self.locOf(tok), "Invalid integer literal '{s}'", .{txt});
         return Form{ .data = .{ .integer = val }, .location = self.locOf(tok) };
     }
 
@@ -114,16 +119,22 @@ pub const Reader = struct {
         const txt = tok.text(self.source);
         var s = txt;
         if (s.len > 0 and s[s.len - 1] == 'M') s = s[0 .. s.len - 1];
-        const val = std.fmt.parseFloat(f64, s) catch return error.NumberError;
+        const val = std.fmt.parseFloat(f64, s) catch
+            return error_mod.setErrorFmt(.parse, .number_error, self.locOf(tok), "Invalid float literal '{s}'", .{txt});
         return Form{ .data = .{ .float = val }, .location = self.locOf(tok) };
     }
 
     fn readString(self: *Reader, tok: Token) ReadError!Form {
         const txt = tok.text(self.source);
-        if (txt.len < 2) return error.StringError;
+        const loc = self.locOf(tok);
+        if (txt.len < 2)
+            return error_mod.setErrorFmt(.parse, .string_error, loc, "Unterminated string literal", .{});
         const content = txt[1 .. txt.len - 1];
-        const unescaped = self.unescapeString(content) catch return error.StringError;
-        return Form{ .data = .{ .string = unescaped }, .location = self.locOf(tok) };
+        const unescaped = self.unescapeString(content, loc) catch |err| {
+            // unescapeString already populated last_error for StringError.
+            return err;
+        };
+        return Form{ .data = .{ .string = unescaped }, .location = loc };
     }
 
     fn readKeyword(self: *Reader, tok: Token) ReadError!Form {
@@ -134,26 +145,31 @@ pub const Reader = struct {
     // --- collections ---
 
     fn readList(self: *Reader, tok: Token) ReadError!Form {
-        const items = try self.readDelimited(.rparen);
-        return Form{ .data = .{ .list = items }, .location = self.locOf(tok) };
+        const loc = self.locOf(tok);
+        const items = try self.readDelimited(.rparen, loc);
+        return Form{ .data = .{ .list = items }, .location = loc };
     }
 
     fn readVector(self: *Reader, tok: Token) ReadError!Form {
-        const items = try self.readDelimited(.rbracket);
-        return Form{ .data = .{ .vector = items }, .location = self.locOf(tok) };
+        const loc = self.locOf(tok);
+        const items = try self.readDelimited(.rbracket, loc);
+        return Form{ .data = .{ .vector = items }, .location = loc };
     }
 
     fn readMap(self: *Reader, tok: Token) ReadError!Form {
-        const items = try self.readDelimited(.rbrace);
+        const loc = self.locOf(tok);
+        const items = try self.readDelimited(.rbrace, loc);
         // Maps must have an even number of elements at read time so the
         // analyzer can iterate `[k0 v0 k1 v1 ...]` without re-checking.
-        if (items.len % 2 != 0) return error.SyntaxError;
-        return Form{ .data = .{ .map = items }, .location = self.locOf(tok) };
+        if (items.len % 2 != 0)
+            return error_mod.setErrorFmt(.parse, .syntax_error, loc, "Map literal must contain an even number of forms", .{});
+        return Form{ .data = .{ .map = items }, .location = loc };
     }
 
-    fn readDelimited(self: *Reader, closing: TokenKind) ReadError![]const Form {
+    fn readDelimited(self: *Reader, closing: TokenKind, opener_loc: SourceLocation) ReadError![]const Form {
         self.depth += 1;
-        if (self.depth > self.max_depth) return error.SyntaxError;
+        if (self.depth > self.max_depth)
+            return error_mod.setErrorFmt(.parse, .syntax_error, opener_loc, "Form nesting exceeds max depth ({d})", .{self.max_depth});
         defer self.depth -= 1;
 
         var items: std.ArrayList(Form) = .empty;
@@ -161,7 +177,8 @@ pub const Reader = struct {
 
         while (true) {
             const tok = self.nextToken();
-            if (tok.kind == .eof) return error.SyntaxError;
+            if (tok.kind == .eof)
+                return error_mod.setErrorFmt(.parse, .syntax_error, opener_loc, "Unmatched delimiter; reached EOF before '{s}'", .{closingText(closing)});
             if (tok.kind == closing) break;
             const f = try self.readForm(tok);
             items.append(self.allocator, f) catch return error.OutOfMemory;
@@ -172,43 +189,48 @@ pub const Reader = struct {
     // --- reader macros ---
 
     fn readQuote(self: *Reader, tok: Token) ReadError!Form {
+        const loc = self.locOf(tok);
         self.depth += 1;
-        if (self.depth > self.max_depth) return error.SyntaxError;
+        if (self.depth > self.max_depth)
+            return error_mod.setErrorFmt(.parse, .syntax_error, loc, "Form nesting exceeds max depth ({d})", .{self.max_depth});
         defer self.depth -= 1;
 
         const next_tok = self.nextToken();
-        if (next_tok.kind == .eof) return error.SyntaxError;
+        if (next_tok.kind == .eof)
+            return error_mod.setErrorFmt(.parse, .syntax_error, loc, "Quote ' has no following form", .{});
         const inner = try self.readForm(next_tok);
 
         const items = self.allocator.alloc(Form, 2) catch return error.OutOfMemory;
-        const loc = self.locOf(tok);
         items[0] = Form{ .data = .{ .symbol = .{ .name = "quote" } }, .location = loc };
         items[1] = inner;
         return Form{ .data = .{ .list = items }, .location = loc };
     }
 
     fn readSymbolic(self: *Reader, tok: Token) ReadError!Form {
-        const next_tok = self.nextToken();
-        if (next_tok.kind == .eof) return error.SyntaxError;
-        const txt = next_tok.text(self.source);
         const loc = self.locOf(tok);
+        const next_tok = self.nextToken();
+        if (next_tok.kind == .eof)
+            return error_mod.setErrorFmt(.parse, .syntax_error, loc, "Symbolic value '##' has no following name", .{});
+        const txt = next_tok.text(self.source);
         if (std.mem.eql(u8, txt, "Inf")) return Form{ .data = .{ .float = std.math.inf(f64) }, .location = loc };
         if (std.mem.eql(u8, txt, "-Inf")) return Form{ .data = .{ .float = -std.math.inf(f64) }, .location = loc };
         if (std.mem.eql(u8, txt, "NaN")) return Form{ .data = .{ .float = std.math.nan(f64) }, .location = loc };
-        return error.SyntaxError;
+        return error_mod.setErrorFmt(.parse, .syntax_error, self.locOf(next_tok), "Unknown symbolic value '##{s}'", .{txt});
     }
 
     fn readDiscard(self: *Reader, tok: Token) ReadError!Form {
-        _ = tok;
+        const discard_loc = self.locOf(tok);
         const next_tok = self.nextToken();
-        if (next_tok.kind == .eof) return error.SyntaxError;
+        if (next_tok.kind == .eof)
+            return error_mod.setErrorFmt(.parse, .syntax_error, discard_loc, "Discard '#_' has no following form", .{});
         _ = try self.readForm(next_tok);
-        return try self.read() orelse error.SyntaxError;
+        return try self.read() orelse
+            error_mod.setErrorFmt(.parse, .syntax_error, discard_loc, "Discard '#_' has no form to follow", .{});
     }
 
     // --- string unescaping ---
 
-    fn unescapeString(self: *Reader, s: []const u8) ![]const u8 {
+    fn unescapeString(self: *Reader, s: []const u8, loc: SourceLocation) ReadError![]const u8 {
         if (std.mem.indexOfScalar(u8, s, '\\') == null) return s;
 
         var buf: std.ArrayList(u8) = .empty;
@@ -218,33 +240,37 @@ pub const Reader = struct {
         while (i < s.len) {
             if (s[i] == '\\') {
                 i += 1;
-                if (i >= s.len) return error.StringError;
+                if (i >= s.len)
+                    return error_mod.setErrorFmt(.parse, .string_error, loc, "Trailing '\\' in string literal", .{});
                 switch (s[i]) {
-                    'n' => try buf.append(self.allocator, '\n'),
-                    't' => try buf.append(self.allocator, '\t'),
-                    'r' => try buf.append(self.allocator, '\r'),
-                    '\\' => try buf.append(self.allocator, '\\'),
-                    '"' => try buf.append(self.allocator, '"'),
-                    'b' => try buf.append(self.allocator, 0x08),
-                    'f' => try buf.append(self.allocator, 0x0C),
+                    'n' => buf.append(self.allocator, '\n') catch return error.OutOfMemory,
+                    't' => buf.append(self.allocator, '\t') catch return error.OutOfMemory,
+                    'r' => buf.append(self.allocator, '\r') catch return error.OutOfMemory,
+                    '\\' => buf.append(self.allocator, '\\') catch return error.OutOfMemory,
+                    '"' => buf.append(self.allocator, '"') catch return error.OutOfMemory,
+                    'b' => buf.append(self.allocator, 0x08) catch return error.OutOfMemory,
+                    'f' => buf.append(self.allocator, 0x0C) catch return error.OutOfMemory,
                     'u' => {
-                        if (i + 4 >= s.len) return error.StringError;
+                        if (i + 4 >= s.len)
+                            return error_mod.setErrorFmt(.parse, .string_error, loc, "Truncated \\u escape sequence", .{});
                         const hex = s[i + 1 .. i + 5];
-                        const cp = std.fmt.parseInt(u21, hex, 16) catch return error.StringError;
+                        const cp = std.fmt.parseInt(u21, hex, 16) catch
+                            return error_mod.setErrorFmt(.parse, .string_error, loc, "Invalid hex in \\u escape: '{s}'", .{hex});
                         var utf8_buf: [4]u8 = undefined;
-                        const len = std.unicode.utf8Encode(cp, &utf8_buf) catch return error.StringError;
-                        for (utf8_buf[0..len]) |b| try buf.append(self.allocator, b);
+                        const len = std.unicode.utf8Encode(cp, &utf8_buf) catch
+                            return error_mod.setErrorFmt(.parse, .string_error, loc, "Codepoint U+{s} is not a valid Unicode scalar", .{hex});
+                        for (utf8_buf[0..len]) |b| buf.append(self.allocator, b) catch return error.OutOfMemory;
                         i += 4;
                     },
-                    else => return error.StringError,
+                    else => |c| return error_mod.setErrorFmt(.parse, .string_error, loc, "Unknown escape sequence '\\{c}'", .{c}),
                 }
                 i += 1;
             } else {
-                try buf.append(self.allocator, s[i]);
+                buf.append(self.allocator, s[i]) catch return error.OutOfMemory;
                 i += 1;
             }
         }
-        return buf.toOwnedSlice(self.allocator);
+        return buf.toOwnedSlice(self.allocator) catch error.OutOfMemory;
     }
 
     // --- token helpers ---
@@ -259,6 +285,15 @@ pub const Reader = struct {
 };
 
 // --- helpers ---
+
+fn closingText(kind: TokenKind) []const u8 {
+    return switch (kind) {
+        .rparen => ")",
+        .rbracket => "]",
+        .rbrace => "}",
+        else => "?",
+    };
+}
 
 fn parseSymbolRef(txt: []const u8) SymbolRef {
     if (std.mem.indexOfScalar(u8, txt, '/')) |idx| {
@@ -431,4 +466,55 @@ test "bare `/` is a symbol; `+` and `-` are symbols" {
     try testing.expectEqualStrings("/", (try ctx.read("/")).data.symbol.name);
     try testing.expectEqualStrings("+", (try ctx.read("+")).data.symbol.name);
     try testing.expectEqualStrings("-", (try ctx.read("-")).data.symbol.name);
+}
+
+test "syntax error populates last_error with parse phase + location" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    error_mod.clearLastError();
+    try testing.expectError(error.SyntaxError, ctx.read(")"));
+    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.syntax_error, info.kind);
+    try testing.expectEqual(error_mod.Phase.parse, info.phase);
+    try testing.expectEqual(@as(u32, 1), info.location.line);
+    try testing.expectEqual(@as(u16, 0), info.location.column);
+    try testing.expect(std.mem.indexOf(u8, info.message, "Unexpected delimiter") != null);
+}
+
+test "unmatched '(' reports opener location" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    error_mod.clearLastError();
+    try testing.expectError(error.SyntaxError, ctx.read("(1 2"));
+    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.syntax_error, info.kind);
+    try testing.expectEqual(@as(u32, 1), info.location.line);
+    try testing.expectEqual(@as(u16, 0), info.location.column); // opener column
+    try testing.expect(std.mem.indexOf(u8, info.message, "EOF") != null);
+}
+
+test "number error carries token text in message" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    error_mod.clearLastError();
+    // i64-overflowing literal — tokenizer accepts as integer, parseInt fails.
+    try testing.expectError(error.NumberError, ctx.read("99999999999999999999"));
+    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.number_error, info.kind);
+    try testing.expectEqual(error_mod.Phase.parse, info.phase);
+    try testing.expect(std.mem.indexOf(u8, info.message, "99999999999999999999") != null);
+}
+
+test "string error: unknown escape sequence" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    error_mod.clearLastError();
+    try testing.expectError(error.StringError, ctx.read("\"\\q\""));
+    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.string_error, info.kind);
+    try testing.expect(std.mem.indexOf(u8, info.message, "Unknown escape") != null);
 }
