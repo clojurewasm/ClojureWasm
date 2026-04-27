@@ -787,8 +787,63 @@ the special-form-only Phase-2 surface.
 
 All 3.1–3.14 cells now read `[x]`; the §9 phase tracker (top of §9)
 records Phase 3 as **DONE** and Phase 4 as **IN-PROGRESS** (🔒 x86_64
-gate). Phase 4 expands inline as §9.6 once the boundary review chain
-finishes (audit / simplify / chapter / strategic-note adoption).
+gate passed 2026-04-27). Phase 4 is expanded inline below as §9.6.
+
+### 9.6 Phase 4 — task list (expanded; this is the active phase)
+
+> Same convention as §9.3 / §9.4 / §9.5: each `[ ]` becomes one or
+> more source commits, eventually followed by a `docs/ja/00NN-*.md`.
+
+**Goal**: stand up a bytecode VM and compiler beside the TreeWalk
+backend, such that every TreeWalk test passes under the VM too. This
+establishes the **dual-backend foundation** ROADMAP §4.4 promises and
+gives Phase 8's `Evaluator.compare()` something to compare. Phase 4
+also sweeps the security findings surfaced at the Phase-3 boundary
+review (H1 / H2 / H3) before any external behaviour change, and
+ships the `bench/quick.sh` harness §10.2 has so far only described.
+
+**Exit criterion**: `cljw -e '(+ 1 2)'` returns `3` under both
+`-Dbackend=tree-walk` (default) and `-Dbackend=vm`. Every
+`zig build test` passes under both backends.
+`bench/quick.sh` runs and emits a comparable per-bench number.
+
+> Tasks 4.0 lands first because §10.2 needs a measuring stick before
+> the VM begins to move performance numbers. 4.1 / 4.2 / 4.3 sweep
+> the H1 / H2 / H3 findings from the Phase-3 boundary security
+> review — these are not external bugs (the binary has not been
+> pushed) but they are concrete latent crashes on adversarial input
+> and uniform-pattern allocator-failure leaks; they get fixed before
+> Phase 4 grows the surface area further. 4.4 onward is the VM
+> proper.
+
+| Task | Description                                                                                                                                                                                                                                                                            | Status |
+|------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 4.0  | `bench/quick.sh` + `bench/quick.yaml` + `bench/fixtures/*.clj` — 5–6 microbenchmarks (`fib_recursive`, `arith_loop`, `list_build`, `quote_chain`, `let_chain`). Wired into `test/run_all.sh` as a non-failing observability suite (records numbers, does not assert). Phases 4-7 quick-bench tracker per ROADMAP §10.2 | [ ]    |
+| 4.1  | `src/eval/analyzer.zig::analyzeLoopStar` (line ~678) and `analyzeRecur` (line ~737) — bound-check `binding_forms.len / 2` and `items.len - 1` against `std.math.maxInt(u16)` before `@intCast`. On overflow, raise `error_mod.setErrorFmt(.analysis, .not_implemented, ..., "loop*/recur arity {d} exceeds u16 limit", ...)`. Adds a regression test that uses 65537 bindings | [ ]    |
+| 4.2  | Uniform `errdefer rt.gpa.destroy(s)` (or `ensureUnusedCapacity` + `appendAssumeCapacity`) across `runtime/collection/string.zig::alloc`, `runtime/collection/ex_info.zig::alloc`, `runtime/collection/list.zig::consHeap`, `eval/backend/tree_walk.zig::allocFunction`. Test under `testing.allocator` with failing-mode injection | [ ]    |
+| 4.3  | `lang/macro_transforms.zig::expandAnd` / `expandOr` rewritten as a single non-recursive expansion (left-fold to a chain of `let*`/`if` Forms in one pass). Long `(and a₁ … a_N)` no longer feeds `analyze` N times. Regression test: 10000-arg `(and …)` reaches eval without `error.StackOverflow` | [ ]    |
+| 4.4  | `src/eval/backend/vm/opcode.zig` (new) — Opcode enum (initial set: `op_const`, `op_load_local`, `op_store_local`, `op_def`, `op_get_var`, `op_jump`, `op_jump_if_false`, `op_call`, `op_ret`, `op_pop`, `op_dup`, `op_throw`, `op_make_fn`, `op_recur`, `op_invoke_builtin`). `BytecodeChunk` struct + per-chunk constant pool                                                                                              | [ ]    |
+| 4.5  | `src/eval/backend/vm/compiler.zig` (new) — `compile(arena, node) → BytecodeChunk` for Phase-1/2 special forms (`def` / `if` / `do` / `quote` / `let*` / `fn*` / call). `lang/primitive` builtins still reach via `op_invoke_builtin`. `analyze`-shape Node already factored, so this is a single-pass tree visitor | [ ]    |
+| 4.6  | `src/eval/backend/vm.zig` (new) — `pub fn eval(rt, env, locals, chunk) Value` dispatch loop. Single switch over `Opcode`; computed-goto deferred (`@branchHint(.likely)` on the hot arm only). Per-frame `[256]Value` slot stack mirrors TreeWalk so the same `MAX_LOCALS` invariant holds | [ ]    |
+| 4.7  | Compiler + VM: extend to Phase-3 special forms — `try` / `catch` / `throw` / `loop*` / `recur` / closure capture. Mirrors `tree_walk.evalTry` / `evalLoop` / `allocFunction` so each TreeWalk test under `-Dbackend=vm` passes verbatim | [ ]    |
+| 4.8  | `build.zig` — `-Dbackend=tree-walk\|vm` comptime gate. `tree_walk.installVTable` vs `vm.installVTable` (the latter new) flips at startup. Default stays `tree-walk` until 4.12 confirms parity | [ ]    |
+| 4.9  | Run the full unit-test suite under both backends. Any TreeWalk-only test (e.g., heap collection deinit-ordering specifics) is moved into a `runtime`-zone test that does not depend on backend; or duplicated with a backend-specific `test "...vm only"` qualifier | [ ]    |
+| 4.10 | `src/eval/evaluator.zig` (new) — `pub fn compare(rt, env, src) struct { tree_walk: Value, vm: Value, equal: bool }`. Phase 8 wires this into `Evaluator.compare()` for dual-backend verify; Phase 4 just needs the plumbing in place | [ ]    |
+| 4.11 | `test/e2e/phase4_cli.sh` — re-runs the §9.5 `phase3_cli.sh` cases under both backends via `cljw -Dbackend=vm -e ...` (or env var if `-D` doesn't reach the binary). Wired into `test/run_all.sh` | [ ]    |
+| 4.12 | Phase-4 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` under **both** backends. e2e in `test/e2e/phase4_exit.sh`. After 4.12 `[x]`, the §9 phase tracker flips Phase 4 from PENDING to DONE; expand Phase 5 inline in §9.7 (HAMT + Mark-Sweep GC, also 🔒)            | [ ]    |
+
+After 4.12 lands as a `[x]`, the §9 phase tracker flips Phase 4 from
+IN-PROGRESS to DONE and Phase 5 IN-PROGRESS (🔒 x86_64 gate);
+expand Phase 5 inline in §9.7.
+
+> 4.4 onwards is the **first time the VM actually runs code**. The
+> opcode set listed in 4.4 is the **starting** set, not the final one
+> — Phase 4.6 / 4.7 will surface ops missing for `loop*` / `recur` /
+> `try` / closure capture. Add them via `[ ]` insertions inside §9.6
+> as they are discovered, mirroring how §9.5 was filled in. ADRs are
+> not required for opcode additions unless they alter ROADMAP §4.4
+> ("dual backend") or §13 ("forbidden patterns") — those need ADRs
+> per §17.2.
 
 ---
 
