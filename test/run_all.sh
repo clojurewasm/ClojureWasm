@@ -7,6 +7,7 @@
 #   1. zig build test                  Zig unit tests in each src/**/*.zig
 #   2. scripts/zone_check.sh           zone-dependency gate (--gate mode)
 #   3. test/e2e/phase2_exit.sh         Phase-2 CLI exit criteria
+#   4. test/e2e/phase3_cli.sh          Phase-3 CLI entry points (3.1)
 #
 # Future suites (uncomment as their phase lands):
 #   - test/clj/**/*.clj         clojure.test suites                 (Phase 11)
@@ -29,6 +30,10 @@ echo "    OK"
 
 echo "==> 3. e2e: Phase-2 exit criteria"
 bash test/e2e/phase2_exit.sh
+echo "    OK"
+
+echo "==> 4. e2e: Phase-3 CLI entry points"
+bash test/e2e/phase3_cli.sh
 echo "    OK"
 
 echo
