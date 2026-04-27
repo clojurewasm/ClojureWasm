@@ -120,6 +120,14 @@ pub fn eval(
         .fn_node => |n| try allocFunction(rt, n),
         .let_node => |n| try evalLet(rt, env, locals, n),
         .call_node => |n| try evalCall(rt, env, locals, n),
+        // Phase 3.9 wires the analyser side; the eval side lands at
+        // 3.11 alongside `loop_locals` / `pending_recur` / `last_thrown`
+        // threadlocals. Until then a clean structured error is better
+        // than UB.
+        .loop_node => |n| error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "loop* eval not yet implemented (Phase 3.11)", .{}),
+        .recur_node => |n| error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "recur eval not yet implemented (Phase 3.11)", .{}),
+        .try_node => |n| error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "try/catch eval not yet implemented (Phase 3.11)", .{}),
+        .throw_node => |n| error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "throw eval not yet implemented (Phase 3.11)", .{}),
     };
 }
 

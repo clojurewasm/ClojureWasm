@@ -6,16 +6,38 @@
 //! form has its own struct so the backend can dispatch on it via
 //! type-safe `switch`.
 //!
-//! ### Phase-2 scope (this file)
+//! ### Scope (this file)
 //!
 //! - Literal: `constant` (lifted Form atom — nil / bool / int / float /
 //!   string / keyword reified into a `Value` at analyse time)
 //! - References: `local_ref` (let-bound; carries a slot index), `var_ref`
 //!   (resolved `*const Var`)
-//! - Special forms: `def`, `if`, `do`, `quote`, `fn*`, `let*`
+//! - Special forms: `def`, `if`, `do`, `quote`, `fn*`, `let*`,
+//!   `loop*`, `recur`, `try`, `throw` (Phase 3.9 added the last four)
 //! - Expressions: `call` — generic invocation
 //!
-//! `loop` / `recur` / `set!` / `throw` / `try` arrive in Phase 3+.
+//! ### `try` / `loop*` deliberate divergences from v1 / Clojure JVM
+//!
+//! - **Multi-catch**: stored as a flat `[]const CatchClause` in a single
+//!   `try_node`, not as nested `try_node`s the way v1 builds them. This
+//!   keeps the AST shape readable and matches the way Clojure JVM stores
+//!   `catchExprs` as a `PersistentVector`. See ADR / survey
+//!   `private/notes/phase3-3.9-survey.md` for the rationale.
+//! - **`recur_target_depth: u32` on Scope** (in `analyzer.zig`) tracks
+//!   the nesting depth of the nearest `loop*` / `fn*`. Phase 3.9 only
+//!   uses "≠ 0" (target present), but the depth is preserved so future
+//!   work (named loops, labelled break) can reach across multiple
+//!   levels without re-engineering the Scope contract (ROADMAP A2).
+//!
+//! ### What 3.9 does *not* land
+//!
+//! - Tail-position enforcement of `recur` (it is checked at codegen /
+//!   eval time in 3.11; for now `recur` outside a target is a syntax
+//!   error, but `recur` in a non-tail position inside a target compiles
+//!   and will raise at eval time once 3.11 lands).
+//! - Multi-class catch (only `ExceptionInfo` is recognised; class name
+//!   is stored as a string and compared at eval time).
+//! - `set!` / `var-set` — separate task in Phase 5+.
 //!
 //! ### Memory ownership
 //!
@@ -43,6 +65,10 @@ pub const Node = union(enum) {
     fn_node: FnNode,
     let_node: LetNode,
     call_node: CallNode,
+    loop_node: LoopNode,
+    recur_node: RecurNode,
+    try_node: TryNode,
+    throw_node: ThrowNode,
 
     /// Source location of this Node. Returns the inner variant's `loc`
     /// — every variant carries one because Phase-2 errors must cite a
@@ -155,6 +181,65 @@ pub const CallNode = struct {
     loc: SourceLocation = .{},
 };
 
+/// `(loop* [n1 e1 n2 e2 ...] body)`. Same binding layout as `LetNode`
+/// — the structural difference is that `recur` inside `body` jumps
+/// back to the binding slots instead of returning. Body is folded into
+/// a single Node (a `do_node` if multi-form), mirroring `LetNode`.
+pub const LoopNode = struct {
+    bindings: []const LetNode.Binding,
+    body: *const Node,
+    loc: SourceLocation = .{},
+};
+
+/// `(recur args...)`. The analyser has already verified that some
+/// enclosing `loop*` / `fn*` exists and that `args.len` matches its
+/// binding / parameter count; the backend just rebinds the slots and
+/// re-enters the body. The recur target itself is implicit — it's
+/// the innermost enclosing `loop_node` / `fn_node` at runtime, looked
+/// up via the threadlocal `pending_recur` signal that 3.11 will wire.
+pub const RecurNode = struct {
+    args: []const Node,
+    loc: SourceLocation = .{},
+};
+
+/// `(try body* (catch ExceptionInfo e catch-body*) (finally finally-body*))`.
+/// `body` is a single Node (the analyser folds multi-form bodies into a
+/// `do_node`). Multiple `catch` clauses live in `catch_clauses` as a
+/// flat array — Phase 3.9 ships a single class (`ExceptionInfo`) and the
+/// runtime simply walks the array linearly. `finally_body` is optional
+/// and runs unconditionally; nil if no `finally` clause was supplied.
+pub const TryNode = struct {
+    body: *const Node,
+    catch_clauses: []const CatchClause,
+    finally_body: ?*const Node = null,
+    loc: SourceLocation = .{},
+
+    pub const CatchClause = struct {
+        /// Exception class name as written. Phase 3.9 only recognises
+        /// `"ExceptionInfo"`; other names are accepted at analyse time
+        /// and rejected at eval time once 3.10 lands `ex_info`.
+        class_name: []const u8,
+        /// Local symbol the caught exception is bound to inside `body`.
+        binding_name: []const u8,
+        /// Slot index within the enclosing function's locals array.
+        /// Allocated by the analyser at parse time, just like `LetNode`'s
+        /// bindings.
+        binding_index: u16,
+        /// Catch body — already folded to a single Node.
+        body: *const Node,
+        loc: SourceLocation = .{},
+    };
+};
+
+/// `(throw expr)` — evaluate `expr` and signal it as the exception.
+/// Phase 3.10 ships `ex_info`; Phase 3.11's TreeWalk evaluator turns
+/// `expr` into a thrown Value via `last_thrown_exception` + an
+/// `error.ThrownValue` Zig error.
+pub const ThrowNode = struct {
+    expr: *const Node,
+    loc: SourceLocation = .{},
+};
+
 // --- tests ---
 
 const testing = std.testing;
@@ -257,4 +342,74 @@ test "LocalRef.index distinguishes slots with the same name" {
     const b = LocalRef{ .name = "x", .index = 1 };
     try testing.expectEqualStrings(a.name, b.name);
     try testing.expect(a.index != b.index);
+}
+
+test "LoopNode mirrors LetNode binding layout" {
+    const expr = Node{ .constant = .{ .value = .nil_val } };
+    const body = Node{ .constant = .{ .value = .true_val } };
+    const bindings = [_]LetNode.Binding{
+        .{ .name = "i", .index = 0, .value_expr = &expr },
+    };
+    const loop = Node{ .loop_node = .{
+        .bindings = &bindings,
+        .body = &body,
+    } };
+    try testing.expectEqual(@as(usize, 1), loop.loop_node.bindings.len);
+    try testing.expectEqualStrings("i", loop.loop_node.bindings[0].name);
+}
+
+test "RecurNode carries arg list" {
+    const args = [_]Node{
+        .{ .constant = .{ .value = Value.initInteger(1) } },
+        .{ .constant = .{ .value = Value.initInteger(2) } },
+    };
+    const r = Node{ .recur_node = .{ .args = &args } };
+    try testing.expectEqual(@as(usize, 2), r.recur_node.args.len);
+}
+
+test "TryNode carries body, catch_clauses (possibly empty), optional finally" {
+    const body = Node{ .constant = .{ .value = Value.initInteger(7) } };
+    const catch_body = Node{ .constant = .{ .value = .nil_val } };
+    const clauses = [_]TryNode.CatchClause{
+        .{
+            .class_name = "ExceptionInfo",
+            .binding_name = "e",
+            .binding_index = 0,
+            .body = &catch_body,
+        },
+    };
+
+    // try with catch, no finally
+    const t1 = Node{ .try_node = .{
+        .body = &body,
+        .catch_clauses = &clauses,
+    } };
+    try testing.expect(t1.try_node.finally_body == null);
+    try testing.expectEqual(@as(usize, 1), t1.try_node.catch_clauses.len);
+
+    // try with finally
+    const finally_b = Node{ .constant = .{ .value = .true_val } };
+    const t2 = Node{ .try_node = .{
+        .body = &body,
+        .catch_clauses = &.{},
+        .finally_body = &finally_b,
+    } };
+    try testing.expect(t2.try_node.finally_body != null);
+    try testing.expectEqual(@as(usize, 0), t2.try_node.catch_clauses.len);
+}
+
+test "ThrowNode carries one expr" {
+    const expr = Node{ .constant = .{ .value = .nil_val } };
+    const t = Node{ .throw_node = .{ .expr = &expr } };
+    try testing.expect(t.throw_node.expr == &expr);
+}
+
+test "Node.loc dispatches for new variants" {
+    const expr = Node{ .constant = .{ .value = .nil_val } };
+    const loop = Node{ .loop_node = .{
+        .bindings = &.{},
+        .body = &expr,
+        .loc = .{ .file = "<t>", .line = 5, .column = 0 },
+    } };
+    try testing.expectEqual(@as(u32, 5), loop.loc().line);
 }

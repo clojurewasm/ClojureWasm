@@ -59,23 +59,71 @@ pub const AnalyzeError = error_mod.Error;
 
 // --- Scope (local-binding chain consulted during analysis) ---
 
+/// Recur target metadata. Stamped on each Scope created by `fn*` /
+/// `loop*`. `arity` is the number of bindings / parameters that a
+/// matching `recur` must supply. `slot_base` is the first local-slot
+/// index of the binding/parameter group — the future `evalRecur`
+/// (Phase 3.11) will rebind `[slot_base, slot_base + arity)` and
+/// re-enter the body.
+pub const RecurTarget = struct {
+    arity: u16,
+    slot_base: u16,
+    /// "loop" or "fn" — only used to pick the right error wording for
+    /// arity mismatches. ROADMAP P6.
+    kind: enum { loop_kw, fn_kw },
+};
+
 /// Lexical scope chain. `let*` and `fn*` push children; resolution
 /// walks the chain linearly. `next_slot` is **inherited** from the
 /// parent so the whole enclosing function shares one slot space —
 /// the backend can then index a single flat locals array.
+///
+/// Phase 3.9 adds `recur_target` (the nearest enclosing `loop*` /
+/// `fn*` target) and `recur_target_depth` (the distance in scope
+/// links). 3.9 only inspects "depth ≠ 0" / "target present", but the
+/// depth is preserved so future named-loop / labelled-break work can
+/// reach across multiple levels without re-engineering the contract
+/// (ROADMAP A2). See `private/notes/phase3-3.9-survey.md` §7.
 pub const Scope = struct {
     parent: ?*const Scope = null,
     bindings: std.StringHashMapUnmanaged(u16) = .empty,
     next_slot: u16 = 0,
+    /// Innermost recur target visible from this scope, or null if
+    /// `recur` here is a syntax error.
+    recur_target: ?RecurTarget = null,
+    /// 0 when `recur_target` was set on this scope; otherwise the
+    /// distance in parent links to the scope that owns the target.
+    /// Stays ≤ u32 for headroom; 16-bit was felt too tight given that
+    /// macroexpansion can produce deep `let*` chains.
+    recur_target_depth: u32 = 0,
 
     pub fn deinit(self: *Scope, alloc: std.mem.Allocator) void {
         self.bindings.deinit(alloc);
     }
 
-    /// Spawn a child scope. The child inherits `next_slot` so newly
-    /// declared locals don't collide with the parent's slots.
+    /// Spawn a child scope. The child inherits `next_slot` and the
+    /// nearest recur target — `recur_target_depth` is bumped so
+    /// future code that needs to "skip outer targets" can count.
     pub fn child(parent: *const Scope) Scope {
-        return .{ .parent = parent, .next_slot = parent.next_slot };
+        return .{
+            .parent = parent,
+            .next_slot = parent.next_slot,
+            .recur_target = parent.recur_target,
+            .recur_target_depth = parent.recur_target_depth + 1,
+        };
+    }
+
+    /// Spawn a child scope and register `target` as the new recur
+    /// destination. The depth resets to 0 because *this* scope owns
+    /// the target. `fn*` and `loop*` analysis use this; `let*` does
+    /// not (let body is **not** a recur target — Clojure semantic).
+    pub fn childWithRecur(parent: *const Scope, target: RecurTarget) Scope {
+        return .{
+            .parent = parent,
+            .next_slot = parent.next_slot,
+            .recur_target = target,
+            .recur_target_depth = 0,
+        };
     }
 
     /// Declare a new local; returns its slot number.
@@ -104,6 +152,10 @@ const SpecialFormKind = enum {
     quote_form,
     fn_star,
     let_star,
+    loop_star,
+    recur_form,
+    try_form,
+    throw_form,
 };
 
 const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
@@ -113,6 +165,10 @@ const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
     .{ "quote", .quote_form },
     .{ "fn*", .fn_star },
     .{ "let*", .let_star },
+    .{ "loop*", .loop_star },
+    .{ "recur", .recur_form },
+    .{ "try", .try_form },
+    .{ "throw", .throw_form },
 });
 
 // --- Top-level entry ---
@@ -319,6 +375,10 @@ fn analyzeSpecial(
         .quote_form => analyzeQuote(arena, rt, items, form),
         .fn_star => analyzeFnStar(arena, rt, env, scope, items, form, macro_table),
         .let_star => analyzeLetStar(arena, rt, env, scope, items, form, macro_table),
+        .loop_star => analyzeLoopStar(arena, rt, env, scope, items, form, macro_table),
+        .recur_form => analyzeRecur(arena, rt, env, scope, items, form, macro_table),
+        .try_form => analyzeTry(arena, rt, env, scope, items, form, macro_table),
+        .throw_form => analyzeThrow(arena, rt, env, scope, items, form, macro_table),
     };
 }
 
@@ -487,7 +547,16 @@ fn analyzeFnStar(
         arity += 1;
     }
 
-    var child_scope = if (scope) |s| Scope.child(s) else Scope{};
+    // `fn*` is a recur target: `recur` inside the body rebinds the
+    // parameter slots and re-enters. arity counts mandatory params
+    // only — Clojure's recur cannot rebind the rest-parameter as a
+    // single arg, so we exclude `& rest` from the recur arity.
+    const recur_arity = arity;
+    const slot_base: u16 = if (scope) |s| s.next_slot else 0;
+    var child_scope = if (scope) |s|
+        Scope.childWithRecur(s, .{ .arity = recur_arity, .slot_base = slot_base, .kind = .fn_kw })
+    else
+        Scope{ .recur_target = .{ .arity = recur_arity, .slot_base = 0, .kind = .fn_kw } };
     defer child_scope.deinit(arena);
     for (param_names.items) |name| {
         _ = try child_scope.declare(arena, name);
@@ -583,6 +652,280 @@ fn analyzeLetStar(
         .loc = form.location,
     } };
     return n;
+}
+
+// --- loop* / recur / throw / try ---
+
+fn analyzeLoopStar(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    items: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    // (loop* [k1 v1 k2 v2 ...] body...)
+    if (items.len < 3)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "loop* requires a binding vector and a body", .{});
+    if (items[1].data != .vector)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "loop* bindings must be a vector", .{});
+    const binding_forms = items[1].data.vector;
+    if (binding_forms.len % 2 != 0)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "loop* bindings must have an even number of forms", .{});
+
+    const arity_u: u16 = @intCast(binding_forms.len / 2);
+    const slot_base: u16 = if (scope) |s| s.next_slot else 0;
+
+    // Pre-allocate the scope WITH the recur target so the binding
+    // value-exprs cannot accidentally close over it. (Clojure's loop
+    // values are evaluated in the parent scope; recur is only valid
+    // *inside* the loop body. We mirror this by reusing the parent
+    // scope for value analysis below.)
+    var child_scope = if (scope) |s|
+        Scope.childWithRecur(s, .{ .arity = arity_u, .slot_base = slot_base, .kind = .loop_kw })
+    else
+        Scope{ .recur_target = .{ .arity = arity_u, .slot_base = 0, .kind = .loop_kw } };
+    defer child_scope.deinit(arena);
+
+    var bindings = try arena.alloc(node_mod.LetNode.Binding, arity_u);
+    var bi: usize = 0;
+    var fi: usize = 0;
+    while (fi < binding_forms.len) : (fi += 2) {
+        if (binding_forms[fi].data != .symbol)
+            return error_mod.setErrorFmt(.analysis, .syntax_error, binding_forms[fi].location, "loop* binding name must be a symbol", .{});
+        const name_sym = binding_forms[fi].data.symbol;
+        if (name_sym.ns != null)
+            return error_mod.setErrorFmt(.analysis, .syntax_error, binding_forms[fi].location, "loop* binding name must not be namespace-qualified", .{});
+        // Value is analysed in the *parent* scope (recur is scoped to
+        // the body, not to siblings; matching Clojure's semantics for
+        // initial values).
+        const value_node = try analyze(arena, rt, env, scope, binding_forms[fi + 1], macro_table);
+        const slot = try child_scope.declare(arena, name_sym.name);
+        bindings[bi] = .{
+            .name = name_sym.name,
+            .index = slot,
+            .value_expr = value_node,
+        };
+        bi += 1;
+    }
+
+    const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form, macro_table);
+
+    const n = try arena.create(Node);
+    n.* = .{ .loop_node = .{
+        .bindings = bindings,
+        .body = body_node,
+        .loc = form.location,
+    } };
+    return n;
+}
+
+fn analyzeRecur(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    items: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    const target = if (scope) |s| s.recur_target else null;
+    const tgt = target orelse return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "recur is only valid inside a loop* or fn*", .{});
+
+    const supplied: u16 = @intCast(items.len - 1);
+    if (supplied != tgt.arity) {
+        const kind_str = switch (tgt.kind) {
+            .loop_kw => "loop*",
+            .fn_kw => "fn*",
+        };
+        return error_mod.setErrorFmt(.analysis, .arity_error, form.location, "recur of {s}: expected {d} arg(s), got {d}", .{ kind_str, tgt.arity, supplied });
+    }
+
+    var args = try arena.alloc(Node, supplied);
+    for (items[1..], 0..) |arg_form, i| {
+        const sub = try analyze(arena, rt, env, scope, arg_form, macro_table);
+        args[i] = sub.*;
+    }
+
+    const n = try arena.create(Node);
+    n.* = .{ .recur_node = .{ .args = args, .loc = form.location } };
+    return n;
+}
+
+fn analyzeThrow(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    items: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    if (items.len != 2)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "throw expects 1 arg, got {d}", .{items.len - 1});
+    const expr = try analyze(arena, rt, env, scope, items[1], macro_table);
+
+    const n = try arena.create(Node);
+    n.* = .{ .throw_node = .{ .expr = expr, .loc = form.location } };
+    return n;
+}
+
+fn analyzeTry(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    items: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    // Layout (Clojure-faithful):
+    //   (try body* (catch Class binding catch-body*)* (finally fin-body*)?)
+    //
+    // body* and catch / finally clauses can interleave only in that
+    // order: any plain expression must precede the first clause. We
+    // walk the rest from the front, collecting body forms until we
+    // see a leading-symbol catch/finally; from there on, only catch
+    // clauses are accepted, with at most one trailing finally.
+
+    const rest = items[1..];
+    var split: usize = 0;
+    while (split < rest.len) : (split += 1) {
+        if (isClauseHead(rest[split])) break;
+    }
+
+    const body_forms = rest[0..split];
+    const clause_forms = rest[split..];
+
+    // Analyse body. Empty body is legal (`(try)` evaluates to nil).
+    const body_node = if (body_forms.len == 0)
+        try makeConstant(arena, .nil_val, form)
+    else if (body_forms.len == 1)
+        try analyze(arena, rt, env, scope, body_forms[0], macro_table)
+    else blk: {
+        var sub = try arena.alloc(Node, body_forms.len);
+        for (body_forms, 0..) |f, i| {
+            const n_b = try analyze(arena, rt, env, scope, f, macro_table);
+            sub[i] = n_b.*;
+        }
+        const dn = try arena.create(Node);
+        dn.* = .{ .do_node = .{ .forms = sub, .loc = form.location } };
+        break :blk dn;
+    };
+
+    // Walk clauses.
+    var clauses: std.ArrayList(node_mod.TryNode.CatchClause) = .empty;
+    defer clauses.deinit(arena);
+    var finally_node: ?*const Node = null;
+    var seen_finally = false;
+
+    for (clause_forms) |cf| {
+        if (seen_finally)
+            return error_mod.setErrorFmt(.analysis, .syntax_error, cf.location, "try: clauses must not appear after `finally`", .{});
+        const head = cf.data.list[0].data.symbol.name;
+        if (std.mem.eql(u8, head, "catch")) {
+            const cc = try analyzeCatchClause(arena, rt, env, scope, cf, macro_table);
+            try clauses.append(arena, cc);
+        } else if (std.mem.eql(u8, head, "finally")) {
+            const fn_b = try analyzeFinallyClause(arena, rt, env, scope, cf, macro_table);
+            finally_node = fn_b;
+            seen_finally = true;
+        } else unreachable; // isClauseHead gated this
+    }
+
+    const n = try arena.create(Node);
+    n.* = .{ .try_node = .{
+        .body = body_node,
+        .catch_clauses = try arena.dupe(node_mod.TryNode.CatchClause, clauses.items),
+        .finally_body = finally_node,
+        .loc = form.location,
+    } };
+    return n;
+}
+
+fn isClauseHead(f: Form) bool {
+    if (f.data != .list) return false;
+    const items = f.data.list;
+    if (items.len == 0) return false;
+    if (items[0].data != .symbol) return false;
+    const head = items[0].data.symbol;
+    if (head.ns != null) return false;
+    return std.mem.eql(u8, head.name, "catch") or std.mem.eql(u8, head.name, "finally");
+}
+
+fn analyzeCatchClause(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    clause: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!node_mod.TryNode.CatchClause {
+    // (catch ClassName binding-sym body...)
+    const items = clause.data.list;
+    if (items.len < 4)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, clause.location, "catch requires (catch <Class> <binding> <body>...)", .{});
+    if (items[1].data != .symbol)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "catch class must be a symbol", .{});
+    if (items[2].data != .symbol)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[2].location, "catch binding must be a symbol", .{});
+    const class_sym = items[1].data.symbol;
+    const bind_sym = items[2].data.symbol;
+    if (bind_sym.ns != null)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[2].location, "catch binding must not be namespace-qualified", .{});
+
+    // Analyse the catch body in a child scope that declares the binding.
+    var child_scope = if (scope) |s| Scope.child(s) else Scope{};
+    defer child_scope.deinit(arena);
+    const slot = try child_scope.declare(arena, bind_sym.name);
+
+    const body_forms = items[3..];
+    const body_node = if (body_forms.len == 1)
+        try analyze(arena, rt, env, &child_scope, body_forms[0], macro_table)
+    else blk: {
+        var sub = try arena.alloc(Node, body_forms.len);
+        for (body_forms, 0..) |f, i| {
+            const n_b = try analyze(arena, rt, env, &child_scope, f, macro_table);
+            sub[i] = n_b.*;
+        }
+        const dn = try arena.create(Node);
+        dn.* = .{ .do_node = .{ .forms = sub, .loc = clause.location } };
+        break :blk dn;
+    };
+
+    return .{
+        .class_name = symFullName(class_sym),
+        .binding_name = bind_sym.name,
+        .binding_index = slot,
+        .body = body_node,
+        .loc = clause.location,
+    };
+}
+
+fn analyzeFinallyClause(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    clause: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    // (finally body...)
+    const items = clause.data.list;
+    const body_forms = items[1..];
+    if (body_forms.len == 0)
+        return makeConstant(arena, .nil_val, clause);
+    if (body_forms.len == 1)
+        return analyze(arena, rt, env, scope, body_forms[0], macro_table);
+    var sub = try arena.alloc(Node, body_forms.len);
+    for (body_forms, 0..) |f, i| {
+        const n_b = try analyze(arena, rt, env, scope, f, macro_table);
+        sub[i] = n_b.*;
+    }
+    const dn = try arena.create(Node);
+    dn.* = .{ .do_node = .{ .forms = sub, .loc = clause.location } };
+    return dn;
 }
 
 // --- tests ---
@@ -831,4 +1174,75 @@ test "((fn* [x] x) 41) — direct fn-literal call (Phase-2 exit shape)" {
     try testing.expect(n.call_node.callee.* == .fn_node);
     try testing.expectEqual(@as(usize, 1), n.call_node.args.len);
     try testing.expect(n.call_node.args[0].constant.value.tag() == .integer);
+}
+
+// --- Phase 3.9 — try / catch / throw / loop* / recur ---
+
+test "(loop* [i 0] (recur 1)) builds a loop_node with a recur_node body" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const n = try fix.analyzeStr("(loop* [i 0] (recur 1))");
+    try testing.expect(n.* == .loop_node);
+    try testing.expectEqual(@as(usize, 1), n.loop_node.bindings.len);
+    try testing.expectEqualStrings("i", n.loop_node.bindings[0].name);
+    try testing.expect(n.loop_node.body.* == .recur_node);
+    try testing.expectEqual(@as(usize, 1), n.loop_node.body.recur_node.args.len);
+}
+
+test "(try 1 (catch ExceptionInfo e 2)) builds a try_node with one catch" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const n = try fix.analyzeStr("(try 1 (catch ExceptionInfo e 2))");
+    try testing.expect(n.* == .try_node);
+    try testing.expect(n.try_node.body.* == .constant);
+    try testing.expectEqual(@as(usize, 1), n.try_node.catch_clauses.len);
+    try testing.expectEqualStrings("ExceptionInfo", n.try_node.catch_clauses[0].class_name);
+    try testing.expectEqualStrings("e", n.try_node.catch_clauses[0].binding_name);
+    try testing.expect(n.try_node.finally_body == null);
+}
+
+test "(try 1 (finally 2)) attaches a finally body" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const n = try fix.analyzeStr("(try 1 (finally 2))");
+    try testing.expect(n.* == .try_node);
+    try testing.expectEqual(@as(usize, 0), n.try_node.catch_clauses.len);
+    try testing.expect(n.try_node.finally_body != null);
+}
+
+test "(throw 1) builds a throw_node carrying the expr" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const n = try fix.analyzeStr("(throw 1)");
+    try testing.expect(n.* == .throw_node);
+    try testing.expect(n.throw_node.expr.* == .constant);
+}
+
+test "recur outside any loop*/fn* is a syntax error" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    try testing.expectError(AnalyzeError.SyntaxError, fix.analyzeStr("(recur 1)"));
+    const info = error_mod.peekLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Phase.analysis, info.phase);
+    try testing.expectEqual(error_mod.Kind.syntax_error, info.kind);
+}
+
+test "recur arity mismatch reports the loop's expected arity" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    try testing.expectError(AnalyzeError.ArityError, fix.analyzeStr("(loop* [i 0 j 0] (recur 1))"));
+    const info = error_mod.peekLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.arity_error, info.kind);
 }
