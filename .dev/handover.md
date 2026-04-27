@@ -15,18 +15,21 @@
 
 ## Current state
 
-- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.8 done. 3.1–3.7 paired
-  (chapters 0017 / 0018 / 0019); 3.8 is the first unpaired SHA
-  awaiting its chapter. Next active task is **3.9**
-  (try / catch / throw / loop\* / recur special forms).
+- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.9 done. 3.1–3.7 paired
+  (chapters 0017 / 0018 / 0019); 3.8 + 3.9 are unpaired source SHAs
+  awaiting their chapter (planned single chapter 0020 covering
+  print-extract + try/loop/recur analyzer). Next active task is
+  **3.10** (`ex_info` heap struct + `ex-info` / `ex-message` /
+  `ex-data` builtins).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
 - **Last paired chapter commit**: `ed470fe` (0019) covering 6630cbe
   (3.7 — macroexpand routing). Preceded by `a89e6fb` (0018) covering
   3a5f852..766a73a (3.5+3.6 — heap collection literals).
 - **Unpaired source SHAs awaiting chapter**:
   - `772ebcf` (3.8 — runtime/print.zig extraction)
-  Will be folded into a 3.8–3.x concept chapter — exact pairing
-  decided when the next batch of related tasks closes.
+  - `28c2bc3` (3.9 — try/catch/throw/loop\*/recur Node + analyzer)
+  Plan: chapter 0020 covers 3.8 + 3.9 + 3.10 + 3.11 as one phase-3
+  "error handling and iteration" concept block once 3.11 closes.
 - **Build**: `bash test/run_all.sh` all green —
   `zig build test`, `zone_check --gate`,
   `test/e2e/phase2_exit.sh` (3/3),
@@ -47,40 +50,39 @@
   backend concern (ADR 0001). `Runtime` gained
   `gensym(arena, prefix)` for hygienic auto-symbols.
 
-## Active task — §9.5 / 3.9
+## Active task — §9.5 / 3.10
 
-`src/eval/analyzer.zig` — add `try` / `catch` / `throw` / `loop*` /
-`recur` special forms. `src/eval/node.zig` gains `try_node` /
-`throw_node` / `loop_node` / `recur_node` variants. Pairs with 3.10
-(ex_info heap struct) and 3.11 (TreeWalk evalTry / evalThrow /
-evalLoop / evalRecur impl).
+`src/runtime/value.zig` (or new `runtime/collection/ex_info.zig`)
+— add the `ExInfo` heap struct (HeapTag.ex_info? or reuse a
+generic record kind). `src/lang/primitive/error.zig` (new file)
+exposes `ex-info` / `ex-message` / `ex-data` builtins.
 
 **Retrievable identifiers**:
-- ROADMAP §9.5 task 3.9 (table).
-- `src/eval/node.zig` — current Node tagged union surface; the four
-  new variants follow the existing shape (loc + payload struct).
-- `src/eval/analyzer.zig::SPECIAL_FORMS` — extend with `try`,
-  `throw`, `loop*`, `recur`. `try` syntax: `(try expr* (catch
-  ExceptionInfo e body*) (finally body*))` — note Clojure JVM uses
-  `catch <Class> <binding> <body>`; CW v2 starts with a single
-  catch class `ExceptionInfo` and revisits multi-catch in Phase 5+.
-- `src/eval/analyzer.zig::Scope` — `loop*` introduces a binding
-  frame the same way `let*` does, but `recur` must be tail-position
-  to that frame; mark the loop in the Scope chain with a flag the
-  analyzer reads.
-- `eval/macro_dispatch.Table` is **not** touched — `try` / `loop*`
-  are special forms, not macros.
+- ROADMAP §9.5 task 3.10 (table).
+- `src/runtime/value.zig::HeapTag` — currently has slots for
+  `string`, `cons`, `fn_val`, `keyword`, `transient_vector`, plus
+  others. Pick a tag value for `ex_info` (or reuse a record kind);
+  decide whether ex_info gets its own tag or piggybacks on a
+  generic `record` tag.
+- The 3.9 analyzer's `TryNode.CatchClause.class_name` is a string
+  (`"ExceptionInfo"`); 3.10 must wire how a thrown `ex_info`
+  Value's "class" is recognised at eval time. Simplest: a single
+  HeapTag.ex_info means `class_name == "ExceptionInfo"` matches
+  `Value.tag() == .ex_info`.
+- `src/lang/primitive.zig::registerAll` — extend to call
+  `error_prim.register(env, rt_ns)` once the new file lands.
 
-**Exit criterion for 3.9** (analyzer-only; eval impl lands at 3.11):
-- `(loop* [i 0] (if (< i 3) (recur (+ i 1)) i))` analyses to a
-  `loop_node` containing the recur target.
-- `(try 1 (catch ExceptionInfo e 2))` analyses to a `try_node` with
-  the body Node and a single catch clause.
-- `(throw x)` analyses to a `throw_node` carrying `x`.
-- Tail-position `recur` outside a `loop*` / `fn*` is a syntax_error
-  with the call-site loc.
-- Unit tests in `analyzer.zig` cover the 3 happy paths + 2 error
-  paths.
+**Exit criterion for 3.10**:
+- `runtime/collection/ex_info.zig` (or wherever it lands) defines
+  `ExInfo { header, message: []const u8, data: Value }` and an
+  `alloc(rt, message, data)` helper following the
+  `runtime/collection/string.zig` template.
+- `lang/primitive/error.zig` exposes builtins that **construct**
+  and **destructure** ex_info Values; eval-time dispatch for
+  `(throw ...)` lands at 3.11, so 3.10 is purely the data layout +
+  builtins.
+- Unit tests cover round-trip (alloc → ex-message → original;
+  alloc → ex-data → original).
 
 ## Open questions / blockers
 
