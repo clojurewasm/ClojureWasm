@@ -15,46 +15,59 @@
 
 ## Current state
 
-- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.4 done; chapter
-  `0017-error-infrastructure-activation.md` paired at `5f7c2fd`.
-  Next active task is **3.5** (heap String type — `runtime/collection/string.zig`).
+- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.6 done. Chapter
+  0017 paired 3.1–3.4. 3.5+3.6 (heap String + heap List
+  literal-as-value) are unpaired source SHAs awaiting their chapter.
+  Next active task is **3.7** (`lang/macro_transforms.zig`).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
 - **Last paired chapter commit**: `5f7c2fd` (0017) covering
   37f0c8f..6777c42 (3.1–3.4 — error infrastructure activation).
-- **Unpaired source SHAs awaiting chapter**: (none).
+- **Unpaired source SHAs awaiting chapter**:
+  - `3a5f852` (3.5 — heap String + analyzer/printer wiring)
+  - `766a73a` (3.6 — heap List literal-as-value via quote)
+  Will be folded into a 3.5–3.7 concept chapter once macros land.
 - **Build**: `bash test/run_all.sh` all green —
   `zig build test`, `zone_check --gate`,
   `test/e2e/phase2_exit.sh` (3/3),
-  `test/e2e/phase3_cli.sh` (6/6).
-- **End-to-end error rendering activated**: `cljw -e '(+ 1 :foo)'`
-  now prints `<-e>:1:0: type_error [eval]\n  (+ 1 :foo)\n  ^\n+:
-  expected number, got keyword`. Reader / Analyzer / TreeWalk +
-  primitives all route through `setErrorFmt`. Single-column caret
-  + call-site loc — token-width caret + per-arg loc are deferred
-  to Phase 9.
+  `test/e2e/phase3_cli.sh` (11/11).
+- **End-to-end error rendering activated** (3.1–3.4):
+  `cljw -e '(+ 1 :foo)'` prints `<-e>:1:0: type_error [eval]\n
+  (+ 1 :foo)\n  ^\n+: expected number, got keyword`. Reader /
+  Analyzer / TreeWalk + primitives all route through `setErrorFmt`.
+- **Heap collection Values activated** (3.5–3.6):
+  `cljw -e '"hello"'` → `"hello"`. `cljw - <<<'(quote (1 :a "b"))'`
+  → `(1 :a "b")`. `(quote ())` → `nil` (deviation from JVM Clojure;
+  see private/notes/phase3-3.6.md for the Phase 8+ follow-up).
 
-## Active task — §9.5 / 3.5
+## Active task — §9.5 / 3.7
 
-`src/runtime/collection/string.zig` — heap String type (HeapTag.string).
-Analyzer lifts string Form atoms into Value via
-`runtime.string.alloc(rt, bytes)`; `printValue` renders quoted.
+`src/lang/macro_transforms.zig` (new file) — Zig-level expansions
+for the bootstrap macros: `let → let*`, `when → (if c (do ...) nil)`,
+`if-let` / `when-let` / `and` / `or` / `cond` / `->` / `->>`.
+Analyzer detects `^:macro` Vars and routes through
+`vtable.expandMacro` (currently a stub returning NotImplemented).
 
 **Retrievable identifiers**:
-- ROADMAP §9.5 task 3.5 (table).
-- `src/runtime/value.zig` — `HeapTag.string` should already exist
-  (Phase 1.5 reserved); confirm before adding.
-- `src/eval/analyzer.zig::formToValue` — currently returns
-  `Kind.not_implemented` for `.string`; this is the call site to
-  replace once `runtime.string.alloc` exists.
-- `src/main.zig::printValue` — currently renders heap kinds as
-  `#<tag>`; needs `.string` arm with quoted + escape-sequence output.
-- `private/notes/phase3-3.4.md` — TODO carries Phase 9 follow-ups
-  (token-width caret, per-arg loc) but those are out of scope for 3.5.
+- ROADMAP §9.5 task 3.7 (table).
+- `src/runtime/dispatch.zig::ExpandMacroFn` — current signature is
+  `(rt, env, macro_val, args) → Value`. May need extending if
+  expansion needs the call-site `loc`.
+- `src/eval/backend/tree_walk.zig::expandMacroStub` — currently
+  returns `not_implemented`. The new impl should belong to the
+  **analyzer** (macro expansion happens at analyse time), not
+  TreeWalk. Reset the vtable wiring.
+- `src/eval/analyzer.zig::analyzeList` — needs a branch that detects
+  `head` resolves to a `^:macro` Var and calls `vtable.expandMacro`
+  (or directly `macro_transforms.expand`) before re-entering analyse.
+- `src/runtime/env.zig::Var.flags.macro_` — already exists from
+  Phase 2.3.
 
-**Exit criterion for 3.5**:
-`cljw -e '"hello"'` prints `"hello"` on stdout (with quotes).
-`cljw -e '(quote "hi")'` also prints `"hi"`. `printValue` round-trips
-escape sequences (`\n`, `\"`).
+**Exit criterion for 3.7**:
+- `cljw -e '(let [x 1] (+ x 2))'` → `3` (let → let* expansion).
+- `cljw -e '(when true 42)'` → `42`.
+- `cljw -e '(when false 42)'` → `nil`.
+- `cljw -e '(-> 1 (+ 2) (* 3))'` → `9`.
+- E2E test pinned in `test/e2e/phase3_cli.sh`.
 
 ## Open questions / blockers
 
