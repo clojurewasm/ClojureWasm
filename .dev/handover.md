@@ -15,21 +15,24 @@
 
 ## Current state
 
-- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.6 done. Chapter
-  0017 paired 3.1–3.4. 3.5+3.6 (heap String + heap List
-  literal-as-value) are unpaired source SHAs awaiting their chapter.
-  Next active task is **3.7** (`lang/macro_transforms.zig`).
+- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.7 done. Chapter
+  0017 paired 3.1–3.4. 3.5+3.6+3.7 are unpaired source SHAs awaiting
+  their chapter(s). Next active task is **3.8**
+  (`runtime/print.zig` extraction).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
 - **Last paired chapter commit**: `5f7c2fd` (0017) covering
   37f0c8f..6777c42 (3.1–3.4 — error infrastructure activation).
 - **Unpaired source SHAs awaiting chapter**:
   - `3a5f852` (3.5 — heap String + analyzer/printer wiring)
   - `766a73a` (3.6 — heap List literal-as-value via quote)
-  Will be folded into a 3.5–3.7 concept chapter once macros land.
+  - `6630cbe` (3.7 — bootstrap macros + Layer-1 MacroTable, ADR 0001)
+  Plan: chapter 0018 covers 3.5+3.6 ("heap collection literals"),
+  chapter 0019 covers 3.7 alone ("macroexpand routing + ADR 0001").
+  Final shape decided at chapter-write time.
 - **Build**: `bash test/run_all.sh` all green —
   `zig build test`, `zone_check --gate`,
   `test/e2e/phase2_exit.sh` (3/3),
-  `test/e2e/phase3_cli.sh` (11/11).
+  `test/e2e/phase3_cli.sh` (21/21 — cases 12–19 cover the macros).
 - **End-to-end error rendering activated** (3.1–3.4):
   `cljw -e '(+ 1 :foo)'` prints `<-e>:1:0: type_error [eval]\n
   (+ 1 :foo)\n  ^\n+: expected number, got keyword`. Reader /
@@ -38,36 +41,39 @@
   `cljw -e '"hello"'` → `"hello"`. `cljw - <<<'(quote (1 :a "b"))'`
   → `(1 :a "b")`. `(quote ())` → `nil` (deviation from JVM Clojure;
   see private/notes/phase3-3.6.md for the Phase 8+ follow-up).
+- **Bootstrap macros activated (3.7)**: `let / when / cond / -> /
+  ->> / and / or / if-let / when-let` expand at analyse time via
+  `eval/macro_dispatch.Table` (Layer 1) populated by
+  `lang/macro_transforms.registerInto` (Layer 2). **`Runtime.vtable
+  .expandMacro` was removed** — macro expansion is no longer a
+  backend concern (ADR 0001). `Runtime` gained
+  `gensym(arena, prefix)` for hygienic auto-symbols.
 
-## Active task — §9.5 / 3.7
+## Active task — §9.5 / 3.8
 
-`src/lang/macro_transforms.zig` (new file) — Zig-level expansions
-for the bootstrap macros: `let → let*`, `when → (if c (do ...) nil)`,
-`if-let` / `when-let` / `and` / `or` / `cond` / `->` / `->>`.
-Analyzer detects `^:macro` Vars and routes through
-`vtable.expandMacro` (currently a stub returning NotImplemented).
+`src/runtime/print.zig` (new file) — extract `printValue` /
+`printList` / `printString` from `src/main.zig` into a Layer-0
+module so that future REPL / nREPL / pr-str primitive paths can
+share one implementation. main.zig becomes a thin caller.
 
 **Retrievable identifiers**:
-- ROADMAP §9.5 task 3.7 (table).
-- `src/runtime/dispatch.zig::ExpandMacroFn` — current signature is
-  `(rt, env, macro_val, args) → Value`. May need extending if
-  expansion needs the call-site `loc`.
-- `src/eval/backend/tree_walk.zig::expandMacroStub` — currently
-  returns `not_implemented`. The new impl should belong to the
-  **analyzer** (macro expansion happens at analyse time), not
-  TreeWalk. Reset the vtable wiring.
-- `src/eval/analyzer.zig::analyzeList` — needs a branch that detects
-  `head` resolves to a `^:macro` Var and calls `vtable.expandMacro`
-  (or directly `macro_transforms.expand`) before re-entering analyse.
-- `src/runtime/env.zig::Var.flags.macro_` — already exists from
-  Phase 2.3.
+- ROADMAP §9.5 task 3.8 (table).
+- `src/main.zig::printValue` (line ~163), `printList` (~196),
+  `printString` (~214) — current home; move them as-is then add
+  the symbol / fn / map renderers in follow-on tasks.
+- New file goes in `src/runtime/` (Layer 0), so it can only import
+  `runtime/value.zig`, `runtime/keyword.zig`,
+  `runtime/collection/{string,list}.zig` — all already in zone.
+- `main.zig`'s test block must add the new file to the discovery
+  list so `zig build test` picks it up.
 
-**Exit criterion for 3.7**:
-- `cljw -e '(let [x 1] (+ x 2))'` → `3` (let → let* expansion).
-- `cljw -e '(when true 42)'` → `42`.
-- `cljw -e '(when false 42)'` → `nil`.
-- `cljw -e '(-> 1 (+ 2) (* 3))'` → `9`.
-- E2E test pinned in `test/e2e/phase3_cli.sh`.
+**Exit criterion for 3.8**:
+- `printValue` lives in `runtime/print.zig`; main.zig imports it.
+- All existing e2e cases still pass unchanged
+  (`test/run_all.sh` green).
+- Unit test in `runtime/print.zig` covers nil / int / keyword /
+  string / list as a regression guard so future renderer tweaks
+  don't drift.
 
 ## Open questions / blockers
 
