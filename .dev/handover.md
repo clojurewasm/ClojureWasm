@@ -15,12 +15,13 @@
 
 ## Current state
 
-- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.9 done. 3.1–3.7 paired
-  (chapters 0017 / 0018 / 0019); 3.8 + 3.9 are unpaired source SHAs
-  awaiting their chapter (planned single chapter 0020 covering
-  print-extract + try/loop/recur analyzer). Next active task is
-  **3.10** (`ex_info` heap struct + `ex-info` / `ex-message` /
-  `ex-data` builtins).
+- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.10 done. 3.1–3.7 paired
+  (chapters 0017 / 0018 / 0019); 3.8 + 3.9 + 3.10 are unpaired source
+  SHAs awaiting chapter 0020 (planned: "error handling and iteration"
+  block covering print-extract + try/loop/recur analyzer + ex_info,
+  to land alongside or just after 3.11). Next active task is
+  **3.11** (TreeWalk `evalLoop` / `evalRecur` / `evalTry` /
+  `evalThrow` + closure capture for `fn*`).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
 - **Last paired chapter commit**: `ed470fe` (0019) covering 6630cbe
   (3.7 — macroexpand routing). Preceded by `a89e6fb` (0018) covering
@@ -28,6 +29,7 @@
 - **Unpaired source SHAs awaiting chapter**:
   - `772ebcf` (3.8 — runtime/print.zig extraction)
   - `28c2bc3` (3.9 — try/catch/throw/loop\*/recur Node + analyzer)
+  - `c16380f` (3.10 — ex_info heap struct + builtins)
   Plan: chapter 0020 covers 3.8 + 3.9 + 3.10 + 3.11 as one phase-3
   "error handling and iteration" concept block once 3.11 closes.
 - **Build**: `bash test/run_all.sh` all green —
@@ -50,39 +52,56 @@
   backend concern (ADR 0001). `Runtime` gained
   `gensym(arena, prefix)` for hygienic auto-symbols.
 
-## Active task — §9.5 / 3.10
+## Active task — §9.5 / 3.11
 
-`src/runtime/value.zig` (or new `runtime/collection/ex_info.zig`)
-— add the `ExInfo` heap struct (HeapTag.ex_info? or reuse a
-generic record kind). `src/lang/primitive/error.zig` (new file)
-exposes `ex-info` / `ex-message` / `ex-data` builtins.
+`src/eval/backend/tree_walk.zig` — implement the four eval-time
+arms 3.9 left as `not_implemented`:
+
+- `evalLoop` — set up bindings (mirrors `evalLet`), then loop:
+  evaluate body; on `pending_recur` signal, rebind slots and re-enter.
+- `evalRecur` — populate threadlocal `pending_recur_args` (a fixed
+  buffer per Runtime?) and bubble `error.PendingRecur` up to the
+  nearest target frame. Decide buffer ownership (per-Runtime fixed
+  array vs ArrayList) — favour the fixed buffer for Phase 3.
+- `evalTry` — eval body; if it returns `error.ThrownValue`, walk
+  catch_clauses linearly comparing `class_name` to the thrown
+  Value's tag (Phase 3.10 surface: `"ExceptionInfo"` ↔
+  `Value.tag() == .ex_info`); on match, bind to slot and eval body.
+  Always run finally_body (even on success) before returning /
+  rethrowing.
+- `evalThrow` — eval expr; populate threadlocal
+  `last_thrown_exception` with the result; return
+  `error.ThrownValue` so the unwind can find a try frame.
+- **Closure capture for `fn*`** — current `allocFunction` snapshots
+  zero locals; switch to copying the `LocalRef` slots referenced by
+  the body into the function struct so inner fns close over outer
+  let bindings. Phase 3 exit criterion `(defn f [x] (+ x 1)) (f 2)`
+  requires no closure (single-frame), but `((fn* [x] (fn* [y] (+ x
+  y))) 1) 2)` does — schedule cleanly so the fix stays in scope.
 
 **Retrievable identifiers**:
-- ROADMAP §9.5 task 3.10 (table).
-- `src/runtime/value.zig::HeapTag` — currently has slots for
-  `string`, `cons`, `fn_val`, `keyword`, `transient_vector`, plus
-  others. Pick a tag value for `ex_info` (or reuse a record kind);
-  decide whether ex_info gets its own tag or piggybacks on a
-  generic `record` tag.
-- The 3.9 analyzer's `TryNode.CatchClause.class_name` is a string
-  (`"ExceptionInfo"`); 3.10 must wire how a thrown `ex_info`
-  Value's "class" is recognised at eval time. Simplest: a single
-  HeapTag.ex_info means `class_name == "ExceptionInfo"` matches
-  `Value.tag() == .ex_info`.
-- `src/lang/primitive.zig::registerAll` — extend to call
-  `error_prim.register(env, rt_ns)` once the new file lands.
+- ROADMAP §9.5 task 3.11 (table).
+- `src/eval/backend/tree_walk.zig::eval` switch — 4 arms currently
+  `not_implemented`. `MAX_LOCALS = 256` is the local-array length;
+  recur slot rewrite stays inside that bound.
+- `runtime/dispatch.zig::last_thrown_exception` (already declared
+  threadlocal as `?Value`) — populated by evalThrow, drained by
+  evalTry's catch dispatch.
+- `runtime/collection/ex_info.zig` — Phase 3.10 surface; evalTry
+  uses `Value.tag() == .ex_info` to recognise the catch class
+  `"ExceptionInfo"`.
+- `src/eval/analyzer.zig::Scope.recur_target` — already populated
+  for fn* and loop*; Phase 3.11 doesn't change the analyser, but
+  consult it when deciding whether tail-position enforcement should
+  ride along.
 
-**Exit criterion for 3.10**:
-- `runtime/collection/ex_info.zig` (or wherever it lands) defines
-  `ExInfo { header, message: []const u8, data: Value }` and an
-  `alloc(rt, message, data)` helper following the
-  `runtime/collection/string.zig` template.
-- `lang/primitive/error.zig` exposes builtins that **construct**
-  and **destructure** ex_info Values; eval-time dispatch for
-  `(throw ...)` lands at 3.11, so 3.10 is purely the data layout +
-  builtins.
-- Unit tests cover round-trip (alloc → ex-message → original;
-  alloc → ex-data → original).
+**Exit criterion for 3.11**:
+- `cljw -e '(loop* [i 0 acc 0] (if (< i 10) (recur (+ i 1) (+ acc i)) acc))'` → `45`.
+- `cljw -e '(try (throw (ex-info "boom" 0)) (catch ExceptionInfo e (ex-message e)))'` → `"boom"`.
+- `cljw -e '(try 1 (finally (def *side* 42)))'` → `1` and the
+  `*side*` Var ends up with value `42`.
+- Closure: `cljw -e '(((fn* [x] (fn* [y] (+ x y))) 3) 4)'` → `7`.
+- e2e cases pinned in `test/e2e/phase3_cli.sh`.
 
 ## Open questions / blockers
 
