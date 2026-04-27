@@ -35,6 +35,7 @@
 14. [Future go/no-go decision points](#14-future-gono-go-decision-points)
 15. [References](#15-references)
 16. [Glossary](#16-glossary)
+17. [Amendment policy](#17-amendment-policy)
 
 ---
 
@@ -782,7 +783,7 @@ the special-form-only Phase-2 surface.
 | 3.11 | `src/eval/backend/tree_walk.zig` — implement `evalLoop` / `evalRecur` (threadlocal pending_recur signal), `evalTry` / `evalThrow` (`error.ThrownValue` + threadlocal `last_thrown`); closure capture for `fn*` (slot-vector style)                                                | [x] (`99efd07`) |
 | 3.12 | `src/lang/bootstrap.zig` + `src/lang/clj/clojure/core.clj` (Stage 1) — Read + Analyse + Eval `core.clj` after `primitive.registerAll`; Stage-1 content: `defn`, `defmacro`, `let`, `when`, `cond`, `if-let`, `when-let`, `not`, `and`, `or`, `->`, `->>`                          | [ ]    |
 | 3.13 | `src/main.zig` — wire bootstrap into startup; `cljw -e "(defn f [x] (+ x 1)) (f 2)"` → `3`                                                                                                                                                                                       | [ ]    |
-| 3.14 | Phase-3 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` and `(try (throw (ex-info "boom" {})) (catch ExceptionInfo e (ex-message e)))` → `"boom"`. e2e script in `test/e2e/phase3_exit.sh` wired into `run_all.sh`                                                                  | [ ]    |
+| 3.14 | Phase-3 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` and `(try (throw (ex-info "boom" 0)) (catch ExceptionInfo e (ex-message e)))` → `"boom"`. e2e script in `test/e2e/phase3_exit.sh` wired into `run_all.sh`. (The `data` arg is a placeholder integer because map literals are Phase 5 — see ADR 0002.)                                                                  | [ ]    |
 
 After 3.14 lands as a `[x]`, the §9 phase tracker flips Phase 3 from
 PENDING to DONE and Phase 4 IN-PROGRESS (🔒 x86_64 gate); expand
@@ -1176,9 +1177,76 @@ Project-specific:
 
 ---
 
-> **Note on history**: this document is a "now" snapshot, not a changelog.
-> What changed and why lives in `git log -- .dev/ROADMAP.md` (mechanical
-> diff), the corresponding `docs/ja/NNNN-<slug>.md` learning docs (the
-> story behind the change), and `.dev/decisions/NNNN-<slug>.md` ADRs
-> (load-bearing rationale). Keeping a §17 revision history here was found
-> to be redundant and to drift; it has been removed deliberately.
+## 17. Amendment policy
+
+This document is a "now" snapshot. Early-phase planning will inevitably
+miss dependencies that only become visible when later phases are
+implemented. **Correcting such mismatches IS the maintenance work, not
+an ad-hoc patch.** This section governs how to do that without eroding
+the document's role as the single source of truth.
+
+### 17.1 When to amend ROADMAP itself (vs. add an ADR-only deviation)
+
+Amend in place when the document already disagrees with reality:
+
+- An exit form, scope row, or task description references a feature
+  whose implementation is scoped to a later phase (e.g., a Phase 3
+  exit citing `{}` while map literals are Phase 5 — see ADR 0002).
+- A directory / file name in §5 has been superseded by an ADR.
+- A principle in §2 needs sharpening because a later phase exposed an
+  edge case the principle did not anticipate.
+
+Add an ADR **instead** of amending when:
+
+- A genuinely new design decision is being made (e.g., ADR 0001
+  macroexpand routing).
+- A deviation from a §2 principle is justified as a one-time trade-off
+  and should not generalise into the document.
+
+### 17.2 The four-step amendment
+
+When amending, do all four — none of them are optional:
+
+1. **Edit ROADMAP in place.** Write the corrected text as if it had
+   always been so. The document is a "now" snapshot; consistency
+   matters more than preserving past wording. Do not add inline
+   change-bars, dated comments, or `~~strikethrough~~`.
+2. **Open an ADR** (`.dev/decisions/NNNN-<slug>.md`) recording the
+   original wording, the new wording, and *why the mismatch existed*.
+   The ADR is the changelog; ROADMAP is not.
+3. **Sync `handover.md`** if its "Active task" / "Current state"
+   sections cited the amended text.
+4. **Reference the ADR in the commit message** that lands the ROADMAP
+   edit so `git log -- .dev/ROADMAP.md` is browseable for cause.
+
+### 17.3 Forbidden
+
+- Editing ROADMAP without an accompanying ADR for load-bearing
+  changes (anything in §1, §2, §4, §5, §9 phase rows, §11.6 gates).
+- Adding a "revision history" section back to this document — the
+  trail is git log + ADR + `docs/ja/`.
+- Editing principle text in §2 without an ADR (always load-bearing).
+- "Quiet" renumbering of `§N` headings; if a renumber is unavoidable,
+  it gets its own ADR and a sweep of every `§N.M` reference under
+  `.claude/`, `.dev/`, `docs/ja/`, and source comments.
+
+### 17.4 Why this exists
+
+Without 17.1–17.3 the project drifts in one of two failure modes:
+
+- ROADMAP turns into an aspirational document that nobody updates
+  because every change "feels like ad-hoc" and is delayed indefinitely.
+- ROADMAP becomes a free-form scratchpad with edits scattered across
+  history, and the "single source of truth" claim quietly dies.
+
+The four-step amendment keeps the ROADMAP correct as a present-tense
+plan while preserving full traceability through ADRs and git log.
+
+---
+
+> **Note on history**: this document is a "now" snapshot, not a
+> changelog. What changed and why lives in
+> `git log -- .dev/ROADMAP.md` (mechanical diff), the corresponding
+> `docs/ja/NNNN-<slug>.md` learning docs (the story behind the
+> change), and `.dev/decisions/NNNN-<slug>.md` ADRs (load-bearing
+> rationale). The amendment process itself is §17.

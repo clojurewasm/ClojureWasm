@@ -69,6 +69,10 @@ turn 1 must be Japanese.
   audit / simplify / security-review fan-out. Stay in main only for
   small in-context edits.
 - Pushing to `cw-from-scratch` requires explicit user approval.
+- ROADMAP corrections follow the four-step amendment in
+  [`ROADMAP §17`](.dev/ROADMAP.md#17-amendment-policy): edit in place
+  as if it had always been so, open an ADR, sync `handover.md`,
+  reference the ADR in the commit. Quiet edits are forbidden.
 
 ## Skills (the runnable procedures)
 
