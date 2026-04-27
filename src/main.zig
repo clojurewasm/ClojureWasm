@@ -24,6 +24,7 @@ const Env = @import("runtime/env.zig").Env;
 const Value = @import("runtime/value.zig").Value;
 const primitive = @import("lang/primitive.zig");
 const macro_transforms = @import("lang/macro_transforms.zig");
+const bootstrap = @import("lang/bootstrap.zig");
 const error_mod = @import("runtime/error.zig");
 const error_print = @import("runtime/error_print.zig");
 const print = @import("runtime/print.zig");
@@ -124,6 +125,17 @@ pub fn main(init: std.process.Init) !void {
     var macro_table = macro_dispatch.Table.init(gpa);
     defer macro_table.deinit();
     try macro_transforms.registerInto(&env, &macro_table);
+
+    // Stage-1 prologue (Phase 3.13): read+analyse+eval the embedded
+    // `clj/clojure/core.clj`. Errors here use the synthetic
+    // `<bootstrap>` source label and are routed through the same
+    // catch path as user input — a broken prologue surfaces as a
+    // diagnostic, not a panic.
+    const bootstrap_ctx = error_print.SourceContext{ .file = bootstrap.SOURCE_LABEL, .text = bootstrap.CORE_SOURCE };
+    bootstrap.loadCore(arena, &rt, &env, &macro_table) catch |err| {
+        try renderError(stderr, bootstrap_ctx, err);
+        std.process.exit(1);
+    };
 
     // --- Read - Analyse - Eval - Print loop ---
     var reader = Reader.init(arena, source_text.?);

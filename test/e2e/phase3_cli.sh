@@ -246,5 +246,14 @@ EOF
 [[ "$got" == "7" ]] || fail "closure: want '7', got '$got'"
 echo "    ✓ (((fn* [x] (fn* [y] (+ x y))) 3) 4) → 7"
 
+# --- Case 28: bootstrap prologue evaluates `(def not ...)` so user/not works (3.13) ---
+got=$("$BIN" -e '(not true)' 2>&1) || fail "bootstrap not: non-zero exit"
+[[ "$got" == "false" ]] || fail "bootstrap not: want 'false', got '$got'"
+echo "    ✓ bootstrap (not true) → false"
+
+got=$("$BIN" -e '(not false)' 2>&1) || fail "bootstrap not falsy: non-zero exit"
+[[ "$got" == "true" ]] || fail "bootstrap not falsy: want 'true', got '$got'"
+echo "    ✓ bootstrap (not false) → true"
+
 echo
 echo "Phase-3 CLI entry points: all green."
