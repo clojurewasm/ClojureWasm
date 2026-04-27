@@ -68,7 +68,9 @@ numbers, does not assert pass/fail until §10.1 lock at Phase 8).
 - ROADMAP §10.2 — quick bench policy + intent.
 - ROADMAP §10.3 — v0.1.0 target numbers (the harness should make
   these comparable; absolute numbers will move with the VM).
-- `bench/` — does not yet exist; created by 4.0.
+- `bench/quick.sh` — already exists from Phase 1, with `# TODO(phase4)`
+  placeholders at lines 94-97. 4.0 fills those in and wires the
+  script into `test/run_all.sh` (currently not wired).
 - `private/notes/phase3-simplify-queue.md` — Q1–Q11 deferred items
   from the Phase-3 boundary simplify pass; some intersect 4.x work,
   consult per task. (gitignored — present on this machine only)
