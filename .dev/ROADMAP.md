@@ -781,13 +781,14 @@ the special-form-only Phase-2 surface.
 | 3.9  | `src/eval/analyzer.zig` — add `try` / `catch` / `throw` / `loop*` / `recur` special forms; `eval/node.zig` gains `try_node` / `throw_node` / `loop_node` / `recur_node` variants                                                                                                  | [x] (`28c2bc3`) |
 | 3.10 | `src/runtime/collection/ex_info.zig` (new) — `ExInfo` heap struct `{message, data, cause}`; `lang/primitive/error.zig` exposes `ex-info` / `ex-message` / `ex-data` builtins; `runtime/print.zig` renders `#error{...}`                                                          | [x] (`c16380f`) |
 | 3.11 | `src/eval/backend/tree_walk.zig` — implement `evalLoop` / `evalRecur` (threadlocal pending_recur signal), `evalTry` / `evalThrow` (`error.ThrownValue` + threadlocal `last_thrown`); closure capture for `fn*` (slot-vector style)                                                | [x] (`99efd07`) |
-| 3.12 | `src/lang/bootstrap.zig` + `src/lang/clj/clojure/core.clj` (Stage 1) — Read + Analyse + Eval `core.clj` after `primitive.registerAll`; Stage-1 content: `defn`, `defmacro`, `let`, `when`, `cond`, `if-let`, `when-let`, `not`, `and`, `or`, `->`, `->>`                          | [ ]    |
-| 3.13 | `src/main.zig` — wire bootstrap into startup; `cljw -e "(defn f [x] (+ x 1)) (f 2)"` → `3`                                                                                                                                                                                       | [ ]    |
-| 3.14 | Phase-3 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` and `(try (throw (ex-info "boom" 0)) (catch ExceptionInfo e (ex-message e)))` → `"boom"`. e2e script in `test/e2e/phase3_exit.sh` wired into `run_all.sh`. (The `data` arg is a placeholder integer because map literals are Phase 5 — see ADR 0002.)                                                                  | [ ]    |
+| 3.12 | `src/lang/bootstrap.zig` + `src/lang/clj/clojure/core.clj` (Stage 1) — Read + Analyse + Eval `core.clj` after `primitive.registerAll`; Stage-1 content: `defn`, `defmacro`, `let`, `when`, `cond`, `if-let`, `when-let`, `not`, `and`, `or`, `->`, `->>`                          | [x] (`a1a70aa`) |
+| 3.13 | `src/main.zig` — wire bootstrap into startup; `cljw -e "(defn f [x] (+ x 1)) (f 2)"` → `3`                                                                                                                                                                                       | [x] (`f725f58`, `22881a1`) |
+| 3.14 | Phase-3 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` and `(try (throw (ex-info "boom" 0)) (catch ExceptionInfo e (ex-message e)))` → `"boom"`. e2e script in `test/e2e/phase3_exit.sh` wired into `run_all.sh`. (The `data` arg is a placeholder integer because map literals are Phase 5 — see ADR 0002.)                                                                  | [x] (`399cb31`) |
 
-After 3.14 lands as a `[x]`, the §9 phase tracker flips Phase 3 from
-PENDING to DONE and Phase 4 IN-PROGRESS (🔒 x86_64 gate); expand
-Phase 4 inline in §9.6.
+All 3.1–3.14 cells now read `[x]`; the §9 phase tracker (top of §9)
+records Phase 3 as **DONE** and Phase 4 as **IN-PROGRESS** (🔒 x86_64
+gate). Phase 4 expands inline as §9.6 once the boundary review chain
+finishes (audit / simplify / chapter / strategic-note adoption).
 
 ---
 

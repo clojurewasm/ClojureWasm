@@ -15,36 +15,23 @@
 
 ## Current state
 
-- **Phase**: Phase 3 IN-PROGRESS (§9.5). **3.1–3.14 source done.**
-  3.1–3.7 paired (chapters 0017 / 0018 / 0019); 3.8 + 3.9 + 3.10 +
-  3.11 + 3.12 + 3.13 + 3.14 are unpaired source SHAs awaiting
-  chapter(s) 0020 (error handling + iteration: 3.8–3.11) and 0021
-  (bootstrap mechanism + Phase-3 exit: 3.12–3.14). Phase-3 boundary
-  review chain (audit / simplify / security-review / chapter writing)
-  is the next move; after chapters land and §9.5 task table flips
-  to all `[x]`, Phase 3 → DONE / Phase 4 → IN-PROGRESS (🔒 OrbStack
-  x86_64 gate due before Phase 4.1).
+- **Phase**: **Phase 3 DONE; Phase 4 IN-PROGRESS but not yet OPEN.**
+  All §9.5 / 3.1–3.14 cells `[x]` with source SHAs paired through
+  chapter 0020. Phase-3 boundary review chain ran (audit / simplify /
+  security-review / chapter): block 0; 3 simplify apply-now landed
+  in `4ad8270`; 3 security findings (H1 `@intCast` panic in analyzer
+  loop*/recur; H2 trackHeap-failure leak across 4 heap allocators;
+  H3 `(and ...) `/`(or ...)` deep-recursion stack overflow) **queued
+  for early Phase 4** before any push. **Phase 4 §9.6 expand is
+  blocked on user judgement on three items** (see "Open questions"
+  below).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
-- **Last paired chapter commit**: `ed470fe` (0019) covering 6630cbe
-  (3.7 — macroexpand routing). Preceded by `a89e6fb` (0018) covering
-  3a5f852..766a73a (3.5+3.6 — heap collection literals).
-- **Unpaired source SHAs awaiting chapter**:
-  - `772ebcf` (3.8 — runtime/print.zig extraction)
-  - `28c2bc3` (3.9 — try/catch/throw/loop\*/recur Node + analyzer)
-  - `c16380f` (3.10 — ex_info heap struct + builtins)
-  - `99efd07` (3.11 — treeWalk evalLoop/evalRecur/evalTry/evalThrow
-    + fn closure capture)
-  - `a1a70aa` (3.12 — Stage-1 bootstrap module + minimal core.clj)
-  - `f725f58` (3.13a — wire bootstrap.loadCore into main.zig startup)
-  - `22881a1` (3.13b — `defn` Zig macro transform)
-  - `8e63134` (meta — §17 amendment policy + ADR 0002; **not** a
-    source SHA, but mention in chapter 0021 since it explains why
-    §9.5/3.14 uses `0` instead of `{}`)
-  - `399cb31` (3.14 — `test/e2e/phase3_exit.sh` + run_all.sh wiring)
-  Plan: chapter 0020 covers 3.8 + 3.9 + 3.10 + 3.11 as one phase-3
-  "error handling and iteration" concept block; chapter 0021 covers
-  3.12 + 3.13 + 3.14 as "bootstrap mechanism + Phase-3 exit", with a
-  short callout to ADR 0002 / §17 amendment policy.
+- **Last paired chapter commit**: `cc46a48` (0020 — Phase 3 の閉幕)
+  covering all of `772ebcf` `28c2bc3` `c16380f` `99efd07` `a1a70aa`
+  `f725f58` `22881a1` `8e63134` `399cb31` `4ad8270` (3.8–3.14 + meta
+  + simplify pass, ten SHAs in one chapter to satisfy the gate's
+  "every unpaired SHA since the last doc" rule).
+- **Unpaired source SHAs awaiting chapter**: none.
 - **Build**: `bash test/run_all.sh` all green —
   `zig build test`, `zone_check --gate`,
   `test/e2e/phase2_exit.sh` (3/3),
@@ -66,38 +53,57 @@
   backend concern (ADR 0001). `Runtime` gained
   `gensym(arena, prefix)` for hygienic auto-symbols.
 
-## Active task — Phase-3 boundary review chain
+## Active task — wait for user judgement, then open Phase 4 (§9.6)
 
-All Phase-3 source has landed (3.1–3.14). Next move is the §`continue`
-Phase-boundary review chain:
+Phase-3 boundary review chain ran. **Three escalations are blocking
+§9.6 expand**:
 
-1. `audit-scaffolding` slash command on the project as a whole; only
-   `block`-severity findings stop the loop.
-2. **Multi-agent fan-out** (parallel):
-   - Subagent A: `simplify` on `git diff <phase-start>..HEAD -- src/`.
-   - Subagent B: `security-review` on unpushed commits.
-   - Subagent C: write outstanding chapters 0020 + 0021 from the
-     `private/notes/phase3-3.{8..14}.md` task notes.
-3. After chapters commit, flip the §9.5 task table cells `[ ]` → `[x]`
-   for 3.8–3.14 with their source SHAs, and flip the §9 phase table
-   row Phase 3 → DONE / Phase 4 → IN-PROGRESS, then expand §9.6
-   inline.
-4. Re-run the OrbStack x86_64 gate (🔒) before opening Phase 4.1:
-   `orb run -m my-ubuntu-amd64 bash -c 'cd <project> &&
-   bash test/run_all.sh'`.
-5. Surface any unadopted strategic notes from `private/` and
-   escalate to the user before starting §9.6 / 4.1.
+1. **G1 / G2 / G4 strategic-note adoption** (audit Section F flagged
+   as "deadlines passed"). User must choose per-item: `draft` (open
+   the proposed design doc now) / `re-defer` (push deadline forward
+   with new trigger) / `close` (reject and remove from `private/`):
+   - **G1**: `private/2026-04-27_strategic_review/02_plan_review.md`
+     §G1 — concurrency_design.md (atom / agent / future / promise /
+     pmap design). Original deadline: "Phase 3 着手前". Phase 3 is now
+     done; G1 deferred indefinitely.
+   - **G2**: same file §G2 — wasm_strategy.md (Component Model +
+     Pod escape hatch + WIT timeline). Original deadline: same.
+   - **G4**: same file §G4 — perf_baselines.md / bench harness.
+     Original deadline: "Phase 4 着手前". **Most time-sensitive: Phase
+     4 is what we are about to open.** Without G4, ROADMAP §10.2
+     "mid-phase quick bench (4-7)" has no harness.
+2. **🔒 OrbStack x86_64 gate**. Per ROADMAP §11.5 / Phase 4 marker,
+   `orb run -m my-ubuntu-amd64 bash -c 'cd
+   /Users/shota.508/Documents/MyProducts/ClojureWasmFromScratch &&
+   bash test/run_all.sh'` must run green before Phase 4.1. The user
+   runs this on their Mac; the agent cannot.
+3. **Three security findings (H1/H2/H3)** queued from boundary
+   security-review — should land as the first source commits in
+   §9.6 / 4.0 (or 4.1 prelude) before any external behaviour change:
+   - H1: analyzer `@intCast` to u16 in `analyzeLoopStar` (line 678)
+     and `analyzeRecur` (line 737) panics on >65k bindings/args.
+   - H2: `trackHeap`-failure leaks across `string.alloc`,
+     `ex_info.alloc`, `list.consHeap`, `tree_walk.allocFunction` —
+     uniform fix is `errdefer rt.gpa.destroy(s)` after the `create`.
+   - H3: `expandAnd` / `expandOr` re-recursive expansion blows the
+     stack on long `(and …)` chains — rewrite as a single
+     non-recursive expansion or gate analyze depth.
+
+After all three are resolved, expand §9.6 inline (mirror §9.5
+shape) starting from the security fixes as 4.0.x or 4.1, then move
+into VM scaffolding (§4.4 dual-backend foundation).
 
 **Retrievable identifiers**:
-- `private/notes/phase3-3.8.md` … `phase3-3.14.md` — chapter source.
-- `.claude/skills/code-learning-doc/TEMPLATE_PHASE_DOC.md` — template.
-- `scripts/check_learning_doc.sh` — pairing gate; chapter `commits:`
-  frontmatter must list every unpaired Phase-3 source SHA.
-- `.claude/skills/audit-scaffolding/CHECKS.md` — audit checks A1–F.
+- `private/audit-2026-04-27.md` — full audit report (block 0 / warn 4
+  / info 13).
+- `private/notes/phase3-simplify-queue.md` — Q1–Q11 deferred items.
+- ROADMAP §10.2, §11.5 — bench harness + cross-platform gate context.
 
-**3.14 (just landed)**:
-- `test/e2e/phase3_exit.sh` exists; both exit assertions pass.
-- `bash test/run_all.sh` green at 5/5 suites.
+**3.14 + boundary chain (just landed)**:
+- `test/e2e/phase3_exit.sh` exists; `bash test/run_all.sh` green at
+  5/5 suites.
+- Chapter 0020 covers 3.8–3.14 + meta in 1075 lines.
+- Simplify apply-now (`4ad8270`) + chapter (`cc46a48`) shipped.
 
 **Post-3.11 small cleanup queued** (not blocking):
 - Split `test/e2e/phase3_cli.sh` into `cli_entry.sh` (CLI plumbing
@@ -110,7 +116,10 @@ Phase-boundary review chain:
 
 ## Open questions / blockers
 
-(none)
+- G1 / G2 / G4 strategic-note adoption (see Active task §1).
+- 🔒 OrbStack x86_64 gate run (see Active task §2).
+- H1 / H2 / H3 security findings — queued for §9.6 / 4.0 prelude
+  (see Active task §3).
 
 ## Strategic notes in `private/` to consider for future phases
 
