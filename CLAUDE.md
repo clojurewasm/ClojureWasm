@@ -52,33 +52,49 @@ turn 1 must be Japanese.
 ## Working agreement
 
 - TDD: red → green → refactor.
+- **Step 0 (Survey) before each task**: an Explore subagent surveys
+  the textbook codebases (v1, v1_ref, Clojure JVM, Babashka, Zig
+  stdlib) and lands a 200–400 line note in `private/notes/`. See
+  `.claude/rules/textbook-survey.md` for guardrails (cite ROADMAP
+  principles before adopting an idiom; always note one DIVERGENCE).
+- After each task, write a 5-minute per-task note from hot context
+  (`private/notes/<phase>-<task>.md`, gitignored).
 - `bash test/run_all.sh` must be green before every commit. Don't
   bypass hooks.
-- Commit at the natural granularity of code changes; the doc commit
-  carries the narrative (see skill `code-learning-doc`).
+- Commit at the natural granularity of code changes; chapters
+  (`docs/ja/NNNN-*.md`) are written **per concept** at phase
+  boundaries — see skill `code-learning-doc` for the two-cadence flow.
+- Subagent fork is the default for: Step 0 surveys, large test logs
+  (>200 lines), cross-codebase searches (>5 files), phase-boundary
+  audit / simplify / security-review fan-out. Stay in main only for
+  small in-context edits.
 - Pushing to `cw-from-scratch` requires explicit user approval.
 
 ## Skills (the runnable procedures)
 
 These hold the canonical procedures; CLAUDE.md only points to them.
 
-- **`code-learning-doc`** — when to write `docs/ja/NNNN-*.md`, the
-  template, and the gate's two rules. Single source of truth for
-  commit pairing.
-- **`continue`** — resume procedure + per-task TDD loop + Phase-boundary
-  review chain. Auto-triggers on "続けて" / "/continue" / "resume".
-  **Fully autonomous from invocation**: no "go" gate, no Phase-boundary
-  stop, no per-task confirmation. Stops only for `git push`, ambiguous
-  test failure, audit `block` finding, or an ADR-level decision.
-- **`audit-scaffolding`** — periodic audit (CLAUDE.md, .dev/, .claude/,
-  docs/, scripts/) for staleness, bloat, lies, false positives.
-  Auto-invoked by `continue` at every Phase boundary; can also be run
-  on demand.
+- **`code-learning-doc`** — two-cadence Japanese learning material:
+  per-task notes (private, gitignored) and per-concept chapters
+  (`docs/ja/NNNN-*.md`, gated). Templates: `TEMPLATE_TASK_NOTE.md` and
+  `TEMPLATE_PHASE_DOC.md`. The chapters use predict-then-verify
+  exercises (L1/L2/L3), Feynman prompts, and a checklist — they are
+  textbook units, not a project diary.
+- **`continue`** — resume procedure + per-task TDD loop (with Step 0
+  Survey, Step 7 per-task note, Step 8 60% compact gate) + multi-agent
+  Phase-boundary review chain. Auto-triggers on "続けて" / "/continue"
+  / "resume". **Fully autonomous from invocation**. Stops only for
+  `git push`, ambiguous test failure, audit `block` finding, ADR-level
+  decision, or unadopted strategic notes in `private/`.
+- **`audit-scaffolding`** — periodic audit for staleness, bloat, lies,
+  false positives, **and unadopted strategic notes in `private/`**
+  (Section F of CHECKS.md). Auto-invoked by `continue` at every Phase
+  boundary; can also be run on demand.
 
 The Phase-boundary review chain (auto-run by `continue` when a Phase
-closes) also invokes the built-in `simplify` and `security-review`
-skills on the Phase's diff — no manual `/simplify` / `/security-review`
-per commit needed.
+closes) fans out under multiple subagents to: audit-scaffolding,
+built-in `simplify` on the phase diff, built-in `security-review` on
+unpushed commits, and outstanding chapter writing — all in parallel.
 
 ## Layout
 

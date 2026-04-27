@@ -955,11 +955,34 @@ The user invokes it with "続けて" / "/continue" / "resume"; the skill
 reads handover, finds the next task, runs tests, prints a brief
 summary, then **immediately enters the TDD loop and runs autonomously
 until the user intervenes** (no "go" gate, no per-Phase confirmation).
-It only stops for: a `git push`, an ambiguous test failure, an
-audit-scaffolding `block` finding, or an ADR-level decision.
 
-The audit step (skill `audit-scaffolding`) is invoked at every Phase
-boundary or every ~10 ja docs (see §11.7).
+The TDD loop has eight steps per task:
+
+| # | Step               | Where                                        |
+|---|--------------------|----------------------------------------------|
+| 0 | Survey             | Subagent (Explore)                           |
+| 1 | Plan               | Main                                         |
+| 2 | Red                | Main                                         |
+| 3 | Green              | Main                                         |
+| 4 | Refactor           | Main                                         |
+| 5 | Test gate          | Main or Subagent (Bash) if log > 200 lines   |
+| 6 | Source commit      | Main                                         |
+| 7 | Per-task note      | Main → `private/notes/<phase>-<task>.md`     |
+| 8 | Context-budget gate| Main; `/compact` if > 60% fill               |
+
+Chapters (`docs/ja/NNNN-*.md`) are written **per concept** (every 3–5
+source commits or at phase boundary), not per task. The chapter pulls
+from per-task notes; that's why per-task notes exist.
+
+Phase-boundary review chain runs as a **multi-agent fan-out**:
+audit-scaffolding, `simplify` on the phase diff, `security-review` on
+unpushed commits, and outstanding chapter writing — all in parallel
+subagents. Long-context audit / chapter-write subagents may use
+Opus 4.6 (better long-context retrieval) instead of Opus 4.7.
+
+It only stops for: a `git push`, an ambiguous test failure, an
+audit-scaffolding `block` finding, an ADR-level decision, or
+unadopted strategic notes in `private/`.
 
 Pushing to `cw-from-scratch` always requires explicit user approval.
 
@@ -1035,7 +1058,16 @@ The minimum surface that must always exist:
 - `.claude/settings.json` — permissions / hooks
 - `.claude/rules/zone_deps.md` — auto-loaded layering rules
 - `.claude/rules/zig_tips.md` — auto-loaded Zig 0.16 idioms
-- `.claude/skills/code-learning-doc/SKILL.md` — doc-pairing skill
+- `.claude/rules/textbook-survey.md` — Step-0 survey policy + anti-pull
+  guardrails (auto-loaded on `src/**/*.zig`)
+- `.claude/rules/cljw-invocation.md` — `cljw` invocation safety
+  (auto-loaded on test/e2e and bench scripts)
+- `.claude/skills/code-learning-doc/{SKILL,TEMPLATE_TASK_NOTE,
+  TEMPLATE_PHASE_DOC}.md` — two-cadence learning material skill
+- `.claude/skills/continue/SKILL.md` — autonomous resume + 8-step TDD
+  loop + multi-agent phase-boundary chain
+- `.claude/skills/audit-scaffolding/{SKILL,CHECKS}.md` — periodic
+  scaffolding audit (incl. Section F: unadopted strategic notes)
 - `scripts/check_learning_doc.sh` — pairing gate (PreToolUse hook)
 - `scripts/zone_check.sh` — zone checker (info / --strict / --gate)
 - `test/run_all.sh` — unified test runner

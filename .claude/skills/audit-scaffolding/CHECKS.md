@@ -192,10 +192,54 @@ Severity: **soon** on inconsistency.
 
 Severity: **watch** for missing ownership.
 
+## F. Strategic notes — has private/ surfaced proposals that haven't flowed into ROADMAP / decisions / handover?
+
+`private/` (gitignored) holds strategic / design notes that the user
+writes between sessions. The `/continue` skill resume procedure has a
+step to surface these, but the audit double-checks: any unadopted
+proposal sitting in `private/` for more than one phase is a process
+failure.
+
+### F1. Top-level reports in `private/`
+
+```sh
+find private -maxdepth 3 -name '*.md' -mmin -$((60*24*30)) \
+  -type f 2>/dev/null \
+  | grep -v '/notes/'        # exclude per-task notes
+```
+
+For each result, scan for proposal phrasing: "should write
+`.dev/<file>`", "推奨", "未起草", "Phase N 着手前に", "ADR を書く".
+If found, check whether the file / ADR exists yet.
+
+Severity: **soon** if a proposal is more than 1 phase old and the
+target file does not exist. **block** if the proposal explicitly says
+"before Phase N" and Phase N has already started without the file.
+
+### F2. Per-task notes hygiene
+
+```sh
+ls private/notes/ 2>/dev/null | wc -l
+```
+
+Severity: **watch** if > 30 notes accumulated without being digested
+into chapters. The right action is: write the chapters; the wrong
+action is to delete the notes.
+
+### F3. Scaffolding audit reports themselves rotting
+
+```sh
+ls private/audit-*.md 2>/dev/null | tail -5
+```
+
+If the most recent audit is older than 2 phase boundaries: **watch**
+(audit cadence drift).
+
 ---
 
 ## Reporting format
 
 Aggregate findings from all checks into the report described in
 `SKILL.md` (block / soon / watch sections). Include the check ID
-(A1, B2, etc.) so the user can re-run individual checks for verification.
+(A1, B2, F1, etc.) so the user can re-run individual checks for
+verification.
