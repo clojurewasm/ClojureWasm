@@ -16,18 +16,20 @@ date: 2026-04-27
 
 > 対応 task: §9.3 / 1.4 + 1.5 / 所要時間: 80〜100 分
 
-ClojureWasm の **最初のヒープオブジェクト** が cons cell。`(cons 1 nil)`
-や `(list 1 2 3)` が動くには、**ヒープ上に cells を確保し、Value
-として encode し、`first` / `rest` / `count` を引ける**ところまで
-要る。本章でそれを完成させる。
+ClojureWasm の **最初のヒープオブジェクト** が cons cell です。
+`(cons 1 nil)` や `(list 1 2 3)` が動くには、**ヒープ上に cell を
+確保し、Value として encode し、`first` / `rest` / `count` を引ける
+ようにする** ところまで揃える必要があります。本章ではそこまでを
+仕上げます。
 
-ついでに **Murmur3 hash** も用意する。Clojure JVM と **bit 互換な
-hash 値** を出すための数学が、Zig のラッピング算術 (`*%` / `+%`) で
-1:1 再現できる。これがあれば、永続コレクションの hash を将来
-HashMap / HashSet で使える。
+合わせて **Murmur3 hash** も用意します。Clojure JVM と **bit 互換な
+hash 値** を出すための算術は、Zig の wrapping 演算（`*%` / `+%`）で
+1:1 に再現できます。これを揃えておけば、将来 HashMap / HashSet で
+永続コレクションの hash として使えるようになります。
 
-2 章を 1 つにまとめている理由: list と hash は **「永続コレクションの
-2 つの最小ピース」** だから。一緒に学ぶと相互の必然性が見えやすい。
+2 つのトピックを 1 章にまとめている理由は、list と hash が **「永続
+コレクションの最小ピース 2 つ」** だからです。一緒に学んでおくと、
+互いの必然性が見えやすくなります。
 
 ---
 
@@ -77,10 +79,10 @@ pub const Cons = struct {
 | `meta` | 8 byte | metadata map (`{:line 7 :col 3}` 等)、デフォルト `nil` |
 | `count` | 4 byte | リスト全体の長さ。precompute で O(1) |
 
-合計 36 byte (alignment 込みで 40)。NaN-boxed encoding の都合で
-**Value はすべて 8-byte aligned に置きたい** ので、cell 全体も
-**8-byte alignment** を満たす必要がある。`comptime` ブロックで
-それを `assert` している。
+合計 36 byte（alignment 込みで 40）です。NaN-boxed encoding の都合
+で **Value はすべて 8-byte aligned に置きたい** ため、cell 全体も
+**8-byte alignment** を満たす必要があります。これを `comptime`
+ブロックで `assert` しています。
 
 ### なぜ `_pad: [6]u8` を明示するか
 
@@ -92,8 +94,8 @@ pub const Cons = struct {
 - 明示的に `[6]u8` を入れることで「自分で alignment を制御する」
   ことを宣言。
 - HeapHeader (offset 0) → \_pad (offset 2..7) → first (offset 8) →
-  rest (offset 16) → meta (offset 24) → count (offset 32)、と
-  きれいに揃う。
+  rest (offset 16) → meta (offset 24) → count (offset 32) と、
+  きれいに整列します。
 
 ### nil semantics と `tag()` 分岐
 
@@ -121,9 +123,9 @@ Clojure JVM:
 (count "abc")      ; → 3 (string も counted)
 ```
 
-「ぜろ」ではなく「nil 互換」が Clojure の哲学。**`(first nil)` で
-NPE が出ない**。これを `else => .nil_val` の **fallthrough** で
-表現する。
+「ぜろ」ではなく「nil 互換」というのが Clojure の哲学です。
+**`(first nil)` で NPE は発生しません**。これを `else => .nil_val`
+の **fallthrough** で表現します。
 
 ### 演習 5.1: nil semantics を予測 (L1 — 予測検証)
 
@@ -153,8 +155,8 @@ const e = countOf(Value.initInteger(42));   // ← ?
 | `e` | `0` | integer は list でないので fallthrough → 0 |
 
 ポイント: `else => .nil_val` / `else => 0` の **fallthrough** が
-あるおかげで、呼び出し側は **`val.tag() == .list` を毎回チェック
-する必要がない**。
+あるおかげで、呼び出し側で **`val.tag() == .list` を毎回チェック
+する必要がありません**。
 
 </details>
 
@@ -184,23 +186,26 @@ pub fn cons(alloc: std.mem.Allocator, head: Value, tail: Value) !Value {
                          ;;                         (a, b, c は xs と共有)
 ```
 
-`d.count` を作るとき、**`xs.count` を読むだけで 1 + 3 = 4** が
-わかる。リスト全体を traverse する必要なし。これが
-**structural sharing と precomputed count の対称性**。
+`d.count` を作るときは、**`xs.count` を読むだけで 1 + 3 = 4** が
+求まります。リスト全体を traverse する必要はありません。これが
+**structural sharing と precomputed count の対称性** です。
 
-逆に「count を持たない」設計だと:
-- `(count xs)` は O(n) で list を辿らないと出ない
-- `cons` 1 回で `count` を埋めるなら、O(1) precompute が必須
+逆に「count を持たない」設計にすると：
+- `(count xs)` は O(n) で list を辿らないと求められない
+- `cons` 1 回で `count` を埋める設計を採るなら、O(1) precompute が
+  必須
 
-Clojure JVM の `PersistentList` も同様に `_count` field を持つ。
+Clojure JVM の `PersistentList` も同様に `_count` field を持って
+います。
 
 ### 空リストの sentinel
 
-本実装では **空リストは `nil` で代用** している（cons 0 個 = nil）。
-別案として `EMPTY` という特別な空リスト cell を作る選択もあり、
-Clojure JVM は `PersistentList.EMPTY` を持つ。
+本実装では **空リストは `nil` で代用しています**（cons 0 個 = nil）。
+別案として、`EMPTY` という特別な空リスト cell を用意する選択もあり、
+Clojure JVM は `PersistentList.EMPTY` を持っています。
 
-ClojureWasm v2 が nil で代用するのは:
+ClojureWasm v2 が nil で代用しているのには、次のような利点が
+あります：
 
 - nil semantics を統一できる (`(seq nil) = nil`、`(seq ())` も nil)
 - ヒープに「空 cell」が 1 個だけ存在する状況を回避（GC 上の root 管理が
@@ -220,7 +225,7 @@ pub fn seq(val: Value) Value {
 ```
 
 `(seq xs)` は **「使えるコレクションなら自身、空なら nil」** という
-Clojure 慣習を 5 行で表現。
+Clojure 慣習を 5 行で表現しています。
 
 ### 演習 5.2: cons / first / rest / countOf を再構成 (L2 — 部分再構成)
 
@@ -323,9 +328,9 @@ const C2: u32 = 0x1b873593;
 const SEED: u32 = 0;
 ```
 
-これは `clojure.lang.Murmur3` のクラス定数と **完全一致**。
-`~/Documents/OSS/clojure/src/jvm/clojure/lang/Murmur3.java` を見ると
-同じマジック定数が並ぶ。
+これは `clojure.lang.Murmur3` のクラス定数と **完全に一致して
+います**。`~/Documents/OSS/clojure/src/jvm/clojure/lang/Murmur3.java`
+を覗くと同じマジック定数が並んでいます。
 
 ### 3 つのコア関数
 
@@ -366,18 +371,18 @@ fn fmix(h: u32, length: u32) u32 {
 
 ### `*%` / `+%` の必然性
 
-Java の `int` 乗算は **silent overflow** (wrapping) する。Zig の
-`*` はオーバーフロー時に **panic** または **UB** (debug ビルド)。
-これでは Java と一致しないので **`*%` / `+%`** (wrapping arithmetic)
-を使う。
+Java の `int` 乗算は **silent overflow**（wrapping）します。一方
+Zig の `*` はオーバーフロー時に **panic** または **UB**（debug
+ビルドでは前者）になります。これでは Java と挙動が一致しないため、
+**`*%` / `+%`**（wrapping arithmetic）を使います。
 
 ```zig
 k1 *%= C1;          // Java: k1 *= C1; (silent overflow)
 h1 = h1 *% 5 +% 0xe6546b64;
 ```
 
-これがないと最初の `hashInt(0xFFFFFFFE)` で panic。Clojure JVM の
-ハッシュ値とも合わない。
+これがないと最初の `hashInt(0xFFFFFFFE)` で panic してしまい、
+Clojure JVM のハッシュ値とも一致しなくなります。
 
 ### `hashInt(0)` が **0 を返す**特殊扱い
 
@@ -390,10 +395,11 @@ pub fn hashInt(input: i32) u32 {
 }
 ```
 
-Java も同じ early return を持つ。なぜ？: Murmur3 を 0 に通すと
-`mixK1(0) = 0` で `fmix(0, 4) ≠ 0` となる。「0 と非 0 を見分けたい」
-という **辞書順 / 配列の sentinel 用途** のために、Clojure は
-`hash(0) == 0` を意図的に保証している。
+Java 側にも同じ early return が入っています。なぜでしょうか。
+Murmur3 を 0 に通すと、`mixK1(0) = 0` でありながら `fmix(0, 4) ≠ 0`
+になるからです。「0 と非 0 を見分けたい」という **辞書順 / 配列の
+sentinel 用途** のために、Clojure は `hash(0) == 0` を意図的に
+保証しています。
 
 ### 演習 5.3: Murmur3 hash モジュール全体を再構成 (L3)
 
@@ -540,18 +546,19 @@ hashOrdered([2,1])` / `hashUnordered([1,2,3]) == hashUnordered([3,1,2])`。
 //! where UTF-8 is the natural encoding.
 ```
 
-トレードオフ:
+トレードオフ：
 
 - **採用**: UTF-8 byte を直接 hash → Wasm / WASI / edge runtime の
-  自然なエンコーディングと一致
-- **却下**: Java の UTF-16 string と完全 bit 互換 → JS の `String` /
-  Java の `String.hashCode()` と完全一致するが、Zig 側で全 string を
-  一度 UTF-16 にデコードする overhead
+  自然なエンコーディングに一致
+- **却下**: Java の UTF-16 string と完全に bit 互換 → JS の `String`
+  / Java の `String.hashCode()` と一致するが、Zig 側で全 string を
+  一度 UTF-16 にデコードする overhead が発生する
 
-ClojureWasm v2 は **Wasm 第一**なので前者を取る。**互換性を諦めて
-速度と素直さを取る**判断。これは ROADMAP **P11 (Observable-semantics
-compatibility)** の枠で「Java の `hashCode` と一致させる」のは
-inside detail にあたる、という整理。
+ClojureWasm v2 は **Wasm 第一** なので前者を採用しています。
+**互換性を諦める代わりに、速度と素直さを取る** 判断です。これは
+ROADMAP **P11（Observable-semantics compatibility）** の枠組みで
+「Java の `hashCode` と一致させる」ことは inside detail（観測可能
+意味論の外側）と整理しているためです。
 
 ---
 
@@ -613,23 +620,25 @@ std.debug.print("b.rest = 0x{X:0>16}\n", .{@intFromEnum(rest(b))});
 | String hash | UTF-8 | UTF-8 | UTF-16 | UTF-8 (Wasm 第一) |
 | Wrapping arithm | `*%` / `+%` | `*%` / `+%` | silent (Java int) | `*%` / `+%` |
 
-引っ張られず本リポの理念で整理した点：
+引っ張られずに本リポジトリの理念で整理した点：
 
-- v1 の `collections.zig` (6K LOC) は §A6 の典型的失敗例。本リポは
-  list / vector / hamt にファイル分割（Phase 6+ で hamt / vector を
-  追加予定）。
-- Clojure JVM の `EMPTY` sentinel は 1 cell の永続 root を heap に
-  寝かせる。v2 は nil 代用で **GC root が 1 個減る**。
-- UTF-8 hash: JVM 互換を諦める代わりに、Wasm 上で文字列計算が
-  「decode する必要がない」。
+- v1 の `collections.zig`（6K LOC）は §A6 の典型的な失敗例です。
+  本リポジトリは list / vector / hamt にファイルを分割しています
+  （hamt / vector の追加は Phase 6+ を予定）。
+- Clojure JVM の `EMPTY` sentinel は永続 root が 1 cell ぶん heap
+  に常駐することになります。v2 では nil で代用するため、**GC root
+  が 1 個減ります**。
+- UTF-8 hash: JVM 互換を諦める代わりに、Wasm 上での文字列計算で
+  「デコードが不要」になります。
 
 ---
 
 ## 8. Feynman 課題
 
-1. なぜ cons cell に `count: u32` を持たせるのか？ 1 行で。
-2. `*%` (wrapping multiply) と `*` (普通の multiply) の差は何か？ 1 行で。
-3. 空リストを sentinel cell ではなく nil で表す利点は？ 1 行で。
+1. なぜ cons cell に `count: u32` を持たせるのか。1 行で。
+2. `*%`（wrapping multiply）と `*`（通常の multiply）の差は何か。
+   1 行で。
+3. 空リストを sentinel cell ではなく nil で表す利点は何か。1 行で。
 
 ---
 
@@ -649,6 +658,6 @@ std.debug.print("b.rest = 0x{X:0>16}\n", .{@intFromEnum(rest(b))});
 
 第 6 章: [Keyword interning — 安定した cell layout](./0006-keyword-intern.md)
 
-— `:foo` を **identity 比較** で済ませるための intern table の作り方。
-heap-allocated cell にレイアウトを固定し、Phase 2.2 で rt-aware に
-昇格する伏線まで含めて見ます。
+— `:foo` を **identity 比較** で済ませるための intern table の作り
+方を学びます。heap-allocated cell にレイアウトを固定し、Phase 2.2
+で rt-aware へ昇格させる伏線まで含めて見ていきます。
