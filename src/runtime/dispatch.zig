@@ -41,12 +41,15 @@ pub const BuiltinFn = *const fn (
 
 /// Backend-implemented dispatcher for any callable Value (`fn_val`,
 /// `builtin_fn`, `multi_fn`, `keyword`-as-function, etc.). The TreeWalk
-/// backend (Phase 2.6) supplies the concrete implementation.
+/// backend (Phase 2.6) supplies the concrete implementation. `loc` is
+/// the call-site location so primitives can attach it to any error
+/// they raise via `setErrorFmt`.
 pub const CallFn = *const fn (
     rt: *Runtime,
     env: *Env,
     fn_val: Value,
     args: []const Value,
+    loc: SourceLocation,
 ) anyerror!Value;
 
 /// Returns a human-readable type name for `(type x)` and error
@@ -90,11 +93,12 @@ pub threadlocal var last_thrown_exception: ?Value = null;
 
 const testing = std.testing;
 
-fn mockCallFn(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value) anyerror!Value {
+fn mockCallFn(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     _ = fn_val;
     _ = args;
+    _ = loc;
     return .true_val;
 }
 
@@ -169,7 +173,7 @@ test "VTable.callFn dispatches through Runtime field" {
     };
 
     const args = [_]Value{};
-    const result = try fix.rt.vtable.?.callFn(&fix.rt, &env, .nil_val, &args);
+    const result = try fix.rt.vtable.?.callFn(&fix.rt, &env, .nil_val, &args, .{});
     try testing.expectEqual(Value.true_val, result);
 }
 

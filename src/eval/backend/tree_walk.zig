@@ -49,15 +49,14 @@ const Node = node_mod.Node;
 /// frame-size known at analyse time.
 pub const MAX_LOCALS: u16 = 256;
 
-pub const EvalError = error{
-    NotCallable,
-    ArityMismatch,
-    SlotOutOfRange,
-    /// Phase-2 minimum: unhandled feature surface (string literal as
-    /// expr, no current_ns at def-time, …). Phase 3+ removes these.
-    NotImplemented,
-    OutOfMemory,
-};
+/// TreeWalk error surface. Aliases `error_mod.Error` so calls to
+/// `setErrorFmt` type-check; the backend still only **emits**
+/// `error.TypeError` (non-callable callee), `error.ArityError`
+/// (wrong number of args), `error.IndexError` (slot out of range),
+/// `error.NotImplemented` (Phase-3+ feature stub), and
+/// `error.OutOfMemory`. Mirrors the `ReadError` / `AnalyzeError`
+/// treatment in §9.5/3.2 / 3.3.
+pub const EvalError = error_mod.Error;
 
 // --- Function (heap object representing a Clojure fn) ---
 
@@ -109,7 +108,8 @@ pub fn eval(
     return switch (node.*) {
         .constant => |n| n.value,
         .local_ref => |n| {
-            if (n.index >= locals.len) return EvalError.SlotOutOfRange;
+            if (n.index >= locals.len)
+                return error_mod.setErrorFmt(.eval, .index_error, n.loc, "Local slot {d} out of range (max {d})", .{ n.index, locals.len });
             return locals[n.index];
         },
         .var_ref => |n| n.var_ptr.deref(),
@@ -125,7 +125,8 @@ pub fn eval(
 
 fn evalDef(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.DefNode) !Value {
     const v = try eval(rt, env, locals, n.value_expr);
-    const ns = env.current_ns orelse return EvalError.NotImplemented;
+    const ns = env.current_ns orelse
+        return error_mod.setErrorFmt(.eval, .internal_error, n.loc, "def: no current namespace", .{});
     const var_ptr = try env.intern(ns, n.name, v);
     var_ptr.flags.dynamic = n.is_dynamic;
     var_ptr.flags.macro_ = n.is_macro;
@@ -154,7 +155,8 @@ fn evalDo(rt: *Runtime, env: *Env, locals: []Value, forms: []const Node) !Value 
 
 fn evalLet(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.LetNode) !Value {
     for (n.bindings) |b| {
-        if (b.index >= locals.len) return EvalError.SlotOutOfRange;
+        if (b.index >= locals.len)
+            return error_mod.setErrorFmt(.eval, .index_error, n.loc, "let* slot {d} out of range (max {d})", .{ b.index, locals.len });
         locals[b.index] = try eval(rt, env, locals, b.value_expr);
     }
     return eval(rt, env, locals, n.body);
@@ -163,15 +165,16 @@ fn evalLet(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.LetNode) !Value
 fn evalCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.CallNode) !Value {
     const callee = try eval(rt, env, locals, n.callee);
     var args_buf: [MAX_LOCALS]Value = undefined;
-    if (n.args.len > MAX_LOCALS) return EvalError.NotImplemented;
+    if (n.args.len > MAX_LOCALS)
+        return error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "Call with {d} args exceeds Phase-2 MAX_LOCALS ({d})", .{ n.args.len, MAX_LOCALS });
     for (n.args, 0..) |*a, i| {
         args_buf[i] = try eval(rt, env, locals, a);
     }
     const args = args_buf[0..n.args.len];
     if (rt.vtable) |vt| {
-        return vt.callFn(rt, env, callee, args);
+        return vt.callFn(rt, env, callee, args, n.loc);
     }
-    return EvalError.NotCallable;
+    return error_mod.setErrorFmt(.eval, .internal_error, n.loc, "Runtime vtable not installed; cannot dispatch call", .{});
 }
 
 // --- Backend's callFn (registered as rt.vtable.callFn) ---
@@ -184,20 +187,23 @@ pub fn treeWalkCall(
     env: *Env,
     callee: Value,
     args: []const Value,
+    loc: SourceLocation,
 ) anyerror!Value {
     return switch (callee.tag()) {
-        .fn_val => callFunction(rt, env, callee, args),
-        .builtin_fn => callBuiltin(rt, env, callee, args),
-        else => EvalError.NotCallable,
+        .fn_val => callFunction(rt, env, callee, args, loc),
+        .builtin_fn => callBuiltin(rt, env, callee, args, loc),
+        else => |t| error_mod.setErrorFmt(.eval, .type_error, loc, "Cannot call value of type '{s}'", .{@tagName(t)}),
     };
 }
 
-fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value) !Value {
+fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation) !Value {
     const f = fn_val.decodePtr(*Function);
     if (!f.has_rest) {
-        if (args.len != f.arity) return EvalError.ArityMismatch;
+        if (args.len != f.arity)
+            return error_mod.setErrorFmt(.eval, .arity_error, loc, "Wrong number of args ({d}) passed to fn (expected {d})", .{ args.len, f.arity });
     } else {
-        if (args.len < f.arity) return EvalError.ArityMismatch;
+        if (args.len < f.arity)
+            return error_mod.setErrorFmt(.eval, .arity_error, loc, "Wrong number of args ({d}) passed to fn (expected at least {d})", .{ args.len, f.arity });
     }
     var locals: [MAX_LOCALS]Value = [_]Value{.nil_val} ** MAX_LOCALS;
     for (args[0..f.arity], 0..) |v, i| {
@@ -214,10 +220,10 @@ fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value) !Va
     return eval(rt, env, &locals, f.body);
 }
 
-fn callBuiltin(rt: *Runtime, env: *Env, callee: Value, args: []const Value) !Value {
+fn callBuiltin(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: SourceLocation) !Value {
     // `.builtin_fn` carries the 48-bit fn pointer in the Value itself.
     const fn_ptr = callee.asBuiltinFn(dispatch.BuiltinFn);
-    return fn_ptr(rt, env, args, .{});
+    return fn_ptr(rt, env, args, loc);
 }
 
 // --- VTable installer ---
@@ -244,7 +250,7 @@ fn expandMacroStub(rt: *Runtime, env: *Env, macro_val: Value, args: []const Valu
     // Phase-3 wires real macro expansion. Until then, any code that
     // hits this path (only happens if a Var.flags.macro_ is set, which
     // Phase-2 never does) gets a clean error rather than a UB ride.
-    return EvalError.NotImplemented;
+    return error_mod.setErrorFmt(.eval, .not_implemented, .{}, "Macro expansion not yet implemented (Phase 3.7+)", .{});
 }
 
 // --- tests ---
@@ -276,7 +282,7 @@ const TestFixture = struct {
 
     fn evalStr(self: *TestFixture, source: []const u8) !Value {
         var reader = Reader.init(self.arena.allocator(), source);
-        const form = (try reader.read()) orelse return EvalError.NotImplemented;
+        const form = (try reader.read()) orelse return error.NotImplemented;
         const node = try analyze(self.arena.allocator(), &self.rt, &self.env, null, form);
         var locals: [MAX_LOCALS]Value = [_]Value{.nil_val} ** MAX_LOCALS;
         return eval(&self.rt, &self.env, &locals, node);
@@ -295,7 +301,7 @@ fn builtinPlus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     for (args) |v| {
         sum += switch (v.tag()) {
             .integer => @as(i64, v.asInteger()),
-            else => return EvalError.NotImplemented,
+            else => return error.NotImplemented,
         };
     }
     return Value.initInteger(sum);
@@ -432,7 +438,7 @@ test "calling a non-callable Value yields NotCallable" {
 
     const user = fix.env.findNs("user").?;
     _ = try fix.env.intern(user, "x", Value.initInteger(7));
-    try testing.expectError(EvalError.NotCallable, fix.evalStr("(x 1 2)"));
+    try testing.expectError(error.TypeError, fix.evalStr("(x 1 2)"));
 }
 
 test "calling a fn with wrong arity yields ArityMismatch" {
@@ -441,5 +447,34 @@ test "calling a fn with wrong arity yields ArityMismatch" {
     defer fix.deinit();
 
     _ = try fix.evalStr("(def id (fn* [x] x))");
-    try testing.expectError(EvalError.ArityMismatch, fix.evalStr("(id 1 2)"));
+    try testing.expectError(error.ArityError, fix.evalStr("(id 1 2)"));
+}
+
+test "non-callable callee populates last_error with eval phase" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const user = fix.env.findNs("user").?;
+    _ = try fix.env.intern(user, "x", Value.initInteger(7));
+
+    error_mod.clearLastError();
+    try testing.expectError(error.TypeError, fix.evalStr("(x 1 2)"));
+    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.type_error, info.kind);
+    try testing.expectEqual(error_mod.Phase.eval, info.phase);
+    try testing.expect(std.mem.indexOf(u8, info.message, "Cannot call value") != null);
+}
+
+test "wrong arity populates last_error with eval phase" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    _ = try fix.evalStr("(def id (fn* [x] x))");
+    error_mod.clearLastError();
+    try testing.expectError(error.ArityError, fix.evalStr("(id 1 2)"));
+    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.arity_error, info.kind);
+    try testing.expectEqual(error_mod.Phase.eval, info.phase);
 }

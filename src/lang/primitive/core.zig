@@ -13,19 +13,20 @@ const Value = @import("../../runtime/value.zig").Value;
 const Runtime = @import("../../runtime/runtime.zig").Runtime;
 const env_mod = @import("../../runtime/env.zig");
 const Env = env_mod.Env;
-const SourceLocation = @import("../../runtime/error.zig").SourceLocation;
+const error_mod = @import("../../runtime/error.zig");
+const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 
-fn requireArity(args: []const Value, n: usize) !void {
-    if (args.len != n) return error.ArityMismatch;
+fn requireArity(name: []const u8, args: []const Value, n: usize, loc: SourceLocation) !void {
+    if (args.len != n)
+        return error_mod.setErrorFmt(.eval, .arity_error, loc, "Wrong number of args ({d}) passed to {s} (expected {d})", .{ args.len, name, n });
 }
 
 /// `(nil? x)` — true iff `x` is the singleton nil Value.
 pub fn nilQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    try requireArity(args, 1);
+    try requireArity("nil?", args, 1, loc);
     return if (args[0].isNil()) .true_val else .false_val;
 }
 
@@ -34,8 +35,7 @@ pub fn nilQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 pub fn trueQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    try requireArity(args, 1);
+    try requireArity("true?", args, 1, loc);
     return if (args[0] == Value.true_val) .true_val else .false_val;
 }
 
@@ -44,8 +44,7 @@ pub fn trueQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 pub fn falseQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    try requireArity(args, 1);
+    try requireArity("false?", args, 1, loc);
     return if (args[0] == Value.false_val) .true_val else .false_val;
 }
 
@@ -54,8 +53,7 @@ pub fn falseQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 pub fn identicalQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    try requireArity(args, 2);
+    try requireArity("identical?", args, 2, loc);
     return if (args[0] == args[1]) .true_val else .false_val;
 }
 
@@ -150,8 +148,8 @@ test "predicates reject wrong arity" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
-    try testing.expectError(error.ArityMismatch, nilQ(&fix.rt, &fix.env, &.{}, .{}));
-    try testing.expectError(error.ArityMismatch, identicalQ(&fix.rt, &fix.env, &.{.nil_val}, .{}));
+    try testing.expectError(error.ArityError, nilQ(&fix.rt, &fix.env, &.{}, .{}));
+    try testing.expectError(error.ArityError, identicalQ(&fix.rt, &fix.env, &.{.nil_val}, .{}));
 }
 
 test "register installs every entry under rt/" {

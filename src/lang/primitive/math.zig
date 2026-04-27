@@ -17,7 +17,8 @@ const Value = @import("../../runtime/value.zig").Value;
 const Runtime = @import("../../runtime/runtime.zig").Runtime;
 const env_mod = @import("../../runtime/env.zig");
 const Env = env_mod.Env;
-const SourceLocation = @import("../../runtime/error.zig").SourceLocation;
+const error_mod = @import("../../runtime/error.zig");
+const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 
 // --- numeric helpers ---
@@ -44,11 +45,11 @@ fn toI64(v: Value) i64 {
     };
 }
 
-fn ensureNumeric(args: []const Value) !void {
+fn ensureNumeric(args: []const Value, name: []const u8, loc: SourceLocation) !void {
     for (args) |v| {
         switch (v.tag()) {
             .integer, .float => continue,
-            else => return error.TypeError,
+            else => |t| return error_mod.setErrorFmt(.eval, .type_error, loc, "{s}: expected number, got {s}", .{ name, @tagName(t) }),
         }
     }
 }
@@ -60,8 +61,7 @@ fn ensureNumeric(args: []const Value) !void {
 pub fn plus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    try ensureNumeric(args);
+    try ensureNumeric(args, "+", loc);
     if (args.len == 0) return Value.initInteger(0);
     if (anyFloat(args)) {
         var sum: f64 = 0.0;
@@ -78,9 +78,9 @@ pub fn plus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 pub fn minus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    try ensureNumeric(args);
-    if (args.len == 0) return error.ArityMismatch;
+    try ensureNumeric(args, "-", loc);
+    if (args.len == 0)
+        return error_mod.setErrorFmt(.eval, .arity_error, loc, "Wrong number of args (0) passed to -", .{});
     if (anyFloat(args)) {
         var acc: f64 = toF64(args[0]);
         if (args.len == 1) return Value.initFloat(-acc);
@@ -97,8 +97,7 @@ pub fn minus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 pub fn star(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    try ensureNumeric(args);
+    try ensureNumeric(args, "*", loc);
     if (args.len == 0) return Value.initInteger(1);
     if (anyFloat(args)) {
         var prod: f64 = 1.0;
@@ -114,8 +113,8 @@ pub fn star(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 
 /// Run `pred` pairwise across `args`, short-circuiting on `false`.
 /// Used by `<` / `>` / `<=` / `>=`.
-fn pairwise(args: []const Value, comptime pred: fn (a: f64, b: f64) bool) !Value {
-    try ensureNumeric(args);
+fn pairwise(name: []const u8, args: []const Value, loc: SourceLocation, comptime pred: fn (a: f64, b: f64) bool) !Value {
+    try ensureNumeric(args, name, loc);
     if (args.len < 2) return Value.true_val; // (< 1) and (<) are true in Clojure
     if (anyFloat(args)) {
         var i: usize = 1;
@@ -156,42 +155,37 @@ fn pEQ(a: f64, b: f64) bool {
 pub fn equals(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    return pairwise(args, pEQ);
+    return pairwise("=", args, loc, pEQ);
 }
 
 pub fn lt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    return pairwise(args, pLT);
+    return pairwise("<", args, loc, pLT);
 }
 pub fn gt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    return pairwise(args, pGT);
+    return pairwise(">", args, loc, pGT);
 }
 pub fn le(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    return pairwise(args, pLE);
+    return pairwise("<=", args, loc, pLE);
 }
 pub fn ge(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    return pairwise(args, pGE);
+    return pairwise(">=", args, loc, pGE);
 }
 
 /// `(compare x y)` — returns -1 / 0 / 1. Phase-2 covers numerics only.
 pub fn compare(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = loc;
-    if (args.len != 2) return error.ArityMismatch;
-    try ensureNumeric(args);
+    if (args.len != 2)
+        return error_mod.setErrorFmt(.eval, .arity_error, loc, "Wrong number of args ({d}) passed to compare (expected 2)", .{args.len});
+    try ensureNumeric(args, "compare", loc);
     if (anyFloat(args)) {
         const a = toF64(args[0]);
         const b = toF64(args[1]);
@@ -282,7 +276,7 @@ test "minus: negation with one arg, subtraction with N" {
         Value.initInteger(3),
         Value.initInteger(3),
     }, .{})).asInteger());
-    try testing.expectError(error.ArityMismatch, minus(&fix.rt, &fix.env, &.{}, .{}));
+    try testing.expectError(error.ArityError, minus(&fix.rt, &fix.env, &.{}, .{}));
 }
 
 test "star: nullary 1, multi-arg product" {
