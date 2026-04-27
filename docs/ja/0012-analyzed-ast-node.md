@@ -14,12 +14,12 @@ date: 2026-04-27
 
 > 対応 task: §9.4 / 2.4 / 所要時間: 60〜80 分
 
-`Form` は Reader が吐く **生の表面構文木**。`Node` はそれを「symbol
-を Var ポインタや slot index に解決」「special form を専用 struct に
-振り分け」したあとの **型付き AST** です。Form → Node の境界で
-解析を終わらせることで、backend (TreeWalk / Phase 4 の VM) のホット
-パスから HashMap lookup と string compare を **全部追い出す** のが
-この章の動機。
+`Form` は Reader が吐き出す **生の表面構文木** です。`Node` は、
+それを「symbol を Var ポインタや slot index に解決」「special form
+を専用 struct に振り分け」したあとの **型付き AST** です。Form →
+Node の境界で解析を終わらせ、バックエンド（TreeWalk / Phase 4 の
+VM）のホットパスから HashMap lookup と文字列比較を **すべて追い出す**
+のが、この章の動機です。
 
 ---
 
@@ -36,9 +36,9 @@ date: 2026-04-27
 
 ## 1. なぜ Form と Node を分けるのか
 
-`(let [x 1 y 2 z 3] (+ x y z))` を Form のまま eval すると、`x` `y`
-`z` のたびに「local か？」「ns を引く」「Var を deref」と HashMap
-lookup が **eval のたびに** 走る。
+`(let [x 1 y 2 z 3] (+ x y z))` を Form のまま eval すると、`x` /
+`y` / `z` のたびに「local か?」「ns を引く」「Var を deref」と
+HashMap lookup が **eval のたびに** 走ってしまいます。
 
 ClojureWasm の方針は **「解析時の 1 回で全部やっておけ」**:
 
@@ -48,8 +48,9 @@ ClojureWasm の方針は **「解析時の 1 回で全部やっておけ」**:
 | Analyzer | Form → Node (symbol を slot index/Var pointer に解決)          |
 | Backend  | Node → Value (switch + 配列 index で完了)                      |
 
-backend は `switch (node.*) { .local_ref => |n| locals[n.index], ... }`
-の 1 行で値が取れる。HashMap も string compare も無い。
+バックエンドは
+`switch (node.*) { .local_ref => |n| locals[n.index], ... }` の
+1 行で値が取れます。HashMap も文字列比較も介在しません。
 
 ### 演習 12.1: Form と Node のコストを並べる (L1)
 
@@ -104,16 +105,17 @@ pub const Node = union(enum) {
 
 `union(enum)` の利点：
 
-- **網羅性チェック**: switch で `else` を書かなければコンパイラが
-  全 variant カバーを保証。新 variant 追加時に backend が漏れたら
-  コンパイル失敗
-- **データ局所性**: variant struct がインライン格納、pointer
-  indirection が 1 段で済む
+- **網羅性チェック**: switch に `else` を書かなければ、コンパイラが
+  全 variant のカバーを保証してくれます。新 variant を追加した際に
+  backend で対応が漏れていれば、コンパイルが失敗します。
+- **データ局所性**: variant struct がインラインで格納されるため、
+  pointer indirection は 1 段で済みます。
 
 ### 演習 12.2: 10 variant を空で列挙 (L1)
 
-何も見ずに、Node の 10 variant のタグ名を書いてみる。ヒント:
-「リテラル 1 / 参照 2 / special form 6 / 呼び出し 1」とグループ化。
+何も見ずに、Node の 10 variant のタグ名を書き出してみてください。
+ヒント:「リテラル 1 / 参照 2 / special form 6 / 呼び出し 1」と
+グループ化してみると思い出しやすいです。
 
 <details>
 <summary>答え</summary>
@@ -147,13 +149,12 @@ pub const IfNode = struct {
 };
 ```
 
-ROADMAP §2 **原則 P6 (Error quality is non-negotiable)** が要求する
-「全エラーに `<file>:<line>:<col>` を付ける」を end-to-end で守るには:
-
-Tokenizer → Reader → **Analyzer (この章)** → Backend の 4 段で
-location が **欠落しない** 必要がある。`= .{}` のデフォルトは
-`SourceLocation{}` なのでテストでは省略できるが、本番 analyzer は
-必ず明示的に Form の location を渡す。
+ROADMAP §2 **原則 P6（Error quality is non-negotiable）** が要求する
+「すべてのエラーに `<file>:<line>:<col>` を付ける」を end-to-end で
+守るには、Tokenizer → Reader → **Analyzer（この章）** → Backend の
+4 段のあいだで location が **欠落しない** 必要があります。`= .{}`
+のデフォルトは `SourceLocation{}` なのでテストでは省略できますが、
+本番の analyzer では必ず明示的に Form の location を渡します。
 
 ### `Node.loc()` と `inline else`
 
@@ -168,13 +169,15 @@ pub fn loc(self: Node) SourceLocation {
 }
 ```
 
-「**残った全 variant について capture `n` で同じ式を評価**」。
-コンパイラが variant ごとに inline 展開、ランタイム性能は手書き 10
-arm と同じ (O(1) jump)、ソースは 1 行。
+「**残ったすべての variant について、capture `n` で同じ式を評価
+する**」という意味です。コンパイラが variant ごとに inline 展開する
+ので、ランタイム性能は手書きの 10 arm と同じ（O(1) jump）で、ソース
+は 1 行で済みます。
 
-これが効くのは **全 variant が共通フィールド `loc` を持つから**。
-1 つでも欠けると型が通らない — Zig type system が「全 variant に loc
-を持たせる」ルールを **コードで強制** してくれる。
+これが効くのは、**全 variant が共通フィールド `loc` を持っているから**
+です。1 つでも欠けると型が通りません。Zig の type system が「全
+variant に loc を持たせる」というルールを **コードで強制してくれる**
+わけです。
 
 ### 演習 12.3: `inline else` でメソッドを書く (L2)
 
@@ -192,9 +195,10 @@ pub fn kindName(self: Node) []const u8 {
 }
 ```
 
-「全 variant が共通 field を持つ」という前提が `inline else` を成立
-させる。1 つでも欠けると `error: no field named 'kind_name'` で
-コンパイルが落ちる — **構造的なルールを type system が守る**。
+「全 variant が共通の field を持つ」という前提が `inline else` を
+成立させています。1 つでも欠けると `error: no field named
+'kind_name'` でコンパイルが落ちます。**構造的なルールを type system
+が守ってくれる** という形です。
 
 </details>
 
@@ -217,25 +221,27 @@ pub const VarRef = struct {
 
 ### `LocalRef.index` は backend と analyzer の契約
 
-`(let* [x 1 y 2] (+ x y))` を analyse すると `x → slot 0`, `y →
-slot 1`、body の `x` 参照は `LocalRef{ name: "x", index: 0 }`。
-**slot 番号は TreeWalk と将来の VM で共有** する。Phase 4 で VM が
-来ても analyzer の出力はそのまま再利用。
+`(let* [x 1 y 2] (+ x y))` を analyse すると、`x → slot 0`、`y →
+slot 1` となり、body の `x` 参照は `LocalRef{ name: "x", index: 0 }`
+になります。**slot 番号は TreeWalk と将来の VM とで共有します**。
+Phase 4 で VM が登場しても、analyzer の出力をそのまま再利用できる
+ようになっています。
 
 ### `VarRef.var_ptr` の deref は dynamic binding 用
 
-`(def x 1)` 後の `x` 参照は analyzer が `*const Var` を resolve 済。
-backend は `var_ref.var_ptr.deref()` を呼ぶ。**deref が必要な理由** は
-`^:dynamic` Var の binding stack override を Phase 3+ で拾うため。
-Phase 2 では `var_ptr.root` を返すだけだが、間接化を Day 1 で確保する
-ことで Phase 3 拡張時に backend が変わらない。
+`(def x 1)` 後の `x` 参照は、analyzer が `*const Var` を resolve
+済みの状態にしてあります。バックエンドは `var_ref.var_ptr.deref()`
+を呼びます。**deref が必要な理由** は、`^:dynamic` Var の binding
+stack override を Phase 3+ で拾えるようにするためです。Phase 2 では
+`var_ptr.root` を返すだけですが、間接化を Day 1 から仕込んでおくこと
+で、Phase 3 で拡張する際に backend を変更せずに済みます。
 
 ### `name` フィールドが残る理由
 
-`LocalRef.name` は eval に使わない (`index` で十分)。残してあるのは
-**エラーメッセージ** と **debug print** のため。「ホットパスでは使わ
-ないが落ちた時に欲しい情報」を heap に置かず Node に inline 埋め込む
-方針。
+`LocalRef.name` は eval では使いません（`index` だけで十分）。残して
+あるのは **エラーメッセージ** と **debug print** のためです。「ホット
+パスでは使わないけれど、落ちたときには欲しい情報」を heap に置かず、
+Node に inline 埋め込みする方針です。
 
 ---
 
@@ -254,16 +260,17 @@ pub const DefNode = struct {
 };
 ```
 
-`is_dynamic` 等の flag は `(def ^:dynamic *foo*)` 等 metadata 由来で、
-Phase 2 では all-false。`env.zig` の `VarFlags` と意味は同じだが、
-Node 側で再定義 — Node tree が analyzer の parsing context を import
-しない zone 規律のため。Phase 3+ で metadata 体系が固まったら一本化。
+`is_dynamic` などの flag は `(def ^:dynamic *foo*)` のような metadata
+由来で、Phase 2 ではすべて false です。`env.zig` の `VarFlags` と
+意味は同じですが、Node 側で再定義しています。Node tree が analyzer
+の parsing context を import しないようにするための zone 規律で
+あり、Phase 3+ で metadata 体系が固まった時点で一本化する予定です。
 
 ### `IfNode` / `DoNode` / `QuoteNode`
 
-`IfNode.else_branch` は `?*const Node` (省略可)。`DoNode.forms` は
-`[]const Node` (ポインタじゃなくスライス)。`QuoteNode.quoted` は
-**`Node` ではなく `Value`** — analyse 時に reify 済。
+`IfNode.else_branch` は `?*const Node`（省略可）です。`DoNode.forms`
+は `[]const Node`（ポインタではなく slice）です。`QuoteNode.quoted`
+は **`Node` ではなく `Value`** で、analyse 時に reify 済みです。
 
 ### `FnNode` — Phase 2 では capture が無い
 
@@ -283,24 +290,24 @@ pub const FnNode = struct {
 
 #### Phase 2 の境界: closure capture なし
 
-`FnNode` に `captured: []Value` フィールドが **無い**。
+`FnNode` に `captured: []Value` フィールドが **ありません**。
 
 ```clojure
 (let* [x 1] (fn* [y] (+ x y)))   ; ← Phase 2 では x が解決できない
 ```
 
-このコードは body の `x` を見ようとするが、Phase 2 の `Function` は
-eval 時にしか locals を持たないので、生成された fn が呼ばれるときに
-`x` が読めない。
+このコードは body の `x` を見ようとしますが、Phase 2 の `Function`
+は eval 時にしか locals を持たないため、生成された fn が呼ばれた
+ときに `x` が読めません。
 
-**Phase 2 で動く fn の境界**:
+**Phase 2 で動く fn の範囲**:
 
-- top-level `(def f (fn* [x] x))` ← OK
-- `(fn* [x] (+ x 1))` 内で global Var `+` 呼ぶ ← OK
-- `((fn* [x] x) 41)` ← OK (fn 直接 call)
+- top-level の `(def f (fn* [x] x))` → OK
+- `(fn* [x] (+ x 1))` の中で global Var の `+` を呼ぶ → OK
+- `((fn* [x] x) 41)` → OK（fn を直接呼び出すケース）
 
-Phase 3+ で `FnNode.captured: []Value` を追加し、analyzer が
-free variable を集めて capture する予定。
+Phase 3+ で `FnNode.captured: []Value` を追加し、analyzer が free
+variable を集めて capture する予定です。
 
 ### `LetNode`
 
@@ -318,9 +325,10 @@ pub const LetNode = struct {
 };
 ```
 
-`(let* [x 1 y 2] body)` → `bindings = [{x,0,1}, {y,1,2}]` + `body`。
-**Clojure semantics**: `(let [x 1 y x] y)` の `y x` の `x` は直前の
-binding を見る (analyzer が「value → declare」順で処理、第 13 章 §8)。
+`(let* [x 1 y 2] body)` → `bindings = [{x, 0, 1}, {y, 1, 2}]` + `body`
+となります。**Clojure semantics**: `(let [x 1 y x] y)` の `y x` の
+ほうの `x` は、直前の binding を見ます（analyzer が「value → declare」
+順で処理しているため。第 13 章 §8 で扱います）。
 
 ### `CallNode`
 
@@ -332,22 +340,23 @@ pub const CallNode = struct {
 };
 ```
 
-汎用呼び出し。`(f 1 2)` も `((fn* [x] x) 41)` も全部 call_node に落ちる
-(callee が var_ref か fn_node かが違うだけ)。
+汎用呼び出しです。`(f 1 2)` も `((fn* [x] x) 41)` もすべて call_node
+に落ちます（callee が var_ref か fn_node かが違うだけです）。
 
 ---
 
 ## 6. メモリ ownership — Arena 一気開放
 
-`Node` のフィールドはいずれも `*const Node` か `[]const Node` か
-`[]const u8`。**全部「同じ arena から取った参照」** が前提:
+`Node` のフィールドはいずれも `*const Node` か `[]const Node`、
+あるいは `[]const u8` です。**すべてが「同じ arena から取った参照」**
+であることを前提にしています:
 
 - `*const Node` は子が同じ arena
 - `[]const Node` は `arena.alloc(Node, n)`
 - `[]const u8` の name は `arena.dupe(...)`
 
-eval が終わったら `arena.deinit()` で **一気開放**。Node は個別
-free しない設計。
+eval が終わったら `arena.deinit()` で **一気に解放します**。Node を
+個別に free しない設計です。
 
 ```
 [arena]
@@ -357,10 +366,10 @@ free しない設計。
 │   └ body (*Node)                   ← arena.create
 ```
 
-**Node は Value ではない** ので、Phase 5 GC は Node を trace しない。
-これが「map / vec literal は constant Value にリフトせよ」「Node tree
-の中に Value を載せて GC を二重管理にしない」の理由。Node tree の
-ライフサイクルは GC とは独立。
+**Node は Value ではない** ので、Phase 5 GC は Node を trace しま
+せん。これが「map / vec literal は constant Value にリフトする」
+「Node tree の中に Value を載せて GC を二重管理にしない」という
+方針の根拠です。Node tree のライフサイクルは GC とは独立しています。
 
 ### 演習 12.4: `(if true 1 2)` のメモリレイアウト (L2)
 
@@ -495,8 +504,9 @@ zig build test
 git -C ~/Documents/MyProducts/ClojureWasmFromScratch checkout cw-from-scratch
 ```
 
-この時点では analyzer も backend も無い。Node 型の **構造上の不変条件**
-だけテストが確認している (`Function` を呼ばない、値を返さない)。
+この時点では analyzer も backend もまだありません。テストでは Node
+型の **構造上の不変条件** だけを確認しています（`Function` を呼ば
+ない、値を返さない、といった範囲です）。
 
 ---
 
@@ -510,22 +520,25 @@ git -C ~/Documents/MyProducts/ClojureWasmFromScratch checkout cw-from-scratch
 | symbol resolution        | 解析時 + macro                | 解析時           | 解析時 (`Compiler`)  | **解析時、macro は Phase 3+** |
 | closure capture          | あり (ClosureNode)            | あり             | あり (`FnExpr`)      | **無し（Phase 3+）**     |
 
-引っ張られず本リポの理念で整理した点：
-- v1 は loop/recur/try/throw を最初から Node に含めて 30+ variant
-  になっていた。本リポは **Phase 2 で動くものだけ 10 variant** で
-  打ち止め
-- Clojure JVM は Java class hierarchy (`IfExpr`, `LetExpr`, ...)。Zig
-  の `union(enum)` は switch 網羅性を type system で保証する **より
-  強い** 表現
-- `inline else => |n| n.loc` は Zig 0.16 の新イディオム。本リポで採用
+引っ張られずに本リポジトリの理念で整理した点：
+- v1 は loop / recur / try / throw を最初から Node に含めて 30+
+  variant になっていました。本リポジトリは **Phase 2 で動くもの
+  だけ 10 variant** で打ち止めにしています。
+- Clojure JVM は Java の class hierarchy（`IfExpr`、`LetExpr`、…）
+  を採っています。Zig の `union(enum)` は switch の網羅性を type
+  system で保証できる、より強い表現です。
+- `inline else => |n| n.loc` は Zig 0.16 の新しいイディオムで、本
+  リポジトリでも採用しています。
 
 ---
 
 ## 11. Feynman 課題
 
-1. なぜ Form と Node を分けるの？ 1 行で。
-2. なぜ全 variant に `loc` フィールドがあるの？ 1 行で。
-3. Phase 2 の `FnNode` に何が「無い」の？ それはいつ追加される？
+6 歳の自分に説明するつもりで答えてください。
+
+1. なぜ Form と Node を分けるのか。1 行で。
+2. なぜ全 variant に `loc` フィールドが付いているのか。1 行で。
+3. Phase 2 の `FnNode` に何が「無い」のか。それはいつ追加されるのか。
 
 ---
 
@@ -545,6 +558,6 @@ git -C ~/Documents/MyProducts/ClojureWasmFromScratch checkout cw-from-scratch
 
 第 13 章: [Analyzer — Form を Node に変換する](./0013-analyzer-form-to-node.md)
 
-— 6 special form を `comptime StaticStringMap` で dispatch、`Scope`
-chain で local を slot に割当て。本リポで「処理系の心臓」と呼べる
-最大の章です。
+— 6 つの special form を `comptime StaticStringMap` で dispatch し、
+`Scope` chain でローカル変数を slot に割り当てます。本リポジトリで
+「処理系の心臓」と呼べる、最大級の章です。
