@@ -14,13 +14,13 @@ date: 2026-04-27
 
 > 対応 task: §9.4 / 2.2 / 所要時間: 30〜45 分
 
-Phase 1 で「single-thread だから」と素朴に書いた `KeywordInterner.
-intern(self, ns, name)` を、Runtime ハンドル導入直後 (Phase 2.2) に
-**rt-aware** な `intern(rt, ns, name)` へ refactor します。
-**cell layout は 1 byte も触らず、API 表面だけを書き換える**。
+Phase 1 で「single-thread だから」と素朴に書いた `KeywordInterner
+.intern(self, ns, name)` を、Runtime ハンドル導入の直後（Phase 2.2）
+に **rt-aware** な `intern(rt, ns, name)` へリファクタリングします。
+**cell layout は 1 byte も触らず、API 表面だけを書き換えます**。
 
-短い章ですが、本リポの方針 **「workaround を Phase をまたいで残さ
-ない」** を端的に体現する commit です。
+短い章ですが、本リポジトリの方針 **「workaround を Phase をまたいで
+残さない」** を端的に体現するコミットです。
 
 ---
 
@@ -57,8 +57,9 @@ pub const KeywordInterner = struct {
 };
 ```
 
-ここには **mutex がありません**。Phase 1 は single-thread と決めた
-ので必要が無く、書いていない。ただし冒頭コメントに伏線：
+ここには **mutex がありません**。Phase 1 を single-thread と定めて
+いるので必要なく、書いていません。ただし冒頭コメントには伏線が
+張られています：
 
 ```
 //! ### Phase-1 scope
@@ -69,8 +70,9 @@ pub const KeywordInterner = struct {
 //! means Phase 2.0 only changes call sites, not memory layout.
 ```
 
-「**cell の形 (header / ns / name / hash) は今この時点で固定する**。
-Phase 2 で変わるのは API 表面だけ」と Phase 1 で宣言済み。
+「**cell の形（header / ns / name / hash）は今この時点で固定する**。
+Phase 2 で変わるのは API 表面だけ」と、Phase 1 の段階で宣言して
+いるわけです。
 
 ### Phase 2.2 (`07d5c34`) — rt-aware への refactor
 
@@ -124,8 +126,8 @@ pub const Keyword = struct {
 };
 ```
 
-Phase 1 と完全に同じ。**メモリレイアウトを Phase 1 で凍結し、
-Phase 2 はその上に API を被せただけ**。
+Phase 1 と完全に同じです。**メモリレイアウトを Phase 1 で凍結し、
+Phase 2 ではその上に API を被せただけ** ということです。
 
 ### 演習 10.1: 何が変わって何が変わらなかったか (L1)
 
@@ -153,8 +155,8 @@ Phase 2 はその上に API を被せただけ**。
 | (e) HashMap 使い方 | × | 中身は `internUnlocked` に同じコードが残った |
 | (f) test 組み立て | ○ | rt-aware test では `TestFixture` (`std.Io.Threaded` + Runtime) が必要 |
 
-要するに **API 表面だけが変わった**。内部のセル / hash / map 操作は
-全部 Phase 1 を継承しています。
+要するに **API 表面だけが変わりました**。内部のセル / hash / map
+操作はすべて Phase 1 から継承しています。
 
 </details>
 
@@ -189,9 +191,9 @@ pub fn internUnlocked(self: *KeywordInterner, ...) !Value { ... }
 ### Convention from Zig stdlib
 
 `std.heap.GeneralPurposeAllocator` も `noLockReuse` のような
-unlocked variant を持つことがあります。**Zig は「lock 状態を関数名で
-区別」する文化**。Java/C# のような annotation での区別は採らず、
-名前 (suffix) で表現します。
+unlocked variant を持つことがあります。**Zig は「lock 状態を関数名
+で区別する」文化** です。Java や C# のような annotation での区別は
+採らず、名前（suffix）で表現します。
 
 ### 演習 10.2: 旧 API を rt-aware に書き換える (L2)
 
@@ -227,12 +229,13 @@ pub fn intern(rt: *Runtime, ns: ?[]const u8, name_: []const u8) !Value {
 
 ポイント:
 
-- **`lockUncancelable`**: cancel-aware ではなく無条件にロックを取る。
-  Phase 2 では cancellation token が無いので Uncancelable で OK。
-- **`defer unlock`**: errdefer ではなく defer。`internUnlocked` が
-  失敗しても unlock は走らせる。
-- **委譲**: 自分で table を触らず `internUnlocked` に委ねる。これが
-  あれば「ロックを取った版」の薄いラッパが完成。
+- **`lockUncancelable`**: cancel-aware ではなく無条件にロックを取り
+  ます。Phase 2 では cancellation token がないので Uncancelable で
+  問題ありません。
+- **`defer unlock`**: errdefer ではなく defer です。`internUnlocked`
+  が失敗しても unlock を必ず走らせます。
+- **委譲**: 自分で table を触らず `internUnlocked` に委ねます。
+  これで「ロックを取った版」の薄いラッパが完成します。
 
 </details>
 
@@ -241,7 +244,7 @@ pub fn intern(rt: *Runtime, ns: ?[]const u8, name_: []const u8) !Value {
 ## 3. なぜ Phase 2 の単一スレッド時代に mutex を入れるのか
 
 Phase 2 はまだ single-thread です。`std.Io.Threaded` を使っていても、
-1 スレッドしか動いていない。なのに mutex を入れる：
+1 スレッドしか動いていません。それでも mutex を入れます：
 
 ```
 //! ### Why a mutex when Phase 2 is still single-threaded?
@@ -253,7 +256,8 @@ Phase 2 はまだ single-thread です。`std.Io.Threaded` を使っていても
 //! of a load + store.
 ```
 
-理由は **「Phase 15 でこのファイルをまた触らないため」**。
+理由は **「Phase 15 でこのファイルをもう触らずに済ませるため」**
+です。
 
 ### Phase 15 で何が起きるか
 
@@ -406,54 +410,57 @@ low-level test 群と新 rt-aware test 群が両方通る。
 
 ## 4. なぜ Phase 2.1 と 2.2 を別 commit にしたのか
 
-Phase 2.1 (`91feef0`) は dispatch + Runtime + Env skeleton で
-**+435 行 / 4 ファイル新設**。Phase 2.2 (`07d5c34`) は keyword の
-refactor で **+143/-67 行 / 1 ファイル変更**。
+Phase 2.1（`91feef0`）は dispatch + Runtime + Env skeleton を
+**+435 行 / 4 ファイル新設するコミット** です。Phase 2.2（`07d5c34`）
+は keyword のリファクタで **+143 / -67 行 / 1 ファイル変更するコミット**
+です。
 
-**この 2 つを 1 commit に押し込むこともできた**。実際、技術的には：
+**この 2 つを 1 コミットに押し込むこともできました**。技術的には次の
+ような形が可能です：
 
-- 2.1 で `keyword.zig` も同時に refactor すれば `Runtime.keywords`
-  への参照は最初から rt-aware に揃う。
-- 余分な Phase 2.2 が消える。
+- 2.1 で `keyword.zig` も同時にリファクタすれば、`Runtime.keywords`
+  への参照は最初から rt-aware に揃います。
+- 余分な Phase 2.2 が不要になります。
 
-なぜ分けたか：
+それでも分けた理由を以下に並べます。
 
 ### 理由 1: diff 可読性
 
-2.1 だけでも 4 ファイル新設の **大きな commit**。これに
-keyword refactor (`+143/-67`) を加えると、`git show 91feef0` で
-4 ファイル + 1 ファイルが流れて、各ファイルでの変更の意図が混ざる。
+2.1 だけでも 4 ファイル新設の **大きなコミット** です。これに
+keyword リファクタ（`+143 / -67`）を加えると、`git show 91feef0` で
+4 ファイル + 1 ファイルが流れ、各ファイルでの変更の意図が混ざって
+しまいます。
 
-**読み手 (= 半年後の自分、Conj 2026 発表の聴衆) が追えなくなる**。
+**読み手（= 半年後の自分、Conj 2026 発表の聴衆）が追えなくなります**。
 
 ### 理由 2: テストの粒度
 
-2.1 の test は「Runtime / Env / VTable が**コンパイルでき、構築でき
-る**」だけを確認します。これだけでもう値があります。
+2.1 の test は「Runtime / Env / VTable が **コンパイルでき、構築でき
+る**」ことだけを確認します。これだけでも十分な価値があります。
 
-2.2 で keyword に rt-aware API を足したら、別の独立した test 群
-(`intern(rt, ...)` の rt-aware 振る舞い) が確認対象になる。**1
-commit = 1 つの観察可能変化** という TDD 原則。
+2.2 で keyword に rt-aware API を足すと、別の独立した test 群
+（`intern(rt, ...)` の rt-aware な振る舞い）が確認対象になります。
+**1 コミット = 1 つの観察可能変化** という TDD 原則と整合します。
 
 ### 理由 3: 失敗時の roll-back 単位
 
-仮に Phase 2.2 で「`std.Io.Mutex` の使い方を間違えて lock を取って
-からの動作が遅すぎる」と判明したら、`07d5c34` だけ revert すれば
-Phase 2.1 の構造は残る。
+仮に Phase 2.2 で「`std.Io.Mutex` の使い方を間違えていて、lock を
+取ってからの動作が遅すぎる」と判明したら、`07d5c34` だけ revert
+すれば Phase 2.1 の構造はそのまま残せます。
 
-逆に 1 commit にしていたら、Mutex 部分だけ部分 revert することが
-困難。
+逆に 1 コミットにまとめていた場合、Mutex 部分だけを部分 revert
+するのは困難になります。
 
-### 理由 4: 将来章で参照しやすい
+### 理由 4: 将来の章で参照しやすい
 
-Phase 2.1 と 2.2 を別 commit にすると、教科書 (この docs/ja/) の章
-構造でも分けて書ける。
+Phase 2.1 と 2.2 を別コミットにしておくと、教科書（この `docs/ja/`）
+の章構成でも分けて書けます。
 
-- 第 0009 章 = 91feef0 の話 (Runtime ハンドル + 3 層)
-- 第 0010 章 = 07d5c34 の話 (rt-aware refactor)
+- 第 0009 章 = 91feef0 の話（Runtime ハンドル + 3 層）
+- 第 0010 章 = 07d5c34 の話（rt-aware リファクタ）
 
-**1 章 = 1 概念** という本リポの教育原則 (第 0001 章) に直接寄与。
-混ぜると章が薄まります。
+**1 章 = 1 概念** という本リポジトリの教育原則（第 0001 章）に直接
+寄与します。1 章に複数の話を混ぜると、内容が薄まってしまいます。
 
 ---
 
@@ -515,26 +522,27 @@ git diff b60924b 07d5c34 -- src/runtime/keyword.zig | grep -A 10 "pub const Keyw
 | Cell layout | header + ns + name + hash_cache | 同左 | `Keyword { Symbol sym, int hash }` | header + ns + name + hash_cache (Phase 1 で凍結) |
 | 並列対応 | Phase ?? で後付け | Phase 2 で導入 | Day 1 (`ConcurrentHashMap`) | Phase 2.2 で導入 (Phase 15 への伏線) |
 
-引っ張られず本リポの理念で整理した点：
+引っ張られずに本リポジトリの理念で整理した点：
 
 - **Cell layout を Phase 1 で凍結**: v1 は keyword の field 構成も
-  Phase をまたいで変えていたが、本リポは Phase 1 で「header + ns +
-  name + hash_cache」を確定。Phase 2 で表面 API のみ動かす。
+  Phase をまたいで変えていましたが、本リポジトリは Phase 1 の段階で
+  「header + ns + name + hash_cache」を確定させています。Phase 2 で
+  動かすのは表面の API だけです。
 - **`internUnlocked` という命名**: Java の `synchronized` annotation
-  ではなく Zig の文化 (suffix で状態を区別) を採用。
+  ではなく Zig の文化（suffix で状態を区別）に倣って命名しています。
 - **Phase 2 で先回り mutex 導入**: 「single-thread だから不要」と
-  Phase 15 まで遅延しない。**API シグネチャの最終形を早めに固定**
-  する方針。
+  Phase 15 まで遅延させません。**API シグネチャの最終形を早めに
+  固定する** 方針です。
 
 ---
 
 ## 8. Feynman 課題
 
-1. なぜ Phase 1 で書いた `intern(self, ns, name)` を Phase 2.2 で
-   `internUnlocked` に rename したのか？ 1 行で。
-2. Phase 2 が single-thread なのに `std.Io.Mutex` を入れる理由は？
+1. なぜ Phase 1 で書いた `intern(self, ns, name)` を、Phase 2.2 で
+   `internUnlocked` にリネームしたのか。1 行で。
+2. Phase 2 が single-thread なのに `std.Io.Mutex` を入れる理由は何か。
    1 行で。
-3. なぜ Phase 2.1 と 2.2 を別 commit にしたのか？ 1 行で。
+3. なぜ Phase 2.1 と 2.2 を別コミットにしたのか。1 行で。
 
 ---
 
