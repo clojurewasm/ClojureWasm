@@ -80,6 +80,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "or", .expand = expandOr },
     .{ .name = "if-let", .expand = expandIfLet },
     .{ .name = "when-let", .expand = expandWhenLet },
+    .{ .name = "defn", .expand = expandDefn },
 };
 
 // --- Form-construction conveniences ---
@@ -376,6 +377,57 @@ fn expandIfLet(
 
     // Outer: (let* [g expr] (if g <inner_let> else))
     return buildShortCircuit(arena, gname, expr_form, inner_let, else_form, loc, .truthy);
+}
+
+// --- defn — top-level function definition ---
+//
+// `(defn name [params...] body...)` →
+//   `(def name (fn* [params...] (do body...)))`
+//
+// Stage 1 keeps the surface narrow: no docstring, no metadata map, no
+// multi-arity. Phase 4+ extends this transform once user-defined macros
+// can override it from `core.clj`.
+fn expandDefn(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 3)
+        return error_mod.setErrorFmt(.macroexpand, .syntax_error, loc, "defn requires a name, parameter vector, and at least one body form", .{});
+    if (args[0].data != .symbol or args[0].data.symbol.ns != null)
+        return error_mod.setErrorFmt(.macroexpand, .syntax_error, args[0].location, "defn name must be an unqualified symbol", .{});
+    if (args[1].data != .vector)
+        return error_mod.setErrorFmt(.macroexpand, .syntax_error, args[1].location, "defn parameter list must be a vector", .{});
+
+    const name_form = args[0];
+    const params_form = args[1];
+    const body = args[2..];
+
+    // Collapse the body: single form passes through; multi-form wraps
+    // in (do ...) so the analyser sees a single expression for the
+    // fn* body.
+    const body_form = if (body.len == 1) body[0] else blk: {
+        var do_items = try arena.alloc(Form, body.len + 1);
+        do_items[0] = sym("do", loc);
+        @memcpy(do_items[1..], body);
+        break :blk try list(arena, do_items, loc);
+    };
+
+    // (fn* [params...] body_form)
+    const fn_items = try arena.alloc(Form, 3);
+    fn_items[0] = sym("fn*", loc);
+    fn_items[1] = params_form;
+    fn_items[2] = body_form;
+    const fn_form = try list(arena, fn_items, loc);
+
+    // (def name (fn* ...))
+    const def_items = try arena.alloc(Form, 3);
+    def_items[0] = sym("def", loc);
+    def_items[1] = name_form;
+    def_items[2] = fn_form;
+    return list(arena, def_items, loc);
 }
 
 fn expandWhenLet(
