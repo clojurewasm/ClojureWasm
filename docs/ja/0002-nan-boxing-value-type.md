@@ -14,12 +14,14 @@ date: 2026-04-27
 
 > 対応 task: §9.3 / 1.1 / 所要時間: 60〜90 分
 
-すべての Clojure 値を **`u64` 1 個（8 バイト）** に詰め込む。整数も
-浮動小数も nil もキーワードも、ヒープ上の永続リストも、同じ型 `Value`
-の 1 値として扱う。これを成立させる仕組みが **NaN boxing**。
+すべての Clojure 値を **`u64` 1 個（8 バイト）** に詰め込みます。
+整数も浮動小数も nil もキーワードも、ヒープ上の永続リストも、すべて
+同じ型 `Value` の 1 値として扱います。これを成立させる仕組みが
+**NaN boxing** です。
 
-ここを Day 1 から入れることで、Phase 35 で後付けすると 1,200 箇所を
-書き直すハメになる v1 の轍を回避できる（ROADMAP §1.4）。
+これを Day 1 から導入しておくことで、Phase 35 で後付けして 1,200
+箇所を書き直す羽目になった v1 の轍を踏まずに済みます（ROADMAP
+§1.4）。
 
 ---
 
@@ -41,14 +43,15 @@ f64 は 64 bit のうち：
 sign[63] | exponent[62..52] | mantissa[51..0]
 ```
 
-**`exponent == 0x7FF` かつ `mantissa != 0`** のときが NaN。
+**`exponent == 0x7FF` かつ `mantissa != 0`** のときが NaN です。
 `mantissa` は 52 bit あるので、NaN bit pattern は **2^52 - 1 通り**
-存在します。これら全部が「数値としては NaN」として等価。
+存在します。これらはすべて「数値としては NaN」として等価です。
 
-つまり、**NaN として "意味不明" な mantissa 領域を、自分のデータの
-入れ物として使える**。これが NaN boxing の出発点。
+つまり、**NaN としては "意味のない" mantissa 領域を、自分のデータの
+入れ物として使える** ことになります。これが NaN boxing の出発点
+です。
 
-### 本リポの上位 16 bit 配置
+### 本リポジトリの上位 16 bit 配置
 
 `src/runtime/value.zig` 冒頭の `//!` doc-comment より:
 
@@ -68,8 +71,8 @@ Immediate types (contiguous 0xFFFC-0xFFFF):
   0xFFFF  builtin_fn  48-bit function pointer
 ```
 
-つまり **上位 16 bit が `0xFFF8` 以上** のとき「これは NaN boxed
-タグ付き値」、**`0xFFF8` 未満** のときは「素の f64」として扱う。
+つまり **上位 16 bit が `0xFFF8` 以上** のときは「NaN boxed の
+タグ付き値」、**`0xFFF8` 未満** のときは「素の f64」として扱います。
 
 ```
 0x0000_0000_0000_0000  ← +0.0
@@ -110,8 +113,8 @@ v5 = 0xFFFF_0000_1234_5678     # → ?
 
 ## 2. Heap 32 スロットの 4×8 配置
 
-Heap オブジェクトには 32 種類あるが、これを **4 グループ × 8 サブ
-タイプ** で詰めるのが本リポの工夫。
+Heap オブジェクトは全部で 32 種類ありますが、これを **4 グループ ×
+8 サブタイプ** で詰めるのが本リポジトリの工夫です。
 
 ```
 | Group (band)          | Sub 0    | Sub 1    | Sub 2     | Sub 3       | Sub 4   | Sub 5   | Sub 6    | Sub 7      |
@@ -138,7 +141,7 @@ Heap オブジェクトには 32 種類あるが、これを **4 グループ ×
 
 ### なぜ 4 グループに分けるのか
 
-「**型のグループ単位での判定**」を 1 命令で済ませるため。例：
+「**型のグループ単位での判定**」を 1 命令で済ませるためです。例：
 
 ```zig
 // "これはコレクションか？" → Group A の sub 3..7
@@ -150,8 +153,9 @@ fn isPersistentColl(v: Value) bool {
 }
 ```
 
-実際には `tag()` メソッドが 1 つの `switch` で全部やるので、
-グループ分けはむしろ **将来の最適化のしるし** として効きます。
+実際には `tag()` メソッドが 1 つの `switch` でまとめて処理するので、
+グループ分けはむしろ **将来の最適化のための地ならし** として効いて
+きます。
 
 ### 演習 2.2: HeapTag 番号からグループを引く (L2)
 
@@ -204,9 +208,9 @@ const sub_type = type_val % NB_HEAP_GROUP_SIZE;     // 0..7
 
 ## 3. ヒープアドレスを 48 bit に落とす
 
-x86_64 / ARM64 の **仮想アドレス空間は実用上 48 bit**（user 空間）。
-さらに **8-byte alignment** を強制すれば、低位 3 bit が 0 になる
-ので **`addr >> 3` で 45 bit に圧縮**できる。
+x86_64 / ARM64 の **仮想アドレス空間は実用上 48 bit**（user 空間）
+です。さらに **8-byte alignment** を強制すれば、下位 3 bit が常に 0
+になるので **`addr >> 3` で 45 bit に圧縮** できます。
 
 ```
 addr = 0x0000_7FFE_BCDE_1234   (元のアドレス、48 bit; ただし alignment 違反)
@@ -215,7 +219,7 @@ addr = 0x0000_7FFE_BCDE_1234   (元のアドレス、48 bit; ただし alignment
 → addr >> 3 = 0x0000_0FFF_D79B_C246  (45 bit)
 ```
 
-### `Value.encodeHeapPtr` の正味
+### `Value.encodeHeapPtr` の中身
 
 ```zig
 pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
@@ -240,10 +244,11 @@ pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
 
 ### 8-byte alignment の確保
 
-ヒープオブジェクトは **必ず 8-byte aligned** に確保する必要がある。
-これは Zig の `std.mem.Allocator` がデフォルトで満たすが、自前
-レイアウトでは `extern struct` の最初に **8-byte ヘッダ**を置いて
-保証する慣習があります（次章以降で `HeapHeader` を見ます）。
+ヒープオブジェクトは **必ず 8-byte aligned** で確保する必要が
+あります。これは Zig の `std.mem.Allocator` がデフォルトで満たして
+くれますが、自前レイアウトでは `extern struct` の先頭に **8-byte
+ヘッダ** を置いて保証する慣習があります（次章以降で `HeapHeader`
+を取り上げます）。
 
 ### 演習 2.3: encodeHeapPtr / decodePtr を書き起こす (L3)
 
@@ -262,8 +267,8 @@ pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
 // pub fn decodePtr(self: Value, comptime T: type) T;
 ```
 
-**実装してください**。エンコード後 → デコードで元のポインタが
-戻ることをテストする。
+**実装してみてください**。エンコード後にデコードして元のポインタが
+戻ることをテストします。
 
 <details>
 <summary>答え骨子</summary>
@@ -327,7 +332,8 @@ pub const Value = enum(u64) {
 };
 ```
 
-`_,` は「他にも値が許される」(non-exhaustive enum)。これにより：
+`_,` は「他の値も許す」(non-exhaustive enum) という宣言です。
+これによって：
 
 - `Value.nil_val` のような **コンパイル時の名前付き定数** が使える
 - 同時に `@enumFromInt(任意の u64)` で任意の値を作れる
@@ -345,8 +351,8 @@ pub fn isTruthy(self: Value) bool {
 
 ## 5. integer の i48 + float promotion
 
-整数は **48 bit signed (i48)** に限定し、それ以上は f64 に promote
-する：
+整数は **48 bit signed (i48)** に限定し、それを超えるものは f64 に
+promote します：
 
 ```zig
 pub fn initInteger(i: i64) Value {
@@ -358,9 +364,9 @@ pub fn initInteger(i: i64) Value {
 }
 ```
 
-なぜ i48?:
+なぜ i48 か：
 - top16 = `0xFFFC` を tag に使う → 残り 48 bit が payload
-- 48 bit signed は ±140 兆。実用上の整数なら十分
+- 48 bit signed は ±140 兆。実用上の整数値であれば十分
 
 ### 演習 2.4: i48 範囲を計算 (L1)
 
@@ -376,8 +382,8 @@ const NB_I48_MIN: i64 = -(1 << 47) = -140737488355328
 const NB_I48_MAX: i64 = (1 << 47) - 1 = 140737488355327
 ```
 
-これより外は f64 promote。Clojure の自動 promotion 慣習と整合（v1
-も同じ）。
+これを超えると f64 に promote します。Clojure の自動 promotion
+慣習と整合しています（v1 も同様）。
 
 </details>
 
@@ -385,7 +391,7 @@ const NB_I48_MAX: i64 = (1 << 47) - 1 = 140737488355327
 
 ## 6. NaN bit pattern の collision 回避
 
-`initFloat` は重要な細工があります：
+`initFloat` には重要な仕掛けがあります：
 
 ```zig
 pub fn initFloat(f: f64) Value {
@@ -397,13 +403,13 @@ pub fn initFloat(f: f64) Value {
 }
 ```
 
-なぜ？: f64 として「素の NaN」を `bits >> 48 >= 0xFFF8` で作ると、
-**それは Group A heap タグと衝突する**。`tag()` で判定したら
-`.string` だの `.list` だのと誤分類される。
+なぜでしょうか。f64 として「素の NaN」が `bits >> 48 >= 0xFFF8` の
+範囲に出現すると、**それは Group A heap タグと衝突します**。`tag()`
+で判定すると `.string` や `.list` として誤分類されてしまいます。
 
-対策: そういう怪しい NaN bit pattern は **canonical な quiet NaN
-(`0x7FF8_0000_0000_0000`)** に潰す。これは top16 < 0xFFF8 の領域に
-あるので衝突しない。
+対策として、こうした衝突しうる NaN bit pattern は **canonical な
+quiet NaN (`0x7FF8_0000_0000_0000`)** に正規化します。これは
+top16 < 0xFFF8 の領域に位置するので、ヒープタグと衝突しません。
 
 ### 演習 2.5: collision を観察 (L2 — predict-then-verify)
 
@@ -431,7 +437,7 @@ NaN) を作ったとしても、`initFloat` が canonical NaN に正規化する
 tag = float
 ```
 
-これが NaN-boxing 実装の正しさを保つ key 細工。
+これが NaN boxing 実装の正しさを保つ要となる仕掛けです。
 
 </details>
 
@@ -464,10 +470,10 @@ pub fn tag(self: Value) Tag {
 **ホットパス**:
 1. `>> 48` (1 op)
 2. `< 0xFFF8` 比較 (1 op) → 大半の数値はここで return
-3. それ以外は `switch` (compiler が jump table 化、O(1))
+3. それ以外は `switch` (コンパイラが jump table 化、O(1))
 
-→ 全部 **数命令** で完了。どんなに大きなコレクションでも、型判定
-コストは一定。
+→ 全体で **数命令** で完了します。どれほど大きなコレクションを扱う
+場合でも、型判定コストは一定です。
 
 ---
 
@@ -527,20 +533,22 @@ git checkout cw-from-scratch    # 戻る
 | 型判定 | switch + discriminant | band + sub | `instanceof` | band + sub |
 | NaN collision | canonical 化済 | canonical 化 | n/a | canonical 化 (我々が再発見) |
 
-引っ張られず本リポの理念で整理した点：
+v1 に引っ張られず本リポジトリの理念で整理した点：
 - v1 の **slot-sharing + discriminant** は型判定が遅く、Phase 35 で
-  1:1 mapping に乗り換え。本リポは **Day 1 から 1:1 mapping**。
-- v1 は HeapTag の追加で全コードに影響したが、本リポは 32 slot を
-  Day 1 確保（変更耐性 ◎）。
+  1:1 mapping に乗り換えました。本リポジトリは **Day 1 から 1:1
+  mapping** を採用しています。
+- v1 では HeapTag の追加が全コードに波及しましたが、本リポジトリ
+  では 32 slot を Day 1 から確保しています（変更耐性 ◎）。
 
 ---
 
 ## 11. Feynman 課題
 
-1. なぜ NaN bit pattern を「タグ付き値の入れ物」に使えるのか？
+1. なぜ NaN bit pattern を「タグ付き値の入れ物」として使えるのか。
    1 行で。
-2. ヒープアドレスを `>> 3` で圧縮できる前提は何？ 1 行で。
-3. `initFloat` が canonical NaN への置換をしている理由は？ 1 行で。
+2. ヒープアドレスを `>> 3` で圧縮できる前提は何か。1 行で。
+3. `initFloat` が canonical NaN への正規化を行っている理由は何か。
+   1 行で。
 
 ---
 
@@ -560,6 +568,6 @@ git checkout cw-from-scratch    # 戻る
 
 第 3 章: [エラー基盤 — SourceLocation と threadlocal last_error](./0003-error-infrastructure.md)
 
-— ClojureWasm の `P6 (Error quality is non-negotiable)` を Day 1 から
-有効にする土台。`<file>:<line>:<col>` を全エラーに付ける仕組みと、
-Zig 0.16 の `anyerror!T` の運用ノウハウを掘り下げます。
+— ClojureWasm の `P6 (Error quality is non-negotiable)` を Day 1
+から有効にする土台です。`<file>:<line>:<col>` をすべてのエラーに
+付与する仕組みと、Zig 0.16 の `anyerror!T` の扱い方を掘り下げます。
