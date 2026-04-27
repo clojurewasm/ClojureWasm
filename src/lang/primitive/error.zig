@@ -94,6 +94,10 @@ const ENTRIES = [_]Entry{
     .{ .name = "ex-data", .f = &exData },
 };
 
+/// Intern `ex-info` / `ex-message` / `ex-data` builtins into `rt_ns`.
+/// Mirrors the shape used by `lang/primitive/math.register` and
+/// `lang/primitive/core.register`; the aggregator
+/// `lang/primitive.registerAll` calls this once at startup.
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
     for (ENTRIES) |it| {
         _ = try env.intern(rt_ns, it.name, Value.initBuiltinFn(it.f));

@@ -483,7 +483,7 @@ fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
         .float => |f| Value.initFloat(f),
         .keyword => |sym| try keyword.intern(rt, sym.ns, sym.name),
         .string => |s| try string_collection.alloc(rt, s),
-        .list => |items| try listFormToValue(rt, items, form.location),
+        .list => |items| try listFormToValue(rt, items),
         .symbol => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted symbol as Value not yet supported (Phase 3.7+)", .{}),
         .vector => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted vector as Value not yet supported (Phase 3+)", .{}),
         .map => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted map as Value not yet supported (Phase 3+)", .{}),
@@ -493,8 +493,7 @@ fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
 /// Build a heap List Value by recursively lifting each element to a
 /// Value. Empty list → nil (matches Clojure's `(quote ())` → `()` /
 /// `()` is `nil`-equivalent on `rest`/`first`). Used by `quote`.
-fn listFormToValue(rt: *Runtime, items: []const Form, loc: SourceLocation) AnalyzeError!Value {
-    _ = loc;
+fn listFormToValue(rt: *Runtime, items: []const Form) AnalyzeError!Value {
     var i = items.len;
     var acc: Value = .nil_val;
     while (i > 0) {

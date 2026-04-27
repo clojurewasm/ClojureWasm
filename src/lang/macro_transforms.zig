@@ -276,7 +276,7 @@ fn expandAnd(
     // (let* [g <args[0]>] (if g (and <args[1..]>) g))
     const gname = try rt.gensym(arena, "and");
     const rest_call = try buildSelfCall(arena, "and", args[1..], loc);
-    return buildShortCircuit(arena, gname, args[0], rest_call, sym(gname, loc), loc, .truthy);
+    return buildShortCircuit(arena, gname, args[0], rest_call, sym(gname, loc), loc);
 }
 
 fn expandOr(
@@ -291,10 +291,8 @@ fn expandOr(
     // (let* [g <args[0]>] (if g g (or <args[1..]>)))
     const gname = try rt.gensym(arena, "or");
     const rest_call = try buildSelfCall(arena, "or", args[1..], loc);
-    return buildShortCircuit(arena, gname, args[0], sym(gname, loc), rest_call, loc, .truthy);
+    return buildShortCircuit(arena, gname, args[0], sym(gname, loc), rest_call, loc);
 }
-
-const ShortCircuit = enum { truthy };
 
 /// `(let* [g expr] (if g <then_when_truthy> <else_when_falsy>))`.
 fn buildShortCircuit(
@@ -304,7 +302,6 @@ fn buildShortCircuit(
     then_branch: Form,
     else_branch: Form,
     loc: SourceLocation,
-    _: ShortCircuit,
 ) macro_dispatch.ExpandError!Form {
     const binding = try arena.alloc(Form, 2);
     binding[0] = sym(gname, loc);
@@ -376,7 +373,7 @@ fn expandIfLet(
     const inner_let = try list(arena, inner_let_items, loc);
 
     // Outer: (let* [g expr] (if g <inner_let> else))
-    return buildShortCircuit(arena, gname, expr_form, inner_let, else_form, loc, .truthy);
+    return buildShortCircuit(arena, gname, expr_form, inner_let, else_form, loc);
 }
 
 // --- defn — top-level function definition ---
