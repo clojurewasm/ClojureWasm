@@ -14,11 +14,12 @@ date: 2026-04-27
 
 > 対応 task: §9.4 / 2.5 / 所要時間: 90〜120 分
 
-`Form` を受け取って `Node` を返す再帰下降のアナライザ。Phase 2 の
-**6 special form** (`def` / `if` / `do` / `quote` / `fn*` / `let*`)
-の構文チェック、symbol を local slot か Var に解決する処理、そして
-slot index の割当てを **`Scope` chain** が担当。本リポで「処理系の
-心臓」と呼べる最大の章です。
+`Form` を受け取って `Node` を返す再帰下降のアナライザを扱う章です。
+Phase 2 の **6 つの special form**（`def` / `if` / `do` / `quote` /
+`fn*` / `let*`）の構文チェック、symbol を local slot か Var に解決
+する処理、そして slot index の割り当てを **`Scope` chain** が担当
+します。本リポジトリで「処理系の心臓」と呼べる、もっとも大きな
+章です。
 
 ---
 
@@ -540,14 +541,15 @@ zig build test
 git -C ~/Documents/MyProducts/ClojureWasmFromScratch checkout cw-from-scratch
 ```
 
-この時点では analyzer は完成しているが、TreeWalk backend がまだ無いので
-**「Form を analyse して Node を返す」だけ**。次章で eval が来る。
+この時点では analyzer は完成していますが、TreeWalk backend がまだ
+ないので **「Form を analyse して Node を返す」だけ** です。次章で
+eval が登場します。
 
 ---
 
 ## 12. 教科書との対比
 
-| 軸                | v1            | v1_ref     | Clojure JVM             | 本リポ                      |
+| 軸                | v1            | v1_ref     | Clojure JVM             | 本リポジトリ                      |
 |-------------------|---------------|------------|-------------------------|-----------------------------|
 | 行数              | 4070          | 746        | ~4000 (`Compiler.java`) | **677**                     |
 | special form 数   | 18+           | 11         | 16                      | **6 (Phase-2 minimum)**     |
@@ -556,21 +558,26 @@ git -C ~/Documents/MyProducts/ClojureWasmFromScratch checkout cw-from-scratch
 | dispatch          | if-else       | 同じ       | enum (Java)             | **`StaticStringMap`**       |
 | body 単一 form    | DoExpr 必須   | 包まない   | BodyExpr 必須           | **包まない**                |
 
-引っ張られず本リポの理念で整理した点:
-- v1 / Clojure JVM は **18+ special form** を analyser に内蔵していたが、
-  Phase 2 はまず **6 form 動かす** (loop/recur/try/throw は Phase 3+)
-- v1 は body を必ず DoExpr に包んでいたが、本リポは **1 form なら
-  そのまま** 返す
-- `comptime StaticStringMap` は Zig 0.16 の機能。v1 は当時 if-else chain
+引っ張られずに本リポジトリの理念で整理した点：
+- v1 / Clojure JVM は **18+ の special form** を analyser に内蔵
+  していましたが、Phase 2 はまず **6 つの form を動かす** ところに
+  絞っています（loop / recur / try / throw は Phase 3+）。
+- v1 は body を必ず DoExpr に包んでいましたが、本リポジトリは **1 form
+  ならそのまま返します**。
+- `comptime StaticStringMap` は Zig 0.16 の機能です。v1 が書かれた
+  当時は if-else chain でした。
 
 ---
 
 ## 13. Feynman 課題
 
-1. なぜ `let*` は **値を先に analyse、宣言を後** にするの？
-2. `Scope.child` で `next_slot` を継承するのはなぜ？
-3. `(quote x)` で symbol が `NotImplemented`、atom リテラルが通るのは
-   なぜ？
+6 歳の自分に説明するつもりで答えてください。
+
+1. なぜ `let*` は **値を先に analyse して、宣言を後にする** のか。
+   1 行で。
+2. `Scope.child` で `next_slot` を継承するのはなぜか。1 行で。
+3. `(quote x)` で symbol が `NotImplemented` になり、atom リテラルが
+   通るのはなぜか。1 行で。
 
 ---
 
