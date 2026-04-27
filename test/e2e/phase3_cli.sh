@@ -181,5 +181,37 @@ EOF
 [[ "$got" == "15" ]] || fail "when-let truthy: want '15', got '$got'"
 echo "    ✓ (when-let [x 5] (+ x 10)) → 15"
 
+# --- Case 20: ex-info construct + ex-message round-trip (3.10) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(ex-message (ex-info "boom" 42))
+EOF
+) || fail "ex-info round-trip: non-zero exit"
+[[ "$got" == '"boom"' ]] || fail "ex-info round-trip: want '\"boom\"', got '$got'"
+echo "    ✓ (ex-message (ex-info \"boom\" 42)) → \"boom\""
+
+# --- Case 21: ex-data extracts the data Value (3.10) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(ex-data (ex-info "x" 99))
+EOF
+) || fail "ex-data: non-zero exit"
+[[ "$got" == "99" ]] || fail "ex-data: want '99', got '$got'"
+echo "    ✓ (ex-data (ex-info \"x\" 99)) → 99"
+
+# --- Case 22: ex-message returns nil for non-ex-info (3.10) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(ex-message 42)
+EOF
+) || fail "ex-message non-exinfo: non-zero exit"
+[[ "$got" == "nil" ]] || fail "ex-message non-exinfo: want 'nil', got '$got'"
+echo "    ✓ (ex-message 42) → nil"
+
+# --- Case 23: ex-info pr-str renders #error{...} (3.10) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(ex-info "boom" 1)
+EOF
+) || fail "ex-info pr-str: non-zero exit"
+[[ "$got" == '#error{:message "boom" :data 1}' ]] || fail "ex-info pr-str: want '#error{:message \"boom\" :data 1}', got '$got'"
+echo "    ✓ (ex-info \"boom\" 1) → #error{...}"
+
 echo
 echo "Phase-3 CLI entry points: all green."

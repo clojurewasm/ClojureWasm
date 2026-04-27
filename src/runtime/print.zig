@@ -39,6 +39,7 @@ const Value = value_mod.Value;
 const keyword = @import("keyword.zig");
 const string_collection = @import("collection/string.zig");
 const list_collection = @import("collection/list.zig");
+const ex_info_collection = @import("collection/ex_info.zig");
 
 /// Render `v` to `w` in `pr-str` style. Phase-3 surface covers nil /
 /// boolean / integer / float / char / keyword / builtin_fn / string /
@@ -70,8 +71,26 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
         },
         .string => try printString(w, string_collection.asString(v)),
         .list => try printList(w, v),
+        .ex_info => try printExInfo(w, v),
         else => |t| try w.print("#<{s}>", .{@tagName(t)}),
     }
+}
+
+/// Render an `ex-info` Value in `#error{ :message "..." :data ... }`
+/// form — the same shape Clojure JVM's pr-str emits, modulo ordering.
+/// Phase 3.10's data is any Value (most often nil at this stage); a
+/// real map renderer ships with the heap-map type later.
+pub fn printExInfo(w: *Writer, v: Value) Writer.Error!void {
+    try w.writeAll("#error{:message ");
+    try printString(w, ex_info_collection.message(v));
+    try w.writeAll(" :data ");
+    try printValue(w, ex_info_collection.data(v));
+    const cause = ex_info_collection.cause(v);
+    if (!cause.isNil()) {
+        try w.writeAll(" :cause ");
+        try printValue(w, cause);
+    }
+    try w.writeByte('}');
 }
 
 /// Render a heap List in `(a b c)` form. Empty list (a List Value

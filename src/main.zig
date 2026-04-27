@@ -175,6 +175,7 @@ test {
     _ = @import("runtime/error.zig");
     _ = @import("runtime/error_print.zig");
     _ = @import("runtime/gc/arena.zig");
+    _ = @import("runtime/collection/ex_info.zig");
     _ = @import("runtime/collection/list.zig");
     _ = @import("runtime/collection/string.zig");
     _ = @import("runtime/hash.zig");
@@ -192,6 +193,7 @@ test {
     _ = @import("eval/backend/tree_walk.zig");
     _ = @import("lang/primitive/math.zig");
     _ = @import("lang/primitive/core.zig");
+    _ = @import("lang/primitive/error.zig");
     _ = @import("lang/primitive.zig");
     _ = @import("lang/macro_transforms.zig");
 }
