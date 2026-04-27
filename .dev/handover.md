@@ -15,13 +15,16 @@
 
 ## Current state
 
-- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.10 done. 3.1–3.7 paired
-  (chapters 0017 / 0018 / 0019); 3.8 + 3.9 + 3.10 are unpaired source
-  SHAs awaiting chapter 0020 (planned: "error handling and iteration"
-  block covering print-extract + try/loop/recur analyzer + ex_info,
-  to land alongside or just after 3.11). Next active task is
-  **3.11** (TreeWalk `evalLoop` / `evalRecur` / `evalTry` /
-  `evalThrow` + closure capture for `fn*`).
+- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.11 done. 3.1–3.7 paired
+  (chapters 0017 / 0018 / 0019); 3.8 + 3.9 + 3.10 + 3.11 are unpaired
+  source SHAs awaiting chapter 0020 (planned: "error handling and
+  iteration" block covering print-extract + try/loop/recur analyzer +
+  ex_info heap + treeWalk eval-time arms). Next active task is
+  **3.12** (`src/lang/bootstrap.zig` + `src/lang/clj/clojure/core.clj`
+  — Stage 1 Clojure-level prologue: `defn`, `defmacro`, `let`, `when`,
+  `cond`, `if-let`, `when-let`, `not`, `and`, `or`, `->`, `->>` are
+  defined in core.clj and read+analyse+eval'd at startup after
+  `primitive.registerAll`).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
 - **Last paired chapter commit**: `ed470fe` (0019) covering 6630cbe
   (3.7 — macroexpand routing). Preceded by `a89e6fb` (0018) covering
@@ -30,12 +33,15 @@
   - `772ebcf` (3.8 — runtime/print.zig extraction)
   - `28c2bc3` (3.9 — try/catch/throw/loop\*/recur Node + analyzer)
   - `c16380f` (3.10 — ex_info heap struct + builtins)
+  - `99efd07` (3.11 — treeWalk evalLoop/evalRecur/evalTry/evalThrow
+    + fn closure capture)
   Plan: chapter 0020 covers 3.8 + 3.9 + 3.10 + 3.11 as one phase-3
-  "error handling and iteration" concept block once 3.11 closes.
+  "error handling and iteration" concept block.
 - **Build**: `bash test/run_all.sh` all green —
   `zig build test`, `zone_check --gate`,
   `test/e2e/phase2_exit.sh` (3/3),
-  `test/e2e/phase3_cli.sh` (21/21 — cases 12–19 cover the macros).
+  `test/e2e/phase3_cli.sh` (27/27 — cases 24–27 cover loop/recur,
+  try/throw/catch, finally side-effect, lexical closure).
 - **End-to-end error rendering activated** (3.1–3.4):
   `cljw -e '(+ 1 :foo)'` prints `<-e>:1:0: type_error [eval]\n
   (+ 1 :foo)\n  ^\n+: expected number, got keyword`. Reader /
@@ -52,69 +58,41 @@
   backend concern (ADR 0001). `Runtime` gained
   `gensym(arena, prefix)` for hygienic auto-symbols.
 
-## Active task — §9.5 / 3.11
+## Active task — §9.5 / 3.12
 
-`src/eval/backend/tree_walk.zig` — implement the four eval-time
-arms 3.9 left as `not_implemented`:
+`src/lang/bootstrap.zig` (new) + `src/lang/clj/clojure/core.clj` (new
+fixture) — the Stage-1 Clojure-level prologue. After `primitive
+.registerAll(&env)` runs, the bootstrap module reads `core.clj`,
+analyses each form (with the `macro_dispatch.Table` populated by
+`macro_transforms.registerInto`), and evaluates it. The prologue
+must define at minimum:
 
-- `evalLoop` — set up bindings (mirrors `evalLet`), then loop:
-  evaluate body; on `pending_recur` signal, rebind slots and re-enter.
-- `evalRecur` — populate threadlocal `pending_recur_args` (a fixed
-  buffer per Runtime?) and bubble `error.PendingRecur` up to the
-  nearest target frame. Decide buffer ownership (per-Runtime fixed
-  array vs ArrayList) — favour the fixed buffer for Phase 3.
-- `evalTry` — eval body; if it returns `error.ThrownValue`, walk
-  catch_clauses linearly comparing `class_name` to the thrown
-  Value's tag (Phase 3.10 surface: `"ExceptionInfo"` ↔
-  `Value.tag() == .ex_info`); on match, bind to slot and eval body.
-  Always run finally_body (even on success) before returning /
-  rethrowing.
-- `evalThrow` — eval expr; populate threadlocal
-  `last_thrown_exception` with the result; return
-  `error.ThrownValue` so the unwind can find a try frame.
-- **Closure capture for `fn*`** — current `allocFunction` snapshots
-  zero locals; switch to copying the `LocalRef` slots referenced by
-  the body into the function struct so inner fns close over outer
-  let bindings. Phase 3 exit criterion `(defn f [x] (+ x 1)) (f 2)`
-  requires no closure (single-frame), but `((fn* [x] (fn* [y] (+ x
-  y))) 1) 2)` does — schedule cleanly so the fix stays in scope.
+- `(defn name [params] body)` — wraps `(def name (fn* [params] body))`.
+- `(defmacro name [params] body)` — same, but `^:macro` flag set.
+- `let / when / cond / if-let / when-let / not / and / or / -> / ->>`
+  re-defined as Clojure macros that lower to special forms. The Zig
+  Layer-2 implementations in `lang/macro_transforms.zig` stay as the
+  Layer-1 fast-path, but Stage-1 makes them user-visible Clojure
+  forms editable from `core.clj`.
 
 **Retrievable identifiers**:
-- ROADMAP §9.5 task 3.11 (table).
-- `src/eval/backend/tree_walk.zig::eval` switch — 4 arms currently
-  `not_implemented`. `MAX_LOCALS = 256` is the local-array length;
-  recur slot rewrite stays inside that bound.
-- `runtime/dispatch.zig::last_thrown_exception` (already declared
-  threadlocal as `?Value`) — populated by evalThrow, drained by
-  evalTry's catch dispatch.
-- `runtime/collection/ex_info.zig` — Phase 3.10 surface; evalTry
-  uses `Value.tag() == .ex_info` to recognise the catch class
-  `"ExceptionInfo"`.
-- `src/eval/analyzer.zig::Scope.recur_target` — already populated
-  for fn* and loop*; Phase 3.11 doesn't change the analyser, but
-  consult it when deciding whether tail-position enforcement should
-  ride along.
+- ROADMAP §9.5 task 3.12 (table).
+- `src/lang/macro_transforms.zig::registerInto` — Layer-2 entry
+  populated at startup; 3.12's bootstrap runs *after* this so
+  Clojure-level forms can use the bootstrap macros.
+- `src/main.zig` lines 117–127 — current startup chain. Bootstrap
+  fits between `primitive.registerAll(&env)` and the read-eval loop.
+- `src/eval/macro_dispatch.zig::Table` — the macro routing the
+  analyser consults. 3.12 must ensure `defmacro`-defined Clojure
+  macros also register themselves into this Table (or that the
+  analyser falls back to looking up `^:macro` Vars).
 
-**Exit criterion for 3.11**:
-- `cljw -e '(loop* [i 0 acc 0] (if (< i 10) (recur (+ i 1) (+ acc i)) acc))'` → `45`.
-- `cljw -e '(try (throw (ex-info "boom" 0)) (catch ExceptionInfo e (ex-message e)))'` → `"boom"`.
-- `cljw -e '(try 1 (finally (def *side* 42)))'` → `1` and the
-  `*side*` Var ends up with value `42`.
-- Closure: `cljw -e '(((fn* [x] (fn* [y] (+ x y))) 3) 4)'` → `7`.
-- e2e cases pinned in `test/e2e/phase3_cli.sh`.
-
-**ADR-light decision points to settle in 3.11's Step 0 survey**:
-1. **Closure capture mechanism for `fn*`**: slot-vector snapshot
-   (copy referenced outer-frame slots into a Function-attached array
-   at `allocFunction` time) vs free-var-list (analyser computes the
-   free-var set, body-time `LocalRef` looks them up). v1 picks one of
-   these — survey decides which fits CW v2's per-frame locals model.
-2. **`recur` signal**: Zig `error.PendingRecur` + threadlocal
-   `pending_recur_args` buffer (mirrors the existing
-   `last_thrown_exception` shape) vs a non-error threadlocal flag
-   that `evalLoop` polls after each body iteration. Error-based is
-   simpler to unwind through nested `if` / `let*` but breaks the
-   Zig invariant "errors are unusual".
+**Exit criterion for 3.12**:
+- A `core.clj` fixture exists under `src/lang/clj/clojure/core.clj`.
+- `bash test/run_all.sh` stays green.
+- Phase-3 exit criterion preview: `cljw -e '(defn f [x] (+ x 1))
+  (f 2)'` → `3` (this fully closes the §9.5 phase goal once 3.13
+  wires the bootstrap into `main.zig`).
 
 **Post-3.11 small cleanup queued** (not blocking):
 - Split `test/e2e/phase3_cli.sh` into `cli_entry.sh` (CLI plumbing
