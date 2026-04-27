@@ -72,11 +72,11 @@ Phase-3 boundary review chain ran. **Three escalations are blocking
      Original deadline: "Phase 4 着手前". **Most time-sensitive: Phase
      4 is what we are about to open.** Without G4, ROADMAP §10.2
      "mid-phase quick bench (4-7)" has no harness.
-2. **🔒 OrbStack x86_64 gate**. Per ROADMAP §11.5 / Phase 4 marker,
-   `orb run -m my-ubuntu-amd64 bash -c 'cd
-   /Users/shota.508/Documents/MyProducts/ClojureWasmFromScratch &&
-   bash test/run_all.sh'` must run green before Phase 4.1. The user
-   runs this on their Mac; the agent cannot.
+2. **🔒 OrbStack x86_64 gate — PASSED 2026-04-27**. Ran
+   `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` from
+   the project root inside the working directory; all 5 suites green
+   on Linux ubuntu questing amd64. Phase 4.1 may proceed once items
+   1 + 3 below are resolved.
 3. **Three security findings (H1/H2/H3)** queued from boundary
    security-review — should land as the first source commits in
    §9.6 / 4.0 (or 4.1 prelude) before any external behaviour change:
@@ -117,7 +117,7 @@ into VM scaffolding (§4.4 dual-backend foundation).
 ## Open questions / blockers
 
 - G1 / G2 / G4 strategic-note adoption (see Active task §1).
-- 🔒 OrbStack x86_64 gate run (see Active task §2).
+- ~~🔒 OrbStack x86_64 gate run~~ (passed 2026-04-27).
 - H1 / H2 / H3 security findings — queued for §9.6 / 4.0 prelude
   (see Active task §3).
 
