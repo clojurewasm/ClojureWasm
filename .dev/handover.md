@@ -83,7 +83,26 @@ numbers, does not assert pass/fail until §10.1 lock at Phase 8).
   (`e3de44f`).
 - §9.6 expanded inline in ROADMAP (this commit).
 
-**Post-3.11 small cleanup queued** (not blocking):
+**Phase-3 → Phase-4 reading pause (active 2026-04-27)**:
+The user is reading chapters 0001–0020 before Phase 4 opens, to
+keep up with the agent's pace. Implications for the next agent
+session:
+
+- Do **not** auto-start Phase 4 / §9.6 / 4.0 work on `/continue` —
+  wait for the user's explicit go signal after the reading pass.
+- Chapter **0020 (`docs/ja/0020-phase3-completion.md`, 1075 lines)
+  is polish-pending**. Chapters 0001–0019 received a prose-polish
+  sweep through commit `5711ce4`; 0020 was written by a subagent
+  this session and has not been hand-edited. Likely candidates for
+  polish: long sentences, occasional 体言止め run, half-translated
+  phrases — see `.claude/output-styles/japanese.md` checklist.
+- Any agent task during the reading pause should be **chapter
+  polish only** (per user request) — no source commits, no §9.6
+  task work.
+- Resume guide: `private/READING_GUIDE.md` (gitignored, scratch).
+
+**Post-3.11 small cleanup queued** (not blocking, picked up in §9.6
+or later):
 - Split `test/e2e/phase3_cli.sh` into `cli_entry.sh` (CLI plumbing
   only — 6 cases: -e / file / stdin / unknown flag / missing file /
   error label) and `lang_smoke.sh` (language semantics — macros /
