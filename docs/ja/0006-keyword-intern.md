@@ -14,18 +14,19 @@ date: 2026-04-27
 
 > 対応 task: §9.3 / 1.6 / 所要時間: 60〜80 分
 
-`:foo` は同じ keyword なら **どこに書かれても 1 個のヒープオブジェ
-クト**を共有する。これを **interning** という。intern していれば
-`(= :foo :foo)` の判定は **`u64` の bit 比較 1 命令** で済む。
+`:foo` は同じ keyword であれば **どこに書かれても 1 個のヒープ
+オブジェクトを共有します**。これを **interning** と呼びます。intern
+されていれば `(= :foo :foo)` の判定は **`u64` の bit 比較 1 命令**
+で済みます。
 
 本章では、Phase 1 段階の `KeywordInterner`（**単一スレッド前提・
-ロックなし**）を作る。要点は **`Keyword` cell の memory layout を
-ここで凍結**しておくこと。Phase 2.2 で rt-aware (mutex 付き) に
-昇格するが、cell layout は変わらない — 既存テストは破壊されず、
-intern table の見え方だけが進化する。
+ロックなし**）を作ります。要点は **`Keyword` cell の memory layout
+をここで凍結しておくこと** です。Phase 2.2 で rt-aware（mutex 付き）
+に昇格しますが、cell layout は変わりません。既存テストを壊さず、
+intern table の見え方だけが進化します。
 
-「Phase 2.2 への伏線を Phase 1 から張る」、これが原則 P2 (final
-shape on day 1) の実践。
+「Phase 2.2 への伏線を Phase 1 から張る」。これが原則 P2（final
+shape on day 1）の実践です。
 
 ---
 
@@ -48,14 +49,15 @@ shape on day 1) の実践。
 
 ### 等価判定を u64 bit 比較に潰したい
 
-`:foo` を 100 箇所で書いたとする。intern していなければ、それぞれが
-独立した heap セルになる:
+`:foo` を 100 箇所で書いたとします。intern していなければ、それぞれ
+が独立した heap セルになります:
 
 ```
 (:foo (key 1) :foo (key 2))    ;; 別オブジェクト 2 個
 ```
 
-そして `=` で比較するたびに **string 比較** が必要 (`memcmp` が走る)。
+そして `=` で比較するたびに **string 比較** が必要になります
+（`memcmp` が走る）。
 
 intern していれば:
 
@@ -63,8 +65,9 @@ intern していれば:
 (:foo (slot 1, ptr 0xABC) :foo (slot 2, ptr 0xABC))   ;; 同じ pointer
 ```
 
-→ `=` は **`u64` bit 比較** 1 命令 (`a == b`) で済む。
-**HashMap のキーとして頻出**する keyword でこの差は積み上がる。
+→ `=` は **`u64` bit 比較** 1 命令（`a == b`）で済みます。
+**HashMap のキーとして頻出する** keyword では、この差が積み上がって
+いきます。
 
 ### Clojure の `(identical? a b)` 意味論
 
@@ -73,8 +76,9 @@ intern していれば:
 (identical? "abc" "abc") ;; → false  (string は intern しない)
 ```
 
-ClojureWasm v2 は keyword だけ intern。symbol も intern するが、
-それは Phase 2 (`runtime/symbol.zig`)。Phase 1 では keyword が先。
+ClojureWasm v2 では keyword を intern します。symbol も intern する
+予定ですが、それは Phase 2（`runtime/symbol.zig`）の話です。Phase 1
+では keyword を先に扱います。
 
 ### 演習 6.1: intern の効果を予測 (L1 — 予測検証)
 
@@ -146,9 +150,9 @@ pub const Keyword = struct {
 | `name` | 16 byte | `[]const u8` — keyword name 本体 |
 | `hash_cache` | 4 byte | precomputed Murmur3 hash |
 
-総計 ~44 byte (alignment 込みで 48 程度)。`hash_cache` を
-**precompute** しているのは、HashMap の bucket 計算で keyword を
-頻繁に hash しなおすため。
+総計 ~44 byte（alignment 込みで 48 程度）。`hash_cache` を
+**precompute** しているのは、HashMap の bucket 計算で keyword の
+hash を何度も取り直すことになるためです。
 
 ### 4 つの設計原則を満たす
 
@@ -182,11 +186,11 @@ Phase 2.2 (`07d5c34`) で実際に変わったもの:
 - 新たな top-level 関数 `intern(rt, ns, name)` / `find(rt, ns, name)`
   を追加（rt.io 経由で lock/unlock）
 
-**`Keyword` cell の field は 1 つも変わっていない**。NaN-boxed
-encoding（pointer の bit pattern）も変わらない → **既存の
-`Value.encodeHeapPtr(.keyword, ...)` がそのまま動く**。
+**`Keyword` cell の field は 1 つも変わっていません**。NaN-boxed
+encoding（pointer の bit pattern）も変わらないので、**既存の
+`Value.encodeHeapPtr(.keyword, ...)` がそのまま動きます**。
 
-これが「cell layout を Phase 1 で凍結」の威力。
+これが「cell layout を Phase 1 で凍結しておく」ことの威力です。
 
 ---
 
@@ -239,10 +243,10 @@ const name = std.fmt.bufPrint(&name_buf, "kw_{d}", .{i}) catch unreachable;
 _ = try interner.intern(null, name);
 ```
 
-のように **stack 上の一時バッファ** を渡してくる可能性がある。
+のように **stack 上の一時バッファ** を渡してくる可能性があります。
 intern table はプロセス寿命なので、**自分で copy を取らないと
-dangling pointer** になる。`alloc.dupe(u8, name)` で深いコピーを取る
-のが正解。
+dangling pointer になってしまいます**。`alloc.dupe(u8, name)` で
+深いコピーを取るのが正解です。
 
 ### 演習 6.2: intern 関数本体を再構成 (L2 — 部分再構成)
 
@@ -295,10 +299,11 @@ pub fn intern(self: *KeywordInterner, ns: ?[]const u8, name: []const u8) !Value 
 
 注意点:
 
-- 既存ヒット時に `key` を free しないとリークする (table は key を
-  自分で持っていて、新規パスで保管する)
-- `errdefer` を入れる代替案もあるが、Phase 1 stub では既存テストが
-  通る最小限の実装で OK
+- 既存ヒット時に `key` を free しないとリークします（table は新規
+  パスで自分が key を保管するため、ヒット時の一時 key は呼び出し
+  側で解放する必要がある）。
+- `errdefer` を入れる代替案もありますが、Phase 1 stub では既存
+  テストが通る最小限の実装で十分です。
 
 </details>
 
@@ -314,16 +319,17 @@ table: std.StringArrayHashMapUnmanaged(*Keyword) = .empty,
 
 ### 4 つの理由
 
-1. **string key 用に最適化された hash function** — 内部で string-aware
-   な関数を使う。
-2. **`Unmanaged`** — allocator field を内部に持たない。allocator は
-   呼び出し時に毎回渡す。これにより `KeywordInterner` 全体が `alloc`
-   field 1 個で完結し、ownership が明示的。
-3. **`ArrayHashMap`** (linear probing) — pointer-stability の保証は
-   ない代わりに **insertion order を保つ**。デバッグ時に keyword の
-   出現順を見たいときに便利。
-4. **小さなテーブルで高速** — keyword は通常 100〜10000 個オーダー。
-   ArrayHashMap の linear probe は cache-friendly。
+1. **string key 向けに最適化された hash function** が用意されており、
+   内部で string-aware な関数が使われます。
+2. **`Unmanaged`** は allocator field を内部に持ちません。allocator
+   は呼び出しのたびに渡します。これにより `KeywordInterner` 全体が
+   `alloc` field 1 個で完結し、所有権が明示的になります。
+3. **`ArrayHashMap`**（linear probing）は pointer-stability を保証
+   しない代わりに **挿入順を保ちます**。デバッグ時に keyword の
+   出現順を見たいケースで便利です。
+4. **小さなテーブルで高速** に動作します。keyword は通常 100〜10000
+   個のオーダーで、ArrayHashMap の linear probe はその規模で
+   cache-friendly に振る舞います。
 
 ### 演習 6.3: KeywordInterner module 全体を再構成 (L3)
 
@@ -453,8 +459,8 @@ repeats` / `qualified keywords are distinct from bare` / etc.) が
 
 ## 5. Phase 2.2 への伏線
 
-Phase 2.2 (`07d5c34`) は cell を変えずに、API surface だけを進化
-させた。差分の本質は:
+Phase 2.2（`07d5c34`）は cell を変えずに、API surface だけを進化
+させたコミットです。差分の本質は次の通りです:
 
 | Phase 1 (`b60924b`) | Phase 2.2 (`07d5c34`) |
 |------|------|
@@ -463,13 +469,13 @@ Phase 2.2 (`07d5c34`) は cell を変えずに、API surface だけを進化
 | owner = `*KeywordInterner` | owner = `*Runtime`, `Runtime.keywords: KeywordInterner` |
 | API method 1 個 | `internUnlocked` (旧名) + 新たな `intern(rt, ...)` |
 
-**low-level メソッド** (`internUnlocked` / `findUnlocked`) を
-**残した** のがミソ。テストや fixed-input bootstrap (single-thread
-が保証されている path) からは旧 API を使い続けられる。`asKeyword`
-（pure pointer 算術なので lock 不要）も変えていない。
+**low-level メソッド**（`internUnlocked` / `findUnlocked`）を
+**残した** のが要所です。テストや fixed-input bootstrap（single-
+thread が保証されている経路）からは旧 API を使い続けられます。
+`asKeyword`（pure pointer 算術なのでロック不要）も変更していません。
 
-ROADMAP **§A7 (Concurrency and errors are designed in on day 1)** が
-読める形で実装される。
+ROADMAP **§A7（Concurrency and errors are designed in on day 1）**
+が、コードから読み取れる形で実装されています。
 
 ---
 
@@ -530,24 +536,28 @@ std.debug.print("c = 0x{X:0>16}\n", .{@intFromEnum(c)});
 | hash precompute | あり (i32) | あり (u32) | あり (`int _hasheq`) | あり (u32) |
 | qualified keyword | sentinel `"/"` で string 連結 | composite key | `Symbol` 内蔵の ns/name | composite key |
 
-引っ張られず本リポの理念で整理した点：
+引っ張られずに本リポジトリの理念で整理した点：
 
-- v1 は **`pub var` でグローバル table** を持っていた → ROADMAP §13
-  で「`pub var` 禁止」が立った後、本リポは構造体 owner にする。
-- Clojure JVM の `static ConcurrentHashMap` は process-wide singleton。
-  本リポは **`Runtime` 単位の table** にしたので、複数 Runtime が
-  独立して動かせる（test fixture で実証）。
-- Phase 1 で **mutex を仕込まない**: v1_ref は最初から mutex 入りで、
-  single-thread Phase 1 のテスト時間が長くなった。本リポは
-  「cell layout だけ凍結、ロックは Phase 2.2 で入れる」段階分け。
+- v1 は **`pub var` でグローバル table** を持っていました。ROADMAP
+  §13 で「`pub var` 禁止」が立ったあと、本リポジトリは構造体 owner
+  に切り替えています。
+- Clojure JVM の `static ConcurrentHashMap` は process-wide
+  singleton です。本リポジトリでは **`Runtime` 単位の table** に
+  したので、複数 Runtime を独立に動かせます（test fixture でも
+  実証済み）。
+- Phase 1 で **mutex を仕込んでいない**：v1_ref は最初から mutex
+  入りで、single-thread Phase 1 のテスト時間が長くなりました。本
+  リポジトリは「cell layout だけ凍結、ロックは Phase 2.2 で入れる」
+  という段階分けにしています。
 
 ---
 
 ## 9. Feynman 課題
 
-1. なぜ `:foo` を intern するのか？ 6 歳の自分に 1 行で。
-2. cell layout を Phase 1 で凍結することの利点は？ 1 行で。
-3. Phase 2.2 で `internUnlocked` (旧名) を **残した** 理由は？ 1 行で。
+1. なぜ `:foo` を intern するのか。6 歳の自分に向けて 1 行で。
+2. cell layout を Phase 1 で凍結することの利点は何か。1 行で。
+3. Phase 2.2 で `internUnlocked`（旧名）を **残した** 理由は何か。
+   1 行で。
 
 ---
 
@@ -567,7 +577,7 @@ std.debug.print("c = 0x{X:0>16}\n", .{@intFromEnum(c)});
 
 第 7 章: [Form AST と Tokenizer](./0007-form-and-tokenizer.md)
 
-— ここからついに **Clojure source text** に踏み込む。`(+ 1 2)`
+— ここからついに **Clojure source text** に踏み込みます。`(+ 1 2)`
 という string が `Form` の tagged union にどう構造化されるか、
-そして tokenizer がどう **`SourceLocation` を毎 token に付ける**
-のか、を見ます。
+tokenizer が **`SourceLocation` を各 token にどう付与する** のかを
+見ていきます。
