@@ -15,12 +15,15 @@
 
 ## Current state
 
-- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.13 source done. 3.1–3.7
-  paired (chapters 0017 / 0018 / 0019); 3.8 + 3.9 + 3.10 + 3.11 + 3.12
-  + 3.13 are unpaired source SHAs awaiting chapter(s) 0020 / 0021.
-  Phase-3 exit form `(defn f [x] (+ x 1)) (f 2)` → `3` works
-  end-to-end via `cljw -e`. Next active task is **3.14** (Phase-3
-  exit smoke `test/e2e/phase3_exit.sh` wired into `run_all.sh`).
+- **Phase**: Phase 3 IN-PROGRESS (§9.5). **3.1–3.14 source done.**
+  3.1–3.7 paired (chapters 0017 / 0018 / 0019); 3.8 + 3.9 + 3.10 +
+  3.11 + 3.12 + 3.13 + 3.14 are unpaired source SHAs awaiting
+  chapter(s) 0020 (error handling + iteration: 3.8–3.11) and 0021
+  (bootstrap mechanism + Phase-3 exit: 3.12–3.14). Phase-3 boundary
+  review chain (audit / simplify / security-review / chapter writing)
+  is the next move; after chapters land and §9.5 task table flips
+  to all `[x]`, Phase 3 → DONE / Phase 4 → IN-PROGRESS (🔒 OrbStack
+  x86_64 gate due before Phase 4.1).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
 - **Last paired chapter commit**: `ed470fe` (0019) covering 6630cbe
   (3.7 — macroexpand routing). Preceded by `a89e6fb` (0018) covering
@@ -34,9 +37,14 @@
   - `a1a70aa` (3.12 — Stage-1 bootstrap module + minimal core.clj)
   - `f725f58` (3.13a — wire bootstrap.loadCore into main.zig startup)
   - `22881a1` (3.13b — `defn` Zig macro transform)
+  - `8e63134` (meta — §17 amendment policy + ADR 0002; **not** a
+    source SHA, but mention in chapter 0021 since it explains why
+    §9.5/3.14 uses `0` instead of `{}`)
+  - `399cb31` (3.14 — `test/e2e/phase3_exit.sh` + run_all.sh wiring)
   Plan: chapter 0020 covers 3.8 + 3.9 + 3.10 + 3.11 as one phase-3
-  "error handling and iteration" concept block; 3.12 + 3.13 land in
-  chapter 0021 (bootstrap mechanism + Stage-1 prologue).
+  "error handling and iteration" concept block; chapter 0021 covers
+  3.12 + 3.13 + 3.14 as "bootstrap mechanism + Phase-3 exit", with a
+  short callout to ADR 0002 / §17 amendment policy.
 - **Build**: `bash test/run_all.sh` all green —
   `zig build test`, `zone_check --gate`,
   `test/e2e/phase2_exit.sh` (3/3),
@@ -58,42 +66,38 @@
   backend concern (ADR 0001). `Runtime` gained
   `gensym(arena, prefix)` for hygienic auto-symbols.
 
-## Active task — §9.5 / 3.14
+## Active task — Phase-3 boundary review chain
 
-Phase-3 exit smoke. Create `test/e2e/phase3_exit.sh` containing the
-two literal exit forms from §9.5 / 3.14, wire it into
-`test/run_all.sh`. The exit forms (per ADR 0002):
+All Phase-3 source has landed (3.1–3.14). Next move is the §`continue`
+Phase-boundary review chain:
 
-- `cljw -e '(defn f [x] (+ x 1)) (f 2)'` → `3`
-- `cljw -e '(try (throw (ex-info "boom" 0)) (catch ExceptionInfo e (ex-message e)))'` → `"boom"`
-
-Both already pass against the current binary (`phase3_cli.sh` cases
-25 + 29 cover them); the new script is a focused exit gate that is
-**only** these two cases, separate from the wider `phase3_cli.sh`
-plumbing tests. This is the same shape as `phase2_exit.sh`.
-
-The integer placeholder `0` (instead of `{}`) is the §9.5 / 3.14
-amendment recorded in **ADR 0002**: map literals are scoped to
-Phase 5, so the smoke uses any non-nil Value to verify the
-try/throw/catch + ex-info round-trip.
+1. `audit-scaffolding` slash command on the project as a whole; only
+   `block`-severity findings stop the loop.
+2. **Multi-agent fan-out** (parallel):
+   - Subagent A: `simplify` on `git diff <phase-start>..HEAD -- src/`.
+   - Subagent B: `security-review` on unpushed commits.
+   - Subagent C: write outstanding chapters 0020 + 0021 from the
+     `private/notes/phase3-3.{8..14}.md` task notes.
+3. After chapters commit, flip the §9.5 task table cells `[ ]` → `[x]`
+   for 3.8–3.14 with their source SHAs, and flip the §9 phase table
+   row Phase 3 → DONE / Phase 4 → IN-PROGRESS, then expand §9.6
+   inline.
+4. Re-run the OrbStack x86_64 gate (🔒) before opening Phase 4.1:
+   `orb run -m my-ubuntu-amd64 bash -c 'cd <project> &&
+   bash test/run_all.sh'`.
+5. Surface any unadopted strategic notes from `private/` and
+   escalate to the user before starting §9.6 / 4.1.
 
 **Retrievable identifiers**:
-- `test/e2e/phase2_exit.sh` — existing template to mirror.
-- `test/run_all.sh` — wire the new script in alongside `phase3_cli.sh`.
-- ROADMAP §9.5 / 3.14 (table) — the amended exit form.
-- `.dev/decisions/0002-phase3-exit-no-map-literal.md` — why `0`.
+- `private/notes/phase3-3.8.md` … `phase3-3.14.md` — chapter source.
+- `.claude/skills/code-learning-doc/TEMPLATE_PHASE_DOC.md` — template.
+- `scripts/check_learning_doc.sh` — pairing gate; chapter `commits:`
+  frontmatter must list every unpaired Phase-3 source SHA.
+- `.claude/skills/audit-scaffolding/CHECKS.md` — audit checks A1–F.
 
-**Exit criterion for 3.14**:
-- `test/e2e/phase3_exit.sh` exists and passes.
-- `bash test/run_all.sh` runs it and stays green.
-- After 3.14 lands, the §9 phase tracker flips Phase 3 → DONE,
-  Phase 4 → IN-PROGRESS (🔒 OrbStack x86_64 gate due).
-
-**3.13 (just landed) — exit criterion already met**:
-- `cljw -e '(not true)'` → `false`; `cljw -e '(defn f [x] (+ x 1))
-  (f 2)'` → `3` both pass via `phase3_cli.sh` cases 28 + 29.
-- `bash test/run_all.sh` green; bootstrap evaluates at every `cljw`
-  invocation.
+**3.14 (just landed)**:
+- `test/e2e/phase3_exit.sh` exists; both exit assertions pass.
+- `bash test/run_all.sh` green at 5/5 suites.
 
 **Post-3.11 small cleanup queued** (not blocking):
 - Split `test/e2e/phase3_cli.sh` into `cli_entry.sh` (CLI plumbing
