@@ -15,14 +15,18 @@
 
 ## Current state
 
-- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.7 done, all paired
-  (chapters 0017 / 0018 / 0019). Next active task is **3.8**
-  (`runtime/print.zig` extraction).
+- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.8 done. 3.1–3.7 paired
+  (chapters 0017 / 0018 / 0019); 3.8 is the first unpaired SHA
+  awaiting its chapter. Next active task is **3.9**
+  (try / catch / throw / loop\* / recur special forms).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
 - **Last paired chapter commit**: `ed470fe` (0019) covering 6630cbe
   (3.7 — macroexpand routing). Preceded by `a89e6fb` (0018) covering
   3a5f852..766a73a (3.5+3.6 — heap collection literals).
-- **Unpaired source SHAs**: none. 3.1–3.7 are fully paired.
+- **Unpaired source SHAs awaiting chapter**:
+  - `772ebcf` (3.8 — runtime/print.zig extraction)
+  Will be folded into a 3.8–3.x concept chapter — exact pairing
+  decided when the next batch of related tasks closes.
 - **Build**: `bash test/run_all.sh` all green —
   `zig build test`, `zone_check --gate`,
   `test/e2e/phase2_exit.sh` (3/3),
@@ -43,31 +47,40 @@
   backend concern (ADR 0001). `Runtime` gained
   `gensym(arena, prefix)` for hygienic auto-symbols.
 
-## Active task — §9.5 / 3.8
+## Active task — §9.5 / 3.9
 
-`src/runtime/print.zig` (new file) — extract `printValue` /
-`printList` / `printString` from `src/main.zig` into a Layer-0
-module so that future REPL / nREPL / pr-str primitive paths can
-share one implementation. main.zig becomes a thin caller.
+`src/eval/analyzer.zig` — add `try` / `catch` / `throw` / `loop*` /
+`recur` special forms. `src/eval/node.zig` gains `try_node` /
+`throw_node` / `loop_node` / `recur_node` variants. Pairs with 3.10
+(ex_info heap struct) and 3.11 (TreeWalk evalTry / evalThrow /
+evalLoop / evalRecur impl).
 
 **Retrievable identifiers**:
-- ROADMAP §9.5 task 3.8 (table).
-- `src/main.zig::printValue` (line ~163), `printList` (~196),
-  `printString` (~214) — current home; move them as-is then add
-  the symbol / fn / map renderers in follow-on tasks.
-- New file goes in `src/runtime/` (Layer 0), so it can only import
-  `runtime/value.zig`, `runtime/keyword.zig`,
-  `runtime/collection/{string,list}.zig` — all already in zone.
-- `main.zig`'s test block must add the new file to the discovery
-  list so `zig build test` picks it up.
+- ROADMAP §9.5 task 3.9 (table).
+- `src/eval/node.zig` — current Node tagged union surface; the four
+  new variants follow the existing shape (loc + payload struct).
+- `src/eval/analyzer.zig::SPECIAL_FORMS` — extend with `try`,
+  `throw`, `loop*`, `recur`. `try` syntax: `(try expr* (catch
+  ExceptionInfo e body*) (finally body*))` — note Clojure JVM uses
+  `catch <Class> <binding> <body>`; CW v2 starts with a single
+  catch class `ExceptionInfo` and revisits multi-catch in Phase 5+.
+- `src/eval/analyzer.zig::Scope` — `loop*` introduces a binding
+  frame the same way `let*` does, but `recur` must be tail-position
+  to that frame; mark the loop in the Scope chain with a flag the
+  analyzer reads.
+- `eval/macro_dispatch.Table` is **not** touched — `try` / `loop*`
+  are special forms, not macros.
 
-**Exit criterion for 3.8**:
-- `printValue` lives in `runtime/print.zig`; main.zig imports it.
-- All existing e2e cases still pass unchanged
-  (`test/run_all.sh` green).
-- Unit test in `runtime/print.zig` covers nil / int / keyword /
-  string / list as a regression guard so future renderer tweaks
-  don't drift.
+**Exit criterion for 3.9** (analyzer-only; eval impl lands at 3.11):
+- `(loop* [i 0] (if (< i 3) (recur (+ i 1)) i))` analyses to a
+  `loop_node` containing the recur target.
+- `(try 1 (catch ExceptionInfo e 2))` analyses to a `try_node` with
+  the body Node and a single catch clause.
+- `(throw x)` analyses to a `throw_node` carrying `x`.
+- Tail-position `recur` outside a `loop*` / `fn*` is a syntax_error
+  with the call-site loc.
+- Unit tests in `analyzer.zig` cover the 3 happy paths + 2 error
+  paths.
 
 ## Open questions / blockers
 
