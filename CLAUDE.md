@@ -59,8 +59,11 @@ turn 1 must be Japanese.
   principles before adopting an idiom; always note one DIVERGENCE).
 - After each task, write a 5-minute per-task note from hot context
   (`private/notes/<phase>-<task>.md`, gitignored).
-- `bash test/run_all.sh` must be green before every commit. Don't
-  bypass hooks.
+- `bash test/run_all.sh` must be green **on both Mac (host) and
+  OrbStack Ubuntu x86_64** before every commit. The Linux run is
+  `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` (Bash
+  timeout ≥ 600s for cold builds). Setup: [`.dev/orbstack-setup.md`](.dev/orbstack-setup.md).
+  Don't bypass hooks.
 - Commit at the natural granularity of code changes; chapters
   (`docs/ja/NNNN-*.md`) are written **per concept** at phase
   boundaries — see skill `code-learning-doc` for the two-cadence flow.

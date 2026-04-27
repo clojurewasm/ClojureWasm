@@ -117,11 +117,23 @@ cheap.
 While green. Apply only structural improvements that do not change
 behaviour.
 
-### Step 5 — Test gate (subagent: Bash via run_in_background if log is large)
+### Step 5 — Test gate (Mac + Ubuntu x86_64, run in parallel)
 
-`bash test/run_all.sh` must be green. If output exceeds ~200 lines,
+Run **both** in a single message with two parallel Bash tool calls:
+
+- `bash test/run_all.sh` (Mac host — `aarch64-darwin`)
+- `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'`
+  (Linux `x86_64` — Bash timeout ≥ 600000 ms for cold builds)
+
+Both must be green to proceed. The Linux run catches NaN-boxing /
+HAMT / GC / packed-struct alignment regressions that would slip past
+an Apple-Silicon-only run. If either output exceeds ~200 lines,
 delegate to a Bash subagent and ask for "pass/fail + first failure
 only"; otherwise inline.
+
+Setup for the Linux side: `.dev/orbstack-setup.md`. If the VM is
+absent (`error: machine not found`), surface to the user — do not
+attempt to provision it autonomously (uses Mac admin context).
 
 ### Step 6 — Source commit
 

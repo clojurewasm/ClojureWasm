@@ -3,6 +3,14 @@
 # repository to be green" is unambiguous. Suites grow as phases land;
 # do not add ad-hoc test scripts elsewhere — wire them in here.
 #
+# Run on **both** the Mac host and Ubuntu x86_64 before every commit
+# (CLAUDE.md "Working agreement"):
+#
+#   bash test/run_all.sh                                              # Mac
+#   orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'         # Linux x86_64
+#
+# Setup for the Linux side: .dev/orbstack-setup.md.
+#
 # Active suites:
 #   1. zig build test                  Zig unit tests in each src/**/*.zig
 #   2. scripts/zone_check.sh           zone-dependency gate (--gate mode)
