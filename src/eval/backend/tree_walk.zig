@@ -229,12 +229,13 @@ fn callBuiltin(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc:
 // --- VTable installer ---
 
 /// Populate `rt.vtable` with the TreeWalk callbacks. Call once at
-/// startup, after `Runtime.init` and `Env.init`.
+/// startup, after `Runtime.init` and `Env.init`. Macro expansion is
+/// **not** installed here — it lives in `eval/macro_dispatch.zig` and
+/// is threaded explicitly into `analyze`. See ADR 0001.
 pub fn installVTable(rt: *Runtime) void {
     rt.vtable = .{
         .callFn = &treeWalkCall,
         .valueTypeKey = &valueTypeKey,
-        .expandMacro = &expandMacroStub,
     };
 }
 
@@ -242,38 +243,31 @@ fn valueTypeKey(v: Value) []const u8 {
     return @tagName(v.tag());
 }
 
-fn expandMacroStub(rt: *Runtime, env: *Env, macro_val: Value, args: []const Value) anyerror!Value {
-    _ = rt;
-    _ = env;
-    _ = macro_val;
-    _ = args;
-    // Phase-3 wires real macro expansion. Until then, any code that
-    // hits this path (only happens if a Var.flags.macro_ is set, which
-    // Phase-2 never does) gets a clean error rather than a UB ride.
-    return error_mod.setErrorFmt(.eval, .not_implemented, .{}, "Macro expansion not yet implemented (Phase 3.7+)", .{});
-}
-
 // --- tests ---
 
 const testing = std.testing;
 const Reader = @import("../reader.zig").Reader;
 const analyze = @import("../analyzer.zig").analyze;
+const macro_dispatch = @import("../macro_dispatch.zig");
 
 const TestFixture = struct {
     threaded: std.Io.Threaded,
     rt: Runtime,
     env: Env,
     arena: std.heap.ArenaAllocator,
+    macro_table: macro_dispatch.Table,
 
     fn init(self: *TestFixture, alloc: std.mem.Allocator) !void {
         self.threaded = std.Io.Threaded.init(alloc, .{});
         self.rt = Runtime.init(self.threaded.io(), alloc);
         self.env = try Env.init(&self.rt);
         self.arena = std.heap.ArenaAllocator.init(alloc);
+        self.macro_table = macro_dispatch.Table.init(alloc);
         installVTable(&self.rt);
     }
 
     fn deinit(self: *TestFixture) void {
+        self.macro_table.deinit();
         self.arena.deinit();
         self.env.deinit();
         self.rt.deinit();
@@ -283,7 +277,7 @@ const TestFixture = struct {
     fn evalStr(self: *TestFixture, source: []const u8) !Value {
         var reader = Reader.init(self.arena.allocator(), source);
         const form = (try reader.read()) orelse return error.NotImplemented;
-        const node = try analyze(self.arena.allocator(), &self.rt, &self.env, null, form);
+        const node = try analyze(self.arena.allocator(), &self.rt, &self.env, null, form, &self.macro_table);
         var locals: [MAX_LOCALS]Value = [_]Value{.nil_val} ** MAX_LOCALS;
         return eval(&self.rt, &self.env, &locals, node);
     }

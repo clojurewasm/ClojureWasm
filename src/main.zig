@@ -17,11 +17,13 @@ const Writer = std.Io.Writer;
 
 const Reader = @import("eval/reader.zig").Reader;
 const analyzeForm = @import("eval/analyzer.zig").analyze;
+const macro_dispatch = @import("eval/macro_dispatch.zig");
 const tree_walk = @import("eval/backend/tree_walk.zig");
 const Runtime = @import("runtime/runtime.zig").Runtime;
 const Env = @import("runtime/env.zig").Env;
 const Value = @import("runtime/value.zig").Value;
 const primitive = @import("lang/primitive.zig");
+const macro_transforms = @import("lang/macro_transforms.zig");
 const keyword = @import("runtime/keyword.zig");
 const error_mod = @import("runtime/error.zig");
 const error_print = @import("runtime/error_print.zig");
@@ -117,6 +119,14 @@ pub fn main(init: std.process.Init) !void {
     tree_walk.installVTable(&rt);
     try primitive.registerAll(&env);
 
+    // Bootstrap macros (Phase 3.7): intern `let` / `when` / `cond` /
+    // `->` / `->>` / `and` / `or` / `if-let` / `when-let` as macro
+    // Vars and populate the analyzer's MacroTable. Lives long enough
+    // for the entire eval loop; no per-form re-construction.
+    var macro_table = macro_dispatch.Table.init(gpa);
+    defer macro_table.deinit();
+    try macro_transforms.registerInto(&env, &macro_table);
+
     // --- Read - Analyse - Eval - Print loop ---
     var reader = Reader.init(arena, source_text.?);
     while (true) {
@@ -126,7 +136,7 @@ pub fn main(init: std.process.Init) !void {
         };
         const form = form_opt orelse break;
 
-        const node = analyzeForm(arena, &rt, &env, null, form) catch |err| {
+        const node = analyzeForm(arena, &rt, &env, null, form, &macro_table) catch |err| {
             try renderError(stderr, ctx, err);
             std.process.exit(1);
         };
@@ -256,8 +266,10 @@ test {
     _ = @import("eval/reader.zig");
     _ = @import("eval/node.zig");
     _ = @import("eval/analyzer.zig");
+    _ = @import("eval/macro_dispatch.zig");
     _ = @import("eval/backend/tree_walk.zig");
     _ = @import("lang/primitive/math.zig");
     _ = @import("lang/primitive/core.zig");
     _ = @import("lang/primitive.zig");
+    _ = @import("lang/macro_transforms.zig");
 }

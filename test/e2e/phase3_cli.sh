@@ -103,5 +103,83 @@ EOF
 [[ "$got" == '(1 :a "b")' ]] || fail "mixed list: want '(1 :a \"b\")', got '$got'"
 echo "    ✓ (quote (1 :a \"b\")) → (1 :a \"b\")"
 
+# --- Case 12: bootstrap macro `let` (3.7) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(let [x 1] (+ x 2))
+EOF
+) || fail "let macro: non-zero exit"
+[[ "$got" == "3" ]] || fail "let macro: want '3', got '$got'"
+echo "    ✓ (let [x 1] (+ x 2)) → 3"
+
+# --- Case 13: bootstrap macro `when` truthy (3.7) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(when true 42)
+EOF
+) || fail "when truthy: non-zero exit"
+[[ "$got" == "42" ]] || fail "when truthy: want '42', got '$got'"
+echo "    ✓ (when true 42) → 42"
+
+# --- Case 14: bootstrap macro `when` falsy (3.7) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(when false 42)
+EOF
+) || fail "when falsy: non-zero exit"
+[[ "$got" == "nil" ]] || fail "when falsy: want 'nil', got '$got'"
+echo "    ✓ (when false 42) → nil"
+
+# --- Case 15: bootstrap macro `->` thread-first (3.7) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(-> 1 (+ 2) (* 3))
+EOF
+) || fail "thread-first: non-zero exit"
+[[ "$got" == "9" ]] || fail "thread-first: want '9', got '$got'"
+echo "    ✓ (-> 1 (+ 2) (* 3)) → 9"
+
+# --- Case 16: `cond` cascade (3.7) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(cond false 1 false 2 true 3 false 4)
+EOF
+) || fail "cond: non-zero exit"
+[[ "$got" == "3" ]] || fail "cond: want '3', got '$got'"
+echo "    ✓ (cond ...) selects the first truthy → 3"
+
+# --- Case 17: `and` short-circuits, `or` returns first truthy (3.7) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(and 1 2 3)
+EOF
+) || fail "and: non-zero exit"
+[[ "$got" == "3" ]] || fail "and truthy chain: want '3', got '$got'"
+echo "    ✓ (and 1 2 3) → 3 (last truthy)"
+
+got=$("$BIN" - <<'EOF' 2>&1
+(or false nil 7)
+EOF
+) || fail "or: non-zero exit"
+[[ "$got" == "7" ]] || fail "or first-truthy: want '7', got '$got'"
+echo "    ✓ (or false nil 7) → 7"
+
+# --- Case 18: `if-let` truthy / falsy (3.7) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(if-let [x 7] (+ x 1) 0)
+EOF
+) || fail "if-let truthy: non-zero exit"
+[[ "$got" == "8" ]] || fail "if-let truthy: want '8', got '$got'"
+echo "    ✓ (if-let [x 7] (+ x 1) 0) → 8"
+
+got=$("$BIN" - <<'EOF' 2>&1
+(if-let [x false] (+ x 1) 99)
+EOF
+) || fail "if-let falsy: non-zero exit"
+[[ "$got" == "99" ]] || fail "if-let falsy: want '99', got '$got'"
+echo "    ✓ (if-let [x false] ... 99) → 99"
+
+# --- Case 19: `when-let` (3.7) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(when-let [x 5] (+ x 10))
+EOF
+) || fail "when-let truthy: non-zero exit"
+[[ "$got" == "15" ]] || fail "when-let truthy: want '15', got '$got'"
+echo "    ✓ (when-let [x 5] (+ x 10)) → 15"
+
 echo
 echo "Phase-3 CLI entry points: all green."

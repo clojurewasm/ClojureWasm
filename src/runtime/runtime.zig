@@ -48,10 +48,16 @@ pub const Runtime = struct {
 
     /// Layer-0 → Layer-1+ dispatch table. Populated by the TreeWalk
     /// backend in Phase 2.6. While `null`, callers that would invoke
-    /// `callFn` / `expandMacro` simply don't exist yet — those sites
-    /// are gated behind primitives that get registered alongside the
-    /// vtable.
+    /// `callFn` simply don't exist yet — those sites are gated behind
+    /// primitives that get registered alongside the vtable. Macro
+    /// expansion is **not** on this table; see ADR 0001.
     vtable: ?VTable = null,
+
+    /// Monotonic counter for `gensym` / auto-gensym (`foo#`). Lives on
+    /// the Runtime so multiple macros within one analyse pass share a
+    /// single sequence; per-Runtime so parallel tests don't collide.
+    /// Phase 3.7 wires the first user (bootstrap macro `and` / `or`).
+    gensym_counter: u64 = 0,
 
     /// Phase-2 heap-object pool. Until the Phase-5 mark-sweep GC, each
     /// Layer-1+ heap allocation registers a `(ptr, free_fn)` pair here
@@ -68,6 +74,16 @@ pub const Runtime = struct {
     /// Track a heap-allocated object so `Runtime.deinit` will free it.
     pub fn trackHeap(self: *Runtime, entry: HeapEntry) !void {
         try self.heap_objects.append(self.gpa, entry);
+    }
+
+    /// Allocate a fresh symbol name `<prefix>__<n>__auto__` in `arena`.
+    /// Mirrors Clojure's `gensym` shape (the trailing `__auto__` is
+    /// what syntax-quote's `foo#` uses; we keep it uniform). The
+    /// counter is per-Runtime so parallel tests stay independent.
+    pub fn gensym(self: *Runtime, arena: std.mem.Allocator, prefix: []const u8) ![]const u8 {
+        const n = self.gensym_counter;
+        self.gensym_counter += 1;
+        return std.fmt.allocPrint(arena, "{s}__{d}__auto__", .{ prefix, n });
     }
 
     /// Production initializer. `io` typically comes from

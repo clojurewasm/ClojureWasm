@@ -15,14 +15,24 @@
 //!
 //! Layer 0 declares only **types**; the concrete function pointers
 //! land at startup, when Layer 1 (TreeWalk in §9.4 task 2.6) calls
-//! `installVTable(rt, ...)`. While `Runtime.vtable == null`, callFn /
-//! expandMacro must not be invoked — this is structurally enforced
-//! because the only callers (built-ins and the analyzer's macro path)
-//! get registered in Phase 2.6+ and not before.
+//! `installVTable(rt, ...)`. While `Runtime.vtable == null`, `callFn`
+//! must not be invoked — this is structurally enforced because the
+//! only callers (built-ins) get registered in Phase 2.6+ and not before.
 //!
 //! Why not `pub var` for the vtable? Because then tests cannot inject
 //! a mock backend, and two Runtimes cannot carry different backends.
 //! `Runtime.vtable: ?VTable` solves both.
+//!
+//! ### Why no `expandMacro` here
+//!
+//! Macro expansion is **not** a Layer-0 concern. Earlier sketches put
+//! `expandMacro` on this VTable, but Phase 3.7 surfaced two problems:
+//! (1) macros operate on Forms, which are a Layer-1 concept that
+//! `runtime/` cannot reference; (2) macros are backend-agnostic, so
+//! routing them through the same vtable as `callFn` (which is
+//! backend-installed) misnames the responsibility. The macro path
+//! therefore lives in `eval/macro_dispatch.zig` (Layer 1) and is
+//! threaded explicitly into `analyze`. See ADR 0001.
 
 const std = @import("std");
 const Value = @import("value.zig").Value;
@@ -58,23 +68,15 @@ pub const CallFn = *const fn (
 /// HeapTag).
 pub const ValueTypeKeyFn = *const fn (val: Value) []const u8;
 
-/// Macro-expansion entry point implemented by the analyzer. Called
-/// when the backend encounters an invocation whose head resolves to a
-/// macro Var.
-pub const ExpandMacroFn = *const fn (
-    rt: *Runtime,
-    env: *Env,
-    macro_val: Value,
-    args: []const Value,
-) anyerror!Value;
-
 /// Layer-0 → Layer-1+ dispatch table. Stored as a field on `Runtime`,
 /// not as a `pub var`, so multiple Runtimes can carry independent
 /// backends (parallel tests, multi-tenant nREPL, mock injection).
+///
+/// Macro expansion is intentionally **not** here — see the module-level
+/// comment and ADR 0001.
 pub const VTable = struct {
     callFn: CallFn,
     valueTypeKey: ValueTypeKeyFn,
-    expandMacro: ExpandMacroFn,
 };
 
 // --- threadlocal call-scoped state ---
@@ -105,14 +107,6 @@ fn mockCallFn(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: 
 fn mockValueTypeKey(val: Value) []const u8 {
     _ = val;
     return "mock";
-}
-
-fn mockExpandMacro(rt: *Runtime, env: *Env, macro_val: Value, args: []const Value) anyerror!Value {
-    _ = rt;
-    _ = env;
-    _ = macro_val;
-    _ = args;
-    return .nil_val;
 }
 
 fn dummyBuiltin(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -153,7 +147,6 @@ test "VTable can be constructed and stored on Runtime" {
     fix.rt.vtable = .{
         .callFn = mockCallFn,
         .valueTypeKey = mockValueTypeKey,
-        .expandMacro = mockExpandMacro,
     };
     try testing.expect(fix.rt.vtable != null);
 }
@@ -169,7 +162,6 @@ test "VTable.callFn dispatches through Runtime field" {
     fix.rt.vtable = .{
         .callFn = mockCallFn,
         .valueTypeKey = mockValueTypeKey,
-        .expandMacro = mockExpandMacro,
     };
 
     const args = [_]Value{};

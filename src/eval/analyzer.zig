@@ -48,6 +48,7 @@ const string_collection = @import("../runtime/collection/string.zig");
 const list_collection = @import("../runtime/collection/list.zig");
 const error_mod = @import("../runtime/error.zig");
 const SourceLocation = error_mod.SourceLocation;
+const macro_dispatch = @import("macro_dispatch.zig");
 
 /// Analyser errors. Phase 2 covers syntax + name resolution only.
 /// Aliases the wide `error_mod.Error` set so calls to `setErrorFmt`
@@ -119,12 +120,20 @@ const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
 /// Analyse `form` and return the resulting Node tree. Top-level
 /// callers pass `scope = null`; recursion threads a `Scope` chain
 /// while inside a `let*` / `fn*`.
+///
+/// `macro_table` carries the bootstrap-macro Zig transforms; it is
+/// populated once at startup by `lang.macro_transforms.registerInto`
+/// and threaded through every recursive call so a macro produced by
+/// expansion is itself expanded on the next pass. Callers that don't
+/// need macros (early bootstrap, micro-tests) can pass an empty
+/// Table — non-macro Vars short-circuit through `expandIfMacro`.
 pub fn analyze(
     arena: std.mem.Allocator,
     rt: *Runtime,
     env: *Env,
     scope: ?*const Scope,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     return switch (form.data) {
         .nil => try makeConstant(arena, .nil_val, form),
@@ -136,7 +145,7 @@ pub fn analyze(
             return try makeConstant(arena, v, form);
         },
         .symbol => |sym| try analyzeSymbol(arena, env, scope, sym, form),
-        .list => |items| try analyzeList(arena, rt, env, scope, items, form),
+        .list => |items| try analyzeList(arena, rt, env, scope, items, form, macro_table),
         .string => |s| {
             const v = try string_collection.alloc(rt, s);
             return try makeConstant(arena, v, form);
@@ -214,6 +223,7 @@ fn analyzeList(
     scope: ?*const Scope,
     items: []const Form,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     if (items.len == 0) {
         // The empty-list literal `()` evaluates to () in Clojure, which
@@ -223,13 +233,47 @@ fn analyzeList(
     }
     if (items[0].data == .symbol) {
         const head = items[0].data.symbol;
+        // Special forms win first — they cannot be macros even if a
+        // user `def`s a `^:macro` Var with the same name.
         if (head.ns == null) {
             if (SPECIAL_FORMS.get(head.name)) |kind| {
-                return analyzeSpecial(arena, rt, env, scope, kind, items, form);
+                return analyzeSpecial(arena, rt, env, scope, kind, items, form, macro_table);
+            }
+        }
+        // Macro path: only consult the table when we can actually
+        // resolve `head` to a Var in the current ns. A failed lookup
+        // here is **not** a name error — analyzeCall will produce
+        // that with the correct location after we fall through.
+        if (head.ns == null and scope != null and scope.?.lookup(head.name) != null) {
+            // shadowed by a local: not a macro
+        } else {
+            if (resolveMaybe(env, head)) |v_ptr| {
+                if (try macro_dispatch.expandIfMacro(
+                    arena,
+                    rt,
+                    env,
+                    macro_table,
+                    v_ptr,
+                    head.name,
+                    items[1..],
+                    form.location,
+                )) |expanded| {
+                    return analyze(arena, rt, env, scope, expanded, macro_table);
+                }
             }
         }
     }
-    return analyzeCall(arena, rt, env, scope, items, form);
+    return analyzeCall(arena, rt, env, scope, items, form, macro_table);
+}
+
+/// Best-effort symbol-to-Var resolution that swallows misses. Used by
+/// the macro check in `analyzeList`; the genuine resolution-with-error
+/// path is in `analyzeSymbol`. Returns null on miss so the caller can
+/// fall through to a regular call (where the error will land with the
+/// right `name_error` Kind).
+fn resolveMaybe(env: *Env, sym: SymbolRef) ?*Var {
+    const ns = if (sym.ns) |n| (env.findNs(n) orelse return null) else (env.current_ns orelse return null);
+    return ns.resolve(sym.name);
 }
 
 fn analyzeCall(
@@ -239,11 +283,12 @@ fn analyzeCall(
     scope: ?*const Scope,
     items: []const Form,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
-    const callee = try analyze(arena, rt, env, scope, items[0]);
+    const callee = try analyze(arena, rt, env, scope, items[0], macro_table);
     var arg_nodes = try arena.alloc(Node, items.len - 1);
     for (items[1..], 0..) |arg_form, i| {
-        const arg_node = try analyze(arena, rt, env, scope, arg_form);
+        const arg_node = try analyze(arena, rt, env, scope, arg_form, macro_table);
         arg_nodes[i] = arg_node.*;
     }
     const n = try arena.create(Node);
@@ -265,14 +310,15 @@ fn analyzeSpecial(
     kind: SpecialFormKind,
     items: []const Form,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     return switch (kind) {
-        .def => analyzeDef(arena, rt, env, scope, items, form),
-        .if_form => analyzeIf(arena, rt, env, scope, items, form),
-        .do_form => analyzeDo(arena, rt, env, scope, items, form),
+        .def => analyzeDef(arena, rt, env, scope, items, form, macro_table),
+        .if_form => analyzeIf(arena, rt, env, scope, items, form, macro_table),
+        .do_form => analyzeDo(arena, rt, env, scope, items, form, macro_table),
         .quote_form => analyzeQuote(arena, rt, items, form),
-        .fn_star => analyzeFnStar(arena, rt, env, scope, items, form),
-        .let_star => analyzeLetStar(arena, rt, env, scope, items, form),
+        .fn_star => analyzeFnStar(arena, rt, env, scope, items, form, macro_table),
+        .let_star => analyzeLetStar(arena, rt, env, scope, items, form, macro_table),
     };
 }
 
@@ -283,6 +329,7 @@ fn analyzeDef(
     scope: ?*const Scope,
     items: []const Form,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     // (def name) | (def name value)
     if (items.len < 2 or items.len > 3)
@@ -293,7 +340,7 @@ fn analyzeDef(
     if (name_sym.ns != null)
         return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "def name must not be namespace-qualified: '{s}/{s}'", .{ name_sym.ns.?, name_sym.name });
     const value_node = if (items.len == 3)
-        try analyze(arena, rt, env, scope, items[2])
+        try analyze(arena, rt, env, scope, items[2], macro_table)
     else
         try makeConstant(arena, .nil_val, items[1]);
     const n = try arena.create(Node);
@@ -312,13 +359,14 @@ fn analyzeIf(
     scope: ?*const Scope,
     items: []const Form,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     if (items.len < 3 or items.len > 4)
         return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "if expects 2 or 3 args, got {d}", .{items.len - 1});
-    const cond = try analyze(arena, rt, env, scope, items[1]);
-    const then_b = try analyze(arena, rt, env, scope, items[2]);
+    const cond = try analyze(arena, rt, env, scope, items[1], macro_table);
+    const then_b = try analyze(arena, rt, env, scope, items[2], macro_table);
     const else_b: ?*const Node = if (items.len == 4)
-        try analyze(arena, rt, env, scope, items[3])
+        try analyze(arena, rt, env, scope, items[3], macro_table)
     else
         null;
     const n = try arena.create(Node);
@@ -338,10 +386,11 @@ fn analyzeDo(
     scope: ?*const Scope,
     items: []const Form,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     var forms = try arena.alloc(Node, items.len - 1);
     for (items[1..], 0..) |f, i| {
-        const sub = try analyze(arena, rt, env, scope, f);
+        const sub = try analyze(arena, rt, env, scope, f, macro_table);
         forms[i] = sub.*;
     }
     const n = try arena.create(Node);
@@ -403,6 +452,7 @@ fn analyzeFnStar(
     scope: ?*const Scope,
     items: []const Form,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     // (fn* [params] body...)
     if (items.len < 3)
@@ -443,7 +493,7 @@ fn analyzeFnStar(
         _ = try child_scope.declare(arena, name);
     }
 
-    const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form);
+    const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form, macro_table);
 
     const n = try arena.create(Node);
     n.* = .{ .fn_node = .{
@@ -465,13 +515,14 @@ fn analyzeBody(
     scope: *const Scope,
     body_forms: []const Form,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     if (body_forms.len == 1) {
-        return analyze(arena, rt, env, scope, body_forms[0]);
+        return analyze(arena, rt, env, scope, body_forms[0], macro_table);
     }
     var sub = try arena.alloc(Node, body_forms.len);
     for (body_forms, 0..) |f, i| {
-        const n = try analyze(arena, rt, env, scope, f);
+        const n = try analyze(arena, rt, env, scope, f, macro_table);
         sub[i] = n.*;
     }
     const n = try arena.create(Node);
@@ -486,6 +537,7 @@ fn analyzeLetStar(
     scope: ?*const Scope,
     items: []const Form,
     form: Form,
+    macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     // (let* [k1 v1 k2 v2 ...] body...)
     if (items.len < 3)
@@ -512,7 +564,7 @@ fn analyzeLetStar(
         // expression sees the pre-shadow scope (Clojure `let` semantics:
         // bindings are sequential; later bindings see earlier ones, but
         // each value is evaluated in the scope-before-its-own-binding).
-        const value_node = try analyze(arena, rt, env, &child_scope, binding_forms[fi + 1]);
+        const value_node = try analyze(arena, rt, env, &child_scope, binding_forms[fi + 1], macro_table);
         const slot = try child_scope.declare(arena, name_sym.name);
         bindings[bi] = .{
             .name = name_sym.name,
@@ -522,7 +574,7 @@ fn analyzeLetStar(
         bi += 1;
     }
 
-    const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form);
+    const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form, macro_table);
 
     const n = try arena.create(Node);
     n.* = .{ .let_node = .{
@@ -543,15 +595,18 @@ const TestFixture = struct {
     rt: Runtime,
     env: Env,
     arena: std.heap.ArenaAllocator,
+    macro_table: macro_dispatch.Table,
 
     fn init(self: *TestFixture, alloc: std.mem.Allocator) !void {
         self.threaded = std.Io.Threaded.init(alloc, .{});
         self.rt = Runtime.init(self.threaded.io(), alloc);
         self.env = try Env.init(&self.rt);
         self.arena = std.heap.ArenaAllocator.init(alloc);
+        self.macro_table = macro_dispatch.Table.init(alloc);
     }
 
     fn deinit(self: *TestFixture) void {
+        self.macro_table.deinit();
         self.arena.deinit();
         self.env.deinit();
         self.rt.deinit();
@@ -562,7 +617,7 @@ const TestFixture = struct {
         var reader = Reader.init(self.arena.allocator(), source);
         const form_opt = try reader.read();
         const form = form_opt orelse return AnalyzeError.SyntaxError;
-        return analyze(self.arena.allocator(), &self.rt, &self.env, null, form);
+        return analyze(self.arena.allocator(), &self.rt, &self.env, null, form, &self.macro_table);
     }
 };
 
