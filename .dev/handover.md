@@ -103,6 +103,28 @@ arms 3.9 left as `not_implemented`:
 - Closure: `cljw -e '(((fn* [x] (fn* [y] (+ x y))) 3) 4)'` → `7`.
 - e2e cases pinned in `test/e2e/phase3_cli.sh`.
 
+**ADR-light decision points to settle in 3.11's Step 0 survey**:
+1. **Closure capture mechanism for `fn*`**: slot-vector snapshot
+   (copy referenced outer-frame slots into a Function-attached array
+   at `allocFunction` time) vs free-var-list (analyser computes the
+   free-var set, body-time `LocalRef` looks them up). v1 picks one of
+   these — survey decides which fits CW v2's per-frame locals model.
+2. **`recur` signal**: Zig `error.PendingRecur` + threadlocal
+   `pending_recur_args` buffer (mirrors the existing
+   `last_thrown_exception` shape) vs a non-error threadlocal flag
+   that `evalLoop` polls after each body iteration. Error-based is
+   simpler to unwind through nested `if` / `let*` but breaks the
+   Zig invariant "errors are unusual".
+
+**Post-3.11 small cleanup queued** (not blocking):
+- Split `test/e2e/phase3_cli.sh` into `cli_entry.sh` (CLI plumbing
+  only — 6 cases: -e / file / stdin / unknown flag / missing file /
+  error label) and `lang_smoke.sh` (language semantics — macros /
+  ex_info / try-catch / loop). Phase 11 will then mechanically
+  migrate `lang_smoke.sh` cases to `test/clj/lang_smoke_test.clj`
+  (`clojure.test` deftest) without touching `cli_entry.sh`. Wire
+  both into `run_all.sh` to keep the single-entry rule intact.
+
 ## Open questions / blockers
 
 (none)
