@@ -160,6 +160,9 @@ before proceeding.
 - Rule `.claude/rules/textbook-survey.md` — auto-loaded on
   `src/**/*.zig`; defines the Step 0 brief and the four anti-pull
   guardrails.
-- The 🔒 marker on Phase 4 means a fresh OrbStack x86_64 gate is due
-  at the Phase-3 → Phase-4 boundary (re-run the same `orb run -m
-  my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` invocation).
+- The 🔒 marker on Phase 4 (and 5 / 8 / 14 / 15) means a fresh
+  OrbStack x86_64 gate is due at that phase boundary. The gate is
+  **agent-runnable** via the Bash tool:
+  `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` (set
+  Bash timeout ≥ 600s for cold builds). Setup, iteration loop, and
+  gate integration are documented in `.dev/orbstack-setup.md`.
