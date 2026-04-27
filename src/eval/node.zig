@@ -154,6 +154,13 @@ pub const FnNode = struct {
     /// when `has_rest` is false, `arity + 1` otherwise.
     params: []const []const u8,
     body: *const Node,
+    /// First local-slot index this fn's parameters occupy. Inherited
+    /// from the enclosing scope so a fn nested inside `let*` / `fn*`
+    /// captures slots `[0, slot_base)` from the caller's frame as its
+    /// closure environment, and places parameters at `[slot_base,
+    /// slot_base + arity)`. Top-level fns have `slot_base == 0` and no
+    /// closure (Phase 3.11; ROADMAP §9.5).
+    slot_base: u16 = 0,
     loc: SourceLocation = .{},
 };
 

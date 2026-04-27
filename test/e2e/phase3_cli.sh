@@ -213,5 +213,38 @@ EOF
 [[ "$got" == '#error{:message "boom" :data 1}' ]] || fail "ex-info pr-str: want '#error{:message \"boom\" :data 1}', got '$got'"
 echo "    ✓ (ex-info \"boom\" 1) → #error{...}"
 
+# --- Case 24: loop* / recur sums 0..9 (3.11) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(loop* [i 0 acc 0] (if (< i 10) (recur (+ i 1) (+ acc i)) acc))
+EOF
+) || fail "loop/recur: non-zero exit"
+[[ "$got" == "45" ]] || fail "loop/recur: want '45', got '$got'"
+echo "    ✓ (loop* sum 0..9) → 45"
+
+# --- Case 25: try / throw / catch ExceptionInfo binds caught Value (3.11) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(try (throw (ex-info "boom" 0)) (catch ExceptionInfo e (ex-message e)))
+EOF
+) || fail "try/catch: non-zero exit"
+[[ "$got" == '"boom"' ]] || fail "try/catch: want '\"boom\"', got '$got'"
+echo "    ✓ (try (throw (ex-info ...)) (catch ExceptionInfo e (ex-message e))) → \"boom\""
+
+# --- Case 26: try / finally runs finally on success and side-effects via def (3.11) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(try 1 (finally (def *side* 42)))
+*side*
+EOF
+) || fail "try/finally success: non-zero exit"
+[[ "$got" == $'1\n42' ]] || fail "try/finally success: want '1\\n42', got '$got'"
+echo "    ✓ (try 1 (finally (def *side* 42))) → 1; *side* = 42"
+
+# --- Case 27: closure captures outer let binding (3.11) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(((fn* [x] (fn* [y] (+ x y))) 3) 4)
+EOF
+) || fail "closure: non-zero exit"
+[[ "$got" == "7" ]] || fail "closure: want '7', got '$got'"
+echo "    ✓ (((fn* [x] (fn* [y] (+ x y))) 3) 4) → 7"
+
 echo
 echo "Phase-3 CLI entry points: all green."

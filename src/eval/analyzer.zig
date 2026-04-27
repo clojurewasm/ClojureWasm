@@ -570,6 +570,7 @@ fn analyzeFnStar(
         .has_rest = has_rest,
         .params = try arena.dupe([]const u8, param_names.items),
         .body = body_node,
+        .slot_base = slot_base,
         .loc = form.location,
     } };
     return n;

@@ -58,33 +58,79 @@ pub const MAX_LOCALS: u16 = 256;
 /// treatment in §9.5/3.2 / 3.3.
 pub const EvalError = error_mod.Error;
 
+// --- §9.5/3.11 control-flow signals ---
+//
+// `recur` and `throw` use Zig errors purely as a non-local control
+// channel; they carry no payload (errors don't in Zig). Per-thread
+// scratch state holds the actual Values:
+//
+//   - `pending_recur_buf` / `pending_recur_len` — recur args, drained
+//     by the matching `evalLoop` / `callFunction` frame.
+//   - `dispatch.last_thrown_exception` — the thrown Value, drained by
+//     the matching `evalTry`'s catch handler.
+//
+// Buffer is fixed-size (matches `MAX_LOCALS`) so recur cannot allocate
+// during the unwind. Survey: `private/notes/phase3-3.11-survey.md`
+// concluded this matches v1_ref's `error.RecurSignaled` idiom and
+// satisfies ROADMAP P10 (Zig 0.16 idioms) without diverging.
+threadlocal var pending_recur_buf: [MAX_LOCALS]Value = [_]Value{.nil_val} ** MAX_LOCALS;
+threadlocal var pending_recur_len: u16 = 0;
+
 // --- Function (heap object representing a Clojure fn) ---
 
-/// Closure object emitted by `fn*`. Phase-2 does not capture outer
-/// locals; the `body` pointer borrows from the analyser's per-eval
-/// arena, so the Function lives only as long as that arena does.
+/// Closure object emitted by `fn*`. Phase 3.11 adds `slot_base` and
+/// `closure_bindings` so a fn nested inside `let*` / `fn*` snapshots
+/// its enclosing locals at allocation time and replays them on every
+/// call. Top-level fns have `slot_base == 0` and `closure_bindings ==
+/// null`. The `body` and `params` slices borrow from the analyser's
+/// per-eval arena, so the Function lives only as long as that arena
+/// does. `closure_bindings` is owned by the Function (separate
+/// gpa allocation) and freed by `freeFunction`.
 pub const Function = struct {
     header: HeapHeader,
     _pad: [6]u8 = undefined,
     arity: u16,
     has_rest: bool,
+    /// Number of locals the analyser allocated above this fn — these
+    /// are the slots the closure snapshot fills, and the fn's params
+    /// land at `[slot_base, slot_base + arity)`.
+    slot_base: u16,
     /// Function body — borrowed from the analyser arena.
     body: *const Node,
     /// Parameter names (debug + error frames). Borrowed too.
     params: []const []const u8,
+    /// Captured outer locals; null when the fn closes over nothing
+    /// (top-level fn) so the common case stays a single null check
+    /// rather than an empty-slice round-trip.
+    closure_bindings: ?[]Value,
 };
 
-/// Heap-allocate a Function and wrap it in a NaN-boxed Value. Until
+/// Heap-allocate a Function and wrap it in a NaN-boxed Value. The
+/// caller's `locals` array supplies the snapshot for closure capture:
+/// slots `[0, fn_node.slot_base)` are duplicated into a fresh
+/// gpa-owned slice the Function will later replay on every call. Top
+/// -level fns (`slot_base == 0`) skip the allocation entirely. Until
 /// the Phase-5 GC arrives, register the allocation with
 /// `rt.heap_objects` so `Runtime.deinit` frees it.
-pub fn allocFunction(rt: *Runtime, fn_node: node_mod.FnNode) !Value {
+pub fn allocFunction(rt: *Runtime, fn_node: node_mod.FnNode, locals: []const Value) !Value {
+    const closure: ?[]Value = if (fn_node.slot_base == 0)
+        null
+    else blk: {
+        const slice = try rt.gpa.alloc(Value, fn_node.slot_base);
+        @memcpy(slice, locals[0..fn_node.slot_base]);
+        break :blk slice;
+    };
+    errdefer if (closure) |s| rt.gpa.free(s);
+
     const f = try rt.gpa.create(Function);
     f.* = .{
         .header = HeapHeader.init(.fn_val),
         .arity = fn_node.arity,
         .has_rest = fn_node.has_rest,
+        .slot_base = fn_node.slot_base,
         .body = fn_node.body,
         .params = fn_node.params,
+        .closure_bindings = closure,
     };
     try rt.trackHeap(.{ .ptr = @ptrCast(f), .free = freeFunction });
     return Value.encodeHeapPtr(.fn_val, f);
@@ -92,6 +138,7 @@ pub fn allocFunction(rt: *Runtime, fn_node: node_mod.FnNode) !Value {
 
 fn freeFunction(gpa: std.mem.Allocator, ptr: *anyopaque) void {
     const f: *Function = @ptrCast(@alignCast(ptr));
+    if (f.closure_bindings) |s| gpa.free(s);
     gpa.destroy(f);
 }
 
@@ -117,17 +164,13 @@ pub fn eval(
         .if_node => |n| try evalIf(rt, env, locals, n),
         .do_node => |n| try evalDo(rt, env, locals, n.forms),
         .quote_node => |n| n.quoted,
-        .fn_node => |n| try allocFunction(rt, n),
+        .fn_node => |n| try allocFunction(rt, n, locals),
         .let_node => |n| try evalLet(rt, env, locals, n),
         .call_node => |n| try evalCall(rt, env, locals, n),
-        // Phase 3.9 wires the analyser side; the eval side lands at
-        // 3.11 alongside `loop_locals` / `pending_recur` / `last_thrown`
-        // threadlocals. Until then a clean structured error is better
-        // than UB.
-        .loop_node => |n| error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "loop* eval not yet implemented (Phase 3.11)", .{}),
-        .recur_node => |n| error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "recur eval not yet implemented (Phase 3.11)", .{}),
-        .try_node => |n| error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "try/catch eval not yet implemented (Phase 3.11)", .{}),
-        .throw_node => |n| error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "throw eval not yet implemented (Phase 3.11)", .{}),
+        .loop_node => |n| try evalLoop(rt, env, locals, n),
+        .recur_node => |n| try evalRecur(rt, env, locals, n),
+        .try_node => |n| try evalTry(rt, env, locals, n),
+        .throw_node => |n| try evalThrow(rt, env, locals, n),
     };
 }
 
@@ -168,6 +211,109 @@ fn evalLet(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.LetNode) !Value
         locals[b.index] = try eval(rt, env, locals, b.value_expr);
     }
     return eval(rt, env, locals, n.body);
+}
+
+fn evalLoop(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.LoopNode) anyerror!Value {
+    // Initial bindings — same shape as `let*`, but every recur returns
+    // here to rewrite the same slots and re-enter the body.
+    for (n.bindings) |b| {
+        if (b.index >= locals.len)
+            return error_mod.setErrorFmt(.eval, .index_error, n.loc, "loop* slot {d} out of range (max {d})", .{ b.index, locals.len });
+        locals[b.index] = try eval(rt, env, locals, b.value_expr);
+    }
+    while (true) {
+        if (eval(rt, env, locals, n.body)) |result| {
+            return result;
+        } else |err| switch (err) {
+            error.RecurSignaled => {
+                if (pending_recur_len != n.bindings.len)
+                    return error_mod.setErrorFmt(.eval, .arity_error, n.loc, "recur to loop*: expected {d} arg(s), got {d}", .{ n.bindings.len, pending_recur_len });
+                for (n.bindings, 0..) |b, i| {
+                    locals[b.index] = pending_recur_buf[i];
+                }
+                pending_recur_len = 0;
+            },
+            else => return err,
+        }
+    }
+}
+
+fn evalRecur(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.RecurNode) anyerror!Value {
+    if (n.args.len > pending_recur_buf.len)
+        return error_mod.setErrorFmt(.eval, .not_implemented, n.loc, "recur with {d} args exceeds buffer ({d})", .{ n.args.len, pending_recur_buf.len });
+    // Evaluate **all** args before mutating any slot — otherwise a
+    // recur arg that referenced an earlier binding would see the
+    // partially-rewritten frame. Stash them in the threadlocal scratch
+    // so the matching loop frame can drain them once the unwind
+    // returns control.
+    for (n.args, 0..) |*a, i| {
+        pending_recur_buf[i] = try eval(rt, env, locals, a);
+    }
+    pending_recur_len = @intCast(n.args.len);
+    return error.RecurSignaled;
+}
+
+fn evalThrow(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.ThrowNode) anyerror!Value {
+    const v = try eval(rt, env, locals, n.expr);
+    dispatch.last_thrown_exception = v;
+    return error.ThrownValue;
+}
+
+fn evalTry(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.TryNode) anyerror!Value {
+    if (eval(rt, env, locals, n.body)) |result| {
+        // Success path — finally still runs unconditionally. If
+        // finally itself throws, that exception propagates and the
+        // original result is dropped (matches Clojure JVM semantics).
+        if (n.finally_body) |fb| {
+            _ = try eval(rt, env, locals, fb);
+        }
+        return result;
+    } else |err| switch (err) {
+        error.ThrownValue => {
+            const thrown = dispatch.last_thrown_exception orelse return error_mod.setErrorFmt(.eval, .internal_error, n.loc, "ThrownValue without last_thrown_exception", .{});
+            // Walk catch clauses linearly — Phase 3 only matches
+            // `ExceptionInfo` against `.ex_info`-tagged Values.
+            for (n.catch_clauses) |cc| {
+                if (catchMatches(cc.class_name, thrown)) {
+                    dispatch.last_thrown_exception = null;
+                    if (cc.binding_index >= locals.len)
+                        return error_mod.setErrorFmt(.eval, .index_error, cc.loc, "catch slot {d} out of range (max {d})", .{ cc.binding_index, locals.len });
+                    locals[cc.binding_index] = thrown;
+                    const caught = eval(rt, env, locals, cc.body);
+                    if (n.finally_body) |fb| {
+                        _ = try eval(rt, env, locals, fb);
+                    }
+                    return caught;
+                }
+            }
+            // No catch matched — finally runs, then we re-raise.
+            if (n.finally_body) |fb| {
+                _ = try eval(rt, env, locals, fb);
+            }
+            // last_thrown_exception is still populated; the outer
+            // frame (or the CLI) sees the same Value.
+            return error.ThrownValue;
+        },
+        else => {
+            // Non-Clojure errors (OOM, internal_error, etc.) still run
+            // finally so external resources get released, then bubble.
+            if (n.finally_body) |fb| {
+                _ = eval(rt, env, locals, fb) catch {};
+            }
+            return err;
+        },
+    }
+}
+
+fn catchMatches(class_name: []const u8, thrown: Value) bool {
+    if (std.mem.eql(u8, class_name, "ExceptionInfo")) {
+        return thrown.tag() == .ex_info;
+    }
+    // Phase 3.11 only recognises `ExceptionInfo`; other class symbols
+    // were accepted at analyse time so user code stays readable, but
+    // they never match a thrown Value until later phases extend the
+    // type-name table.
+    return false;
 }
 
 fn evalCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.CallNode) !Value {
@@ -213,9 +359,19 @@ fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc
         if (args.len < f.arity)
             return error_mod.setErrorFmt(.eval, .arity_error, loc, "Wrong number of args ({d}) passed to fn (expected at least {d})", .{ args.len, f.arity });
     }
+    if (@as(usize, f.slot_base) + f.arity + @intFromBool(f.has_rest) > MAX_LOCALS)
+        return error_mod.setErrorFmt(.eval, .not_implemented, loc, "fn frame ({d}+{d}) exceeds MAX_LOCALS ({d})", .{ f.slot_base, f.arity, MAX_LOCALS });
     var locals: [MAX_LOCALS]Value = [_]Value{.nil_val} ** MAX_LOCALS;
+    // Replay captured outer locals into the fresh frame so LocalRefs
+    // resolved against the analyser's enclosing scope still find their
+    // values. Top-level fns skip this entirely.
+    if (f.closure_bindings) |snap| {
+        @memcpy(locals[0..snap.len], snap);
+    }
+    // Params land at `[slot_base, slot_base + arity)` — the slots the
+    // analyser allocated when it descended into the fn body.
     for (args[0..f.arity], 0..) |v, i| {
-        locals[i] = v;
+        locals[f.slot_base + i] = v;
     }
     if (f.has_rest) {
         // Phase-2 stub: the rest parameter would normally be a list of
@@ -223,7 +379,7 @@ fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc
         // `runtime/collection/list.zig`, which lands at task 2.7 in
         // the form of registered primitives. For now, leave nil — no
         // Phase-2 test hits a `& rest` body that observes this.
-        locals[f.arity] = .nil_val;
+        locals[f.slot_base + f.arity] = .nil_val;
     }
     return eval(rt, env, &locals, f.body);
 }
@@ -479,4 +635,142 @@ test "wrong arity populates last_error with eval phase" {
     const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Kind.arity_error, info.kind);
     try testing.expectEqual(error_mod.Phase.eval, info.phase);
+}
+
+// --- §9.5/3.11 — loop* / recur ---
+
+test "eval (loop* [x nil] (if x x (recur 42))) → 42" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const r = try fix.evalStr("(loop* [x nil] (if x x (recur 42)))");
+    try testing.expectEqual(@as(i48, 42), r.asInteger());
+}
+
+test "eval (loop* [n 3 acc nil] (if acc acc (recur n n))) → 3" {
+    // Two-binding loop: rebinds both slots; second iteration the
+    // previously-nil acc is now `n` (3, truthy) and we return it.
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const r = try fix.evalStr("(loop* [n 3 acc nil] (if acc acc (recur n n)))");
+    try testing.expectEqual(@as(i48, 3), r.asInteger());
+}
+
+test "recur outside loop / fn is rejected at analysis (already in 3.9)" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    try testing.expectError(error.SyntaxError, fix.evalStr("(recur 1)"));
+}
+
+// --- §9.5/3.11 — throw / try / catch / finally ---
+
+test "eval (throw 42) raises ThrownValue and stashes the Value" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    dispatch.last_thrown_exception = null;
+    try testing.expectError(error.ThrownValue, fix.evalStr("(throw 42)"));
+    const v = dispatch.last_thrown_exception orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(@as(i48, 42), v.asInteger());
+    dispatch.last_thrown_exception = null;
+}
+
+test "eval try with no catch returns body value" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const r = try fix.evalStr("(try 7)");
+    try testing.expectEqual(@as(i48, 7), r.asInteger());
+}
+
+test "eval try / catch ExceptionInfo binds the thrown ex-info" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    // Register `ex-info` so the catch path has a real ex_info Value to
+    // match against. Phase 3.10 lives in `lang/primitive/error.zig`;
+    // the Node tree imports nothing from `lang/`, but tests are
+    // exempt from the zone gate so we can set up a minimal binding
+    // here without dragging registerAll in.
+    const error_prim = @import("../../lang/primitive/error.zig");
+    const user = fix.env.findNs("user").?;
+    _ = try fix.env.intern(user, "ex-info", Value.initBuiltinFn(&error_prim.exInfo));
+
+    const r = try fix.evalStr(
+        "(try (throw (ex-info \"boom\" 0)) (catch ExceptionInfo e e))",
+    );
+    try testing.expect(r.tag() == .ex_info);
+}
+
+test "eval try / finally runs finally on success" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    // Use `def` from inside finally so we can observe the side effect.
+    _ = try fix.evalStr("(try 1 (finally (def *side* 42)))");
+    const user = fix.env.findNs("user").?;
+    const v = user.resolve("*side*").?;
+    try testing.expectEqual(@as(i48, 42), v.root.asInteger());
+}
+
+test "eval try / finally runs finally then rethrows" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    dispatch.last_thrown_exception = null;
+    try testing.expectError(
+        error.ThrownValue,
+        fix.evalStr("(try (throw 7) (finally (def *side2* 99)))"),
+    );
+    const user = fix.env.findNs("user").?;
+    const v = user.resolve("*side2*").?;
+    try testing.expectEqual(@as(i48, 99), v.root.asInteger());
+    const thrown = dispatch.last_thrown_exception orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(@as(i48, 7), thrown.asInteger());
+    dispatch.last_thrown_exception = null;
+}
+
+// --- §9.5/3.11 — fn* closure capture ---
+
+test "eval ((fn* [x] (fn* [y] x)) 3) returns a closure capturing x" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const inner = try fix.evalStr("((fn* [x] (fn* [y] x)) 3)");
+    try testing.expect(inner.tag() == .fn_val);
+}
+
+test "eval (((fn* [x] (fn* [y] (+ x y))) 3) 4) → 7 (lexical closure)" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const user = fix.env.findNs("user").?;
+    _ = try fix.env.intern(user, "+", Value.initBuiltinFn(&builtinPlus));
+
+    const r = try fix.evalStr("(((fn* [x] (fn* [y] (+ x y))) 3) 4)");
+    try testing.expectEqual(@as(i48, 7), r.asInteger());
+}
+
+test "eval (let* [x 5] ((fn* [y] (+ x y)) 6)) → 11 (closure over let)" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const user = fix.env.findNs("user").?;
+    _ = try fix.env.intern(user, "+", Value.initBuiltinFn(&builtinPlus));
+
+    const r = try fix.evalStr("(let* [x 5] ((fn* [y] (+ x y)) 6))");
+    try testing.expectEqual(@as(i48, 11), r.asInteger());
 }
