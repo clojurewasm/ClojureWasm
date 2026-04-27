@@ -10,6 +10,7 @@ const value = @import("../value.zig");
 const Value = value.Value;
 const HeapHeader = value.HeapHeader;
 const HeapTag = value.HeapTag;
+const Runtime = @import("../runtime.zig").Runtime;
 
 /// Cons cell — fundamental list-building block. Heap allocations from
 /// the arena are 8-byte aligned; the explicit padding keeps `first`/
@@ -40,6 +41,30 @@ pub fn cons(alloc: std.mem.Allocator, head: Value, tail: Value) !Value {
         .count = 1 + countOf(tail),
     };
     return Value.encodeHeapPtr(.list, cell);
+}
+
+/// Allocate a new cons cell into `rt.gpa` and register it with
+/// `rt.trackHeap`, so the resulting Value outlives any per-eval arena
+/// (e.g. when the list ends up bound to a global Var). Use this for
+/// quoted-list literals and any list a primitive needs to return to
+/// caller-land. Tests + per-test arenas keep using the plain `cons`
+/// above when they don't need long-lived Values.
+pub fn consHeap(rt: *Runtime, head: Value, tail: Value) !Value {
+    const cell = try rt.gpa.create(Cons);
+    cell.* = .{
+        .header = HeapHeader.init(.list),
+        .first = head,
+        .rest = tail,
+        .meta = .nil_val,
+        .count = 1 + countOf(tail),
+    };
+    try rt.trackHeap(.{ .ptr = @ptrCast(cell), .free = freeCons });
+    return Value.encodeHeapPtr(.list, cell);
+}
+
+fn freeCons(gpa: std.mem.Allocator, ptr: *anyopaque) void {
+    const c: *Cons = @ptrCast(@alignCast(ptr));
+    gpa.destroy(c);
 }
 
 /// First element. `nil` for non-list inputs (matches Clojure's `first`).

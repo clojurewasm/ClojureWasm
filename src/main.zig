@@ -26,6 +26,7 @@ const keyword = @import("runtime/keyword.zig");
 const error_mod = @import("runtime/error.zig");
 const error_print = @import("runtime/error_print.zig");
 const string_collection = @import("runtime/collection/string.zig");
+const list_collection = @import("runtime/collection/list.zig");
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -184,8 +185,25 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
             try w.writeAll(k.name);
         },
         .string => try printString(w, string_collection.asString(v)),
+        .list => try printList(w, v),
         else => |t| try w.print("#<{s}>", .{@tagName(t)}),
     }
+}
+
+/// Render a heap List in `(a b c)` form. Empty list (a List Value
+/// whose count is 0) prints as `()`. Walks via `list_collection`'s
+/// `first` / `rest` so this stays decoupled from the Cons internals.
+fn printList(w: *Writer, v: Value) Writer.Error!void {
+    try w.writeByte('(');
+    var cur = v;
+    var first_iter = true;
+    while (cur.tag() == .list and list_collection.countOf(cur) > 0) {
+        if (!first_iter) try w.writeByte(' ');
+        first_iter = false;
+        try printValue(w, list_collection.first(cur));
+        cur = list_collection.rest(cur);
+    }
+    try w.writeByte(')');
 }
 
 /// Render `s` in Clojure `pr-str` style: surrounding double quotes,

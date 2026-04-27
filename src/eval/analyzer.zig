@@ -45,6 +45,7 @@ const Env = env_mod.Env;
 const Var = env_mod.Var;
 const keyword = @import("../runtime/keyword.zig");
 const string_collection = @import("../runtime/collection/string.zig");
+const list_collection = @import("../runtime/collection/list.zig");
 const error_mod = @import("../runtime/error.zig");
 const SourceLocation = error_mod.SourceLocation;
 
@@ -373,11 +374,26 @@ fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
         .float => |f| Value.initFloat(f),
         .keyword => |sym| try keyword.intern(rt, sym.ns, sym.name),
         .string => |s| try string_collection.alloc(rt, s),
-        .symbol => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted symbol as Value not yet supported (Phase 3.6+)", .{}),
-        .list => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted list as Value not yet supported (Phase 3.6+)", .{}),
+        .list => |items| try listFormToValue(rt, items, form.location),
+        .symbol => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted symbol as Value not yet supported (Phase 3.7+)", .{}),
         .vector => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted vector as Value not yet supported (Phase 3+)", .{}),
         .map => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted map as Value not yet supported (Phase 3+)", .{}),
     };
+}
+
+/// Build a heap List Value by recursively lifting each element to a
+/// Value. Empty list → nil (matches Clojure's `(quote ())` → `()` /
+/// `()` is `nil`-equivalent on `rest`/`first`). Used by `quote`.
+fn listFormToValue(rt: *Runtime, items: []const Form, loc: SourceLocation) AnalyzeError!Value {
+    _ = loc;
+    var i = items.len;
+    var acc: Value = .nil_val;
+    while (i > 0) {
+        i -= 1;
+        const head = try formToValue(rt, items[i]);
+        acc = try list_collection.consHeap(rt, head, acc);
+    }
+    return acc;
 }
 
 fn analyzeFnStar(

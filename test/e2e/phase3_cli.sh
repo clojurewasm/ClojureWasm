@@ -87,5 +87,21 @@ EOF
 [[ "$got" == '"line1\nline2"' ]] || fail "escape seq: want '\"line1\\nline2\"', got '$got'"
 echo "    ✓ \"line1\\nline2\" round-trip"
 
+# --- Case 10: heap List round-trips through quote (3.6) ---
+got=$("$BIN" - <<'EOF' 2>&1
+(quote (1 2 3))
+EOF
+) || fail "quote list: non-zero exit"
+[[ "$got" == "(1 2 3)" ]] || fail "quote list: want '(1 2 3)', got '$got'"
+echo "    ✓ (quote (1 2 3)) → (1 2 3)"
+
+# --- Case 11: mixed-type quoted list ---
+got=$("$BIN" - <<'EOF' 2>&1
+(quote (1 :a "b"))
+EOF
+) || fail "mixed list: non-zero exit"
+[[ "$got" == '(1 :a "b")' ]] || fail "mixed list: want '(1 :a \"b\")', got '$got'"
+echo "    ✓ (quote (1 :a \"b\")) → (1 :a \"b\")"
+
 echo
 echo "Phase-3 CLI entry points: all green."
