@@ -44,19 +44,15 @@ const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const Var = env_mod.Var;
 const keyword = @import("../runtime/keyword.zig");
-const SourceLocation = @import("../runtime/error.zig").SourceLocation;
+const error_mod = @import("../runtime/error.zig");
+const SourceLocation = error_mod.SourceLocation;
 
 /// Analyser errors. Phase 2 covers syntax + name resolution only.
-pub const AnalyzeError = error{
-    /// Wrong arity / argument kind for a special form.
-    SyntaxError,
-    /// Symbol resolved to neither a local nor a global Var.
-    NameError,
-    /// Phase-3+ feature not yet implemented (string literal as expr,
-    /// quoted symbol/list, vector / map literal as expr, …).
-    NotImplemented,
-    OutOfMemory,
-};
+/// Aliases the wide `error_mod.Error` set so calls to `setErrorFmt`
+/// type-check; the analyser still only **emits** SyntaxError /
+/// NameError / NotImplemented / OutOfMemory in practice. See the
+/// equivalent comment in `eval/reader.zig` for the design rationale.
+pub const AnalyzeError = error_mod.Error;
 
 // --- Scope (local-binding chain consulted during analysis) ---
 
@@ -142,7 +138,9 @@ pub fn analyze(
         // String / vector / map as expression values land in Phase 3+,
         // when they get a Heap representation. For now they're an
         // explicit NotImplemented — better than silently failing.
-        .string, .vector, .map => return AnalyzeError.NotImplemented,
+        .string => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "String literal as expression value not yet supported (Phase 3.5+)", .{}),
+        .vector => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Vector literal as expression value not yet supported (Phase 3+)", .{}),
+        .map => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Map literal as expression value not yet supported (Phase 3+)", .{}),
     };
 }
 
@@ -153,6 +151,23 @@ fn makeConstant(arena: std.mem.Allocator, v: Value, form: Form) !*const Node {
     n.* = .{ .constant = .{ .value = v, .loc = form.location } };
     return n;
 }
+
+/// Render a symbol with its namespace prefix when present, e.g.
+/// `clojure.core/map` or just `foo`.
+fn symFullName(sym: SymbolRef) []const u8 {
+    // The fast path keeps caller-friendly slices; namespace-qualified
+    // names are concatenated into a small static buffer below — only
+    // used in error messages, so a 256-byte threadlocal cache is fine.
+    if (sym.ns == null) return sym.name;
+    const total = sym.ns.?.len + 1 + sym.name.len;
+    if (total > sym_name_buf.len) return sym.name; // give up; keep just the local name
+    @memcpy(sym_name_buf[0..sym.ns.?.len], sym.ns.?);
+    sym_name_buf[sym.ns.?.len] = '/';
+    @memcpy(sym_name_buf[sym.ns.?.len + 1 ..][0..sym.name.len], sym.name);
+    return sym_name_buf[0..total];
+}
+
+threadlocal var sym_name_buf: [256]u8 = undefined;
 
 // --- Symbol resolution ---
 
@@ -177,10 +192,10 @@ fn analyzeSymbol(
     }
     // Global Var resolution.
     const ns = if (sym.ns) |ns_name|
-        env.findNs(ns_name) orelse return AnalyzeError.NameError
+        env.findNs(ns_name) orelse return error_mod.setErrorFmt(.analysis, .name_error, form.location, "No namespace: '{s}'", .{ns_name})
     else
-        env.current_ns orelse return AnalyzeError.NameError;
-    const v_ptr = ns.resolve(sym.name) orelse return AnalyzeError.NameError;
+        env.current_ns orelse return error_mod.setErrorFmt(.analysis, .name_error, form.location, "No current namespace; cannot resolve '{s}'", .{sym.name});
+    const v_ptr = ns.resolve(sym.name) orelse return error_mod.setErrorFmt(.analysis, .name_error, form.location, "Unable to resolve symbol: '{s}'", .{symFullName(sym)});
     const n = try arena.create(Node);
     n.* = .{ .var_ref = .{ .var_ptr = v_ptr, .loc = form.location } };
     return n;
@@ -200,7 +215,7 @@ fn analyzeList(
         // The empty-list literal `()` evaluates to () in Clojure, which
         // requires a heap List Value the analyser doesn't have yet
         // (Phase 5 collections). Defer cleanly.
-        return AnalyzeError.NotImplemented;
+        return error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Empty list as expression value not yet supported (Phase 5+)", .{});
     }
     if (items[0].data == .symbol) {
         const head = items[0].data.symbol;
@@ -266,10 +281,13 @@ fn analyzeDef(
     form: Form,
 ) AnalyzeError!*const Node {
     // (def name) | (def name value)
-    if (items.len < 2 or items.len > 3) return AnalyzeError.SyntaxError;
-    if (items[1].data != .symbol) return AnalyzeError.SyntaxError;
+    if (items.len < 2 or items.len > 3)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "def expects 1 or 2 args, got {d}", .{items.len - 1});
+    if (items[1].data != .symbol)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "First argument to def must be a symbol", .{});
     const name_sym = items[1].data.symbol;
-    if (name_sym.ns != null) return AnalyzeError.SyntaxError; // no qualified def
+    if (name_sym.ns != null)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "def name must not be namespace-qualified: '{s}/{s}'", .{ name_sym.ns.?, name_sym.name });
     const value_node = if (items.len == 3)
         try analyze(arena, rt, env, scope, items[2])
     else
@@ -291,7 +309,8 @@ fn analyzeIf(
     items: []const Form,
     form: Form,
 ) AnalyzeError!*const Node {
-    if (items.len < 3 or items.len > 4) return AnalyzeError.SyntaxError;
+    if (items.len < 3 or items.len > 4)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "if expects 2 or 3 args, got {d}", .{items.len - 1});
     const cond = try analyze(arena, rt, env, scope, items[1]);
     const then_b = try analyze(arena, rt, env, scope, items[2]);
     const else_b: ?*const Node = if (items.len == 4)
@@ -332,7 +351,8 @@ fn analyzeQuote(
     items: []const Form,
     form: Form,
 ) AnalyzeError!*const Node {
-    if (items.len != 2) return AnalyzeError.SyntaxError;
+    if (items.len != 2)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "quote expects 1 arg, got {d}", .{items.len - 1});
     const v = try formToValue(rt, items[1]);
     const n = try arena.create(Node);
     n.* = .{ .quote_node = .{ .quoted = v, .loc = form.location } };
@@ -349,7 +369,11 @@ fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
         .integer => |i| Value.initInteger(i),
         .float => |f| Value.initFloat(f),
         .keyword => |sym| try keyword.intern(rt, sym.ns, sym.name),
-        .symbol, .string, .list, .vector, .map => AnalyzeError.NotImplemented,
+        .symbol => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted symbol as Value not yet supported (Phase 3.6+)", .{}),
+        .string => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted string as Value not yet supported (Phase 3.5+)", .{}),
+        .list => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted list as Value not yet supported (Phase 3.6+)", .{}),
+        .vector => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted vector as Value not yet supported (Phase 3+)", .{}),
+        .map => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted map as Value not yet supported (Phase 3+)", .{}),
     };
 }
 
@@ -362,8 +386,10 @@ fn analyzeFnStar(
     form: Form,
 ) AnalyzeError!*const Node {
     // (fn* [params] body...)
-    if (items.len < 3) return AnalyzeError.SyntaxError;
-    if (items[1].data != .vector) return AnalyzeError.SyntaxError;
+    if (items.len < 3)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "fn* requires a parameter vector and a body", .{});
+    if (items[1].data != .vector)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "fn* parameter list must be a vector", .{});
     const params_form = items[1].data.vector;
 
     var has_rest = false;
@@ -373,13 +399,17 @@ fn analyzeFnStar(
 
     var i: usize = 0;
     while (i < params_form.len) : (i += 1) {
-        if (params_form[i].data != .symbol) return AnalyzeError.SyntaxError;
+        if (params_form[i].data != .symbol)
+            return error_mod.setErrorFmt(.analysis, .syntax_error, params_form[i].location, "fn* parameter must be a symbol", .{});
         const ps = params_form[i].data.symbol;
-        if (ps.ns != null) return AnalyzeError.SyntaxError;
+        if (ps.ns != null)
+            return error_mod.setErrorFmt(.analysis, .syntax_error, params_form[i].location, "fn* parameter must not be namespace-qualified", .{});
         if (std.mem.eql(u8, ps.name, "&")) {
             // `& rest`: the next symbol is the rest-parameter.
-            if (i + 1 >= params_form.len) return AnalyzeError.SyntaxError;
-            if (params_form[i + 1].data != .symbol) return AnalyzeError.SyntaxError;
+            if (i + 1 >= params_form.len)
+                return error_mod.setErrorFmt(.analysis, .syntax_error, params_form[i].location, "fn* '&' must be followed by a rest-parameter symbol", .{});
+            if (params_form[i + 1].data != .symbol)
+                return error_mod.setErrorFmt(.analysis, .syntax_error, params_form[i + 1].location, "fn* rest-parameter must be a symbol", .{});
             try param_names.append(arena, params_form[i + 1].data.symbol.name);
             has_rest = true;
             break;
@@ -439,10 +469,13 @@ fn analyzeLetStar(
     form: Form,
 ) AnalyzeError!*const Node {
     // (let* [k1 v1 k2 v2 ...] body...)
-    if (items.len < 3) return AnalyzeError.SyntaxError;
-    if (items[1].data != .vector) return AnalyzeError.SyntaxError;
+    if (items.len < 3)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "let* requires a binding vector and a body", .{});
+    if (items[1].data != .vector)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "let* bindings must be a vector", .{});
     const binding_forms = items[1].data.vector;
-    if (binding_forms.len % 2 != 0) return AnalyzeError.SyntaxError;
+    if (binding_forms.len % 2 != 0)
+        return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "let* bindings must have an even number of forms", .{});
 
     var child_scope = if (scope) |s| Scope.child(s) else Scope{};
     defer child_scope.deinit(arena);
@@ -451,9 +484,11 @@ fn analyzeLetStar(
     var bi: usize = 0;
     var fi: usize = 0;
     while (fi < binding_forms.len) : (fi += 2) {
-        if (binding_forms[fi].data != .symbol) return AnalyzeError.SyntaxError;
+        if (binding_forms[fi].data != .symbol)
+            return error_mod.setErrorFmt(.analysis, .syntax_error, binding_forms[fi].location, "let* binding name must be a symbol", .{});
         const name_sym = binding_forms[fi].data.symbol;
-        if (name_sym.ns != null) return AnalyzeError.SyntaxError;
+        if (name_sym.ns != null)
+            return error_mod.setErrorFmt(.analysis, .syntax_error, binding_forms[fi].location, "let* binding name must not be namespace-qualified", .{});
         // Analyse the value *before* declaring the name so each value
         // expression sees the pre-shadow scope (Clojure `let` semantics:
         // bindings are sequential; later bindings see earlier ones, but
@@ -530,6 +565,44 @@ test "unbound symbol → NameError" {
     try fix.init(testing.allocator);
     defer fix.deinit();
     try testing.expectError(AnalyzeError.NameError, fix.analyzeStr("undefined-symbol"));
+}
+
+test "name resolution failure populates last_error with symbol + analysis phase" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    error_mod.clearLastError();
+    try testing.expectError(AnalyzeError.NameError, fix.analyzeStr("undefined-symbol"));
+    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.name_error, info.kind);
+    try testing.expectEqual(error_mod.Phase.analysis, info.phase);
+    try testing.expect(std.mem.indexOf(u8, info.message, "undefined-symbol") != null);
+}
+
+test "syntax error on (if ...) carries form location" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    error_mod.clearLastError();
+    try testing.expectError(AnalyzeError.SyntaxError, fix.analyzeStr("(if 1 2 3 4)"));
+    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.syntax_error, info.kind);
+    try testing.expectEqual(error_mod.Phase.analysis, info.phase);
+    try testing.expect(std.mem.indexOf(u8, info.message, "if expects") != null);
+}
+
+test "string-literal-as-expression → NotImplemented carries phase tag" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    error_mod.clearLastError();
+    try testing.expectError(AnalyzeError.NotImplemented, fix.analyzeStr("\"hello\""));
+    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Kind.not_implemented, info.kind);
+    try testing.expectEqual(error_mod.Phase.analysis, info.phase);
 }
 
 test "resolved symbol → var_ref pointing at the right Var.root" {

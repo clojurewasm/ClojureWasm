@@ -40,6 +40,13 @@ pub const Kind = enum {
     name_error,
     arity_error,
     value_error,
+    /// A form is well-formed but uses a feature this phase does not
+    /// implement yet (e.g. string literals as expression values
+    /// before Phase 3.5 lands the heap-string analyser path). Kept
+    /// distinct from `internal_error` so user-facing tooling can flag
+    /// "ClojureWasm vN.M doesn't support this yet" rather than "this
+    /// is a bug in the runtime".
+    not_implemented,
     // Eval phase
     type_error,
     arithmetic_error,
@@ -75,6 +82,7 @@ pub const Error = error{
     NameError,
     ArityError,
     ValueError,
+    NotImplemented,
     TypeError,
     ArithmeticError,
     IndexError,
@@ -91,6 +99,7 @@ fn kindToError(kind: Kind) Error {
         .name_error => Error.NameError,
         .arity_error => Error.ArityError,
         .value_error => Error.ValueError,
+        .not_implemented => Error.NotImplemented,
         .type_error => Error.TypeError,
         .arithmetic_error => Error.ArithmeticError,
         .index_error => Error.IndexError,
