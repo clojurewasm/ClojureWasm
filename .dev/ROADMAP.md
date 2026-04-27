@@ -984,8 +984,7 @@ subagents. Long-context audit / chapter-write subagents may use
 Opus 4.6 (better long-context retrieval) instead of Opus 4.7.
 
 It only stops for: a `git push`, an ambiguous test failure, an
-audit-scaffolding `block` finding, an ADR-level decision, or
-unadopted strategic notes in `private/`.
+audit-scaffolding `block` finding, or an ADR-level decision.
 
 Pushing to `cw-from-scratch` always requires explicit user approval.
 

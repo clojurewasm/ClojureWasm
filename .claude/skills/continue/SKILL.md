@@ -38,10 +38,7 @@ Default = keep going. **Keep going** when:
   choice (i.e., not a one-line obvious fix).
 - The audit-scaffolding skill produces a `block` finding.
 - An ADR-level decision is needed (tier change, principle deviation,
-  scope cut, strategic-note adoption from `private/`).
-- The `private/` directory contains a strategic note whose proposals
-  have not yet been adopted into ROADMAP / handover. Surface them with
-  one-line pointers and ask which to adopt.
+  scope cut).
 
 ## Resume procedure (run on every session pickup)
 
@@ -50,23 +47,18 @@ Default = keep going. **Keep going** when:
    - Find the IN-PROGRESS phase in §9. If none, take the first PENDING.
    - In that phase's expanded §9.<N> task list, find the first `[ ]`
      task. If §9.<N> is missing/empty, the phase has not been opened yet.
-3. **Scan `private/` for unadopted strategic notes** (any `*.md` whose
-   most recent commit log mentions a proposal that is not present in
-   ROADMAP / handover / `.dev/decisions/`). Surface findings as one-line
-   pointers in the resume summary.
-4. `git log --oneline -10` — identify any unpaired source commits since
+3. `git log --oneline -10` — identify any unpaired source commits since
    the last `docs/ja/NNNN-*.md` commit.
-5. `bash test/run_all.sh` — confirm the build is green. **If the test
+4. `bash test/run_all.sh` — confirm the build is green. **If the test
    output is large (>200 lines), run via subagent and ask only for
    pass/fail + the first failure.**
-6. Summarise to the user in 5–10 lines:
+5. Summarise to the user in 5–10 lines:
    - Phase (number + name)
    - Last commit
    - Test status
    - Unpaired source SHAs (if any) — must be addressed first
-   - Strategic notes in `private/` not yet adopted (if any)
    - Next task (number + name + exit criterion)
-7. **Immediately proceed into the TDD loop.** Do not wait for "go" —
+6. **Immediately proceed into the TDD loop.** Do not wait for "go" —
    `/continue` itself is the go signal.
 
 ## Per-task TDD loop (autonomous from invocation through chapter commit)
@@ -244,10 +236,9 @@ Default rule: **subagent fork on context isolation, not on importance**.
 - **Per-task TDD loop (Steps 1–7)**: current session's model — Opus 4.7
   is fine.
 - **Phase boundary chain (multi-agent fan-out)**: prefer **Opus 4.6**
-  for the long-context audit / simplify / chapter-write subagents
-  because Opus 4.7's MRCR v2 retrieval is degraded above 100k tokens
-  versus 4.6 (see `private/2026-04-27_strategic_review/04_phase2_audit_and_meta_review.md`
-  §6.2). Sonnet 4.6 is a viable cost-efficient alternative.
+  for the long-context audit / simplify / chapter-write subagents —
+  Opus 4.7's MRCR v2 retrieval is known to degrade above ~100k tokens
+  versus 4.6. Sonnet 4.6 is a viable cost-efficient alternative.
 
 When unsure, default to subagent inheriting the parent model; flip to
 Opus 4.6 only if a long-context task underperforms.

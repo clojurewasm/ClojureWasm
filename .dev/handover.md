@@ -53,57 +53,42 @@
   backend concern (ADR 0001). `Runtime` gained
   `gensym(arena, prefix)` for hygienic auto-symbols.
 
-## Active task — wait for user judgement, then open Phase 4 (§9.6)
+## Active task — open Phase 4 (§9.6)
 
-Phase-3 boundary review chain ran. **Three escalations are blocking
-§9.6 expand**:
+Phase 3 closed. Phase-3 boundary review chain ran (audit / simplify /
+security-review / chapter 0020); 🔒 OrbStack x86_64 gate **PASSED
+2026-04-27**. Phase 4 (`VM + Compiler + Opcodes`, ROADMAP §9 line
+644) now opens.
 
-1. **G1 / G2 / G4 strategic-note adoption** (audit Section F flagged
-   as "deadlines passed"). User must choose per-item: `draft` (open
-   the proposed design doc now) / `re-defer` (push deadline forward
-   with new trigger) / `close` (reject and remove from `private/`):
-   - **G1**: `private/2026-04-27_strategic_review/02_plan_review.md`
-     §G1 — concurrency_design.md (atom / agent / future / promise /
-     pmap design). Original deadline: "Phase 3 着手前". Phase 3 is now
-     done; G1 deferred indefinitely.
-   - **G2**: same file §G2 — wasm_strategy.md (Component Model +
-     Pod escape hatch + WIT timeline). Original deadline: same.
-   - **G4**: same file §G4 — perf_baselines.md / bench harness.
-     Original deadline: "Phase 4 着手前". **Most time-sensitive: Phase
-     4 is what we are about to open.** Without G4, ROADMAP §10.2
-     "mid-phase quick bench (4-7)" has no harness.
-2. **🔒 OrbStack x86_64 gate — PASSED 2026-04-27**. Ran
-   `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` from
-   the project root inside the working directory; all 5 suites green
-   on Linux ubuntu questing amd64. Phase 4.1 may proceed once items
-   1 + 3 below are resolved.
-3. **Three security findings (H1/H2/H3)** queued from boundary
-   security-review — should land as the first source commits in
-   §9.6 / 4.0 (or 4.1 prelude) before any external behaviour change:
-   - H1: analyzer `@intCast` to u16 in `analyzeLoopStar` (line 678)
-     and `analyzeRecur` (line 737) panics on >65k bindings/args.
-   - H2: `trackHeap`-failure leaks across `string.alloc`,
-     `ex_info.alloc`, `list.consHeap`, `tree_walk.allocFunction` —
-     uniform fix is `errdefer rt.gpa.destroy(s)` after the `create`.
-   - H3: `expandAnd` / `expandOr` re-recursive expansion blows the
-     stack on long `(and …)` chains — rewrite as a single
-     non-recursive expansion or gate analyze depth.
+**§9.6 expand draft** (mirror §9.5 shape):
 
-After all three are resolved, expand §9.6 inline (mirror §9.5
-shape) starting from the security fixes as 4.0.x or 4.1, then move
-into VM scaffolding (§4.4 dual-backend foundation).
+| Task | Description                                                                                                                          | Status |
+|------|--------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 4.0  | `bench/quick.sh` + `bench/quick.yaml` + 5–6 microbench fixtures (fib / arith_loop / list_build / map_filter). ROADMAP §10.2 physical | [ ]    |
+| 4.1  | analyzer `@intCast` to u16 in `analyzeLoopStar` / `analyzeRecur` — guard against >u16 bindings/args before the cast                   | [ ]    |
+| 4.2  | `trackHeap`-failure leaks: add `errdefer rt.gpa.destroy(s)` after `create` in `string.alloc` / `ex_info.alloc` / `list.consHeap` / `tree_walk.allocFunction` | [ ]    |
+| 4.3  | `expandAnd` / `expandOr` non-recursive fold — long `(and …)` chains must not blow the stack                                          | [ ]    |
+| 4.4+ | VM scaffolding (ROADMAP §4.4 dual-backend foundation) — opcodes / compiler / VM dispatch / `Evaluator.compare()` plumbing             | [ ]    |
+
+The first task is **4.0 bench harness**. Without this, ROADMAP §10.2
+"mid-phase quick bench (4-7)" has no physical artefact and Phase 4
+optimisation work can't be measured.
 
 **Retrievable identifiers**:
-- `private/audit-2026-04-27.md` — full audit report (block 0 / warn 4
-  / info 13).
-- `private/notes/phase3-simplify-queue.md` — Q1–Q11 deferred items.
-- ROADMAP §10.2, §11.5 — bench harness + cross-platform gate context.
+- `private/notes/phase3-simplify-queue.md` — Q1–Q11 deferred items
+  (some intersect 4.x work; consult per task).
+- ROADMAP §10.2 / §10.3 — bench targets + v0.1.0 numbers.
+- ROADMAP §4.4 — dual-backend (TreeWalk reference + VM production).
+- `private/audit-2026-04-27.md` — last audit (block 0 / warn 4 / info
+  13); next audit due ~Phase 5 boundary.
 
 **3.14 + boundary chain (just landed)**:
 - `test/e2e/phase3_exit.sh` exists; `bash test/run_all.sh` green at
-  5/5 suites.
+  5/5 suites both Mac + Ubuntu x86_64.
 - Chapter 0020 covers 3.8–3.14 + meta in 1075 lines.
 - Simplify apply-now (`4ad8270`) + chapter (`cc46a48`) shipped.
+- `private/` cleaned of absorbed strategic dumps; `audit` and
+  `continue` no longer treat `private/` as authoritative.
 
 **Post-3.11 small cleanup queued** (not blocking):
 - Split `test/e2e/phase3_cli.sh` into `cli_entry.sh` (CLI plumbing
@@ -116,32 +101,7 @@ into VM scaffolding (§4.4 dual-backend foundation).
 
 ## Open questions / blockers
 
-- G1 / G2 / G4 strategic-note adoption (see Active task §1).
-- ~~🔒 OrbStack x86_64 gate run~~ (passed 2026-04-27).
-- H1 / H2 / H3 security findings — queued for §9.6 / 4.0 prelude
-  (see Active task §3).
-
-## Strategic notes in `private/` to consider for future phases
-
-The `/continue` resume procedure surfaces these; not all need action
-right now, but they should not be lost. Each is one line — read the
-file for detail.
-
-- `private/2026-04-27_strategic_review/01_design_insights.md` — v1
-  retrospective + Clojure semantics + Wasm/Edge 2026 + Zig 0.16.
-- `private/2026-04-27_strategic_review/02_plan_review.md` — five
-  strategic gaps (G1: concurrency design doc; G2: Wasm strategy
-  decision; G3: decisions.md D1-D20 retroactive entries; G4: Phase 4-7
-  bench harness; G5: fused-reduce design doc).
-- `private/2026-04-27_strategic_review/03_ecosystem_and_architecture.md`
-  — Tier system, InterOp deep module (3-entry interface; case 1+3
-  hybrid), Wasm Component pod escape hatch.
-- `private/2026-04-27_strategic_review/04_phase2_audit_and_meta_review.md`
-  — meta review: educational-doc taste, autonomous-loop best practices,
-  the backlog B1–B12 that produced the 2026-04-27 framework rewrite.
-
-Adoption decisions for any of these = ADR-level → escalate to user
-before proceeding.
+(none — §9.6 task list is the next concrete work)
 
 ## Notes for the next session
 
@@ -155,8 +115,10 @@ before proceeding.
   gated). Use `TEMPLATE_TASK_NOTE.md` and `TEMPLATE_PHASE_DOC.md`. Do
   **not** revert to the old "diary per phase" shape.
 - Skill `audit-scaffolding` runs at every Phase boundary or every ~10
-  chapters. Section F now checks unadopted strategic notes in
-  `private/`.
+  chapters. Section F covers per-task note volume and audit-report
+  cadence only — not strategic-note adoption (that belongs in
+  ROADMAP / ADR / `docs/ja/` / handover, never in gitignored
+  `private/`).
 - Rule `.claude/rules/textbook-survey.md` — auto-loaded on
   `src/**/*.zig`; defines the Step 0 brief and the four anti-pull
   guardrails.

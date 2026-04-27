@@ -76,6 +76,12 @@ turn 1 must be Japanese.
   [`ROADMAP §17`](.dev/ROADMAP.md#17-amendment-policy): edit in place
   as if it had always been so, open an ADR, sync `handover.md`,
   reference the ADR in the commit. Quiet edits are forbidden.
+- `private/` is gitignored agent scratch (per-task surveys + notes,
+  audit reports, the user's own brainstorming dumps). It is **not
+  authoritative** — audit and resume procedures do not read it as
+  load-bearing. If a `private/` proposal matters, promote it to
+  ROADMAP / ADR / `docs/ja/` / `handover.md` (all tracked in git);
+  otherwise let it stay scratch.
 
 ## Skills (the runnable procedures)
 
@@ -91,12 +97,12 @@ These hold the canonical procedures; CLAUDE.md only points to them.
   Survey, Step 7 per-task note, Step 8 60% compact gate) + multi-agent
   Phase-boundary review chain. Auto-triggers on "続けて" / "/continue"
   / "resume". **Fully autonomous from invocation**. Stops only for
-  `git push`, ambiguous test failure, audit `block` finding, ADR-level
-  decision, or unadopted strategic notes in `private/`.
+  `git push`, ambiguous test failure, audit `block` finding, or an
+  ADR-level design decision.
 - **`audit-scaffolding`** — periodic audit for staleness, bloat, lies,
-  false positives, **and unadopted strategic notes in `private/`**
-  (Section F of CHECKS.md). Auto-invoked by `continue` at every Phase
-  boundary; can also be run on demand.
+  and false positives across the tracked scaffolding (CLAUDE.md,
+  `.dev/`, `.claude/`, `docs/`, `scripts/`). Auto-invoked by
+  `continue` at every Phase boundary; can also be run on demand.
 
 The Phase-boundary review chain (auto-run by `continue` when a Phase
 closes) fans out under multiple subagents to: audit-scaffolding,
