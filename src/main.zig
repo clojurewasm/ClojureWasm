@@ -24,11 +24,9 @@ const Env = @import("runtime/env.zig").Env;
 const Value = @import("runtime/value.zig").Value;
 const primitive = @import("lang/primitive.zig");
 const macro_transforms = @import("lang/macro_transforms.zig");
-const keyword = @import("runtime/keyword.zig");
 const error_mod = @import("runtime/error.zig");
 const error_print = @import("runtime/error_print.zig");
-const string_collection = @import("runtime/collection/string.zig");
-const list_collection = @import("runtime/collection/list.zig");
+const print = @import("runtime/print.zig");
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -147,7 +145,7 @@ pub fn main(init: std.process.Init) !void {
             std.process.exit(1);
         };
 
-        try printValue(stdout, result);
+        try print.printValue(stdout, result);
         try stdout.writeByte('\n');
     }
     try stdout.flush();
@@ -166,85 +164,8 @@ fn renderError(stderr: *Writer, ctx: error_print.SourceContext, err: anyerror) W
     try stderr.flush();
 }
 
-/// Print a Value to `w` in `pr-str` style. Phase-2 surface: nil /
-/// boolean / integer / float / char / builtin_fn / keyword. Other
-/// heap kinds render as `#<tag>` placeholders so the user sees
-/// *something* instead of an undecipherable address — Phase 3+ will
-/// build the proper printer alongside the heap types it needs.
-pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
-    switch (v.tag()) {
-        .nil => try w.writeAll("nil"),
-        .boolean => try w.writeAll(if (v.asBoolean()) "true" else "false"),
-        .integer => try w.print("{d}", .{v.asInteger()}),
-        .float => {
-            const f = v.asFloat();
-            if (std.math.isNan(f)) try w.writeAll("##NaN") //
-            else if (std.math.isPositiveInf(f)) try w.writeAll("##Inf") //
-            else if (std.math.isNegativeInf(f)) try w.writeAll("##-Inf") //
-            else try w.print("{d}", .{f});
-        },
-        .char => try w.print("\\u{x:0>4}", .{v.asChar()}),
-        .builtin_fn => try w.writeAll("#builtin"),
-        .keyword => {
-            const k = keyword.asKeyword(v);
-            try w.writeByte(':');
-            if (k.ns) |n| {
-                try w.writeAll(n);
-                try w.writeByte('/');
-            }
-            try w.writeAll(k.name);
-        },
-        .string => try printString(w, string_collection.asString(v)),
-        .list => try printList(w, v),
-        else => |t| try w.print("#<{s}>", .{@tagName(t)}),
-    }
-}
-
-/// Render a heap List in `(a b c)` form. Empty list (a List Value
-/// whose count is 0) prints as `()`. Walks via `list_collection`'s
-/// `first` / `rest` so this stays decoupled from the Cons internals.
-fn printList(w: *Writer, v: Value) Writer.Error!void {
-    try w.writeByte('(');
-    var cur = v;
-    var first_iter = true;
-    while (cur.tag() == .list and list_collection.countOf(cur) > 0) {
-        if (!first_iter) try w.writeByte(' ');
-        first_iter = false;
-        try printValue(w, list_collection.first(cur));
-        cur = list_collection.rest(cur);
-    }
-    try w.writeByte(')');
-}
-
-/// Render `s` in Clojure `pr-str` style: surrounding double quotes,
-/// with `\n` / `\t` / `\r` / `\\` / `\"` escape sequences. Other
-/// bytes are passed through as-is — `(read-string (pr-str s))` round-
-/// trips for ASCII-clean inputs (matches the Reader's `unescapeString`
-/// table at §9.4 / 1.9).
-fn printString(w: *Writer, s: []const u8) Writer.Error!void {
-    try w.writeByte('"');
-    for (s) |c| switch (c) {
-        '\n' => try w.writeAll("\\n"),
-        '\t' => try w.writeAll("\\t"),
-        '\r' => try w.writeAll("\\r"),
-        '\\' => try w.writeAll("\\\\"),
-        '"' => try w.writeAll("\\\""),
-        else => try w.writeByte(c),
-    };
-    try w.writeByte('"');
-}
-
 test "smoke: main module loads" {
     try std.testing.expect(true);
-}
-
-test "printValue renders Phase-2 atoms" {
-    var buf: [128]u8 = undefined;
-    var w: Writer = .fixed(&buf);
-    try printValue(&w, .nil_val);
-    try printValue(&w, Value.initInteger(42));
-    try printValue(&w, .true_val);
-    try std.testing.expectEqualStrings("nil42true", w.buffered());
 }
 
 // Pull in tests from the source tree. As more files appear under
@@ -258,6 +179,7 @@ test {
     _ = @import("runtime/collection/string.zig");
     _ = @import("runtime/hash.zig");
     _ = @import("runtime/keyword.zig");
+    _ = @import("runtime/print.zig");
     _ = @import("runtime/runtime.zig");
     _ = @import("runtime/dispatch.zig");
     _ = @import("runtime/env.zig");
