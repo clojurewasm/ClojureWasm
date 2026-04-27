@@ -15,51 +15,46 @@
 
 ## Current state
 
-- **Phase**: Phase 2 DONE. Phase 3 task list (§9.5) is expanded but
-  3.1 is the next active task.
+- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.4 done; chapter
+  `0017-error-infrastructure-activation.md` paired at `5f7c2fd`.
+  Next active task is **3.5** (heap String type — `runtime/collection/string.zig`).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
-- **Last paired chapter commit**: educational materials were rewritten
-  from scratch on 2026-04-27; see `docs/ja/` for the new textbook.
-  Phase 2 source commits 91feef0..7d9fe5f are covered by the new
-  chapters.
-- **Build**: 176 tests passing (`zig build test`); `zone_check --gate`
-  green; `test/e2e/phase2_exit.sh` green (3/3 CLI cases).
-- **Phase-2 exit criterion**: `cljw -e "(let* [x 1] (+ x 2))"` → `3`
-  and `cljw -e "((fn* [x] (+ x 1)) 41)"` → `42` ✓.
+- **Last paired chapter commit**: `5f7c2fd` (0017) covering
+  37f0c8f..6777c42 (3.1–3.4 — error infrastructure activation).
+- **Unpaired source SHAs awaiting chapter**: (none).
+- **Build**: `bash test/run_all.sh` all green —
+  `zig build test`, `zone_check --gate`,
+  `test/e2e/phase2_exit.sh` (3/3),
+  `test/e2e/phase3_cli.sh` (6/6).
+- **End-to-end error rendering activated**: `cljw -e '(+ 1 :foo)'`
+  now prints `<-e>:1:0: type_error [eval]\n  (+ 1 :foo)\n  ^\n+:
+  expected number, got keyword`. Reader / Analyzer / TreeWalk +
+  primitives all route through `setErrorFmt`. Single-column caret
+  + call-site loc — token-width caret + per-arg loc are deferred
+  to Phase 9.
 
-## Active task — §9.5 / 3.1
+## Active task — §9.5 / 3.5
 
-`src/runtime/error_print.zig` + `src/main.zig` overhaul.
+`src/runtime/collection/string.zig` — heap String type (HeapTag.string).
+Analyzer lifts string Form atoms into Value via
+`runtime.string.alloc(rt, bytes)`; `printValue` renders quoted.
 
 **Retrievable identifiers**:
-- ROADMAP §9.5 task 3.1 (the table at the bottom of §9.5).
-- `.claude/rules/cljw-invocation.md` — why `-e` is fragile under zsh.
-- `src/runtime/error.zig` (Phase 1.2 — `SourceLocation`,
-  threadlocal `last_error`, `setErrorFmt` infrastructure already in place).
-- `src/main.zig` — current catch sites print `@errorName(err)`; replace
-  with `formatErrorWithContext`.
+- ROADMAP §9.5 task 3.5 (table).
+- `src/runtime/value.zig` — `HeapTag.string` should already exist
+  (Phase 1.5 reserved); confirm before adding.
+- `src/eval/analyzer.zig::formToValue` — currently returns
+  `Kind.not_implemented` for `.string`; this is the call site to
+  replace once `runtime.string.alloc` exists.
+- `src/main.zig::printValue` — currently renders heap kinds as
+  `#<tag>`; needs `.string` arm with quoted + escape-sequence output.
+- `private/notes/phase3-3.4.md` — TODO carries Phase 9 follow-ups
+  (token-width caret, per-arg loc) but those are out of scope for 3.5.
 
-**Two motivations land together**:
-
-1. **Activate principle P6 (Error quality is non-negotiable)**.
-   Phase 1.2 put SourceLocation / threadlocal `last_error` /
-   `setErrorFmt` infrastructure in place, but Reader / Analyzer /
-   TreeWalk error sites still discard the location and `main.zig`
-   just prints `@errorName(err)`. 3.1 builds the rendering side
-   (`error_print.zig`) and switches `main.zig`'s catch sites to it;
-   3.2–3.4 then re-route the error producers through `setErrorFmt`.
-2. **Safer cljw invocation**. `-e "..."` collides with zsh history
-   expansion (`!`), `$` substitution, backticks. Add `cljw <file.clj>`
-   and `cljw -` (stdin / heredoc) as first-class entry points.
-   `-e` stays as a quick path.
-
-**Exit criterion for 3.1**:
-- A bad expression like `cljw -e "(+ 1 :foo)"` prints
-  `<-e>:1:4: type_error [eval]\n  (+ 1 :foo)\n      ^^^^\n
-  +: expected number, got keyword` to stderr.
-- `cljw script.clj` reads the file and runs RAEP over each top-level
-  form.
-- `cljw -` reads stdin (heredoc-friendly).
+**Exit criterion for 3.5**:
+`cljw -e '"hello"'` prints `"hello"` on stdout (with quotes).
+`cljw -e '(quote "hi")'` also prints `"hi"`. `printValue` round-trips
+escape sequences (`\n`, `\"`).
 
 ## Open questions / blockers
 
