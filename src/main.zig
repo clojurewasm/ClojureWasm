@@ -25,6 +25,7 @@ const primitive = @import("lang/primitive.zig");
 const keyword = @import("runtime/keyword.zig");
 const error_mod = @import("runtime/error.zig");
 const error_print = @import("runtime/error_print.zig");
+const string_collection = @import("runtime/collection/string.zig");
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -182,8 +183,27 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
             }
             try w.writeAll(k.name);
         },
+        .string => try printString(w, string_collection.asString(v)),
         else => |t| try w.print("#<{s}>", .{@tagName(t)}),
     }
+}
+
+/// Render `s` in Clojure `pr-str` style: surrounding double quotes,
+/// with `\n` / `\t` / `\r` / `\\` / `\"` escape sequences. Other
+/// bytes are passed through as-is — `(read-string (pr-str s))` round-
+/// trips for ASCII-clean inputs (matches the Reader's `unescapeString`
+/// table at §9.4 / 1.9).
+fn printString(w: *Writer, s: []const u8) Writer.Error!void {
+    try w.writeByte('"');
+    for (s) |c| switch (c) {
+        '\n' => try w.writeAll("\\n"),
+        '\t' => try w.writeAll("\\t"),
+        '\r' => try w.writeAll("\\r"),
+        '\\' => try w.writeAll("\\\\"),
+        '"' => try w.writeAll("\\\""),
+        else => try w.writeByte(c),
+    };
+    try w.writeByte('"');
 }
 
 test "smoke: main module loads" {
@@ -207,6 +227,7 @@ test {
     _ = @import("runtime/error_print.zig");
     _ = @import("runtime/gc/arena.zig");
     _ = @import("runtime/collection/list.zig");
+    _ = @import("runtime/collection/string.zig");
     _ = @import("runtime/hash.zig");
     _ = @import("runtime/keyword.zig");
     _ = @import("runtime/runtime.zig");

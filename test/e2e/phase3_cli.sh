@@ -69,5 +69,23 @@ err=$("$BIN" --not-a-real-flag 2>&1 || true)
 [[ "$err" == *"Unknown option"* ]] || fail "unknown flag: bad message: $err"
 echo "    ✓ unknown option flagged"
 
+# --- Case 7: heap String round-trips through Read-Eval-Print (3.5) ---
+got=$("$BIN" -e '"hello"' 2>&1) || fail "string lit: non-zero exit"
+[[ "$got" == '"hello"' ]] || fail "string lit: want '\"hello\"', got '$got'"
+echo "    ✓ \"hello\" → \"hello\""
+
+# --- Case 8: quoted string lifts to a heap String ---
+got=$("$BIN" -e '(quote "hi")' 2>&1) || fail "quote string: non-zero exit"
+[[ "$got" == '"hi"' ]] || fail "quote string: want '\"hi\"', got '$got'"
+echo "    ✓ (quote \"hi\") → \"hi\""
+
+# --- Case 9: escape sequences survive Read → printValue round-trip ---
+got=$("$BIN" - <<'EOF' 2>&1
+"line1\nline2"
+EOF
+) || fail "escape seq: non-zero exit"
+[[ "$got" == '"line1\nline2"' ]] || fail "escape seq: want '\"line1\\nline2\"', got '$got'"
+echo "    ✓ \"line1\\nline2\" round-trip"
+
 echo
 echo "Phase-3 CLI entry points: all green."

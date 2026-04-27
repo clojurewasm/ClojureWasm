@@ -44,6 +44,7 @@ const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const Var = env_mod.Var;
 const keyword = @import("../runtime/keyword.zig");
+const string_collection = @import("../runtime/collection/string.zig");
 const error_mod = @import("../runtime/error.zig");
 const SourceLocation = error_mod.SourceLocation;
 
@@ -135,10 +136,12 @@ pub fn analyze(
         },
         .symbol => |sym| try analyzeSymbol(arena, env, scope, sym, form),
         .list => |items| try analyzeList(arena, rt, env, scope, items, form),
-        // String / vector / map as expression values land in Phase 3+,
-        // when they get a Heap representation. For now they're an
-        // explicit NotImplemented — better than silently failing.
-        .string => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "String literal as expression value not yet supported (Phase 3.5+)", .{}),
+        .string => |s| {
+            const v = try string_collection.alloc(rt, s);
+            return try makeConstant(arena, v, form);
+        },
+        // Vector / map as expression values land in later Phase 3
+        // tasks once their heap shape ships. NotImplemented for now.
         .vector => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Vector literal as expression value not yet supported (Phase 3+)", .{}),
         .map => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Map literal as expression value not yet supported (Phase 3+)", .{}),
     };
@@ -369,8 +372,8 @@ fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
         .integer => |i| Value.initInteger(i),
         .float => |f| Value.initFloat(f),
         .keyword => |sym| try keyword.intern(rt, sym.ns, sym.name),
+        .string => |s| try string_collection.alloc(rt, s),
         .symbol => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted symbol as Value not yet supported (Phase 3.6+)", .{}),
-        .string => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted string as Value not yet supported (Phase 3.5+)", .{}),
         .list => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted list as Value not yet supported (Phase 3.6+)", .{}),
         .vector => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted vector as Value not yet supported (Phase 3+)", .{}),
         .map => error_mod.setErrorFmt(.analysis, .not_implemented, form.location, "Quoted map as Value not yet supported (Phase 3+)", .{}),
@@ -593,16 +596,26 @@ test "syntax error on (if ...) carries form location" {
     try testing.expect(std.mem.indexOf(u8, info.message, "if expects") != null);
 }
 
-test "string-literal-as-expression → NotImplemented carries phase tag" {
+test "string-literal-as-expression lifts to a .string Value (Phase 3.5)" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const n = try fix.analyzeStr("\"hello\"");
+    try testing.expect(n.* == .constant);
+    try testing.expect(n.constant.value.tag() == .string);
+    try testing.expectEqualStrings("hello", string_collection.asString(n.constant.value));
+}
+
+test "vector-literal-as-expression remains NotImplemented (Phase 3.6+)" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
 
     error_mod.clearLastError();
-    try testing.expectError(AnalyzeError.NotImplemented, fix.analyzeStr("\"hello\""));
+    try testing.expectError(AnalyzeError.NotImplemented, fix.analyzeStr("[1 2 3]"));
     const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Kind.not_implemented, info.kind);
-    try testing.expectEqual(error_mod.Phase.analysis, info.phase);
 }
 
 test "resolved symbol → var_ref pointing at the right Var.root" {
