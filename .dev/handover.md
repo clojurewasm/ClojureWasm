@@ -15,20 +15,14 @@
 
 ## Current state
 
-- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.7 done. Chapter
-  0017 paired 3.1–3.4. 3.5+3.6+3.7 are unpaired source SHAs awaiting
-  their chapter(s). Next active task is **3.8**
+- **Phase**: Phase 3 IN-PROGRESS (§9.5). 3.1–3.7 done, all paired
+  (chapters 0017 / 0018 / 0019). Next active task is **3.8**
   (`runtime/print.zig` extraction).
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
-- **Last paired chapter commit**: `5f7c2fd` (0017) covering
-  37f0c8f..6777c42 (3.1–3.4 — error infrastructure activation).
-- **Unpaired source SHAs awaiting chapter**:
-  - `3a5f852` (3.5 — heap String + analyzer/printer wiring)
-  - `766a73a` (3.6 — heap List literal-as-value via quote)
-  - `6630cbe` (3.7 — bootstrap macros + Layer-1 MacroTable, ADR 0001)
-  Plan: chapter 0018 covers 3.5+3.6 ("heap collection literals"),
-  chapter 0019 covers 3.7 alone ("macroexpand routing + ADR 0001").
-  Final shape decided at chapter-write time.
+- **Last paired chapter commit**: `ed470fe` (0019) covering 6630cbe
+  (3.7 — macroexpand routing). Preceded by `a89e6fb` (0018) covering
+  3a5f852..766a73a (3.5+3.6 — heap collection literals).
+- **Unpaired source SHAs**: none. 3.1–3.7 are fully paired.
 - **Build**: `bash test/run_all.sh` all green —
   `zig build test`, `zone_check --gate`,
   `test/e2e/phase2_exit.sh` (3/3),
