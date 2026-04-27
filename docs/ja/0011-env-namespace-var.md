@@ -14,15 +14,16 @@ date: 2026-04-27
 
 > 対応 task: §9.4 / 2.3 / 所要時間: 75〜105 分
 
-Phase 2.1 で skeleton として登場した `Env` (40 行)
-を、Phase 2.3 (`e20acaa`) で **440 行を追加** して完成版にします。
-ここで初めて「Clojure らしい」セマンティクスが本リポに登場します：
-**Namespace, Var, refer/alias, そして `(binding [*foo* 42] ...)` の
-スタック**。
+Phase 2.1 で skeleton として登場した `Env`（40 行）を、Phase 2.3
+（`e20acaa`）で **440 行を追加** して完成版に仕上げます。ここで初め
+て「Clojure らしい」セマンティクスが本リポジトリに姿を現します。
+**Namespace、Var、refer / alias、そして `(binding [*foo* 42] ...)`
+のスタック** です。
 
-中でも最も思想的に重要なのは **`current_frame` を threadlocal に置く
-判断**です。これは「正しい threadlocal」であり、Clojure dynamic var
-の意味論が本質的に要請するもの。本章はその正当性も掘り下げます。
+中でも最も思想的に重要なのは **`current_frame` を threadlocal に置
+く判断** です。これは「正しい threadlocal」であり、Clojure の dynamic
+var の意味論が本質的に要請するものです。本章では、その正当性も
+掘り下げます。
 
 ---
 
@@ -43,8 +44,9 @@ Phase 2.1 で skeleton として登場した `Env` (40 行)
 
 ## 1. Var — root binding + flags
 
-Clojure の `Var` は **名前付き値の入れ物**。`(def x 42)` は新しい
-`Var` を作って `x` という名前で current namespace に登録します。
+Clojure の `Var` は **名前付き値の入れ物** です。`(def x 42)` は
+新しい `Var` を作って、`x` という名前で current namespace に登録
+します。
 
 ```zig
 pub const VarFlags = packed struct(u8) {
@@ -77,8 +79,9 @@ pub const Var = struct {
 };
 ```
 
-3 つの flag を 1 byte に詰めるのは Clojure JVM の `Var.java` でも
-同じ思想。Zig では `packed struct(u8)` で **1 バイトに固定**。
+3 つの flag を 1 byte に詰めるのは、Clojure JVM の `Var.java` でも
+同じ思想です。Zig では `packed struct(u8)` で **1 バイトに固定して
+います**。
 
 ### `^:dynamic` の意味
 
@@ -103,7 +106,7 @@ pub fn deref(self: *const Var) Value {
 }
 ```
 
-**非 dynamic Var は frame を一切見ない**。これが大事。
+**非 dynamic Var は frame を一切見ません**。ここが要点です。
 
 ### なぜ非 dynamic で frame を見ないのか
 
@@ -119,8 +122,8 @@ analyzer/TreeWalk のローカルスコープ管理で扱われます (第 0012 
 対する新しい frame** を push します。
 
 両者を `Var.deref` の中で混ぜないために、**非 dynamic は frame を
-無視** という規約を守る。analyzer が「これは let か binding か」を
-特別扱いしないで済む。
+無視する** という規約を守ります。これにより analyzer 側で「これは
+let か binding か」を特別扱いせずに済みます。
 
 ### 演習 11.1: `Var.deref` の挙動 (L1 — 予測検証)
 
@@ -155,9 +158,9 @@ Q2: `b` の値は？
 | `a` | `.nil_val` | `v_static` は `dynamic=false` なので **frame を見ない**。root をそのまま返す |
 | `b` | `.false_val` | `v_dynamic` は `dynamic=true` なので chain を walk、frame に bind されている `.false_val` を返す |
 
-これが「analyzer が let と binding を特別扱いしないで済む」設計の
-具体的な現れ。frame に何を入れていようが、`Var.flags.dynamic = false`
-なら無視される。
+これが「analyzer 側で let と binding を特別扱いせずに済む」設計の
+具体的な現れです。frame に何を入れていようが、`Var.flags.dynamic
+== false` なら無視されます。
 
 </details>
 
@@ -207,9 +210,10 @@ pub fn resolve(self: *Namespace, name: []const u8) ?*Var {
 2. それが無ければ **refer されたもの** (refers)
 3. それも無ければ `null` (analyzer/runtime 側でエラーにする)
 
-`aliases` はこのレベルでは使いません。`(my.lib/foo bar)` のように
-**修飾された symbol** が来たときだけ alias を `aliases` から引いて
-target namespace を取り、その上で `target.resolve("foo")` を呼ぶ。
+`aliases` はこのレベルでは使いません。`(my.lib/foo bar)` のような
+**修飾された symbol** が来たときだけ、alias を `aliases` から引いて
+ターゲット namespace を取り、その上で `target.resolve("foo")` を
+呼びます。
 
 ### 演習 11.2: `resolve` の lookup を再構成 (L2)
 
@@ -245,12 +249,12 @@ pub fn resolve(self: *Namespace, name: []const u8) ?*Var {
 ```
 
 ポイント:
-- **順序が意味論**: `mappings` を先に見ないと、refer された同名 Var
-  が def を上書きしたかのような挙動になる。Clojure の意味論では「自分
-  の def が勝つ」が正解。
-- **`null` 返し**: `error` を返さない理由は、呼び出し側 (analyzer) が
-  「special form / macro / 通常の var 解決」を順に試すため、ここで
-  分岐するのは早すぎる。
+- **順序が意味論を担う**: `mappings` を先に見ないと、refer された同名
+  Var が def を上書きしたかのような挙動になってしまいます。Clojure
+  の意味論では「自分の def が勝つ」が正解です。
+- **`null` 返し**: `error` を返さない理由は、呼び出し側（analyzer）
+  が「special form / macro / 通常の var 解決」を順に試すためです。
+  この段階で分岐させるのは早すぎます。
 
 </details>
 
@@ -258,7 +262,7 @@ pub fn resolve(self: *Namespace, name: []const u8) ?*Var {
 
 ## 3. BindingFrame と threadlocal current_frame
 
-ここが **本リポで唯一の load-bearing threadlocal**。
+ここが **本リポジトリで唯一の load-bearing threadlocal** です。
 
 ```zig
 const BindingMap = std.AutoHashMapUnmanaged(*const Var, Value);
@@ -323,15 +327,18 @@ binding [*x* 10] 抜ける:
   current_frame ← frame_outer.parent = null
 ```
 
-**「inner frame が outer を shadow する」** ことが、`findBinding`
-が **最初に見つかった値を返す** だけで自然に成立。
+**「inner frame が outer を shadow する」** という挙動は、
+`findBinding` が **最初に見つかった値を返す** だけで自然に成立
+します。
 
 ### なぜ threadlocal が「正しい threadlocal」なのか
 
-ここに本リポのもう 1 つの哲学。`docs/ja/0009-runtime-handle-three-
-layers.md` で見た通り、本リポは threadlocal を最小に絞っています。
+ここに本リポジトリのもう 1 つの哲学があります。`docs/ja/0009-runtime-
+handle-three-layers.md` で見た通り、本リポジトリは threadlocal を
+最小に絞っています。
 
-しかし `current_frame` だけは **正しい threadlocal**。理由：
+しかし `current_frame` だけは **正しい threadlocal** です。理由は
+次の通りです：
 
 1. **Clojure 意味論の要請**: `*ns*`, `*err*`, `*print-length*`,
    `*out*` などの dynamic var は **per-thread** が contract。スレッ
@@ -351,14 +358,15 @@ ROADMAP §7.3:
 > is a Clojure-semantics requirement, not incidental** — abolishing
 > threadlocal is not an option.
 
-つまり「threadlocal 撲滅」ではなく **「threadlocal を意味論で正当化
-できる場所だけに残す」** が方針。`current_frame` は最も中核の例。
+つまり「threadlocal 撲滅」ではなく、**「threadlocal を意味論で
+正当化できる場所だけに残す」** という方針です。`current_frame` は
+そのもっとも中核的な例です。
 
 ### v1 retrospective から
 
-v1 (89K LOC) では threadlocal が **11 個** あちこちに散在していました
-(`io.zig` 等)。本リポは strategic note (`private/2026-04-24
-_runtime_design/REPORT.md`) でそれを 4 個に絞りました：
+v1（89K LOC）では threadlocal が **11 個** あちこちに散在していまし
+た（`io.zig` 等）。本リポジトリは strategic note（`private/2026-04-24
+_runtime_design/REPORT.md`）でそれを 4 個に絞りました：
 
 ```
 threadlocal:
@@ -368,8 +376,8 @@ threadlocal:
   current_env:   ?*Env              ← call 中だけ
 ```
 
-**「散らばっていた状態を集約してわかりやすくした」のではなく、
-**残すべきものを 4 個に絞った**」が正確。
+「散らばっていた状態を集約してわかりやすくした」のではなく、
+**残すべきものを 4 個に絞った** と表現するのが正確です。
 
 ### 演習 11.3: `findBinding` を chain walk で再構成 (L3)
 
@@ -505,27 +513,29 @@ pub fn referAll(self: *Env, from: *Namespace, to: *Namespace) !void {
 
 要点：
 
-- **`to.refers` への登録**: Var の所有権は `from.mappings` に残す。
-  `refers` は借用のみ。
-- **idempotent**: 既に refer されていたら skip。同じ `referAll` を
-  2 回呼んでも 2 重登録にならない。
+- **`to.refers` への登録**: Var の所有権は `from.mappings` に残し、
+  `refers` 側は借用のみとして扱います。
+- **idempotent**: すでに refer されていれば skip します。同じ
+  `referAll` を 2 回呼んでも 2 重登録にはなりません。
 - **key の dup**: `from.mappings` の key と `to.refers` の key は
-  別 string。各 namespace が独立に解放できるように。
+  別 string にしています。これにより各 namespace が独立に解放
+  できます。
 
 ### Clojure 4.x の `(refer 'rt)` と本リポの差
 
-Clojure JVM では `(refer 'clojure.core)` が standard。本リポでは
-Phase 2 段階で **rt namespace に primitive を集約** する設計に
-しています：
+Clojure JVM では `(refer 'clojure.core)` が standard です。本リポ
+ジトリでは Phase 2 の段階で、**rt namespace に primitive を集約する**
+設計を採っています：
 
-- Phase 2: `rt/+` `rt/-` `rt/=` (低レベル primitive のみ)
-- Phase 3+: `clojure.core/defn` `clojure.core/when` などの macro が
-  Clojure-level で定義され、`clojure.core` namespace に置かれる。
+- Phase 2: `rt/+`、`rt/-`、`rt/=`（低レベル primitive のみ）
+- Phase 3+: `clojure.core/defn` や `clojure.core/when` などの macro
+  が Clojure 側で定義され、`clojure.core` namespace に置かれます。
 
 `rt` という名前は **「runtime kernel — Zig 側で実装された primitive
-が住む特別な場所」** を意図。Clojure JVM の `clojure.core` が
-analogous ですが、後者は Clojure code で書かれている。本リポの `rt`
-は Zig code (BuiltinFn) で書かれていることが本質的な違い。
+が住む特別な場所」** を意図しています。Clojure JVM の `clojure.core`
+と analogous ですが、後者は Clojure code で書かれているのに対し、
+本リポジトリの `rt` は Zig code（BuiltinFn）で書かれているという点
+が本質的な違いです。
 
 ### 演習 11.4: `Env.intern` を REPL-idempotent に書く (L2)
 
@@ -577,8 +587,8 @@ pub fn intern(self: *Env, ns: *Namespace, name: []const u8, root: Value) !*Var {
 
 ## 5. Two Envs sharing a Runtime — nREPL race fix
 
-`Env` の根幹的な設計目的は **複数の独立した namespace 空間を 1 つの
-Runtime 上に共存** させること。
+`Env` の根幹的な設計目的は、**複数の独立した namespace 空間を 1 つの
+Runtime 上に共存させる** ことです。
 
 ```zig
 test "Two Envs sharing a Runtime have isolated namespaces" {
@@ -599,8 +609,8 @@ test "Two Envs sharing a Runtime have isolated namespaces" {
 }
 ```
 
-`env1.intern(user, "x", ...)` が `env2.user` に漏れない。**これが
-v1 で起きていた nREPL race の修正点**。
+`env1.intern(user, "x", ...)` が `env2.user` に漏れません。
+**これが v1 で起きていた nREPL race の修正点です**。
 
 ### v1 の問題
 
@@ -612,9 +622,9 @@ nREPL client B:  (in-ns 'bar) → *ns* = bar (... shared!)
 nREPL client A:  *ns*           ← 'bar が返る (B が上書き)
 ```
 
-`*ns*` は threadlocal にあったので少し緩和されていましたが、
-**Var の `(def x ...)` は global namespace map** に書かれるため、
-A の def が B から見えてしまう (汚染)。
+`*ns*` は threadlocal にあったため多少は緩和されていましたが、
+**Var を作る `(def x ...)` は global namespace map** に書き込まれる
+ので、A の def が B からも見えてしまう（汚染）状況になっていました。
 
 ### 本リポの解決
 
@@ -629,9 +639,9 @@ client B → Env_B → namespaces { user, ... }   (independent)
 - **shared Runtime**: keyword pool / dispatch table はプロセスで 1 つ
   (これは共有しても問題ない、というかむしろ共有したい)
 
-ROADMAP §7.1 の concurrency mapping (Phase 14: nREPL) と整合。
-strategic note の "案 2 (3 層 Runtime/Env/threadlocal)" がここで
-本領を発揮します。
+ROADMAP §7.1 の concurrency mapping（Phase 14: nREPL）と整合して
+います。strategic note の「案 2（3 層 Runtime / Env / threadlocal）」
+がここで本領を発揮します。
 
 ---
 
@@ -697,28 +707,33 @@ zig build test --summary new 2>&1 | grep "BindingFrame"
 | `Env.init` の bootstrap | グローバル global init | `rt` ns 作成 (試行) | `clojure.core` を JVM init で load | `rt` + `user` を `Env.init` で create |
 | `(def x ...)` 再 def | 常に新 Var | update in place (試行) | `Var.bindRoot` で in-place | update in place |
 
-引っ張られず本リポの理念で整理した点：
+引っ張られずに本リポジトリの理念で整理した点：
 
-- **3 つの map を意図的に分ける**: v1 / Clojure JVM が「`mappings`
-  / `refers` / `aliases`」3 軸を持つのと同じ構造を採用しつつ、
-  **所有関係 (own / borrow)** を Zig allocator-aware に明示。
-- **threadlocal の最小化**: v1 の 11 個 → 本リポの 4 個。残した 4 個
-  は **すべて意味論的に正当化できる** (動的 var / error trace /
-  call current env / thrown exception)。
+- **3 つの map を意図的に分ける**: v1 / Clojure JVM の「`mappings` /
+  `refers` / `aliases`」という 3 軸構造を踏襲しつつ、**所有関係
+  （own / borrow）** を Zig の allocator-aware なスタイルで明示
+  しています。
+- **threadlocal の最小化**: v1 の 11 個に対し、本リポジトリは 4 個
+  まで絞り込んでいます。残した 4 個は **すべて意味論的に正当化
+  できます**（dynamic var / error trace / call current env / thrown
+  exception）。
 - **per-session Env で nREPL race を Day 1 から fix**: Phase 14 で
-  nREPL を実装する時、再設計せず「`spawn(handler, .{rt, env_per_
-  client})`」だけで済む土台が Phase 2 で完成。
+  nREPL を実装する際にも、再設計なしで `spawn(handler, .{rt,
+  env_per_client})` を呼ぶだけで済むよう、土台が Phase 2 の段階で
+  完成しています。
 
 ---
 
 ## 9. Feynman 課題
 
-1. なぜ `^:dynamic` Var だけ `current_frame` を walk して、非 dynamic
-   は walk しないのか？ 1 行で。
-2. なぜ `Namespace` は `mappings` と `refers` を別の map にするのか？
-   1 行で。
-3. なぜ `current_frame` は **正しい threadlocal** であって、廃止すべき
-   ではないのか？ 1 行で。
+6 歳の自分に説明するつもりで答えてください。
+
+1. なぜ `^:dynamic` の Var だけが `current_frame` を walk して、非
+   dynamic の Var は walk しないのか。1 行で。
+2. なぜ `Namespace` は `mappings` と `refers` を別の map に分けて
+   いるのか。1 行で。
+3. なぜ `current_frame` は **正しい threadlocal** であり、廃止すべき
+   ではないと言えるのか。1 行で。
 
 ---
 
@@ -741,6 +756,7 @@ zig build test --summary new 2>&1 | grep "BindingFrame"
 第 0012 章: [Form を Node に — Analyzer が作る AST](./0012-analyzed-ast-node.md)
 
 — Phase 2.4 で導入される `eval/node.zig` の `Node` tagged union を
-追体験します。Phase 1 の `Form` (= ソース構文の生 AST) と、Phase 2 の
-`Node` (= 解析済み AST) の責任分離。`let*` のローカル binding 番号付
-けや、`fn*` のクロージャキャプチャ解析を初めて扱う段階です。
+追体験します。Phase 1 の `Form`（= ソース構文の生 AST）と、Phase 2
+の `Node`（= 解析済み AST）の責任分離が主題です。`let*` のローカル
+binding 番号付けや、`fn*` のクロージャキャプチャ解析を初めて扱う
+段階に入ります。
