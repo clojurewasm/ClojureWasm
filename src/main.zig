@@ -196,4 +196,5 @@ test {
     _ = @import("lang/primitive/error.zig");
     _ = @import("lang/primitive.zig");
     _ = @import("lang/macro_transforms.zig");
+    _ = @import("lang/bootstrap.zig");
 }
