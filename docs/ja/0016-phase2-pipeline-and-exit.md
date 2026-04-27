@@ -16,15 +16,15 @@ date: 2026-04-27
 
 > 対応 task: §9.4 / 2.10–2.11 / 所要時間: 60〜90 分
 
-ここまでに作った **Reader**（第 12 章）、**Analyzer**（第 13 章）、
-**TreeWalk**（第 14 章）、**primitives**（第 15 章）— **すべての層**
-を `main.zig` で wire し、`cljw -e "(+ 1 2)"` が `3` を返す世界を
-**最後に閉じる** のがこの章。続いて、**Phase 2 の exit criterion を
-shell script で pin する** ことで、後の Phase で誰かが壊しても CI
-が即座に検知する **executable spec** を導入する。
+ここまでに作ってきた **Reader**（第 12 章）、**Analyzer**（第 13
+章）、**TreeWalk**（第 14 章）、**primitives**（第 15 章）。**すべて
+の層** を `main.zig` で wire し、`cljw -e "(+ 1 2)"` が `3` を返す
+世界を **ここで閉じる** のがこの章です。続けて、**Phase 2 の exit
+criterion を shell script で pin する** ことで、後の Phase で誰かが
+壊しても CI が即座に検知してくれる **executable spec** を導入します。
 
-これが **Phase 2 教材の最終章**。読み終わると `(let* [x 1] (+ x 2))`
-が動く **最小限の Clojure** が手元に成立している。
+ここが **Phase 2 教材の最終章** です。読み終わると `(let* [x 1]
+(+ x 2))` が動く **最小限の Clojure** が手元に成立します。
 
 ---
 
@@ -506,7 +506,7 @@ git checkout cw-from-scratch
 
 ## 7. 教科書との対比
 
-| 軸 | v1 (`ClojureWasm`) | v1_ref | Clojure JVM | 本リポ |
+| 軸 | v1 (`ClojureWasm`) | v1_ref | Clojure JVM | 本リポジトリ |
 |----|---------------------|--------|-------------|---------|
 | main.zig 構造 | 200+ 行、複数モード（REPL / -e / -f） | RAEP は別ファイル | `Main.java` 数千行 | RAEP を main.zig 内 inline、177 行 |
 | eval engine | bytecode VM が default | TreeWalk のみ | bytecode VM | TreeWalk のみ（Phase 11 で VM 追加） |
@@ -514,21 +514,27 @@ git checkout cw-from-scratch
 | arena 戦略 | per-eval split + GC | per-eval | full GC | process-lifetime 1 回 |
 | printValue | `runtime/print.zig` 数百行 | 別ファイル | `RT.print()` reflective | main.zig に暫定 inline、Phase 3.8 で切り出し |
 
-引っ張られず本リポの理念で整理した点：
+引っ張られずに本リポジトリの理念で整理した点：
 
-- v1 は **多モード CLI**（REPL / `-e` / `-f` / `--socket`）を Day 1 から積んでいたが、本リポは **Phase 2 では `-e` のみ**。**P5** に沿って必要時に増やす。
-- Clojure JVM は exit criterion を JUnit で持つが、本リポは **shell script** で済ませる。`zig test` を不要にし、CI 環境を最小に保つ。
-- v1 の `printValue` は早い段階から大きなファイルだったが、本リポは **inline → 必要になったら切り出す** という progressive 配置。
+- v1 は **多モード CLI**（REPL / `-e` / `-f` / `--socket`）を Day 1
+  から積んでいましたが、本リポジトリは **Phase 2 では `-e` のみ**
+  に絞っています。**P5** に沿って、必要になった時点で増やす方針です。
+- Clojure JVM は exit criterion を JUnit で持っていますが、本リポ
+  ジトリは **shell script** で済ませます。`zig test` を不要にし、CI
+  環境を最小に保つためです。
+- v1 の `printValue` は早い段階から大きなファイルになっていました
+  が、本リポジトリは **inline で書き、必要になったら切り出す** と
+  いう progressive な配置にしています。
 
 ---
 
 ## 8. Feynman 課題
 
-6 歳の自分に説明するつもりで答える。
+6 歳の自分に説明するつもりで答えてください。
 
-1. **Phase 1 の main.zig と Phase 2 の main.zig の違いは何？** 1 行で。
-2. **exit criterion を shell script にした理由は？** 1 行で。
-3. **arena を per-eval で切らないのに困らないのはなぜ？** 1 行で。
+1. **Phase 1 の main.zig と Phase 2 の main.zig の違いは何か**。1 行で。
+2. **exit criterion を shell script にした理由は何か**。1 行で。
+3. **arena を per-eval で切らないのに困らないのはなぜか**。1 行で。
 
 ---
 
@@ -545,17 +551,20 @@ git checkout cw-from-scratch
 
 ## Phase 2 まとめ — ここまでで何が出来上がったか
 
-教科書としての Phase 2 の物語を 3 行で：
+教科書としての Phase 2 の物語を 3 行でまとめると：
 
-- **Phase 1** は **データ**（Value, Form）と **読み**（Tokenizer, Reader）を作った
-- **Phase 2** は **解釈**（Analyzer, TreeWalk）と **基本演算**（math, core）を加えた
-- これで `cljw -e "(let* [x 1] (+ x 2))"` が動くという **最小限の Clojure** が成立
+- **Phase 1** で **データ**（Value、Form）と **読み**（Tokenizer、
+  Reader）を作りました。
+- **Phase 2** で **解釈**（Analyzer、TreeWalk）と **基本演算**
+  （math、core）を加えました。
+- これで `cljw -e "(let* [x 1] (+ x 2))"` が動く **最小限の
+  Clojure** が成立します。
 
-NaN-boxing, threadlocal last_error, Runtime / Env / Namespace,
-Tokenizer, Reader, Form, Node, slot allocation, BindingFrame,
-TreeWalk, Function (closure), math primitives, core predicates,
-registerAll, RAEP — **これらすべての層が機能している**ことを、3 つの
-shell test ケースが保証している。
+NaN boxing、threadlocal `last_error`、Runtime / Env / Namespace、
+Tokenizer、Reader、Form、Node、slot allocation、BindingFrame、
+TreeWalk、Function（closure）、math primitives、core predicates、
+registerAll、RAEP。**これらすべての層が機能している** ことを、3 つの
+shell test ケースが保証しています。
 
 ---
 
@@ -574,8 +583,8 @@ Phase 3 — defn と例外処理の章群
 - **§9.5 task 3.12-3.14**: `bootstrap.zig` + `core.clj` Stage 1 + exit smoke
 
 Phase 3 が完了すると、`(defn f [x] (+ x 1)) (f 2)` が **マクロ展開
-込み**で動くようになり、`(try ... (catch ExceptionInfo e ...))` で
-エラーが捕捉できる **Clojure の小さな完成版** が手に入る。
+込み** で動くようになり、`(try ... (catch ExceptionInfo e ...))`
+でエラーを捕捉できる **Clojure の小さな完成版** が手に入ります。
 
 第 17 章は Phase 3 task 3.1-3.4 の **error 表示の本格運用** から
 始まる — 教科書で言えば「error 報告は Day 1 から本気でやる」を真に

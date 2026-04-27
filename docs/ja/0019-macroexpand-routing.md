@@ -16,11 +16,12 @@ date: 2026-04-27
 
 > 対応 task: §9.5 / 3.7 / 所要時間: ~60 分
 
-3.7 は **マクロ展開を ClojureWasm v2 のどの層で行うか** を決め切る章。
-旧来の `Runtime.vtable.expandMacro` slot を **撤去**し、Layer-1 の
-`eval/macro_dispatch.Table` 経由で `lang/macro_transforms.zig` の
-9 個の Zig 変換を呼ぶ設計に切り替える。決定の経緯は ADR 0001
-（`.dev/decisions/0001-macroexpand-routing.md`）に書き出した。
+3.7 は **マクロ展開を ClojureWasm v2 のどの層で行うか** を決め切る
+章です。旧来の `Runtime.vtable.expandMacro` slot を **撤去** し、
+Layer-1 の `eval/macro_dispatch.Table` 経由で `lang/macro_transforms
+.zig` の 9 個の Zig 変換を呼ぶ設計に切り替えます。決定の経緯は ADR
+0001（`.dev/decisions/0001-macroexpand-routing.md`）に書き出して
+あります。
 
 ---
 
@@ -502,7 +503,7 @@ bash test/e2e/phase3_cli.sh
 
 ## 8. 教科書との対比
 
-| 軸 | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | Babashka/SCI | 本リポ |
+| 軸 | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | Babashka/SCI | 本リポジトリ |
 |----|-----------|--------|-------------|--------------|--------|
 | dispatch 場所 | `analyzeList()` inline | 未実装 | `Compiler.analyzeSeq()` inline | `sci.impl.analyzer` inline | **Layer-1 `eval/macro_dispatch.Table` (extracted)** |
 | transform 数 | 57 個（Zig） | 0 | core.clj (`defmacro`) | core fns (SCI) | 9 個（bootstrap のみ） |
@@ -510,32 +511,36 @@ bash test/e2e/phase3_cli.sh
 | backend 結合 | なし | 該当なし | なし | 該当なし（interpreter only） | **明示的になし（vtable から削除済み）** |
 | 状態管理 | comptime `StaticStringMap` | 未実装 | runtime `Var meta` | SCI evaluator state | **runtime `StringHashMap`（Phase 3.12 で user macro を入れるため）** |
 
-引っ張られず本リポの理念で整理した点：
+引っ張られずに本リポジトリの理念で整理した点：
 
-- v1 は dispatch を `analyzeList` に inline していた（57 個もあるなら直の
-  ほうが速い）。本リポは extract して **テスト可能 / 再構成可能** な形に。
-  9 個に絞ったのは bootstrap の最小集合だけにして、残りは Phase 3.12 の
-  `core.clj` `defmacro` で書く — A2「新ファイル」と P3「core 安定」を
-  満たす分割。
-- Clojure JVM の Object-level は homoiconic だから自然だが、CW v2 は
-  Form/Value 分離を意図的に維持。Form-level macro は location が完全保存
-  され P6 を満たす。
-- Babashka/SCI は host fast path なし。CW v2 で Zig 変換をもつのは v1
-  と同じ思想 — bootstrap macros を毎回 Clojure 評価器で expand すると
-  startup が遅くなる。Zig 変換ならゼロコスト。
+- v1 は dispatch を `analyzeList` に inline していました（57 個もあれ
+  ば直書きのほうが速いという判断）。本リポジトリは extract して
+  **テスト可能 / 再構成可能** な形にしています。9 個に絞ったのは
+  bootstrap の最小集合だけに留めるためで、残りは Phase 3.12 の
+  `core.clj` 上の `defmacro` で書きます。A2「新ファイル」と P3
+  「core 安定」を満たす分割になっています。
+- Clojure JVM の Object-level は homoiconic なので自然ですが、CW v2
+  は Form / Value 分離を意図的に維持しています。Form-level macro は
+  location が完全に保存され、P6 を満たします。
+- Babashka / SCI には host 側の fast path がありません。CW v2 で Zig
+  変換を持つのは v1 と同じ思想です。bootstrap macros を毎回 Clojure
+  評価器で expand すると startup が遅くなるため、Zig 変換でゼロ
+  コスト化しています。
 
 ---
 
 ## 9. Feynman 課題
 
-6 歳の自分に説明するつもりで答える。書けなければ理解が不完全。
+6 歳の自分に説明するつもりで答えてください。書けなければ理解が不完全
+だと判断し、その節を読み直します。
 
-1. なぜ `(let* [...] body)` は special form なのに `(let [...] body)` は
-   macro なのか？ どっちかで統一しないのは何の都合？
-2. `Runtime.vtable.expandMacro` を残しておいて何が困ったのか — 1 言で。
-3. `(and 1 2 3)` を 3 回展開すると、最後にどんな構造（Node tree）が
-   できるか。`let*` の入れ子の深さを答えよ。
-4. ADR 0001 の 5 候補（A〜E）を 1 行ずつで「却下理由 1 つ」だけ挙げよ。
+1. なぜ `(let* [...] body)` は special form で、`(let [...] body)` は
+   macro なのか。どちらかに統一しないのはなぜか。1 行で。
+2. `Runtime.vtable.expandMacro` を残しておくと何が困るのか。1 言で。
+3. `(and 1 2 3)` を 3 回展開すると、最後にどんな構造（Node tree）に
+   なるか。`let*` の入れ子の深さを答えてください。
+4. ADR 0001 の 5 候補（A〜E）について、1 行ずつで「却下理由を 1 つ」
+   挙げてください。
 
 ---
 

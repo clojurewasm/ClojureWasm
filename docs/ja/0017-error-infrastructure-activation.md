@@ -22,14 +22,15 @@ date: 2026-04-27
 
 Phase 1.2 で `runtime/error.zig` に **`SourceLocation` / `Kind` /
 `Phase` / threadlocal `last_error` / `setErrorFmt`** を作って以来、
-インフラはずっと **そこにある** のに、Reader / Analyzer / TreeWalk /
-primitive のどこも使っていなかった。`cljw -e '(+ 1 :foo)'` を打つと
-`Eval error: TypeError` という、**位置情報も理由もない** バーボーン
-の文字列だけが返ってきていた。
+インフラはずっと **そこにあった** のに、Reader / Analyzer / TreeWalk
+/ primitive のどこも使っていませんでした。`cljw -e '(+ 1 :foo)'` を
+打つと `Eval error: TypeError` という、**位置情報も理由も持たない**
+痩せた文字列だけが返ってきていたわけです。
 
-この章では Phase 3 の最初の 4 タスク (§9.5 / 3.1–3.4) を通して、
-**ROADMAP §2 原則 P6「Error quality is non-negotiable」を end-to-end
-で活性化** させる。完了後は同じ式で次のように出る：
+この章では Phase 3 の最初の 4 タスク（§9.5 / 3.1–3.4）を通して、
+**ROADMAP §2 原則 P6「Error quality is non-negotiable」を end-to-
+end で活性化** させます。完了後は同じ式で次のような出力が得られる
+ようになります：
 
 ```
 <-e>:1:0: type_error [eval]
@@ -508,7 +509,7 @@ bash test/run_all.sh    # 全 suite green
 
 ## 8. 教科書との対比
 
-| 軸 | v1 | v1_ref | Clojure JVM | Babashka | 本リポ |
+| 軸 | v1 | v1_ref | Clojure JVM | Babashka | 本リポジトリ |
 |----|----|--------|-------------|----------|--------|
 | エラー位置の保持 | threadlocal | threadlocal | exception attribute | ex-info の data map | threadlocal `last_error` (v1 と同じ) |
 | ソース行の表示 | header のみ | header のみ | REPL が別途取得 | ±4/±6 行 + 単一 caret | 該当行 + 単一 caret (Babashka に近い) |
@@ -516,27 +517,30 @@ bash test/run_all.sh    # 全 suite green
 | primitive への loc 伝搬 | 後付け | 後付け | exception trace で代用 | ex-info | dispatch.CallFn に loc を最初から含める |
 | not_implemented 扱い | internal | internal | UnsupportedOpEx | ex-info | 専用 Kind タグ |
 
-引っ張られず本リポの理念で整理した点：
+引っ張られずに本リポジトリの理念で整理した点：
 
-- ソーステキストを threadlocal にしない (引数 `SourceContext` で渡す)
-  — Babashka は ex-info メタの中に持つが、CW v2 は caller が持つので
-  global state を増やす理由がない。
-- `Kind.not_implemented` を独立タグに — JVM の
-  `UnsupportedOperationException` に近いが、CW v2 の Phase 番号入り
-  メッセージ ("Phase 3.5+") をユーザに見せる前提でラベリング。
+- ソーステキストを threadlocal にせず、引数 `SourceContext` で渡す
+  ようにしています。Babashka は ex-info メタの中に持ちますが、CW v2
+  では caller がソーステキストを持っているため、わざわざグローバル
+  状態を増やす理由がないからです。
+- `Kind.not_implemented` を独立タグにしています。JVM の
+  `UnsupportedOperationException` に近い位置付けですが、CW v2 の
+  Phase 番号入りメッセージ（"Phase 3.5+" など）をユーザに見せる
+  前提でラベリングしています。
 
 ---
 
 ## 9. Feynman 課題
 
-6 歳の自分に説明するつもりで答える。
+6 歳の自分に説明するつもりで答えてください。
 
-1. なぜ `error.zig` のインフラが Phase 1.2 で完成していたのに、Phase 3
-   でやっと使われ始めたのか。
-2. `cljw -e "(+ 1 :foo)"` の caret が column 0 (`(`) を指して、
-   column 5 (`:foo`) を指さないのはなぜか。1 行で。
-3. `pub const ReadError = error_mod.Error` と「広げる」のに、外部の
-   `expectError(error.SyntaxError, ...)` テストが壊れないのはなぜか。
+1. `error.zig` のインフラが Phase 1.2 で完成していたのに、Phase 3
+   でやっと使われ始めたのはなぜか。1 行で。
+2. `cljw -e "(+ 1 :foo)"` の caret が column 0（`(`）を指して、
+   column 5（`:foo`）を指さないのはなぜか。1 行で。
+3. `pub const ReadError = error_mod.Error` と「広げて」いるのに、
+   外側の `expectError(error.SyntaxError, ...)` テストが壊れない
+   のはなぜか。1 行で。
 
 ---
 
@@ -553,6 +557,6 @@ bash test/run_all.sh    # 全 suite green
 
 ## 次へ
 
-第 18 章: Phase 3 / §9.5 タスク 3.5–3.7（heap collections と macro 経路、
-予定）。エラー基盤が動いた今、いよいよ string / list / vector を
-**Value として** 扱う heap 表現に入っていく。
+第 18 章: Phase 3 / §9.5 タスク 3.5–3.7（heap collections と macro
+経路）。エラー基盤が動き始めた今、いよいよ string / list / vector を
+**Value として** 扱う heap 表現に入っていきます。

@@ -18,11 +18,12 @@ date: 2026-04-27
 
 > 対応 task: §9.5 / 3.5 + 3.6 / 所要時間: ~50 分
 
-Phase 2 までの ClojureWasm v2 は immediate Value (NaN-boxed integer /
-float / boolean / nil / keyword / char / builtin_fn) しか expression と
-して受け付けなかった。3.5 と 3.6 でようやく heap-backed Value が
-2 種類解禁される — **String** と **List**。本章は 2 つのタスクが
-共有している「heap 型を 1 個追加する型レシピ」を読み解く。
+Phase 2 までの ClojureWasm v2 は immediate Value（NaN-boxed の
+integer / float / boolean / nil / keyword / char / builtin_fn）しか
+expression として受け付けていませんでした。3.5 と 3.6 でようやく
+heap-backed Value が 2 種類解禁されます。**String** と **List** です。
+本章では、この 2 つのタスクが共有している「heap 型を 1 つ追加する
+ときの型レシピ」を読み解きます。
 
 ---
 
@@ -400,35 +401,37 @@ bash test/run_all.sh    # 全 suite green、phase3_cli.sh は 11/11 段階
 
 ## 6. 教科書との対比
 
-| 軸 | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | 本リポ |
+| 軸 | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | 本リポジトリ |
 |----|-----------|--------|-------------|--------|
 | String 構造 | inline tail bytes 最適化（small-string） | 未実装 | `java.lang.String` (JVM ネイティブ) | header + dupe された `[]u8` slice の素朴版 |
 | 空 List 表現 | sentinel-Cons (`count=0`) | 未実装 | `PersistentList$EmptyList` 専用クラス | `nil_val` で簡略 (Phase 8+ 復元予定) |
 | 確保所 | GC 経路へ直結 | 未実装 | JVM heap | `rt.gpa.create` + `rt.trackHeap` (Phase 5 で GC へ置換) |
 | arena 共存 | なし (全部 GC) | 未実装 | なし | `cons(alloc, ...)` をテスト用に温存 |
 
-引っ張られず本リポの理念で整理した点：
+引っ張られずに本リポジトリの理念で整理した点：
 
-- v1 の inline-tail 最適化は性能チューニング。3.5 段階で導入すると
-  「学習リポにとっての教科書配列」を壊す。Phase 8 の専用最適化フェーズで
-  再評価。
+- v1 の inline-tail 最適化は性能チューニングであり、3.5 の段階で
+  導入すると「学習リポにとっての教科書的な配列」を壊してしまいます。
+  Phase 8 の専用最適化フェーズで再評価する予定です。
 - Clojure JVM の `()` と `nil` の区別は EmptyList class hierarchy が
-  支えている。CW v2 は Value tag が単一 (`HeapTag.cons`) で、`(quote ())`
-  → `nil_val` の簡略化を選んだ。**これは欠落ではなく一時的な妥協**で、
-  Phase 8+ で sentinel 化または専用 Value variant を ADR 化する想定。
+  支えています。CW v2 は Value tag が単一（`HeapTag.cons`）で、
+  `(quote ())` → `nil_val` という簡略化を選びました。**これは欠落
+  ではなく一時的な妥協** であり、Phase 8+ で sentinel 化、もしくは
+  専用 Value variant を ADR で固める想定です。
 
 ---
 
 ## 7. Feynman 課題
 
-6 歳の自分に説明するつもりで答える。書けなければ理解が不完全。
+6 歳の自分に説明するつもりで答えてください。書けなければ理解が不完全
+だと判断し、その節を読み直します。
 
-1. なぜ Value を作る関数のうち `String` と `Cons` は `rt.gpa` を使い、
-   `Integer` や `Boolean` は使わないのか？
-2. `(quote (1 2 3))` を実行すると Form は何回 traverse されるか — 1 回？
-   2 回？ それぞれ何のため？
-3. `_pad: [6]u8 = undefined` を消すと何が起きるか — 何 byte ずれて、
-   どの assert が叫ぶか？
+1. なぜ Value を作る関数のうち、`String` と `Cons` は `rt.gpa` を
+   使い、`Integer` や `Boolean` は使わないのか。1 行で。
+2. `(quote (1 2 3))` を実行すると Form は何回 traverse されるか。
+   1 回か 2 回か、そしてそれぞれ何のためか。
+3. `_pad: [6]u8 = undefined` を消すと何が起きるか。何 byte ずれて、
+   どの assert が叫ぶか。
 
 ---
 
