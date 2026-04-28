@@ -30,6 +30,15 @@ src/        Zig source
 
 See [`.dev/ROADMAP.md`](./.dev/ROADMAP.md) for mission and phase plan.
 
+## For developers
+
+Install via [bbin](https://github.com/babashka/bbin):
+
+```sh
+# Markdown table formatter (provides `md-table-align`)
+bbin install io.github.chaploud/babashka-utilities
+```
+
 ## License
 
 Eclipse Public License 2.0 — see [LICENSE](LICENSE).
