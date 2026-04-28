@@ -63,12 +63,12 @@ pub fn eval(rt: *Runtime, env: *Env, locals: []Value, node: *const Node) anyerro
 }
 ```
 
-| 引数     | 役割                                                            |
-|----------|-----------------------------------------------------------------|
-| `rt`     | Function alloc + vtable.callFn を引く                           |
-| `env`    | def/var_ref で namespace を引く、call で env を渡す             |
-| `locals` | 256-slot 配列 (caller の stack array)、`local_ref` の slot 用    |
-| `node`   | analyse 済 Node の借用ポインタ                                   |
+| 引数     | 役割                                                          |
+|----------|---------------------------------------------------------------|
+| `rt`     | Function alloc + vtable.callFn を引く                         |
+| `env`    | def/var_ref で namespace を引く、call で env を渡す           |
+| `locals` | 256-slot 配列 (caller の stack array)、`local_ref` の slot 用 |
+| `node`   | analyse 済 Node の借用ポインタ                                |
 
 ### `anyerror!Value` という戻り値型
 
@@ -314,12 +314,12 @@ fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value) !Va
 <details>
 <summary>答え</summary>
 
-| Case | 結果              | 理由                                                  |
-|------|-------------------|-------------------------------------------------------|
-| 1    | **ArityMismatch** | arity=1, args=0                                       |
-| 2    | **ArityMismatch** | arity=1, args=2、has_rest=false で正確 1 必要         |
-| 3    | **ArityMismatch** | has_rest でも min 1 必要                              |
-| 4    | OK (returns 1)    | has_rest なので args ≥ 1 で OK                        |
+| Case | 結果              | 理由                                          |
+|------|-------------------|-----------------------------------------------|
+| 1    | **ArityMismatch** | arity=1, args=0                               |
+| 2    | **ArityMismatch** | arity=1, args=2、has_rest=false で正確 1 必要 |
+| 3    | **ArityMismatch** | has_rest でも min 1 必要                      |
+| 4    | OK (returns 1)    | has_rest なので args ≥ 1 で OK               |
 
 </details>
 
@@ -357,12 +357,12 @@ return fn_ptr(rt, env, args, .{});
 
 ### なぜ heap object に逃がさないか
 
-| 軸                 | heap object 案 (v1 初期) | 48-bit fn pointer (本リポジトリ) |
-|--------------------|--------------------------|-----------------------------|
-| builtin 起動       | 200+ alloc               | 0 alloc                     |
-| identity 比較      | pointer 比較             | `==` 1 回                   |
-| GC trace           | 対象 (永続なのに無意味) | 対象外                      |
-| cold start         | 遅延                     | 影響なし                    |
+| 軸            | heap object 案 (v1 初期) | 48-bit fn pointer (本リポジトリ) |
+|---------------|--------------------------|----------------------------------|
+| builtin 起動  | 200+ alloc               | 0 alloc                          |
+| identity 比較 | pointer 比較             | `==` 1 回                        |
+| GC trace      | 対象 (永続なのに無意味)  | 対象外                           |
+| cold start    | 遅延                     | 影響なし                         |
 
 ROADMAP の **「sub-10 ms cold start」** (原則 P10) に直接効く設計。
 
@@ -427,17 +427,17 @@ try lang.primitive.registerAll(&env);    // builtins を namespace に intern
 <details>
 <summary>答え</summary>
 
-| variant       | eval の動作                                          |
-|---------------|------------------------------------------------------|
-| `.constant`   | `n.value` 即値返却                                  |
-| `.local_ref`  | `locals[n.index]`                                   |
-| `.var_ref`    | `n.var_ptr.deref()`                                 |
+| variant       | eval の動作                                            |
+|---------------|--------------------------------------------------------|
+| `.constant`   | `n.value` 即値返却                                     |
+| `.local_ref`  | `locals[n.index]`                                      |
+| `.var_ref`    | `n.var_ptr.deref()`                                    |
 | `.def_node`   | eval(value_expr) → intern → flag → `.var_ref` Value |
-| `.if_node`    | cond truthy なら then、それ以外は else (or nil)     |
-| `.do_node`    | forms 順次 eval、最後の値                           |
-| `.quote_node` | `n.quoted` を即返却 (analyzer が reify 済)          |
-| `.fn_node`    | `allocFunction(rt, n)` で fn_val                    |
-| `.let_node`   | bindings を slot に書いて body を eval              |
+| `.if_node`    | cond truthy なら then、それ以外は else (or nil)        |
+| `.do_node`    | forms 順次 eval、最後の値                              |
+| `.quote_node` | `n.quoted` を即返却 (analyzer が reify 済)             |
+| `.fn_node`    | `allocFunction(rt, n)` で fn_val                       |
+| `.let_node`   | bindings を slot に書いて body を eval                 |
 
 `call_node` だけが「**vtable 経由で別関数を呼ぶ**」特殊扱い。これに
 より Phase 4 の VM がここを差し替えるだけで全体が切り替わる。
@@ -506,17 +506,17 @@ error だけハンドル、他は再投げ。`continue` がジャンプ命令の
 
 ## 10. 設計判断と却下した代替
 
-| 案                              | 採否 | 理由                                                       |
-|---------------------------------|------|------------------------------------------------------------|
-| 10 variant を switch dispatch   | ✓    | 網羅性チェック + O(1) jump table                           |
-| `eval` を `anyerror!Value` に   | ✓    | vtable error widen + Phase 3 recur 互換                    |
-| `Function._pad: [6]u8` 明示     | ✓    | 8-byte alignment 保証、field 順入れ替え耐性                |
-| Builtin を 48-bit fn pointer で | ✓    | alloc 0、cold start P10 に効く                            |
-| Builtin を heap object (v1 初期)| ✗    | 200+ alloc、GC 対象が増える                                |
-| `vtable: ?VTable` (nullable)    | ✓    | install 前後を区別、tests で mock 注入                     |
-| `pub var vtable_global`         | ✗    | テスト並列性破綻 (ROADMAP §13 禁則)                        |
-| `recur` を Phase 2 に含める     | ✗    | loop*/recur は Phase 3、eval signature だけ前借り          |
-| closure capture を Phase 2 に   | ✗    | free variable analysis 必要、Phase 3+                      |
+| 案                               | 採否 | 理由                                              |
+|----------------------------------|------|---------------------------------------------------|
+| 10 variant を switch dispatch    | ✓   | 網羅性チェック + O(1) jump table                  |
+| `eval` を `anyerror!Value` に    | ✓   | vtable error widen + Phase 3 recur 互換           |
+| `Function._pad: [6]u8` 明示      | ✓   | 8-byte alignment 保証、field 順入れ替え耐性       |
+| Builtin を 48-bit fn pointer で  | ✓   | alloc 0、cold start P10 に効く                    |
+| Builtin を heap object (v1 初期) | ✗   | 200+ alloc、GC 対象が増える                       |
+| `vtable: ?VTable` (nullable)     | ✓   | install 前後を区別、tests で mock 注入            |
+| `pub var vtable_global`          | ✗   | テスト並列性破綻 (ROADMAP §13 禁則)              |
+| `recur` を Phase 2 に含める      | ✗   | loop*/recur は Phase 3、eval signature だけ前借り |
+| closure capture を Phase 2 に    | ✗   | free variable analysis 必要、Phase 3+             |
 
 ROADMAP §4.4 / §4.5 / 原則 P10 (起動 sub-10ms) と整合。
 
@@ -549,13 +549,13 @@ CLI からも `cljw -e "(+ 1 2)"` が動くようになる。
 
 ## 12. 教科書との対比
 
-| 軸             | v1              | v1_ref       | Clojure JVM    | 本リポジトリ                        |
-|----------------|-----------------|--------------|----------------|--------------------------------|
-| 行数           | 2129            | 456          | n/a            | **445**                       |
-| Function 表現  | heap + GC       | heap + track | `IFn` Java cls | **heap + trackHeap**          |
-| Builtin 表現   | heap object     | 48-bit ptr   | virtual call   | **48-bit fn pointer**         |
-| recur 実装     | trampoline+wrap | threadlocal  | rebind+jmp     | **threadlocal (Phase 3+)**    |
-| vtable 注入    | global pub var  | `*Runtime`   | n/a (compile)  | **`Runtime.vtable: ?VTable`** |
+| 軸            | v1              | v1_ref       | Clojure JVM    | 本リポジトリ                  |
+|---------------|-----------------|--------------|----------------|-------------------------------|
+| 行数          | 2129            | 456          | n/a            | **445**                       |
+| Function 表現 | heap + GC       | heap + track | `IFn` Java cls | **heap + trackHeap**          |
+| Builtin 表現  | heap object     | 48-bit ptr   | virtual call   | **48-bit fn pointer**         |
+| recur 実装    | trampoline+wrap | threadlocal  | rebind+jmp     | **threadlocal (Phase 3+)**    |
+| vtable 注入   | global pub var  | `*Runtime`   | n/a (compile)  | **`Runtime.vtable: ?VTable`** |
 
 引っ張られずに本リポジトリの理念で整理した点：v1 の Builtin は
 heap object でしたが、本リポジトリは **48-bit fn pointer** を採用

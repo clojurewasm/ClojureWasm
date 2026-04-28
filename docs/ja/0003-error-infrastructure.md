@@ -413,14 +413,14 @@ pub fn lessThan(args: []const Value, loc: SourceLocation) Error!Value {
 
 ## 4. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| **threadlocal Info + Zig Error タグ 1:1** | ✓ | error union が payload を運べない制約に対し、最小コストの追加。Clojure の動的 var 意味論とも整合 (§7.3) |
-| `Error!*Info` を返す | ✗ | error union の payload は `T` 専有、別 channel が要る |
-| `Result(T, Info)` 自前 union | ✗ | Zig の `try`/`catch` syntactic sugar が使えない、書き味が悪い |
-| OOM 経路で `Info` を heap alloc | ✗ | `OutOfMemory` 中に alloc は自殺 — 固定 buffer に潰す |
-| 各 phase で独自 error 型 | ✗ | `Error.TypeError` を Reader / Analyzer / TreeWalk が共有できないと、ヘルパが書けない |
-| Java の `RuntimeException` 風 string only | ✗ | Kind が引けず後段の error formatter が壊れる |
+| 案                                        | 採否 | 理由                                                                                                     |
+|-------------------------------------------|------|----------------------------------------------------------------------------------------------------------|
+| **threadlocal Info + Zig Error タグ 1:1** | ✓   | error union が payload を運べない制約に対し、最小コストの追加。Clojure の動的 var 意味論とも整合 (§7.3) |
+| `Error!*Info` を返す                      | ✗   | error union の payload は `T` 専有、別 channel が要る                                                    |
+| `Result(T, Info)` 自前 union              | ✗   | Zig の `try`/`catch` syntactic sugar が使えない、書き味が悪い                                            |
+| OOM 経路で `Info` を heap alloc           | ✗   | `OutOfMemory` 中に alloc は自殺 — 固定 buffer に潰す                                                    |
+| 各 phase で独自 error 型                  | ✗   | `Error.TypeError` を Reader / Analyzer / TreeWalk が共有できないと、ヘルパが書けない                     |
+| Java の `RuntimeException` 風 string only | ✗   | Kind が引けず後段の error formatter が壊れる                                                             |
 
 ROADMAP § P6 / §A7 / §7.3 と整合。
 
@@ -464,13 +464,13 @@ pub fn main() !void {
 
 ## 6. 教科書との対比
 
-| 軸 | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | 本リポ |
-|----|------|------|------|------|
-| 採用時期 | Phase 30 後付け | Phase 1.2 Day 1 | Day 1 (`Throwable`) | Phase 1.2 Day 1 |
-| 位置情報 | 後付け、Reader 由来は欠落 | `SourceLocation` 構造体 | `clojure.lang.Compiler$CompilerException` | `SourceLocation` 構造体 |
-| payload 運搬 | 標準 Zig error 裸投げ | threadlocal Info | `getMessage()` / `ex-data` | threadlocal Info |
-| Kind 列挙 | 緩い文字列 | 12 種 enum | 多数の `XxxException` | 12 種 enum |
-| arity helper | builtin 各々で手書き | 集約済み (`checkArity*`) | `RT.toArray` 群 | 集約済み (`checkArity*`) |
+| 軸           | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref                   | Clojure JVM                               | 本リポ                   |
+|--------------|-------------------------------------------|--------------------------|-------------------------------------------|--------------------------|
+| 採用時期     | Phase 30 後付け                           | Phase 1.2 Day 1          | Day 1 (`Throwable`)                       | Phase 1.2 Day 1          |
+| 位置情報     | 後付け、Reader 由来は欠落                 | `SourceLocation` 構造体  | `clojure.lang.Compiler$CompilerException` | `SourceLocation` 構造体  |
+| payload 運搬 | 標準 Zig error 裸投げ                     | threadlocal Info         | `getMessage()` / `ex-data`                | threadlocal Info         |
+| Kind 列挙    | 緩い文字列                                | 12 種 enum               | 多数の `XxxException`                     | 12 種 enum               |
+| arity helper | builtin 各々で手書き                      | 集約済み (`checkArity*`) | `RT.toArray` 群                           | 集約済み (`checkArity*`) |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

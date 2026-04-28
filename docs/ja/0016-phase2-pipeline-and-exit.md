@@ -352,10 +352,10 @@ run_case "((fn* [x] (+ x 1)) 41)" "((fn* [x] (+ x 1)) 41)" "42"
 
 3 ケースが Phase 2 の **守備範囲を網羅**：
 
-| ケース | 検証する機能 |
-|--------|------------|
-| `(+ 1 2)` → `3` | RAEP 最短経路。primitive call が動く |
-| `(let* [x 1] (+ x 2))` → `3` | local binding (slot allocation) |
+| ケース                           | 検証する機能                             |
+|----------------------------------|------------------------------------------|
+| `(+ 1 2)` → `3`                 | RAEP 最短経路。primitive call が動く     |
+| `(let* [x 1] (+ x 2))` → `3`    | local binding (slot allocation)          |
 | `((fn* [x] (+ x 1)) 41)` → `42` | closure (Function heap) と function call |
 
 ### 4.2 なぜ executable spec か
@@ -460,14 +460,14 @@ echo "Phase-2 exit-criterion e2e: all green."
 
 ## 5. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| 案 A: textual exit criterion を ROADMAP に書くだけ | ✗ | 検証が不可能。ドリフトを CI が検知できない |
-| 案 B: zig test 内の `expect_equal` で確認 | ✗ | `main.zig` の arg parsing / stdout flush / RAEP wiring が含まれず end-to-end にならない |
-| 案 C: bash script で実バイナリを叩く | ✓ | 採用。CLI の build → run → 出力比較を CI で再現可能 |
-| 案 D: per-eval で arena をリセット | ✗ | Phase 2 は対話 REPL ではないので fragmentation 不要。**P5** |
-| 案 E: `printValue` を別ファイル `runtime/print.zig` に最初から | ✗ | Phase 2 ではほぼ atomic 値しか印字しない。Phase 3.8 で list / vector が来てから切り出す（**A2**） |
-| 案 F: error path を `setErrorFmt` 経由で P6 統合 | ✗ | Phase 2 は `@errorName` で簡易表示。本格 P6 は §9.5 task 3.1-3.4（過剰設計を避ける） |
+| 案                                                             | 採否 | 理由                                                                                              |
+|----------------------------------------------------------------|------|---------------------------------------------------------------------------------------------------|
+| 案 A: textual exit criterion を ROADMAP に書くだけ             | ✗   | 検証が不可能。ドリフトを CI が検知できない                                                        |
+| 案 B: zig test 内の `expect_equal` で確認                      | ✗   | `main.zig` の arg parsing / stdout flush / RAEP wiring が含まれず end-to-end にならない           |
+| 案 C: bash script で実バイナリを叩く                           | ✓   | 採用。CLI の build → run → 出力比較を CI で再現可能                                             |
+| 案 D: per-eval で arena をリセット                             | ✗   | Phase 2 は対話 REPL ではないので fragmentation 不要。**P5**                                       |
+| 案 E: `printValue` を別ファイル `runtime/print.zig` に最初から | ✗   | Phase 2 ではほぼ atomic 値しか印字しない。Phase 3.8 で list / vector が来てから切り出す（**A2**） |
+| 案 F: error path を `setErrorFmt` 経由で P6 統合               | ✗   | Phase 2 は `@errorName` で簡易表示。本格 P6 は §9.5 task 3.1-3.4（過剰設計を避ける）             |
 
 ROADMAP §9.4 / 2.10 (RAEP wiring), 2.11 (exit gate), §11.6 (gate
 timeline), §A2, §P5, §P6 と整合。
@@ -506,13 +506,13 @@ git checkout cw-from-scratch
 
 ## 7. 教科書との対比
 
-| 軸 | v1 (`ClojureWasm`) | v1_ref | Clojure JVM | 本リポジトリ |
-|----|---------------------|--------|-------------|---------|
-| main.zig 構造 | 200+ 行、複数モード（REPL / -e / -f） | RAEP は別ファイル | `Main.java` 数千行 | RAEP を main.zig 内 inline、177 行 |
-| eval engine | bytecode VM が default | TreeWalk のみ | bytecode VM | TreeWalk のみ（Phase 11 で VM 追加） |
-| exit gate | clj test suite + bash | 部分的に shell | 巨大な JUnit suite | 3 ケースの bash script |
-| arena 戦略 | per-eval split + GC | per-eval | full GC | process-lifetime 1 回 |
-| printValue | `runtime/print.zig` 数百行 | 別ファイル | `RT.print()` reflective | main.zig に暫定 inline、Phase 3.8 で切り出し |
+| 軸            | v1 (`ClojureWasm`)                    | v1_ref            | Clojure JVM             | 本リポジトリ                                 |
+|---------------|---------------------------------------|-------------------|-------------------------|----------------------------------------------|
+| main.zig 構造 | 200+ 行、複数モード（REPL / -e / -f） | RAEP は別ファイル | `Main.java` 数千行      | RAEP を main.zig 内 inline、177 行           |
+| eval engine   | bytecode VM が default                | TreeWalk のみ     | bytecode VM             | TreeWalk のみ（Phase 11 で VM 追加）         |
+| exit gate     | clj test suite + bash                 | 部分的に shell    | 巨大な JUnit suite      | 3 ケースの bash script                       |
+| arena 戦略    | per-eval split + GC                   | per-eval          | full GC                 | process-lifetime 1 回                        |
+| printValue    | `runtime/print.zig` 数百行            | 別ファイル        | `RT.print()` reflective | main.zig に暫定 inline、Phase 3.8 で切り出し |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

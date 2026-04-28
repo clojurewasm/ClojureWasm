@@ -59,12 +59,12 @@ pub const HeapTag = enum(u8) {
 
 heap 型を 1 つ増やすたびに、必ず 4 つのファイルを揃って触る：
 
-| ファイル | やること |
-|---------------------------|------|
-| `runtime/value.zig` | `HeapTag` に enum 値を追加（既に全種揃っていれば不要） |
-| `runtime/collection/<name>.zig` | struct と `alloc(rt, ...)` と `freeXxx` を新設 |
-| `eval/analyzer.zig` | 該当 Form arm から `xxx.alloc` を呼んで Value に lift |
-| `src/main.zig::printValue` | pr-str 形式の描画分岐を追加 |
+| ファイル                        | やること                                               |
+|---------------------------------|--------------------------------------------------------|
+| `runtime/value.zig`             | `HeapTag` に enum 値を追加（既に全種揃っていれば不要） |
+| `runtime/collection/<name>.zig` | struct と `alloc(rt, ...)` と `freeXxx` を新設         |
+| `eval/analyzer.zig`             | 該当 Form arm から `xxx.alloc` を呼んで Value に lift  |
+| `src/main.zig::printValue`      | pr-str 形式の描画分岐を追加                            |
 
 これは **A2「新機能は新ファイル」** と **P3「core stays stable」** を体現
 した「足し算だけで進む」経路。3.5 と 3.6 はまさにこのレシピを 2 回
@@ -155,9 +155,9 @@ pub fn consHeap(rt: *Runtime, head: Value, tail: Value) !Value {
 unit test では arena allocator を渡したい (テスト終了時 bulk free が楽)
 ので、両方 export して用途で使い分ける：
 
-| 関数 | allocator | 用途 |
-|---------------------------|---------------|------|
-| `cons(alloc, h, t)` | 任意 | unit test、phase-internal な短命 List |
+| 関数                 | allocator            | 用途                                        |
+|----------------------|----------------------|---------------------------------------------|
+| `cons(alloc, h, t)`  | 任意                 | unit test、phase-internal な短命 List       |
 | `consHeap(rt, h, t)` | `rt.gpa` + trackHeap | production code、Var に bind され得る Value |
 
 これは Phase 5+ で mark-sweep GC が入るまでの暫定構造。GC 移行時には
@@ -354,22 +354,22 @@ pub fn asString(val: Value) []const u8 {
 
 ### 4.1 heap String
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| 案 A: inline tail bytes (`String { header, len, inline: [N]u8 }`) で 1 alloc | ✗ | 任意長文字列で size-branching が必要、複雑度過剰。Phase 8 GC + interning で再検討 |
-| 案 B: bytes を arena 借用 (dupe しない) | ✗ | arena reset で Value が dangle、Var に bind されると即 use-after-free |
-| 案 C: print 時に escape **しない** (生バイト) | ✗ | pr-str round-trip が壊れる、Clojure REPL 慣習からも外れる |
-| 案 D: string interning (同一バイト列で pointer 共有) | ✗ (保留) | Phase 8 の最適化。3.5 段階では複雑度過剰 |
-| 採用: 1 alloc + `dupe` | ✓ | 素直、`errdefer` でリーク守れる、Phase 8 で改造容易 |
+| 案                                                                           | 採否      | 理由                                                                              |
+|------------------------------------------------------------------------------|-----------|-----------------------------------------------------------------------------------|
+| 案 A: inline tail bytes (`String { header, len, inline: [N]u8 }`) で 1 alloc | ✗        | 任意長文字列で size-branching が必要、複雑度過剰。Phase 8 GC + interning で再検討 |
+| 案 B: bytes を arena 借用 (dupe しない)                                      | ✗        | arena reset で Value が dangle、Var に bind されると即 use-after-free             |
+| 案 C: print 時に escape **しない** (生バイト)                                | ✗        | pr-str round-trip が壊れる、Clojure REPL 慣習からも外れる                         |
+| 案 D: string interning (同一バイト列で pointer 共有)                         | ✗ (保留) | Phase 8 の最適化。3.5 段階では複雑度過剰                                          |
+| 採用: 1 alloc + `dupe`                                                       | ✓        | 素直、`errdefer` でリーク守れる、Phase 8 で改造容易                               |
 
 ### 4.2 heap List
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| 案 A: 専用 `EMPTY_LIST` Value sentinel | ✗ | Value identity 比較が複雑化、Phase 5+ GC との整合性で再考 |
-| 案 B: 既存 `cons(alloc, ...)` だけで analyzer arena を rt.gpa に総取り換え | ✗ | arena は per-eval scope、Value lifetime と意図的に分離している設計を崩したくない |
-| 案 C: `listFormToValue` を iterative (ArrayList) で書く | ✗ | 再帰のほうが items 短いので stack 安全、可読性で勝つ |
-| 採用: `cons` と `consHeap` を併存させ、空 List → nil で簡略化 | ✓ | 用途で使い分け可、Clojure JVM `()`/`nil` 区別は Phase 8+ で復元可 |
+| 案                                                                         | 採否 | 理由                                                                             |
+|----------------------------------------------------------------------------|------|----------------------------------------------------------------------------------|
+| 案 A: 専用 `EMPTY_LIST` Value sentinel                                     | ✗   | Value identity 比較が複雑化、Phase 5+ GC との整合性で再考                        |
+| 案 B: 既存 `cons(alloc, ...)` だけで analyzer arena を rt.gpa に総取り換え | ✗   | arena は per-eval scope、Value lifetime と意図的に分離している設計を崩したくない |
+| 案 C: `listFormToValue` を iterative (ArrayList) で書く                    | ✗   | 再帰のほうが items 短いので stack 安全、可読性で勝つ                             |
+| 採用: `cons` と `consHeap` を併存させ、空 List → nil で簡略化             | ✓   | 用途で使い分け可、Clojure JVM `()`/`nil` 区別は Phase 8+ で復元可                |
 
 ROADMAP § 2 / 原則 P3「core stays stable」、A2「新機能は新ファイル」、
 A6「≤ 1000 lines per file」をすべて満たす。
@@ -401,12 +401,12 @@ bash test/run_all.sh    # 全 suite green、phase3_cli.sh は 11/11 段階
 
 ## 6. 教科書との対比
 
-| 軸 | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | 本リポジトリ |
-|----|-----------|--------|-------------|--------|
-| String 構造 | inline tail bytes 最適化（small-string） | 未実装 | `java.lang.String` (JVM ネイティブ) | header + dupe された `[]u8` slice の素朴版 |
-| 空 List 表現 | sentinel-Cons (`count=0`) | 未実装 | `PersistentList$EmptyList` 専用クラス | `nil_val` で簡略 (Phase 8+ 復元予定) |
-| 確保所 | GC 経路へ直結 | 未実装 | JVM heap | `rt.gpa.create` + `rt.trackHeap` (Phase 5 で GC へ置換) |
-| arena 共存 | なし (全部 GC) | 未実装 | なし | `cons(alloc, ...)` をテスト用に温存 |
+| 軸           | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM                           | 本リポジトリ                                            |
+|--------------|-------------------------------------------|--------|---------------------------------------|---------------------------------------------------------|
+| String 構造  | inline tail bytes 最適化（small-string）  | 未実装 | `java.lang.String` (JVM ネイティブ)   | header + dupe された `[]u8` slice の素朴版              |
+| 空 List 表現 | sentinel-Cons (`count=0`)                 | 未実装 | `PersistentList$EmptyList` 専用クラス | `nil_val` で簡略 (Phase 8+ 復元予定)                    |
+| 確保所       | GC 経路へ直結                             | 未実装 | JVM heap                              | `rt.gpa.create` + `rt.trackHeap` (Phase 5 で GC へ置換) |
+| arena 共存   | なし (全部 GC)                            | 未実装 | なし                                  | `cons(alloc, ...)` をテスト用に温存                     |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

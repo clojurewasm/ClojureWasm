@@ -453,16 +453,16 @@ tag 名が変わる** ので、`expectError(error.ArityMismatch, ...)` のテス
 
 ## 6. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| `SourceContext` を引数渡し | ✓ | threadlocal を増やさない (§P3) |
-| ソーステキストを threadlocal cache | ✗ | `main.zig` が既に持っている、global state 増やす意味なし |
-| `Kind.not_implemented` を別タグ | ✓ | "phase 限定" vs "値が不正" を区別したい |
-| `internal_error` で代用 | ✗ | "ランタイムバグ" と混同される |
-| `EvalError` を絞ったまま `@errorCast` で narrow | ✗ | runtime panic 危険、type 拡張のほうが対称性良い |
-| token 幅 caret を 3.4 に含める | ✗ | `SourceLocation.length` 後付け改造大、Phase 9 へ分離 |
-| エイリアス `pub const NotCallable = error.TypeError` | ✗ | error set のドットアクセスは tag 引きなので構文的に成立せず compile error |
-| catch サイトで loc を後付けで付ける | ✗ | 既に正しい loc を持つエラーを上書きする危険 |
+| 案                                                   | 採否 | 理由                                                                      |
+|------------------------------------------------------|------|---------------------------------------------------------------------------|
+| `SourceContext` を引数渡し                           | ✓   | threadlocal を増やさない (§P3)                                           |
+| ソーステキストを threadlocal cache                   | ✗   | `main.zig` が既に持っている、global state 増やす意味なし                  |
+| `Kind.not_implemented` を別タグ                      | ✓   | "phase 限定" vs "値が不正" を区別したい                                   |
+| `internal_error` で代用                              | ✗   | "ランタイムバグ" と混同される                                             |
+| `EvalError` を絞ったまま `@errorCast` で narrow      | ✗   | runtime panic 危険、type 拡張のほうが対称性良い                           |
+| token 幅 caret を 3.4 に含める                       | ✗   | `SourceLocation.length` 後付け改造大、Phase 9 へ分離                      |
+| エイリアス `pub const NotCallable = error.TypeError` | ✗   | error set のドットアクセスは tag 引きなので構文的に成立せず compile error |
+| catch サイトで loc を後付けで付ける                  | ✗   | 既に正しい loc を持つエラーを上書きする危険                               |
 
 ROADMAP §2 / 原則 P6 への対応：原則 P6「Error quality is non-negotiable」
 を Reader → Analyzer → TreeWalk → primitive の 4 階層全部で活性化。
@@ -509,13 +509,13 @@ bash test/run_all.sh    # 全 suite green
 
 ## 8. 教科書との対比
 
-| 軸 | v1 | v1_ref | Clojure JVM | Babashka | 本リポジトリ |
-|----|----|--------|-------------|----------|--------|
-| エラー位置の保持 | threadlocal | threadlocal | exception attribute | ex-info の data map | threadlocal `last_error` (v1 と同じ) |
-| ソース行の表示 | header のみ | header のみ | REPL が別途取得 | ±4/±6 行 + 単一 caret | 該当行 + 単一 caret (Babashka に近い) |
-| caret 幅 | 無し | 無し | 無し | 単一 column | 単一 column (token 幅は Phase 9) |
-| primitive への loc 伝搬 | 後付け | 後付け | exception trace で代用 | ex-info | dispatch.CallFn に loc を最初から含める |
-| not_implemented 扱い | internal | internal | UnsupportedOpEx | ex-info | 専用 Kind タグ |
+| 軸                      | v1          | v1_ref      | Clojure JVM            | Babashka                | 本リポジトリ                            |
+|-------------------------|-------------|-------------|------------------------|-------------------------|-----------------------------------------|
+| エラー位置の保持        | threadlocal | threadlocal | exception attribute    | ex-info の data map     | threadlocal `last_error` (v1 と同じ)    |
+| ソース行の表示          | header のみ | header のみ | REPL が別途取得        | ±4/±6 行 + 単一 caret | 該当行 + 単一 caret (Babashka に近い)   |
+| caret 幅                | 無し        | 無し        | 無し                   | 単一 column             | 単一 column (token 幅は Phase 9)        |
+| primitive への loc 伝搬 | 後付け      | 後付け      | exception trace で代用 | ex-info                 | dispatch.CallFn に loc を最初から含める |
+| not_implemented 扱い    | internal    | internal    | UnsupportedOpEx        | ex-info                 | 専用 Kind タグ                          |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

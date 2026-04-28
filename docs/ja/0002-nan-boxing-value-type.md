@@ -99,13 +99,13 @@ v5 = 0xFFFF_0000_1234_5678     # → ?
 <details>
 <summary>答え</summary>
 
-| Value | top16 | 判定 |
-|-------|-------|------|
-| v1 | `0x4000` (< 0xFFF8) | **f64**（具体的には 2.0） |
-| v2 | `0xFFF8` | **Group A heap**。続けて sub-type[47:45] = `0` → string |
-| v3 | `0xFFFC` | **integer**。下位 48 bit = `0x2A` = **42** |
-| v4 | `0xFFFD` | **constant**。下位 = `1` → **true** |
-| v5 | `0xFFFF` | **builtin_fn**。下位 48 bit が関数ポインタ |
+| Value | top16               | 判定                                                     |
+|-------|---------------------|----------------------------------------------------------|
+| v1    | `0x4000` (< 0xFFF8) | **f64**（具体的には 2.0）                                |
+| v2    | `0xFFF8`            | **Group A heap**。続けて sub-type[47:45] = `0` → string |
+| v3    | `0xFFFC`            | **integer**。下位 48 bit = `0x2A` = **42**               |
+| v4    | `0xFFFD`            | **constant**。下位 = `1` → **true**                     |
+| v5    | `0xFFFF`            | **builtin_fn**。下位 48 bit が関数ポインタ               |
 
 </details>
 
@@ -117,12 +117,12 @@ Heap オブジェクトは全部で 32 種類ありますが、これを **4 グ
 8 サブタイプ** で詰めるのが本リポジトリの工夫です。
 
 ```
-| Group (band)          | Sub 0    | Sub 1    | Sub 2     | Sub 3       | Sub 4   | Sub 5   | Sub 6    | Sub 7      |
-|-----------------------|----------|----------|-----------|-------------|---------|---------|----------|------------|
-| A: Core Data (0xFFF8) | string   | symbol   | keyword   | list        | vector  | arr_map | hash_map | hash_set   |
-| B: Call/Bind (0xFFF9) | fn_val   | multi_fn | protocol  | protocol_fn | var_ref | ns      | delay    | regex      |
-| C: Seq/State (0xFFFA) | lazy_seq | cons     | chunked_c | chunk_buf   | atom    | agent   | ref      | volatile   |
-| D: Trans/Ext (0xFFFB) | t_vector | t_map    | t_set     | reduced     | ex_info | wasm_m  | wasm_fn  | class      |
+| Group (band)          | Sub 0    | Sub 1    | Sub 2     | Sub 3       | Sub 4   | Sub 5   | Sub 6    | Sub 7    |
+|-----------------------|----------|----------|-----------|-------------|---------|---------|----------|----------|
+| A: Core Data (0xFFF8) | string   | symbol   | keyword   | list        | vector  | arr_map | hash_map | hash_set |
+| B: Call/Bind (0xFFF9) | fn_val   | multi_fn | protocol  | protocol_fn | var_ref | ns      | delay    | regex    |
+| C: Seq/State (0xFFFA) | lazy_seq | cons     | chunked_c | chunk_buf   | atom    | agent   | ref      | volatile |
+| D: Trans/Ext (0xFFFB) | t_vector | t_map    | t_set     | reduced     | ex_info | wasm_m  | wasm_fn  | class    |
 ```
 
 このレイアウトの仕組み：
@@ -479,13 +479,13 @@ pub fn tag(self: Value) Tag {
 
 ## 8. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| **NaN boxing 1:1 slot mapping** | ✓ | 32 種を 4×8 で詰め、type check は band 比較 + 3-bit 読み |
-| Tagged Pointer (8-byte align bits 利用) | ✗ | 即値（int / nil 等）が表現できず、別の boxing が要る |
-| Box 構造体 + ポインタ | ✗ | 1 値 16-24 bytes、cache locality 最悪。v1 は Phase 35 で乗り換え |
-| Wasm GC `(ref any)` | ✗ | NaN boxing と競合。WasmGC は v0.2 評価事項 (ROADMAP §14.3) |
-| `extern union` | ✗ | tag を別フィールドに置く必要があり、合計 16 bytes |
+| 案                                      | 採否 | 理由                                                             |
+|-----------------------------------------|------|------------------------------------------------------------------|
+| **NaN boxing 1:1 slot mapping**         | ✓   | 32 種を 4×8 で詰め、type check は band 比較 + 3-bit 読み        |
+| Tagged Pointer (8-byte align bits 利用) | ✗   | 即値（int / nil 等）が表現できず、別の boxing が要る             |
+| Box 構造体 + ポインタ                   | ✗   | 1 値 16-24 bytes、cache locality 最悪。v1 は Phase 35 で乗り換え |
+| Wasm GC `(ref any)`                     | ✗   | NaN boxing と競合。WasmGC は v0.2 評価事項 (ROADMAP §14.3)      |
+| `extern union`                          | ✗   | tag を別フィールドに置く必要があり、合計 16 bytes                |
 
 ROADMAP §1.4 (Mission), §4.2 (NaN-boxed Value representation), §A6
 (file size) と整合。
@@ -525,13 +525,13 @@ git checkout cw-from-scratch    # 戻る
 
 ## 10. 教科書との対比
 
-| 軸 | v1 (`ClojureWasm`) | v1_ref | Clojure JVM | 本リポ |
-|----|---------------------|--------|-------------|---------|
-| 採用時期 | Phase 35 後付け | Phase 1.2 Day 1 | n/a (`Object`) | Phase 1.2 Day 1 |
-| Value サイズ | 8 bytes | 8 bytes | 8 bytes (object ref) | 8 bytes |
-| 配置 | sharing slots | 1:1 mapping (32 slots) | n/a | 1:1 mapping (32 slots) |
-| 型判定 | switch + discriminant | band + sub | `instanceof` | band + sub |
-| NaN collision | canonical 化済 | canonical 化 | n/a | canonical 化 (我々が再発見) |
+| 軸            | v1 (`ClojureWasm`)    | v1_ref                 | Clojure JVM          | 本リポ                      |
+|---------------|-----------------------|------------------------|----------------------|-----------------------------|
+| 採用時期      | Phase 35 後付け       | Phase 1.2 Day 1        | n/a (`Object`)       | Phase 1.2 Day 1             |
+| Value サイズ  | 8 bytes               | 8 bytes                | 8 bytes (object ref) | 8 bytes                     |
+| 配置          | sharing slots         | 1:1 mapping (32 slots) | n/a                  | 1:1 mapping (32 slots)      |
+| 型判定        | switch + discriminant | band + sub             | `instanceof`         | band + sub                  |
+| NaN collision | canonical 化済        | canonical 化           | n/a                  | canonical 化 (我々が再発見) |
 
 v1 に引っ張られず本リポジトリの理念で整理した点：
 - v1 の **slot-sharing + discriminant** は型判定が遅く、Phase 35 で

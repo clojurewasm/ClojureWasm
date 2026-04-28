@@ -50,13 +50,13 @@ pub fn analyze(
 ) AnalyzeError!*const Node;
 ```
 
-| 引数    | 役割 |
-|---------|------|
-| `arena` | Node tree の置き場、1 解析で投げる全 Node が同じ arena に乗る |
-| `rt`    | keyword interning に必要 (`:foo` を analyse 時に reify) |
-| `env`   | global symbol を解決する namespace を引く |
+| 引数    | 役割                                                                             |
+|---------|----------------------------------------------------------------------------------|
+| `arena` | Node tree の置き場、1 解析で投げる全 Node が同じ arena に乗る                    |
+| `rt`    | keyword interning に必要 (`:foo` を analyse 時に reify)                          |
+| `env`   | global symbol を解決する namespace を引く                                        |
 | `scope` | local-binding chain。**top-level では `null`**、`let*`/`fn*` 内で `*const Scope` |
-| `form`  | analyse 対象の Form |
+| `form`  | analyse 対象の Form                                                              |
 
 ```zig
 pub const AnalyzeError = error{
@@ -221,13 +221,13 @@ foo/bar)` は qualified なので locals 検索しない。
 <details>
 <summary>答え</summary>
 
-| symbol      | 解決結果                                         |
-|-------------|--------------------------------------------------|
-| `a`         | **LocalRef** (slot 0)                            |
-| `+`         | **VarRef** (user ns)                             |
-| `user/+`    | **VarRef** (qualified、locals 飛ばし)            |
-| `missing`   | `error.NameError`                                |
-| `missing/x` | `error.NameError` (`missing` ns が無い)          |
+| symbol      | 解決結果                                |
+|-------------|-----------------------------------------|
+| `a`         | **LocalRef** (slot 0)                   |
+| `+`         | **VarRef** (user ns)                    |
+| `user/+`    | **VarRef** (qualified、locals 飛ばし)   |
+| `missing`   | `error.NameError`                       |
+| `missing/x` | `error.NameError` (`missing` ns が無い) |
 
 `user/a` のように qualified で local 名を書いても **locals は無視**
 される (Clojure 仕様)。
@@ -486,12 +486,12 @@ LetNode {
 `analyzeBody` は `fn*` / `let*` の body 用ヘルパで、**1 form は as-is、
 複数なら `do_node` に畳む**:
 
-| 入力 body                            | 結果                                |
-|--------------------------------------|-------------------------------------|
-| `(fn* [x] x)`                        | body = `LocalRef` 直                |
-| `(fn* [x] (println x) x)`            | body = `DoNode { [println, x] }`    |
-| `(let* [x 1] x)`                     | body = `LocalRef` 直                |
-| `(let* [x 1] (do-thing) x)`          | body = `DoNode { [...] }`           |
+| 入力 body                   | 結果                             |
+|-----------------------------|----------------------------------|
+| `(fn* [x] x)`               | body = `LocalRef` 直             |
+| `(fn* [x] (println x) x)`   | body = `DoNode { [println, x] }` |
+| `(let* [x 1] x)`            | body = `LocalRef` 直             |
+| `(let* [x 1] (do-thing) x)` | body = `DoNode { [...] }`        |
 
 `LetNode.body` も `FnNode.body` も **単一 Node** 型なので、このラップ
 で型を合わせる。
@@ -513,15 +513,15 @@ CallNode {
 
 ## 10. 設計判断と却下した代替
 
-| 案                                                              | 採否 | 理由                                                |
-|-----------------------------------------------------------------|------|-----------------------------------------------------|
-| 6 special form を `comptime StaticStringMap` で dispatch        | ✓    | comptime perfect-hash、O(1)、追加が表 1 行          |
-| 5 引数 (`arena, rt, env, scope, form`)                          | ✓    | 関心の分離。scope を Optional で top-level 再帰     |
-| `Scope.next_slot` を child に継承                               | ✓    | flat locals 配列を実現、shadowing も正しく動く      |
-| Phase 2 で macro 展開                                           | ✗    | 後 phase。`SPECIAL_FORMS` に macro keyword 入れない |
-| Vector / Map literal を式値として OK                            | ✗    | heap-backed Value 必要 (Phase 5)、`NotImplemented` |
-| value→declare 順 (Clojure semantics)                            | ✓    | 仕様一致。逆順だと自己参照 UB                       |
-| body 1 form を do に包まない                                    | ✓    | 無駄を省く。複数だけ `do_node` にラップ             |
+| 案                                                       | 採否 | 理由                                                |
+|----------------------------------------------------------|------|-----------------------------------------------------|
+| 6 special form を `comptime StaticStringMap` で dispatch | ✓   | comptime perfect-hash、O(1)、追加が表 1 行          |
+| 5 引数 (`arena, rt, env, scope, form`)                   | ✓   | 関心の分離。scope を Optional で top-level 再帰     |
+| `Scope.next_slot` を child に継承                        | ✓   | flat locals 配列を実現、shadowing も正しく動く      |
+| Phase 2 で macro 展開                                    | ✗   | 後 phase。`SPECIAL_FORMS` に macro keyword 入れない |
+| Vector / Map literal を式値として OK                     | ✗   | heap-backed Value 必要 (Phase 5)、`NotImplemented`  |
+| value→declare 順 (Clojure semantics)                    | ✓   | 仕様一致。逆順だと自己参照 UB                       |
+| body 1 form を do に包まない                             | ✓   | 無駄を省く。複数だけ `do_node` にラップ             |
 
 ROADMAP §4.4 (解析と評価の分離), §2 P3 (コア安定), P6 (エラー品質)
 と整合。「変更しないなら enum、増えうるなら StaticStringMap」が
@@ -549,14 +549,14 @@ eval が登場します。
 
 ## 12. 教科書との対比
 
-| 軸                | v1            | v1_ref     | Clojure JVM             | 本リポジトリ                      |
-|-------------------|---------------|------------|-------------------------|-----------------------------|
-| 行数              | 4070          | 746        | ~4000 (`Compiler.java`) | **677**                     |
-| special form 数   | 18+           | 11         | 16                      | **6 (Phase-2 minimum)**     |
-| Scope chain       | parent + Map  | 同じ       | LocalBinding 連結       | **parent + Map + next_slot**|
-| name resolution   | locals→ns     | 同じ       | ditto                   | **locals → mappings → refers**|
-| dispatch          | if-else       | 同じ       | enum (Java)             | **`StaticStringMap`**       |
-| body 単一 form    | DoExpr 必須   | 包まない   | BodyExpr 必須           | **包まない**                |
+| 軸              | v1           | v1_ref   | Clojure JVM             | 本リポジトリ                     |
+|-----------------|--------------|----------|-------------------------|----------------------------------|
+| 行数            | 4070         | 746      | ~4000 (`Compiler.java`) | **677**                          |
+| special form 数 | 18+          | 11       | 16                      | **6 (Phase-2 minimum)**          |
+| Scope chain     | parent + Map | 同じ     | LocalBinding 連結       | **parent + Map + next_slot**     |
+| name resolution | locals→ns   | 同じ     | ditto                   | **locals → mappings → refers** |
+| dispatch        | if-else      | 同じ     | enum (Java)             | **`StaticStringMap`**            |
+| body 単一 form  | DoExpr 必須  | 包まない | BodyExpr 必須           | **包まない**                     |
 
 引っ張られずに本リポジトリの理念で整理した点：
 - v1 / Clojure JVM は **18+ の special form** を analyser に内蔵

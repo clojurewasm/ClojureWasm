@@ -42,11 +42,11 @@ HashMap lookup が **eval のたびに** 走ってしまいます。
 
 ClojureWasm の方針は **「解析時の 1 回で全部やっておけ」**:
 
-| 段階     | やること                                                       |
-|----------|----------------------------------------------------------------|
-| Reader   | 文字列 → Form                                                  |
-| Analyzer | Form → Node (symbol を slot index/Var pointer に解決)          |
-| Backend  | Node → Value (switch + 配列 index で完了)                      |
+| 段階     | やること                                               |
+|----------|--------------------------------------------------------|
+| Reader   | 文字列 → Form                                         |
+| Analyzer | Form → Node (symbol を slot index/Var pointer に解決) |
+| Backend  | Node → Value (switch + 配列 index で完了)             |
 
 バックエンドは
 `switch (node.*) { .local_ref => |n| locals[n.index], ... }` の
@@ -90,18 +90,18 @@ pub const Node = union(enum) {
 };
 ```
 
-| variant       | 由来 Form                | 主フィールド                              | backend での扱い         |
-|---------------|---------------------------|-------------------------------------------|---------------------------|
-| constant      | `nil` / `true` / `42` 等  | `value: Value`                            | そのまま return           |
-| local_ref     | let/fn 内の symbol        | `index: u16`                              | `locals[index]`           |
-| var_ref       | global symbol             | `var_ptr: *const Var`                     | `var_ptr.deref()`         |
-| def_node      | `(def name v)`            | `name`, `value_expr`                      | `Env.intern`              |
-| if_node       | `(if c t e?)`             | `cond`, `then_branch`, `else_branch?`     | 真偽分岐                  |
-| do_node       | `(do f1 f2 ...)`          | `forms: []const Node`                     | 順次 eval、最後を return  |
-| quote_node    | `(quote x)`               | `quoted: Value`                           | そのまま return           |
-| fn_node       | `(fn* [params] body)`     | `arity`, `params`, `body`, `has_rest`     | `Function` を heap alloc  |
-| let_node      | `(let* [k v ...] body)`   | `bindings: []Binding`, `body`             | binding ごとに slot に書く|
-| call_node     | `(callee a b ...)`        | `callee: *Node`, `args: []Node`           | `vtable.callFn` 経由      |
+| variant    | 由来 Form                | 主フィールド                          | backend での扱い           |
+|------------|--------------------------|---------------------------------------|----------------------------|
+| constant   | `nil` / `true` / `42` 等 | `value: Value`                        | そのまま return            |
+| local_ref  | let/fn 内の symbol       | `index: u16`                          | `locals[index]`            |
+| var_ref    | global symbol            | `var_ptr: *const Var`                 | `var_ptr.deref()`          |
+| def_node   | `(def name v)`           | `name`, `value_expr`                  | `Env.intern`               |
+| if_node    | `(if c t e?)`            | `cond`, `then_branch`, `else_branch?` | 真偽分岐                   |
+| do_node    | `(do f1 f2 ...)`         | `forms: []const Node`                 | 順次 eval、最後を return   |
+| quote_node | `(quote x)`              | `quoted: Value`                       | そのまま return            |
+| fn_node    | `(fn* [params] body)`    | `arity`, `params`, `body`, `has_rest` | `Function` を heap alloc   |
+| let_node   | `(let* [k v ...] body)`  | `bindings: []Binding`, `body`         | binding ごとに slot に書く |
+| call_node  | `(callee a b ...)`       | `callee: *Node`, `args: []Node`       | `vtable.callFn` 経由       |
 
 `union(enum)` の利点：
 
@@ -478,13 +478,13 @@ pub const CallNode = struct {
 
 ## 8. 設計判断と却下した代替
 
-| 案                                                | 採否 | 理由                                                          |
-|---------------------------------------------------|------|---------------------------------------------------------------|
-| `union(enum)` 10 variant                          | ✓    | switch 網羅性 + cache locality + slot index 共有              |
-| Form を直接 eval                                  | ✗    | HashMap lookup がホットパスに残る、§4.4 違反                  |
-| Node に `tag: Tag` + `extern union { ... }`       | ✗    | 網羅性チェックが効かず、Phase 4 VM 生成器でバグが出る         |
-| Node に `captured: []Value` を最初から            | ✗    | Phase 2 で使わないものは載せない (P3 / Day 1 minimal)         |
-| `loc` を別テーブル (NodeId → SourceLocation) に   | ✗    | Phase 2 のサイズ感では inline 埋め込みのほうが単純            |
+| 案                                               | 採否 | 理由                                                  |
+|--------------------------------------------------|------|-------------------------------------------------------|
+| `union(enum)` 10 variant                         | ✓   | switch 網羅性 + cache locality + slot index 共有      |
+| Form を直接 eval                                 | ✗   | HashMap lookup がホットパスに残る、§4.4 違反         |
+| Node に `tag: Tag` + `extern union { ... }`      | ✗   | 網羅性チェックが効かず、Phase 4 VM 生成器でバグが出る |
+| Node に `captured: []Value` を最初から           | ✗   | Phase 2 で使わないものは載せない (P3 / Day 1 minimal) |
+| `loc` を別テーブル (NodeId → SourceLocation) に | ✗   | Phase 2 のサイズ感では inline 埋め込みのほうが単純    |
 
 ROADMAP §4.4「解析と評価の分離」/ P3「コアは安定」/ P6「エラー
 品質は譲れない」/ A6「1000 行以下」と整合。
@@ -512,13 +512,13 @@ git -C ~/Documents/MyProducts/ClojureWasmFromScratch checkout cw-from-scratch
 
 ## 10. 教科書との対比
 
-| 軸                       | v1 (`ClojureWasm`)            | v1_ref           | Clojure JVM         | 本リポ                   |
-|--------------------------|-------------------------------|------------------|----------------------|--------------------------|
-| Node ファイル行数        | 715                           | 244              | n/a (Java hierarchy) | **260**                  |
-| variant 数 (Phase-2 相当)| ~30 (loop/recur/try 含む)     | 11               | n/a                  | **10** (Phase-2 minimum) |
-| loc の持ち方             | inline                        | inline           | `IFn` source meta    | **inline + `inline else`**|
-| symbol resolution        | 解析時 + macro                | 解析時           | 解析時 (`Compiler`)  | **解析時、macro は Phase 3+** |
-| closure capture          | あり (ClosureNode)            | あり             | あり (`FnExpr`)      | **無し（Phase 3+）**     |
+| 軸                        | v1 (`ClojureWasm`)        | v1_ref | Clojure JVM          | 本リポ                        |
+|---------------------------|---------------------------|--------|----------------------|-------------------------------|
+| Node ファイル行数         | 715                       | 244    | n/a (Java hierarchy) | **260**                       |
+| variant 数 (Phase-2 相当) | ~30 (loop/recur/try 含む) | 11     | n/a                  | **10** (Phase-2 minimum)      |
+| loc の持ち方              | inline                    | inline | `IFn` source meta    | **inline + `inline else`**    |
+| symbol resolution         | 解析時 + macro            | 解析時 | 解析時 (`Compiler`)  | **解析時、macro は Phase 3+** |
+| closure capture           | あり (ClosureNode)        | あり   | あり (`FnExpr`)      | **無し（Phase 3+）**          |
 
 引っ張られずに本リポジトリの理念で整理した点：
 - v1 は loop / recur / try / throw を最初から Node に含めて 30+

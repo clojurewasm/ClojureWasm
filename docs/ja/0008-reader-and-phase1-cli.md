@@ -71,11 +71,11 @@ pub fn read(self: *Reader) ReadError!?Form {
 
 戻り値は **`!?Form`**：
 
-| 戻り値 | 意味 |
-|--------|------|
-| `Form` | 1 個読めた。続けて呼べる |
-| `null` | クリーンな EOF。**もう読むものがない** |
-| `error.SyntaxError` 等 | 入力が壊れている |
+| 戻り値                 | 意味                                   |
+|------------------------|----------------------------------------|
+| `Form`                 | 1 個読めた。続けて呼べる               |
+| `null`                 | クリーンな EOF。**もう読むものがない** |
+| `error.SyntaxError` 等 | 入力が壊れている                       |
 
 `Form` だけを返す API（EOF も Form で表現する形）にすると、caller
 が毎回条件分岐を書く羽目になります。Zig の `?T` を使えば
@@ -219,22 +219,22 @@ const x = try r.read();    // 1 回目
 const y = try r.read();    // 2 回目
 ```
 
-| INPUT | x | y |
-|-------|---|---|
-| `""` | ? | ? |
-| `"42"` | ? | ? |
-| `"42 99"` | ? | ? |
+| INPUT         | x | y |
+|---------------|---|---|
+| `""`          | ? | ? |
+| `"42"`        | ? | ? |
+| `"42 99"`     | ? | ? |
 | `"#_skip 42"` | ? | ? |
 
 <details>
 <summary>答え</summary>
 
-| INPUT | x | y |
-|-------|---|---|
-| `""` | `null` | `null` |
-| `"42"` | `Form{integer=42}` | `null` |
-| `"42 99"` | `Form{integer=42}` | `Form{integer=99}` |
-| `"#_skip 42"` | `Form{integer=42}` | `null` |
+| INPUT         | x                  | y                  |
+|---------------|--------------------|--------------------|
+| `""`          | `null`             | `null`             |
+| `"42"`        | `Form{integer=42}` | `null`             |
+| `"42 99"`     | `Form{integer=42}` | `Form{integer=99}` |
+| `"#_skip 42"` | `Form{integer=42}` | `null`             |
 
 `#_` は次の form を捨てるので `42` だけが返ります。`#_` だけで
 終わる入力（`"#_"`）は `error.SyntaxError` になります。
@@ -295,14 +295,14 @@ pub fn main(init: std.process.Init) !void {
 
 `std.process.Init` は Zig 0.16 の **「main 引数バンドル」**：
 
-| フィールド | 中身 |
-|------------|------|
-| `init.io` | `std.Io` DI 値 — 全 I/O 操作の基盤 |
-| `init.gpa` | thread-safe GPA — runtime / heap 用 |
-| `init.arena` | process-lifetime arena — 一過性の alloc に |
-| `init.minimal.args` | argv iterator |
-| `init.environ_map` | env vars |
-| `init.preopens` | WASI の preopened FDs |
+| フィールド          | 中身                                        |
+|---------------------|---------------------------------------------|
+| `init.io`           | `std.Io` DI 値 — 全 I/O 操作の基盤         |
+| `init.gpa`          | thread-safe GPA — runtime / heap 用        |
+| `init.arena`        | process-lifetime arena — 一過性の alloc に |
+| `init.minimal.args` | argv iterator                               |
+| `init.environ_map`  | env vars                                    |
+| `init.preopens`     | WASI の preopened FDs                       |
 
 `argc` / `argv` を自前で扱うコードは Zig 0.16 では書きません。
 `init.minimal.args.iterate()` が WASI / Linux / macOS / Windows
@@ -428,14 +428,14 @@ semantics compatibility）。
 
 eval が動かないので、named bench はまだ走りません：
 
-| Bench (§9.3 / 1.11) | 動く? | TODO 理由 |
-|---|---|---|
-| `fib_recursive` | ✗ | 関数呼び出し（Phase 2 TreeWalk） |
-| `arith_loop` | ✗ | `loop`/`recur` (Phase 4) |
-| `list_build` | ✗ | persistent list (Phase 3) |
-| `map_filter_reduce` | ✗ | seq + reduce (Phase 7) |
-| `transduce` | ✗ | transducer (Phase 7) |
-| `lazy_chain` | ✗ | lazy seq (Phase 7) |
+| Bench (§9.3 / 1.11) | 動く? | TODO 理由                        |
+|----------------------|-------|----------------------------------|
+| `fib_recursive`      | ✗    | 関数呼び出し（Phase 2 TreeWalk） |
+| `arith_loop`         | ✗    | `loop`/`recur` (Phase 4)         |
+| `list_build`         | ✗    | persistent list (Phase 3)        |
+| `map_filter_reduce`  | ✗    | seq + reduce (Phase 7)           |
+| `transduce`          | ✗    | transducer (Phase 7)             |
+| `lazy_chain`         | ✗    | lazy seq (Phase 7)               |
 
 代わりに quick.sh では Phase 1 の段階で計れる項目を計っています：
 
@@ -446,12 +446,12 @@ echo "==> 3. -e \"(+ 1 2)\" round-trip";   bench_run e_plus_round_trip_us "$BIN"
 echo "==> 4. Read 100-form expression";    bench_run read_100_forms_us "$BIN" -e "$LONG"
 ```
 
-| 計測項目 | 何を見る? |
-|---------|---------|
-| `binary_size_bytes` | §10.3 v0.1.0 target「< 3.5 MB」のガード |
-| `cold_start_us` | 同上「< 12 ms」（→ 12000 us） |
-| `e_plus_round_trip_us` | exit-criterion path のレイテンシ |
-| `read_100_forms_us` | reader のスループット |
+| 計測項目               | 何を見る?                                |
+|------------------------|------------------------------------------|
+| `binary_size_bytes`    | §10.3 v0.1.0 target「< 3.5 MB」のガード |
+| `cold_start_us`        | 同上「< 12 ms」（→ 12000 us）           |
+| `e_plus_round_trip_us` | exit-criterion path のレイテンシ         |
+| `read_100_forms_us`    | reader のスループット                    |
 
 `bench/quick_baseline.txt` は **追記のみ** です。過去の行は編集
 しません。こうしておくと「いつ regression が入ったか」を git diff
@@ -547,17 +547,17 @@ location, comments, bare `/`）が緑。
 
 ## 4. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| `read()` の戻り値が `?Form` | ✓ | null = clean EOF と error を型で区別 |
-| `read()` が `Form`（EOF も Form） | ✗ | caller が毎回条件分岐を書く |
-| 単一 `peeked` で 1-token lookahead | ✓ | LL(1) で十分 |
-| 最大ネスト 1024 で固定 | ✓ | 病的入力からの再帰スタック保護 |
-| 最大ネスト無制限 | ✗ | `((((((....` で SEGV、攻撃面 |
-| map の奇数長を syntax-error | ✓ | analyzer が再チェックなしで反復 |
-| Phase 1 CLI が eval まで含む | ✗ | P9 違反。analyzer は Phase 2 別 commit |
-| bench/quick.sh を Phase 4 で初導入 | ✗ | binary size / cold start も early baseline 要 |
-| bench/quick_baseline.txt を編集可 | ✗ | append-only で git diff から regression |
+| 案                                 | 採否 | 理由                                          |
+|------------------------------------|------|-----------------------------------------------|
+| `read()` の戻り値が `?Form`        | ✓   | null = clean EOF と error を型で区別          |
+| `read()` が `Form`（EOF も Form）  | ✗   | caller が毎回条件分岐を書く                   |
+| 単一 `peeked` で 1-token lookahead | ✓   | LL(1) で十分                                  |
+| 最大ネスト 1024 で固定             | ✓   | 病的入力からの再帰スタック保護                |
+| 最大ネスト無制限                   | ✗   | `((((((....` で SEGV、攻撃面                  |
+| map の奇数長を syntax-error        | ✓   | analyzer が再チェックなしで反復               |
+| Phase 1 CLI が eval まで含む       | ✗   | P9 違反。analyzer は Phase 2 別 commit        |
+| bench/quick.sh を Phase 4 で初導入 | ✗   | binary size / cold start も early baseline 要 |
+| bench/quick_baseline.txt を編集可  | ✗   | append-only で git diff から regression       |
 
 ROADMAP §A6（≤ 1000 行）：reader 434 行に収まっており、十分に余裕が
 あります。
@@ -601,16 +601,16 @@ bash test/run_all.sh
 
 ## 6. 教科書との対比
 
-| 軸 | v1 (`engine/reader/reader.zig`) | v1_ref (`eval/reader.zig`) | Clojure JVM (`LispReader.java`) | 本リポ |
-|------|--------|---------|-------------|---------|
-| Reader 行数 | 1602 | 607 | 1702 | 434 |
-| 戻り値 | `Result(Form, Err)` | `?Form` | `Object` (EOF sentinel) | `!?Form` |
-| 1-token lookahead | 専用 buffer | 専用 buffer | `PushbackReader`(1 char) | `peeked: ?Token` |
-| 再帰深さ guard | 1024 | 1024 | なし（JVM stack 任せ） | 1024 |
-| syntax-quote | reader 内 | reader 内 | `SyntaxQuoteReader` | Phase 2+ で別関数 |
-| map 奇数長 | error | error | `IllegalArgumentException` | `error.SyntaxError` |
-| location 追跡 | 後付け（Phase 30） | Day 1 | LineNumberingPushbackReader | Day 1 |
-| Phase 1 exit | analyzer まで | reader まで | n/a | reader + print のみ |
+| 軸                | v1 (`engine/reader/reader.zig`) | v1_ref (`eval/reader.zig`) | Clojure JVM (`LispReader.java`) | 本リポ              |
+|-------------------|---------------------------------|----------------------------|---------------------------------|---------------------|
+| Reader 行数       | 1602                            | 607                        | 1702                            | 434                 |
+| 戻り値            | `Result(Form, Err)`             | `?Form`                    | `Object` (EOF sentinel)         | `!?Form`            |
+| 1-token lookahead | 専用 buffer                     | 専用 buffer                | `PushbackReader`(1 char)        | `peeked: ?Token`    |
+| 再帰深さ guard    | 1024                            | 1024                       | なし（JVM stack 任せ）          | 1024                |
+| syntax-quote      | reader 内                       | reader 内                  | `SyntaxQuoteReader`             | Phase 2+ で別関数   |
+| map 奇数長        | error                           | error                      | `IllegalArgumentException`      | `error.SyntaxError` |
+| location 追跡     | 後付け（Phase 30）              | Day 1                      | LineNumberingPushbackReader     | Day 1               |
+| Phase 1 exit      | analyzer まで                   | reader まで                | n/a                             | reader + print のみ |
 
 引っ張られずに本リポジトリの理念で整理した点：
 - v1 や Clojure JVM では **「reader が 1500+ 行になる」** 傾向が

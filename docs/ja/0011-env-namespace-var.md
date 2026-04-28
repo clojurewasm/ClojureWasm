@@ -153,10 +153,10 @@ Q2: `b` の値は？
 <details>
 <summary>答え</summary>
 
-| 変数 | deref | 理由 |
-|------|-------|------|
-| `a` | `.nil_val` | `v_static` は `dynamic=false` なので **frame を見ない**。root をそのまま返す |
-| `b` | `.false_val` | `v_dynamic` は `dynamic=true` なので chain を walk、frame に bind されている `.false_val` を返す |
+| 変数 | deref        | 理由                                                                                             |
+|------|--------------|--------------------------------------------------------------------------------------------------|
+| `a`  | `.nil_val`   | `v_static` は `dynamic=false` なので **frame を見ない**。root をそのまま返す                     |
+| `b`  | `.false_val` | `v_dynamic` は `dynamic=true` なので chain を walk、frame に bind されている `.false_val` を返す |
 
 これが「analyzer 側で let と binding を特別扱いせずに済む」設計の
 具体的な現れです。frame に何を入れていようが、`Var.flags.dynamic
@@ -188,11 +188,11 @@ pub const Namespace = struct {
 
 3 つの map を **意味論的に異なる役割** で分けています。
 
-| Map | 意味 | 所有関係 |
-|------|------|----------|
-| `mappings` | 自分の namespace で `(def ...)` で作った Var | **所有** (key も Var も自分が free する) |
-| `refers` | 他の namespace から `(refer ...)` で取り込んだ Var | **借用** (key は所有、Var は元の ns に属する) |
-| `aliases` | `(require '[ns :as a])` の `a` → 別 namespace | **借用** (key は所有、Namespace は env に属する) |
+| Map        | 意味                                               | 所有関係                                         |
+|------------|----------------------------------------------------|--------------------------------------------------|
+| `mappings` | 自分の namespace で `(def ...)` で作った Var       | **所有** (key も Var も自分が free する)         |
+| `refers`   | 他の namespace から `(refer ...)` で取り込んだ Var | **借用** (key は所有、Var は元の ns に属する)    |
+| `aliases`  | `(require '[ns :as a])` の `a` → 別 namespace     | **借用** (key は所有、Namespace は env に属する) |
 
 ### `resolve` の lookup 順序
 
@@ -477,10 +477,10 @@ pub const Env = struct {
 
 `Env.init` が **2 つの namespace を予め作る**:
 
-| Namespace | 役割 |
-|-----------|------|
-| `rt` | kernel primitives の置き場。Phase 2.7 で `+` / `-` / `=` 等が `(def +) ...` で登録される |
-| `user` | デフォルトの eval target。`current_ns = user` |
+| Namespace | 役割                                                                                     |
+|-----------|------------------------------------------------------------------------------------------|
+| `rt`      | kernel primitives の置き場。Phase 2.7 で `+` / `-` / `=` 等が `(def +) ...` で登録される |
+| `user`    | デフォルトの eval target。`current_ns = user`                                            |
 
 ### なぜ `rt` と `user` を bootstrap で作るか
 
@@ -647,17 +647,17 @@ ROADMAP §7.1 の concurrency mapping（Phase 14: nREPL）と整合して
 
 ## 6. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| **3 つの map (mappings / refers / aliases)** + threadlocal binding | ✓ | Clojure 意味論を 1:1 で写す。lookup 順序も自然 |
-| 単一 map で「どこから来たか」フラグを持つ | ✗ | 所有関係 (own / borrow) が混ざり、deinit が複雑になる |
-| `current_frame` を Env に持つ | ✗ | スレッド A の frame がスレッド B から見える。Clojure 意味論違反 |
-| `current_frame` を完全に廃止 | ✗ | dynamic var を実装する別手段が無い (lock + map なら遅い) |
-| `Var.deref` で常に frame を walk | ✗ | 非 dynamic Var のホットパス (= ほとんどの var) が無駄に lookup する |
-| `(def x ...)` で常に新 Var を作る | ✗ | REPL での再 def で既存参照が無効化される。Clojure JVM と非互換 |
-| `Env.init` で `rt` / `user` を作らない | ✗ | analyzer / primitive register 側に bootstrap 責任が散る |
-| Env が Runtime を所有 (逆向き back ref) | ✗ | 複数 Env の Runtime 共有が不可能になる (nREPL race fix が無効) |
-| Var を Value (NaN-boxed) として扱う | △ | Phase 4+ で `var_ref` slot を使う予定だが、Phase 2 では `*Var` ポインタで OK |
+| 案                                                                 | 採否 | 理由                                                                         |
+|--------------------------------------------------------------------|------|------------------------------------------------------------------------------|
+| **3 つの map (mappings / refers / aliases)** + threadlocal binding | ✓   | Clojure 意味論を 1:1 で写す。lookup 順序も自然                               |
+| 単一 map で「どこから来たか」フラグを持つ                          | ✗   | 所有関係 (own / borrow) が混ざり、deinit が複雑になる                        |
+| `current_frame` を Env に持つ                                      | ✗   | スレッド A の frame がスレッド B から見える。Clojure 意味論違反              |
+| `current_frame` を完全に廃止                                       | ✗   | dynamic var を実装する別手段が無い (lock + map なら遅い)                     |
+| `Var.deref` で常に frame を walk                                   | ✗   | 非 dynamic Var のホットパス (= ほとんどの var) が無駄に lookup する          |
+| `(def x ...)` で常に新 Var を作る                                  | ✗   | REPL での再 def で既存参照が無効化される。Clojure JVM と非互換               |
+| `Env.init` で `rt` / `user` を作らない                             | ✗   | analyzer / primitive register 側に bootstrap 責任が散る                      |
+| Env が Runtime を所有 (逆向き back ref)                            | ✗   | 複数 Env の Runtime 共有が不可能になる (nREPL race fix が無効)               |
+| Var を Value (NaN-boxed) として扱う                                | △   | Phase 4+ で `var_ref` slot を使う予定だが、Phase 2 では `*Var` ポインタで OK |
 
 ROADMAP §4.3 (Runtime + std.Io DI), §7.3 (Dynamic vars stay on
 threadlocal), §A7 (Concurrency designed Day 1), Clojure JVM の
@@ -696,16 +696,16 @@ zig build test --summary new 2>&1 | grep "BindingFrame"
 
 ## 8. 教科書との対比
 
-| 軸 | v1 (`ClojureWasm`) | v1_ref | Clojure JVM | 本リポ |
-|----|--------------------|--------|-------------|--------|
-| Env 単位 | process global | per-session (試行) | n/a (RT は static) | per-session (`Env`) |
-| Var の場所 | `runtime/var.zig` 単独ファイル | `Env` 内 | `clojure.lang.Var` | `runtime/env.zig` 内 |
-| dynamic binding | threadlocal `binding_stack` (ad-hoc) | threadlocal `current_frame` (試行) | `Var.dvals` thread-local | threadlocal `current_frame` (chain) |
-| flag 表現 | `dynamic: bool` ばらばら field | `VarFlags` (試行) | `Var.dynamic` boolean + `Var.macroFlag` etc. | `VarFlags` packed `u8` |
-| refer 意味論 | `referrals: HashMap` | `refers` (試行) | `Namespace.refers` | `refers: VarMap` (key 所有, Var 借用) |
-| nREPL race | **あり**: shared Env | per-client Env (試行、未完) | per-thread Var binding | **解決済**: per-client Env |
-| `Env.init` の bootstrap | グローバル global init | `rt` ns 作成 (試行) | `clojure.core` を JVM init で load | `rt` + `user` を `Env.init` で create |
-| `(def x ...)` 再 def | 常に新 Var | update in place (試行) | `Var.bindRoot` で in-place | update in place |
+| 軸                      | v1 (`ClojureWasm`)                   | v1_ref                             | Clojure JVM                                  | 本リポ                                |
+|-------------------------|--------------------------------------|------------------------------------|----------------------------------------------|---------------------------------------|
+| Env 単位                | process global                       | per-session (試行)                 | n/a (RT は static)                           | per-session (`Env`)                   |
+| Var の場所              | `runtime/var.zig` 単独ファイル       | `Env` 内                           | `clojure.lang.Var`                           | `runtime/env.zig` 内                  |
+| dynamic binding         | threadlocal `binding_stack` (ad-hoc) | threadlocal `current_frame` (試行) | `Var.dvals` thread-local                     | threadlocal `current_frame` (chain)   |
+| flag 表現               | `dynamic: bool` ばらばら field       | `VarFlags` (試行)                  | `Var.dynamic` boolean + `Var.macroFlag` etc. | `VarFlags` packed `u8`                |
+| refer 意味論            | `referrals: HashMap`                 | `refers` (試行)                    | `Namespace.refers`                           | `refers: VarMap` (key 所有, Var 借用) |
+| nREPL race              | **あり**: shared Env                 | per-client Env (試行、未完)        | per-thread Var binding                       | **解決済**: per-client Env            |
+| `Env.init` の bootstrap | グローバル global init               | `rt` ns 作成 (試行)                | `clojure.core` を JVM init で load           | `rt` + `user` を `Env.init` で create |
+| `(def x ...)` 再 def    | 常に新 Var                           | update in place (試行)             | `Var.bindRoot` で in-place                   | update in place                       |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

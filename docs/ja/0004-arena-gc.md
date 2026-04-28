@@ -83,11 +83,11 @@ GC 関連の `marked` bit をセットするときの cache miss も少なく
 
 §4.8:
 
-| Tier        | Contents                         | GC?  | Lifetime    |
-|-------------|----------------------------------|------|-------------|
-| GPA         | Env, Namespace, Var              | No   | Process     |
-| node_arena  | Reader Form, Analyzer Node       | No   | Per-eval    |
-| GC alloc    | Runtime Values                   | Yes  | Mark-sweep  |
+| Tier       | Contents                   | GC? | Lifetime   |
+|------------|----------------------------|-----|------------|
+| GPA        | Env, Namespace, Var        | No  | Process    |
+| node_arena | Reader Form, Analyzer Node | No  | Per-eval   |
+| GC alloc   | Runtime Values             | Yes | Mark-sweep |
 
 Phase 1 ではこの **GC alloc も arena で代用しています**（mark-sweep
 は Phase 5）。「同じ alloc に 2 役」を兼ねさせていますが、`ArenaGc`
@@ -475,14 +475,14 @@ Phase 15 (concurrency) で対応する選択肢:
 
 ## 6. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| **arena + suppress_count + gc_stress flag** | ✓ | Phase 1 の lifetime に最適、Phase 5 の mark-sweep に向けた seam を完備 |
-| `GeneralPurposeAllocator` 直接利用 | ✗ | 個別 free は Phase 1 で不要、cache locality が劣る |
-| Phase 1 から mark-sweep 実装 | ✗ | Phase 1 タスクがない (短文 eval が完結する)、Phase 1 を肥大化 |
-| `bool` で suppress | ✗ | 入れ子マクロで状態が壊れる、`u32` は数 byte で済む |
-| `gc_stress` を Phase 5 で追加 | ✗ | Phase 5 で API 変更を増やす — Day 1 の comptime flag で済む |
-| allocator vtable に mutex 内蔵 | ✗ | callback signature に `io` を渡せず Zig 0.16 idiom に違反 |
+| 案                                          | 採否 | 理由                                                                   |
+|---------------------------------------------|------|------------------------------------------------------------------------|
+| **arena + suppress_count + gc_stress flag** | ✓   | Phase 1 の lifetime に最適、Phase 5 の mark-sweep に向けた seam を完備 |
+| `GeneralPurposeAllocator` 直接利用          | ✗   | 個別 free は Phase 1 で不要、cache locality が劣る                     |
+| Phase 1 から mark-sweep 実装                | ✗   | Phase 1 タスクがない (短文 eval が完結する)、Phase 1 を肥大化          |
+| `bool` で suppress                          | ✗   | 入れ子マクロで状態が壊れる、`u32` は数 byte で済む                     |
+| `gc_stress` を Phase 5 で追加               | ✗   | Phase 5 で API 変更を増やす — Day 1 の comptime flag で済む           |
+| allocator vtable に mutex 内蔵              | ✗   | callback signature に `io` を渡せず Zig 0.16 idiom に違反              |
 
 ROADMAP §4.7 / §4.8 / §A4 (GC は隔離 subsystem) と整合。
 
@@ -522,13 +522,13 @@ git checkout cw-from-scratch
 
 ## 8. 教科書との対比
 
-| 軸 | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | 本リポ |
-|----|------|------|------|------|
-| Phase 1 alloc | `GeneralPurposeAllocator` | `ArenaGc` | n/a (`new` + GC) | `ArenaGc` |
-| GC のレイヤ分け | 単一ファイル `gc.zig` 1957 行 | `gc/arena.zig` | `Object` ヒープ | `gc/{arena,mark_sweep,roots}.zig` (§4.7) |
-| suppress | Phase 後半で追加 | Day 1 | n/a (JVM GC) | Day 1 |
-| 統計取得 | 手動 print | `Stats` 構造体 | JMX | `Stats` 構造体 |
-| stress test | none | `gc_stress` comptime const | `-XX:+UseSerialGC` 等 | `gc_stress` comptime const |
+| 軸              | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref                     | Clojure JVM           | 本リポ                                    |
+|-----------------|-------------------------------------------|----------------------------|-----------------------|-------------------------------------------|
+| Phase 1 alloc   | `GeneralPurposeAllocator`                 | `ArenaGc`                  | n/a (`new` + GC)      | `ArenaGc`                                 |
+| GC のレイヤ分け | 単一ファイル `gc.zig` 1957 行             | `gc/arena.zig`             | `Object` ヒープ       | `gc/{arena,mark_sweep,roots}.zig` (§4.7) |
+| suppress        | Phase 後半で追加                          | Day 1                      | n/a (JVM GC)          | Day 1                                     |
+| 統計取得        | 手動 print                                | `Stats` 構造体             | JMX                   | `Stats` 構造体                            |
+| stress test     | none                                      | `gc_stress` comptime const | `-XX:+UseSerialGC` 等 | `gc_stress` comptime const                |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

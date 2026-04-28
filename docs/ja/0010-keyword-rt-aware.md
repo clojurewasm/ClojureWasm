@@ -107,12 +107,12 @@ pub fn find(rt: *Runtime, ns: ?[]const u8, name_: []const u8) ?Value {
 
 変更を 4 つに分解できます：
 
-| # | 変更 | 影響 |
-|---|------|------|
-| 1 | `KeywordInterner` に `mutex: std.Io.Mutex = .init` フィールド追加 | 構造体サイズ +1 ワード強。Phase 2 では未競合なのでコスト ≈ 0 |
-| 2 | 旧 `intern` / `find` を `internUnlocked` / `findUnlocked` に rename | 「lock を取らない」ことを名前で明示 |
-| 3 | top-level `intern(rt, ...)` / `find(rt, ...)` を新設 | rt 経由で mutex を取る。これが新しい主流 API |
-| 4 | tests に rt-aware シリーズ追加。既存の low-level test も残す | 並列対応の段階性を test で示す |
+| # | 変更                                                                | 影響                                                          |
+|---|---------------------------------------------------------------------|---------------------------------------------------------------|
+| 1 | `KeywordInterner` に `mutex: std.Io.Mutex = .init` フィールド追加   | 構造体サイズ +1 ワード強。Phase 2 では未競合なのでコスト ≈ 0 |
+| 2 | 旧 `intern` / `find` を `internUnlocked` / `findUnlocked` に rename | 「lock を取らない」ことを名前で明示                           |
+| 3 | top-level `intern(rt, ...)` / `find(rt, ...)` を新設                | rt 経由で mutex を取る。これが新しい主流 API                  |
+| 4 | tests に rt-aware シリーズ追加。既存の low-level test も残す        | 並列対応の段階性を test で示す                                |
 
 **cell layout (`Keyword` struct)** は 1 byte も触っていません：
 
@@ -146,14 +146,14 @@ Phase 2 ではその上に API を被せただけ** ということです。
 <details>
 <summary>答え</summary>
 
-| 項目 | 変化 | 補足 |
-|------|------|------|
-| (a) Keyword フィールド順 | × | Phase 1 で凍結済み |
-| (b) computeHash | × | 純関数なので無関係 |
-| (c) intern API | ○ | `(self, ns, name)` → `(rt, ns, name)` |
-| (d) Value の bit 表現 | × | `Value.encodeHeapPtr(.keyword, kw)` で同じ |
-| (e) HashMap 使い方 | × | 中身は `internUnlocked` に同じコードが残った |
-| (f) test 組み立て | ○ | rt-aware test では `TestFixture` (`std.Io.Threaded` + Runtime) が必要 |
+| 項目                     | 変化 | 補足                                                                  |
+|--------------------------|------|-----------------------------------------------------------------------|
+| (a) Keyword フィールド順 | ×   | Phase 1 で凍結済み                                                    |
+| (b) computeHash          | ×   | 純関数なので無関係                                                    |
+| (c) intern API           | ○   | `(self, ns, name)` → `(rt, ns, name)`                                |
+| (d) Value の bit 表現    | ×   | `Value.encodeHeapPtr(.keyword, kw)` で同じ                            |
+| (e) HashMap 使い方       | ×   | 中身は `internUnlocked` に同じコードが残った                          |
+| (f) test 組み立て        | ○   | rt-aware test では `TestFixture` (`std.Io.Threaded` + Runtime) が必要 |
 
 要するに **API 表面だけが変わりました**。内部のセル / hash / map
 操作はすべて Phase 1 から継承しています。
@@ -274,9 +274,9 @@ race condition で table が壊れます。Phase 15 を迎える前に lock を
 
 選択肢：
 
-| 戦略 | コスト |
-|------|--------|
-| Phase 15 で keyword.zig を書き直す | 1 ファイル touch、テストの大幅追加、API 変更が他に伝播 |
+| 戦略                                                     | コスト                                                            |
+|----------------------------------------------------------|-------------------------------------------------------------------|
+| Phase 15 で keyword.zig を書き直す                       | 1 ファイル touch、テストの大幅追加、API 変更が他に伝播            |
 | **Phase 2.2 で mutex を入れて、Phase 15 では何もしない** | Phase 2 で uncontended lock 1 命令分のオーバーヘッド (= 計測誤差) |
 
 後者を選んだ。理由：
@@ -466,16 +466,16 @@ Phase 2.1 と 2.2 を別コミットにしておくと、教科書（この `doc
 
 ## 5. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| **`internUnlocked` + top-level `intern(rt, ...)`** | ✓ | API 表面で lock 状態を区別、test で両方使える、bootstrap でも便利 |
-| 旧 `intern` を残し、新たに `internRtAware` を追加 | ✗ | 名前が冗長。「lock していない」事実を覆い隠す |
-| 全ての test を rt-aware に書き換え | ✗ | low-level test の独立性が失われる。fixture コスト増 |
-| `std.Thread.Mutex` を使う | ✗ | Zig 0.16 で削除済。ROADMAP §13 の reject patterns |
-| `std.atomic.Mutex` (lock-free) | ✗ | blocking `lock` が無いので `std.Io.Mutex` の方が素直 |
-| Phase 15 まで mutex 無し (現状維持) | ✗ | Phase 15 で keyword.zig を再度大改修するのは「workaround を残す」 |
-| Phase 2.1 と 2.2 を 1 commit に | ✗ | diff 可読性、test 粒度、roll-back 単位、章の独立性すべて損なう |
-| cell layout (Keyword struct) も同時に変更 | ✗ | Phase 1 で凍結した約束を破る。layout 変更は別の ADR レベル |
+| 案                                                 | 採否 | 理由                                                              |
+|----------------------------------------------------|------|-------------------------------------------------------------------|
+| **`internUnlocked` + top-level `intern(rt, ...)`** | ✓   | API 表面で lock 状態を区別、test で両方使える、bootstrap でも便利 |
+| 旧 `intern` を残し、新たに `internRtAware` を追加  | ✗   | 名前が冗長。「lock していない」事実を覆い隠す                     |
+| 全ての test を rt-aware に書き換え                 | ✗   | low-level test の独立性が失われる。fixture コスト増               |
+| `std.Thread.Mutex` を使う                          | ✗   | Zig 0.16 で削除済。ROADMAP §13 の reject patterns                |
+| `std.atomic.Mutex` (lock-free)                     | ✗   | blocking `lock` が無いので `std.Io.Mutex` の方が素直              |
+| Phase 15 まで mutex 無し (現状維持)                | ✗   | Phase 15 で keyword.zig を再度大改修するのは「workaround を残す」 |
+| Phase 2.1 と 2.2 を 1 commit に                    | ✗   | diff 可読性、test 粒度、roll-back 単位、章の独立性すべて損なう    |
+| cell layout (Keyword struct) も同時に変更          | ✗   | Phase 1 で凍結した約束を破る。layout 変更は別の ADR レベル        |
 
 ROADMAP §7 (Concurrency design — Phase 15 への伏線), §A7
 (Concurrency designed Day 1), 原則 P10 (0.16 idiom) と整合。
@@ -514,13 +514,13 @@ git diff b60924b 07d5c34 -- src/runtime/keyword.zig | grep -A 10 "pub const Keyw
 
 ## 7. 教科書との対比
 
-| 軸 | v1 (`ClojureWasm`) | v1_ref | Clojure JVM | 本リポ |
-|----|--------------------|--------|-------------|--------|
-| 採用方式 | グローバル `var intern_mutex: Mutex` | rt-aware (試行) | `clojure.lang.Keyword.intern(...)` static + ConcurrentHashMap | rt-aware (`*Runtime` 経由) |
-| Mutex 種類 | `std.Thread.Mutex` (Zig 0.15 時代) | `std.Io.Mutex` (試行) | n/a (`ConcurrentHashMap`) | `std.Io.Mutex` |
-| API 表面 | `intern(ns, name)` モジュール level | `intern(rt, ns, name)` (試行) | `Keyword.intern(Symbol)` static | `intern(rt, ns, name)` top-level |
-| Cell layout | header + ns + name + hash_cache | 同左 | `Keyword { Symbol sym, int hash }` | header + ns + name + hash_cache (Phase 1 で凍結) |
-| 並列対応 | Phase ?? で後付け | Phase 2 で導入 | Day 1 (`ConcurrentHashMap`) | Phase 2.2 で導入 (Phase 15 への伏線) |
+| 軸          | v1 (`ClojureWasm`)                   | v1_ref                        | Clojure JVM                                                   | 本リポ                                           |
+|-------------|--------------------------------------|-------------------------------|---------------------------------------------------------------|--------------------------------------------------|
+| 採用方式    | グローバル `var intern_mutex: Mutex` | rt-aware (試行)               | `clojure.lang.Keyword.intern(...)` static + ConcurrentHashMap | rt-aware (`*Runtime` 経由)                       |
+| Mutex 種類  | `std.Thread.Mutex` (Zig 0.15 時代)   | `std.Io.Mutex` (試行)         | n/a (`ConcurrentHashMap`)                                     | `std.Io.Mutex`                                   |
+| API 表面    | `intern(ns, name)` モジュール level  | `intern(rt, ns, name)` (試行) | `Keyword.intern(Symbol)` static                               | `intern(rt, ns, name)` top-level                 |
+| Cell layout | header + ns + name + hash_cache      | 同左                          | `Keyword { Symbol sym, int hash }`                            | header + ns + name + hash_cache (Phase 1 で凍結) |
+| 並列対応    | Phase ?? で後付け                    | Phase 2 で導入                | Day 1 (`ConcurrentHashMap`)                                   | Phase 2.2 で導入 (Phase 15 への伏線)             |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

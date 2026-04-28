@@ -142,13 +142,13 @@ pub const Keyword = struct {
 
 ### フィールド役割
 
-| フィールド | サイズ | 役割 |
-|------|------|------|
-| `header` | 2 byte | `HeapHeader` (`tag` + `flags` + reserved)、Phase 5 mark bit を持つ |
-| `_pad` | 6 byte | 8-byte alignment 確保 |
-| `ns` | 16 byte | `?[]const u8` — `:ns/name` の前半。bare keyword は `null` |
-| `name` | 16 byte | `[]const u8` — keyword name 本体 |
-| `hash_cache` | 4 byte | precomputed Murmur3 hash |
+| フィールド   | サイズ  | 役割                                                               |
+|--------------|---------|--------------------------------------------------------------------|
+| `header`     | 2 byte  | `HeapHeader` (`tag` + `flags` + reserved)、Phase 5 mark bit を持つ |
+| `_pad`       | 6 byte  | 8-byte alignment 確保                                              |
+| `ns`         | 16 byte | `?[]const u8` — `:ns/name` の前半。bare keyword は `null`         |
+| `name`       | 16 byte | `[]const u8` — keyword name 本体                                  |
+| `hash_cache` | 4 byte  | precomputed Murmur3 hash                                           |
 
 総計 ~44 byte（alignment 込みで 48 程度）。`hash_cache` を
 **precompute** しているのは、HashMap の bucket 計算で keyword の
@@ -462,12 +462,12 @@ repeats` / `qualified keywords are distinct from bare` / etc.) が
 Phase 2.2（`07d5c34`）は cell を変えずに、API surface だけを進化
 させたコミットです。差分の本質は次の通りです:
 
-| Phase 1 (`b60924b`) | Phase 2.2 (`07d5c34`) |
-|------|------|
-| `interner.intern(ns, name)` | `intern(rt, ns, name)` (top-level fn) |
-| ロックなし | `rt.io` 経由で `std.Io.Mutex.lockUncancelable` を取る |
-| owner = `*KeywordInterner` | owner = `*Runtime`, `Runtime.keywords: KeywordInterner` |
-| API method 1 個 | `internUnlocked` (旧名) + 新たな `intern(rt, ...)` |
+| Phase 1 (`b60924b`)         | Phase 2.2 (`07d5c34`)                                   |
+|-----------------------------|---------------------------------------------------------|
+| `interner.intern(ns, name)` | `intern(rt, ns, name)` (top-level fn)                   |
+| ロックなし                  | `rt.io` 経由で `std.Io.Mutex.lockUncancelable` を取る   |
+| owner = `*KeywordInterner`  | owner = `*Runtime`, `Runtime.keywords: KeywordInterner` |
+| API method 1 個             | `internUnlocked` (旧名) + 新たな `intern(rt, ...)`      |
 
 **low-level メソッド**（`internUnlocked` / `findUnlocked`）を
 **残した** のが要所です。テストや fixed-input bootstrap（single-
@@ -481,15 +481,15 @@ ROADMAP **§A7（Concurrency and errors are designed in on day 1）**
 
 ## 6. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| **heap-allocated cell + 自前 hash table** | ✓ | cell address を Value に encode してエクイティ判定が pointer 比較で済む |
-| Java enum の真似 | ✗ | Zig には JVM の class loader / static field 機構がない |
-| `[]const u8` を直接 Value に | ✗ | Value は 8 byte、slice は 16 byte で収まらない |
-| `std.HashMap(string, *Keyword)` | ✗ | `StringArrayHashMapUnmanaged` の方が小規模 + cache-friendly |
-| Phase 1 から `std.Io.Mutex` を入れる | ✗ | single-thread Phase 1 で overhead 無駄、cell layout だけ凍結すれば十分 |
-| keyword cell に `ns_len + name_len` を持たせる | ✗ | `[]const u8` の長さで判る、redundant |
-| Phase 2 で cell layout を変える | ✗ | 既存テスト破壊、NaN encoding 周りも触らねばならない |
+| 案                                             | 採否 | 理由                                                                    |
+|------------------------------------------------|------|-------------------------------------------------------------------------|
+| **heap-allocated cell + 自前 hash table**      | ✓   | cell address を Value に encode してエクイティ判定が pointer 比較で済む |
+| Java enum の真似                               | ✗   | Zig には JVM の class loader / static field 機構がない                  |
+| `[]const u8` を直接 Value に                   | ✗   | Value は 8 byte、slice は 16 byte で収まらない                          |
+| `std.HashMap(string, *Keyword)`                | ✗   | `StringArrayHashMapUnmanaged` の方が小規模 + cache-friendly             |
+| Phase 1 から `std.Io.Mutex` を入れる           | ✗   | single-thread Phase 1 で overhead 無駄、cell layout だけ凍結すれば十分  |
+| keyword cell に `ns_len + name_len` を持たせる | ✗   | `[]const u8` の長さで判る、redundant                                    |
+| Phase 2 で cell layout を変える                | ✗   | 既存テスト破壊、NaN encoding 周りも触らねばならない                     |
 
 ROADMAP §4.2 (NaN-boxed Value) / §A7 (concurrency designed in on
 day 1) / P2 (final shape on day 1) と整合。
@@ -528,13 +528,13 @@ std.debug.print("c = 0x{X:0>16}\n", .{@intFromEnum(c)});
 
 ## 8. 教科書との対比
 
-| 軸 | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | 本リポ |
-|----|------|------|------|------|
-| API ownership | `keyword_intern.zig` 82 行、`pub var` グローバル | `keyword.zig` 308 行、`*Runtime` 渡し | `Keyword.intern(Symbol)` static method | Phase 1: `*KeywordInterner` / Phase 2.2: `*Runtime` |
-| ロック | なし (single-thread 前提) | `std.Io.Mutex` | `static ConcurrentHashMap` | Phase 1: なし / Phase 2.2: `std.Io.Mutex` |
-| cell layout | 後付け (Phase 後半に固定化) | Day 1 凍結 | `Symbol` referent + `name`/`ns` (`String`) | Day 1 凍結 |
-| hash precompute | あり (i32) | あり (u32) | あり (`int _hasheq`) | あり (u32) |
-| qualified keyword | sentinel `"/"` で string 連結 | composite key | `Symbol` 内蔵の ns/name | composite key |
+| 軸                | v1 (`~/Documents/MyProducts/ClojureWasm`)        | v1_ref                                | Clojure JVM                                | 本リポ                                              |
+|-------------------|--------------------------------------------------|---------------------------------------|--------------------------------------------|-----------------------------------------------------|
+| API ownership     | `keyword_intern.zig` 82 行、`pub var` グローバル | `keyword.zig` 308 行、`*Runtime` 渡し | `Keyword.intern(Symbol)` static method     | Phase 1: `*KeywordInterner` / Phase 2.2: `*Runtime` |
+| ロック            | なし (single-thread 前提)                        | `std.Io.Mutex`                        | `static ConcurrentHashMap`                 | Phase 1: なし / Phase 2.2: `std.Io.Mutex`           |
+| cell layout       | 後付け (Phase 後半に固定化)                      | Day 1 凍結                            | `Symbol` referent + `name`/`ns` (`String`) | Day 1 凍結                                          |
+| hash precompute   | あり (i32)                                       | あり (u32)                            | あり (`int _hasheq`)                       | あり (u32)                                          |
+| qualified keyword | sentinel `"/"` で string 連結                    | composite key                         | `Symbol` 内蔵の ns/name                    | composite key                                       |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

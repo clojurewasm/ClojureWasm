@@ -70,14 +70,14 @@ pub const Cons = struct {
 
 ### フィールド役割
 
-| フィールド | サイズ | 役割 |
-|------|------|------|
-| `header` | 2 byte | `HeapHeader` (`tag` + `flags` + reserved)。GC mark bit が flags 内に入る |
-| `_pad` | 6 byte | 8-byte alignment 確保のための明示的 padding |
-| `first` | 8 byte | head の `Value` (NaN-boxed `u64`) |
-| `rest` | 8 byte | tail。`nil` または別 cons cell の Value |
-| `meta` | 8 byte | metadata map (`{:line 7 :col 3}` 等)、デフォルト `nil` |
-| `count` | 4 byte | リスト全体の長さ。precompute で O(1) |
+| フィールド | サイズ | 役割                                                                     |
+|------------|--------|--------------------------------------------------------------------------|
+| `header`   | 2 byte | `HeapHeader` (`tag` + `flags` + reserved)。GC mark bit が flags 内に入る |
+| `_pad`     | 6 byte | 8-byte alignment 確保のための明示的 padding                              |
+| `first`    | 8 byte | head の `Value` (NaN-boxed `u64`)                                        |
+| `rest`     | 8 byte | tail。`nil` または別 cons cell の Value                                  |
+| `meta`     | 8 byte | metadata map (`{:line 7 :col 3}` 等)、デフォルト `nil`                   |
+| `count`    | 4 byte | リスト全体の長さ。precompute で O(1)                                     |
 
 合計 36 byte（alignment 込みで 40）です。NaN-boxed encoding の都合
 で **Value はすべて 8-byte aligned に置きたい** ため、cell 全体も
@@ -146,13 +146,13 @@ const e = countOf(Value.initInteger(42));   // ← ?
 <details>
 <summary>答え</summary>
 
-| 変数 | 値 | 理由 |
-|------|------|------|
-| `a` | `1` | head |
-| `b` | `2` | rest の head |
-| `c` | `Value.nil_val` | rest を 3 回辿ると nil、`first(nil) = nil` |
-| `d` | `0` | nil の count は 0 (Clojure 互換) |
-| `e` | `0` | integer は list でないので fallthrough → 0 |
+| 変数 | 値              | 理由                                        |
+|------|-----------------|---------------------------------------------|
+| `a`  | `1`             | head                                        |
+| `b`  | `2`             | rest の head                                |
+| `c`  | `Value.nil_val` | rest を 3 回辿ると nil、`first(nil) = nil`  |
+| `d`  | `0`             | nil の count は 0 (Clojure 互換)            |
+| `e`  | `0`             | integer は list でないので fallthrough → 0 |
 
 ポイント: `else => .nil_val` / `else => 0` の **fallthrough** が
 あるおかげで、呼び出し側で **`val.tag() == .list` を毎回チェック
@@ -564,17 +564,17 @@ ROADMAP **P11（Observable-semantics compatibility）** の枠組みで
 
 ## 5. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| **cons cell + precomputed count: u32** | ✓ | structural sharing と O(1) count を両立、`(count xs)` が hot path で潰せる |
-| count を持たない | ✗ | `(count xs)` が O(n)、benchmark で痛い |
-| 空リスト = sentinel cell | ✗ | nil semantics の重複、ヒープに永続 root が増える |
-| `meta: ?Value` | ✗ | optional は別の bit を食う、`nil_val` という即値で十分 |
-| **Murmur3 (Clojure 互換)** | ✓ | Java と同じ value-hash → 移植テストの再現性 |
-| SipHash 採用 | ✗ | Clojure JVM と非互換、value hash の round-trip 不可 |
-| FNV-1a | ✗ | collision 多、Murmur3 ほど均等でない |
-| UTF-16 で hashString | ✗ | Wasm/edge で UTF-8 が自然、変換 overhead |
-| `*` (panicking multiply) | ✗ | overflow 時に panic、Java と bit 不一致 |
+| 案                                     | 採否 | 理由                                                                       |
+|----------------------------------------|------|----------------------------------------------------------------------------|
+| **cons cell + precomputed count: u32** | ✓   | structural sharing と O(1) count を両立、`(count xs)` が hot path で潰せる |
+| count を持たない                       | ✗   | `(count xs)` が O(n)、benchmark で痛い                                     |
+| 空リスト = sentinel cell               | ✗   | nil semantics の重複、ヒープに永続 root が増える                           |
+| `meta: ?Value`                         | ✗   | optional は別の bit を食う、`nil_val` という即値で十分                     |
+| **Murmur3 (Clojure 互換)**             | ✓   | Java と同じ value-hash → 移植テストの再現性                               |
+| SipHash 採用                           | ✗   | Clojure JVM と非互換、value hash の round-trip 不可                        |
+| FNV-1a                                 | ✗   | collision 多、Murmur3 ほど均等でない                                       |
+| UTF-16 で hashString                   | ✗   | Wasm/edge で UTF-8 が自然、変換 overhead                                   |
+| `*` (panicking multiply)               | ✗   | overflow 時に panic、Java と bit 不一致                                    |
 
 ROADMAP §A6 (≤ 1000 LOC) / §4.2 (NaN boxed Value) / P11 (observable
 semantics) と整合。
@@ -611,14 +611,14 @@ std.debug.print("b.rest = 0x{X:0>16}\n", .{@intFromEnum(rest(b))});
 
 ## 7. 教科書との対比
 
-| 軸 | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | 本リポ |
-|----|------|------|------|------|
-| List 表現 | `collections.zig` 6K LOC 内に同居 | `collection/list.zig` (172 行) | `PersistentList.java` | `collection/list.zig` (173 行) |
-| count storage | precompute あり | precompute あり | precompute あり | precompute あり |
-| empty list | sentinel cell | nil 代用 | `EMPTY` sentinel | nil 代用 |
-| Hash impl | `hash.zig` 187 行 | `hash.zig` 224 行 | `Murmur3.java` (Java) | `hash.zig` 179 行 |
-| String hash | UTF-8 | UTF-8 | UTF-16 | UTF-8 (Wasm 第一) |
-| Wrapping arithm | `*%` / `+%` | `*%` / `+%` | silent (Java int) | `*%` / `+%` |
+| 軸              | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref                         | Clojure JVM           | 本リポ                         |
+|-----------------|-------------------------------------------|--------------------------------|-----------------------|--------------------------------|
+| List 表現       | `collections.zig` 6K LOC 内に同居         | `collection/list.zig` (172 行) | `PersistentList.java` | `collection/list.zig` (173 行) |
+| count storage   | precompute あり                           | precompute あり                | precompute あり       | precompute あり                |
+| empty list      | sentinel cell                             | nil 代用                       | `EMPTY` sentinel      | nil 代用                       |
+| Hash impl       | `hash.zig` 187 行                         | `hash.zig` 224 行              | `Murmur3.java` (Java) | `hash.zig` 179 行              |
+| String hash     | UTF-8                                     | UTF-8                          | UTF-16                | UTF-8 (Wasm 第一)              |
+| Wrapping arithm | `*%` / `+%`                               | `*%` / `+%`                    | silent (Java int)     | `*%` / `+%`                    |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

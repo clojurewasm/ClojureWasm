@@ -463,11 +463,11 @@ catch 節と照合します。Phase 3 では catch クラス名は **`"Exception
 `(try body (catch ... ...) (finally ...))` の意味論は、JVM Clojure と
 同じく次の三通りに分かれます。
 
-| 状態                         | finally の挙動                     | 最終戻り値           |
-|------------------------------|------------------------------------|----------------------|
-| body 成功                    | 実行する                           | body の結果          |
-| body throw、catch でマッチ   | catch 評価後に実行する             | catch の結果         |
-| body throw、catch にマッチなし | 実行する                           | re-raise（伝播）     |
+| 状態                           | finally の挙動         | 最終戻り値       |
+|--------------------------------|------------------------|------------------|
+| body 成功                      | 実行する               | body の結果      |
+| body throw、catch でマッチ     | catch 評価後に実行する | catch の結果     |
+| body throw、catch にマッチなし | 実行する               | re-raise（伝播） |
 
 Zig レベルで言うと「(c) 未捕捉ケース」は `error.ThrownValue` を
 finally の評価が終わったあとに **再度 raise する** 形になります。
@@ -672,12 +672,12 @@ Phase 3 段階の `core.clj` は最小です。
 
 ブートストラップ戦略は実装ごとに個性が出ます。
 
-| 軸 | v1 | Upstream Clojure JVM | Babashka / SCI | 本リポジトリ |
-|----|----|----|----|----|
-| `core.clj` の存在 | 廃止し全 44 マクロを Zig 化 | 完全な `core.clj` を runtime ロード | 親 JVM Clojure から `copy-ns` で取得 | 最小の `core.clj` を残し Zig マクロと併存 |
-| compile / runtime の段差 | なし（tree-walk のみ） | あり（special form は compile 時解決） | なし（SCI は interpreter） | なし（tree-walk のみ） |
-| 自己充足性 | binary 単体で起動 | `clojure.jar` に core.clj 同梱 | 親 Clojure 必須 | binary 単体で起動 |
-| 拡張点 | Zig 側へ追加 | `core.clj` へ追加 | 親 Clojure 経由 | hybrid（Zig 優先 / `core.clj` fallback） |
+| 軸                       | v1                          | Upstream Clojure JVM                   | Babashka / SCI                       | 本リポジトリ                              |
+|--------------------------|-----------------------------|----------------------------------------|--------------------------------------|-------------------------------------------|
+| `core.clj` の存在        | 廃止し全 44 マクロを Zig 化 | 完全な `core.clj` を runtime ロード    | 親 JVM Clojure から `copy-ns` で取得 | 最小の `core.clj` を残し Zig マクロと併存 |
+| compile / runtime の段差 | なし（tree-walk のみ）      | あり（special form は compile 時解決） | なし（SCI は interpreter）           | なし（tree-walk のみ）                    |
+| 自己充足性               | binary 単体で起動           | `clojure.jar` に core.clj 同梱         | 親 Clojure 必須                      | binary 単体で起動                         |
+| 拡張点                   | Zig 側へ追加                | `core.clj` へ追加                      | 親 Clojure 経由                      | hybrid（Zig 優先 / `core.clj` fallback）  |
 
 引っ張られずに本リポジトリの理念で整理した点：
 
@@ -929,24 +929,24 @@ ROADMAP §17.2 の四ステップを順に挙げてください。
 
 ## 8. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| `printValue` を `value.zig` 内に置く | ✗ | `value.zig` の責務肥大化を避けるため Layer 0 内の別ファイルに分離 |
-| `printValue` を `lang/primitive/io.zig` (Layer 2) に置く | ✗ | Layer 0/1 から呼べず upward import 違反になる |
-| `try` を catch ごとに nested TryNode で表現 | ✗ | AST 読解性と multi-catch 拡張性で flat array 方式に劣る |
-| `recur_target` を `bool` で持つ | ✗ | arity 検証ができず、named loop に拡張不能 |
-| tail-position チェックを 3.9 で実装 | ✗ | `is_tail` を analyze 全体に thread する大規模変更を 3.11 へ持ち越す |
-| `ex-info` を marker key map で実装（v1 方式） | ✗ | 専用 HeapTag dispatch のほうが 1 cmp で識別でき高速 |
-| `ex-info` の `cause` を 3.11 へ後回し | ✗ | 1 field 追加なら今のほうが安価、JVM の 3-arg 形と整合 |
-| `ex-message` が ExInfo の slice をそのまま返す | ✗ | GC 後に dangle するリスク、新 String の確保 1 行で安全 |
-| closure を `[256]Value` 全コピー | ✗ | `slot_base` までで意味は十分、GC trace コストを下げる |
-| `recur` を non-error な threadlocal flag で表現 | ✗ | unwind が手間、Zig idiom の error-as-control に揃える |
-| `EvalError` enum に `RecurSignaled` を足す | ✗ | `kindToError` の Kind 1:1 mapping を壊す |
-| `bootstrap.loadCore` を `Env.init` 内で呼ぶ | ✗ | runtime → lang は upward import で zone 違反 |
-| `defn` を `(def name (fn* params body))` だけに展開 | ✗ | 複数 body の暗黙 `do` が壊れて `c` が黙って捨てられる |
-| 空 map リテラル stub を Phase 3 で実装 | ✗ | P4「no ad-hoc patches」違反、Phase 5 が brittle stub を継承する |
-| smoke の data を「任意の値」と緩める | ✗ | ROADMAP は SoT、後で deliberate か bug か判別不能になる |
-| ex-info smoke 全体を Phase 5 へ延期 | ✗ | Phase-3 で動いている挙動の end-to-end verify が二相失われる |
+| 案                                                       | 採否 | 理由                                                                |
+|----------------------------------------------------------|------|---------------------------------------------------------------------|
+| `printValue` を `value.zig` 内に置く                     | ✗   | `value.zig` の責務肥大化を避けるため Layer 0 内の別ファイルに分離   |
+| `printValue` を `lang/primitive/io.zig` (Layer 2) に置く | ✗   | Layer 0/1 から呼べず upward import 違反になる                       |
+| `try` を catch ごとに nested TryNode で表現              | ✗   | AST 読解性と multi-catch 拡張性で flat array 方式に劣る             |
+| `recur_target` を `bool` で持つ                          | ✗   | arity 検証ができず、named loop に拡張不能                           |
+| tail-position チェックを 3.9 で実装                      | ✗   | `is_tail` を analyze 全体に thread する大規模変更を 3.11 へ持ち越す |
+| `ex-info` を marker key map で実装（v1 方式）            | ✗   | 専用 HeapTag dispatch のほうが 1 cmp で識別でき高速                 |
+| `ex-info` の `cause` を 3.11 へ後回し                    | ✗   | 1 field 追加なら今のほうが安価、JVM の 3-arg 形と整合               |
+| `ex-message` が ExInfo の slice をそのまま返す           | ✗   | GC 後に dangle するリスク、新 String の確保 1 行で安全              |
+| closure を `[256]Value` 全コピー                         | ✗   | `slot_base` までで意味は十分、GC trace コストを下げる               |
+| `recur` を non-error な threadlocal flag で表現          | ✗   | unwind が手間、Zig idiom の error-as-control に揃える               |
+| `EvalError` enum に `RecurSignaled` を足す               | ✗   | `kindToError` の Kind 1:1 mapping を壊す                            |
+| `bootstrap.loadCore` を `Env.init` 内で呼ぶ              | ✗   | runtime → lang は upward import で zone 違反                       |
+| `defn` を `(def name (fn* params body))` だけに展開      | ✗   | 複数 body の暗黙 `do` が壊れて `c` が黙って捨てられる               |
+| 空 map リテラル stub を Phase 3 で実装                   | ✗   | P4「no ad-hoc patches」違反、Phase 5 が brittle stub を継承する     |
+| smoke の data を「任意の値」と緩める                     | ✗   | ROADMAP は SoT、後で deliberate か bug か判別不能になる             |
+| ex-info smoke 全体を Phase 5 へ延期                      | ✗   | Phase-3 で動いている挙動の end-to-end verify が二相失われる         |
 
 ROADMAP の対応箇所：
 
@@ -982,15 +982,15 @@ bash test/e2e/phase3_exit.sh
 
 ## 10. 教科書との対比
 
-| 軸 | v1 | v1_ref | Clojure JVM | 本リポジトリ |
-|----|----|----|----|----|
-| `try` の AST 形 | nested TryNode で multi-catch | scaffolding のみ | flat `catchExprs: PersistentVector` | flat `catch_clauses: []const CatchClause` |
-| `recur` 信号 | 専用 frame | `error.RecurSignaled` + threadlocal | bytecode `goto loopLabel` | `error.RecurSignaled` + threadlocal（v1_ref と同形） |
-| closure snapshot 範囲 | 全 locals | （Phase 2 まで未対応） | closes map（compile 時） | `[0, slot_base)` のみ |
-| `ex-info` の表現 | marker key 付き map | tag 確保のみ | `ExceptionInfo extends RuntimeException` | 専用 `HeapTag.ex_info` + 3 field struct |
-| `core.clj` の有無 | 廃止（全 Zig 化） | scaffolding | 完全な `core.clj` を runtime ロード | 最小 `core.clj` を `@embedFile` で同梱 |
-| `defn` の住処 | Zig マクロ（44 種の一部） | 未定義 | `core.clj` の macro | Zig マクロ（Stage-1 narrow surface） |
-| ROADMAP 修正手順 | （v1 は ADR 文化なし） | 同上 | （該当なし） | §17 四ステップ（ADR 0002 が初回） |
+| 軸                    | v1                            | v1_ref                              | Clojure JVM                              | 本リポジトリ                                         |
+|-----------------------|-------------------------------|-------------------------------------|------------------------------------------|------------------------------------------------------|
+| `try` の AST 形       | nested TryNode で multi-catch | scaffolding のみ                    | flat `catchExprs: PersistentVector`      | flat `catch_clauses: []const CatchClause`            |
+| `recur` 信号          | 専用 frame                    | `error.RecurSignaled` + threadlocal | bytecode `goto loopLabel`                | `error.RecurSignaled` + threadlocal（v1_ref と同形） |
+| closure snapshot 範囲 | 全 locals                     | （Phase 2 まで未対応）              | closes map（compile 時）                 | `[0, slot_base)` のみ                                |
+| `ex-info` の表現      | marker key 付き map           | tag 確保のみ                        | `ExceptionInfo extends RuntimeException` | 専用 `HeapTag.ex_info` + 3 field struct              |
+| `core.clj` の有無     | 廃止（全 Zig 化）             | scaffolding                         | 完全な `core.clj` を runtime ロード      | 最小 `core.clj` を `@embedFile` で同梱               |
+| `defn` の住処         | Zig マクロ（44 種の一部）     | 未定義                              | `core.clj` の macro                      | Zig マクロ（Stage-1 narrow surface）                 |
+| ROADMAP 修正手順      | （v1 は ADR 文化なし）        | 同上                                | （該当なし）                             | §17 四ステップ（ADR 0002 が初回）                   |
 
 引っ張られずに本リポジトリの理念で整理した点：
 

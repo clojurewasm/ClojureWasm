@@ -75,13 +75,13 @@ heap 型であり、Phase 1 で `runtime/value.zig` から切り離すために
 Reader が直接 `Value`（NaN-boxed u64）を吐けば後段が単純化されそうに
 見えますが、本リポジトリは意図して両者を分けています：
 
-| 軸 | `Form`（reader 出力） | `Value`（runtime 表現） |
-|------|--------|---------|
-| 寿命 | per-eval の node arena | per-process の GC heap |
-| 中身 | 構文形（list / vector / map） | 実行時の値（NaN-boxed） |
-| Symbol | **未解決**（`{ns, name}`） | 解決済み Var ref |
-| GC | trace されない | trace される |
-| 失敗時 | location 付き → `:5:12` 表示 | location は別物 |
+| 軸     | `Form`（reader 出力）         | `Value`（runtime 表現） |
+|--------|-------------------------------|-------------------------|
+| 寿命   | per-eval の node arena        | per-process の GC heap  |
+| 中身   | 構文形（list / vector / map） | 実行時の値（NaN-boxed） |
+| Symbol | **未解決**（`{ns, name}`）    | 解決済み Var ref        |
+| GC     | trace されない                | trace される            |
+| 失敗時 | location 付き → `:5:12` 表示 | location は別物         |
 
 **核心**: Form は macroexpansion の前段で必要な情報（symbol の
 namespace、map literal かどうかなど）を、**Value 表現に潰すと失われ
@@ -131,12 +131,12 @@ Q3: `f4.typeName()` は何か。
 <details>
 <summary>答え</summary>
 
-| Form | typeName() |
-|------|------------|
-| f1 | `"nil"` |
-| f2 | `"keyword"`（namespace の有無は型名に出ない） |
-| f3 | `"map"`（heap-side の `hash_map` ではなく構文上の `map`） |
-| f4 | `"float"` |
+| Form | typeName()                                                |
+|------|-----------------------------------------------------------|
+| f1   | `"nil"`                                                   |
+| f2   | `"keyword"`（namespace の有無は型名に出ない）             |
+| f3   | `"map"`（heap-side の `hash_map` ではなく構文上の `map`） |
+| f4   | `"float"`                                                 |
 
 `typeName` はエラーメッセージ用で、heap 表現の `HeapTag`（第 0002
 章）とは独立。
@@ -296,14 +296,14 @@ switch (ch) {
 
 ### Clojure の特殊リテラル
 
-| 構文 | Token kind | 備考 |
-|------|------------|------|
-| `nil` / `true` / `false` | `.symbol` | reader が再分類 |
-| `:keyword` | `.keyword` | `:foo`, `:my.ns/key` |
-| `\"string\"` | `.string` | エスケープは reader 側でデコード |
-| `0xFF`（hex int） | `.integer` | |
-| `1.5e10`（指数） | `.float` | |
-| `42N` / `42M` | `.integer` / `.float` | Phase 1 は精度を捨てる |
+| 構文                     | Token kind            | 備考                             |
+|--------------------------|-----------------------|----------------------------------|
+| `nil` / `true` / `false` | `.symbol`             | reader が再分類                  |
+| `:keyword`               | `.keyword`            | `:foo`, `:my.ns/key`             |
+| `\"string\"`             | `.string`             | エスケープは reader 側でデコード |
+| `0xFF`（hex int）        | `.integer`            |                                  |
+| `1.5e10`（指数）         | `.float`              |                                  |
+| `42N` / `42M`            | `.integer` / `.float` | Phase 1 は精度を捨てる           |
 
 `nil` / `true` / `false` を **`.symbol` として返す** のが設計上の
 要点です。字句レベルでは「symbol の形をした識別子」として一律に処理
@@ -333,11 +333,11 @@ switch (ch) {
 
 Phase 1 のリーダーマクロは 3 種類だけ：
 
-| 入力 | Token kind | 用途 |
-|------|-----------|------|
-| `#_` | `.discard` | 直後の form を捨てる |
-| `##` | `.symbolic` | `##NaN` / `##Inf` / `##-Inf` |
-| `#!` | （行末まで skip） | shebang line |
+| 入力 | Token kind        | 用途                         |
+|------|-------------------|------------------------------|
+| `#_` | `.discard`        | 直後の form を捨てる         |
+| `##` | `.symbolic`       | `##NaN` / `##Inf` / `##-Inf` |
+| `#!` | （行末まで skip） | shebang line                 |
 
 `#"re"`（regex）、`#'`、`#()` などは **Phase 2+ で `readDispatch`
 に分岐を追加するだけ** で済む構造になっています（A2: 新機能は
@@ -438,15 +438,15 @@ pub const Tokenizer = struct {
 
 ## 4. 設計判断と却下した代替
 
-| 案 | 採否 | 理由 |
-|----|------|------|
-| Form = `data` + `location` の構造体 | ✓ | location を Day 1 で全 Form に貼れる |
-| Form を直接 NaN-boxed Value で表現 | ✗ | macroexpansion で Symbol を保持できない |
-| Token に `text: []const u8` を持たせる | ✗ | コピー多発。`start + len` で 0 alloc |
-| LL(1) のみ（+1 / -1 のみ 2 文字） | ✓ | Phase 1 範囲で十分 |
-| LR / GLR / PEG ライブラリ | ✗ | 依存追加、P2 (final shape day 1) 違反 |
-| `nil/true/false` を専用 Token kind | ✗ | reader 側 3 行で済むので tokenizer 短く |
-| Comma を delimiter として Token 化 | ✗ | Clojure 文化に反する |
+| 案                                     | 採否 | 理由                                    |
+|----------------------------------------|------|-----------------------------------------|
+| Form = `data` + `location` の構造体    | ✓   | location を Day 1 で全 Form に貼れる    |
+| Form を直接 NaN-boxed Value で表現     | ✗   | macroexpansion で Symbol を保持できない |
+| Token に `text: []const u8` を持たせる | ✗   | コピー多発。`start + len` で 0 alloc    |
+| LL(1) のみ（+1 / -1 のみ 2 文字）      | ✓   | Phase 1 範囲で十分                      |
+| LR / GLR / PEG ライブラリ              | ✗   | 依存追加、P2 (final shape day 1) 違反   |
+| `nil/true/false` を専用 Token kind     | ✗   | reader 側 3 行で済むので tokenizer 短く |
+| Comma を delimiter として Token 化     | ✗   | Clojure 文化に反する                    |
 
 ROADMAP §A6（一ファイル ≤ 1000 行）：tokenizer 448 行 + form 255
 行 = 703 行で 2 ファイル。v1 の `engine/reader/`（795 + 1602 = 2397
@@ -476,15 +476,15 @@ bash test/run_all.sh   # 全 suite 緑
 
 ## 6. 教科書との対比
 
-| 軸 | v1 (`engine/reader/`) | v1_ref (`eval/`) | Clojure JVM | 本リポ |
-|------|--------|---------|-------------|---------|
-| Tokenizer 行数 | 795 | 561 | n/a | 448 |
-| Form 行数 | 別管理 | 318 | n/a | 255 |
-| Token kinds | 約 25 | 約 18 | 約 30 | 16 |
-| location | Token のみ | Token + Form | LineNumberingPushbackReader | Token + Form + Info |
-| ratio `1/2` | 対応 | 対応 | 対応 | Phase 2+ |
-| regex `#"re"` | tokenizer 分岐 | tokenizer 分岐 | RegexReader class | Phase 2+ で `readDispatch` |
-| BigInt N suffix | 完全対応 | 一部 | 完全対応 | suffix 食うが精度捨て |
+| 軸              | v1 (`engine/reader/`) | v1_ref (`eval/`) | Clojure JVM                 | 本リポ                     |
+|-----------------|-----------------------|------------------|-----------------------------|----------------------------|
+| Tokenizer 行数  | 795                   | 561              | n/a                         | 448                        |
+| Form 行数       | 別管理                | 318              | n/a                         | 255                        |
+| Token kinds     | 約 25                 | 約 18            | 約 30                       | 16                         |
+| location        | Token のみ            | Token + Form     | LineNumberingPushbackReader | Token + Form + Info        |
+| ratio `1/2`     | 対応                  | 対応             | 対応                        | Phase 2+                   |
+| regex `#"re"`   | tokenizer 分岐        | tokenizer 分岐   | RegexReader class           | Phase 2+ で `readDispatch` |
+| BigInt N suffix | 完全対応              | 一部             | 完全対応                    | suffix 食うが精度捨て      |
 
 引っ張られずに本リポジトリの理念で整理した点：
 - v1 は regex / metadata / `#()` を Phase 1 から含めた結果、tokenizer
