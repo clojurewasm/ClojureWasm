@@ -100,7 +100,7 @@ Split into two commits:
     git commit -m "feat(...): ..."   # source only (any number)
     git commit -m "docs(ja): ..."    # the learning doc only
 EOF
-  exit 1
+  exit 2
 fi
 
 # Non-doc commits are unconditionally allowed: source can accumulate
@@ -215,7 +215,7 @@ $(echo "$covered" | sed 's/^/  - /')
 
 Edit the doc's \`commits:\` block to include all of the above and re-stage.
 EOF
-  exit 1
+  exit 2
 fi
 
 exit 0

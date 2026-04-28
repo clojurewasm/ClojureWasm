@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit
+#
+# Shared git pre-commit hook for the ClojureWasm repo. Activated by
+# pointing git at this directory:
+#
+#   git config core.hooksPath .githooks
+#
+# (See README.md → "Optional dev tools".) Without that one-line setup
+# git looks at .git/hooks/ and never sees this file. The Claude Code
+# PreToolUse hooks in .claude/settings.json provide the same gates for
+# agent-driven commits; this file covers commits made directly from a
+# human shell or another tool.
+#
+# The actual checks live in scripts/ so that both this hook and the
+# Claude Code hook share one implementation. We synthesize the JSON
+# payload that the scripts expect (they were written for Claude Code
+# first), so they remain a single source of truth.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+export CLAUDE_PROJECT_DIR="$REPO_ROOT"
+
+# The shared scripts read a JSON payload from stdin and only act when
+# the embedded `command` matches `git commit`. Feed them a payload that
+# satisfies that gate so the existing logic runs unchanged.
+PAYLOAD='{"tool_input":{"command":"git commit"}}'
+
+run_gate() {
+  local script="$1"
+  if [[ -x "$script" ]]; then
+    printf '%s' "$PAYLOAD" | "$script"
+  else
+    printf '%s' "$PAYLOAD" | bash "$script"
+  fi
+}
+
+run_gate "$REPO_ROOT/scripts/check_learning_doc.sh"
+run_gate "$REPO_ROOT/scripts/check_md_tables.sh"
+
+exit 0

@@ -39,6 +39,20 @@ Install via [bbin](https://github.com/babashka/bbin):
 bbin install io.github.chaploud/babashka-utilities
 ```
 
+### Enable the shared git hooks
+
+Pre-commit gates live in [`.githooks/`](./.githooks/) so they can be
+shared across machines. Activate them once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+The hooks invoke [`scripts/check_learning_doc.sh`](./scripts/check_learning_doc.sh)
+and [`scripts/check_md_tables.sh`](./scripts/check_md_tables.sh) — the
+same scripts the Claude Code agent flow runs as PreToolUse hooks. With
+`core.hooksPath` set, plain `git commit` from a terminal is gated too.
+
 ## License
 
 Eclipse Public License 2.0 — see [LICENSE](LICENSE).

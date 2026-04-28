@@ -69,7 +69,7 @@ If you cannot install bbin right now, you can also bypass via:
 …but please don't make a habit of it; chapters that drift here are
 painful to clean up later.
 EOF
-  exit 1
+  exit 2
 fi
 
 # --- 5. Per-file check -------------------------------------------------------
@@ -107,4 +107,4 @@ fi
   printf '\n'
 } >&2
 
-exit 1
+exit 2
