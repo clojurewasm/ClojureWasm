@@ -24,13 +24,13 @@ the v0.5.0 git history**:
 
 ### Read-only reference clones (do not edit, do not commit from)
 
-| Path                                                       | What it is                                  |
-|------------------------------------------------------------|----------------------------------------------|
-| `~/Documents/MyProducts/ClojureWasm/`                      | ClojureWasm v1 (89K LOC, v0.5.0)             |
-| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/`    | Previous redesign attempt (Phase 1+2)        |
-| `~/Documents/OSS/clojure/`                                 | Upstream Clojure JVM source                  |
-| `~/Documents/OSS/babashka/`                                | Babashka (SCI-based)                         |
-| `~/Documents/OSS/zig/`                                     | Zig stdlib source                            |
+| Path                                                    | What it is                            |
+|---------------------------------------------------------|---------------------------------------|
+| `~/Documents/MyProducts/ClojureWasm/`                   | ClojureWasm v1 (89K LOC, v0.5.0)      |
+| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/` | Previous redesign attempt (Phase 1+2) |
+| `~/Documents/OSS/clojure/`                              | Upstream Clojure JVM source           |
+| `~/Documents/OSS/babashka/`                             | Babashka (SCI-based)                  |
+| `~/Documents/OSS/zig/`                                  | Zig stdlib source                     |
 
 ## Language policy
 

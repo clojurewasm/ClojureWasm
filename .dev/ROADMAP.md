@@ -57,11 +57,11 @@ and Wasm support, implemented in Zig 0.16.0.**
 
 ### 1.2 Differentiation (3 axes)
 
-| # | Axis                            | Edge over the field                                                         |
-|---|---------------------------------|------------------------------------------------------------------------------|
-| 1 | **Edge-native Clojure**         | Babashka is native but produces no Wasm. SCI is JS-only. v2 makes Wasm Component a first-class output. |
-| 2 | **Wasm-native interop**         | `require` a Wasm module as a Clojure ns. Inversely, expose Clojure functions as WIT exports. |
-| 3 | **Comprehensible runtime**      | Codebase is small enough to be read end-to-end. Each phase ships a written walkthrough. |
+| # | Axis                       | Edge over the field                                                                                    |
+|---|----------------------------|--------------------------------------------------------------------------------------------------------|
+| 1 | **Edge-native Clojure**    | Babashka is native but produces no Wasm. SCI is JS-only. v2 makes Wasm Component a first-class output. |
+| 2 | **Wasm-native interop**    | `require` a Wasm module as a Clojure ns. Inversely, expose Clojure functions as WIT exports.           |
+| 3 | **Comprehensible runtime** | Codebase is small enough to be read end-to-end. Each phase ships a written walkthrough.                |
 
 ### 1.3 Intended users
 
@@ -78,34 +78,34 @@ and Wasm support, implemented in Zig 0.16.0.**
 
 These do not change between phases. Changing one requires an ADR.
 
-| #  | Principle                                                                            | Effect                                                                       |
-|----|--------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
-| P1 | **Move forward only with understanding**                                             | Interactive Claude Code use. No overnight batch commits.                     |
-| P2 | **See the final shape on day 1**                                                     | Final directory layout fixed in §5. Adding a file ≠ adding a feature.        |
-| P3 | **Core stays stable**                                                                | The core, once built, stops changing. Extensions go to `modules/` or pods.   |
-| P4 | **No ad-hoc patches**                                                                | Solve structurally. Ad-hoc fixes are escalated to ADRs or rejected.          |
-| P5 | **Modular by build**                                                                 | Only the bytes you need land in the binary (modules + comptime flags + pods). |
-| P6 | **Error quality is non-negotiable**                                                  | From day 1: file/ns/line/col/source-context/colour/stack trace.              |
-| P7 | **Upstream fidelity is not a constraint**                                            | Practicality first. Compatibility differences are documented via tiers.      |
-| P8 | **One `cljw` binary**                                                                | Single binary serves REPL / nREPL / eval / build / wasm-component-out.       |
-| P9 | **One commit = one task**                                                            | Structural change and behavioural change live in separate commits. Never commit when tests are red. |
-| P10 | **Honour Zig 0.16 idioms**                                                          | `std.Io` DI, `*std.Io.Writer`, packed struct, comptime, `@branchHint`, etc.  |
-| P11 | **Observable-semantics compatibility**                                               | Match what callers can observe; the inside of `.toString` is ours to choose. |
-| P12 | **Dual backend from Phase 8 onward**                                                 | TreeWalk and VM agree on every test, verified by `--compare`.                |
+| #   | Principle                                 | Effect                                                                                              |
+|-----|-------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| P1  | **Move forward only with understanding**  | Interactive Claude Code use. No overnight batch commits.                                            |
+| P2  | **See the final shape on day 1**          | Final directory layout fixed in §5. Adding a file ≠ adding a feature.                             |
+| P3  | **Core stays stable**                     | The core, once built, stops changing. Extensions go to `modules/` or pods.                          |
+| P4  | **No ad-hoc patches**                     | Solve structurally. Ad-hoc fixes are escalated to ADRs or rejected.                                 |
+| P5  | **Modular by build**                      | Only the bytes you need land in the binary (modules + comptime flags + pods).                       |
+| P6  | **Error quality is non-negotiable**       | From day 1: file/ns/line/col/source-context/colour/stack trace.                                     |
+| P7  | **Upstream fidelity is not a constraint** | Practicality first. Compatibility differences are documented via tiers.                             |
+| P8  | **One `cljw` binary**                     | Single binary serves REPL / nREPL / eval / build / wasm-component-out.                              |
+| P9  | **One commit = one task**                 | Structural change and behavioural change live in separate commits. Never commit when tests are red. |
+| P10 | **Honour Zig 0.16 idioms**                | `std.Io` DI, `*std.Io.Writer`, packed struct, comptime, `@branchHint`, etc.                         |
+| P11 | **Observable-semantics compatibility**    | Match what callers can observe; the inside of `.toString` is ours to choose.                        |
+| P12 | **Dual backend from Phase 8 onward**      | TreeWalk and VM agree on every test, verified by `--compare`.                                       |
 
 ### 2.1 Architecture principles (verifiable)
 
-| #  | Principle                                                  | Verified by                                |
-|----|------------------------------------------------------------|--------------------------------------------|
-| A1 | Lower zones do not import upper zones                      | `scripts/zone_check.sh --gate` (CI)        |
-| A2 | New features go via new files, not edits to existing ones  | ModuleDef + comptime flags + pods          |
-| A3 | Optimisation code lives in a dedicated subtree             | `src/eval/optimize/` only                  |
-| A4 | GC is an isolated subsystem                                | `runtime/gc/{arena, mark_sweep, roots}.zig` |
-| A5 | Tests mirror the source layout                             | `test/` mirrors `src/`                     |
-| A6 | One file ≤ 1,000 lines (soft limit)                        | Avoids the v1 `collections.zig` (6K LOC) trap |
-| A7 | Concurrency and errors are designed in on day 1            | Runtime handle + threadlocal binding + SourceLocation |
-| A8 | Interop is a single deep module                            | `lang/interop.zig` only; Class is a Value heap type   |
-| A9 | External modules go through a single `ExternalModule` interface | comptime / .clj source / wasm pod loaded uniformly |
+| #  | Principle                                                       | Verified by                                           |
+|----|-----------------------------------------------------------------|-------------------------------------------------------|
+| A1 | Lower zones do not import upper zones                           | `scripts/zone_check.sh --gate` (CI)                   |
+| A2 | New features go via new files, not edits to existing ones       | ModuleDef + comptime flags + pods                     |
+| A3 | Optimisation code lives in a dedicated subtree                  | `src/eval/optimize/` only                             |
+| A4 | GC is an isolated subsystem                                     | `runtime/gc/{arena, mark_sweep, roots}.zig`           |
+| A5 | Tests mirror the source layout                                  | `test/` mirrors `src/`                                |
+| A6 | One file ≤ 1,000 lines (soft limit)                            | Avoids the v1 `collections.zig` (6K LOC) trap         |
+| A7 | Concurrency and errors are designed in on day 1                 | Runtime handle + threadlocal binding + SourceLocation |
+| A8 | Interop is a single deep module                                 | `lang/interop.zig` only; Class is a Value heap type   |
+| A9 | External modules go through a single `ExternalModule` interface | comptime / .clj source / wasm pod loaded uniformly    |
 
 ---
 
@@ -180,17 +180,17 @@ at startup. `scripts/zone_check.sh --gate` blocks any violation in CI.
 
 All values fit in `u64` (8 bytes).
 
-| top16 band             | Kind                | Payload                              |
-|-----------------------|---------------------|--------------------------------------|
-| `< 0xFFF8`            | f64 raw             | —                                    |
-| `0xFFF8`              | int48               | i48                                  |
-| `0xFFF9`              | char21              | u21 Unicode codepoint                |
-| `0xFFFA`              | const               | nil(0) / true(1) / false(2)          |
-| `0xFFFB`              | builtin_fn          | 48-bit function pointer              |
-| `0xFFFC` Group A      | heap (8 subtypes)   | string / symbol / keyword / list / vector / array_map / hash_map / hash_set |
-| `0xFFFD` Group B      | heap                | fn_val / multi_fn / protocol / protocol_fn / var_ref / ns / delay / regex |
-| `0xFFFE` Group C      | heap                | lazy_seq / cons / chunked_cons / chunk_buffer / atom / agent / ref(*) / volatile |
-| `0xFFFF` Group D      | heap                | transient_vector / transient_map / transient_set / reduced / ex_info / wasm_module / wasm_fn / **class** |
+| top16 band       | Kind              | Payload                                                                                                  |
+|------------------|-------------------|----------------------------------------------------------------------------------------------------------|
+| `< 0xFFF8`       | f64 raw           | —                                                                                                       |
+| `0xFFF8`         | int48             | i48                                                                                                      |
+| `0xFFF9`         | char21            | u21 Unicode codepoint                                                                                    |
+| `0xFFFA`         | const             | nil(0) / true(1) / false(2)                                                                              |
+| `0xFFFB`         | builtin_fn        | 48-bit function pointer                                                                                  |
+| `0xFFFC` Group A | heap (8 subtypes) | string / symbol / keyword / list / vector / array_map / hash_map / hash_set                              |
+| `0xFFFD` Group B | heap              | fn_val / multi_fn / protocol / protocol_fn / var_ref / ns / delay / regex                                |
+| `0xFFFE` Group C | heap              | lazy_seq / cons / chunked_cons / chunk_buffer / atom / agent / `ref(*)` / volatile                       |
+| `0xFFFF` Group D | heap              | transient_vector / transient_map / transient_set / reduced / ex_info / wasm_module / wasm_fn / **class** |
 
 (*) The `ref` slot is reserved but STM is not implemented.
 
@@ -313,11 +313,11 @@ src/runtime/gc/
 
 ### 4.8 Memory tiers (3 allocators)
 
-| Tier        | Contents                                    | GC?  | Lifetime    |
-|-------------|---------------------------------------------|------|-------------|
-| GPA         | Env, Namespace, Var, HashMap backing        | No   | Process     |
-| node_arena  | Reader Form, Analyzer Node                   | No   | Per-eval    |
-| GC alloc    | Runtime Values                               | Yes  | Mark-sweep  |
+| Tier       | Contents                             | GC? | Lifetime   |
+|------------|--------------------------------------|-----|------------|
+| GPA        | Env, Namespace, Var, HashMap backing | No  | Process    |
+| node_arena | Reader Form, Analyzer Node           | No  | Per-eval   |
+| GC alloc   | Runtime Values                       | Yes | Mark-sweep |
 
 Nodes are not Values, so the GC will not trace them — false-liveness is
 structurally avoided.
@@ -481,14 +481,14 @@ ClojureWasm/                         (working dir on disk: ClojureWasmFromScratc
 
 ### 5.1 File-count target
 
-| Layer        | Target (Zig)        | Note                          |
-|--------------|---------------------|-------------------------------|
-| runtime/     | ~14                 |                               |
-| eval/        | ~12 + 4 optimize    |                               |
-| lang/        | ~21 (Zig) + ~13 .clj |                              |
-| app/         | ~9                  |                               |
-| modules/     | ~7 (3 module entries + bodies) |                    |
-| **Zig total**| **~64**             | 47% smaller than v1 (120 files)|
+| Layer         | Target (Zig)                   | Note                            |
+|---------------|--------------------------------|---------------------------------|
+| runtime/      | ~14                            |                                 |
+| eval/         | ~12 + 4 optimize               |                                 |
+| lang/         | ~21 (Zig) + ~13 .clj           |                                 |
+| app/          | ~9                             |                                 |
+| modules/      | ~7 (3 module entries + bodies) |                                 |
+| **Zig total** | **~64**                        | 47% smaller than v1 (120 files) |
 
 ---
 
@@ -496,9 +496,9 @@ ClojureWasm/                         (working dir on disk: ClojureWasmFromScratc
 
 ### 6.1 Tier definitions
 
-| Tier | Meaning                                                    | Test requirement                          |
-|------|------------------------------------------------------------|-------------------------------------------|
-| **A** | Full semantic compatibility. Upstream tests pass as-is (or with cosmetic edits). | Upstream-ported tests **must be green**. |
+| Tier  | Meaning                                                                          | Test requirement                                |
+|-------|----------------------------------------------------------------------------------|-------------------------------------------------|
+| **A** | Full semantic compatibility. Upstream tests pass as-is (or with cosmetic edits). | Upstream-ported tests **must be green**.        |
 | **B** | Same names and shapes; v2-native implementation. Observable behaviour matches.   | Upstream-ported tests + `;; CLJW:` annotations. |
 | **C** | Best-effort with documented gaps.                                                | Limited subset only; gaps noted.                |
 | **D** | Not provided. Throws `UnsupportedException`.                                     | Only the throw-message test.                    |
@@ -559,16 +559,16 @@ against ad-hoc rot.
 
 ### 7.1 Clojure reference-types ↔ Zig 0.16 std.Io mapping
 
-| Clojure prim     | Zig 0.16 mechanism                  | File                       | Phase |
-|------------------|-------------------------------------|----------------------------|-------|
-| **atom**         | `std.atomic` + CAS retry            | `lang/primitive/atom.zig`  | 15    |
-| **agent**        | `std.Thread.Pool` + `Io.Mutex`      | `lang/primitive/atom.zig`  | 15    |
-| **future**       | `std.Io.async` + `Io.Mutex`         | `lang/primitive/atom.zig`  | 15    |
-| **promise**      | `Io.Mutex` + `Io.Condition`         | `lang/primitive/atom.zig`  | 15    |
-| **delay**        | `Io.Mutex` (single lock)            | `lang/primitive/lazy.zig`  | 6     |
-| **volatile!**    | `@atomicLoad/Store`                  | `lang/primitive/atom.zig`  | 15    |
-| **binding**      | `pub threadlocal var current_frame` | `runtime/env.zig`          | 2     |
-| **core.async**   | `std.Io` fibers + channels          | `lang/primitive/async.zig` | 15 stretch |
+| Clojure prim   | Zig 0.16 mechanism                  | File                       | Phase      |
+|----------------|-------------------------------------|----------------------------|------------|
+| **atom**       | `std.atomic` + CAS retry            | `lang/primitive/atom.zig`  | 15         |
+| **agent**      | `std.Thread.Pool` + `Io.Mutex`      | `lang/primitive/atom.zig`  | 15         |
+| **future**     | `std.Io.async` + `Io.Mutex`         | `lang/primitive/atom.zig`  | 15         |
+| **promise**    | `Io.Mutex` + `Io.Condition`         | `lang/primitive/atom.zig`  | 15         |
+| **delay**      | `Io.Mutex` (single lock)            | `lang/primitive/lazy.zig`  | 6          |
+| **volatile!**  | `@atomicLoad/Store`                 | `lang/primitive/atom.zig`  | 15         |
+| **binding**    | `pub threadlocal var current_frame` | `runtime/env.zig`          | 2          |
+| **core.async** | `std.Io` fibers + channels          | `lang/primitive/async.zig` | 15 stretch |
 
 ### 7.2 No STM
 
@@ -620,13 +620,13 @@ the same `std.Io` abstraction.
 
 ### 8.3 WIT / Component Model timeline
 
-| Capability             | Phase       | Note                                                  |
-|------------------------|-------------|--------------------------------------------------------|
-| WASI 0.2 (preview2)    | Phase 14    | Component build begins. Minimal exports.               |
-| Pod loader             | Phase 14-15 | `app/pod.zig`                                          |
-| WIT auto-binding       | Phase 19    | adopt wit-bindgen or similar                           |
-| WASI 0.3 (concurrency) | Phase 19+   | when std.Io WASI backend stabilises                    |
-| WasmGC                 | v0.2+       | conflicts with NaN boxing; linear memory leads         |
+| Capability             | Phase       | Note                                           |
+|------------------------|-------------|------------------------------------------------|
+| WASI 0.2 (preview2)    | Phase 14    | Component build begins. Minimal exports.       |
+| Pod loader             | Phase 14-15 | `app/pod.zig`                                  |
+| WIT auto-binding       | Phase 19    | adopt wit-bindgen or similar                   |
+| WASI 0.3 (concurrency) | Phase 19+   | when std.Io WASI backend stabilises            |
+| WasmGC                 | v0.2+       | conflicts with NaN boxing; linear memory leads |
 
 ---
 
@@ -636,28 +636,28 @@ Each phase has a goal and exit criteria. Phases marked 🔒 require an
 **x86_64 Gate**: `zig build test` must pass on OrbStack Ubuntu x86_64
 (Rosetta on Apple Silicon) before the next phase begins.
 
-| Phase | Name                                                   | Exit criteria (summary)                                          | Gate |
-|-------|--------------------------------------------------------|-------------------------------------------------------------------|------|
-| 1     | Value + Reader + Error + Arena GC                      | Reads / prints `(+ 1 2)` as a Form                                | 🔒   |
-| 2     | TreeWalk + Analyzer + Bootstrap Stage 0                | `(let [x 1] (+ x 2))` → 3, `((fn* [x] (+ x 1)) 41)` → 42          |      |
-| 3     | defn + Bootstrap Stage 1-3 + ExceptionInfo             | `(defn f [x] (+ x 1)) (f 2)` → 3; try/catch works                 |      |
-| 4     | VM + Compiler + Opcodes                                | Every TreeWalk test passes on the VM too                          | 🔒   |
-| 5     | Collections (HAMT, Vector) + Mark-Sweep GC             | `(get {:a 1} :a)` → 1; large collections do not OOM               | 🔒   |
-| 6     | LazySeq + concat + higher-order foundations            | `(take 5 (iterate inc 0))` → (0 1 2 3 4)                          |      |
-| 7     | map / filter / reduce / range + transducers base       | Fused reduce produces zero intermediate seqs (target: v1's 391x)  |      |
-| 8     | Evaluator.compare() + dual-backend verify              | Every test agrees on TreeWalk and VM. `bench/history.yaml` initialised. | 🔒 |
-| 9     | Protocols + Multimethods + Interop deep module         | defprotocol / defmulti work; single Interop module complete       |      |
-| 10    | Namespaces + require + standard libraries (Tier A)     | clojure.string / clojure.set etc. tests are green                 |      |
-| 11    | clojure.test framework + start porting upstream tests  | deftest / is / are work; 10+ upstream tests ported                |      |
-| 12    | Bytecode cache (serialize + cache_gen)                 | Cold start `< 12 ms`; cache format versioning established         |      |
-| 13    | VM optimisation: peephole.zig                          | Five canonical benchmarks within 110 % of v1 24C.10               |      |
-| 14    | CLI + REPL + nREPL + deps.edn + Wasm Component build + **v0.1.0** | `cljw repl`, `cljw nrepl`, `cljw component build` all work; compat_tiers.yaml complete | 🔒 |
-| 15    | Concurrency (atom, agent, future, promise, pmap)       | `core.async` Tier-C stub; `(future ...)` deref works              | 🔒   |
-| 16    | ClojureScript → JS compiler                            | (v0.2.0 milestone)                                                |      |
-| 17    | VM optimisation: super_instruction.zig                 | Five canonical benchmarks within 100 % of v1 24C.10               |      |
-| 18    | Module system + math + C FFI                           | `zig build -Dmath=true` etc. comptime-gated                       |      |
-| 19    | module: Wasm FFI (zwasm import) + WIT auto-binding     | `(wasm/component "x.wasm")` → bindgen → Clojure ns                |      |
-| 20    | module: JIT ARM64 / x86_64                             | **Gated by Phase 17 outcome**. Decide before starting.            |      |
+| Phase | Name                                                              | Exit criteria (summary)                                                                | Gate |
+|-------|-------------------------------------------------------------------|----------------------------------------------------------------------------------------|------|
+| 1     | Value + Reader + Error + Arena GC                                 | Reads / prints `(+ 1 2)` as a Form                                                     | 🔒    |
+| 2     | TreeWalk + Analyzer + Bootstrap Stage 0                           | `(let [x 1] (+ x 2))` → 3, `((fn* [x] (+ x 1)) 41)` → 42                             |      |
+| 3     | defn + Bootstrap Stage 1-3 + ExceptionInfo                        | `(defn f [x] (+ x 1)) (f 2)` → 3; try/catch works                                     |      |
+| 4     | VM + Compiler + Opcodes                                           | Every TreeWalk test passes on the VM too                                               | 🔒    |
+| 5     | Collections (HAMT, Vector) + Mark-Sweep GC                        | `(get {:a 1} :a)` → 1; large collections do not OOM                                   | 🔒    |
+| 6     | LazySeq + concat + higher-order foundations                       | `(take 5 (iterate inc 0))` → (0 1 2 3 4)                                              |      |
+| 7     | map / filter / reduce / range + transducers base                  | Fused reduce produces zero intermediate seqs (target: v1's 391x)                       |      |
+| 8     | Evaluator.compare() + dual-backend verify                         | Every test agrees on TreeWalk and VM. `bench/history.yaml` initialised.                | 🔒    |
+| 9     | Protocols + Multimethods + Interop deep module                    | defprotocol / defmulti work; single Interop module complete                            |      |
+| 10    | Namespaces + require + standard libraries (Tier A)                | clojure.string / clojure.set etc. tests are green                                      |      |
+| 11    | clojure.test framework + start porting upstream tests             | deftest / is / are work; 10+ upstream tests ported                                     |      |
+| 12    | Bytecode cache (serialize + cache_gen)                            | Cold start `< 12 ms`; cache format versioning established                              |      |
+| 13    | VM optimisation: peephole.zig                                     | Five canonical benchmarks within 110 % of v1 24C.10                                    |      |
+| 14    | CLI + REPL + nREPL + deps.edn + Wasm Component build + **v0.1.0** | `cljw repl`, `cljw nrepl`, `cljw component build` all work; compat_tiers.yaml complete | 🔒    |
+| 15    | Concurrency (atom, agent, future, promise, pmap)                  | `core.async` Tier-C stub; `(future ...)` deref works                                   | 🔒    |
+| 16    | ClojureScript → JS compiler                                      | (v0.2.0 milestone)                                                                     |      |
+| 17    | VM optimisation: super_instruction.zig                            | Five canonical benchmarks within 100 % of v1 24C.10                                    |      |
+| 18    | Module system + math + C FFI                                      | `zig build -Dmath=true` etc. comptime-gated                                            |      |
+| 19    | module: Wasm FFI (zwasm import) + WIT auto-binding                | `(wasm/component "x.wasm")` → bindgen → Clojure ns                                   |      |
+| 20    | module: JIT ARM64 / x86_64                                        | **Gated by Phase 17 outcome**. Decide before starting.                                 |      |
 
 ### 9.1 Phase 14 = v0.1.0 milestone
 
@@ -688,21 +688,21 @@ in place from day 1.
 
 **Exit criterion**: `cljw -e "(+ 1 2)"` reads, parses, prints back as `(+ 1 2)`.
 
-| Task | Description                                                                | Status     |
-|------|----------------------------------------------------------------------------|------------|
-| 1.0  | Build skeleton + flake.nix + main.zig prints "ClojureWasm"                 | [x] (`116b874`) |
-| 1.1  | `src/runtime/value.zig` — NaN boxing Value type, HeapTag (32 slots), HeapHeader | [x] (`8b487f9`) |
-| 1.2  | `src/runtime/error.zig` — SourceLocation, BuiltinFn signature, expect* / checkArity helpers, threadlocal last_error / call_stack | [x] (`61ccbf8`) |
-| 1.3  | `src/runtime/gc/arena.zig` — Arena GC interface, suppress_count, --gc-stress prep | [x] (`c22f900`) |
-| 1.4  | `src/runtime/collection/list.zig` — PersistentList (cons cell only)        | [x] (`902e22d`) |
-| 1.5  | `src/runtime/hash.zig` — Murmur3 (Clojure-compatible hash values)          | [x] (`1825f24`) |
-| 1.6  | `src/runtime/keyword.zig` — Keyword interning (single-thread Phase-1 stub; rt-aware in Phase 2.0) | [x] (`b60924b`) |
-| 1.7  | `src/eval/form.zig` — Form tagged union with SourceLocation                | [x] (`6a09869`) |
-| 1.8  | `src/eval/tokenizer.zig` — Lexer (text → token stream); SourceLocation per token | [x] (`615fd46`) |
-| 1.9  | `src/eval/reader.zig` — Parser (token stream → Form); Phase-1 reader scope (no syntax-quote yet) | [x] (`b6efa7f`) |
-| 1.10 | `src/main.zig` — minimal CLI with `-e` flag; reads + prints (no eval yet)   | [x] (`eead562`) |
-| 1.11 | `bench/quick.sh` — 5–6 microbenchmarks (fib, arith_loop, list_build, etc.); first sample run recorded | [x] (`04476ac`) |
-| 1.12 | 🔒 x86_64 Gate — OrbStack Ubuntu x86_64; `zig build test` green             | [x] (94/94 on `my-ubuntu-amd64`) |
+| Task | Description                                                                                                                       | Status                           |
+|------|-----------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
+| 1.0  | Build skeleton + flake.nix + main.zig prints "ClojureWasm"                                                                        | [x] (`116b874`)                  |
+| 1.1  | `src/runtime/value.zig` — NaN boxing Value type, HeapTag (32 slots), HeapHeader                                                  | [x] (`8b487f9`)                  |
+| 1.2  | `src/runtime/error.zig` — SourceLocation, BuiltinFn signature, expect* / checkArity helpers, threadlocal last_error / call_stack | [x] (`61ccbf8`)                  |
+| 1.3  | `src/runtime/gc/arena.zig` — Arena GC interface, suppress_count, --gc-stress prep                                                | [x] (`c22f900`)                  |
+| 1.4  | `src/runtime/collection/list.zig` — PersistentList (cons cell only)                                                              | [x] (`902e22d`)                  |
+| 1.5  | `src/runtime/hash.zig` — Murmur3 (Clojure-compatible hash values)                                                                | [x] (`1825f24`)                  |
+| 1.6  | `src/runtime/keyword.zig` — Keyword interning (single-thread Phase-1 stub; rt-aware in Phase 2.0)                                | [x] (`b60924b`)                  |
+| 1.7  | `src/eval/form.zig` — Form tagged union with SourceLocation                                                                      | [x] (`6a09869`)                  |
+| 1.8  | `src/eval/tokenizer.zig` — Lexer (text → token stream); SourceLocation per token                                                | [x] (`615fd46`)                  |
+| 1.9  | `src/eval/reader.zig` — Parser (token stream → Form); Phase-1 reader scope (no syntax-quote yet)                                | [x] (`b6efa7f`)                  |
+| 1.10 | `src/main.zig` — minimal CLI with `-e` flag; reads + prints (no eval yet)                                                        | [x] (`eead562`)                  |
+| 1.11 | `bench/quick.sh` — 5–6 microbenchmarks (fib, arith_loop, list_build, etc.); first sample run recorded                           | [x] (`04476ac`)                  |
+| 1.12 | 🔒 x86_64 Gate — OrbStack Ubuntu x86_64; `zig build test` green                                                                   | [x] (94/94 on `my-ubuntu-amd64`) |
 
 After 1.12 is checked, the Phase Tracker (§9 table top) flips Phase 1
 from PENDING to DONE and Phase 2 IN-PROGRESS; expand Phase 2 in §9.4.
@@ -723,19 +723,19 @@ namespace + `(refer 'rt)` into `user/` (no `.clj` source yet).
   `(let [x 1] (+ x 2))` → `3`
   `((fn* [x] (+ x 1)) 41)` → `42`
 
-| Task | Description                                                                                                                                                                                                                                                                                                                                                  | Status          |
-|------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
+| Task | Description                                                                                                                                                                                                                                                                                                                                                   | Status          |
+|------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
 | 2.1  | `runtime/dispatch.zig` + `runtime/runtime.zig` + `runtime/env.zig` skeletons — all three files land together because `dispatch.VTable` references `*Runtime` and `*Env`, so the import graph only compiles when all three exist. Phase 2.1 leaves Env at the minimum needed for dispatch tests to compile; namespaces / vars / binding frames arrive in 2.3. | [x] (`91feef0`) |
 | 2.2  | `src/runtime/keyword.zig` — promote to rt-aware (`*Runtime` API + `std.Io.Mutex`)                                                                                                                                                                                                                                                                            | [x] (`07d5c34`) |
 | 2.3  | `src/runtime/env.zig` — flesh out `Namespace`, `Var`, threadlocal `current_frame` binding stack                                                                                                                                                                                                                                                              | [x] (`e20acaa`) |
 | 2.4  | `src/eval/node.zig` — `Node` tagged union (analysed AST: const / local-ref / var-ref / if / do / let / fn / invoke / quote)                                                                                                                                                                                                                                  | [x] (`e04c290`) |
-| 2.5  | `src/eval/analyzer.zig` — `Form → Node` + Phase-2 special forms (`quote`, `if`, `do`, `let*`, `fn*`, `def`)                                                                                                                                                                                                                                                  | [x] (`bb1459c`) |
-| 2.6  | `src/eval/backend/tree_walk.zig` — `Node → Value` tree-walk interpreter; `installVTable`                                                                                                                                                                                                                                                                     | [x] (`de2cb64`) |
+| 2.5  | `src/eval/analyzer.zig` — `Form → Node` + Phase-2 special forms (`quote`, `if`, `do`, `let*`, `fn*`, `def`)                                                                                                                                                                                                                                                 | [x] (`bb1459c`) |
+| 2.6  | `src/eval/backend/tree_walk.zig` — `Node → Value` tree-walk interpreter; `installVTable`                                                                                                                                                                                                                                                                    | [x] (`de2cb64`) |
 | 2.7  | `src/lang/primitive.zig` — `registerAll(env)` into the `rt/` namespace; `(refer 'rt)` into `user/`                                                                                                                                                                                                                                                           | [x] (`04e84bf`) |
 | 2.8  | `src/lang/primitive/math.zig` — `+`, `-`, `*`, `=`, `<`, `>`, `<=`, `>=`                                                                                                                                                                                                                                                                                     | [x] (`f81f97a`) |
 | 2.9  | `src/lang/primitive/core.zig` — `nil?`, `true?`, `false?`, `identical?`                                                                                                                                                                                                                                                                                      | [x] (`8d0c677`) |
-| 2.10 | `src/main.zig` — wire CLI through analyser + TreeWalk; `cljw -e "(+ 1 2)"` → `3`                                                                                                                                                                                                                                                                             | [x] (`8d32c83`) |
-| 2.11 | Phase-2 exit smoke: `(let [x 1] (+ x 2))` → `3` and `((fn* [x] (+ x 1)) 41)` → `42`                                                                                                                                                                                                                                                                          | [x] (`7d9fe5f`) |
+| 2.10 | `src/main.zig` — wire CLI through analyser + TreeWalk; `cljw -e "(+ 1 2)"` → `3`                                                                                                                                                                                                                                                                            | [x] (`8d32c83`) |
+| 2.11 | Phase-2 exit smoke: `(let [x 1] (+ x 2))` → `3` and `((fn* [x] (+ x 1)) 41)` → `42`                                                                                                                                                                                                                                                                         | [x] (`7d9fe5f`) |
 
 After 2.11 lands as a `[x]`, the §9 phase tracker flips Phase 2 from
 PENDING to DONE and Phase 3 IN-PROGRESS; expand Phase 3 inline in §9.5.
@@ -768,22 +768,22 @@ the special-form-only Phase-2 surface.
 > hit zsh history expansion (`!`), `$`, backticks etc., and
 > heredoc / file invocation is the safer path for tests and skills.
 
-| Task | Description                                                                                                                                                                                                                                                                       | Status |
-|------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
-| 3.1  | `src/runtime/error_print.zig` — `formatErrorWithContext(info, source, w)` renders `<file>:<line>:<col>: <kind> [<phase>]\n  <source line>\n  <caret>\n  <message>` with optional ANSI; **also extends `src/main.zig` with `cljw <file.clj>` and `cljw -` (stdin / heredoc)** — `-e` is preserved but no longer the only safe path; `main.zig` switches its catch sites to `formatErrorWithContext` | [x] (`37f0c8f`) |
-| 3.2  | `src/eval/reader.zig` — replace direct `error.SyntaxError` / `error.NumberError` / `error.StringError` returns with `setErrorFmt(.parse, kind, tok-derived loc, fmt, args)`; existing tests still pass because the public error tags are unchanged                                | [x] (`8c750b5`) |
-| 3.3  | `src/eval/analyzer.zig` — replace `AnalyzeError.SyntaxError` / `NameError` / `NotImplemented` returns with `setErrorFmt(.analysis, kind, form.location, ...)`; symbol resolution failures cite the offending symbol's location                                                    | [x] (`5eb3fc7`) |
-| 3.4  | `src/eval/backend/tree_walk.zig` — replace `EvalError.NotCallable` / `ArityMismatch` / `SlotOutOfRange` returns with `setErrorFmt(.eval, kind, node.loc(), ...)`; primitives in `lang/primitive/{math,core}.zig` already match the `BuiltinFn` shape, so route their errors too   | [x] (`6777c42`) |
-| 3.5  | `src/runtime/collection/string.zig` — String heap type (`HeapTag.string`); analyzer lifts string Form atoms into Value via `runtime.string.alloc(rt, bytes)`; `printValue` renders quoted                                                                                          | [x] (`3a5f852`) |
-| 3.6  | `src/runtime/collection/list.zig` — list literal as a Value: `(quote (1 2 3))` returns a heap List; analyzer's `formToValue` walks Form `.list` recursively                                                                                                                       | [x] (`766a73a`) |
-| 3.7  | `src/lang/macro_transforms.zig` (impl) + `src/eval/macro_dispatch.zig` (Layer-1 dispatch type) — Zig-level Form→Form expansions for the bootstrap macros (`let` → `let*`, `when` → `(if c (do ...) nil)`, `if-let` / `when-let` / `and` / `or` / `cond` / `->` / `->>`). `analyze` gains a `macro_table: *const macro_dispatch.Table` parameter; `analyzeList` consults it when the head resolves to a `^:macro` Var. **`runtime/dispatch.zig::VTable.expandMacro` is removed**; macro expansion is no longer a backend concern (ADR [0001](decisions/0001-macroexpand-routing.md)) | [x] (`6630cbe`) |
-| 3.8  | `src/runtime/print.zig` — extract `printValue` from main.zig; add list / string / fn / keyword / symbol pr-str renderers; main.zig switches to `print.printValue`                                                                                                                  | [x] (`772ebcf`) |
-| 3.9  | `src/eval/analyzer.zig` — add `try` / `catch` / `throw` / `loop*` / `recur` special forms; `eval/node.zig` gains `try_node` / `throw_node` / `loop_node` / `recur_node` variants                                                                                                  | [x] (`28c2bc3`) |
-| 3.10 | `src/runtime/collection/ex_info.zig` (new) — `ExInfo` heap struct `{message, data, cause}`; `lang/primitive/error.zig` exposes `ex-info` / `ex-message` / `ex-data` builtins; `runtime/print.zig` renders `#error{...}`                                                          | [x] (`c16380f`) |
-| 3.11 | `src/eval/backend/tree_walk.zig` — implement `evalLoop` / `evalRecur` (threadlocal pending_recur signal), `evalTry` / `evalThrow` (`error.ThrownValue` + threadlocal `last_thrown`); closure capture for `fn*` (slot-vector style)                                                | [x] (`99efd07`) |
-| 3.12 | `src/lang/bootstrap.zig` + `src/lang/clj/clojure/core.clj` (Stage 1) — Read + Analyse + Eval `core.clj` after `primitive.registerAll`; Stage-1 content: `defn`, `defmacro`, `let`, `when`, `cond`, `if-let`, `when-let`, `not`, `and`, `or`, `->`, `->>`                          | [x] (`a1a70aa`) |
-| 3.13 | `src/main.zig` — wire bootstrap into startup; `cljw -e "(defn f [x] (+ x 1)) (f 2)"` → `3`                                                                                                                                                                                       | [x] (`f725f58`, `22881a1`) |
-| 3.14 | Phase-3 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` and `(try (throw (ex-info "boom" 0)) (catch ExceptionInfo e (ex-message e)))` → `"boom"`. e2e script in `test/e2e/phase3_exit.sh` wired into `run_all.sh`. (The `data` arg is a placeholder integer because map literals are Phase 5 — see ADR 0002.)                                                                  | [x] (`399cb31`) |
+| Task | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Status                     |
+|------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------|
+| 3.1  | `src/runtime/error_print.zig` — `formatErrorWithContext(info, source, w)` renders `<file>:<line>:<col>: <kind> [<phase>]\n  <source line>\n  <caret>\n  <message>` with optional ANSI; **also extends `src/main.zig` with `cljw <file.clj>` and `cljw -` (stdin / heredoc)** — `-e` is preserved but no longer the only safe path; `main.zig` switches its catch sites to `formatErrorWithContext`                                                                                                                                                                                    | [x] (`37f0c8f`)            |
+| 3.2  | `src/eval/reader.zig` — replace direct `error.SyntaxError` / `error.NumberError` / `error.StringError` returns with `setErrorFmt(.parse, kind, tok-derived loc, fmt, args)`; existing tests still pass because the public error tags are unchanged                                                                                                                                                                                                                                                                                                                                     | [x] (`8c750b5`)            |
+| 3.3  | `src/eval/analyzer.zig` — replace `AnalyzeError.SyntaxError` / `NameError` / `NotImplemented` returns with `setErrorFmt(.analysis, kind, form.location, ...)`; symbol resolution failures cite the offending symbol's location                                                                                                                                                                                                                                                                                                                                                         | [x] (`5eb3fc7`)            |
+| 3.4  | `src/eval/backend/tree_walk.zig` — replace `EvalError.NotCallable` / `ArityMismatch` / `SlotOutOfRange` returns with `setErrorFmt(.eval, kind, node.loc(), ...)`; primitives in `lang/primitive/{math,core}.zig` already match the `BuiltinFn` shape, so route their errors too                                                                                                                                                                                                                                                                                                        | [x] (`6777c42`)            |
+| 3.5  | `src/runtime/collection/string.zig` — String heap type (`HeapTag.string`); analyzer lifts string Form atoms into Value via `runtime.string.alloc(rt, bytes)`; `printValue` renders quoted                                                                                                                                                                                                                                                                                                                                                                                              | [x] (`3a5f852`)            |
+| 3.6  | `src/runtime/collection/list.zig` — list literal as a Value: `(quote (1 2 3))` returns a heap List; analyzer's `formToValue` walks Form `.list` recursively                                                                                                                                                                                                                                                                                                                                                                                                                            | [x] (`766a73a`)            |
+| 3.7  | `src/lang/macro_transforms.zig` (impl) + `src/eval/macro_dispatch.zig` (Layer-1 dispatch type) — Zig-level Form→Form expansions for the bootstrap macros (`let` → `let*`, `when` → `(if c (do ...) nil)`, `if-let` / `when-let` / `and` / `or` / `cond` / `->` / `->>`). `analyze` gains a `macro_table: *const macro_dispatch.Table` parameter; `analyzeList` consults it when the head resolves to a `^:macro` Var. **`runtime/dispatch.zig::VTable.expandMacro` is removed**; macro expansion is no longer a backend concern (ADR [0001](decisions/0001-macroexpand-routing.md)) | [x] (`6630cbe`)            |
+| 3.8  | `src/runtime/print.zig` — extract `printValue` from main.zig; add list / string / fn / keyword / symbol pr-str renderers; main.zig switches to `print.printValue`                                                                                                                                                                                                                                                                                                                                                                                                                      | [x] (`772ebcf`)            |
+| 3.9  | `src/eval/analyzer.zig` — add `try` / `catch` / `throw` / `loop*` / `recur` special forms; `eval/node.zig` gains `try_node` / `throw_node` / `loop_node` / `recur_node` variants                                                                                                                                                                                                                                                                                                                                                                                                       | [x] (`28c2bc3`)            |
+| 3.10 | `src/runtime/collection/ex_info.zig` (new) — `ExInfo` heap struct `{message, data, cause}`; `lang/primitive/error.zig` exposes `ex-info` / `ex-message` / `ex-data` builtins; `runtime/print.zig` renders `#error{...}`                                                                                                                                                                                                                                                                                                                                                                | [x] (`c16380f`)            |
+| 3.11 | `src/eval/backend/tree_walk.zig` — implement `evalLoop` / `evalRecur` (threadlocal pending_recur signal), `evalTry` / `evalThrow` (`error.ThrownValue` + threadlocal `last_thrown`); closure capture for `fn*` (slot-vector style)                                                                                                                                                                                                                                                                                                                                                     | [x] (`99efd07`)            |
+| 3.12 | `src/lang/bootstrap.zig` + `src/lang/clj/clojure/core.clj` (Stage 1) — Read + Analyse + Eval `core.clj` after `primitive.registerAll`; Stage-1 content: `defn`, `defmacro`, `let`, `when`, `cond`, `if-let`, `when-let`, `not`, `and`, `or`, `->`, `->>`                                                                                                                                                                                                                                                                                                                               | [x] (`a1a70aa`)            |
+| 3.13 | `src/main.zig` — wire bootstrap into startup; `cljw -e "(defn f [x] (+ x 1)) (f 2)"` → `3`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [x] (`f725f58`, `22881a1`) |
+| 3.14 | Phase-3 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` and `(try (throw (ex-info "boom" 0)) (catch ExceptionInfo e (ex-message e)))` → `"boom"`. e2e script in `test/e2e/phase3_exit.sh` wired into `run_all.sh`. (The `data` arg is a placeholder integer because map literals are Phase 5 — see ADR 0002.)                                                                                                                                                                                                                                                                         | [x] (`399cb31`)            |
 
 All 3.1–3.14 cells now read `[x]`; the §9 phase tracker (top of §9)
 records Phase 3 as **DONE** and Phase 4 as **IN-PROGRESS** (🔒 x86_64
@@ -816,21 +816,21 @@ ships the `bench/quick.sh` harness §10.2 has so far only described.
 > Phase 4 grows the surface area further. 4.4 onward is the VM
 > proper.
 
-| Task | Description                                                                                                                                                                                                                                                                            | Status |
-|------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| Task | Description                                                                                                                                                                                                                                                                                                                                                                                                                                          | Status |
+|------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
 | 4.0  | Extend the existing `bench/quick.sh` (Phase 1 baseline harness) to land the Phase-4 fixtures (`fib_recursive`, `arith_loop`, `list_build`, `quote_chain`, `let_chain`) at the `# TODO(phase4)` placeholder (around line 94). Append rows to `bench/quick_baseline.txt`. Wire `bash bench/quick.sh` into `test/run_all.sh` as a non-failing observability suite (records numbers, does not assert). Phases 4-7 quick-bench tracker per ROADMAP §10.2 | [ ]    |
-| 4.1  | `src/eval/analyzer.zig::analyzeLoopStar` (line ~678) and `analyzeRecur` (line ~737) — bound-check `binding_forms.len / 2` and `items.len - 1` against `std.math.maxInt(u16)` before `@intCast`. On overflow, raise `error_mod.setErrorFmt(.analysis, .not_implemented, ..., "loop*/recur arity {d} exceeds u16 limit", ...)`. Adds a regression test that uses 65537 bindings | [ ]    |
-| 4.2  | Uniform `errdefer rt.gpa.destroy(s)` (or `ensureUnusedCapacity` + `appendAssumeCapacity`) across `runtime/collection/string.zig::alloc`, `runtime/collection/ex_info.zig::alloc`, `runtime/collection/list.zig::consHeap`, `eval/backend/tree_walk.zig::allocFunction`. Test under `testing.allocator` with failing-mode injection | [ ]    |
-| 4.3  | `lang/macro_transforms.zig::expandAnd` / `expandOr` rewritten as a single non-recursive expansion (left-fold to a chain of `let*`/`if` Forms in one pass). Long `(and a₁ … a_N)` no longer feeds `analyze` N times. Regression test: 10000-arg `(and …)` reaches eval without `error.StackOverflow` | [ ]    |
-| 4.4  | `src/eval/backend/vm/opcode.zig` (new) — Opcode enum (initial set: `op_const`, `op_load_local`, `op_store_local`, `op_def`, `op_get_var`, `op_jump`, `op_jump_if_false`, `op_call`, `op_ret`, `op_pop`, `op_dup`, `op_throw`, `op_make_fn`, `op_recur`, `op_invoke_builtin`). `BytecodeChunk` struct + per-chunk constant pool                                                                                              | [ ]    |
-| 4.5  | `src/eval/backend/vm/compiler.zig` (new) — `compile(arena, node) → BytecodeChunk` for Phase-1/2 special forms (`def` / `if` / `do` / `quote` / `let*` / `fn*` / call). `lang/primitive` builtins still reach via `op_invoke_builtin`. `analyze`-shape Node already factored, so this is a single-pass tree visitor | [ ]    |
-| 4.6  | `src/eval/backend/vm.zig` (new) — `pub fn eval(rt, env, locals, chunk) Value` dispatch loop. Single switch over `Opcode`; computed-goto deferred (`@branchHint(.likely)` on the hot arm only). Per-frame `[256]Value` slot stack mirrors TreeWalk so the same `MAX_LOCALS` invariant holds | [ ]    |
-| 4.7  | Compiler + VM: extend to Phase-3 special forms — `try` / `catch` / `throw` / `loop*` / `recur` / closure capture. Mirrors `tree_walk.evalTry` / `evalLoop` / `allocFunction` so each TreeWalk test under `-Dbackend=vm` passes verbatim | [ ]    |
-| 4.8  | `build.zig` — `-Dbackend=tree-walk\|vm` comptime gate. `tree_walk.installVTable` vs `vm.installVTable` (the latter new) flips at startup. Default stays `tree-walk` until 4.12 confirms parity | [ ]    |
-| 4.9  | Run the full unit-test suite under both backends. Any TreeWalk-only test (e.g., heap collection deinit-ordering specifics) is moved into a `runtime`-zone test that does not depend on backend; or duplicated with a backend-specific `test "...vm only"` qualifier | [ ]    |
-| 4.10 | `src/eval/evaluator.zig` (new) — `pub fn compare(rt, env, src) struct { tree_walk: Value, vm: Value, equal: bool }`. Phase 8 wires this into `Evaluator.compare()` for dual-backend verify; Phase 4 just needs the plumbing in place | [ ]    |
-| 4.11 | `test/e2e/phase4_cli.sh` — re-runs the §9.5 `phase3_cli.sh` cases under both backends via `cljw -Dbackend=vm -e ...` (or env var if `-D` doesn't reach the binary). Wired into `test/run_all.sh` | [ ]    |
-| 4.12 | Phase-4 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` under **both** backends. e2e in `test/e2e/phase4_exit.sh`. After 4.12 `[x]`, the §9 phase tracker flips Phase 4 from PENDING to DONE; expand Phase 5 inline in §9.7 (HAMT + Mark-Sweep GC, also 🔒)            | [ ]    |
+| 4.1  | `src/eval/analyzer.zig::analyzeLoopStar` (line ~678) and `analyzeRecur` (line ~737) — bound-check `binding_forms.len / 2` and `items.len - 1` against `std.math.maxInt(u16)` before `@intCast`. On overflow, raise `error_mod.setErrorFmt(.analysis, .not_implemented, ..., "loop*/recur arity {d} exceeds u16 limit", ...)`. Adds a regression test that uses 65537 bindings                                                                       | [ ]    |
+| 4.2  | Uniform `errdefer rt.gpa.destroy(s)` (or `ensureUnusedCapacity` + `appendAssumeCapacity`) across `runtime/collection/string.zig::alloc`, `runtime/collection/ex_info.zig::alloc`, `runtime/collection/list.zig::consHeap`, `eval/backend/tree_walk.zig::allocFunction`. Test under `testing.allocator` with failing-mode injection                                                                                                                   | [ ]    |
+| 4.3  | `lang/macro_transforms.zig::expandAnd` / `expandOr` rewritten as a single non-recursive expansion (left-fold to a chain of `let*`/`if` Forms in one pass). Long `(and a₁ … a_N)` no longer feeds `analyze` N times. Regression test: 10000-arg `(and …)` reaches eval without `error.StackOverflow`                                                                                                                                               | [ ]    |
+| 4.4  | `src/eval/backend/vm/opcode.zig` (new) — Opcode enum (initial set: `op_const`, `op_load_local`, `op_store_local`, `op_def`, `op_get_var`, `op_jump`, `op_jump_if_false`, `op_call`, `op_ret`, `op_pop`, `op_dup`, `op_throw`, `op_make_fn`, `op_recur`, `op_invoke_builtin`). `BytecodeChunk` struct + per-chunk constant pool                                                                                                                      | [ ]    |
+| 4.5  | `src/eval/backend/vm/compiler.zig` (new) — `compile(arena, node) → BytecodeChunk` for Phase-1/2 special forms (`def` / `if` / `do` / `quote` / `let*` / `fn*` / call). `lang/primitive` builtins still reach via `op_invoke_builtin`. `analyze`-shape Node already factored, so this is a single-pass tree visitor                                                                                                                                 | [ ]    |
+| 4.6  | `src/eval/backend/vm.zig` (new) — `pub fn eval(rt, env, locals, chunk) Value` dispatch loop. Single switch over `Opcode`; computed-goto deferred (`@branchHint(.likely)` on the hot arm only). Per-frame `[256]Value` slot stack mirrors TreeWalk so the same `MAX_LOCALS` invariant holds                                                                                                                                                          | [ ]    |
+| 4.7  | Compiler + VM: extend to Phase-3 special forms — `try` / `catch` / `throw` / `loop*` / `recur` / closure capture. Mirrors `tree_walk.evalTry` / `evalLoop` / `allocFunction` so each TreeWalk test under `-Dbackend=vm` passes verbatim                                                                                                                                                                                                             | [ ]    |
+| 4.8  | `build.zig` — `-Dbackend=tree-walk\|vm` comptime gate. `tree_walk.installVTable` vs `vm.installVTable` (the latter new) flips at startup. Default stays `tree-walk` until 4.12 confirms parity                                                                                                                                                                                                                                                      | [ ]    |
+| 4.9  | Run the full unit-test suite under both backends. Any TreeWalk-only test (e.g., heap collection deinit-ordering specifics) is moved into a `runtime`-zone test that does not depend on backend; or duplicated with a backend-specific `test "...vm only"` qualifier                                                                                                                                                                                  | [ ]    |
+| 4.10 | `src/eval/evaluator.zig` (new) — `pub fn compare(rt, env, src) struct { tree_walk: Value, vm: Value, equal: bool }`. Phase 8 wires this into `Evaluator.compare()` for dual-backend verify; Phase 4 just needs the plumbing in place                                                                                                                                                                                                                | [ ]    |
+| 4.11 | `test/e2e/phase4_cli.sh` — re-runs the §9.5 `phase3_cli.sh` cases under both backends via `cljw -Dbackend=vm -e ...` (or env var if `-D` doesn't reach the binary). Wired into `test/run_all.sh`                                                                                                                                                                                                                                                   | [ ]    |
+| 4.12 | Phase-4 exit smoke: `(defn f [x] (+ x 1)) (f 2)` → `3` under **both** backends. e2e in `test/e2e/phase4_exit.sh`. After 4.12 `[x]`, the §9 phase tracker flips Phase 4 from PENDING to DONE; expand Phase 5 inline in §9.7 (HAMT + Mark-Sweep GC, also 🔒)                                                                                                                                                                                         | [ ]    |
 
 After 4.12 lands as a `[x]`, the §9 phase tracker flips Phase 4 from
 IN-PROGRESS to DONE and Phase 5 IN-PROGRESS (🔒 x86_64 gate);
@@ -861,17 +861,17 @@ goes in just before Phase 4. Used during Phases 4-7.
 
 ### 10.3 v0.1.0 targets
 
-| Bench                | v0.1.0 target | Stretch  |
-|----------------------|---------------|----------|
-| Cold start           | < 12 ms       | < 8 ms   |
-| Warm start           | < 4 ms        | < 2 ms   |
-| Binary size          | < 3.5 MB      | < 2 MB   |
-| fib_recursive        | 24 ms         | 18 ms    |
-| map_filter_reduce    | 17 ms         | 10 ms    |
-| transduce            | 16 ms         | 10 ms    |
-| lazy_chain           | 16 ms         | 10 ms    |
-| Idle memory          | < 25 MB       | < 15 MB  |
-| Wasm cold start      | < 50 ms       | < 20 ms  |
+| Bench             | v0.1.0 target | Stretch |
+|-------------------|---------------|---------|
+| Cold start        | < 12 ms       | < 8 ms  |
+| Warm start        | < 4 ms        | < 2 ms  |
+| Binary size       | < 3.5 MB      | < 2 MB  |
+| fib_recursive     | 24 ms         | 18 ms   |
+| map_filter_reduce | 17 ms         | 10 ms   |
+| transduce         | 16 ms         | 10 ms   |
+| lazy_chain        | 16 ms         | 10 ms   |
+| Idle memory       | < 25 MB       | < 15 MB |
+| Wasm cold start   | < 50 ms       | < 20 ms |
 
 ### 10.4 Fused reduce via structural metadata
 
@@ -893,12 +893,12 @@ producing zero intermediate lazy seqs. This is the mechanism that won v1's
 
 ### 11.2 Three test layers
 
-| Layer            | Contents                              | Files                |
-|------------------|---------------------------------------|----------------------|
-| Zig unit         | `test "..." { ... }` blocks           | each `src/**/*.zig`  |
-| Clojure deftest  | `clojure.test` (Phase 11+)            | `test/clj/**/*.clj`  |
-| E2E              | CLI round-trips                       | `test/e2e/*.sh`      |
-| Upstream port    | Adapted Clojure JVM tests             | `test/upstream/**`   |
+| Layer           | Contents                    | Files               |
+|-----------------|-----------------------------|---------------------|
+| Zig unit        | `test "..." { ... }` blocks | each `src/**/*.zig` |
+| Clojure deftest | `clojure.test` (Phase 11+)  | `test/clj/**/*.clj` |
+| E2E             | CLI round-trips             | `test/e2e/*.sh`     |
+| Upstream port   | Adapted Clojure JVM tests   | `test/upstream/**`  |
 
 `test/run_all.sh` is the unified runner. Phase 1 = Zig unit only → Phase 11+ adds the rest.
 
@@ -929,29 +929,29 @@ they are wired.
 
 #### Active
 
-| # | Gate                                       | Wired as                                                  |
-|---|--------------------------------------------|-----------------------------------------------------------|
-| 1 | Source-commit → doc-commit pairing          | `scripts/check_learning_doc.sh` (PreToolUse hook on Bash). Defined by skill `code-learning-doc`. |
-| 2 | Zone-dependency check                       | `scripts/zone_check.sh --gate` invoked from `test/run_all.sh`. |
-| 3 | `zig build test` green                      | `test/run_all.sh`.                                         |
+| # | Gate                                | Wired as                                                                                         |
+|---|-------------------------------------|--------------------------------------------------------------------------------------------------|
+| 1 | Source-commit → doc-commit pairing | `scripts/check_learning_doc.sh` (PreToolUse hook on Bash). Defined by skill `code-learning-doc`. |
+| 2 | Zone-dependency check               | `scripts/zone_check.sh --gate` invoked from `test/run_all.sh`.                                   |
+| 3 | `zig build test` green              | `test/run_all.sh`.                                                                               |
 
 #### Planned
 
-| #  | Gate                                                            | Owner / wiring (planned)                       | Prepare by    |
-|----|------------------------------------------------------------------|------------------------------------------------|---------------|
-| 4  | `zig fmt --check src/`                                          | `scripts/format_check.sh`, called from `test/run_all.sh` | Phase 1 (when src/ grows past bootstrap) |
-| 5  | x86_64 cross-arch test (OrbStack Ubuntu)                        | manual `orb run ... zig build test`            | Phase 1.12    |
-| 6  | Dual-backend `--compare` (TreeWalk == VM)                       | inline in test runner                          | Phase 8       |
-| 7  | Bench regression ≤ 1.2x                                          | `bench/bench.sh record` + `bench/history.yaml` diff | Phase 8 (full); Phase 4 quick harness |
-| 8  | Tier-A upstream test green                                      | inline in `test/run_all.sh`                    | Phase 11      |
-| 9  | Tier-change ADR present                                         | `scripts/tier_check.sh`                        | Phase 9       |
-| 10 | `compat_tiers.yaml` complete (every listed namespace has impl)  | `scripts/tier_check.sh`                        | Phase 14      |
-| 11 | GC root coverage (every heap type traced)                       | unit tests + `--gc-stress`                     | Phase 5       |
-| 12 | Bytecode cache versioning                                        | cache header version field                     | Phase 12      |
-| 13 | JIT go/no-go ADR                                                | `.dev/decisions/NNNN-jit-decision.md`          | Phase 17 end  |
-| 14 | Wasm Component build green                                      | `test/run_all.sh` extension                    | Phase 14      |
-| 15 | WIT auto-binding correctness                                     | inline test                                    | Phase 19      |
-| 16 | nREPL operation parity (CIDER 14 ops)                           | inline test                                    | Phase 14      |
+| #  | Gate                                                           | Owner / wiring (planned)                                 | Prepare by                               |
+|----|----------------------------------------------------------------|----------------------------------------------------------|------------------------------------------|
+| 4  | `zig fmt --check src/`                                         | `scripts/format_check.sh`, called from `test/run_all.sh` | Phase 1 (when src/ grows past bootstrap) |
+| 5  | x86_64 cross-arch test (OrbStack Ubuntu)                       | manual `orb run ... zig build test`                      | Phase 1.12                               |
+| 6  | Dual-backend `--compare` (TreeWalk == VM)                      | inline in test runner                                    | Phase 8                                  |
+| 7  | Bench regression ≤ 1.2x                                       | `bench/bench.sh record` + `bench/history.yaml` diff      | Phase 8 (full); Phase 4 quick harness    |
+| 8  | Tier-A upstream test green                                     | inline in `test/run_all.sh`                              | Phase 11                                 |
+| 9  | Tier-change ADR present                                        | `scripts/tier_check.sh`                                  | Phase 9                                  |
+| 10 | `compat_tiers.yaml` complete (every listed namespace has impl) | `scripts/tier_check.sh`                                  | Phase 14                                 |
+| 11 | GC root coverage (every heap type traced)                      | unit tests + `--gc-stress`                               | Phase 5                                  |
+| 12 | Bytecode cache versioning                                      | cache header version field                               | Phase 12                                 |
+| 13 | JIT go/no-go ADR                                               | `.dev/decisions/NNNN-jit-decision.md`                    | Phase 17 end                             |
+| 14 | Wasm Component build green                                     | `test/run_all.sh` extension                              | Phase 14                                 |
+| 15 | WIT auto-binding correctness                                   | inline test                                              | Phase 19                                 |
+| 16 | nREPL operation parity (CIDER 14 ops)                          | inline test                                              | Phase 14                                 |
 
 ### 11.7 Periodic scaffolding audit
 
@@ -1016,17 +1016,17 @@ until the user intervenes** (no "go" gate, no per-Phase confirmation).
 
 The TDD loop has eight steps per task:
 
-| # | Step               | Where                                        |
-|---|--------------------|----------------------------------------------|
-| 0 | Survey             | Subagent (Explore)                           |
-| 1 | Plan               | Main                                         |
-| 2 | Red                | Main                                         |
-| 3 | Green              | Main                                         |
-| 4 | Refactor           | Main                                         |
-| 5 | Test gate          | Main or Subagent (Bash) if log > 200 lines   |
-| 6 | Source commit      | Main                                         |
-| 7 | Per-task note      | Main → `private/notes/<phase>-<task>.md`     |
-| 8 | Context-budget gate| Main; `/compact` if > 60% fill               |
+| # | Step                | Where                                      |
+|---|---------------------|--------------------------------------------|
+| 0 | Survey              | Subagent (Explore)                         |
+| 1 | Plan                | Main                                       |
+| 2 | Red                 | Main                                       |
+| 3 | Green               | Main                                       |
+| 4 | Refactor            | Main                                       |
+| 5 | Test gate           | Main or Subagent (Bash) if log > 200 lines |
+| 6 | Source commit       | Main                                       |
+| 7 | Per-task note       | Main → `private/notes/<phase>-<task>.md`  |
+| 8 | Context-budget gate | Main; `/compact` if > 60% fill             |
 
 Chapters (`docs/ja/NNNN-*.md`) are written **per concept** (every 3–5
 source commits or at phase boundary), not per task. The chapter pulls
@@ -1178,17 +1178,17 @@ Generator: `.dev/scripts/generate_vars_yaml.clj`.
 
 ### 15.2 Local reference clones (already present)
 
-| Path                                                           | Purpose                                       |
-|----------------------------------------------------------------|------------------------------------------------|
-| `~/Documents/MyProducts/ClojureWasm/`                          | ClojureWasm v1 (89K LOC, v0.5.0). Design reference. |
-| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/`        | Previous redesign attempt (Phase 1+2). Implementation reference for Runtime handle, NaN boxing, Reader. |
-| `~/Documents/OSS/clojure/`                                     | Upstream Clojure JVM. core.clj / LispReader.java / Numbers.java. |
-| `~/Documents/OSS/babashka/`                                    | Babashka (SCI-based). Pod / native / compatibility precedent. |
-| `~/Documents/OSS/spec.alpha/`                                  | clojure.spec.alpha source.                     |
-| `~/Documents/OSS/zig/`                                         | Zig stdlib source.                             |
-| `~/Documents/OSS/wasmtime/`                                    | Wasm runtime reference.                        |
-| `~/Documents/OSS/malli/`                                       | Spec alternative.                              |
-| `~/Documents/OSS/mattpocock_skills/improve-codebase-architecture/` | Module/Interface/Depth vocabulary and deepening principles. |
+| Path                                                               | Purpose                                                                                                 |
+|--------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
+| `~/Documents/MyProducts/ClojureWasm/`                              | ClojureWasm v1 (89K LOC, v0.5.0). Design reference.                                                     |
+| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/`            | Previous redesign attempt (Phase 1+2). Implementation reference for Runtime handle, NaN boxing, Reader. |
+| `~/Documents/OSS/clojure/`                                         | Upstream Clojure JVM. core.clj / LispReader.java / Numbers.java.                                        |
+| `~/Documents/OSS/babashka/`                                        | Babashka (SCI-based). Pod / native / compatibility precedent.                                           |
+| `~/Documents/OSS/spec.alpha/`                                      | clojure.spec.alpha source.                                                                              |
+| `~/Documents/OSS/zig/`                                             | Zig stdlib source.                                                                                      |
+| `~/Documents/OSS/wasmtime/`                                        | Wasm runtime reference.                                                                                 |
+| `~/Documents/OSS/malli/`                                           | Spec alternative.                                                                                       |
+| `~/Documents/OSS/mattpocock_skills/improve-codebase-architecture/` | Module/Interface/Depth vocabulary and deepening principles.                                             |
 
 ### 15.3 Official docs (web)
 
@@ -1204,31 +1204,31 @@ Generator: `.dev/scripts/generate_vars_yaml.clj`.
 
 Architecture vocabulary follows mattpocock's definitions:
 
-| Term              | Meaning                                                                  |
-|-------------------|--------------------------------------------------------------------------|
-| **Module**        | Anything with an interface and an implementation (function / struct / package / slice). |
-| **Interface**     | Everything a caller must know (types, invariants, ordering, error modes, performance). |
-| **Implementation**| The body of a module.                                                    |
-| **Depth**         | Leverage at the interface. **Deep** = much behaviour behind a small interface. |
-| **Seam**          | Where an interface lives (place behaviour can be altered without editing in place — Michael Feathers). |
-| **Adapter**       | A concrete thing satisfying an interface at a seam.                       |
-| **Leverage**      | What callers get from depth.                                             |
-| **Locality**      | What maintainers get from depth (changes / knowledge concentrate in one place). |
+| Term               | Meaning                                                                                                 |
+|--------------------|---------------------------------------------------------------------------------------------------------|
+| **Module**         | Anything with an interface and an implementation (function / struct / package / slice).                 |
+| **Interface**      | Everything a caller must know (types, invariants, ordering, error modes, performance).                  |
+| **Implementation** | The body of a module.                                                                                   |
+| **Depth**          | Leverage at the interface. **Deep** = much behaviour behind a small interface.                          |
+| **Seam**           | Where an interface lives (place behaviour can be altered without editing in place — Michael Feathers). |
+| **Adapter**        | A concrete thing satisfying an interface at a seam.                                                     |
+| **Leverage**       | What callers get from depth.                                                                            |
+| **Locality**       | What maintainers get from depth (changes / knowledge concentrate in one place).                         |
 
 Project-specific:
 
-| Term                | Meaning                                                                   |
-|---------------------|---------------------------------------------------------------------------|
-| **NaN Boxing**      | Encoding all values in 8 bytes by hiding tags inside IEEE-754 NaN space.  |
-| **Tier**            | Per-namespace Clojure compatibility level (A/B/C/D).                      |
-| **Pod**             | An external Clojure library implemented as a Wasm Component.              |
-| **InterOp**         | The dot/static/field/instance? surface, expressed via Class-as-Value.      |
-| **Dual backend**    | TreeWalk (reference) and VM (production) running side by side under `--compare`. |
+| Term                | Meaning                                                                                               |
+|---------------------|-------------------------------------------------------------------------------------------------------|
+| **NaN Boxing**      | Encoding all values in 8 bytes by hiding tags inside IEEE-754 NaN space.                              |
+| **Tier**            | Per-namespace Clojure compatibility level (A/B/C/D).                                                  |
+| **Pod**             | An external Clojure library implemented as a Wasm Component.                                          |
+| **InterOp**         | The dot/static/field/instance? surface, expressed via Class-as-Value.                                 |
+| **Dual backend**    | TreeWalk (reference) and VM (production) running side by side under `--compare`.                      |
 | **Fused Reduce**    | Walking the structural metadata chain on LazySeq directly, avoiding intermediate seq materialisation. |
-| **Bootstrap stage** | How far core.clj is evaluated by TreeWalk before the VM takes over (Stage 0–6). |
-| **x86_64 Gate**     | A phase-completion gate: `zig build test` on OrbStack Ubuntu x86_64.       |
-| **Juicy Main**      | `pub fn main(init: std.process.Init)` (a Zig 0.16 idiom).                 |
-| **Learning doc**    | `docs/ja/NNNN-<slug>.md`, the Japanese learning narrative required by §12.2. |
+| **Bootstrap stage** | How far core.clj is evaluated by TreeWalk before the VM takes over (Stage 0–6).                      |
+| **x86_64 Gate**     | A phase-completion gate: `zig build test` on OrbStack Ubuntu x86_64.                                  |
+| **Juicy Main**      | `pub fn main(init: std.process.Init)` (a Zig 0.16 idiom).                                             |
+| **Learning doc**    | `docs/ja/NNNN-<slug>.md`, the Japanese learning narrative required by §12.2.                         |
 
 ---
 

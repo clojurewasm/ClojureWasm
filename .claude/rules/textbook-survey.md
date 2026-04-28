@@ -13,16 +13,16 @@ codebases without being pulled by their styles.
 
 ## The textbooks
 
-| Path | What it teaches | When to use |
-|------|----------------|-------------|
-| `~/Documents/MyProducts/ClojureWasm/` | v1, 89K LOC, 18-month build. Deep Clojure semantics + GC + VM + Wasm interop. | Always when introducing a new Clojure feature. |
-| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/` | Previous redesign Phase 1+2. Closer to current shape. | When a v2 file already exists in v1_ref under the same name. |
-| `~/Documents/OSS/clojure/` | Upstream Clojure JVM. `clojure/lang/{Var, Namespace, RT, LispReader, ...}.java` and `clojure/core.clj`. | When a Clojure language semantic is at stake (var resolution, multimethod dispatch, lazy seq, ex-info, …). |
-| `~/Documents/OSS/babashka/` | SCI-based Clojure. Pod system, native-without-JVM precedent. | When the question is "how do other JVM-less Clojures handle X". |
-| `~/Documents/OSS/zig/` | Zig 0.16 stdlib source. | When a `std.Io.*` / `std.atomic.*` / `std.process.*` API is in question. |
-| `~/Documents/OSS/spec.alpha/`, `malli/` | Spec systems. | Phase 14+ spec work only. |
-| `~/Documents/OSS/wasmtime/` | Wasm runtime reference. | Phase 14, 19. |
-| `~/Documents/OSS/mattpocock_skills/improve-codebase-architecture/` | Module / Interface / Depth / Seam vocabulary. | When a new module is being introduced. |
+| Path                                                               | What it teaches                                                                                         | When to use                                                                                                 |
+|--------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| `~/Documents/MyProducts/ClojureWasm/`                              | v1, 89K LOC, 18-month build. Deep Clojure semantics + GC + VM + Wasm interop.                           | Always when introducing a new Clojure feature.                                                              |
+| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/`            | Previous redesign Phase 1+2. Closer to current shape.                                                   | When a v2 file already exists in v1_ref under the same name.                                                |
+| `~/Documents/OSS/clojure/`                                         | Upstream Clojure JVM. `clojure/lang/{Var, Namespace, RT, LispReader, ...}.java` and `clojure/core.clj`. | When a Clojure language semantic is at stake (var resolution, multimethod dispatch, lazy seq, ex-info, …). |
+| `~/Documents/OSS/babashka/`                                        | SCI-based Clojure. Pod system, native-without-JVM precedent.                                            | When the question is "how do other JVM-less Clojures handle X".                                             |
+| `~/Documents/OSS/zig/`                                             | Zig 0.16 stdlib source.                                                                                 | When a `std.Io.*` / `std.atomic.*` / `std.process.*` API is in question.                                    |
+| `~/Documents/OSS/spec.alpha/`, `malli/`                            | Spec systems.                                                                                           | Phase 14+ spec work only.                                                                                   |
+| `~/Documents/OSS/wasmtime/`                                        | Wasm runtime reference.                                                                                 | Phase 14, 19.                                                                                               |
+| `~/Documents/OSS/mattpocock_skills/improve-codebase-architecture/` | Module / Interface / Depth / Seam vocabulary.                                                           | When a new module is being introduced.                                                                      |
 
 ## Survey procedure (default brief for Explore subagent)
 
@@ -100,12 +100,12 @@ and the future chapter, not just for your present working memory.
 
 ## Where survey notes live
 
-| File | Purpose | Tracked in git? |
-|------|---------|------------------|
-| `private/notes/<phase>-<task>-survey.md` | Step 0 raw output | No (`.gitignore`) |
-| `private/notes/<phase>-<task>.md` | Step 7 per-task note (digests survey) | No |
-| `docs/ja/NNNN-<slug>.md` | Chapter (digests notes) | Yes |
-| `.dev/decisions/NNNN-<slug>.md` | ADR (load-bearing decisions surfaced from survey) | Yes |
+| File                                     | Purpose                                           | Tracked in git?   |
+|------------------------------------------|---------------------------------------------------|-------------------|
+| `private/notes/<phase>-<task>-survey.md` | Step 0 raw output                                 | No (`.gitignore`) |
+| `private/notes/<phase>-<task>.md`        | Step 7 per-task note (digests survey)             | No                |
+| `docs/ja/NNNN-<slug>.md`                 | Chapter (digests notes)                           | Yes               |
+| `.dev/decisions/NNNN-<slug>.md`          | ADR (load-bearing decisions surfaced from survey) | Yes               |
 
 The flow is: **survey notes → per-task notes → chapter**. Not the
 reverse, not skipping a step. Each layer is shorter than the last.

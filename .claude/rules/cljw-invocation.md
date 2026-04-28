@@ -17,11 +17,11 @@ debugging interactively.
 `cljw` accepts code in three shapes (all available from §9.5 task
 3.1 onward):
 
-| Shape           | Invocation              | Use when                                |
-|-----------------|-------------------------|------------------------------------------|
-| Inline string   | `cljw -e '<expr>'`      | One-liner with no shell-special chars.  |
-| File           | `cljw path/to/file.clj` | Multi-line code, fixtures, real scripts. |
-| Stdin          | `cljw -` (`-` literal)  | Heredoc, pipe from another command.      |
+| Shape         | Invocation              | Use when                                 |
+|---------------|-------------------------|------------------------------------------|
+| Inline string | `cljw -e '<expr>'`      | One-liner with no shell-special chars.   |
+| File          | `cljw path/to/file.clj` | Multi-line code, fixtures, real scripts. |
+| Stdin         | `cljw -` (`-` literal)  | Heredoc, pipe from another command.      |
 
 Until 3.1 lands, only `-e` works.
 
@@ -31,13 +31,13 @@ zsh expands history references (`!`), parameter substitutions (`$x`,
 `${x}`), command substitution (`` `cmd` ``, `$(cmd)`), and globs
 inside double-quoted strings. Several Clojure idioms collide:
 
-| Clojure surface | Zsh interpretation                    | Failure mode                          |
-|-----------------|---------------------------------------|---------------------------------------|
-| `name!`         | `!name` history reference             | `zsh: event not found: ...`           |
-| `(deref @atom)` | nothing — but `\\@atom` may be eaten  | Edge case in deeply-nested quotes.    |
-| `$ARGS`         | shell variable expansion              | `cljw -e "(+ $x 1)"` → `(+  1)` if `$x` unset. |
-| `` `name` ``    | command substitution                  | shell tries to run a program.        |
-| `*foo*` (earmuff dynamic var) | glob expansion       | filename match in cwd substitutes the symbol. |
+| Clojure surface               | Zsh interpretation                    | Failure mode                                    |
+|-------------------------------|---------------------------------------|-------------------------------------------------|
+| `name!`                       | `!name` history reference             | `zsh: event not found: ...`                     |
+| `(deref @atom)`               | nothing — but `\\@atom` may be eaten | Edge case in deeply-nested quotes.              |
+| `$ARGS`                       | shell variable expansion              | `cljw -e "(+ $x 1)"` → `(+  1)` if `$x` unset. |
+| `` `name` ``                  | command substitution                  | shell tries to run a program.                   |
+| `*foo*` (earmuff dynamic var) | glob expansion                        | filename match in cwd substitutes the symbol.   |
 
 Single-quoting (`-e '...'`) defeats most of these, **but**:
 - History expansion (`!`) still happens inside single quotes in

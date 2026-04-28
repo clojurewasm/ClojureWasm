@@ -212,14 +212,14 @@ asking**:
 
 ## Subagent delegation cheatsheet
 
-| Trigger | Action |
-|---------|--------|
-| Survey ≥ 1 reference codebase / OSS | Step 0 — Explore subagent |
-| Test output > 200 lines | Step 5 — Bash subagent (run_in_background if long) |
-| Search across > 5 files | Explore subagent |
-| Phase boundary audit / simplify / review | Multi-agent fan-out (parallel) |
-| Outstanding chapters at phase close | general-purpose subagent |
-| Single-file edit, < 200 lines context | Stay in main |
+| Trigger                                  | Action                                              |
+|------------------------------------------|-----------------------------------------------------|
+| Survey ≥ 1 reference codebase / OSS     | Step 0 — Explore subagent                          |
+| Test output > 200 lines                  | Step 5 — Bash subagent (run_in_background if long) |
+| Search across > 5 files                  | Explore subagent                                    |
+| Phase boundary audit / simplify / review | Multi-agent fan-out (parallel)                      |
+| Outstanding chapters at phase close      | general-purpose subagent                            |
+| Single-file edit, < 200 lines context    | Stay in main                                        |
 
 Default rule: **subagent fork on context isolation, not on importance**.
 
