@@ -100,12 +100,12 @@ and the future chapter, not just for your present working memory.
 
 ## Where survey notes live
 
-| File                                     | Purpose                                           | Tracked in git?   |
-|------------------------------------------|---------------------------------------------------|-------------------|
-| `private/notes/<phase>-<task>-survey.md` | Step 0 raw output                                 | No (`.gitignore`) |
-| `private/notes/<phase>-<task>.md`        | Step 7 per-task note (digests survey)             | No                |
-| `docs/ja/NNNN_<slug>.md`                 | Chapter (digests notes)                           | Yes               |
-| `.dev/decisions/NNNN_<slug>.md`          | ADR (load-bearing decisions surfaced from survey) | Yes               |
+| File                                       | Purpose                                           | Tracked in git?   |
+|--------------------------------------------|---------------------------------------------------|-------------------|
+| `private/notes/<phase>-<task>-survey.md`   | Step 0 raw output                                 | No (`.gitignore`) |
+| `private/notes/<phase>-<task>.md`          | Step 7 per-task note (digests survey)             | No                |
+| `docs/ja/learn_clojurewasm/NNNN_<slug>.md` | Chapter (digests notes)                           | Yes               |
+| `.dev/decisions/NNNN_<slug>.md`            | ADR (load-bearing decisions surfaced from survey) | Yes               |
 
 The flow is: **survey notes → per-task notes → chapter**. Not the
 reverse, not skipping a step. Each layer is shorter than the last.

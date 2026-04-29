@@ -1,4 +1,4 @@
-<!-- Per-concept chapter. docs/ja/NNNN_<slug>.md.
+<!-- Per-concept chapter. docs/ja/learn_clojurewasm/NNNN_<slug>.md.
      Body is Japanese; code blocks keep their original English identifiers.
      A chapter is a teaching unit, not a project diary. -->
 

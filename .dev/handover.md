@@ -10,7 +10,7 @@
 1. `.dev/handover.md` (this file)
 2. `.dev/ROADMAP.md` — find the IN-PROGRESS phase in §9, then its
    expanded `§9.<N>` task list; pick up the first `[ ]` task.
-3. The chapter file most recently added under `docs/ja/` — to recover
+3. The chapter file most recently added under `docs/ja/learn_clojurewasm/` — to recover
    the conceptual baseline for the active phase.
 
 ## Current state
@@ -119,7 +119,7 @@ or later):
   Step 8 (60% compact gate) loop with multi-agent fan-out at phase
   boundaries.
 - Skill `code_learning_doc` is **two-cadence**: per-task notes
-  (private, gitignored) and per-concept chapters (`docs/ja/NNNN_*.md`,
+  (private, gitignored) and per-concept chapters (`docs/ja/learn_clojurewasm/NNNN_*.md`,
   gated). Use `TEMPLATE_TASK_NOTE.md` and `TEMPLATE_PHASE_DOC.md`. Do
   **not** revert to the old "diary per phase" shape.
 - Skill `audit_scaffolding` runs at every Phase boundary or every ~10

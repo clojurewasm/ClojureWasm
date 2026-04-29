@@ -1,4 +1,4 @@
-<!-- Per-concept chapter. docs/ja/0020_phase3_completion.md -->
+<!-- Per-concept chapter. docs/ja/learn_clojurewasm/0020_phase3_completion.md -->
 
 ---
 chapter: 20

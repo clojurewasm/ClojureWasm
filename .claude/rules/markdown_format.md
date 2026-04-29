@@ -49,7 +49,7 @@ your job is **never** to compute widths in your head.
 
 ## Other Markdown conventions for this repo
 
-- `docs/ja/NNNN_*.md` is Japanese narrative text. Body text is
+- `docs/ja/learn_clojurewasm/NNNN_*.md` is Japanese narrative text. Body text is
   Japanese; code blocks keep English identifiers. See
   `.claude/output_styles/japanese.md` for the prose-polish checklist
   (`〜です/〜ます` over 体言止め, "本リポジトリ" not "本リポ", etc).

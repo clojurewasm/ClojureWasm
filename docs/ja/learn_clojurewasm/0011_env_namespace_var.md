@@ -333,7 +333,7 @@ binding [*x* 10] 抜ける:
 
 ### なぜ threadlocal が「正しい threadlocal」なのか
 
-ここに本リポジトリのもう 1 つの哲学があります。`docs/ja/0009_runtime_handle_three_layers.md`
+ここに本リポジトリのもう 1 つの哲学があります。`docs/ja/learn_clojurewasm/0009_runtime_handle_three_layers.md`
 で見た通り、本リポジトリは threadlocal を
 最小に絞っています。
 

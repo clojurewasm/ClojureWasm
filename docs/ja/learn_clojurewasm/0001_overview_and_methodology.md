@@ -340,7 +340,7 @@ ls docs/ja/
 git -C ~/Documents/MyProducts/ClojureWasmFromScratch log --oneline | head -30
 
 # 第 1 章（自身）の `commits:` は空であることを確認
-head -10 docs/ja/0001_overview_and_methodology.md
+head -10 docs/ja/learn_clojurewasm/0001_overview_and_methodology.md
 ```
 
 ---

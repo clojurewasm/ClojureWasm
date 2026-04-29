@@ -12,7 +12,7 @@
 > deviations are not allowed.
 >
 > History lives in git — see `git log -- .dev/ROADMAP.md` for diffs,
-> `docs/ja/NNNN_*.md` for the story behind each change, and
+> `docs/ja/learn_clojurewasm/NNNN_*.md` for the story behind each change, and
 > `.dev/decisions/` for load-bearing decisions.
 
 ---
@@ -443,13 +443,16 @@ ClojureWasm/                         (working dir on disk: ClojureWasmFromScratc
 │   ├── zone_check.sh
 │   ├── coverage.sh                 vars.yaml coverage
 │   ├── tier_check.sh               compat_tiers.yaml validation
-│   └── check_learning_doc.sh       commit gate for docs/ja/
+│   └── check_learning_doc.sh       commit gate for docs/ja/learn_clojurewasm/
 │
 ├── docs/
 │   ├── README.md
-│   └── ja/                         Japanese commit-snapshot tutorials
-│       ├── README.md
-│       └── NNNN_<slug>.md ...
+│   └── ja/                         Japanese textbooks (shidori)
+│       ├── README.md               top-level shidori
+│       ├── learn_clojurewasm/      main: NNNN_<slug>.md chapter series
+│       │   ├── README.md
+│       │   └── NNNN_<slug>.md ...
+│       └── learn_zig/              companion: Zig 0.16 reference + samples
 │
 ├── .dev/
 │   ├── README.md
@@ -676,7 +679,7 @@ Phase 14 = first publishable v0.1.0. **Minimum line for a Conj talk.**
 ### 9.3 Phase 1 — task list (expanded; this is the active phase)
 
 > Convention: each `[ ]` becomes one or more source commits, eventually
-> followed by a `docs/ja/NNNN_<slug>.md`. Mark complete with `[x]` when
+> followed by a `docs/ja/learn_clojurewasm/NNNN_<slug>.md`. Mark complete with `[x]` when
 > the doc commit lands. Commit SHAs are listed alongside for traceability.
 >
 > When Phase 2 starts, expand it inline below in §9.4 and apply the same
@@ -710,7 +713,7 @@ from PENDING to DONE and Phase 2 IN-PROGRESS; expand Phase 2 in §9.4.
 ### 9.4 Phase 2 — task list (expanded; this is the active phase)
 
 > Same convention as §9.3: each `[ ]` becomes one or more source
-> commits, eventually followed by a `docs/ja/00NN-*.md`. Mark complete
+> commits, eventually followed by a `docs/ja/learn_clojurewasm/00NN_*.md`. Mark complete
 > with `[x]` and the SHA when the doc lands.
 
 **Goal**: Wire the Runtime handle, the analyzer, and the TreeWalk
@@ -743,7 +746,7 @@ PENDING to DONE and Phase 3 IN-PROGRESS; expand Phase 3 inline in §9.5.
 ### 9.5 Phase 3 — task list (expanded; this is the active phase)
 
 > Same convention as §9.3 / §9.4: each `[ ]` becomes one or more
-> source commits, eventually followed by a `docs/ja/00NN-*.md`.
+> source commits, eventually followed by a `docs/ja/learn_clojurewasm/00NN_*.md`.
 
 **Goal**: turn the Phase-2 minimum interpreter into a Clojure that
 can `(defn ...)` and `(try ... (catch ...))`. Bootstrap Stage 1
@@ -792,7 +795,7 @@ gate passed 2026-04-27). Phase 4 is expanded inline below as §9.6.
 ### 9.6 Phase 4 — task list (expanded; this is the active phase)
 
 > Same convention as §9.3 / §9.4 / §9.5: each `[ ]` becomes one or
-> more source commits, eventually followed by a `docs/ja/00NN-*.md`.
+> more source commits, eventually followed by a `docs/ja/learn_clojurewasm/00NN_*.md`.
 
 **Goal**: stand up a bytecode VM and compiler beside the TreeWalk
 backend, such that every TreeWalk test passes under the VM too. This
@@ -979,7 +982,7 @@ shouldn't). The audit produces a report; the user decides what to fix.
 ### 12.2 Commit pairing (skill `code_learning_doc` is canonical)
 
 Source-bearing commits accumulate freely; when a unit of work is ready
-to be told as one story, write `docs/ja/NNNN_<slug>.md` in a separate
+to be told as one story, write `docs/ja/learn_clojurewasm/NNNN_<slug>.md` in a separate
 commit whose `commits:` front-matter cites every source SHA it covers.
 
 The full definition (source-bearing file set, the two gate rules, the
@@ -1028,7 +1031,7 @@ The TDD loop has eight steps per task:
 | 7 | Per-task note       | Main → `private/notes/<phase>-<task>.md`  |
 | 8 | Context-budget gate | Main; `/compact` if > 60% fill             |
 
-Chapters (`docs/ja/NNNN_*.md`) are written **per concept** (every 3–5
+Chapters (`docs/ja/learn_clojurewasm/NNNN_*.md`) are written **per concept** (every 3–5
 source commits or at phase boundary), not per task. The chapter pulls
 from per-task notes; that's why per-task notes exist.
 
@@ -1063,7 +1066,7 @@ If `.claude/CLAUDE.md` and this file conflict, this file wins.
 - ❌ Running with only one backend after Phase 8
 - ❌ Pushing to remote without user approval
 - ❌ Writing a doc commit that omits any unpaired source SHA from `commits:` (§12.2 Rule 2)
-- ❌ Mixing source and a `docs/ja/NNNN_*.md` in the same commit (§12.2 Rule 1)
+- ❌ Mixing source and a `docs/ja/learn_clojurewasm/NNNN_*.md` in the same commit (§12.2 Rule 1)
 
 ---
 
@@ -1128,7 +1131,7 @@ The minimum surface that must always exist:
 - `scripts/check_learning_doc.sh` — pairing gate (PreToolUse hook)
 - `scripts/zone_check.sh` — zone checker (info / --strict / --gate)
 - `test/run_all.sh` — unified test runner
-- `docs/ja/` + `docs/ja/README.md` + `docs/ja/NNNN_*.md` — learning docs
+- `docs/ja/{README.md, learn_clojurewasm/, learn_zig/}` — learning docs
 - `build.zig`, `build.zig.zon`, `flake.nix`, `.envrc`, `.gitignore`
 - `src/main.zig` and the rest of `src/`
 
@@ -1228,7 +1231,7 @@ Project-specific:
 | **Bootstrap stage** | How far core.clj is evaluated by TreeWalk before the VM takes over (Stage 0–6).                      |
 | **x86_64 Gate**     | A phase-completion gate: `zig build test` on OrbStack Ubuntu x86_64.                                  |
 | **Juicy Main**      | `pub fn main(init: std.process.Init)` (a Zig 0.16 idiom).                                             |
-| **Learning doc**    | `docs/ja/NNNN_<slug>.md`, the Japanese learning narrative required by §12.2.                         |
+| **Learning doc**    | `docs/ja/learn_clojurewasm/NNNN_<slug>.md`, the Japanese learning narrative required by §12.2.       |
 
 ---
 
@@ -1302,6 +1305,6 @@ plan while preserving full traceability through ADRs and git log.
 > **Note on history**: this document is a "now" snapshot, not a
 > changelog. What changed and why lives in
 > `git log -- .dev/ROADMAP.md` (mechanical diff), the corresponding
-> `docs/ja/NNNN_<slug>.md` learning docs (the story behind the
+> `docs/ja/learn_clojurewasm/NNNN_<slug>.md` learning docs (the story behind the
 > change), and `.dev/decisions/NNNN_<slug>.md` ADRs (load-bearing
 > rationale). The amendment process itself is §17.

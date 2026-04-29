@@ -24,7 +24,7 @@ audit.
 ## When to invoke
 
 - **Phase boundary**: every time §9.X completes (last `[ ]` becomes `[x]`).
-- **Cadence**: every ~10 ja docs (`docs/ja/00NN`).
+- **Cadence**: every ~10 ja docs (`docs/ja/learn_clojurewasm/00NN`).
 - **Pre-release**: before tagging v0.X.0.
 - **Explicit**: user says "audit scaffolding" / "check for drift" / similar.
 

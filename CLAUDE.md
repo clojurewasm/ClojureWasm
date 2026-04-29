@@ -36,7 +36,7 @@ the v0.5.0 git history**:
 
 Public project. **English by default** for code, comments, identifiers,
 commit messages, README, ROADMAP, ADRs, `.dev/`, `.claude/`, all
-configuration. **Japanese** for chat replies and `docs/ja/NNNN_*.md`
+configuration. **Japanese** for chat replies and `docs/ja/learn_clojurewasm/NNNN_*.md`
 learning narratives.
 
 Don't mix Japanese into English docs. In `docs/ja/`, body is Japanese;
@@ -65,7 +65,7 @@ turn 1 must be Japanese.
   timeout ≥ 600s for cold builds). Setup: [`.dev/orbstack_setup.md`](.dev/orbstack_setup.md).
   Don't bypass hooks.
 - Commit at the natural granularity of code changes; chapters
-  (`docs/ja/NNNN_*.md`) are written **per concept** at phase
+  (`docs/ja/learn_clojurewasm/NNNN_*.md`) are written **per concept** at phase
   boundaries — see skill `code_learning_doc` for the two-cadence flow.
 - Subagent fork is the default for: Step 0 surveys, large test logs
   (>200 lines), cross-codebase searches (>5 files), phase-boundary
@@ -89,7 +89,7 @@ These hold the canonical procedures; CLAUDE.md only points to them.
 
 - **`code_learning_doc`** — two-cadence Japanese learning material:
   per-task notes (private, gitignored) and per-concept chapters
-  (`docs/ja/NNNN_*.md`, gated). Templates: `TEMPLATE_TASK_NOTE.md` and
+  (`docs/ja/learn_clojurewasm/NNNN_*.md`, gated). Templates: `TEMPLATE_TASK_NOTE.md` and
   `TEMPLATE_PHASE_DOC.md`. The chapters use predict-then-verify
   exercises (L1/L2/L3), Feynman prompts, and a checklist — they are
   textbook units, not a project diary.

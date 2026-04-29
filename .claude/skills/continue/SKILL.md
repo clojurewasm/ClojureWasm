@@ -48,7 +48,7 @@ Default = keep going. **Keep going** when:
    - In that phase's expanded §9.<N> task list, find the first `[ ]`
      task. If §9.<N> is missing/empty, the phase has not been opened yet.
 3. `git log --oneline -10` — identify any unpaired source commits since
-   the last `docs/ja/NNNN_*.md` commit.
+   the last `docs/ja/learn_clojurewasm/NNNN_*.md` commit.
 4. `bash test/run_all.sh` — confirm the build is green. **If the test
    output is large (>200 lines), run via subagent and ask only for
    pass/fail + the first failure.**
@@ -169,7 +169,7 @@ row are fine — the gate does not block.
 When 3–5 task-notes accumulate **and form a coherent concept**, or when
 a phase is closing:
 
-1. Pick a chapter slug (`docs/ja/NNNN_<slug>.md`).
+1. Pick a chapter slug (`docs/ja/learn_clojurewasm/NNNN_<slug>.md`).
 2. Read the relevant `private/notes/<phase>-<task>.md` files. **These
    are the source material**, not `git log`.
 3. Copy `.claude/skills/code_learning_doc/TEMPLATE_PHASE_DOC.md`.

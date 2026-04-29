@@ -11,7 +11,7 @@
 #        git add src/...  &&  git commit -m "refactor(...): ..."
 #        ...
 #   2. Doc commit (covers all unpaired source commits since the last doc):
-#        write docs/ja/NNNN_<slug>.md with front matter
+#        write docs/ja/learn_clojurewasm/NNNN_<slug>.md with front matter
 #          commits:
 #            - <SHA1>   (oldest unpaired source)
 #            - <SHA2>
@@ -22,7 +22,7 @@
 # no-op for any non-`git commit` Bash invocation.
 #
 # Rules:
-#   1. A commit that stages a docs/ja/NNNN_*.md MUST NOT also stage
+#   1. A commit that stages a docs/ja/learn_clojurewasm/NNNN_*.md MUST NOT also stage
 #      source-bearing files (mixing defeats SHA pairing).
 #   2. A doc commit's `commits:` field MUST cover every source-bearing
 #      commit since the previous doc commit. Extra SHAs are allowed
@@ -63,12 +63,12 @@ is_source_path() {
 }
 
 is_doc_path() {
-  [[ "$1" =~ ^docs/ja/[0-9]{4}_.+\.md$ ]]
+  [[ "$1" =~ ^docs/ja/learn_clojurewasm/[0-9]{4}_.+\.md$ ]]
 }
 
 # --- 4. Classify this commit -------------------------------------------------
 # "Source-bearing" counts any add / modify / rename to a source path.
-# "Doc commit" requires ADDING a new docs/ja/NNNN_*.md (modifications to
+# "Doc commit" requires ADDING a new docs/ja/learn_clojurewasm/NNNN_*.md (modifications to
 # existing docs are treated as plain edits and do not trigger Rule 2).
 STAGED="$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)"
 [[ -z "$STAGED" ]] && exit 0
@@ -137,7 +137,7 @@ def added_doc(sha):
         capture_output=True, text=True, check=False,
     )
     for f in out.stdout.splitlines():
-        if re.match(r"^docs/ja/[0-9]{4}_.+\.md$", f):
+        if re.match(r"^docs/ja/learn_clojurewasm/[0-9]{4}_.+\.md$", f):
             return True
     return False
 

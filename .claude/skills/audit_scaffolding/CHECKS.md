@@ -35,7 +35,7 @@ Severity: **block** if SHA is referenced but not reachable.
 ### A4. ja doc front-matter `commits:` SHAs all exist
 
 ```sh
-for f in docs/ja/[0-9][0-9][0-9][0-9]-*.md; do
+for f in docs/ja/learn_clojurewasm/[0-9][0-9][0-9][0-9]_*.md; do
   python3 -c "import re,sys
 fm = open('$f').read().split('---')[1]
 for m in re.finditer(r'^\s*-\s+(\S+)', fm, re.M):
@@ -85,7 +85,7 @@ Soft limits (rule of thumb):
 - `.claude/rules/*.md`: ~200 lines each
 - `.claude/skills/*/SKILL.md`: ~150 lines each (split body into adjacent files)
 - `.dev/ROADMAP.md`: ~1500 lines (reference doc, can be large)
-- `docs/ja/NNNN_*.md`: 200–400 lines (story-sized)
+- `docs/ja/learn_clojurewasm/NNNN_*.md`: 200–400 lines (story-sized)
 
 Severity: **watch** at 80% of limit, **soon** above.
 
@@ -156,7 +156,7 @@ Severity: **soon** if a rule's paths match nothing (rule never loads).
 # - .dev/decisions/README.md only         → should NOT trigger (meta)
 # - .dev/decisions/0000_template.md only  → should NOT trigger (template)
 # - .dev/decisions/0001_foo.md only       → SHOULD trigger
-# - src/main.zig + docs/ja/9999_x.md      → SHOULD block (Rule 1)
+# - src/main.zig + docs/ja/learn_clojurewasm/9999_x.md      → SHOULD block (Rule 1)
 ```
 
 Severity: **block** on any deviation from intended behaviour.

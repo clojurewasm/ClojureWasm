@@ -19,7 +19,7 @@ There are two cadences, both required:
    default in `private/notes/<task>.md` (gitignored), so it does not pin
    commit pairing.
 
-2. **Per-concept chapter** (`docs/ja/NNNN_<slug>.md`) — written at a
+2. **Per-concept chapter** (`docs/ja/learn_clojurewasm/NNNN_<slug>.md`) — written at a
    phase boundary, or every 3–5 source commits when the concept is
    coherent enough to teach in one sitting. **This is the publishable
    textbook unit**. It uses the chapter template (predict-then-verify
@@ -61,7 +61,7 @@ Land a chapter when one of:
 - A phase closes: write the remaining chapters that the phase introduced
   and were not yet promoted from notes.
 
-Filename: `docs/ja/NNNN_<slug>.md` — `NNNN` = next available 4-digit,
+Filename: `docs/ja/learn_clojurewasm/NNNN_<slug>.md` — `NNNN` = next available 4-digit,
 `<slug>` = snake_case (English-preferred).
 
 ```sh
@@ -112,11 +112,11 @@ Bash and is invoked on every `git commit`.
 - `.dev/decisions/NNNN_<slug>.md` (real ADRs only — `README.md` and
   `0000_template.md` are excluded)
 
-**Rule 1**: a commit that ADDS a `docs/ja/NNNN_*.md` MUST NOT also stage
+**Rule 1**: a commit that ADDS a `docs/ja/learn_clojurewasm/NNNN_*.md` MUST NOT also stage
 source-bearing files. (Modifying an existing chapter does not count as
 "adding"; mixing edits with source is fine.)
 
-**Rule 2**: a commit that adds a new `docs/ja/NNNN_*.md` MUST list, in
+**Rule 2**: a commit that adds a new `docs/ja/learn_clojurewasm/NNNN_*.md` MUST list, in
 its `commits:` front-matter, every unpaired source-bearing SHA since the
 previous chapter commit. Extras allowed.
 
