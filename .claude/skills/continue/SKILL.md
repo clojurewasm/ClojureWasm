@@ -36,7 +36,7 @@ Default = keep going. **Keep going** when:
 - A `git push` is needed (always — out of scope for autonomous mode).
 - A test failure root cause is unclear or requires an architectural
   choice (i.e., not a one-line obvious fix).
-- The audit-scaffolding skill produces a `block` finding.
+- The audit_scaffolding skill produces a `block` finding.
 - An ADR-level decision is needed (tier change, principle deviation,
   scope cut).
 
@@ -48,7 +48,7 @@ Default = keep going. **Keep going** when:
    - In that phase's expanded §9.<N> task list, find the first `[ ]`
      task. If §9.<N> is missing/empty, the phase has not been opened yet.
 3. `git log --oneline -10` — identify any unpaired source commits since
-   the last `docs/ja/NNNN-*.md` commit.
+   the last `docs/ja/NNNN_*.md` commit.
 4. `bash test/run_all.sh` — confirm the build is green. **If the test
    output is large (>200 lines), run via subagent and ask only for
    pass/fail + the first failure.**
@@ -86,7 +86,7 @@ to survey the textbooks. **Default brief**:
 The summary lands in `private/notes/<phase>-<task>-survey.md` (gitignored).
 Read it, then proceed to Step 1.
 
-See [`.claude/rules/textbook-survey.md`](../../rules/textbook-survey.md)
+See [`.claude/rules/textbook_survey.md`](../../rules/textbook_survey.md)
 for when to skip Step 0 and how to avoid being pulled by upstream styles.
 
 ### Step 1 — Plan
@@ -123,7 +123,7 @@ an Apple-Silicon-only run. If either output exceeds ~200 lines,
 delegate to a Bash subagent and ask for "pass/fail + first failure
 only"; otherwise inline.
 
-Setup for the Linux side: `.dev/orbstack-setup.md`. If the VM is
+Setup for the Linux side: `.dev/orbstack_setup.md`. If the VM is
 absent (`error: machine not found`), surface to the user — do not
 attempt to provision it autonomously (uses Mac admin context).
 
@@ -135,7 +135,7 @@ genuine reason, fix and re-stage.
 
 ### Step 7 — Per-task note (5 minutes, written from hot context)
 
-Copy `.claude/skills/code-learning-doc/TEMPLATE_TASK_NOTE.md` to
+Copy `.claude/skills/code_learning_doc/TEMPLATE_TASK_NOTE.md` to
 `private/notes/<phase>-<task>.md`. Fill in:
 - 一行サマリ
 - 詰まったポイント (1–3 個)
@@ -169,10 +169,10 @@ row are fine — the gate does not block.
 When 3–5 task-notes accumulate **and form a coherent concept**, or when
 a phase is closing:
 
-1. Pick a chapter slug (`docs/ja/NNNN-<slug>.md`).
+1. Pick a chapter slug (`docs/ja/NNNN_<slug>.md`).
 2. Read the relevant `private/notes/<phase>-<task>.md` files. **These
    are the source material**, not `git log`.
-3. Copy `.claude/skills/code-learning-doc/TEMPLATE_PHASE_DOC.md`.
+3. Copy `.claude/skills/code_learning_doc/TEMPLATE_PHASE_DOC.md`.
 4. Write the chapter: predict-then-verify exercises (L1/L2/L3),
    Feynman prompts, checklist, "次へ" link.
 5. Commit alone: `git commit -m "docs(ja): NNNN — <title>
@@ -189,8 +189,8 @@ SHA that flipped the last `[ ]` to `[x]` in §9.<N>. Run this chain
 **in parallel where possible** and **continue into §9.<N+1> without
 asking**:
 
-1. **Run audit-scaffolding** (slash command, prefer fork):
-   `audit-scaffolding` produces `private/audit-YYYY-MM-DD.md`. Only
+1. **Run audit_scaffolding** (slash command, prefer fork):
+   `audit_scaffolding` produces `private/audit-YYYY-MM-DD.md`. Only
    **block-severity** findings stop the loop.
 2. **In parallel** (multi-agent fan-out, single message with multiple
    Agent tool calls):
@@ -228,7 +228,7 @@ Default rule: **subagent fork on context isolation, not on importance**.
 - `simplify` per source commit — overkill; queue for Phase boundary.
 - `review` (PR-style) per commit — overkill; reserve for pre-push or
   pre-tag.
-- `audit-scaffolding` per task — runs at Phase boundary only (or
+- `audit_scaffolding` per task — runs at Phase boundary only (or
   every ~10 chapters).
 
 ## Model selection (dual-model)

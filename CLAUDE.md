@@ -36,14 +36,14 @@ the v0.5.0 git history**:
 
 Public project. **English by default** for code, comments, identifiers,
 commit messages, README, ROADMAP, ADRs, `.dev/`, `.claude/`, all
-configuration. **Japanese** for chat replies and `docs/ja/NNNN-*.md`
+configuration. **Japanese** for chat replies and `docs/ja/NNNN_*.md`
 learning narratives.
 
 Don't mix Japanese into English docs. In `docs/ja/`, body is Japanese;
 code blocks keep their original English identifiers.
 
 The chat-reply-in-Japanese rule is enforced by the project output style
-[`.claude/output-styles/japanese.md`](.claude/output-styles/japanese.md)
+[`.claude/output_styles/japanese.md`](.claude/output_styles/japanese.md)
 (activated via `outputStyle: "Japanese"` in `.claude/settings.json`)
 plus a SessionStart hook that re-injects the directive on every session.
 Even with a slash command (e.g. `/continue`) as the very first input,
@@ -55,18 +55,18 @@ turn 1 must be Japanese.
 - **Step 0 (Survey) before each task**: an Explore subagent surveys
   the textbook codebases (v1, v1_ref, Clojure JVM, Babashka, Zig
   stdlib) and lands a 200–400 line note in `private/notes/`. See
-  `.claude/rules/textbook-survey.md` for guardrails (cite ROADMAP
+  `.claude/rules/textbook_survey.md` for guardrails (cite ROADMAP
   principles before adopting an idiom; always note one DIVERGENCE).
 - After each task, write a 5-minute per-task note from hot context
   (`private/notes/<phase>-<task>.md`, gitignored).
 - `bash test/run_all.sh` must be green **on both Mac (host) and
   OrbStack Ubuntu x86_64** before every commit. The Linux run is
   `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` (Bash
-  timeout ≥ 600s for cold builds). Setup: [`.dev/orbstack-setup.md`](.dev/orbstack-setup.md).
+  timeout ≥ 600s for cold builds). Setup: [`.dev/orbstack_setup.md`](.dev/orbstack_setup.md).
   Don't bypass hooks.
 - Commit at the natural granularity of code changes; chapters
-  (`docs/ja/NNNN-*.md`) are written **per concept** at phase
-  boundaries — see skill `code-learning-doc` for the two-cadence flow.
+  (`docs/ja/NNNN_*.md`) are written **per concept** at phase
+  boundaries — see skill `code_learning_doc` for the two-cadence flow.
 - Subagent fork is the default for: Step 0 surveys, large test logs
   (>200 lines), cross-codebase searches (>5 files), phase-boundary
   audit / simplify / security-review fan-out. Stay in main only for
@@ -87,9 +87,9 @@ turn 1 must be Japanese.
 
 These hold the canonical procedures; CLAUDE.md only points to them.
 
-- **`code-learning-doc`** — two-cadence Japanese learning material:
+- **`code_learning_doc`** — two-cadence Japanese learning material:
   per-task notes (private, gitignored) and per-concept chapters
-  (`docs/ja/NNNN-*.md`, gated). Templates: `TEMPLATE_TASK_NOTE.md` and
+  (`docs/ja/NNNN_*.md`, gated). Templates: `TEMPLATE_TASK_NOTE.md` and
   `TEMPLATE_PHASE_DOC.md`. The chapters use predict-then-verify
   exercises (L1/L2/L3), Feynman prompts, and a checklist — they are
   textbook units, not a project diary.
@@ -99,13 +99,13 @@ These hold the canonical procedures; CLAUDE.md only points to them.
   / "resume". **Fully autonomous from invocation**. Stops only for
   `git push`, ambiguous test failure, audit `block` finding, or an
   ADR-level design decision.
-- **`audit-scaffolding`** — periodic audit for staleness, bloat, lies,
+- **`audit_scaffolding`** — periodic audit for staleness, bloat, lies,
   and false positives across the tracked scaffolding (CLAUDE.md,
   `.dev/`, `.claude/`, `docs/`, `scripts/`). Auto-invoked by
   `continue` at every Phase boundary; can also be run on demand.
 
 The Phase-boundary review chain (auto-run by `continue` when a Phase
-closes) fans out under multiple subagents to: audit-scaffolding,
+closes) fans out under multiple subagents to: audit_scaffolding,
 built-in `simplify` on the phase diff, built-in `security-review` on
 unpushed commits, and outstanding chapter writing — all in parallel.
 

@@ -12,7 +12,7 @@
 > deviations are not allowed.
 >
 > History lives in git — see `git log -- .dev/ROADMAP.md` for diffs,
-> `docs/ja/NNNN-*.md` for the story behind each change, and
+> `docs/ja/NNNN_*.md` for the story behind each change, and
 > `.dev/decisions/` for load-bearing decisions.
 
 ---
@@ -449,12 +449,12 @@ ClojureWasm/                         (working dir on disk: ClojureWasmFromScratc
 │   ├── README.md
 │   └── ja/                         Japanese commit-snapshot tutorials
 │       ├── README.md
-│       └── NNNN-<slug>.md ...
+│       └── NNNN_<slug>.md ...
 │
 ├── .dev/
 │   ├── README.md
 │   ├── ROADMAP.md                  ← this document
-│   └── decisions/                  ADRs (NNNN-<slug>.md + 0000-template.md)
+│   └── decisions/                  ADRs (NNNN_<slug>.md + 0000_template.md)
 │
 │   (created on demand; see §15.2)
 │   ├── compat_tiers.yaml           per-namespace tier (created at Phase 10)
@@ -468,7 +468,7 @@ ClojureWasm/                         (working dir on disk: ClojureWasmFromScratc
 │   │   ├── zone_deps.md            (loads on src/**/*.zig, build.zig)
 │   │   └── zig_tips.md             (loads on src/**/*.zig, build.zig)
 │   │   (compat_tiers.md is added at Phase 10 when src/lang/ starts)
-│   └── skills/code-learning-doc/   skill defining the docs/ja/ workflow
+│   └── skills/code_learning_doc/   skill defining the docs/ja/ workflow
 │
 ├── build.zig
 ├── build.zig.zon
@@ -539,7 +539,7 @@ Third-party libraries live in the same yaml. Adding one requires an ADR
 - **C → B (promotion)**: gap is closed. ADR with evidence.
 - **D → C (promotion)**: at least one caller (test) works. ADR + partial implementation.
 
-Each tier change is one ADR (`.dev/decisions/NNNN-promote-X.md`) recording
+Each tier change is one ADR (`.dev/decisions/NNNN_promote_X.md`) recording
 reason / tests / impact.
 
 ### 6.4 Ad-hoc workarounds are forbidden
@@ -676,7 +676,7 @@ Phase 14 = first publishable v0.1.0. **Minimum line for a Conj talk.**
 ### 9.3 Phase 1 — task list (expanded; this is the active phase)
 
 > Convention: each `[ ]` becomes one or more source commits, eventually
-> followed by a `docs/ja/NNNN-<slug>.md`. Mark complete with `[x]` when
+> followed by a `docs/ja/NNNN_<slug>.md`. Mark complete with `[x]` when
 > the doc commit lands. Commit SHAs are listed alongside for traceability.
 >
 > When Phase 2 starts, expand it inline below in §9.4 and apply the same
@@ -776,7 +776,7 @@ the special-form-only Phase-2 surface.
 | 3.4  | `src/eval/backend/tree_walk.zig` — replace `EvalError.NotCallable` / `ArityMismatch` / `SlotOutOfRange` returns with `setErrorFmt(.eval, kind, node.loc(), ...)`; primitives in `lang/primitive/{math,core}.zig` already match the `BuiltinFn` shape, so route their errors too                                                                                                                                                                                                                                                                                                        | [x] (`6777c42`)            |
 | 3.5  | `src/runtime/collection/string.zig` — String heap type (`HeapTag.string`); analyzer lifts string Form atoms into Value via `runtime.string.alloc(rt, bytes)`; `printValue` renders quoted                                                                                                                                                                                                                                                                                                                                                                                              | [x] (`3a5f852`)            |
 | 3.6  | `src/runtime/collection/list.zig` — list literal as a Value: `(quote (1 2 3))` returns a heap List; analyzer's `formToValue` walks Form `.list` recursively                                                                                                                                                                                                                                                                                                                                                                                                                            | [x] (`766a73a`)            |
-| 3.7  | `src/lang/macro_transforms.zig` (impl) + `src/eval/macro_dispatch.zig` (Layer-1 dispatch type) — Zig-level Form→Form expansions for the bootstrap macros (`let` → `let*`, `when` → `(if c (do ...) nil)`, `if-let` / `when-let` / `and` / `or` / `cond` / `->` / `->>`). `analyze` gains a `macro_table: *const macro_dispatch.Table` parameter; `analyzeList` consults it when the head resolves to a `^:macro` Var. **`runtime/dispatch.zig::VTable.expandMacro` is removed**; macro expansion is no longer a backend concern (ADR [0001](decisions/0001-macroexpand-routing.md)) | [x] (`6630cbe`)            |
+| 3.7  | `src/lang/macro_transforms.zig` (impl) + `src/eval/macro_dispatch.zig` (Layer-1 dispatch type) — Zig-level Form→Form expansions for the bootstrap macros (`let` → `let*`, `when` → `(if c (do ...) nil)`, `if-let` / `when-let` / `and` / `or` / `cond` / `->` / `->>`). `analyze` gains a `macro_table: *const macro_dispatch.Table` parameter; `analyzeList` consults it when the head resolves to a `^:macro` Var. **`runtime/dispatch.zig::VTable.expandMacro` is removed**; macro expansion is no longer a backend concern (ADR [0001](decisions/0001_macroexpand_routing.md)) | [x] (`6630cbe`)            |
 | 3.8  | `src/runtime/print.zig` — extract `printValue` from main.zig; add list / string / fn / keyword / symbol pr-str renderers; main.zig switches to `print.printValue`                                                                                                                                                                                                                                                                                                                                                                                                                      | [x] (`772ebcf`)            |
 | 3.9  | `src/eval/analyzer.zig` — add `try` / `catch` / `throw` / `loop*` / `recur` special forms; `eval/node.zig` gains `try_node` / `throw_node` / `loop_node` / `recur_node` variants                                                                                                                                                                                                                                                                                                                                                                                                       | [x] (`28c2bc3`)            |
 | 3.10 | `src/runtime/collection/ex_info.zig` (new) — `ExInfo` heap struct `{message, data, cause}`; `lang/primitive/error.zig` exposes `ex-info` / `ex-message` / `ex-data` builtins; `runtime/print.zig` renders `#error{...}`                                                                                                                                                                                                                                                                                                                                                                | [x] (`c16380f`)            |
@@ -931,7 +931,7 @@ they are wired.
 
 | # | Gate                                | Wired as                                                                                         |
 |---|-------------------------------------|--------------------------------------------------------------------------------------------------|
-| 1 | Source-commit → doc-commit pairing | `scripts/check_learning_doc.sh` (PreToolUse hook on Bash). Defined by skill `code-learning-doc`. |
+| 1 | Source-commit → doc-commit pairing | `scripts/check_learning_doc.sh` (PreToolUse hook on Bash). Defined by skill `code_learning_doc`. |
 | 2 | Zone-dependency check               | `scripts/zone_check.sh --gate` invoked from `test/run_all.sh`.                                   |
 | 3 | `zig build test` green              | `test/run_all.sh`.                                                                               |
 
@@ -948,7 +948,7 @@ they are wired.
 | 10 | `compat_tiers.yaml` complete (every listed namespace has impl) | `scripts/tier_check.sh`                                  | Phase 14                                 |
 | 11 | GC root coverage (every heap type traced)                      | unit tests + `--gc-stress`                               | Phase 5                                  |
 | 12 | Bytecode cache versioning                                      | cache header version field                               | Phase 12                                 |
-| 13 | JIT go/no-go ADR                                               | `.dev/decisions/NNNN-jit-decision.md`                    | Phase 17 end                             |
+| 13 | JIT go/no-go ADR                                               | `.dev/decisions/NNNN_jit_decision.md`                    | Phase 17 end                             |
 | 14 | Wasm Component build green                                     | `test/run_all.sh` extension                              | Phase 14                                 |
 | 15 | WIT auto-binding correctness                                   | inline test                                              | Phase 19                                 |
 | 16 | nREPL operation parity (CIDER 14 ops)                          | inline test                                              | Phase 14                                 |
@@ -956,7 +956,7 @@ they are wired.
 ### 11.7 Periodic scaffolding audit
 
 Every Phase boundary (or every ~10 ja docs, or before a release tag),
-invoke skill `audit-scaffolding`. It detects four rot patterns across
+invoke skill `audit_scaffolding`. It detects four rot patterns across
 CLAUDE.md / .dev/ / .claude/ / docs/ / scripts/: **staleness** (refs
 that don't match reality), **bloat** (files past their soft limit,
 duplicated facts drifting), **lies** (absolute claims overtaken by
@@ -976,15 +976,15 @@ shouldn't). The audit produces a report; the user decides what to fix.
 - Never commit when tests are red.
 - Never bypass the pre-commit hook with `--no-verify` — fix the issue.
 
-### 12.2 Commit pairing (skill `code-learning-doc` is canonical)
+### 12.2 Commit pairing (skill `code_learning_doc` is canonical)
 
 Source-bearing commits accumulate freely; when a unit of work is ready
-to be told as one story, write `docs/ja/NNNN-<slug>.md` in a separate
+to be told as one story, write `docs/ja/NNNN_<slug>.md` in a separate
 commit whose `commits:` front-matter cites every source SHA it covers.
 
 The full definition (source-bearing file set, the two gate rules, the
 template, the workflow) lives in
-[`.claude/skills/code-learning-doc/SKILL.md`](../.claude/skills/code-learning-doc/SKILL.md).
+[`.claude/skills/code_learning_doc/SKILL.md`](../.claude/skills/code_learning_doc/SKILL.md).
 Do not duplicate it here — point to the skill instead. The gate
 (`scripts/check_learning_doc.sh`) is the executable specification.
 
@@ -1028,18 +1028,18 @@ The TDD loop has eight steps per task:
 | 7 | Per-task note       | Main → `private/notes/<phase>-<task>.md`  |
 | 8 | Context-budget gate | Main; `/compact` if > 60% fill             |
 
-Chapters (`docs/ja/NNNN-*.md`) are written **per concept** (every 3–5
+Chapters (`docs/ja/NNNN_*.md`) are written **per concept** (every 3–5
 source commits or at phase boundary), not per task. The chapter pulls
 from per-task notes; that's why per-task notes exist.
 
 Phase-boundary review chain runs as a **multi-agent fan-out**:
-audit-scaffolding, `simplify` on the phase diff, `security-review` on
+audit_scaffolding, `simplify` on the phase diff, `security-review` on
 unpushed commits, and outstanding chapter writing — all in parallel
 subagents. Long-context audit / chapter-write subagents may use
 Opus 4.6 (better long-context retrieval) instead of Opus 4.7.
 
 It only stops for: a `git push`, an ambiguous test failure, an
-audit-scaffolding `block` finding, or an ADR-level decision.
+audit_scaffolding `block` finding, or an ADR-level decision.
 
 Pushing to `cw-from-scratch` always requires explicit user approval.
 
@@ -1063,7 +1063,7 @@ If `.claude/CLAUDE.md` and this file conflict, this file wins.
 - ❌ Running with only one backend after Phase 8
 - ❌ Pushing to remote without user approval
 - ❌ Writing a doc commit that omits any unpaired source SHA from `commits:` (§12.2 Rule 2)
-- ❌ Mixing source and a `docs/ja/NNNN-*.md` in the same commit (§12.2 Rule 1)
+- ❌ Mixing source and a `docs/ja/NNNN_*.md` in the same commit (§12.2 Rule 1)
 
 ---
 
@@ -1111,24 +1111,24 @@ The minimum surface that must always exist:
 - `LICENSE` — EPL-2.0
 - `.dev/ROADMAP.md` (this file) — single source of truth
 - `.dev/README.md` — index / convention pointer
-- `.dev/decisions/{README.md, 0000-template.md}` — ADR infrastructure
+- `.dev/decisions/{README.md, 0000_template.md}` — ADR infrastructure
 - `.claude/settings.json` — permissions / hooks
 - `.claude/rules/zone_deps.md` — auto-loaded layering rules
 - `.claude/rules/zig_tips.md` — auto-loaded Zig 0.16 idioms
-- `.claude/rules/textbook-survey.md` — Step-0 survey policy + anti-pull
+- `.claude/rules/textbook_survey.md` — Step-0 survey policy + anti-pull
   guardrails (auto-loaded on `src/**/*.zig`)
-- `.claude/rules/cljw-invocation.md` — `cljw` invocation safety
+- `.claude/rules/cljw_invocation.md` — `cljw` invocation safety
   (auto-loaded on test/e2e and bench scripts)
-- `.claude/skills/code-learning-doc/{SKILL,TEMPLATE_TASK_NOTE,
+- `.claude/skills/code_learning_doc/{SKILL,TEMPLATE_TASK_NOTE,
   TEMPLATE_PHASE_DOC}.md` — two-cadence learning material skill
 - `.claude/skills/continue/SKILL.md` — autonomous resume + 8-step TDD
   loop + multi-agent phase-boundary chain
-- `.claude/skills/audit-scaffolding/{SKILL,CHECKS}.md` — periodic
+- `.claude/skills/audit_scaffolding/{SKILL,CHECKS}.md` — periodic
   scaffolding audit (incl. Section F: unadopted strategic notes)
 - `scripts/check_learning_doc.sh` — pairing gate (PreToolUse hook)
 - `scripts/zone_check.sh` — zone checker (info / --strict / --gate)
 - `test/run_all.sh` — unified test runner
-- `docs/ja/` + `docs/ja/README.md` + `docs/ja/NNNN-*.md` — learning docs
+- `docs/ja/` + `docs/ja/README.md` + `docs/ja/NNNN_*.md` — learning docs
 - `build.zig`, `build.zig.zon`, `flake.nix`, `.envrc`, `.gitignore`
 - `src/main.zig` and the rest of `src/`
 
@@ -1228,7 +1228,7 @@ Project-specific:
 | **Bootstrap stage** | How far core.clj is evaluated by TreeWalk before the VM takes over (Stage 0–6).                      |
 | **x86_64 Gate**     | A phase-completion gate: `zig build test` on OrbStack Ubuntu x86_64.                                  |
 | **Juicy Main**      | `pub fn main(init: std.process.Init)` (a Zig 0.16 idiom).                                             |
-| **Learning doc**    | `docs/ja/NNNN-<slug>.md`, the Japanese learning narrative required by §12.2.                         |
+| **Learning doc**    | `docs/ja/NNNN_<slug>.md`, the Japanese learning narrative required by §12.2.                         |
 
 ---
 
@@ -1266,7 +1266,7 @@ When amending, do all four — none of them are optional:
    always been so. The document is a "now" snapshot; consistency
    matters more than preserving past wording. Do not add inline
    change-bars, dated comments, or `~~strikethrough~~`.
-2. **Open an ADR** (`.dev/decisions/NNNN-<slug>.md`) recording the
+2. **Open an ADR** (`.dev/decisions/NNNN_<slug>.md`) recording the
    original wording, the new wording, and *why the mismatch existed*.
    The ADR is the changelog; ROADMAP is not.
 3. **Sync `handover.md`** if its "Active task" / "Current state"
@@ -1302,6 +1302,6 @@ plan while preserving full traceability through ADRs and git log.
 > **Note on history**: this document is a "now" snapshot, not a
 > changelog. What changed and why lives in
 > `git log -- .dev/ROADMAP.md` (mechanical diff), the corresponding
-> `docs/ja/NNNN-<slug>.md` learning docs (the story behind the
-> change), and `.dev/decisions/NNNN-<slug>.md` ADRs (load-bearing
+> `docs/ja/NNNN_<slug>.md` learning docs (the story behind the
+> change), and `.dev/decisions/NNNN_<slug>.md` ADRs (load-bearing
 > rationale). The amendment process itself is §17.

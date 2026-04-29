@@ -9,7 +9,7 @@
 #   bash test/run_all.sh                                              # Mac
 #   orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'         # Linux x86_64
 #
-# Setup for the Linux side: .dev/orbstack-setup.md.
+# Setup for the Linux side: .dev/orbstack_setup.md.
 #
 # Active suites:
 #   1. zig build test                  Zig unit tests in each src/**/*.zig

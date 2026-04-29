@@ -118,16 +118,16 @@ or later):
   and now drives a Step 0 (Survey) → Step 7 (per-task note) →
   Step 8 (60% compact gate) loop with multi-agent fan-out at phase
   boundaries.
-- Skill `code-learning-doc` is **two-cadence**: per-task notes
-  (private, gitignored) and per-concept chapters (`docs/ja/NNNN-*.md`,
+- Skill `code_learning_doc` is **two-cadence**: per-task notes
+  (private, gitignored) and per-concept chapters (`docs/ja/NNNN_*.md`,
   gated). Use `TEMPLATE_TASK_NOTE.md` and `TEMPLATE_PHASE_DOC.md`. Do
   **not** revert to the old "diary per phase" shape.
-- Skill `audit-scaffolding` runs at every Phase boundary or every ~10
+- Skill `audit_scaffolding` runs at every Phase boundary or every ~10
   chapters. Section F covers per-task note volume and audit-report
   cadence only — not strategic-note adoption (that belongs in
   ROADMAP / ADR / `docs/ja/` / handover, never in gitignored
   `private/`).
-- Rule `.claude/rules/textbook-survey.md` — auto-loaded on
+- Rule `.claude/rules/textbook_survey.md` — auto-loaded on
   `src/**/*.zig`; defines the Step 0 brief and the four anti-pull
   guardrails.
 - The 🔒 marker on Phase 4 (and 5 / 8 / 14 / 15) means a fresh
@@ -135,4 +135,4 @@ or later):
   **agent-runnable** via the Bash tool:
   `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` (set
   Bash timeout ≥ 600s for cold builds). Setup, iteration loop, and
-  gate integration are documented in `.dev/orbstack-setup.md`.
+  gate integration are documented in `.dev/orbstack_setup.md`.

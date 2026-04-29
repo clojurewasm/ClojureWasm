@@ -114,7 +114,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "printf '=== language policy ===\\nReply to the user in Japanese (画面表示は日本語). Code, identifiers, file paths, commit messages, and English docs stay in English. See .claude/output-styles/japanese.md.\\n\\n' && test -f $CLAUDE_PROJECT_DIR/.dev/handover.md && printf '=== .dev/handover.md ===\\n' && cat $CLAUDE_PROJECT_DIR/.dev/handover.md && printf '\\n=== git log -3 ===\\n' && git -C $CLAUDE_PROJECT_DIR log -3 --decorate --oneline || true"
+            "command": "printf '=== language policy ===\\nReply to the user in Japanese (画面表示は日本語). Code, identifiers, file paths, commit messages, and English docs stay in English. See .claude/output_styles/japanese.md.\\n\\n' && test -f $CLAUDE_PROJECT_DIR/.dev/handover.md && printf '=== .dev/handover.md ===\\n' && cat $CLAUDE_PROJECT_DIR/.dev/handover.md && printf '\\n=== git log -3 ===\\n' && git -C $CLAUDE_PROJECT_DIR log -3 --decorate --oneline || true"
           }
         ]
       }

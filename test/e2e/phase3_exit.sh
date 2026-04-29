@@ -10,7 +10,7 @@
 #
 # The `data` argument to `ex-info` is an integer placeholder rather
 # than the canonical empty map literal `{}` — see ADR 0002
-# (`.dev/decisions/0002-phase3-exit-no-map-literal.md`): map literals
+# (`.dev/decisions/0002_phase3_exit_no_map_literal.md`): map literals
 # are scoped to Phase 5 alongside HAMT / persistent collections, so
 # the smoke uses any non-nil Value to verify the try/throw/catch +
 # ex-info round-trip without dragging Phase-5 work into Phase 3.

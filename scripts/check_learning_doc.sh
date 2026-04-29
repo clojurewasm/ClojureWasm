@@ -11,7 +11,7 @@
 #        git add src/...  &&  git commit -m "refactor(...): ..."
 #        ...
 #   2. Doc commit (covers all unpaired source commits since the last doc):
-#        write docs/ja/NNNN-<slug>.md with front matter
+#        write docs/ja/NNNN_<slug>.md with front matter
 #          commits:
 #            - <SHA1>   (oldest unpaired source)
 #            - <SHA2>
@@ -22,13 +22,13 @@
 # no-op for any non-`git commit` Bash invocation.
 #
 # Rules:
-#   1. A commit that stages a docs/ja/NNNN-*.md MUST NOT also stage
+#   1. A commit that stages a docs/ja/NNNN_*.md MUST NOT also stage
 #      source-bearing files (mixing defeats SHA pairing).
 #   2. A doc commit's `commits:` field MUST cover every source-bearing
 #      commit since the previous doc commit. Extra SHAs are allowed
 #      (voluntary documentation of non-source commits).
 #
-# See .claude/skills/code-learning-doc/SKILL.md for the full skill.
+# See .claude/skills/code_learning_doc/SKILL.md for the full skill.
 
 set -euo pipefail
 
@@ -56,19 +56,19 @@ cd "${CLAUDE_PROJECT_DIR:-$(pwd)}"
 is_source_path() {
   case "$1" in
     src/*.zig|build.zig|build.zig.zon)        return 0 ;;
-    .dev/decisions/0000-*.md)                  return 1 ;;
-    .dev/decisions/[0-9][0-9][0-9][0-9]-*.md) return 0 ;;
+    .dev/decisions/0000_*.md)                  return 1 ;;
+    .dev/decisions/[0-9][0-9][0-9][0-9]_*.md) return 0 ;;
     *)                                         return 1 ;;
   esac
 }
 
 is_doc_path() {
-  [[ "$1" =~ ^docs/ja/[0-9]{4}-.+\.md$ ]]
+  [[ "$1" =~ ^docs/ja/[0-9]{4}_.+\.md$ ]]
 }
 
 # --- 4. Classify this commit -------------------------------------------------
 # "Source-bearing" counts any add / modify / rename to a source path.
-# "Doc commit" requires ADDING a new docs/ja/NNNN-*.md (modifications to
+# "Doc commit" requires ADDING a new docs/ja/NNNN_*.md (modifications to
 # existing docs are treated as plain edits and do not trigger Rule 2).
 STAGED="$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)"
 [[ -z "$STAGED" ]] && exit 0
@@ -94,7 +94,7 @@ if [ $this_has_doc -eq 1 ] && [ $this_has_source -eq 1 ]; then
 ✗ commit blocked by scripts/check_learning_doc.sh (Rule 1)
 
 A learning-doc commit must NOT also contain source-bearing files
-(src/*.zig, build.zig, build.zig.zon, .dev/decisions/NNNN-*.md).
+(src/*.zig, build.zig, build.zig.zon, .dev/decisions/NNNN_*.md).
 Split into two commits:
 
     git commit -m "feat(...): ..."   # source only (any number)
@@ -127,8 +127,8 @@ def commit_files(sha):
 def is_source(f):
     if re.match(r"^src/.+\.zig$", f):       return True
     if f in ("build.zig", "build.zig.zon"): return True
-    if re.match(r"^\.dev/decisions/0000-.+\.md$", f): return False
-    if re.match(r"^\.dev/decisions/[0-9]{4}-.+\.md$", f): return True
+    if re.match(r"^\.dev/decisions/0000_.+\.md$", f): return False
+    if re.match(r"^\.dev/decisions/[0-9]{4}_.+\.md$", f): return True
     return False
 
 def added_doc(sha):
@@ -137,7 +137,7 @@ def added_doc(sha):
         capture_output=True, text=True, check=False,
     )
     for f in out.stdout.splitlines():
-        if re.match(r"^docs/ja/[0-9]{4}-.+\.md$", f):
+        if re.match(r"^docs/ja/[0-9]{4}_.+\.md$", f):
             return True
     return False
 

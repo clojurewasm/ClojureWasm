@@ -10,13 +10,13 @@ Project-level design and operational metadata. Tracked in git. English.
   this file wins.
 - [`handover.md`](./handover.md) — short, mutable, current session state.
   Read at session start, updated 1–2 lines at session end.
-- [`orbstack-setup.md`](./orbstack-setup.md) — one-time VM setup,
+- [`orbstack_setup.md`](./orbstack_setup.md) — one-time VM setup,
   iteration loop, and gate integration for the 🔒 OrbStack x86_64
   cross-platform gate (ROADMAP §11.5).
 - [`decisions/`](./decisions/) — Architectural Decision Records.
   - `README.md` — convention.
-  - `0000-template.md` — copy this when adding a new ADR.
-  - `NNNN-<slug>.md` — accumulated decisions.
+  - `0000_template.md` — copy this when adding a new ADR.
+  - `NNNN_<slug>.md` — accumulated decisions.
 
 ## Created on demand (do NOT pre-create as empty stubs)
 

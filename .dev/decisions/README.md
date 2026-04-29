@@ -7,14 +7,15 @@
 
 ## Filename convention
 
-`NNNN-<kebab-slug>.md`
+`NNNN_<snake_slug>.md`
 
 - `NNNN` — 4-digit sequential index, zero-padded
-- `0000-template.md` — template (do not delete or renumber)
+- `<snake_slug>` — short English identifier in snake_case
+- `0000_template.md` — template (do not delete or renumber)
 
 ## Required structure
 
-Use [`0000-template.md`](./0000-template.md) as the starting point. Every
+Use [`0000_template.md`](./0000_template.md) as the starting point. Every
 ADR has:
 
 - **Status**: Proposed / Accepted / Superseded by NNNN / Deprecated
@@ -34,8 +35,8 @@ ADR has:
 
 ## Commit gate trigger
 
-Adding `.dev/decisions/NNNN-<slug>.md` (real ADRs; not `README.md` and
-not `0000-template.md`) makes the commit "source-bearing" per
+Adding `.dev/decisions/NNNN_<slug>.md` (real ADRs; not `README.md` and
+not `0000_template.md`) makes the commit "source-bearing" per
 `scripts/check_learning_doc.sh`. The next doc commit must include the
 ADR's commit SHA in its `commits:` front-matter list — see skill
-`code-learning-doc`.
+`code_learning_doc`.
