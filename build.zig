@@ -38,7 +38,18 @@ pub fn build(b: *std.Build) void {
     const lint_step = b.step("lint", "Lint source code (zlinter).");
     lint_step.dependOn(blk: {
         var builder = zlinter.builder(b, .{});
+        // Phase A.
         builder.addRule(.{ .builtin = .no_deprecated }, .{});
+        // Phase B (added one at a time — see ADR-0003 Update).
+        builder.addRule(.{ .builtin = .no_orelse_unreachable }, .{});
+        builder.addRule(.{ .builtin = .no_empty_block }, .{});
+        builder.addRule(.{ .builtin = .no_unused }, .{});
+        // Inspected, not adopted (rationale in ADR-0003 Update):
+        //   require_exhaustive_enum_switch — mismatched with the
+        //     Value.Tag dispatch idiom (36+ tags, intentionally
+        //     growing through Phases 4-15; arithmetic / collection
+        //     primitives use `else =>` to mean "all the kinds I do
+        //     not accept as operand").
         break :blk builder.build();
     });
 }

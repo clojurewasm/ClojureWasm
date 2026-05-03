@@ -157,6 +157,27 @@ detection internally).
     until a `proposal_watch.md` lands in this project.
   - `zig-pkg/` (zlinter's package cache) is added to `.gitignore`.
 
+## Update — 2026-05-03 (Phase B outcome)
+
+Phase B walked the four candidate rules from zwasm ADR-0009.
+Outcome:
+
+| Rule                             | Phase | Findings | Outcome     | Notes                                                                                                                                                                                                                                                                                                                                                                                                            |
+|----------------------------------|-------|----------|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `no_deprecated`                  | A     | 16 → 0  | **Adopted** | The original Phase-A landing.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `no_orelse_unreachable`          | B     | 0        | **Adopted** | Codebase already used `x.?` everywhere; rule is a forward guard.                                                                                                                                                                                                                                                                                                                                                 |
+| `no_empty_block`                 | B     | 0        | **Adopted** | Codebase already comments empty bodies; forward guard.                                                                                                                                                                                                                                                                                                                                                           |
+| `no_unused`                      | B     | 1 → 0   | **Adopted** | Removed dead `error_mod` import in `src/lang/bootstrap.zig:35`.                                                                                                                                                                                                                                                                                                                                                  |
+| `require_exhaustive_enum_switch` | B     | 12       | Not adopted | Mismatched with the project's `Value.Tag` dispatch idiom (36+ tags, intentionally growing through Phases 4–15). Arithmetic / collection / print primitives all use `else =>` to mean "every other kind I do not accept as operand", which is the correct semantic and would degenerate into 36-arm enumeration with no regression-prevention payoff. Re-evaluate when `Value.Tag` stabilises (Phase 8+ likely). |
+
+Lint runtime stays sub-second on Mac aarch64. The Phase A "Mac-
+only" / "skipped on Linux" decisions stand.
+
+The project deviation from zwasm ADR-0009's adopted set
+(4 vs 5 rules) is intentional — the difference reflects the
+shape of this codebase's central enum, not a judgement on the
+rule itself.
+
 ## References
 
 - ROADMAP §11 (test strategy / quality gate) and §12 (commit

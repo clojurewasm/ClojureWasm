@@ -102,29 +102,33 @@ const arg0 = arg_it.next() orelse unreachable;    // gate-rejected (no_orelse_un
 
 The lint chain enforces this (ADR-0003 / Phase B).
 
-## Exhaustive enum `switch`: list every tag, no `else`
+## Exhaustive enum `switch`: prefer enumeration for narrow / fixed enums
 
-For non-extensible enums (almost all project enums), enumerating
-every tag is preferred over `else => ...`. When a new tag is added
-later, the compiler raises a missing-case error at every switch —
-which is exactly the regression the v2 redesign exists to prevent.
+For small fixed enums (e.g. `Token.Kind` ~13 tags), enumerate every
+tag instead of `else => ...`. When a new tag is added later, the
+compiler raises a missing-case error at every switch — useful
+regression prevention.
 
 ```zig
-return switch (form_kind) {
-    .nil, .bool, .number => false,
-    .symbol, .keyword, .string, .list, .vector, .map, .set => true,   // OK
+return switch (token_kind) {
+    .lparen, .lbracket, .lbrace => .open,
+    .rparen, .rbracket, .rbrace => .close,
+    .integer, .float, .string, .symbol, .keyword => .literal,
+    .quote, .discard, .symbolic => .reader_macro,
+    .eof, .invalid => .terminal,
 };
 ```
 
-```zig
-return switch (form_kind) {
-    .symbol => true,
-    else => false,                                                    // gate-rejected
-};
-```
+For wide *value-dispatch* enums (`Value.Tag`, currently 36+ tags
+and growing through Phases 4–15), the inverse rule applies: prefer
+`else =>` to express "every other kind I do not accept as operand".
+The arithmetic / collection / print primitives all use this idiom;
+forcing 36-arm enumeration would balloon code volume without
+preventing real bugs (a new tag is *meant* to fall into the error
+path until its primitives are wired in).
 
-Use `else =>` only on non-exhaustive enums (those declared
-`enum(T) { ..., _ }`) or external enums whose tag set we do not own.
+The lint gate (ADR-0003) does **not** enforce
+`require_exhaustive_enum_switch` for this reason. Use judgement.
 
 ## Empty function / `if` body: comment inside
 
@@ -227,12 +231,21 @@ try w.print("{f}", .{my_value});
 
 ## What the lint gate (ADR-0003) actually enforces
 
-`zig build lint -- --max-warnings 0` runs (Phase A) the single
-`no_deprecated` rule. Phase B widens the set per the same playbook
-adopted in zwasm v2 (see ADR-0003 for the rationale and the
-candidate list). The gate is **Mac-host only** — `test/run_all.sh`
-skips it on non-Darwin hosts so OrbStack / CI Linux do not need
-network reach to fetch zlinter.
+`zig build lint -- --max-warnings 0` runs four rules:
+
+| Rule                    | What it catches                           |
+|-------------------------|-------------------------------------------|
+| `no_deprecated`         | any stdlib `/// Deprecated:` reference    |
+| `no_orelse_unreachable` | `x orelse unreachable` instead of `x.?`   |
+| `no_empty_block`        | empty `{}` body without an inside comment |
+| `no_unused`             | unused `const`, function, import          |
+
+`require_exhaustive_enum_switch` was inspected and not adopted —
+see ADR-0003 Update for the `Value.Tag` rationale.
+
+The gate is **Mac-host only** — `test/run_all.sh` skips it on
+non-Darwin hosts so OrbStack / CI Linux do not need network reach
+to fetch zlinter.
 
 ## Variable shadowing
 

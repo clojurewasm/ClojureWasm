@@ -32,7 +32,6 @@ const Runtime = @import("../runtime/runtime.zig").Runtime;
 const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const Value = @import("../runtime/value.zig").Value;
-const error_mod = @import("../runtime/error.zig");
 
 /// The Stage-1 prologue source. Embedded at compile time so the binary
 /// is self-contained — `cljw` does not need its source tree on disk to
