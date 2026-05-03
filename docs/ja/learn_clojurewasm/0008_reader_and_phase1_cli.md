@@ -69,7 +69,7 @@ pub fn read(self: *Reader) ReadError!?Form {
 }
 ```
 
-戻り値は **`!?Form`**：
+戻り値は **`!?Form`** で、3 つの状態を型レベルで区別します。
 
 | 戻り値                 | 意味                                   |
 |------------------------|----------------------------------------|
@@ -80,7 +80,12 @@ pub fn read(self: *Reader) ReadError!?Form {
 `Form` だけを返す API（EOF も Form で表現する形）にすると、caller
 が毎回条件分岐を書く羽目になります。Zig の `?T` を使えば
 `while ((try reader.read()) |form| { ... }` という Zig らしい形に
-なります。
+なります。具体例を並べると、入力 `""` では 1 回目から `null`、
+入力 `"42"` では 1 回目に `Form{integer=42}`・2 回目に `null`、入力
+`"#_skip 42"` では `#_` が次の form を捨てるので 1 回目に
+`Form{integer=42}`・2 回目に `null`、`"#_"` のように `#_` だけで
+入力が終わるケースは `error.SyntaxError` という具合に、3 状態が
+そのまま観察できます。
 
 ### `readForm` の dispatch
 
@@ -211,36 +216,6 @@ fn unescapeString(self: *Reader, s: []const u8) ![]const u8 {
 しません**。大半の文字列（変数名、UI 文字列など）で効いてくる
 最適化です。
 
-### 演習 8.1: read の戻り値を予測 (L1)
-
-```zig
-var r = Reader.init(arena, INPUT);
-const x = try r.read();    // 1 回目
-const y = try r.read();    // 2 回目
-```
-
-| INPUT         | x | y |
-|---------------|---|---|
-| `""`          | ? | ? |
-| `"42"`        | ? | ? |
-| `"42 99"`     | ? | ? |
-| `"#_skip 42"` | ? | ? |
-
-<details>
-<summary>答え</summary>
-
-| INPUT         | x                  | y                  |
-|---------------|--------------------|--------------------|
-| `""`          | `null`             | `null`             |
-| `"42"`        | `Form{integer=42}` | `null`             |
-| `"42 99"`     | `Form{integer=42}` | `Form{integer=99}` |
-| `"#_skip 42"` | `Form{integer=42}` | `null`             |
-
-`#_` は次の form を捨てるので `42` だけが返ります。`#_` だけで
-終わる入力（`"#_"`）は `error.SyntaxError` になります。
-
-</details>
-
 ---
 
 ## 2. Minimal CLI — Read + Print
@@ -309,6 +284,13 @@ pub fn main(init: std.process.Init) !void {
 向けに統一 API を提供してくれます。これは P10（Honour Zig 0.16
 idioms）の典型例です。
 
+実際の argv ハンドリングは `parseArgs` のような小さな関数で、
+`-e` / `--eval` / `-h` / `--help` を順に `std.mem.eql(u8, arg, "-e")`
+で比較し、`-e` の後ろに引数がなければ「`-e requires arg`」相当の
+エラーを返す、という素直なループになります。実装の詳細は本リポジト
+リの観察可能な挙動（P11）と一致していれば十分で、内部のフラグ表現は
+入れ替えられます。
+
 ### Stdout の書き方 — 3 つのキモ
 
 ```zig
@@ -361,53 +343,6 @@ Read error: SyntaxError
 
 `(+ 1 2)` を入れて `(+ 1 2)` がそのまま出てくる、これが **eval せず
 Read + Print のみ** で動いている証拠です。
-
-### 演習 8.2: argv handling (L2)
-
-シグネチャだけ与えるので、本体を書いてください。
-
-```zig
-const ArgsResult = union(enum) {
-    show_smoke,
-    show_help,
-    eval_expr: [:0]const u8,
-    error: []const u8,
-};
-
-fn parseArgs(args: *std.process.ArgIterator) ArgsResult {
-    // ここから書く。argv[0] は捨てる前提
-}
-```
-
-ヒント:
-- `args.skip()` で argv[0] を捨てる
-- `std.mem.eql(u8, arg, "-e")` で flag マッチ
-- `-e` の後ろに引数がないときは `.error`
-
-<details>
-<summary>答え</summary>
-
-```zig
-fn parseArgs(args: *std.process.ArgIterator) ArgsResult {
-    _ = args.skip();
-    while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "-e") or std.mem.eql(u8, arg, "--eval")) {
-            const next = args.next() orelse return .{ .error = "-e requires arg" };
-            return .{ .eval_expr = next };
-        } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
-            return .show_help;
-        } else {
-            return .{ .error = "unknown option" };
-        }
-    }
-    return .show_smoke;
-}
-```
-
-実装とは少し違いますが、観察可能な挙動は同じです（P11 observable
-semantics compatibility）。
-
-</details>
 
 ---
 
@@ -487,61 +422,6 @@ orb run -m my-ubuntu-amd64 bash -c \
 NaN boxing の bit shift、alignment、atomic load/store などが、ARM64
 （M シリーズの Mac）と x86_64（Linux サーバ）の両方で同じ振る舞い
 をするかを **Day 1 から確認します**。
-
-### 演習 8.3: 1 ファイル分の Reader をゼロから (L3)
-
-ファイル名と公開 API のみ。
-
-```zig
-// File: src/eval/reader.zig
-//
-// pub const ReadError = error{ SyntaxError, NumberError, StringError, OutOfMemory };
-//
-// pub const Reader = struct {
-//     tokenizer: Tokenizer, source: []const u8, allocator: std.mem.Allocator,
-//     peeked: ?Token = null, depth: u32 = 0, max_depth: u32 = 1024,
-//     file_name: []const u8 = "unknown",
-//
-//     pub fn init(allocator: std.mem.Allocator, source: []const u8) Reader;
-//     pub fn read(self: *Reader) ReadError!?Form;
-//     pub fn readAll(self: *Reader) ReadError![]Form;
-// };
-//
-// pub fn readOne(allocator: std.mem.Allocator, source: []const u8) ReadError!?Form;
-// pub fn readAll(allocator: std.mem.Allocator, source: []const u8) ReadError![]Form;
-```
-
-要求:
-- `(+ 1 2)`, `[1 :a "b"]`, `{:a 1 :b 2}` が読める
-- `'foo` が `(quote foo)` に展開される
-- `##NaN` / `##Inf` / `##-Inf` が float Form
-- `#_skip 42` が `42` を返す
-- 不正な map（奇数長）は `error.SyntaxError`
-- ネスト 1024 を超えると `error.SyntaxError`
-- 全 Form に `SourceLocation` が貼られる
-
-<details>
-<summary>答え骨子</summary>
-
-`init` / `read` / `readAll` の外側はそのまま、内側に `nextToken` /
-`locOf` / `readForm` / `readSymbol` / `readInteger` / `readFloat` /
-`readString` / `readKeyword` / `readList` / `readVector` / `readMap` /
-`readDelimited` / `readQuote` / `readSymbolic` / `readDiscard` /
-`unescapeString` を本文どおりに実装する。
-
-```zig
-pub fn read(self: *Reader) ReadError!?Form {
-    const tok = self.nextToken();
-    if (tok.kind == .eof) return null;
-    return try self.readForm(tok);
-}
-```
-
-検証: `bash test/run_all.sh` で 12 個の reader テスト（atoms, escape,
-collections, nested, reader macros, readAll, round-trip, syntax errors,
-location, comments, bare `/`）が緑。
-
-</details>
 
 ---
 
@@ -630,26 +510,13 @@ bash test/run_all.sh
 
 ---
 
-## 7. Feynman 課題
+## この章で学んだこと
 
-6 歳の自分に説明するつもりで答えてください。
-
-1. なぜ `Reader.read()` の戻り値が **`?Form`** であって、`Form` では
-   ないのか。1 行で。
-2. Phase 1 の CLI が **`eval` を含まない** のはなぜか。1 行で。
-3. まだ何も最適化していない Phase 1 で **bench/quick.sh** を入れる
-   意味は何か。1 行で。
-
----
-
-## 8. チェックリスト
-
-- [ ] 演習 8.1: 4 つの input に対して `read()` の戻り値を即答できた
-- [ ] 演習 8.2: `parseArgs` を `ArgsResult` シグネチャだけから書けた
-- [ ] 演習 8.3: Reader 全体を公開 API リストだけから再構成できた
-- [ ] Feynman 3 問を 1 行ずつで答えられた
-- [ ] `cljw -e "(+ 1 2)"` の Phase 1 動作を即実演できる
-- [ ] `bench/quick.sh` を実行して `quick_baseline.txt` の差分を読める
+- 結局この章は「**Phase 1 を Read + Print の 1 ラウンドで閉じる**」
+  という線引きの話です。`read()` の `!?Form` で EOF とエラーを型で
+  分け、CLI に eval を持ち込まず、bench/quick.sh で binary size と
+  cold start だけは Day 1 から押さえる、という 3 点が一本に通って
+  います。
 
 ---
 

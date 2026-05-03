@@ -89,24 +89,16 @@ return switch (form.data) {
 };
 ```
 
-atom 5 種は Value に reify して `ConstantNode` に詰める (`keyword`
+atom 5 種は Value に reify して `ConstantNode` に詰めます (`keyword`
 だけ interner 経由で同一 bit pattern を保証)。string / vector / map
 は **Phase 3+**: heap-backed Value 表現が必要 (Phase 5 で来る)。
-silent failure を避けるため `NotImplemented` 明示。
+silent failure を避けるため `NotImplemented` を明示します。
 
-### 演習 13.1: atom の reify を予測 (L1)
-
-`(if true 42 :foo)` を analyse すると、何個の `ConstantNode` が
-arena に作られるか？
-
-<details>
-<summary>答え</summary>
-
-3 個 (cond:`true`, then:`42`, else:`:foo`) + 外側 `IfNode` 1 個 =
-合計 4 alloc。`:foo` は intern を経由するので別の場所で再 analyse
-しても同じ Value bit pattern が返る (identity 比較が定数時間)。
-
-</details>
+たとえば `(if true 42 :foo)` を analyse すると、`true` `42` `:foo`
+の 3 個の `ConstantNode` と外側の `IfNode` 1 個、合計 4 alloc が
+arena に積まれます。`:foo` は intern を経由するので、別の場所で
+再 analyse しても同じ Value bit pattern が返り、identity 比較が
+定数時間で成立します。
 
 ---
 
@@ -139,42 +131,16 @@ pub const Scope = struct {
 
 `(let* [x 1] (let* [y 2] (+ x y)))` で外側 `x → slot 0`、内側 `y →
 slot 1`。**slot 0 を再利用しない** のは、TreeWalk backend が
-**1 つの flat な locals 配列** に全 local を載せるから。同じ slot
-を 2 つの local が共有すると内側の binding が外側を上書きする。
-shadowing (`(let* [x 1] (let* [x 2] x))`) は自動でハンドルされる:
-内側 `x` は slot 1 に新規エントリ、外側 `x` は slot 0 に居続けるが
-内側スコープからは見えない。
+**1 つの flat な locals 配列** に全 local を載せるからです。同じ
+slot を 2 つの local が共有すると内側の binding が外側を上書き
+してしまいます。shadowing (`(let* [x 1] (let* [x 2] x))`) は自動で
+ハンドルされます: 内側 `x` は slot 1 に新規エントリを作り、外側
+`x` は slot 0 に居続けますが内側スコープからは見えません。
 
-### 演習 13.2: `lookup` を loop で書き換える (L2)
-
-再帰版を while loop で書き直す。
-
-```zig
-pub fn lookup(self: *const Scope, name: []const u8) ?u16 {
-    // ここから書く
-}
-```
-
-ヒント: `var s: ?*const Scope = self;` から `while (s) |cur| { ... }`。
-
-<details>
-<summary>答え</summary>
-
-```zig
-pub fn lookup(self: *const Scope, name: []const u8) ?u16 {
-    var s: ?*const Scope = self;
-    while (s) |cur| {
-        if (cur.bindings.get(name)) |idx| return idx;
-        s = cur.parent;
-    }
-    return null;
-}
-```
-
-再帰と動作は等価。Phase 4 で hot path に来たら loop 版に書き換える
-価値あり。
-
-</details>
+`lookup` は再帰で書いていますが、`var s: ?*const Scope = self;`
+から `while (s) |cur| { ... s = cur.parent; }` と loop に展開すれば
+動作は等価です。Phase 4 でホットパスに入るなら loop 版に置き換える
+価値があります。
 
 ---
 
@@ -202,24 +168,12 @@ fn analyzeSymbol(...) AnalyzeError!*const Node {
 2. **current namespace の mappings** ← `(def name v)` で intern 済 var
 3. **current namespace の refers** ← `(refer 'rt)` 等で他 ns から引いた var
 
-(2)+(3) を `Namespace.resolve()` がまとめて返す。`sym.ns` が non-null
-(qualified) なら **locals は飛ばして** `findNs` する — `(let* [foo 1]
-foo/bar)` は qualified なので locals 検索しない。
+(2)+(3) を `Namespace.resolve()` がまとめて返します。`sym.ns` が
+non-null (qualified) なら **locals は飛ばして** `findNs` する —
+`(let* [foo 1] foo/bar)` は qualified なので locals 検索しません。
 
-### 演習 13.3: 5 種類の symbol 解決を予測 (L1)
-
-仮定: `user` ns に `+` が intern 済、`scope` で `a → slot 0`。
-
-```
-1. (analyze a)              → ?
-2. (analyze +)              → ?
-3. (analyze user/+)         → ?
-4. (analyze missing)        → ?
-5. (analyze missing/x)      → ?
-```
-
-<details>
-<summary>答え</summary>
+具体的な解決例を並べると、優先順がはっきりします。仮に `user` ns に
+`+` が intern 済、`scope` で `a → slot 0` の状況：
 
 | symbol      | 解決結果                                |
 |-------------|-----------------------------------------|
@@ -230,9 +184,7 @@ foo/bar)` は qualified なので locals 検索しない。
 | `missing/x` | `error.NameError` (`missing` ns が無い) |
 
 `user/a` のように qualified で local 名を書いても **locals は無視**
-される (Clojure 仕様)。
-
-</details>
+されます (Clojure 仕様)。
 
 ---
 
@@ -256,7 +208,7 @@ fn analyzeList(...) AnalyzeError!*const Node {
 順序: (1) 空リスト `()` → `NotImplemented` (heap List 必要、Phase 5)、
 (2) 先頭が **unqualified** symbol で special form 名に一致 →
 `analyzeSpecial`、(3) それ以外 → `analyzeCall`。これにより
-`(my-ns/if 1 2 3)` は **ただの call** として扱われる (Clojure 慣習)。
+`(my-ns/if 1 2 3)` は **ただの call** として扱われます (Clojure 慣習)。
 
 ### `comptime StaticStringMap` — 6 special form の dispatch
 
@@ -273,25 +225,16 @@ const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
 });
 ```
 
-**comptime に perfect-hash table 構築**、runtime lookup は memcmp +
-配列 index 数命令。`if-else` chain は O(N)、`runtime HashMap` は
-hash + bucket walk + alloc。`StaticStringMap` は **O(1)、alloc 0**。
+**comptime に perfect-hash table を構築**し、runtime lookup は
+memcmp + 配列 index 数命令で完了します。`if-else` chain は O(N)、
+runtime HashMap は hash + bucket walk + alloc。`StaticStringMap`
+は **O(1)、alloc 0** です。
 
-### 演習 13.4: 大文字 IF を analyse すると (L1)
-
-`(IF cond t e)` (大文字) の挙動は？
-
-<details>
-<summary>答え</summary>
-
-`SPECIAL_FORMS.get("IF")` は `null` (小文字 `if` のみ登録) →
-`analyzeCall` に進む → `IF` という Var を resolve (無ければ NameError)。
-
-Clojure の **大文字小文字を区別する** 性質と一致。`IF` を関数として
-定義すれば呼べる、`if` を再 def しても special form 解釈が優先
-(special form は env 引く前に判定)。
-
-</details>
+なお `(IF cond t e)` のように大文字で書いた場合は
+`SPECIAL_FORMS.get("IF")` が `null` を返し、`analyzeCall` に進んで
+`IF` という Var として resolve しようとします。Clojure の **大文字
+小文字を区別する** 性質と一致しており、`if` を再 def しても special
+form 解釈が優先されます (special form は env を引く前に判定)。
 
 ---
 
@@ -350,23 +293,23 @@ fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
 }
 ```
 
-`(quote x)` は **atom 5 種のみ** Value にリフトできる。`(quote
+`(quote x)` は **atom 5 種のみ** Value にリフトできます。`(quote
 some-symbol)` `(quote (1 2 3))` `(quote "hello")` `(quote [1 2 3])`
-は heap-backed Value 必要 (Phase 5)。silently 通すのではなく
+は heap-backed Value が必要 (Phase 5)。silently 通すのではなく
 **明示的に error**:
 
 ```zig
 try testing.expectError(AnalyzeError.NotImplemented, fix.analyzeStr("(quote x)"));
 ```
 
-「いつか動く」コードと「今すぐ通る」エラーを区別する方針。silent
-NaN なら debug 不可能。
+「いつか動く」コードと「今すぐ通る」エラーを区別する方針です。silent
+NaN なら debug 不可能になります。
 
 ---
 
 ## 7. `(fn* [params] body...)` — slot 0..N-1 への割当て
 
-Phase 2 最大の analyser ロジック。`analyzeFnStar` の流れは 4 step:
+Phase 2 最大の analyser ロジックです。`analyzeFnStar` の流れは 4 step:
 
 1. **params vector を構文チェック + 名前抽出** — `&` を見つけたら
    次の 1 個を rest 名として記録、break
@@ -404,22 +347,10 @@ const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form
 `(fn* [x y & rest] body)` の結果: `arity=2`, `has_rest=true`,
 `param_names=["x", "y", "rest"]` (rest 含む長さ 3)。
 
-### 演習 13.5: `(fn* [x y] x)` のslot 割当て (L1)
-
-`x` は slot 何番、`y` は slot 何番、body の `x` の `LocalRef.index`
-は何？
-
-<details>
-<summary>答え</summary>
-
-- `x` ← slot 0、`y` ← slot 1
-- body の `x` ← `LocalRef.index = 0`
-- `arity = 2`, `has_rest = false`, `params = ["x", "y"]`
-
-backend は `args` を `locals[0..arity]` にコピーして body を eval。
-body の `LocalRef.index = 0` なので `locals[0]` (= args[0]) が返る。
-
-</details>
+たとえば `(fn* [x y] x)` の場合、`x` が slot 0、`y` が slot 1 に
+declare され、body の `x` は `LocalRef.index = 0` に解決されます。
+backend 側は呼び出し時に `args` を `locals[0..arity]` にコピーして
+body を eval するので、`locals[0]` (= args[0]) が返ります。
 
 ---
 
@@ -439,9 +370,9 @@ const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form
 
 ### Clojure binding semantics — sequential
 
-「値 → 宣言」の **順序** が重要。Clojure の `let` は **sequential**:
-前の binding は次の binding から見えるが、各 value はその binding
-自身の名前が宣言される **前** に評価される。
+「値 → 宣言」の **順序** が重要です。Clojure の `let` は
+**sequential**: 前の binding は次の binding から見えますが、各
+value はその binding 自身の名前が宣言される **前** に評価されます。
 
 ```clojure
 (let* [x 1
@@ -456,35 +387,22 @@ const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form
 - body の `y` を analyse → `LocalRef{ slot: 1 }`
 
 もし「値→宣言」を逆にすると、`(let* [x x] x)` の右辺 `x` が **自分
-自身を参照** して未初期化 slot を読む UB。Clojure の `letfn`
-(相互参照) とは別物 (Phase 2 では未対応)。
+自身を参照** して未初期化 slot を読む UB になります。Clojure の
+`letfn` (相互参照) とは別物です (Phase 2 では未対応)。
 
-### 演習 13.6: `(let* [x 1 y 2] x)` の Node tree を予測 (L2)
-
-<details>
-<summary>答え</summary>
-
-```
-LetNode {
-  bindings: [
-    Binding { name: "x", index: 0, value_expr: → ConstantNode { 1 } }
-    Binding { name: "y", index: 1, value_expr: → ConstantNode { 2 } }
-  ],
-  body: → LocalRef { name: "x", index: 0 }
-}
-```
-
-`y` が slot 1 なのは `next_slot` 継承、body の `x` が `index=0` なのは
-`child_scope.lookup("x")` がヒット。
-
-</details>
+`(let* [x 1 y 2] x)` の Node tree は `LetNode` の下に `Binding{
+name: "x", index: 0, value_expr: ConstantNode{1} }` と `Binding{
+name: "y", index: 1, value_expr: ConstantNode{2} }` が並び、body は
+`LocalRef{ name: "x", index: 0 }` 直になります。`y` が slot 1 なのは
+`next_slot` 継承の結果、body の `x` が `index=0` なのは
+`child_scope.lookup("x")` がヒットした結果です。
 
 ---
 
 ## 9. `analyzeBody` と `analyzeCall`
 
 `analyzeBody` は `fn*` / `let*` の body 用ヘルパで、**1 form は as-is、
-複数なら `do_node` に畳む**:
+複数なら `do_node` に畳む** 形に正規化します:
 
 | 入力 body                   | 結果                             |
 |-----------------------------|----------------------------------|
@@ -493,11 +411,11 @@ LetNode {
 | `(let* [x 1] x)`            | body = `LocalRef` 直             |
 | `(let* [x 1] (do-thing) x)` | body = `DoNode { [...] }`        |
 
-`LetNode.body` も `FnNode.body` も **単一 Node** 型なので、このラップ
-で型を合わせる。
+`LetNode.body` も `FnNode.body` も **単一 Node** 型なので、この
+ラップで型を合わせます。
 
 `analyzeCall` は callee と args をそれぞれ analyse して `CallNode` に
-詰めるだけ。callee は何でも来る (var_ref / fn_node / call_node)。
+詰めるだけです。callee は何でも来ます (var_ref / fn_node / call_node)。
 `((fn* [x] x) 41)` の結果:
 
 ```
@@ -507,7 +425,7 @@ CallNode {
 }
 ```
 
-これが Phase 2 exit criterion の片方を構造的に達成する形。
+これが Phase 2 exit criterion の片方を構造的に達成する形です。
 
 ---
 
@@ -525,7 +443,7 @@ CallNode {
 
 ROADMAP §4.4 (解析と評価の分離), §2 P3 (コア安定), P6 (エラー品質)
 と整合。「変更しないなら enum、増えうるなら StaticStringMap」が
-Zig 0.16 の流儀。
+Zig 0.16 の流儀です。
 
 ---
 
@@ -569,28 +487,15 @@ eval が登場します。
 
 ---
 
-## 13. Feynman 課題
+## この章で学んだこと
 
-6 歳の自分に説明するつもりで答えてください。
-
-1. なぜ `let*` は **値を先に analyse して、宣言を後にする** のか。
-   1 行で。
-2. `Scope.child` で `next_slot` を継承するのはなぜか。1 行で。
-3. `(quote x)` で symbol が `NotImplemented` になり、atom リテラルが
-   通るのはなぜか。1 行で。
-
----
-
-## 14. チェックリスト
-
-- [ ] 演習 13.1: `ConstantNode` 数を予測できた
-- [ ] 演習 13.2: `lookup` を loop 版で書けた
-- [ ] 演習 13.3: 5 種類の symbol 解決を予測できた
-- [ ] 演習 13.4: 大文字 IF の挙動を説明できた
-- [ ] 演習 13.5: `(fn* [x y] x)` の slot 割当てを言える
-- [ ] 演習 13.6: `(let* [x 1 y 2] x)` の Node tree を描けた
-- [ ] Feynman 3 問を 1 行ずつで答えられた
-- [ ] `git checkout bb1459c` で `zig build test` の analyzer 14 個が緑
+- 結局のところこの章は、**`Form → Node` を `Scope` chain で 1 パス
+  resolve する** 設計の披露である。symbol は locals → mappings →
+  refers の 3 段で解け、6 special form は `comptime StaticStringMap`
+  で alloc 0 / O(1) に dispatch できる。
+- `let*` の **値→宣言順** と `Scope.next_slot` 継承の組み合わせが、
+  shadowing も sequential binding も自己参照 UB 回避もすべて自動で
+  片付けてくれる要となる。
 
 ---
 

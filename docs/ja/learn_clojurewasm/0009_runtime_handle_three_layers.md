@@ -103,6 +103,13 @@ env.zig ────[*Runtime]──▶ runtime.zig
 でコミットすることをルールにしているため、3 ファイルが green になる
 最小単位はやはり 3 ファイル同時投入になります。
 
+抽象的な話ではなく、3 ファイル相互参照は実際に Zig コンパイラの
+挙動として観察できます。たとえば `A → C`、`B → A,C`、`C → A,B` の
+3 ファイルがあるとき、A だけ commit しても C が無いので解決でき
+ない、A と B を commit しても両者が C を参照するので解決できない、
+3 つ同時 commit で初めてコンパイラがすべての型を見渡せて成立する、
+というのがそのまま本章の状況です。
+
 ### Env は skeleton で投入する
 
 とはいえ「3 ファイル丸ごと完全実装」を 1 コミットに押し込むと diff
@@ -124,51 +131,6 @@ pub const Env = struct {
 これだけでも `dispatch.zig` の `*Env` 引数の型解決には十分です。
 `Namespace` / `Var` / `BindingFrame` は **Phase 2.3（コミット
 e20acaa）** で埋めます。詳細は第 0011 章で扱います。
-
-### 演習 9.1: 循環 import を読む (L1 — 予測検証)
-
-以下の擬似 Zig コードがあります。`A.zig` / `B.zig` / `C.zig` のうち
-どれを最初に commit したらコンパイルが通るか、または通らないか答え
-てください。
-
-```zig
-// A.zig
-const C = @import("C.zig").C;
-pub const A = struct { c: ?C = null };
-
-// B.zig
-const A = @import("A.zig").A;
-const C = @import("C.zig").C;
-pub const B = struct { a: *A, c: *C };
-
-// C.zig
-const A = @import("A.zig").A;
-const B = @import("B.zig").B;
-pub const C = struct { a: *A, b: *B };
-```
-
-Q1: A だけ commit したら？
-Q2: A + B だけ commit したら？
-Q3: 3 つ同時 commit ならどうなる？
-
-<details>
-<summary>答え</summary>
-
-**Q1**: 失敗します。A が C.C を参照しているのに、C.zig が存在しない
-ためです。
-
-**Q2**: 失敗します。B も A も C を参照しているのに、やはり C.zig が
-不在なのでコンパイルが通りません。
-
-**Q3**: 成功します。3 ファイルが同時にコンパイル対象となり、相互
-参照が解決されます。
-
-これがまさに `runtime.zig` / `dispatch.zig` / `env.zig` の間で起きて
-いる現象です。Zig の型解決は「ファイル単位ですべて見えていれば循環
-でも OK」という性質を持つので、**3 ファイルを 1 コミットにまとめる**
-のが正解です。
-
-</details>
 
 ---
 
@@ -284,37 +246,27 @@ ROADMAP §7.3 に明記：
 threadlocal がある」** ということです。Clojure の dynamic var を
 threadlocal 抜きで再現すると、性能・意味論の両面で破綻します。
 
-### 演習 9.2: 各層に何を置くか (L2 — 部分再構成)
+### どの層にどのリソースを置くか
 
-次のリソースを Runtime / Env / threadlocal のどれに置くべきか答え、
-理由を 1 行で書いてください。
-
-```
-(a) `*ns*` の現在値                  → ?
-(b) Murmur3 hash 関数 (純関数)         → ?
-(c) symbol intern table              → ?
-(d) `(binding [*x* 1] ...)` のフレーム → ?
-(e) Mark-Sweep GC instance            → ?
-(f) nREPL クライアントごとの ns map   → ?
-(g) 例外がスローされた時の Value     → ?
-```
-
-<details>
-<summary>答え</summary>
+代表的なリソースを 3 層にマップすると、判断基準（ライフタイムは
+何か、共有/分離はどちらが意味論的に正しいか）が見えてきます。
 
 | 項目                        | 配置                                  | 理由                                                               |
 |-----------------------------|---------------------------------------|--------------------------------------------------------------------|
-| (a) `*ns*`                  | **Env.current_ns**                    | per-session ns selector。スレッド共有でも実害なし。                |
-| (b) hash 関数               | **どれでもない**                      | 状態を持たない純関数なので、グローバル `pub fn` で OK。            |
-| (c) symbol intern           | **Runtime.symbols** (Phase 3+)        | プロセス全体で共有 (keyword と同様)。                              |
-| (d) binding frame           | **threadlocal current_frame**         | Clojure 意味論で per-thread が要件。                               |
-| (e) GC instance             | **Runtime.gc** (Phase 5+)             | プロセスで 1 つ、heap 全体を所有。                                 |
-| (f) nREPL クライアントの ns | **Env.namespaces**                    | per-session — これが 1 つの Runtime に複数 Env がぶら下がる動機。 |
-| (g) thrown exception        | **threadlocal last_thrown_exception** | スレッドごとに独立した throw/catch chain。                         |
+| `*ns*` の現在値             | **Env.current_ns**                    | per-session ns selector。スレッド共有でも実害なし。                |
+| Murmur3 hash 関数 (純関数)  | **どれでもない**                      | 状態を持たない純関数なので、グローバル `pub fn` で OK。            |
+| symbol intern table         | **Runtime.symbols** (Phase 3+)        | プロセス全体で共有 (keyword と同様)。                              |
+| `(binding [*x* 1] ...)`     | **threadlocal current_frame**         | Clojure 意味論で per-thread が要件。                               |
+| Mark-Sweep GC instance      | **Runtime.gc** (Phase 5+)             | プロセスで 1 つ、heap 全体を所有。                                 |
+| nREPL クライアントの ns map | **Env.namespaces**                    | per-session — これが 1 つの Runtime に複数 Env がぶら下がる動機。 |
+| thrown exception            | **threadlocal last_thrown_exception** | スレッドごとに独立した throw/catch chain。                         |
 
-判断基準: ライフタイムが何か？ 共有/分離はどちらが意味論的に正しいか？
-
-</details>
+`*ns*` はセッション選択子なので Env、binding frame は Clojure の
+意味論として per-thread が必須なので threadlocal、symbol intern や
+GC instance はプロセス全体で 1 つだけ存在すべきなので Runtime と、
+それぞれ素直な居場所があります。逆に「純関数の hash は層を持たない」
+ことも重要で、状態を持たないものを無理に層に押し込まない節度が
+3 層設計を保ちます。
 
 ---
 
@@ -416,9 +368,9 @@ main:     rt.vtable = .{ .callFn = &callFnImpl, ... };  ← 起動時注入
 したまま、実行時の関数呼び出しは Layer 0 → Layer 1 が成立します**。
 これが依存反転（Dependency Inversion）です。
 
-### 演習 9.3: BuiltinFn と CallFn の差 (L1)
+### `BuiltinFn` と `CallFn` の使い分け
 
-`dispatch.zig` の 2 つのシグネチャを並べてみます。
+`dispatch.zig` には 2 つの関数ポインタ型が並んでいます。
 
 ```zig
 pub const BuiltinFn = *const fn (
@@ -432,28 +384,18 @@ pub const CallFn = *const fn (
 ) anyerror!Value;
 ```
 
-Q1: 何が違うか？
-Q2: 「組み込み関数 `+`」と「`(map f xs)` の `f` 呼び出し」のどちらに
-どちらを使う？
+`BuiltinFn` は `loc: SourceLocation` を取り、`fn_val` を取りません。
+**呼び出し元のソース位置を受け取って、自分が組み込み実装で
+あることを前提とする** シグネチャです。`+` などの組み込み関数自身が
+このポインタとして登録されます。
 
-<details>
-<summary>答え</summary>
+`CallFn` は `fn_val: Value` を取り、`loc` を取りません。**任意の
+callable Value（普通の `fn`、組み込み関数、multi_fn、keyword as
+function 等）を一様に呼び出すディスパッチャ** です。`(map f xs)` の
+中で `f` を呼ぶ場合、`f` の実体が組み込みなのか普通の `fn*` なのか
+分からないので、汎用 dispatcher としての `CallFn` を経由します。
 
-**Q1**: `BuiltinFn` は `loc: SourceLocation` を取り、`fn_val` を
-取らない。**呼び出し元のソース位置を受け取って、自分が組み込み実装
-であることを前提とする**。
-
-`CallFn` は `fn_val: Value` を取り、`loc` を取らない。**任意の
-callable Value (普通の `fn`、組み込み関数、multi_fn、keyword as
-function 等) を一様に呼び出すディスパッチャ**。
-
-**Q2**:
-- `+` などの組み込み関数 → **`BuiltinFn`**。`+` 自体が `BuiltinFn`
-  ポインタとして登録されている。
-- `(map f xs)` の中の `f` → **`CallFn`**。`f` の実体が組み込みなのか
-  普通の `fn*` なのか分からないので、汎用 dispatcher が必要。
-
-`map` の実装はこんな雰囲気：
+実装イメージはこうです。
 
 ```zig
 fn mapImpl(rt: *Runtime, env: *Env, args: ..., loc: ...) anyerror!Value {
@@ -466,9 +408,7 @@ fn mapImpl(rt: *Runtime, env: *Env, args: ..., loc: ...) anyerror!Value {
 ```
 
 `map` 自身は `BuiltinFn`、内部で `vtable.callFn` を経由して `f` を
-呼ぶ。
-
-</details>
+呼ぶ、というのが両者の関係です。
 
 ---
 
@@ -507,6 +447,21 @@ pub fn main(init: std.process.Init) !void {
    ような callFn を呼ぶ実装があるため、**vtable が入っていないと
    primitive 登録時の test が落ちる可能性**。先に vtable を入れる。
 
+この順序を 5 ステップに広げると以下になります：
+
+```zig
+var rt = Runtime.init(init.io, init.gpa);  // (1) Runtime
+var env = try Env.init(&rt);               // (2) Env (rt と user ns)
+tree_walk.installVTable(&rt);              // (3) vtable 注入
+try primitive.registerAll(&rt, &env);      // (4) primitive を rt ns へ
+const rt_ns = env.findNs("rt").?;
+const user_ns = env.findNs("user").?;
+try env.referAll(rt_ns, user_ns);          // (5) user ns から rt ns を refer
+```
+
+`referAll` は最後です。primitive が rt 側に揃っていないと、user
+側に refer する意味がないからです。
+
 ### なぜ 91feef0 の段階では `installVTable` が呼ばれないのか
 
 Phase 2.1 で投入された `runtime.zig` には `installVTable` 関数が
@@ -520,50 +475,6 @@ Phase 2.1 で投入された `runtime.zig` には `installVTable` 関数が
 - これは **YAGNI** ではなく **段階性** にもとづくものです。Phase 2.1
   のコミットに `installVTable` を書いてしまうと、それは「呼ぶ場所の
   ないコード」になってしまいます。
-
-### 演習 9.4: 起動順を並べ替える (L2)
-
-以下の操作を正しい順序に並べてください。
-
-```
-(a) primitive.registerAll(&rt, &env)
-(b) tree_walk.installVTable(&rt)
-(c) Env.init(&rt)
-(d) Runtime.init(init.io, init.gpa)
-(e) env.referAll(rt_ns, user_ns)
-```
-
-<details>
-<summary>答え</summary>
-
-**`d → c → b → a → e`**
-
-```zig
-var rt = Runtime.init(init.io, init.gpa);  // (d)
-var env = try Env.init(&rt);               // (c)
-tree_walk.installVTable(&rt);              // (b)
-try primitive.registerAll(&rt, &env);      // (a)
-const rt_ns = env.findNs("rt").?;
-const user_ns = env.findNs("user").?;
-try env.referAll(rt_ns, user_ns);          // (e)
-```
-
-理由:
-
-- **d**: 全てのスタート。`init.io` を `Runtime` に詰める。
-- **c**: Env は `*Runtime` を取るので Runtime 後。`rt` と `user`
-  namespace がここで作られる (第 0011 章)。
-- **b**: vtable 注入は Env 後。primitive が中で callFn を呼んでも
-  問題ないように。
-- **a**: primitive.registerAll は `rt` namespace に Var を作る。
-  vtable は既に有効なので、内部でディスパッチが必要な primitive も
-  使える。
-- **e**: `referAll(rt, user)` は最後。primitive が rt 側に揃って
-  いないと user に refer する意味がない。
-
-ROADMAP §9.4 task 2.7 の `registerAll` 設計と整合。
-
-</details>
 
 ---
 
@@ -704,81 +615,16 @@ pub fn trackHeap(self: *Runtime, entry: HeapEntry) !void {
 ポイント。`tree_walk.Function` のような Layer 1 構造体を Layer 0 が
 import せずに済みます。
 
-### 演習 9.5: Runtime をゼロから書く (L3)
+### Runtime の輪郭
 
-ファイル名と公開 API のみ与えます。
-
-要求:
-- File: `src/runtime/runtime.zig`
-- Public:
-  - `pub const Runtime = struct { ... }`
-  - `pub const HeapEntry = struct { ptr: *anyopaque, free: ... }` (Runtime の中)
-  - `pub fn Runtime.init(io: std.Io, gpa: std.mem.Allocator) Runtime`
-  - `pub fn Runtime.deinit(self: *Runtime) void`
-  - `pub fn Runtime.trackHeap(self: *Runtime, entry: HeapEntry) !void`
-
-ヒント:
-- `vtable` フィールドは `?VTable = null` (デフォルト null)
-- `keywords` フィールドは `KeywordInterner.init(gpa)` で初期化
-- `heap_objects` は `std.ArrayList(HeapEntry) = .empty`
-- `deinit` は heap_objects を全部 free → `keywords.deinit()` の順
-
-<details>
-<summary>答え骨子</summary>
-
-```zig
-//! Runtime — the process-wide handle every layer threads through.
-
-const std = @import("std");
-const KeywordInterner = @import("keyword.zig").KeywordInterner;
-const dispatch = @import("dispatch.zig");
-const VTable = dispatch.VTable;
-
-pub const Runtime = struct {
-    io: std.Io,
-    gpa: std.mem.Allocator,
-    keywords: KeywordInterner,
-    vtable: ?VTable = null,
-    heap_objects: std.ArrayList(HeapEntry) = .empty,
-
-    pub const HeapEntry = struct {
-        ptr: *anyopaque,
-        free: *const fn (gpa: std.mem.Allocator, ptr: *anyopaque) void,
-    };
-
-    pub fn init(io: std.Io, gpa: std.mem.Allocator) Runtime {
-        return .{
-            .io = io,
-            .gpa = gpa,
-            .keywords = KeywordInterner.init(gpa),
-        };
-    }
-
-    pub fn deinit(self: *Runtime) void {
-        for (self.heap_objects.items) |entry| {
-            entry.free(self.gpa, entry.ptr);
-        }
-        self.heap_objects.deinit(self.gpa);
-        self.keywords.deinit();
-    }
-
-    pub fn trackHeap(self: *Runtime, entry: HeapEntry) !void {
-        try self.heap_objects.append(self.gpa, entry);
-    }
-};
-
-test "Runtime.init/deinit roundtrips" {
-    var th = std.Io.Threaded.init(std.testing.allocator, .{});
-    defer th.deinit();
-    var rt = Runtime.init(th.io(), std.testing.allocator);
-    defer rt.deinit();
-    try std.testing.expect(rt.vtable == null);
-}
-```
-
-検証: `bash test/run_all.sh` が緑になる。
-
-</details>
+`Runtime` の公開 API は最小限です。`init(io, gpa)` で
+`KeywordInterner` を作り、`vtable` は `null` で、`heap_objects` は
+`std.ArrayList(HeapEntry) = .empty` で始まります。`deinit` は
+`heap_objects` の各エントリを `free(gpa, ptr)` で解放してから
+`heap_objects.deinit(gpa)`、最後に `keywords.deinit()` という順序
+です。`trackHeap` は `heap_objects.append(gpa, entry)` のみ。
+`vtable` は **デフォルト null**、起動時に `installVTable` で書き
+換える、というルールが構造として表れています。
 
 ---
 
@@ -859,30 +705,15 @@ git log --oneline 91feef0..de2cb64 -- src/eval/backend/
 
 ---
 
-## 10. Feynman 課題
+## この章で学んだこと
 
-6 歳の自分に説明するつもりで答えてください。
-
-1. なぜ Runtime / Env / threadlocal の 3 層に分けるのか。1 行で。
-2. なぜ `runtime.zig` / `dispatch.zig` / `env.zig` を 1 コミットに
-   まとめるのか。1 行で。
-3. なぜ `pub var callFn` ではなく `Runtime.vtable: ?VTable` という
-   field 形式なのか。1 行で。
-
----
-
-## 11. チェックリスト
-
-- [ ] 演習 9.1 の循環 import 3 問に答えられる
-- [ ] 演習 9.2 で 7 個のリソースを Runtime / Env / threadlocal に
-      正しく振り分けられる
-- [ ] 演習 9.3 で `BuiltinFn` と `CallFn` の使い分けを言える
-- [ ] 演習 9.4 で起動順 5 ステップを並べられる
-- [ ] 演習 9.5 で `Runtime` 構造体をゼロから書ける
-- [ ] Feynman 3 問を 1 行ずつで答えられた
-- [ ] `git checkout 91feef0` の状態で `zig build test` を緑にできた
-- [ ] strategic note (`private/2026-04-24_runtime_design/REPORT.md`)
-      と本章の対応を 1 行で説明できる
+- 結局この章は「**Runtime / Env / threadlocal を時間軸の長さで切り、
+  Layer 0 から Layer 1 を呼ぶ橋を `Runtime.vtable: ?VTable` に置く**」
+  という 1 つの設計決定の話です。
+- `pub var` をやめて vtable を field 化したことで、テスト時のモック
+  注入・複数 backend 共存・nREPL の per-session Env がすべて自然に
+  並びます。3 ファイル同時投入は循環参照の必然であって、避けるべき
+  汚れではない、と読み替えられます。
 
 ---
 

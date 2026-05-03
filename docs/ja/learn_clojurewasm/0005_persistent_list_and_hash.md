@@ -125,40 +125,11 @@ Clojure JVM:
 
 「ぜろ」ではなく「nil 互換」というのが Clojure の哲学です。
 **`(first nil)` で NPE は発生しません**。これを `else => .nil_val`
-の **fallthrough** で表現します。
-
-### 演習 5.1: nil semantics を予測 (L1 — 予測検証)
-
-以下のコードの結果を予測してください:
-
-```zig
-const lst = try cons(alloc, Value.initInteger(1),
-              try cons(alloc, Value.initInteger(2),
-                try cons(alloc, Value.initInteger(3), .nil_val)));
-
-const a = first(lst).asInteger();
-const b = first(rest(lst)).asInteger();
-const c = first(rest(rest(rest(lst))));    // ← ?
-const d = countOf(.nil_val);                // ← ?
-const e = countOf(Value.initInteger(42));   // ← ?
-```
-
-<details>
-<summary>答え</summary>
-
-| 変数 | 値              | 理由                                        |
-|------|-----------------|---------------------------------------------|
-| `a`  | `1`             | head                                        |
-| `b`  | `2`             | rest の head                                |
-| `c`  | `Value.nil_val` | rest を 3 回辿ると nil、`first(nil) = nil`  |
-| `d`  | `0`             | nil の count は 0 (Clojure 互換)            |
-| `e`  | `0`             | integer は list でないので fallthrough → 0 |
-
-ポイント: `else => .nil_val` / `else => 0` の **fallthrough** が
-あるおかげで、呼び出し側で **`val.tag() == .list` を毎回チェック
-する必要がありません**。
-
-</details>
+の **fallthrough** で表現します。具体例で見ると、`(list 1 2 3)` を
+3 回 `rest` で進めて末尾の `nil` に到達したあと `first` を呼べば
+`.nil_val` が返り、`countOf(.nil_val)` も `countOf(initInteger(42))`
+も `0` を返します。**`val.tag() == .list` を毎回チェックする必要が
+ない** のが、この fallthrough 設計の効用です。
 
 ---
 
@@ -226,95 +197,6 @@ pub fn seq(val: Value) Value {
 
 `(seq xs)` は **「使えるコレクションなら自身、空なら nil」** という
 Clojure 慣習を 5 行で表現しています。
-
-### 演習 5.2: cons / first / rest / countOf を再構成 (L2 — 部分再構成)
-
-シグネチャだけ与える:
-
-```zig
-pub const Cons = struct {
-    header: HeapHeader,
-    _pad: [6]u8 = undefined,
-    first: Value,
-    rest: Value,
-    meta: Value,
-    count: u32,
-};
-
-pub fn cons(alloc: std.mem.Allocator, head: Value, tail: Value) !Value {
-    // ここから書く
-}
-pub fn first(val: Value) Value {
-    // ここから書く (nil semantics)
-}
-pub fn rest(val: Value) Value {
-    // ここから書く (nil semantics)
-}
-pub fn countOf(val: Value) u32 {
-    // ここから書く (nil semantics)
-}
-```
-
-ヒント:
-
-- `cons` は `alloc.create(Cons)` でセル確保 → 値で埋める →
-  `Value.encodeHeapPtr(.list, cell)` で encode して返す
-- `count` は `1 + countOf(tail)` で precompute
-- 全関数が `val.tag()` で `.list` 以外を fallthrough
-
-<details>
-<summary>答え</summary>
-
-```zig
-pub fn cons(alloc: std.mem.Allocator, head: Value, tail: Value) !Value {
-    const cell = try alloc.create(Cons);
-    cell.* = .{
-        .header = HeapHeader.init(.list),
-        .first = head,
-        .rest = tail,
-        .meta = .nil_val,
-        .count = 1 + countOf(tail),
-    };
-    return Value.encodeHeapPtr(.list, cell);
-}
-
-pub fn first(val: Value) Value {
-    return switch (val.tag()) {
-        .list => val.decodePtr(*Cons).first,
-        else => .nil_val,
-    };
-}
-
-pub fn rest(val: Value) Value {
-    return switch (val.tag()) {
-        .list => val.decodePtr(*Cons).rest,
-        else => .nil_val,
-    };
-}
-
-pub fn countOf(val: Value) u32 {
-    return switch (val.tag()) {
-        .list => val.decodePtr(*Cons).count,
-        else => 0,
-    };
-}
-```
-
-検証:
-
-```zig
-test "structural sharing across cons calls" {
-    const tail = try cons(alloc, two, try cons(alloc, three, .nil_val));
-    const a = try cons(alloc, one, tail);
-    const b = try cons(alloc, zero, tail);
-    // 同じ tail を共有
-    try testing.expectEqual(@intFromEnum(rest(a)), @intFromEnum(rest(b)));
-    try testing.expectEqual(@as(u32, 3), countOf(a));
-    try testing.expectEqual(@as(u32, 3), countOf(b));
-}
-```
-
-</details>
 
 ---
 
@@ -401,109 +283,13 @@ Murmur3 を 0 に通すと、`mixK1(0) = 0` でありながら `fmix(0, 4) ≠ 0
 sentinel 用途** のために、Clojure は `hash(0) == 0` を意図的に
 保証しています。
 
-### 演習 5.3: Murmur3 hash モジュール全体を再構成 (L3)
+### コレクション結合: `mixCollHash` / `hashOrdered` / `hashUnordered`
 
-ファイル名と公開 API のみ:
-
-- File: `src/runtime/hash.zig`
-- 公開 API:
-  - `pub fn hashInt(input: i32) u32`
-  - `pub fn hashLong(input: i64) u32`
-  - `pub fn hashString(input: []const u8) u32`
-  - `pub fn mixCollHash(hash_val: u32, count: u32) u32`
-  - `pub fn hashOrdered(hashes: []const u32) u32`
-  - `pub fn hashUnordered(hashes: []const u32) u32`
-
-ヒント:
-
-- マジック定数 `C1 = 0xcc9e2d51`、`C2 = 0x1b873593`、`SEED = 0`
-- `mixK1` / `mixH1` / `fmix` を内部 helper として定義
-- 全演算は wrapping (`*%` / `+%`)
-- `hashInt(0)` / `hashLong(0)` は 0 を返す（Java compat）
-- `hashOrdered`: `h := 31*h + element`、最後に `mixCollHash`
-- `hashUnordered`: `h := h + element` (順序非依存)
-
-<details>
-<summary>答え骨子</summary>
+要素単位の hash が揃ったら、それらを「順序を考慮して」あるいは
+「考慮せず」に 1 つの hash にまとめる必要があります。Clojure JVM
+と同じ結合方式を採ります:
 
 ```zig
-//! Murmur3 hash for ClojureWasm — Clojure-compatible hash values.
-
-const std = @import("std");
-
-const C1: u32 = 0xcc9e2d51;
-const C2: u32 = 0x1b873593;
-const SEED: u32 = 0;
-
-fn mixK1(k: u32) u32 {
-    var k1 = k;
-    k1 *%= C1;
-    k1 = std.math.rotl(u32, k1, 15);
-    k1 *%= C2;
-    return k1;
-}
-
-fn mixH1(h: u32, k1: u32) u32 {
-    var h1 = h;
-    h1 ^= k1;
-    h1 = std.math.rotl(u32, h1, 13);
-    h1 = h1 *% 5 +% 0xe6546b64;
-    return h1;
-}
-
-fn fmix(h: u32, length: u32) u32 {
-    var h1 = h;
-    h1 ^= length;
-    h1 ^= h1 >> 16;
-    h1 *%= 0x85ebca6b;
-    h1 ^= h1 >> 13;
-    h1 *%= 0xc2b2ae35;
-    h1 ^= h1 >> 16;
-    return h1;
-}
-
-pub fn hashInt(input: i32) u32 {
-    if (input == 0) return 0;
-    const k1 = mixK1(@bitCast(input));
-    const h1 = mixH1(SEED, k1);
-    return fmix(h1, 4);
-}
-
-pub fn hashLong(input: i64) u32 {
-    if (input == 0) return 0;
-    const bits: u64 = @bitCast(input);
-    const low: u32 = @truncate(bits);
-    const high: u32 = @truncate(bits >> 32);
-    var h1 = mixH1(SEED, mixK1(low));
-    h1 = mixH1(h1, mixK1(high));
-    return fmix(h1, 8);
-}
-
-pub fn hashString(input: []const u8) u32 {
-    var h1: u32 = SEED;
-    const nblocks = input.len / 4;
-
-    for (0..nblocks) |i| {
-        const offset = i * 4;
-        const k: u32 = @as(u32, input[offset]) |
-            (@as(u32, input[offset + 1]) << 8) |
-            (@as(u32, input[offset + 2]) << 16) |
-            (@as(u32, input[offset + 3]) << 24);
-        h1 = mixH1(h1, mixK1(k));
-    }
-
-    const tail_offset = nblocks * 4;
-    var k1: u32 = 0;
-    const tail_len = input.len - tail_offset;
-    if (tail_len >= 3) k1 ^= @as(u32, input[tail_offset + 2]) << 16;
-    if (tail_len >= 2) k1 ^= @as(u32, input[tail_offset + 1]) << 8;
-    if (tail_len >= 1) {
-        k1 ^= @as(u32, input[tail_offset]);
-        h1 ^= mixK1(k1);
-    }
-    return fmix(h1, @truncate(input.len));
-}
-
 pub fn mixCollHash(hash_val: u32, count: u32) u32 {
     var h1 = SEED;
     const k1 = mixK1(hash_val);
@@ -514,7 +300,7 @@ pub fn mixCollHash(hash_val: u32, count: u32) u32 {
 pub fn hashOrdered(hashes: []const u32) u32 {
     var h: u32 = 1;
     for (hashes) |elem_hash| {
-        h = h *% 31 +% elem_hash;
+        h = h *% 31 +% elem_hash;       // 順序依存
     }
     return mixCollHash(h, @truncate(hashes.len));
 }
@@ -522,16 +308,18 @@ pub fn hashOrdered(hashes: []const u32) u32 {
 pub fn hashUnordered(hashes: []const u32) u32 {
     var h: u32 = 0;
     for (hashes) |elem_hash| {
-        h +%= elem_hash;
+        h +%= elem_hash;                // 順序非依存
     }
     return mixCollHash(h, @truncate(hashes.len));
 }
 ```
 
-検証: `hashInt(0) == 0` / `hashLong(0) == 0` / `hashOrdered([1,2]) !=
-hashOrdered([2,1])` / `hashUnordered([1,2,3]) == hashUnordered([3,1,2])`。
+特性:
 
-</details>
+- `hashOrdered([1, 2]) ≠ hashOrdered([2, 1])` — list / vector 用
+- `hashUnordered([1, 2, 3]) == hashUnordered([3, 1, 2])` — set / map 用
+- どちらも最後に `mixCollHash` で要素数を混ぜる → 同じ要素を別の
+  個数で持つコレクションが偶然衝突しないようにする
 
 ---
 
@@ -633,24 +421,17 @@ std.debug.print("b.rest = 0x{X:0>16}\n", .{@intFromEnum(rest(b))});
 
 ---
 
-## 8. Feynman 課題
+## この章で学んだこと
 
-1. なぜ cons cell に `count: u32` を持たせるのか。1 行で。
-2. `*%`（wrapping multiply）と `*`（通常の multiply）の差は何か。
-   1 行で。
-3. 空リストを sentinel cell ではなく nil で表す利点は何か。1 行で。
-
----
-
-## 9. チェックリスト
-
-- [ ] 演習 5.1: nil semantics の振る舞いを 5 ケース予測できる
-- [ ] 演習 5.2: `cons` / `first` / `rest` / `countOf` を
-      シグネチャだけから書ける
-- [ ] 演習 5.3: `hash.zig` 全体を公開 API のリストだけから書ける
-- [ ] Feynman 3 問を 1 行ずつで答えられる
-- [ ] Murmur3 のマジック定数 `C1` / `C2` がなぜそのままか説明できる
-- [ ] ROADMAP §A6 / §P11 を即座に指せる
+- **永続コレクションの最小ピースは「count を埋め込んだ cons cell」と
+  「Java と bit 互換な Murmur3」の 2 点セット**。前者が `(count xs)`
+  を O(1) に保ち、後者が将来の HashMap / HashSet の bucket 計算を
+  支える。
+- nil semantics は `else => .nil_val` / `else => 0` の **fallthrough**
+  で実現する。`val.tag() == .list` を呼び出し側で繰り返さなくて済む
+  のが Clojure らしい挙動の鍵。
+- Java の int wrapping 算術と一致させるには Zig の `*%` / `+%` を
+  使う。`*` で書くと `hashInt(0xFFFFFFFE)` ですら panic する。
 
 ---
 

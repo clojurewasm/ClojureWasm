@@ -62,7 +62,7 @@ ClojureWasm v2（本リポジトリ）は ROADMAP 原則 **P6** を Day 1 から
 §A7 (Concurrency and errors are designed in on day 1) も同じことを
 言っています。「あとで足す」は技術的にも認知的にも禁止です。
 
-### 演習 3.1: SourceLocation を読む (L1 — 予測検証)
+### `SourceLocation` の最小構成
 
 `src/runtime/error.zig` 23-29 行目:
 
@@ -76,38 +76,20 @@ pub const SourceLocation = struct {
 };
 ```
 
-以下の **`SourceLocation{}`** リテラルから値を予測してください：
+3 フィールドすべてにデフォルトを与えてあるので、`SourceLocation{}`
+というリテラルがそのまま「全部未知」を意味します。`file` のデフォルトは
+`"unknown"` で、Reader が EOF で出すエラーや CLI の `-e` 引数で
+ファイル名だけが判っているケース（`SourceLocation{ .file = "core.clj" }`
+のような部分初期化）でも `null` チェック無しで使い回せます。
 
-```zig
-const a = SourceLocation{};
-const b = SourceLocation{ .file = "core.clj" };
-const c = SourceLocation{ .file = "core.clj", .line = 42, .column = 5 };
-```
+`line` を `Optional(u32)` ではなく **「1-based; 0 = unknown」のゼロ値
+sentinel** にしているのも同じ動機です。Clojure / 多くの editor が行番号を
+1 始まりで扱うので 0 は本来あり得ない値であり、optional にして包むより
+ゼロ値で済ませるほうが API が軽くなります。
 
-Q1: `a.file` の値は？
-Q2: `a.line` の値は？ なぜそれが「未知」を意味する？
-Q3: `b.line` / `b.column` の値は？
-Q4: `column` だけ `u16` で他は `u32` の理由を 1 行で。
-
-<details>
-<summary>答え</summary>
-
-**Q1**: `"unknown"` (デフォルト)
-
-**Q2**: `0`。「1-based; 0 = unknown」という慣例なので、行番号 0 は
-ありえない値 → センチネルとして使えます。`Optional(u32)` を選ばずに
-**ゼロ値で sentinel** にしているのは、`SourceLocation{}` という
-リテラルを `null` チェックなしで使い回せるようにするためです。
-
-**Q3**: 両方 `0`（つまり「ファイル名だけ判っていて、位置は未知」）。
-これは Reader が EOF で出すエラーや、CLI の `-e` 引数で
-`file = "<eval>"` だけ判っているケースで自然に使えます。
-
-**Q4**: 1 行: 1 行が 65535 列を超えることは現実上ありえないので
-（`u16` で十分、`u32` は無駄）。バイト幅を切り詰めるための最適化
-です。
-
-</details>
+`column` だけ `u16` なのは、1 行が 65535 列を超えることは現実上
+ありえないからです。バイト幅を切り詰めるための小さな最適化で、
+`Info` 全体の cache 効率に効きます。
 
 ---
 
@@ -205,72 +187,18 @@ pub fn setErrorFmt(
    へ 1:1 で写します。`return setErrorFmt(...)` という 1 行で
    すべて完結します。
 
-### 演習 3.2: setErrorFmt を書き起こす (L2 — 部分再構成)
+`catch blk: { ... break :blk ... }` は Zig のラベル付きブロック式で、
+エラー時の回復値をその場で式として返せます。`@memcpy(msg_buf[509..512],
+"...")` で末尾 3 byte を上書きし、buffer 全長 512 を返すことで
+truncate されたことを表現します。
 
-シグネチャだけ与えるので、本体を実装してください:
-
-```zig
-threadlocal var last_error: ?Info = null;
-threadlocal var msg_buf: [512]u8 = undefined;
-
-pub const Info = struct { ... };
-pub const Error = error{ TypeError, ArityError, ... };
-const Kind = enum { type_error, arity_error, ... };
-
-fn kindToError(k: Kind) Error { /* 1:1 mapping */ }
-
-pub fn setErrorFmt(
-    phase: Phase,
-    kind: Kind,
-    location: SourceLocation,
-    comptime fmt: []const u8,
-    args: anytype,
-) Error {
-    // ここから書く
-}
-```
-
-要件:
-
-- `bufPrint` のオーバーフロー時は末尾 3 byte を `"..."` に潰す
-- 戻り値は `kindToError(kind)`
-
-<details>
-<summary>答え</summary>
+呼び出し側はこの 1 行で副作用と戻り値を兼ねるので、典型的には:
 
 ```zig
-pub fn setErrorFmt(
-    phase: Phase,
-    kind: Kind,
-    location: SourceLocation,
-    comptime fmt: []const u8,
-    args: anytype,
-) Error {
-    const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch blk: {
-        @memcpy(msg_buf[509..512], "...");
-        break :blk msg_buf[0..512];
-    };
-    last_error = .{
-        .kind = kind,
-        .phase = phase,
-        .message = msg,
-        .location = location,
-    };
-    return kindToError(kind);
-}
+return setErrorFmt(.eval, .type_error, loc, "f: bad arg", .{});
 ```
 
-ポイント:
-
-- `catch blk: { ... break :blk ... }` は Zig のラベル付きブロック式
-  です。エラー時の回復値を式として返せます。
-- `@memcpy(msg_buf[509..512], "...")` で末尾 3 byte を上書きし、
-  buffer 全長 512 を返しています（truncate を示す表現として）。
-- `return` 1 行で副作用と戻り値を兼ねており、呼び出し側は
-  `return setErrorFmt(.eval, .type_error, loc, "f: bad arg", .{})`
-  のようにすっきり書けます。
-
-</details>
+のように `return` 直下に書きます。
 
 ---
 
@@ -282,8 +210,7 @@ pub fn setErrorFmt(
 pub const BuiltinFn = *const fn (args: []const Value, loc: SourceLocation) Error!Value;
 ```
 
-`loc` を **第 2 引数** に置く決断が、章末の演習 3.3 まで続く伏線に
-なります。
+`loc` を **第 2 引数** に置く決断が、後続の章まで続く伏線になります。
 
 ### なぜ `loc` を受け取らせるのか
 
@@ -327,7 +254,10 @@ pub fn plus(args: []const Value, loc: SourceLocation) Error!Value {
 ```
 
 エラー位置の引き渡しが **`try expectNumber(arg, "+", loc)`** という
-1 行に潰れます。
+1 行に潰れます。`(+ 1 :foo)` を実行すると、ヘルパが
+`"+: expected number, got keyword"` というメッセージを呼び出し側
+Form の `loc` 付きで返してくれます。これが **P6 の「1 site = 1 行」
+コスト** の正体です。
 
 ### `checkArity*` ヘルパ
 
@@ -343,7 +273,10 @@ pub fn checkArity(name: []const u8, args: []const Value, expected: usize, loc: S
 ```
 
 3 種類: `checkArity` (exact) / `checkArityMin` (≥) / `checkArityRange`
-(min..max)。
+(min..max)。これらを通すだけで `(<)` のような 0 引数呼び出しも
+`Wrong number of args (0) passed to <, expected at least 1` のように
+共通フォーマットで報告されます。builtin の中で直接 `setErrorFmt` を
+呼ぶ必要はありません。
 
 ### Phase 2+ への伏線
 
@@ -360,54 +293,6 @@ pub const BuiltinFn = *const fn (args: []const Value, loc: SourceLocation) Error
 **「将来こちらに広げる」という宣言を doc-comment に書いておく** のが
 ポイントです。「P6 を Day 1 から」と「P2 (final shape on day 1)」の
 合わせ技と言えます。
-
-### 演習 3.3: builtin を 1 つ書き起こす (L3 — 完全再構成)
-
-ファイル名と公開 API のみ与える:
-
-- File: `src/lang/primitive/math.zig` (の一部) — Phase 2 の話だが
-  Phase 1 の `BuiltinFn` 規約だけで十分書ける
-- 公開 API:
-  - `pub fn lessThan(args: []const Value, loc: SourceLocation) Error!Value`
-  - 仕様: `(< 1 2 3) → true` / `(< 3 2 1) → false` / `(< 1) → true`
-    （単項は常に true）/ `(<)` → `ArityError`
-  - 全引数は数値であること。違ったら `TypeError`
-
-ヒント: `expectNumber(val, name, loc)` と `checkArityMin` を使う。
-
-<details>
-<summary>答え骨子</summary>
-
-```zig
-const error_mod = @import("../../runtime/error.zig");
-const SourceLocation = error_mod.SourceLocation;
-const Error = error_mod.Error;
-
-pub fn lessThan(args: []const Value, loc: SourceLocation) Error!Value {
-    try error_mod.checkArityMin("<", args, 1, loc);
-    if (args.len == 1) return .true_val;
-
-    var prev = try error_mod.expectNumber(args[0], "<", loc);
-    var i: usize = 1;
-    while (i < args.len) : (i += 1) {
-        const cur = try error_mod.expectNumber(args[i], "<", loc);
-        if (!(prev < cur)) return .false_val;
-        prev = cur;
-    }
-    return .true_val;
-}
-```
-
-検証ポイント:
-
-- `(< 1 :foo)` → `TypeError`、メッセージは `"<: expected number, got keyword"`、
-  位置は呼び出し側の Form の `loc`
-- `(<)` → `ArityError`、`"Wrong number of args (0) passed to <, expected at least 1"`
-- builtin 内では一切 `setErrorFmt` を直接呼ばない — ヘルパ経由で済む
-
-これが **P6 の「1 site = 1 行」コスト** の正体です。
-
-</details>
 
 ---
 
@@ -483,23 +368,13 @@ pub fn main() !void {
 
 ---
 
-## 7. Feynman 課題
+## この章で学んだこと
 
-6 歳の自分に説明するつもりで答えてください。
-
-1. なぜ Zig の `Error!T` だけではエラー詳細を運べないのか。1 行で。
-2. なぜ `last_error` を **threadlocal** にするのか。1 行で。
-3. `BuiltinFn` の `loc` 引数は何のために存在するのか。1 行で。
-
----
-
-## 8. チェックリスト
-
-- [ ] 演習 3.1: `SourceLocation` のデフォルト値を即答できる
-- [ ] 演習 3.2: `setErrorFmt` をシグネチャだけから書ける
-- [ ] 演習 3.3: `<` builtin を `expectNumber` / `checkArityMin` 経由で書ける
-- [ ] Feynman 3 問を 1 行ずつで答えられる
-- [ ] ROADMAP §P6 / §A7 / §7.3 を即座に指せる
+- 結局のところこの章は、**Zig の error union が payload を運べない
+  制約を threadlocal `last_error` で回避し**、`<file>:<line>:<col>`
+  と `Kind` を全エラーに Day 1 から付与する話です。
+- `BuiltinFn` のシグネチャに `loc` を最初から差し込んだので、後で
+  500 site を書き直す v1 の轍を踏まずに済みます。
 
 ---
 

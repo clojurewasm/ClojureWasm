@@ -156,40 +156,12 @@ fn arenaAlloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_add
 `gc.stats.bytes_allocated` を覗けば、テストが何 byte 触ったか
 すぐに判ります。
 
-### 演習 4.1: vtable adapter のしかけ (L1 — 予測検証)
-
-以下のテストの **alloc_count** がどうなるか予測してください:
-
-```zig
-test "predict" {
-    var gc = ArenaGc.init(testing.allocator);
-    defer gc.deinit();
-    const alloc = gc.allocator();
-
-    _ = try alloc.alloc(u8, 10);
-    _ = try alloc.alloc(u8, 20);
-    _ = try alloc.alloc(u8, 30);
-
-    // Q: gc.stats.alloc_count は？
-    // Q: gc.stats.bytes_allocated は？
-}
-```
-
-<details>
-<summary>答え</summary>
-
-- `gc.stats.alloc_count == 3` (3 回 alloc した)
-- `gc.stats.bytes_allocated == 60` (10 + 20 + 30)
-
-注意: `alloc_count` は **成功時のみ +1**（`if (result != null)`
-ブロック内）。`alloc` が `null` を返したケースは計上しない設計
-です。
-
-この仕掛けにより、ベンチマーク（`bench/quick.sh`）で alloc
-プロファイルを取る作業が「`gc.stats` を eval の前後で読むだけ」で
-済むようになります。
-
-</details>
+たとえば `alloc(u8, 10)` / `alloc(u8, 20)` / `alloc(u8, 30)` を順に
+呼べば `alloc_count == 3`、`bytes_allocated == 60` になります。
+`alloc_count` は **成功時のみ +1**（`if (result != null)` ブロック
+内）されるので、`alloc` が `null` を返したケースは計上されません。
+ベンチマーク（`bench/quick.sh`）で alloc プロファイルを取る作業も、
+`gc.stats` を eval の前後で読むだけで済みます。
 
 ---
 
@@ -252,62 +224,16 @@ fn expandMacroAndAnalyze(...) !*Node {
 `bool` ではなく **`u32` カウンタ** にしているのが要点です。マクロが
 さらにマクロを呼ぶ **入れ子展開** において、外側の `defer` が
 `unsuppress` を呼んでも、内側がまだ走っている場合は suppress 状態を
-維持できます。
+維持できます。`unsuppressCollection` には `suppress_count > 0` の
+`std.debug.assert` を入れてあり、対称性を破った呼び出しは debug
+ビルドで即座に panic します。`isSuppressed` は `*const ArenaGc` を
+取り副作用を持たないので、GC 側の判定で安全に呼べます。
 
-### 演習 4.2: suppress カウンタを書く (L2 — 部分再構成)
-
-シグネチャだけ与えるので本体を書いてください:
-
-```zig
-pub const ArenaGc = struct {
-    suppress_count: u32 = 0,
-
-    pub fn suppressCollection(self: *ArenaGc) void {
-        // ここから書く
-    }
-    pub fn unsuppressCollection(self: *ArenaGc) void {
-        // ここから書く（不正な unsuppress を assert で潰す）
-    }
-    pub fn isSuppressed(self: *const ArenaGc) bool {
-        // ここから書く
-    }
-    // ...
-};
-```
-
-要件:
-
-- `unsuppressCollection` は `suppress_count == 0` で呼ばれたら
-  panic（`std.debug.assert`）
-- `isSuppressed` は `*const ArenaGc` を取り、副作用を持たない
-
-<details>
-<summary>答え</summary>
-
-```zig
-pub fn suppressCollection(self: *ArenaGc) void {
-    self.suppress_count += 1;
-}
-
-pub fn unsuppressCollection(self: *ArenaGc) void {
-    std.debug.assert(self.suppress_count > 0);
-    self.suppress_count -= 1;
-}
-
-pub fn isSuppressed(self: *const ArenaGc) bool {
-    return self.suppress_count > 0;
-}
-```
-
-ポイント:
-
-- Phase 1 では mark-sweep がないため、**suppress を参照するコードは
-  まだ存在しません**。それでも API を埋めておくのが P2 の精神です。
-- assert を debug ビルドでだけ効かせます。release ビルドでは GC 自体
-  が別実装になるため、ここでの assert は仕様を示すマーカーとして
-  機能します。
-
-</details>
+Phase 1 ではまだ mark-sweep が無いため、`suppress_count` を読む
+コードは存在しません。**それでも API を埋めておく** のが原則 P2
+（final shape on day 1）の実践であり、Phase 3 でマクロ展開を実装
+するときには `suppressCollection()` の call site を埋めるだけで
+動作します。
 
 ---
 
@@ -345,98 +271,31 @@ fn arenaAlloc(...) ?[*]u8 {
   済む」** ようになります。ROADMAP P2（final shape on day 1）と A2
   （新機能は新ファイル）を一段階先取りしている形です。
 
-### 演習 4.3: arena.zig 全体を書き起こす (L3 — 完全再構成)
+### `arena.zig` の公開 API 一覧
 
-ファイル名と公開 API のみ:
+`src/runtime/gc/arena.zig` がエクスポートしているのは次の 3 つだけ
+です:
 
-- File: `src/runtime/gc/arena.zig`
-- 公開 API:
-  - `pub const Stats = struct { bytes_allocated: usize = 0, alloc_count: u64 = 0 };`
-  - `pub const gc_stress = false;`
-  - `pub const ArenaGc = struct { ... };`
-    - `pub fn init(backing: std.mem.Allocator) ArenaGc`
-    - `pub fn deinit(self: *ArenaGc) void`
-    - `pub fn allocator(self: *ArenaGc) std.mem.Allocator`
-    - `pub fn reset(self: *ArenaGc) void`
-    - `pub fn suppressCollection(self: *ArenaGc) void`
-    - `pub fn unsuppressCollection(self: *ArenaGc) void`
-    - `pub fn isSuppressed(self: *const ArenaGc) bool`
+| 種別        | 名前        | 役割                                                  |
+|-------------|-------------|-------------------------------------------------------|
+| `pub const` | `gc_stress` | Phase 5 で alloc 毎 collection を強制する comptime 旗 |
+| `pub const` | `Stats`     | `bytes_allocated: usize` / `alloc_count: u64`         |
+| `pub const` | `ArenaGc`   | 下記メソッドを持つ struct                             |
 
-<details>
-<summary>答え骨子</summary>
+`ArenaGc` の 7 メソッドは:
 
-```zig
-//! Arena GC for Phase 1.
+| メソッド                                      | 役割                                     |
+|-----------------------------------------------|------------------------------------------|
+| `init(backing: std.mem.Allocator) ArenaGc`    | backing allocator を包む                 |
+| `deinit(self: *ArenaGc) void`                 | 内部 arena を一括解放                    |
+| `allocator(self: *ArenaGc) std.mem.Allocator` | vtable 付き薄ラッパを返す                |
+| `reset(self: *ArenaGc) void`                  | `arena.reset(.free_all)` + `stats = .{}` |
+| `suppressCollection(self: *ArenaGc) void`     | `suppress_count += 1`                    |
+| `unsuppressCollection(self: *ArenaGc) void`   | `assert(>0)` してから `-= 1`             |
+| `isSuppressed(self: *const ArenaGc) bool`     | `suppress_count > 0`                     |
 
-const std = @import("std");
-
-pub const gc_stress = false;
-
-pub const Stats = struct {
-    bytes_allocated: usize = 0,
-    alloc_count: u64 = 0,
-};
-
-pub const ArenaGc = struct {
-    arena: std.heap.ArenaAllocator,
-    suppress_count: u32 = 0,
-    stats: Stats = .{},
-
-    pub fn init(backing: std.mem.Allocator) ArenaGc {
-        return .{ .arena = std.heap.ArenaAllocator.init(backing) };
-    }
-
-    pub fn deinit(self: *ArenaGc) void {
-        self.arena.deinit();
-    }
-
-    pub fn allocator(self: *ArenaGc) std.mem.Allocator {
-        return .{ .ptr = self, .vtable = &vtable };
-    }
-
-    pub fn suppressCollection(self: *ArenaGc) void {
-        self.suppress_count += 1;
-    }
-
-    pub fn unsuppressCollection(self: *ArenaGc) void {
-        std.debug.assert(self.suppress_count > 0);
-        self.suppress_count -= 1;
-    }
-
-    pub fn isSuppressed(self: *const ArenaGc) bool {
-        return self.suppress_count > 0;
-    }
-
-    pub fn reset(self: *ArenaGc) void {
-        _ = self.arena.reset(.free_all);
-        self.stats = .{};
-    }
-
-    const vtable = std.mem.Allocator.VTable{
-        .alloc = arenaAlloc,
-        .resize = arenaResize,
-        .remap = arenaRemap,
-        .free = arenaFree,
-    };
-
-    fn arenaAlloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
-        const self: *ArenaGc = @ptrCast(@alignCast(ctx));
-        const result = self.arena.allocator().rawAlloc(len, alignment, ret_addr);
-        if (result != null) {
-            self.stats.bytes_allocated += len;
-            self.stats.alloc_count += 1;
-        }
-        return result;
-    }
-    // ... resize / remap / free も同様 ...
-};
-```
-
-検証: `bash test/run_all.sh` が緑、特に `ArenaGc tracks allocations
-via stats` / `ArenaGc suppression nests` / `gc_stress flag is
-accessible` のテストが通ること。
-
-</details>
+Phase 5 で mark-sweep に切り替えるときも、この 7 メソッドの
+シグネチャは保ったまま中身だけ差し替える設計です。
 
 ---
 
@@ -542,25 +401,13 @@ git checkout cw-from-scratch
 
 ---
 
-## 9. Feynman 課題
+## この章で学んだこと
 
-1. なぜ Phase 1 は arena だけで足りるのか。1 行で。
-2. `suppress_count` を **`u32`** にして **`bool` にしない** 理由は何か。
-   1 行で。
-3. `gc_stress = false` を Day 1 から定義しておくと、Phase 5 で何が
-   楽になるのか。1 行で。
-
----
-
-## 10. チェックリスト
-
-- [ ] 演習 4.1: alloc_count / bytes_allocated を予測できる
-- [ ] 演習 4.2: `suppressCollection` / `unsuppressCollection` を
-      シグネチャだけから書ける
-- [ ] 演習 4.3: `arena.zig` 全体をファイル名と API リストだけから
-      書き起こせる
-- [ ] Feynman 3 問を 1 行ずつで答えられる
-- [ ] ROADMAP §4.7 / §4.8 / §A6 を即座に指せる
+- 結局のところこの章は、**Phase 1 は arena 1 本で足りる**こと、そして
+  **Phase 5 で必要になる `suppress_count` と `gc_stress` の seam だけを
+  Day 1 から API に切ってある**ことの 2 点に集約されます。
+- `suppress_count` を `bool` でなく `u32` にしたのは、入れ子マクロでも
+  外側の `defer` が状態を壊さないようにするためです。
 
 ---
 

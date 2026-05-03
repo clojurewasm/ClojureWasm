@@ -113,35 +113,22 @@ pub fn formatPrStr(self: Form, w: *Writer) Writer.Error!void {
 `##Inf` / `##-Inf`）。`{d}` の単純フォーマットだと小文字の `nan` に
 なってしまい、round-trip が壊れます。
 
-### 演習 7.1: typeName を予測 (L1)
+### `typeName` と heap 表現の独立性
 
-`src/eval/form.zig` の `typeName` を見ずに、以下の戻り値を予測。
+`Form.typeName` はエラーメッセージのために `FormData` のタグを文字列化
+する関数です。**heap 側の `HeapTag`（第 0002 章）とは独立していて**、
+構文上の区別だけを返します:
 
-```zig
-const f1 = Form{ .data = .nil };
-const f2 = Form{ .data = .{ .keyword = .{ .ns = "my", .name = "k" } } };
-const f3 = Form{ .data = .{ .map = &.{} } };
-const f4 = Form{ .data = .{ .float = std.math.nan(f64) } };
-```
+| Form 例                                  | typeName の戻り値                               |
+|------------------------------------------|-------------------------------------------------|
+| `Form{ .data = .nil }`                   | `"nil"`                                         |
+| `Form{ .data = .{ .keyword = ... } }`    | `"keyword"`（`ns` の有無は型名に出ない）        |
+| `Form{ .data = .{ .map = &.{} } }`       | `"map"`（heap-side の `hash_map` ではなく構文） |
+| `Form{ .data = .{ .float = nan(f64) } }` | `"float"`                                       |
 
-Q1: `f2.typeName()` の戻り値は何か。
-Q2: `f3.typeName()` は `"hash_map"` と `"map"` のどちらか。
-Q3: `f4.typeName()` は何か。
-
-<details>
-<summary>答え</summary>
-
-| Form | typeName()                                                |
-|------|-----------------------------------------------------------|
-| f1   | `"nil"`                                                   |
-| f2   | `"keyword"`（namespace の有無は型名に出ない）             |
-| f3   | `"map"`（heap-side の `hash_map` ではなく構文上の `map`） |
-| f4   | `"float"`                                                 |
-
-`typeName` はエラーメッセージ用で、heap 表現の `HeapTag`（第 0002
-章）とは独立。
-
-</details>
+Form 段階では「これは map literal か」だけが分かれば十分で、「実装
+として hash_map か array_map か」は heap 側の関心です。この区別を
+ぼかさないために 2 系列の名前空間を別々に維持しています。
 
 ---
 
@@ -196,22 +183,10 @@ node arena を渡し、評価が終わるたびに `arena.deinit()` で **木全
 を一発で破棄します**。GC は `Value` を trace しますが、Form は heap
 に入らないため trace されません。
 
-### 演習 7.2: locOf を書く (L2)
+### Token から SourceLocation へ転写する
 
-`Token` から `SourceLocation` を作るヘルパ。
-
-```zig
-fn locOf(file_name: []const u8, tok: Token) SourceLocation {
-    // ここから書く
-}
-```
-
-ヒント:
-- Token は `line: u32` と `column: u16` を持つ
-- 戻り値はデフォルト初期化のフィールド構文で作れる
-
-<details>
-<summary>答え</summary>
+Token 側が持つ `line / column` を Form 側の `SourceLocation` に詰め
+直すヘルパは、`src/eval/reader.zig` で次の 1 行に集約されています:
 
 ```zig
 fn locOf(file_name: []const u8, tok: Token) SourceLocation {
@@ -219,11 +194,10 @@ fn locOf(file_name: []const u8, tok: Token) SourceLocation {
 }
 ```
 
-実物 (`src/eval/reader.zig`) と同じ。Reader は `file_name` を所有
-しない（caller の責任）。Token も Form も「ソースの中の場所」だけ
-持つ。
-
-</details>
+`file_name` は caller が所有する `[]const u8` で、Reader 自身は
+コピーを取りません（CLI の `-e` 経路ではプロセス全体寿命の string
+リテラルです）。Token も Form も「ソースの中の場所」だけを持ち、
+ファイル名の所有権は呼び出し側に委ねる、という分担です。
 
 ---
 
@@ -357,82 +331,22 @@ fn isWhitespace(c: u8) bool {
 `[1, 2, 3]` も `[1 2 3]` も **同じ Token 列になります**。Clojure
 文化の見た目を保ちつつ、reader 側で分岐を増やす必要もありません。
 
-### 演習 7.3: 1 ファイル分の Tokenizer をゼロから (L3)
+### TokenKind の 16 種
 
-ファイル名と公開 API のみ。
-
-```zig
-// File: src/eval/tokenizer.zig
-//
-// pub const TokenKind = enum(u8) {
-//     lparen, rparen, lbracket, rbracket, lbrace, rbrace,
-//     integer, float, string, symbol, keyword,
-//     quote, discard, symbolic, eof, invalid,
-// };
-//
-// pub const Token = struct {
-//     kind: TokenKind, start: u32, len: u16, line: u32, column: u16,
-//     pub fn text(self: Token, source: []const u8) []const u8;
-// };
-//
-// pub const Tokenizer = struct {
-//     source: []const u8, pos: u32 = 0, line: u32 = 1, column: u16 = 0,
-//     pub fn init(source: []const u8) Tokenizer;
-//     pub fn next(self: *Tokenizer) Token;
-// };
-```
-
-要求:
-- `(+ 1 2)`, `[1 :a "b"]`, `{:k v}`, `'foo`, `##NaN`, `0xFF`,
-  `3.14e10`, `; comment\n42`, `1,2,3` を全て tokenize できる
-- 改行で `line` +1、`column` リセット
-- 不正入力（unterminated string, bare `:`, lone `#X`）は `.invalid`
-- EOF 後は `.eof` を返し続ける（idempotent）
-
-<details>
-<summary>答え骨子</summary>
+Phase 1 で扱う TokenKind は次の 16 種です:
 
 ```zig
-//! Tokenizer — Clojure source text → token stream.
-const std = @import("std");
-
 pub const TokenKind = enum(u8) {
     lparen, rparen, lbracket, rbracket, lbrace, rbrace,
     integer, float, string, symbol, keyword,
     quote, discard, symbolic, eof, invalid,
 };
-
-pub const Token = struct {
-    kind: TokenKind, start: u32, len: u16, line: u32, column: u16,
-    pub fn text(self: Token, source: []const u8) []const u8 {
-        return source[self.start .. self.start + self.len];
-    }
-};
-
-pub const Tokenizer = struct {
-    source: []const u8, pos: u32 = 0, line: u32 = 1, column: u16 = 0,
-
-    pub fn init(source: []const u8) Tokenizer {
-        return .{ .source = source };
-    }
-
-    pub fn next(self: *Tokenizer) Token {
-        self.skipWhitespace();
-        if (self.pos >= self.source.len) return self.makeEof();
-        // ... switch (ch) { '(' => ..., ... }; readNumber / readString /
-        // readSymbol / readKeyword / readDispatch を本文どおり
-    }
-    // helpers: skipWhitespace, advance, makeEof, makeToken, singleChar
-};
-
-// character classes: isDigit, isHexDigit, isWhitespace (with comma),
-// isSymbolChar, isSymbolStart
 ```
 
-検証: `bash test/run_all.sh` で `tokenizer.zig` の 13 個の test ブロック
-が緑になる。
-
-</details>
+**不正入力**（unterminated string、bare `:`、lone `#X`）はすべて
+`.invalid` に集約され、行・列を保ったまま reader に渡ります。EOF
+以降は `.eof` を返し続ける idempotent な設計なので、reader 側のループ
+終了条件が単純になります（`while (tok.kind != .eof) ...`）。
 
 ---
 
@@ -500,28 +414,14 @@ bash test/run_all.sh   # 全 suite 緑
 
 ---
 
-## 7. Feynman 課題
+## この章で学んだこと
 
-6 歳の自分に説明するつもりで答えてください。
-
-1. なぜ Reader は **`Form` を出して `Value` を出さない** のか。
-   1 行で。
-2. Token が **`text` フィールドではなく `start + len`** を持つ利点は
-   何か。1 行で。
-3. `nil` / `true` / `false` が **`.symbol` トークン** として返って
-   くるのはなぜか。1 行で。
-
----
-
-## 8. チェックリスト
-
-- [ ] 演習 7.1: 4 つの Form の `typeName()` を即答できた
-- [ ] 演習 7.2: `locOf` を 3 行で書けた
-- [ ] 演習 7.3: Tokenizer の 16 種 TokenKind と `next()` dispatch を
-  シグネチャだけから再構成できた
-- [ ] Feynman 3 問を 1 行ずつで答えられた
-- [ ] `git checkout 6a09869` と `git checkout 615fd46` の状態で個別
-  test を緑にできた
+- **Form は「構文」を、Value は「実行時値」を持つ別寿命の表現**。
+  Reader が間に Form を挟むことで、symbol の namespace と
+  `SourceLocation` を macroexpansion 段階まで失わずに運べる。
+- Tokenizer は **`start + len` だけ** を持つ零アロケーション lexer
+  で、唯一の 2 文字 lookahead は `+1` / `-1` の数値判定。それ以外は
+  純粋な LL(1) で 16 種の TokenKind を吐き分ける。
 
 ---
 

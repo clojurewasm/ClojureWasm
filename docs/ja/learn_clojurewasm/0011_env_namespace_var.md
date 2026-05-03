@@ -123,46 +123,12 @@ analyzer/TreeWalk のローカルスコープ管理で扱われます (第 0012 
 
 両者を `Var.deref` の中で混ぜないために、**非 dynamic は frame を
 無視する** という規約を守ります。これにより analyzer 側で「これは
-let か binding か」を特別扱いせずに済みます。
-
-### 演習 11.1: `Var.deref` の挙動 (L1 — 予測検証)
-
-以下の状況で `v.deref()` は何を返すか予測してください。
-
-```zig
-// セットアップ
-var v_static = Var{ .ns = &ns, .name = "x", .root = .nil_val };
-var v_dynamic = Var{ .ns = &ns, .name = "*y*", .root = .nil_val,
-                     .flags = .{ .dynamic = true } };
-
-// frame を push
-var frame: BindingFrame = .{};
-try frame.bindings.put(alloc, &v_static, .true_val);
-try frame.bindings.put(alloc, &v_dynamic, .false_val);
-pushFrame(&frame);
-defer popFrame();
-
-// 質問
-const a = v_static.deref();    // ?
-const b = v_dynamic.deref();   // ?
-```
-
-Q1: `a` の値は？
-Q2: `b` の値は？
-
-<details>
-<summary>答え</summary>
-
-| 変数 | deref        | 理由                                                                                             |
-|------|--------------|--------------------------------------------------------------------------------------------------|
-| `a`  | `.nil_val`   | `v_static` は `dynamic=false` なので **frame を見ない**。root をそのまま返す                     |
-| `b`  | `.false_val` | `v_dynamic` は `dynamic=true` なので chain を walk、frame に bind されている `.false_val` を返す |
-
-これが「analyzer 側で let と binding を特別扱いせずに済む」設計の
-具体的な現れです。frame に何を入れていようが、`Var.flags.dynamic
-== false` なら無視されます。
-
-</details>
+let か binding か」を特別扱いせずに済みます。具体的には、frame に
+`v_static` も `v_dynamic` も束縛されている状況で `deref` を呼ぶと、
+非 dynamic な `v_static` は `root` をそのまま返し、`v_dynamic` だけ
+が chain を walk して frame の値を拾う、という二極的な挙動になり
+ます。frame に何を入れていようが、`flags.dynamic == false` なら
+完全に無視されるのです。
 
 ---
 
@@ -215,48 +181,11 @@ pub fn resolve(self: *Namespace, name: []const u8) ?*Var {
 ターゲット namespace を取り、その上で `target.resolve("foo")` を
 呼びます。
 
-### 演習 11.2: `resolve` の lookup を再構成 (L2)
-
-以下のシグネチャと test 例から、`resolve` の本体を書いてください。
-
-```zig
-pub fn resolve(self: *Namespace, name: []const u8) ?*Var {
-    // ここから書く
-}
-
-// test:
-//   user.intern("x", v_user_x);
-//   user.refer("y", v_other_y);
-//   try expectEqual(v_user_x, user.resolve("x").?);
-//   try expectEqual(v_other_y, user.resolve("y").?);
-//   try expect(user.resolve("z") == null);
-```
-
-ヒント:
-- `mappings.get` を最初に試す
-- 次に `refers.get`
-- どちらも null なら null を返す
-
-<details>
-<summary>答え</summary>
-
-```zig
-pub fn resolve(self: *Namespace, name: []const u8) ?*Var {
-    if (self.mappings.get(name)) |v| return v;
-    if (self.refers.get(name)) |v| return v;
-    return null;
-}
-```
-
-ポイント:
-- **順序が意味論を担う**: `mappings` を先に見ないと、refer された同名
-  Var が def を上書きしたかのような挙動になってしまいます。Clojure
-  の意味論では「自分の def が勝つ」が正解です。
-- **`null` 返し**: `error` を返さない理由は、呼び出し側（analyzer）
-  が「special form / macro / 通常の var 解決」を順に試すためです。
-  この段階で分岐させるのは早すぎます。
-
-</details>
+順序が意味論を担っています。`mappings` を先に見ないと、refer された
+同名 Var が def を上書きしたかのような挙動になり、Clojure の「自分
+の def が勝つ」という contract を破ります。`null` 返しを採るのは、
+呼び出し側（analyzer）が「special form / macro / 通常の var 解決」
+を順に試す段階で、ここではまだエラーに昇格させたくないからです。
 
 ---
 
@@ -377,80 +306,11 @@ threadlocal:
 ```
 
 「散らばっていた状態を集約してわかりやすくした」のではなく、
-**残すべきものを 4 個に絞った** と表現するのが正確です。
-
-### 演習 11.3: `findBinding` を chain walk で再構成 (L3)
-
-ファイル名と公開 API のみ：
-
-要求:
-- File: `src/runtime/env.zig` の中の helper function
-- Public:
-  - `pub const BindingFrame = struct { parent: ?*BindingFrame, bindings: BindingMap }`
-  - `pub threadlocal var current_frame: ?*BindingFrame`
-  - `pub fn pushFrame(frame: *BindingFrame) void`
-  - `pub fn popFrame() void`
-  - `pub fn findBinding(v: *const Var) ?Value`
-
-ヒント:
-- `pushFrame` は `frame.parent = current_frame; current_frame = frame;`
-- `popFrame` は `current_frame = current_frame.?.parent;` (null 判定)
-- `findBinding` は while loop で chain を歩く
-
-<details>
-<summary>答え骨子</summary>
-
-```zig
-const BindingMap = std.AutoHashMapUnmanaged(*const Var, Value);
-
-pub const BindingFrame = struct {
-    parent: ?*BindingFrame = null,
-    bindings: BindingMap = .empty,
-};
-
-pub threadlocal var current_frame: ?*BindingFrame = null;
-
-pub fn pushFrame(frame: *BindingFrame) void {
-    frame.parent = current_frame;
-    current_frame = frame;
-}
-
-pub fn popFrame() void {
-    if (current_frame) |f| {
-        current_frame = f.parent;
-    }
-}
-
-pub fn findBinding(v: *const Var) ?Value {
-    var f = current_frame;
-    while (f) |frame| {
-        if (frame.bindings.get(v)) |val| return val;
-        f = frame.parent;
-    }
-    return null;
-}
-```
-
-検証: nested binding で inner frame が outer を shadow するか test:
-
-```zig
-test "nested frames shadow outer" {
-    // ... v は dynamic Var ...
-    var f1: BindingFrame = .{};
-    try f1.bindings.put(alloc, v, .true_val);
-    pushFrame(&f1);
-    defer popFrame();
-
-    var f2: BindingFrame = .{};
-    try f2.bindings.put(alloc, v, .false_val);
-    pushFrame(&f2);
-    defer popFrame();
-
-    try expectEqual(Value.false_val, v.deref());  // inner wins
-}
-```
-
-</details>
+**残すべきものを 4 個に絞った** と表現するのが正確です。nested
+binding で inner frame が outer を shadow することは、`findBinding`
+が `current_frame` から `parent` ポインタを辿って **最初に見つかっ
+た値で即 return する** という単純な while loop だけで保証されて
+います。
 
 ---
 
@@ -537,21 +397,11 @@ Clojure JVM では `(refer 'clojure.core)` が standard です。本リポ
 本リポジトリの `rt` は Zig code（BuiltinFn）で書かれているという点
 が本質的な違いです。
 
-### 演習 11.4: `Env.intern` を REPL-idempotent に書く (L2)
+### REPL-idempotent な `Env.intern`
 
-`(def x 1)` を 2 回呼んだら、Var pointer は **同じ** であってほしい
-(REPL の挙動)。本体を書いてください。
-
-```zig
-pub fn intern(self: *Env, ns: *Namespace, name: []const u8, root: Value) !*Var {
-    // ヒント:
-    //  - もし ns.mappings に name が既にあれば、その Var の root を更新して既存ポインタを返す
-    //  - 無ければ new Var を作って put、ポインタを返す
-}
-```
-
-<details>
-<summary>答え</summary>
+`(def x 1)` を 2 回呼んだとき、Var pointer は **同じ** であって
+ほしい — これが Clojure REPL の挙動です。`Env.intern` は次のように
+書きます：
 
 ```zig
 pub fn intern(self: *Env, ns: *Namespace, name: []const u8, root: Value) !*Var {
@@ -569,19 +419,17 @@ pub fn intern(self: *Env, ns: *Namespace, name: []const u8, root: Value) !*Var {
 }
 ```
 
-ポイント:
+ポイントは 3 点です：
 
-- **update in place**: 同名 Var が既にあれば、新しい Var を作らない。
-  pointer 同一性が保たれるので、他の場所から `*Var` を保持してい
-  るコードがそのまま動く (e.g. analyzer がキャッシュしていた
-  Var)。
+- **update in place**: 同名 Var が既にあれば、新しい Var を作りませ
+  ん。pointer 同一性が保たれるので、他の場所から `*Var` を保持して
+  いるコード（例: analyzer がキャッシュしていた Var）がそのまま動
+  きます。
 - **errdefer で半端な状態を防ぐ**: name dup → fail なら早期 return、
   Var create → fail なら name を free、map.put → fail なら Var を
   destroy。
 - **Clojure JVM `Var.intern` と整合**: Clojure も同じ方針 (内部
   ConcurrentHashMap で putIfAbsent)。
-
-</details>
 
 ---
 
@@ -724,30 +572,17 @@ zig build test --summary new 2>&1 | grep "BindingFrame"
 
 ---
 
-## 9. Feynman 課題
+## この章で学んだこと
 
-6 歳の自分に説明するつもりで答えてください。
-
-1. なぜ `^:dynamic` の Var だけが `current_frame` を walk して、非
-   dynamic の Var は walk しないのか。1 行で。
-2. なぜ `Namespace` は `mappings` と `refers` を別の map に分けて
-   いるのか。1 行で。
-3. なぜ `current_frame` は **正しい threadlocal** であり、廃止すべき
-   ではないと言えるのか。1 行で。
-
----
-
-## 10. チェックリスト
-
-- [ ] 演習 11.1 の `Var.deref` 予測検証で正解できる
-- [ ] 演習 11.2 の `Namespace.resolve` をシグネチャだけから書ける
-- [ ] 演習 11.3 で `pushFrame` / `popFrame` / `findBinding` をゼロから
-      書き起こせる
-- [ ] 演習 11.4 で REPL-idempotent な `Env.intern` を書ける
-- [ ] Feynman 3 問を 1 行ずつで答えられた
-- [ ] `git checkout e20acaa` で `zig build test` が緑になることを確認
-- [ ] v1 の nREPL race と本リポの per-session Env による解決を 2-3 行で
-      説明できる
+- 結局のところ、この章は **「Clojure の dynamic var 意味論を満たす
+  ためには `current_frame` を threadlocal に置くしかない」** という
+  正当化と、「それ以外の状態は per-session `Env` に閉じ込める」と
+  いう線引きの話です。
+- `Namespace` の `mappings` / `refers` / `aliases` は単なる lookup
+  順序ではなく、**所有関係（own / borrow）の違い** を持った 3 種の
+  map で、deinit と GC の責務分担を支えています。
+- per-client `Env` + 共有 `Runtime` の組み合わせが、v1 の nREPL race
+  を Phase 14 を待たずに Day 1 で根絶しています。
 
 ---
 
