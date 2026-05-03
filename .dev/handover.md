@@ -39,7 +39,8 @@
   `not`, `defn` macro single+multi-body),
   `test/e2e/phase3_exit.sh` (2/2 — Phase-3 exit smoke).
   Mac runs additionally pass `zig build lint -- --max-warnings 0`
-  (zlinter `no_deprecated`; ADR-0003).
+  (zlinter Phase A+B: `no_deprecated`, `no_orelse_unreachable`,
+  `no_empty_block`, `no_unused`; ADR-0003).
 - **End-to-end error rendering activated** (3.1–3.4):
   `cljw -e '(+ 1 :foo)'` prints `<-e>:1:0: type_error [eval]\n
   (+ 1 :foo)\n  ^\n+: expected number, got keyword`. Reader /
