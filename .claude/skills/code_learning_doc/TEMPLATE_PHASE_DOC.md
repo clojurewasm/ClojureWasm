@@ -1,6 +1,9 @@
 <!-- Per-concept chapter. docs/ja/learn_clojurewasm/NNNN_<slug>.md.
      Body is Japanese; code blocks keep their original English identifiers.
-     A chapter is a teaching unit, not a project diary. -->
+     A chapter is a teaching unit (pure exposition), not a project diary.
+     Do NOT add exercises, predict-then-verify prompts, L1/L2/L3 scaffolds,
+     Feynman questions, or end-of-chapter checklists. The reader reads;
+     they do not drill. -->
 
 ---
 chapter: NN                     # 1-based monotone integer
@@ -20,7 +23,7 @@ date: YYYY-MM-DD
 
 > 対応 task: §9.X.Y / 所要時間: ~XX 分
 
-<章の 2-3 行サマリ>
+<章の 2-3 行サマリ。何を扱い、なぜこの順で出てくるかを書く>
 
 ---
 
@@ -35,32 +38,16 @@ date: YYYY-MM-DD
 
 ## 1. <概念 A の見出し>
 
-<本文。教科書として読みやすい連続的な文章。code block と図を交える>
+<本文。教科書として読みやすい連続的な文章。
+要点は地の文で説明し、必要に応じて code block と図を挿入する。
+読者は読み流すだけで理解できることを目指す。>
 
 ```zig
 // 該当コードの抜粋（snapshot として将来の上書きに備える）
 ```
 
-### 演習 N.1: <演習タイトル> (L1 — 穴埋め / predict)
-
-```zig
-pub fn foo(x: u64) u64 {
-    return x ____ ____;   // ← Q: ここを埋めよ
-}
-```
-
-Q1: …
-Q2: …
-
-<details>
-<summary>答え</summary>
-
-**Q1**: ...
-**Q2**: ...
-
-理由: ...
-
-</details>
+<コードのどこが本質か、なぜこの形なのかを地の文で続ける。
+重要な数値や bit pattern は表で整理してもよい。>
 
 ---
 
@@ -68,33 +55,11 @@ Q2: …
 
 <本文>
 
-### 演習 N.2: <演習タイトル> (L2 — 部分再構成)
-
-シグネチャだけを与え、本体を書かせる。
-
 ```zig
-pub fn bar(rt: *Runtime, x: Value) !Value {
-    // ここから書く
-}
+// コード抜粋
 ```
 
-ヒント:
-- ...
-- ...
-
-<details>
-<summary>答え</summary>
-
-```zig
-pub fn bar(rt: *Runtime, x: Value) !Value {
-    ...
-}
-```
-
-ポイント:
-- ...
-
-</details>
+<解説の続き>
 
 ---
 
@@ -102,42 +67,12 @@ pub fn bar(rt: *Runtime, x: Value) !Value {
 
 <本文>
 
-### 演習 N.3: <演習タイトル> (L3 — 完全再構成)
-
-ファイル名 + 公開 API のリストだけを与え、ゼロから書かせる。
-
-要求:
-- File: `src/<path>.zig`
-- Public:
-  - `pub fn <name>(...) ...`
-  - `pub const <Type> = ...`
-
-<details>
-<summary>答え骨子</summary>
-
-```zig
-//! <module-doc>
-
-const std = @import("std");
-
-pub const Type = ...;
-
-pub fn name(...) ... {
-    ...
-}
-
-test "..." {
-    ...
-}
-```
-
-検証: `bash test/run_all.sh` が緑になる。
-
-</details>
+<必要に応じて 4, 5, ... と概念を追加。1 章 = 1 概念群、
+1 セクション = 1 概念。セクションだけ読んでも意味が通る粒度。>
 
 ---
 
-## 4. 設計判断と却下した代替
+## N. 設計判断と却下した代替
 
 | 案           | 採否    | 理由   |
 |--------------|---------|--------|
@@ -149,7 +84,7 @@ ROADMAP § N.M / 原則 P# への対応：<どこを満たすか>
 
 ---
 
-## 5. 確認 (Try it)
+## N+1. 確認 (Try it)
 
 ```sh
 git checkout <SHA_last>
@@ -159,9 +94,12 @@ zig build
 bash test/run_all.sh    # 全 suite green
 ```
 
+<手元で動かしたいときの最短手順だけを書く。
+読者を試すための章末問題ではない。>
+
 ---
 
-## 6. 教科書との対比
+## N+2. 教科書との対比
 
 | 軸       | v1 (`~/Documents/MyProducts/ClojureWasm`) | v1_ref | Clojure JVM | 本リポ               |
 |----------|-------------------------------------------|--------|-------------|----------------------|
@@ -174,26 +112,21 @@ bash test/run_all.sh    # 全 suite green
 
 ---
 
-## 7. Feynman 課題
+## この章で学んだこと
 
-6 歳の自分に説明するつもりで答える。書けなければ理解が不完全。
+<1〜3 行、または 1〜3 個の箇条書きで凝縮する。
+読み終えた読者が口頭で 30 秒で再現できる結論文を選ぶ。
+概念名の羅列ではなく「結局のところこの章は X だ」と言い切る形で。
+同じ事実を角度を変えて並べない。最も鋭いものだけ。>
 
-1. <一行で説明する設問 1>
-2. <一行で説明する設問 2>
-3. <一行で説明する設問 3>
-
----
-
-## 8. チェックリスト
-
-- [ ] 演習 N.1 の答えを書ける
-- [ ] 演習 N.2 を試行錯誤なしで書ける
-- [ ] 演習 N.3 をファイル名と API リストだけから書ける
-- [ ] Feynman 3 問を 1 行ずつで答えられる
-- [ ] ROADMAP の対応 § を即座に指せる
+- <要点 1: 一撃で残したい核>
+- <要点 2: あれば>
+- <要点 3: あれば>
 
 ---
 
 ## 次へ
 
 第 NN+1 章: [<次の概念>](./<next>.md)
+
+<次章で扱う概念と、本章とのつながりを 1-2 行で予告する>

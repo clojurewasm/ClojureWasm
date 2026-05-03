@@ -7,8 +7,14 @@ description: Write Japanese learning material under docs/ja/ as a textbook. Two 
 
 `docs/ja/` is **a textbook**, not a project diary. The reader is a future
 self (and a Conj 2026 audience) studying how a Clojure runtime gets built
-from scratch in Zig 0.16. The goal is **conceptual mastery**, not a
-chronicle of commits.
+from scratch in Zig 0.16. The goal is **conceptual mastery through
+reading**, not a chronicle of commits.
+
+Chapters are **pure exposition** — narrative explanation, code excerpts
+with commentary, and design rationale. They do **not** include exercises,
+predict-then-verify prompts, L1/L2/L3 scaffolds, Feynman questions, or
+checklists. The reader is expected to read straight through; the text
+must carry all of the teaching weight on its own.
 
 There are two cadences, both required:
 
@@ -22,9 +28,9 @@ There are two cadences, both required:
 2. **Per-concept chapter** (`docs/ja/learn_clojurewasm/NNNN_<slug>.md`) — written at a
    phase boundary, or every 3–5 source commits when the concept is
    coherent enough to teach in one sitting. **This is the publishable
-   textbook unit**. It uses the chapter template (predict-then-verify
-   exercises with collapsible answers, L1/L2/L3 scaffolding, Feynman
-   prompts, checklist, link to the next chapter).
+   textbook unit**. It uses the chapter template — narrative concept
+   sections, design alternatives table, "Try it" runnable snippet,
+   textbook comparison table, link to the next chapter.
 
 The pre-commit gate (`scripts/check_learning_doc.sh`) only enforces the
 per-concept chapters (paired commits, `commits:` front-matter). Per-task
@@ -69,10 +75,11 @@ ls docs/ja/ | grep -oE '^[0-9]{4}' | sort -n | tail -1
 ```
 
 The chapter template lives in
-[`TEMPLATE_PHASE_DOC.md`](./TEMPLATE_PHASE_DOC.md). Copy it. Use the
-exercise / Feynman / checklist sections — **not** as decoration, but
-because the chapter has to *teach*. If the section feels empty, the
-concept is not yet ready for a chapter; keep iterating in notes.
+[`TEMPLATE_PHASE_DOC.md`](./TEMPLATE_PHASE_DOC.md). Copy it. The body
+sections are pure narrative — explain the concept thoroughly, embed
+code excerpts as snapshots, and walk the reader through *why* each
+piece is shaped the way it is. If a section feels empty, the concept
+is not yet ready for a chapter; keep iterating in notes.
 
 ### Chapter shape (single source of truth)
 
@@ -90,16 +97,24 @@ date: YYYY-MM-DD
 # NN — <タイトル>
 
 ## この章で学ぶこと   (3-5 行)
-## 1. <概念 A>          ← 演習 N.1 (L1 穴埋め, predict-then-verify)
-## 2. <概念 B>          ← 演習 N.2 (L2 部分再構成)
-## 3. <概念 C>          ← 演習 N.3 (L3 完全再構成)
-## 4. 設計判断と却下した代替
-## 5. 確認 (Try it)
-## 6. 教科書との対比 (v1 / Babashka / Clojure JVM)
-## 7. Feynman 課題 (3 問)
-## 8. チェックリスト
+## 1. <概念 A>          ← 解説本文 + コード抜粋
+## 2. <概念 B>          ← 解説本文 + コード抜粋
+## 3. <概念 C>          ← 解説本文 + コード抜粋
+## (必要に応じて概念を追加)
+## N. 設計判断と却下した代替   (表)
+## N+1. 確認 (Try it)         (実行可能スニペット)
+## N+2. 教科書との対比         (v1 / v1_ref / Clojure JVM / Babashka)
+## この章で学んだこと          (1〜3 行 / 1〜3 個の箇条書きで凝縮)
 ## 次へ → NN+1
 ```
+
+「この章で学んだこと」は章末の **総括** で、章頭の「この章で学ぶこと」
+とは別物。**読み終えた読者が口頭で 30 秒で再現できる結論文**を 1〜3
+個に絞る。概念名の羅列ではなく「結局のところこの章は X だ」と言い切る
+形で書く。同じ事実を角度を変えて並べない — 最も鋭いものだけを残す。
+
+数だけでなく **粒度** も同じ。1 概念は 1 セクションで完結させ、
+読者がそのセクションだけ読んでも意味が通るように書く。
 
 ## The two gate rules (canonical definition)
 
@@ -137,12 +152,9 @@ gate; the rest are voluntary.
 
 - **Code is overwritten** during refactors; the chapter preserves the
   conceptual snapshot.
-- **Long-form retention requires exercises**: predict-then-verify and
-  L1/L2/L3 scaffolding are the bread and butter of educational research
-  (testing effect, retrieval practice, scaffolded reconstruction).
 - **Phase chronicles drift into "what I did" reports**, which lose value
-  to anyone who is not the author. Per-concept chapters with exercises
-  retain instructional value to a wider audience.
+  to anyone who is not the author. Per-concept chapters organised
+  around *the concept* retain instructional value to a wider audience.
 - **Per-task notes prevent the "summarise five tasks at the end of the
   phase from cold context" failure mode** — the long-form chapter is
   written from hot notes, not from `git log`.
@@ -153,9 +165,11 @@ gate; the rest are voluntary.
   diary. Use the chapter template instead.
 - ❌ One chapter per commit. Concepts span commits; chapters span
   concepts.
-- ❌ Skipping exercises because "the answer is in the code already".
-  Exercises are not for documenting the code; they are for letting the
-  reader rebuild it from memory.
+- ❌ Inserting exercises, predict-then-verify prompts, L1/L2/L3
+  scaffolds, Feynman questions, or end-of-chapter checklists. Chapters
+  are pure exposition — the reader reads, they do not drill. If a
+  point is important, explain it in prose; do not hide it behind a
+  `<details>` answer block.
 - ❌ Writing the chapter at the *end* of the phase from `git log` only.
   By that point the why-not's are forgotten. Use per-task notes as
   the source.

@@ -92,9 +92,10 @@ These hold the canonical procedures; CLAUDE.md only points to them.
 - **`code_learning_doc`** — two-cadence Japanese learning material:
   per-task notes (private, gitignored) and per-concept chapters
   (`docs/ja/learn_clojurewasm/NNNN_*.md`, gated). Templates: `TEMPLATE_TASK_NOTE.md` and
-  `TEMPLATE_PHASE_DOC.md`. The chapters use predict-then-verify
-  exercises (L1/L2/L3), Feynman prompts, and a checklist — they are
-  textbook units, not a project diary.
+  `TEMPLATE_PHASE_DOC.md`. Chapters are **pure exposition** — narrative
+  concept sections, design-alternatives table, "Try it" snippet,
+  textbook comparison. No exercises, predict-then-verify, L1/L2/L3,
+  Feynman, or checklists. They are textbook units, not a project diary.
 - **`continue`** — resume procedure + per-task TDD loop (with Step 0
   Survey, Step 7 per-task note, Step 8 60% compact gate) + multi-agent
   Phase-boundary review chain. Auto-triggers on "続けて" / "/continue"

@@ -83,31 +83,21 @@ Immediate types (contiguous 0xFFFC-0xFFFF):
 0xFFFF_0000_0000_0000  ← builtin_fn
 ```
 
-### 演習 2.1: top16 から型を当てる (L1 — 予測検証)
+### top16 と型判定の対応
 
-以下の `Value` (u64 として表記) は何型？ それぞれの top16 を読んで
-予測してください。
+具体例で確かめます。`Value` を u64 として並べると、top16 を読むだけで
+ほぼ型が決まることが見えてきます。
 
-```
-v1 = 0x4000_0000_0000_0000     # → ?
-v2 = 0xFFF8_0123_4567_8000     # → ?
-v3 = 0xFFFC_0000_0000_002A     # → ?
-v4 = 0xFFFD_0000_0000_0001     # → ?
-v5 = 0xFFFF_0000_1234_5678     # → ?
-```
+| Value (u64)             | top16    | 判定                                              |
+|-------------------------|----------|---------------------------------------------------|
+| `0x4000_0000_0000_0000` | `0x4000` | top16 < 0xFFF8 → **f64**（具体値は 2.0）         |
+| `0xFFF8_0123_4567_8000` | `0xFFF8` | **Group A heap**。sub-type[47:45] = `0` → string |
+| `0xFFFC_0000_0000_002A` | `0xFFFC` | **integer**。下位 48 bit = `0x2A` = 42            |
+| `0xFFFD_0000_0000_0001` | `0xFFFD` | **constant**。下位 = 1 → true                    |
+| `0xFFFF_0000_1234_5678` | `0xFFFF` | **builtin_fn**。下位 48 bit が関数ポインタ        |
 
-<details>
-<summary>答え</summary>
-
-| Value | top16               | 判定                                                     |
-|-------|---------------------|----------------------------------------------------------|
-| v1    | `0x4000` (< 0xFFF8) | **f64**（具体的には 2.0）                                |
-| v2    | `0xFFF8`            | **Group A heap**。続けて sub-type[47:45] = `0` → string |
-| v3    | `0xFFFC`            | **integer**。下位 48 bit = `0x2A` = **42**               |
-| v4    | `0xFFFD`            | **constant**。下位 = `1` → **true**                     |
-| v5    | `0xFFFF`            | **builtin_fn**。下位 48 bit が関数ポインタ               |
-
-</details>
+最初の 1 命令（`>> 48` して比較）で「f64 か否か」が確定するため、
+数値演算が支配的なホットパスでも型分岐コストはほぼ無視できます。
 
 ---
 
@@ -157,44 +147,11 @@ fn isPersistentColl(v: Value) bool {
 グループ分けはむしろ **将来の最適化のための地ならし** として効いて
 きます。
 
-### 演習 2.2: HeapTag 番号からグループを引く (L2)
+### HeapTag からグループ・サブタイプを取り出す
 
-`src/runtime/value.zig` の `HeapTag` enum は 0-31 の整数値を持つ：
-
-```zig
-pub const HeapTag = enum(u8) {
-    string = 0,    // Group A, sub 0
-    ...
-    fn_val = 8,    // Group B, sub 0
-    ...
-    class = 31,    // Group D, sub 7
-};
-```
-
-**シグネチャだけ与えるので、本体を書いてください**：
-
-```zig
-fn groupOf(ht: HeapTag) u2 {
-    // 0 → A, 1 → B, 2 → C, 3 → D
-}
-fn subOf(ht: HeapTag) u3 {
-    // 0..7
-}
-```
-
-<details>
-<summary>答え</summary>
-
-```zig
-fn groupOf(ht: HeapTag) u2 {
-    return @truncate(@intFromEnum(ht) / 8);
-}
-fn subOf(ht: HeapTag) u3 {
-    return @truncate(@intFromEnum(ht) % 8);
-}
-```
-
-実際の `Value.encodeHeapPtr` でも同じ pattern が使われています：
+`HeapTag` enum は 0〜31 の整数値を持ち、`/ 8` でグループ、`% 8` で
+サブタイプを取り出せます。`encodeHeapPtr` の中身でも素直にこの
+割り算を使っています：
 
 ```zig
 const type_val = @intFromEnum(ht);
@@ -202,7 +159,9 @@ const group = type_val / NB_HEAP_GROUP_SIZE;        // 8
 const sub_type = type_val % NB_HEAP_GROUP_SIZE;     // 0..7
 ```
 
-</details>
+`NB_HEAP_GROUP_SIZE` を 8（2 のべき乗）に固定してあるため、
+コンパイラはこれを **シフトと AND** に落とします。実機では割り算
+命令は発行されません。
 
 ---
 
@@ -242,6 +201,19 @@ pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
 }
 ```
 
+復号は逆向きに 1 行で済みます：
+
+```zig
+pub fn decodePtr(self: Value, comptime T: type) T {
+    const shifted = @intFromEnum(self) & NB_ADDR_SHIFTED_MASK;
+    return @ptrFromInt(@as(usize, shifted) << NB_ADDR_ALIGN_SHIFT);
+}
+```
+
+`encodeHeapPtr` → `decodePtr` の往復で元のポインタが戻ることが
+不変条件です。`std.testing.expectEqual(@intFromPtr(&dummy),
+@intFromPtr(p))` で確認できます。
+
 ### 8-byte alignment の確保
 
 ヒープオブジェクトは **必ず 8-byte aligned** で確保する必要が
@@ -249,73 +221,6 @@ pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
 くれますが、自前レイアウトでは `extern struct` の先頭に **8-byte
 ヘッダ** を置いて保証する慣習があります（次章以降で `HeapHeader`
 を取り上げます）。
-
-### 演習 2.3: encodeHeapPtr / decodePtr を書き起こす (L3)
-
-ファイル名と公開 API のみ：
-
-```zig
-// File: src/runtime/value.zig (一部)
-//
-// const HeapTag = enum(u8) { string=0, symbol=1, ..., class=31 };
-// const NB_HEAP_TAG_A: u64 = 0xFFF8_0000_0000_0000;
-// const NB_HEAP_TAG_B: u64 = 0xFFF9_0000_0000_0000;
-// const NB_HEAP_TAG_C: u64 = 0xFFFA_0000_0000_0000;
-// const NB_HEAP_TAG_D: u64 = 0xFFFB_0000_0000_0000;
-//
-// pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value;
-// pub fn decodePtr(self: Value, comptime T: type) T;
-```
-
-**実装してみてください**。エンコード後にデコードして元のポインタが
-戻ることをテストします。
-
-<details>
-<summary>答え骨子</summary>
-
-```zig
-const NB_HEAP_SUBTYPE_SHIFT: u6 = 45;
-const NB_ADDR_ALIGN_SHIFT: u3 = 3;
-const NB_ADDR_SHIFTED_MASK: u64 = 0x0000_1FFF_FFFF_FFFF;
-const NB_HEAP_GROUP_SIZE: u8 = 8;
-
-pub fn encodeHeapPtr(ht: HeapTag, ptr: anytype) Value {
-    const addr: u64 = @intFromPtr(ptr);
-    std.debug.assert(addr & 0x7 == 0);
-    const shifted = addr >> NB_ADDR_ALIGN_SHIFT;
-    std.debug.assert(shifted <= NB_ADDR_SHIFTED_MASK);
-
-    const type_val = @intFromEnum(ht);
-    const group = type_val / NB_HEAP_GROUP_SIZE;
-    const tag_base: u64 = switch (group) {
-        0 => NB_HEAP_TAG_A,
-        1 => NB_HEAP_TAG_B,
-        2 => NB_HEAP_TAG_C,
-        3 => NB_HEAP_TAG_D,
-        else => unreachable,
-    };
-    const sub_type: u64 = type_val % NB_HEAP_GROUP_SIZE;
-    return @enumFromInt(tag_base | (sub_type << NB_HEAP_SUBTYPE_SHIFT) | shifted);
-}
-
-pub fn decodePtr(self: Value, comptime T: type) T {
-    const shifted = @intFromEnum(self) & NB_ADDR_SHIFTED_MASK;
-    return @ptrFromInt(@as(usize, shifted) << NB_ADDR_ALIGN_SHIFT);
-}
-```
-
-検証テスト:
-
-```zig
-test "encode + decode roundtrip" {
-    var dummy: extern struct { _: [8]u8 align(8) } = undefined;
-    const v = Value.encodeHeapPtr(.string, &dummy);
-    const p = v.decodePtr(*@TypeOf(dummy));
-    try std.testing.expectEqual(@intFromPtr(&dummy), @intFromPtr(p));
-}
-```
-
-</details>
 
 ---
 
@@ -365,27 +270,19 @@ pub fn initInteger(i: i64) Value {
 ```
 
 なぜ i48 か：
+
 - top16 = `0xFFFC` を tag に使う → 残り 48 bit が payload
 - 48 bit signed は ±140 兆。実用上の整数値であれば十分
 
-### 演習 2.4: i48 範囲を計算 (L1)
-
-`NB_I48_MIN` と `NB_I48_MAX` の数値は？
-
-<details>
-<summary>答え</summary>
-
-`NB_TAG_SHIFT = 48` なので：
+具体的な範囲は `NB_TAG_SHIFT = 48` から決まります：
 
 ```zig
-const NB_I48_MIN: i64 = -(1 << 47) = -140737488355328
-const NB_I48_MAX: i64 = (1 << 47) - 1 = 140737488355327
+const NB_I48_MIN: i64 = -(1 << 47);     // -140737488355328
+const NB_I48_MAX: i64 =  (1 << 47) - 1; //  140737488355327
 ```
 
 これを超えると f64 に promote します。Clojure の自動 promotion
 慣習と整合しています（v1 も同様）。
-
-</details>
 
 ---
 
@@ -411,35 +308,12 @@ pub fn initFloat(f: f64) Value {
 quiet NaN (`0x7FF8_0000_0000_0000`)** に正規化します。これは
 top16 < 0xFFF8 の領域に位置するので、ヒープタグと衝突しません。
 
-### 演習 2.5: collision を観察 (L2 — predict-then-verify)
-
-以下のコードの出力を予測してください（`std.math.nan(f64)` の bit
-パターンが処理系依存だとして、最悪のケースを想定）：
-
-```zig
-const f = std.math.nan(f64);    // top16 = ?
-const v = Value.initFloat(f);
-std.debug.print("tag = {s}\n", .{@tagName(v.tag())});
-```
-
-<details>
-<summary>答え</summary>
-
-`std.math.nan(f64)` は通常 `0x7FF8_0000_0000_0000` (canonical
-positive quiet NaN) を返すため、`top16 = 0x7FF8 < 0xFFF8` で
-`.float` 判定。
-
-ただし「最悪のケース」(`0xFFF8_0000_0000_0001` のような signaling
-NaN) を作ったとしても、`initFloat` が canonical NaN に正規化する
-ので **常に `.float`** になる。
-
-```
-tag = float
-```
-
-これが NaN boxing 実装の正しさを保つ要となる仕掛けです。
-
-</details>
+実機の `std.math.nan(f64)` は通常 `0x7FF8_0000_0000_0000`
+（canonical positive quiet NaN）を返すため、そのまま `.float`
+判定になります。仮に signaling NaN（例: `0xFFF8_0000_0000_0001`）を
+人為的に作り込んでも、`initFloat` が canonical NaN に正規化する
+ので **常に `.float`** に着地します。これが NaN boxing 実装の
+正しさを保つ要となる仕掛けです。
 
 ---
 
@@ -468,6 +342,7 @@ pub fn tag(self: Value) Tag {
 ```
 
 **ホットパス**:
+
 1. `>> 48` (1 op)
 2. `< 0xFFF8` 比較 (1 op) → 大半の数値はここで return
 3. それ以外は `switch` (コンパイラが jump table 化、O(1))
@@ -536,6 +411,7 @@ git checkout cw-from-scratch    # 戻る
 | NaN collision | canonical 化済        | canonical 化           | n/a                  | canonical 化 (我々が再発見) |
 
 v1 に引っ張られず本リポジトリの理念で整理した点：
+
 - v1 の **slot-sharing + discriminant** は型判定が遅く、Phase 35 で
   1:1 mapping に乗り換えました。本リポジトリは **Day 1 から 1:1
   mapping** を採用しています。
@@ -544,25 +420,15 @@ v1 に引っ張られず本リポジトリの理念で整理した点：
 
 ---
 
-## 11. Feynman 課題
+## この章で学んだこと
 
-1. なぜ NaN bit pattern を「タグ付き値の入れ物」として使えるのか。
-   1 行で。
-2. ヒープアドレスを `>> 3` で圧縮できる前提は何か。1 行で。
-3. `initFloat` が canonical NaN への正規化を行っている理由は何か。
-   1 行で。
-
----
-
-## 12. チェックリスト
-
-- [ ] 演習 2.1: top16 から型判定を 5 例こなせた
-- [ ] 演習 2.2: `groupOf` / `subOf` をシグネチャだけから書けた
-- [ ] 演習 2.3: `encodeHeapPtr` / `decodePtr` をゼロから書き起こせた
-- [ ] 演習 2.4: i48 範囲が即答できる
-- [ ] 演習 2.5: NaN collision の予測検証ができた
-- [ ] Feynman 3 問を 1 行ずつで答えられた
-- [ ] `git checkout 8b487f9` の状態で `zig build test` を緑にできた
+- **すべての Clojure 値は 8 バイトの `u64` 1 個で表す**。NaN の
+  mantissa 余り領域に型タグとペイロードを詰め込めるからこれが
+  成立する。
+- 数値が支配的なホットパスでは **`>> 48` と `< 0xFFF8` の 1 比較**
+  で f64 を弾くため、型判定は実質ゼロコスト。
+- `initFloat` の **canonical NaN 正規化** が NaN boxing 全体の正しさを
+  支えている要石。
 
 ---
 
