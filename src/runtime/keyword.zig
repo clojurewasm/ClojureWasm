@@ -55,7 +55,7 @@ pub const KeywordInterner = struct {
     /// Backing allocator. In production this aliases `Runtime.gpa`.
     alloc: std.mem.Allocator,
     /// Composite key (`"ns/name"` or `"name"`) → `*Keyword`.
-    table: std.StringArrayHashMapUnmanaged(*Keyword) = .empty,
+    table: std.array_hash_map.String(*Keyword) = .empty,
     /// Guards `table` against concurrent intern / find calls. Phase
     /// 2 is single-threaded so this is effectively free; wiring it
     /// now means Phase 15 doesn't need to touch this file.

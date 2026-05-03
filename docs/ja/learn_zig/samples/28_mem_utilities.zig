@@ -34,13 +34,13 @@ pub fn main() !void {
     std.debug.print("[28] startsWith 'wor'   : {}\n", .{std.mem.startsWith(u8, a, "wor")});
 
     // 単一要素検索 — `?usize` を返すので optional 解放する
-    if (std.mem.indexOfScalar(u8, "abcdef", 'd')) |i| {
-        std.debug.print("[28] indexOfScalar 'd'  : {d}\n", .{i});
+    if (std.mem.findScalar(u8, "abcdef", 'd')) |i| {
+        std.debug.print("[28] findScalar 'd'     : {d}\n", .{i});
     }
 
     // 部分列検索
-    if (std.mem.indexOf(u8, "the quick brown fox", "brown")) |i| {
-        std.debug.print("[28] indexOf 'brown'    : {d}\n", .{i});
+    if (std.mem.find(u8, "the quick brown fox", "brown")) |i| {
+        std.debug.print("[28] find 'brown'       : {d}\n", .{i});
     }
 
     // `@memcpy` — 本リポジトリの `setErrorFmt` のように、固定バッファに

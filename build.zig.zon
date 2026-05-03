@@ -3,7 +3,12 @@
     .version = "0.0.0",
     .fingerprint = 0x1869d207073beffa,
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .zlinter = .{
+            .url = "git+https://github.com/kurtwagner/zlinter?ref=0.16.x#9b4d67b9725e7137ac876cc628fe5dd2ca5a2681",
+            .hash = "zlinter-0.0.1-OjQ08c7oCwDIwhlde7eDKMACNTsqAhGXy5vB7GdfGobG",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

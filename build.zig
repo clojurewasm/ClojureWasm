@@ -1,4 +1,8 @@
 const std = @import("std");
+// TODO(adr-0003): drop zlinter dep when Zig ships @deprecated()
+// builtin + -fdeprecated flag (ziglang/zig#22822, accepted on
+// urgent milestone, expected 0.17+).
+const zlinter = @import("zlinter");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -26,4 +30,15 @@ pub fn build(b: *std.Build) void {
     const run_exe_tests = b.addRunArtifact(exe_tests);
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_exe_tests.step);
+
+    // `zig build lint` — zlinter rule chain (ADR-0003).
+    // Mac-host gate (zlinter requires `zig fetch` against GitHub;
+    // OrbStack runs without network reach by design). Run with
+    // `--max-warnings 0` for strict CI semantics.
+    const lint_step = b.step("lint", "Lint source code (zlinter).");
+    lint_step.dependOn(blk: {
+        var builder = zlinter.builder(b, .{});
+        builder.addRule(.{ .builtin = .no_deprecated }, .{});
+        break :blk builder.build();
+    });
 }

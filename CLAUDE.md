@@ -63,7 +63,9 @@ turn 1 must be Japanese.
   OrbStack Ubuntu x86_64** before every commit. The Linux run is
   `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` (Bash
   timeout ≥ 600s for cold builds). Setup: [`.dev/orbstack_setup.md`](.dev/orbstack_setup.md).
-  Don't bypass hooks.
+  Don't bypass hooks. The runner includes the zlinter `no_deprecated`
+  gate on Mac only (ADR-0003) — Linux skips it because OrbStack
+  runs are network-free.
 - Commit at the natural granularity of code changes; chapters
   (`docs/ja/learn_clojurewasm/NNNN_*.md`) are written **per concept** at phase
   boundaries — see skill `code_learning_doc` for the two-cadence flow.

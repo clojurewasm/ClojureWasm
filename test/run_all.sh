@@ -12,11 +12,12 @@
 # Setup for the Linux side: .dev/orbstack_setup.md.
 #
 # Active suites:
-#   1. zig build test                  Zig unit tests in each src/**/*.zig
-#   2. scripts/zone_check.sh           zone-dependency gate (--gate mode)
-#   3. test/e2e/phase2_exit.sh         Phase-2 CLI exit criteria
-#   4. test/e2e/phase3_cli.sh          Phase-3 CLI entry points (3.1)
-#   5. test/e2e/phase3_exit.sh         Phase-3 CLI exit criteria (3.14)
+#   1.  zig build test                 Zig unit tests in each src/**/*.zig
+#   2.  scripts/zone_check.sh          zone-dependency gate (--gate mode)
+#   2a. zig build lint                 zlinter no_deprecated gate (Mac only, ADR-0003)
+#   3.  test/e2e/phase2_exit.sh        Phase-2 CLI exit criteria
+#   4.  test/e2e/phase3_cli.sh         Phase-3 CLI entry points (3.1)
+#   5.  test/e2e/phase3_exit.sh        Phase-3 CLI exit criteria (3.14)
 #
 # Future suites (uncomment as their phase lands):
 #   - test/clj/**/*.clj         clojure.test suites                 (Phase 11)
@@ -36,6 +37,18 @@ echo "    OK"
 echo "==> 2. zone_check --gate"
 bash scripts/zone_check.sh --gate
 echo "    OK"
+
+# zlinter no_deprecated gate (ADR-0003) — Mac-host only. zlinter is
+# fetched via `zig fetch` against GitHub; OrbStack runs are intentionally
+# network-free per .dev/orbstack_setup.md. Deprecation findings are
+# platform-independent so a single host is enough to catch them.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "==> 2a. zig build lint -- --max-warnings 0  (Mac only)"
+    zig build lint -- --max-warnings 0
+    echo "    OK"
+else
+    echo "==> 2a. zig build lint  (skipped on $(uname -s))"
+fi
 
 echo "==> 3. e2e: Phase-2 exit criteria"
 bash test/e2e/phase2_exit.sh

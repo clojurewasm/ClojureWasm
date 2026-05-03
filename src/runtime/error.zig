@@ -414,9 +414,9 @@ test "formatError contains location and message" {
     };
     var buf: [256]u8 = undefined;
     const result = formatError(info, &buf);
-    try testing.expect(std.mem.indexOf(u8, result, "type_error") != null);
-    try testing.expect(std.mem.indexOf(u8, result, "core.clj") != null);
-    try testing.expect(std.mem.indexOf(u8, result, "expected number, got nil") != null);
+    try testing.expect(std.mem.find(u8, result, "type_error") != null);
+    try testing.expect(std.mem.find(u8, result, "core.clj") != null);
+    try testing.expect(std.mem.find(u8, result, "expected number, got nil") != null);
 }
 
 test "BuiltinFn signature compiles and is invocable" {

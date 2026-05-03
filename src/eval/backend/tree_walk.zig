@@ -621,7 +621,7 @@ test "non-callable callee populates last_error with eval phase" {
     const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Kind.type_error, info.kind);
     try testing.expectEqual(error_mod.Phase.eval, info.phase);
-    try testing.expect(std.mem.indexOf(u8, info.message, "Cannot call value") != null);
+    try testing.expect(std.mem.find(u8, info.message, "Cannot call value") != null);
 }
 
 test "wrong arity populates last_error with eval phase" {

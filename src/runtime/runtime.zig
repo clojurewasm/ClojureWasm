@@ -64,7 +64,7 @@ pub const Runtime = struct {
     /// so `Runtime.deinit` can release them. The list keeps Layer 0
     /// from needing to know concrete Layer-1 types like `tree_walk
     /// .Function`.
-    heap_objects: std.ArrayListUnmanaged(HeapEntry) = .empty,
+    heap_objects: std.ArrayList(HeapEntry) = .empty,
 
     pub const HeapEntry = struct {
         ptr: *anyopaque,

@@ -1,6 +1,7 @@
 # Zig build artifacts
 zig-out/
 .zig-cache/
+zig-pkg/
 
 # Nix build outputs
 result

@@ -994,7 +994,7 @@ test "name resolution failure populates last_error with symbol + analysis phase"
     const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Kind.name_error, info.kind);
     try testing.expectEqual(error_mod.Phase.analysis, info.phase);
-    try testing.expect(std.mem.indexOf(u8, info.message, "undefined-symbol") != null);
+    try testing.expect(std.mem.find(u8, info.message, "undefined-symbol") != null);
 }
 
 test "syntax error on (if ...) carries form location" {
@@ -1007,7 +1007,7 @@ test "syntax error on (if ...) carries form location" {
     const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Kind.syntax_error, info.kind);
     try testing.expectEqual(error_mod.Phase.analysis, info.phase);
-    try testing.expect(std.mem.indexOf(u8, info.message, "if expects") != null);
+    try testing.expect(std.mem.find(u8, info.message, "if expects") != null);
 }
 
 test "string-literal-as-expression lifts to a .string Value (Phase 3.5)" {

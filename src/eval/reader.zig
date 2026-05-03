@@ -231,7 +231,7 @@ pub const Reader = struct {
     // --- string unescaping ---
 
     fn unescapeString(self: *Reader, s: []const u8, loc: SourceLocation) ReadError![]const u8 {
-        if (std.mem.indexOfScalar(u8, s, '\\') == null) return s;
+        if (std.mem.findScalar(u8, s, '\\') == null) return s;
 
         var buf: std.ArrayList(u8) = .empty;
         errdefer buf.deinit(self.allocator);
@@ -296,7 +296,7 @@ fn closingText(kind: TokenKind) []const u8 {
 }
 
 fn parseSymbolRef(txt: []const u8) SymbolRef {
-    if (std.mem.indexOfScalar(u8, txt, '/')) |idx| {
+    if (std.mem.findScalar(u8, txt, '/')) |idx| {
         // `/` alone is the division symbol — keep it as a bare name.
         if (idx == 0 and txt.len == 1) return .{ .name = txt };
         return .{ .ns = txt[0..idx], .name = txt[idx + 1 ..] };
@@ -479,7 +479,7 @@ test "syntax error populates last_error with parse phase + location" {
     try testing.expectEqual(error_mod.Phase.parse, info.phase);
     try testing.expectEqual(@as(u32, 1), info.location.line);
     try testing.expectEqual(@as(u16, 0), info.location.column);
-    try testing.expect(std.mem.indexOf(u8, info.message, "Unexpected delimiter") != null);
+    try testing.expect(std.mem.find(u8, info.message, "Unexpected delimiter") != null);
 }
 
 test "unmatched '(' reports opener location" {
@@ -492,7 +492,7 @@ test "unmatched '(' reports opener location" {
     try testing.expectEqual(error_mod.Kind.syntax_error, info.kind);
     try testing.expectEqual(@as(u32, 1), info.location.line);
     try testing.expectEqual(@as(u16, 0), info.location.column); // opener column
-    try testing.expect(std.mem.indexOf(u8, info.message, "EOF") != null);
+    try testing.expect(std.mem.find(u8, info.message, "EOF") != null);
 }
 
 test "number error carries token text in message" {
@@ -505,7 +505,7 @@ test "number error carries token text in message" {
     const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Kind.number_error, info.kind);
     try testing.expectEqual(error_mod.Phase.parse, info.phase);
-    try testing.expect(std.mem.indexOf(u8, info.message, "99999999999999999999") != null);
+    try testing.expect(std.mem.find(u8, info.message, "99999999999999999999") != null);
 }
 
 test "string error: unknown escape sequence" {
@@ -516,5 +516,5 @@ test "string error: unknown escape sequence" {
     try testing.expectError(error.StringError, ctx.read("\"\\q\""));
     const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Kind.string_error, info.kind);
-    try testing.expect(std.mem.indexOf(u8, info.message, "Unknown escape") != null);
+    try testing.expect(std.mem.find(u8, info.message, "Unknown escape") != null);
 }
