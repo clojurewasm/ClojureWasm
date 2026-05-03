@@ -1,5 +1,3 @@
-<!-- Per-concept chapter. docs/ja/learn_clojurewasm/0019_macroexpand_routing.md -->
-
 ---
 chapter: 19
 commits:

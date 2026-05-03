@@ -320,7 +320,7 @@ zig build test
 # and is invocable" を含む）
 
 # 戻る
-git checkout cw-from-scratch
+git -C ~/Documents/MyProducts/ClojureWasmFromScratch checkout cw-from-scratch
 ```
 
 エラーが threadlocal で運ばれることを **目で見る** には:
@@ -334,7 +334,7 @@ pub fn main() !void {
     err.clearLastError();
     _ = err.setErrorFmt(.eval, .type_error, .{
         .file = "core.clj", .line = 7, .column = 3,
-    }, "expected number, got {s}", .{"keyword"}) catch {};
+    }, "expected number, got {s}", .{"keyword"});
 
     const info = err.peekLastError().?;
     var buf: [256]u8 = undefined;

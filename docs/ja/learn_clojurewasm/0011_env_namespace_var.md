@@ -381,7 +381,7 @@ pub fn referAll(self: *Env, from: *Namespace, to: *Namespace) !void {
   別 string にしています。これにより各 namespace が独立に解放
   できます。
 
-### Clojure 4.x の `(refer 'rt)` と本リポの差
+### Clojure 4.x の `(refer 'rt)` と本リポジトリの差
 
 Clojure JVM では `(refer 'clojure.core)` が standard です。本リポ
 ジトリでは Phase 2 の段階で、**rt namespace に primitive を集約する**
@@ -474,7 +474,7 @@ nREPL client A:  *ns*           ← 'bar が返る (B が上書き)
 **Var を作る `(def x ...)` は global namespace map** に書き込まれる
 ので、A の def が B からも見えてしまう（汚染）状況になっていました。
 
-### 本リポの解決
+### 本リポジトリの解決
 
 ```
 client A → Env_A → namespaces { user, ... }

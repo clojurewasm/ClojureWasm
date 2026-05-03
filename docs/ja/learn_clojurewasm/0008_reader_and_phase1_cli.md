@@ -79,7 +79,7 @@ pub fn read(self: *Reader) ReadError!?Form {
 
 `Form` だけを返す API（EOF も Form で表現する形）にすると、caller
 が毎回条件分岐を書く羽目になります。Zig の `?T` を使えば
-`while ((try reader.read()) |form| { ... }` という Zig らしい形に
+`while (try reader.read()) |form| { ... }` という Zig らしい形に
 なります。具体例を並べると、入力 `""` では 1 回目から `null`、
 入力 `"42"` では 1 回目に `Form{integer=42}`・2 回目に `null`、入力
 `"#_skip 42"` では `#_` が次の form を捨てるので 1 回目に

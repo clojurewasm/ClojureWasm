@@ -1,5 +1,3 @@
-<!-- Per-concept chapter. docs/ja/learn_clojurewasm/0018_heap_collection_literals.md -->
-
 ---
 chapter: 18
 commits:

@@ -502,7 +502,7 @@ defer mtx.unlock(io);
 
 ### Runtime に詰めて全 layer に流す
 
-本リポは **`Runtime.io`** に詰めて全 layer に流します。例えば
+本リポジトリは **`Runtime.io`** に詰めて全 layer に流します。例えば
 `keyword.intern`:
 
 ```zig
@@ -682,7 +682,7 @@ git log --oneline 91feef0..de2cb64 -- src/eval/backend/
 
 ## 9. 教科書との対比
 
-| 軸             | v1 (`ClojureWasm`)                        | v1_ref                           | Clojure JVM                               | 本リポ                                  |
+| 軸             | v1 (`ClojureWasm`)                        | v1_ref                           | Clojure JVM                               | 本リポジトリ                            |
 |----------------|-------------------------------------------|----------------------------------|-------------------------------------------|-----------------------------------------|
 | dispatch table | `pub var callFn = undefined` (グローバル) | `Runtime.vtable: ?VTable` (試行) | n/a (`RT.invoke()` は static method)      | `Runtime.vtable: ?VTable` field         |
 | 階層           | 2 層 (Env + threadlocal が散在)           | 3 層 試行 (Phase 2 で詰まる)     | 2 層 (`RT` static + `Var.threadBindings`) | 3 層 (Runtime / Env / threadlocal)      |
