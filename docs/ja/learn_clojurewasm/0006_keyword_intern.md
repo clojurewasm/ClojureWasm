@@ -38,8 +38,9 @@ shape on day 1）の実践です。
   と Phase 2.2 でも変わらない理由
 - intern logic の流れ: 既存検索 → 当たれば返す / 外れたら新規 alloc
   + table 登録
-- なぜ自前 `array_hash_map.String`（旧 `StringArrayHashMapUnmanaged`、
-  Zig 0.16 で改名）を使い、`std.HashMap` のデフォルトを直に使わないのか
+- なぜ自前 `array_hash_map.String`（Zig 0.16 で
+  `StringArrayHashMapUnmanaged` の deprecated 別名になりました）を
+  使い、`std.HashMap` のデフォルトを直に使わないのか
 - Phase 1 の **「mutex 抜き」stub** が Phase 2.2 でどう **call site
   だけ** の変更で rt-aware に進化するか
 

@@ -13,10 +13,14 @@ Deprecated:` doc-comments). The compiler emits no warning by
 default and there is no `-fdeprecated` flag in 0.16. AI training
 corpora overwhelmingly use the old names, and the project has
 already accumulated **16 silent deprecation hits** across 9.1 KLoC
-that no manual pass surfaced (13 × `std.mem.indexOf*` →
-`find*`, one `std.ArrayListUnmanaged` → `ArrayList`, one
-`std.StringArrayHashMapUnmanaged` → `array_hash_map.String`, one
-sample doc).
+that no manual pass surfaced — broken down as:
+
+  - 12 × `std.mem.indexOf{,Scalar}` → `find{,Scalar}` in `src/`
+  -  2 × `std.mem.indexOf{,Scalar}` → `find{,Scalar}` in
+       `docs/ja/learn_zig/samples/28_mem_utilities.zig`
+  -  1 × `std.ArrayListUnmanaged` → `ArrayList` (in `src/runtime/runtime.zig`)
+  -  1 × `std.StringArrayHashMapUnmanaged` → `array_hash_map.String`
+       (in `src/runtime/keyword.zig`).
 
 Three forces converge:
 
@@ -60,12 +64,15 @@ zig build lint                       # warnings ok, errors fail
 zig build lint -- --max-warnings 0   # any finding fails (gate)
 ```
 
-**Initial rule set: `no_deprecated` only.** Phase B will widen the
-set per the playbook validated in zwasm v2's ADR-0009 (`no_orelse_unreachable`,
-`no_empty_block`, `require_exhaustive_enum_switch`, `no_unused`),
-but the Phase A landing keeps the surface minimal so the integration
-itself can be reverted cleanly if zlinter upstream becomes
-unmaintained or if `@deprecated()` lands natively in Zig 0.17+.
+**Initial rule set: `no_deprecated` only.** Phase B will inspect
+the further candidates from zwasm v2's ADR-0009 (`no_orelse_unreachable`,
+`no_empty_block`, `require_exhaustive_enum_switch`, `no_unused`)
+— that's the *candidate set*; per-rule adoption is decided in
+Phase B based on this codebase's own findings (the Update section
+records the outcome). The Phase A landing keeps the surface
+minimal so the integration itself can be reverted cleanly if
+zlinter upstream becomes unmaintained or if `@deprecated()` lands
+natively in Zig 0.17+.
 
 The lint step is **Mac-host only**. `test/run_all.sh` detects
 `uname -s == Darwin` and runs `zig build lint -- --max-warnings 0`
