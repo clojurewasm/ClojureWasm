@@ -7,8 +7,9 @@
 //! を渡す。
 //!
 //! 本リポジトリの実例:
-//!   - `std.StringArrayHashMapUnmanaged(*Keyword)` — `KeywordInterner.table`
-//!   - `std.StringHashMapUnmanaged(*Var)`         — `Namespace.vars`
+//!   - `std.array_hash_map.String(*Keyword)` — `KeywordInterner.table`
+//!     （挿入順保持。`StringArrayHashMapUnmanaged` の deprecated 別名）
+//!   - `std.StringHashMapUnmanaged(*Var)`             — `Namespace.vars`
 //!   - `std.AutoHashMapUnmanaged(*const Var, Value)` — `BindingFrame.bindings`
 //!
 //! 実行方法: `zig run docs/ja/learn_zig/samples/24_arraylist_hashmap.zig`

@@ -38,8 +38,8 @@ shape on day 1）の実践です。
   と Phase 2.2 でも変わらない理由
 - intern logic の流れ: 既存検索 → 当たれば返す / 外れたら新規 alloc
   + table 登録
-- なぜ自前 `StringArrayHashMapUnmanaged` を使い、`std.HashMap` の
-  デフォルトを直に使わないのか
+- なぜ自前 `array_hash_map.String`（旧 `StringArrayHashMapUnmanaged`、
+  Zig 0.16 で改名）を使い、`std.HashMap` のデフォルトを直に使わないのか
 - Phase 1 の **「mutex 抜き」stub** が Phase 2.2 でどう **call site
   だけ** の変更で rt-aware に進化するか
 
@@ -309,13 +309,19 @@ pub fn intern(self: *KeywordInterner, ns: ?[]const u8, name: []const u8) !Value 
 
 ---
 
-## 4. なぜ自前 `StringArrayHashMapUnmanaged`？
+## 4. なぜ自前 `array_hash_map.String`？
 
 ```zig
-table: std.StringArrayHashMapUnmanaged(*Keyword) = .empty,
+table: std.array_hash_map.String(*Keyword) = .empty,
 ```
 
-なぜ `std.HashMap(...)` の汎用版でなく **`StringArrayHashMapUnmanaged`** ？
+なぜ `std.HashMap(...)` の汎用版でなく **`array_hash_map.String`** ？
+
+> Zig 0.16 で旧 `std.StringArrayHashMapUnmanaged` は
+> `std.array_hash_map.String` への deprecated 別名になりました
+> （`zig build lint` の `no_deprecated` で検出される）。本書とソース
+> はすべて新名に統一してあります — 「文字列キー版 array hash map」
+> という意味は変わりません。
 
 ### 4 つの理由
 
@@ -377,7 +383,7 @@ pub const Keyword = struct {
 
 pub const KeywordInterner = struct {
     alloc: std.mem.Allocator,
-    table: std.StringArrayHashMapUnmanaged(*Keyword) = .empty,
+    table: std.array_hash_map.String(*Keyword) = .empty,
 
     pub fn init(alloc: std.mem.Allocator) KeywordInterner {
         return .{ .alloc = alloc };
@@ -486,7 +492,7 @@ ROADMAP **§A7（Concurrency and errors are designed in on day 1）**
 | **heap-allocated cell + 自前 hash table**      | ✓   | cell address を Value に encode してエクイティ判定が pointer 比較で済む |
 | Java enum の真似                               | ✗   | Zig には JVM の class loader / static field 機構がない                  |
 | `[]const u8` を直接 Value に                   | ✗   | Value は 8 byte、slice は 16 byte で収まらない                          |
-| `std.HashMap(string, *Keyword)`                | ✗   | `StringArrayHashMapUnmanaged` の方が小規模 + cache-friendly             |
+| `std.HashMap(string, *Keyword)`                | ✗   | `array_hash_map.String` の方が小規模 + cache-friendly                   |
 | Phase 1 から `std.Io.Mutex` を入れる           | ✗   | single-thread Phase 1 で overhead 無駄、cell layout だけ凍結すれば十分  |
 | keyword cell に `ns_len + name_len` を持たせる | ✗   | `[]const u8` の長さで判る、redundant                                    |
 | Phase 2 で cell layout を変える                | ✗   | 既存テスト破壊、NaN encoding 周りも触らねばならない                     |

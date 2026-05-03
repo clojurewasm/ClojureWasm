@@ -28,40 +28,40 @@ zig test docs/ja/learn_zig/samples/27_tests.zig
 
 ## 目次
 
-| 章                                               | 主題                                                | サンプル                                                             |
-|--------------------------------------------------|-----------------------------------------------------|----------------------------------------------------------------------|
-| [0a](#0a-buildzigzon--パッケージマニフェスト)    | `build.zig.zon` — パッケージマニフェスト           | （プロジェクトファイル直接）                                         |
-| [0b](#0b-buildzig--ビルドスクリプト)             | `build.zig` — ビルドスクリプト                     | （プロジェクトファイル直接）                                         |
-| [01](#01-hello-world-と-main-関数)               | Hello, world と `main` 関数                         | [01_hello.zig](samples/01_hello.zig)                                 |
-| [02](#02-コメント---)                            | コメント `//` `///` `//!`                           | [02_comments.zig](samples/02_comments.zig)                           |
-| [03](#03-基本型--整数浮動小数boolvoid)           | 基本型 — 整数・浮動小数・bool・void                | [03_primitive_types.zig](samples/03_primitive_types.zig)             |
-| [04](#04-数値リテラルと演算子)                   | 数値リテラルと演算子                                | [04_literals_operators.zig](samples/04_literals_operators.zig)       |
-| [05](#05-const-と-var)                           | `const` と `var`                                    | [05_const_var.zig](samples/05_const_var.zig)                         |
-| [06](#06-明示的な型変換と-組込関数)              | 明示的な型変換と `@`-組込関数                       | [06_conversions.zig](samples/06_conversions.zig)                     |
-| [07](#07-配列)                                   | 配列 `[N]T` / `[_]T{}` / `** N`                     | [07_arrays.zig](samples/07_arrays.zig)                               |
-| [08](#08-スライス)                               | スライス `[]T` / `[]const T`                        | [08_slices.zig](samples/08_slices.zig)                               |
-| [09](#09-オプショナル-t)                         | オプショナル `?T`                                   | [09_optionals.zig](samples/09_optionals.zig)                         |
-| [10](#10-エラーと-error-union)                   | エラーと error union                                | [10_errors.zig](samples/10_errors.zig)                               |
-| [11](#11-制御構文-if--while--for--switch)        | 制御構文 `if` / `while` / `for` / `switch`          | [11_control_flow.zig](samples/11_control_flow.zig)                   |
-| [12](#12-ラベル付きブロック)                     | ラベル付きブロック `blk:` `outer:`                  | [12_labeled_blocks.zig](samples/12_labeled_blocks.zig)               |
-| [13](#13-struct-と-メソッド)                     | `struct` とメソッド                                 | [13_structs.zig](samples/13_structs.zig)                             |
-| [14](#14-enum)                                   | `enum` / `enum(uN)` / 非網羅 `_`                    | [14_enums.zig](samples/14_enums.zig)                                 |
-| [15](#15-タグ付き-union)                         | タグ付き union `union(enum)`                        | [15_tagged_union.zig](samples/15_tagged_union.zig)                   |
-| [16](#16-packed-struct--extern-struct--alignn)   | `packed struct` / `extern struct` / `align`         | [16_packed_extern.zig](samples/16_packed_extern.zig)                 |
-| [17](#17-ポインタと-anyopaque)                   | ポインタと `anyopaque`                              | [17_pointers.zig](samples/17_pointers.zig)                           |
-| [18](#18-関数と関数ポインタvtable-パターン)      | 関数と関数ポインタ・vtable パターン                 | [18_functions_fnptr.zig](samples/18_functions_fnptr.zig)             |
-| [19](#19-comptime--inline-for--anytype)          | `comptime` / `inline for` / `anytype`               | [19_comptime_anytype.zig](samples/19_comptime_anytype.zig)           |
-| [20](#20-マルチライン文字列)                     | マルチライン文字列                                  | [20_multiline_strings.zig](samples/20_multiline_strings.zig)         |
-| [21](#21-undefined-と-unreachable)               | `undefined` と `unreachable`                        | [21_undefined_unreachable.zig](samples/21_undefined_unreachable.zig) |
-| [22](#22-threadlocal-var)                        | `threadlocal var`                                   | [22_threadlocal.zig](samples/22_threadlocal.zig)                     |
-| [23](#23-アロケータ)                             | アロケータ抽象                                      | [23_allocator.zig](samples/23_allocator.zig)                         |
-| [24](#24-arraylist--stringhashmapunmanaged)      | `ArrayList` / `StringHashMapUnmanaged`              | [24_arraylist_hashmap.zig](samples/24_arraylist_hashmap.zig)         |
-| [25](#25-staticstringmapinitcomptime)            | `StaticStringMap.initComptime`                      | [25_static_string_map.zig](samples/25_static_string_map.zig)         |
-| [26](#26-stdiowriter-と-juicy-main)              | `std.Io.Writer` と Juicy Main                       | [26_stdio_writer.zig](samples/26_stdio_writer.zig)                   |
-| [27](#27-テストブロック)                         | テストブロック `test "..." {}`                      | [27_tests.zig](samples/27_tests.zig)                                 |
-| [28](#28-stdmem-ユーティリティ)                  | `std.mem` ユーティリティ                            | [28_mem_utilities.zig](samples/28_mem_utilities.zig)                 |
-| [29](#29-stdfmt--bufprint--parseint--parsefloat) | `std.fmt` — `bufPrint` / `parseInt` / `parseFloat` | [29_format_parse.zig](samples/29_format_parse.zig)                   |
-| [30](#30-embedfile--anyerror--errorname)         | `@embedFile` / `anyerror` / `@errorName`            | [30_embed_anyerror.zig](samples/30_embed_anyerror.zig)               |
+| 章                                               | 主題                                                             | サンプル                                                             |
+|--------------------------------------------------|------------------------------------------------------------------|----------------------------------------------------------------------|
+| [0a](#0a-buildzigzon--パッケージマニフェスト)    | `build.zig.zon` — パッケージマニフェスト                        | （プロジェクトファイル直接）                                         |
+| [0b](#0b-buildzig--ビルドスクリプト)             | `build.zig` — ビルドスクリプト                                  | （プロジェクトファイル直接）                                         |
+| [01](#01-hello-world-と-main-関数)               | Hello, world と `main` 関数                                      | [01_hello.zig](samples/01_hello.zig)                                 |
+| [02](#02-コメント---)                            | コメント `//` `///` `//!`                                        | [02_comments.zig](samples/02_comments.zig)                           |
+| [03](#03-基本型--整数浮動小数boolvoid)           | 基本型 — 整数・浮動小数・bool・void                             | [03_primitive_types.zig](samples/03_primitive_types.zig)             |
+| [04](#04-数値リテラルと演算子)                   | 数値リテラルと演算子                                             | [04_literals_operators.zig](samples/04_literals_operators.zig)       |
+| [05](#05-const-と-var)                           | `const` と `var`                                                 | [05_const_var.zig](samples/05_const_var.zig)                         |
+| [06](#06-明示的な型変換と-組込関数)              | 明示的な型変換と `@`-組込関数                                    | [06_conversions.zig](samples/06_conversions.zig)                     |
+| [07](#07-配列)                                   | 配列 `[N]T` / `[_]T{}` / `** N`                                  | [07_arrays.zig](samples/07_arrays.zig)                               |
+| [08](#08-スライス)                               | スライス `[]T` / `[]const T`                                     | [08_slices.zig](samples/08_slices.zig)                               |
+| [09](#09-オプショナル-t)                         | オプショナル `?T`                                                | [09_optionals.zig](samples/09_optionals.zig)                         |
+| [10](#10-エラーと-error-union)                   | エラーと error union                                             | [10_errors.zig](samples/10_errors.zig)                               |
+| [11](#11-制御構文-if--while--for--switch)        | 制御構文 `if` / `while` / `for` / `switch`                       | [11_control_flow.zig](samples/11_control_flow.zig)                   |
+| [12](#12-ラベル付きブロック)                     | ラベル付きブロック `blk:` `outer:`                               | [12_labeled_blocks.zig](samples/12_labeled_blocks.zig)               |
+| [13](#13-struct-と-メソッド)                     | `struct` とメソッド                                              | [13_structs.zig](samples/13_structs.zig)                             |
+| [14](#14-enum)                                   | `enum` / `enum(uN)` / 非網羅 `_`                                 | [14_enums.zig](samples/14_enums.zig)                                 |
+| [15](#15-タグ付き-union)                         | タグ付き union `union(enum)`                                     | [15_tagged_union.zig](samples/15_tagged_union.zig)                   |
+| [16](#16-packed-struct--extern-struct--alignn)   | `packed struct` / `extern struct` / `align`                      | [16_packed_extern.zig](samples/16_packed_extern.zig)                 |
+| [17](#17-ポインタと-anyopaque)                   | ポインタと `anyopaque`                                           | [17_pointers.zig](samples/17_pointers.zig)                           |
+| [18](#18-関数と関数ポインタvtable-パターン)      | 関数と関数ポインタ・vtable パターン                              | [18_functions_fnptr.zig](samples/18_functions_fnptr.zig)             |
+| [19](#19-comptime--inline-for--anytype)          | `comptime` / `inline for` / `anytype`                            | [19_comptime_anytype.zig](samples/19_comptime_anytype.zig)           |
+| [20](#20-マルチライン文字列)                     | マルチライン文字列                                               | [20_multiline_strings.zig](samples/20_multiline_strings.zig)         |
+| [21](#21-undefined-と-unreachable)               | `undefined` と `unreachable`                                     | [21_undefined_unreachable.zig](samples/21_undefined_unreachable.zig) |
+| [22](#22-threadlocal-var)                        | `threadlocal var`                                                | [22_threadlocal.zig](samples/22_threadlocal.zig)                     |
+| [23](#23-アロケータ)                             | アロケータ抽象                                                   | [23_allocator.zig](samples/23_allocator.zig)                         |
+| [24](#24-arraylist--stringhashmapunmanaged)      | `ArrayList` / `StringHashMapUnmanaged` / `array_hash_map.String` | [24_arraylist_hashmap.zig](samples/24_arraylist_hashmap.zig)         |
+| [25](#25-staticstringmapinitcomptime)            | `StaticStringMap.initComptime`                                   | [25_static_string_map.zig](samples/25_static_string_map.zig)         |
+| [26](#26-stdiowriter-と-juicy-main)              | `std.Io.Writer` と Juicy Main                                    | [26_stdio_writer.zig](samples/26_stdio_writer.zig)                   |
+| [27](#27-テストブロック)                         | テストブロック `test "..." {}`                                   | [27_tests.zig](samples/27_tests.zig)                                 |
+| [28](#28-stdmem-ユーティリティ)                  | `std.mem` ユーティリティ                                         | [28_mem_utilities.zig](samples/28_mem_utilities.zig)                 |
+| [29](#29-stdfmt--bufprint--parseint--parsefloat) | `std.fmt` — `bufPrint` / `parseInt` / `parseFloat`              | [29_format_parse.zig](samples/29_format_parse.zig)                   |
+| [30](#30-embedfile--anyerror--errorname)         | `@embedFile` / `anyerror` / `@errorName`                         | [30_embed_anyerror.zig](samples/30_embed_anyerror.zig)               |
 
 ---
 
@@ -75,7 +75,12 @@ Zig パッケージのメタデータです。本リポジトリの実物（`bui
     .version = "0.0.0",
     .fingerprint = 0x1869d207073beffa,
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .zlinter = .{
+            .url = "git+https://github.com/kurtwagner/zlinter?ref=0.16.x#9b4d67b9725e7137ac876cc628fe5dd2ca5a2681",
+            .hash = "zlinter-0.0.1-OjQ08c7oCwDIwhlde7eDKMACNTsqAhGXy5vB7GdfGobG",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
@@ -91,8 +96,11 @@ Zig パッケージのメタデータです。本リポジトリの実物（`bui
 
 - `.cljw` のような **先頭ドットの識別子** は enum-like なシンボルで、
   パッケージ名にはこれを使います。
-- `.dependencies = .{}` は空の匿名 struct（依存ゼロ）。Zig 0.16 では
-  匿名 struct リテラルが至るところに登場します（→ 第 13 章）。
+- `.dependencies` は外部パッケージ宣言。本リポジトリは現在 zlinter
+  （`no_deprecated` 等の lint ルール、ADR-0003）を 1 つだけ依存して
+  います。`zig fetch --save <git URL>` を実行すると、`url` と `hash`
+  ペアがこの形でこのファイルに追記されます（→ 「`zig fetch --save` の
+  挙動」を第 0a の最後で短く扱います）。
 - `.paths` は配布アーカイブに含めるパス。tarball に同梱するファイル
   集合を明示します。
 - `.fingerprint` は Zig 0.12 以降のパッケージマネージャがハッシュ衝突を
@@ -104,6 +112,7 @@ Zig パッケージのメタデータです。本リポジトリの実物（`bui
 
 ```zig
 const std = @import("std");
+const zlinter = @import("zlinter");   // ADR-0003: lint ルール DB
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -131,6 +140,18 @@ pub fn build(b: *std.Build) void {
     const run_exe_tests = b.addRunArtifact(exe_tests);
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_exe_tests.step);
+
+    // `zig build lint -- --max-warnings 0` が Mac の pre-commit ゲート
+    // (ADR-0003)。Linux runner では test/run_all.sh が skip する。
+    const lint_step = b.step("lint", "Lint source code (zlinter).");
+    lint_step.dependOn(blk: {
+        var builder = zlinter.builder(b, .{});
+        builder.addRule(.{ .builtin = .no_deprecated }, .{});
+        builder.addRule(.{ .builtin = .no_orelse_unreachable }, .{});
+        builder.addRule(.{ .builtin = .no_empty_block }, .{});
+        builder.addRule(.{ .builtin = .no_unused }, .{});
+        break :blk builder.build();
+    });
 }
 ```
 
@@ -149,6 +170,9 @@ pub fn build(b: *std.Build) void {
 - `b.args` は `?[][]u8`。`zig build run -- foo bar` の `--` 以降が
   `args` として届くので、`if (b.args) |args| run_cmd.addArgs(args)` で
   実行時引数を引き渡しています（→ 第 9 章のオプショナル）。
+- 末尾の **`lint` ステップ** は zlinter の `builder` API を使い、`zig
+  build lint -- --max-warnings 0` で deprecated stdlib API などを
+  検出します。詳細は ADR-0003。
 
 > このスクリプト自身はサンプル化していません（`zig build` を持つ
 > 完全なプロジェクトが必要なため）。本リポジトリの `build.zig` を
@@ -880,9 +904,16 @@ try map.put(alloc, "key", 42);
 if (map.get("key")) |v| { ... }
 ```
 
+> Zig 0.16 では `std.ArrayList(T)` 自体が「unmanaged」を指すように
+> 改められ、`std.ArrayListUnmanaged` は **deprecated エイリアス** に
+> なりました（lint ゲート `no_deprecated` で検出される）。本書とソース
+> はすべて新しい `ArrayList` を使う統一にしてあります。
+
 本リポジトリは：
 
-- `std.StringArrayHashMapUnmanaged(*Keyword)` — `KeywordInterner.table`
+- `std.array_hash_map.String(*Keyword)` — `KeywordInterner.table`
+  （挿入順を保つ array hash map。`StringArrayHashMapUnmanaged` は
+  この別名で deprecated）
 - `std.StringHashMapUnmanaged(*Var)` — `Namespace.vars`
 - `std.AutoHashMapUnmanaged(*const Var, Value)` — `BindingFrame.bindings`
 
@@ -989,9 +1020,13 @@ test {
 |--------------------------------------|--------------------------------|
 | `std.mem.eql(T, a, b)`               | 2 つのスライスが等しいか       |
 | `std.mem.startsWith(T, hay, prefix)` | `prefix` から始まるか          |
-| `std.mem.indexOf(T, hay, needle)`    | 部分列の最初の位置（`?usize`） |
-| `std.mem.indexOfScalar(T, hay, c)`   | 単一要素の最初の位置           |
+| `std.mem.find(T, hay, needle)`       | 部分列の最初の位置（`?usize`） |
+| `std.mem.findScalar(T, hay, c)`      | 単一要素の最初の位置           |
 | `@memcpy(dst, src)`                  | バッファコピー（同サイズ必須） |
+
+> Zig 0.16 で `std.mem.indexOf` 系は `find*` に改名されました。旧名は
+> deprecated エイリアスとして残っており、`zig build lint` の
+> `no_deprecated` で検出されます。本書とソースは新名に統一済みです。
 
 ```zig
 if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) { ... }

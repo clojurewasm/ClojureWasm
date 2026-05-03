@@ -3,14 +3,18 @@
 //! 本リポジトリで実際に使われているスライス操作:
 //!   - `std.mem.eql(T, a, b)`               2 つのスライスが等しいか
 //!   - `std.mem.startsWith(T, hay, prefix)` 接頭辞かどうか
-//!   - `std.mem.indexOf(T, hay, needle)`    部分列の最初の位置 `?usize`
-//!   - `std.mem.indexOfScalar(T, hay, c)`   単一要素の最初の位置 `?usize`
+//!   - `std.mem.find(T, hay, needle)`       部分列の最初の位置 `?usize`
+//!   - `std.mem.findScalar(T, hay, c)`      単一要素の最初の位置 `?usize`
 //!   - `@memcpy(dst, src)`                  バッファコピー（同サイズ必須）
 //!
 //! `main.zig` の argv 解析は `std.mem.eql(u8, arg, "-h")` を多用、
-//! `tokenizer.zig` は `indexOfScalar` を使う。`runtime/error.zig` の
+//! `tokenizer.zig` は `findScalar` を使う。`runtime/error.zig` の
 //! `setErrorFmt` はバッファ末尾の "..." 切り詰めマーカに `@memcpy` を
 //! 使っている。
+//!
+//! 注: 旧名 `indexOf` / `indexOfScalar` は Zig 0.16 では deprecated
+//!     エイリアス。`zig build lint` の `no_deprecated` が検出する
+//!     ので、新コードでは必ず `find` / `findScalar` を使うこと。
 //!
 //! 注: `@memset` は本リポジトリ未使用なので扱わない。バッファを初期化
 //!     したい場合は `for (slice) |*c| c.* = ...` か、用途上アロケータ

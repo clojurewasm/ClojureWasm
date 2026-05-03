@@ -505,7 +505,9 @@ const std = @import("std");
 const Value = @import("src/runtime/value.zig").Value;
 
 pub fn main() !void {
-    const stdout = std.fs.File.stdout().writer();
+    // Zig 0.16: stdout は `std.Io.File` 経由。Writer は `(io, &buf)` を
+    // 取るので、ここでは `std.debug.print`（内部で stderr ロックを取って
+    // くれる）でビットパターンを観察する。
     inline for ([_]Value{
         .nil_val,
         .true_val,
@@ -513,7 +515,7 @@ pub fn main() !void {
         Value.initInteger(42),
         Value.initFloat(3.14),
     }) |v| {
-        try stdout.print("0x{X:0>16} → {s}\n", .{ @intFromEnum(v), @tagName(v.tag()) });
+        std.debug.print("0x{X:0>16} → {s}\n", .{ @intFromEnum(v), @tagName(v.tag()) });
     }
 }
 EOF
