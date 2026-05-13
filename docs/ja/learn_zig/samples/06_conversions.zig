@@ -41,7 +41,7 @@ pub fn main() !void {
     std.debug.print("[06] @as(i64,42)        : {d}\n", .{a});
     std.debug.print("[06] @intCast → u16     : {d}\n", .{b});
     std.debug.print("[06] @truncate(big)     : 0x{X}\n", .{low16});
-    std.debug.print("[06] @floatFromInt(7)   : {d}\n", .{f});
+    std.debug.print("[06] @floatFromInt(7)   : {e}\n", .{f});
     std.debug.print("[06] @bitCast(1.5)      : 0x{X:0>16}\n", .{bits});
     std.debug.print("[06] @intFromBool t/f   : {d} / {d}\n", .{ truthy, falsy });
 
