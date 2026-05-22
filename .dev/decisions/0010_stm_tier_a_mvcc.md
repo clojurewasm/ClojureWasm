@@ -57,8 +57,10 @@ pub threadlocal var current_tx: ?*Transaction = null;
 Phases:
 
 - Phase 4 entry: declarations live in cw runtime headers; no executable
-  code paths are wired (any attempt to `dosync` returns an error
-  pointing at this ADR).
+  code paths are wired. `dosync` / `ref` / `alter` / `commute` /
+  `ensure` / `ref-set` raise `Code.unsupported_feature` (per
+  ADR-0018) with the form name as `.{ .name = "<form>" }`; the
+  user-facing message is `"<form> is not supported in ClojureWasm"`.
 - Phase 13: `Ref` and `TVal` data structures.
 - Phase 14: `doGet` / `doSet` / `doCommute` / `doEnsure`.
 - Phase 15.1: commit + retry loop.
@@ -103,3 +105,6 @@ Phases:
 ## Revision history
 
 - 2026-05-23: Status: Proposed -> Accepted (initial landing).
+- 2026-05-23 (amendment): Phase 4 unsupported-attempt phrasing now
+  references catalog `Code.unsupported_feature` (ADR-0018). User
+  messages name only the form (`dosync`, `ref`, ...), not this ADR.

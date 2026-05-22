@@ -42,13 +42,20 @@ release (per ROADMAP §1.4 SemVer rule) and an amendment to this ADR.
 
 ### Error message contract
 
-Tier D entries produce a structured error at the point of use:
+Tier D entries raise `Code.tier_d_form` (per ADR-0018) with the
+specific form name supplied via `.{ .name = "<form>" }`. The
+user-facing message is:
 
 ```
-Tier D: <reason>, see ADR-0013
+<form> is not part of ClojureWasm
 ```
 
-`scripts/check_tier_d_error_msg.sh` enforces the format at Phase 5+.
+The tier classification ("D") and the rationale ADR ("ADR-0013")
+are development artifacts; they do not appear in the user-facing
+text. `scripts/check_tier_d_error_msg.sh` (informational at Phase 4
+entry, gate at Phase 5+) checks that every Tier D form named in
+`compat_tiers.yaml` raises through the catalog rather than a
+hand-written `setErrorFmt` call.
 
 ## Alternatives considered
 
@@ -85,3 +92,7 @@ Tier D: <reason>, see ADR-0013
 ## Revision history
 
 - 2026-05-23: Status: Proposed -> Accepted (initial landing).
+- 2026-05-23 (amendment): Error message contract rewritten. The
+  `"Tier D: <reason>, see ADR-0013"` template is replaced by catalog
+  `Code.tier_d_form` (ADR-0018) whose user-facing output is
+  `"<form> is not part of ClojureWasm"`.

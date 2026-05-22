@@ -131,6 +131,7 @@ These do not change between phases. Changing one requires an ADR.
 | A12 | File size is a smell detector, not a metric                     | 1,000-line soft cap / 2,000-line hard cap, `FILE-SIZE-EXEMPT` marker (ADR-0016)     |
 | A13 | Debt ledger maintenance                                         | `.dev/debt.md` row-level predicates; phase boundary audit per row                   |
 | A14 | Structural discipline markers                                   | `FILE-SIZE-EXEMPT`, `SIBLING-PUB`, `SKIP-<reason>` markers, grep-indexed            |
+| A15 | Error catalog as Single Source Of Truth                         | `src/runtime/error_catalog.zig` owns every user-facing message (ADR-0018)           |
 
 ---
 
@@ -559,7 +560,9 @@ classification.
 `compat_tiers.yaml` is read by:
 
 - the test runner (`test/clj/` for the Tier A 100% PASS gate),
-- the REPL error message format (`"Tier D: <reason>, see ADR-NNNN"`),
+- the catalog's `Code.tier_d_form` lookup (per ADR-0018) — the
+  user-facing message is `"<form> is not part of ClojureWasm"`,
+  with the form name supplied at the raise site,
 - the future `cljw --list-vars` command.
 
 Amendment process:
@@ -932,13 +935,14 @@ ships the `bench/quick.sh` harness §10.2 has so far only described.
 | 4.18 | `src/runtime/protocol.zig` dispatch table skeleton (per ADR-0008) — `ProtocolDescriptor` + `MethodEntry` struct declarations. No `dispatch` function yet (Phase 7 wires the `CallSite` cache)                                                                                                                                                                                                                                                       | [ ]    |
 | 4.19 | Object header layout extension (per ADR-0009) — `ObjectHeader` packed struct gains the `u32 gc_and_lock` field with `lock_state: u2` reserved at the low bits and `gc_mark: u30` at the high bits. Phase 5 reads/writes; Phase 4 only adds the slot. `monitor-enter` / `monitor-exit` / `locking` return a structured error in Phase 4 (per ADR-0009 + `no_op_stub_forbidden.md`)                                                                   | [ ]    |
 | 4.20 | `src/runtime/host/` directory + `_host_api.zig` (per ADR-0011) — empty subdirectories with one placeholder `.zig` each. `_host_api.zig` defines the `Extension` struct and `___HOST_EXTENSION` marker contract                                                                                                                                                                                                                                      | [ ]    |
-| 4.21 | `deftype` / `defrecord` / `reify` / `definterface` analyzer recognition (per ADR-0007). Reader accepts the syntax; analyzer emits a structured compile error: `"Phase 5: deftype not yet implemented, see ADR-0007"`. No fall-through, no no-op stub                                                                                                                                                                                                 | [ ]    |
+| 4.21 | `deftype` / `defrecord` / `reify` / `definterface` analyzer recognition (per ADR-0007). Reader accepts the syntax; analyzer raises `Code.unsupported_feature` via the catalog (ADR-0018) with the form name as `.{ .name = "deftype" }` etc. User-facing message: `"deftype is not supported in ClojureWasm"`. No fall-through, no no-op stub                                                                                                        | [ ]    |
 | 4.22 | `src/runtime/binding_stack.zig` — `threadlocal var dval_top: ?*DvalFrame` + `pushBindings` / `popBindings` / `varDeref` (real implementation, not stub). Required from Phase 2 onward for `*out*` / `*err*` / `*ns*` even though Phase 4 entry has not exercised it heavily. Thread-spawn inheritance lives in Phase 14-15                                                                                                                          | [ ]    |
 | 4.23 | `src/runtime/numeric/big_int.zig` — `BigInt` struct wrapping `std.math.big.int.Managed`; ValueTag `big_int` slot reservation (per ADR-0012). No arithmetic promotion functions in Phase 4; Phase 5 wires the long → BigInt path                                                                                                                                                                                                                    | [ ]    |
 | 4.24 | `src/runtime/lazy_seq.zig` — `LazySeq` struct (thunk + sval + `seq_cache: std.atomic.Value(?*Seq)` + `mutex: std.Thread.Mutex`) declaration. `force()` function lands in Phase 5 (per ADR-0009 + the trampoline pattern). Phase 4 has only the struct declaration                                                                                                                                                                                   | [ ]    |
 | 4.25 | `src/runtime/dispatch/method_table.zig` — `MethodEntry` struct (interned symbol + fn ptr) and `CallSite` struct (`last_type` + `last_method` cache slots) declaration. The `dispatch` function lands in Phase 7 (per ADR-0008). Phase 4 has only the struct declarations                                                                                                                                                                            | [ ]    |
+| 4.26 | Migrate the existing ~100 `setErrorFmt(...)` call sites to `error_catalog.raise(.code, loc, args)` per ADR-0018. Add the missing `Code` variants to `src/runtime/error_catalog.zig` as each site is migrated. Mechanical change; no semantic differences expected. Self-check: `grep -rn "setErrorFmt" src/` should match only `error_catalog.zig` and `error.zig` (catalog-internal helper) after this task                                         | [ ]    |
 
-After 4.0-4.25 land as `[x]`, the §9 phase tracker flips Phase 4 from
+After 4.0-4.26 land as `[x]`, the §9 phase tracker flips Phase 4 from
 IN-PROGRESS to DONE and Phase 5 IN-PROGRESS (🔒 x86_64 gate);
 expand Phase 5 inline in §9.7.
 
@@ -949,8 +953,10 @@ expand Phase 5 inline in §9.7.
 > are skeleton-only at Phase 4 — executable code lands in Phase 5+.
 > The `no_op_stub_forbidden` rule applies: a skeleton is a struct
 > declaration without a fall-through function, or a function whose
-> body is exactly `@panic("Phase N: see ADR-NNNN")` or
-> `return error.NotImplemented`.
+> body is exactly
+> `return error_catalog.raise(.unsupported_feature, loc, .{ .name = "<form>" })`
+> (per ADR-0018). User-facing messages never name a Phase number or
+> ADR identifier.
 
 > 4.4 onwards is the **first time the VM actually runs code**. The
 > opcode set listed in 4.4 is the **starting** set, not the final one

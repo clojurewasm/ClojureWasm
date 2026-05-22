@@ -12,11 +12,15 @@ paths:
 Every public function and type carries a tier classification A / B / C / D
 (per `compat_tiers.yaml` and ADR-0013).
 
-Tier D forms produce a structured error message:
+Tier D forms raise `Code.tier_d_form` (per ADR-0018) with the form
+name supplied via `.{ .name = "<form>" }`. The user-facing message is:
 
 ```
-Tier D: <reason>, see ADR-NNNN
+<form> is not part of ClojureWasm
 ```
+
+The tier classification and rationale ADR live in `compat_tiers.yaml`
+and ADR-0013; they do not appear in the user-facing message.
 
 ## Why
 

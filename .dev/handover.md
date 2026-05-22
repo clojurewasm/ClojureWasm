@@ -16,8 +16,11 @@
 ## Current state
 
 - **Phase**: **Phase 3 DONE; Phase 4 IN-PROGRESS, §9.6 OPEN.**
-  Phase-4-entry scaffolding wave landed 2026-05-23: 14 new ADRs
-  (0004-0017), 9 new rules, 8 new scripts + `.githooks/pre-push`,
+  Phase-4-entry scaffolding wave landed 2026-05-23: 15 new ADRs
+  (0004-0018; ADR-0018 added Error catalog SSOT after the initial
+  batch), 10 new rules (`error_catalog_only.md` added),
+  `src/runtime/error_catalog.zig` (~280 lines including tests),
+  8 new scripts + `.githooks/pre-push`,
   4 new `.dev/` files (`debt.md`, `reference_clones.md`,
   `lessons/INDEX.md`, `compat_tiers.yaml`), 4 skill modifications
   (`continue/LOOP.md` new, Step 0.5 sweep, audit two-tier triggers,
@@ -101,6 +104,8 @@ numbers, does not assert pass/fail until §10.1 lock at Phase 8).
 - 4.23: `numeric/big_int.zig` struct (no arithmetic yet).
 - 4.24: `lazy_seq.zig` struct (no `force()` yet).
 - 4.25: `dispatch/method_table.zig` structs (no `dispatch()` yet).
+- 4.26: Migrate the existing ~100 `setErrorFmt` call sites to
+  `error_catalog.raise(.code, loc, args)` per ADR-0018.
 
 **Boundary-chain artefacts (just landed, this session)**:
 - Chapter 0020 covers 3.8–3.14 + meta in 1075 lines (`cc46a48`).

@@ -23,8 +23,9 @@ cw v1 supports `locking` / `monitor-enter` / `monitor-exit` only on
 **heap-allocated values** (vectors, maps, sets, deftype instances,
 records, atoms, refs, agents, ex-info instances). NaN-boxed
 primitives (int_53, float_64, keyword, symbol) cannot be locked;
-attempting to lock one returns a structured runtime error referencing
-this ADR.
+attempting to lock one raises `Code.eval_type_cannot_call`-shape
+catalog error (per ADR-0018) whose user-facing message names the
+value type that the user tried to lock.
 
 The lock state lives in a packed 32-bit field on every heap
 object's header:
@@ -50,9 +51,11 @@ JEP 374). Contention escalates `light -> heavy` by lazily inserting a
 pointer.
 
 Phase 5 reserves the bit slot in the struct. Phase 15 activates the
-implementation (CAS path + heavy fallback). Phase 4-14 attempting to
-take a lock returns an error (no-op stub is forbidden per
-`no_op_stub_forbidden.md`).
+implementation (CAS path + heavy fallback). Phase 4-14 attempts to
+take a lock raise `Code.unsupported_feature` via the catalog
+(per ADR-0018) with the form name (`locking` / `monitor-enter` /
+`monitor-exit`) as `.{ .name = "<form>" }`. No-op stub is forbidden
+per `no_op_stub_forbidden.md`.
 
 ## Alternatives considered
 
@@ -96,3 +99,6 @@ take a lock returns an error (no-op stub is forbidden per
 ## Revision history
 
 - 2026-05-23: Status: Proposed -> Accepted (initial landing).
+- 2026-05-23 (amendment): Error phrasing rewritten to go through the
+  catalog (ADR-0018). User-facing messages no longer reference this
+  ADR by name.
