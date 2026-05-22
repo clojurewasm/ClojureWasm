@@ -40,6 +40,29 @@ Default = keep going. **Keep going** when:
 - An ADR-level decision is needed (tier change, principle deviation,
   scope cut).
 
+## Step 0.5: Debt sweep (per ROADMAP §A13)
+
+Before Step 1 below, read `.dev/debt.md`. For each row:
+
+- If `Last reviewed > 14 days ago`, re-evaluate the Barrier predicate
+  (grep / test / git log). If the barrier dissolved, flip Status from
+  `blocked-by: X` to `now`; otherwise update Last reviewed to today.
+- Surface any newly-`now` row in the Step 1a handover rewrite.
+
+See `LOOP.md` "Step 0.5" for the full procedure.
+
+## Step 1a: Phase 4 reading list (per LOOP.md)
+
+When Phase 4 is the active phase, read in order:
+
+1. `.dev/handover.md` current state.
+2. `.dev/ROADMAP.md` §9.6 (Phase 4 task list, especially the active row).
+3. ADRs referenced by the active task.
+4. `compat_tiers.yaml` entry for the function being implemented.
+5. JVM Clojure source (`~/Documents/OSS/clojure/`) for the function being implemented.
+
+These five sources are self-contained for Phase 4 task execution.
+
 ## Resume procedure (run on every session pickup)
 
 1. Read `.dev/handover.md`. (The `SessionStart` hook already prints it.)

@@ -173,3 +173,25 @@ gate; the rest are voluntary.
 - ❌ Writing the chapter at the *end* of the phase from `git log` only.
   By that point the why-not's are forgotten. Use per-task notes as
   the source.
+
+## Big-bang regeneration policy
+
+When the cw v1 codebase undergoes a significant design transition
+(ROADMAP rewrite, ADR landing for cross-cutting decisions such as
+TypeDescriptor or STM):
+
+1. The existing chapter sequence `docs/ja/learn_clojurewasm/NNNN_*.md`
+   is preserved unchanged until the new design is implemented through
+   the current implementation point.
+2. After implementation reaches the new design boundary, the old
+   chapters move to
+   `docs/ja/archive/learn_clojurewasm_v1_<phase-range>/`,
+   and a new chapter sequence is generated in one batch covering the
+   new design.
+3. Per-task notes during the transition do NOT amend old chapters.
+   They feed into the eventual big-bang regeneration.
+
+Until that boundary, both per-task notes and source commits continue
+to accumulate. The chapter gate (`check_learning_doc.sh`) only enforces
+pairing for the active chapter cadence (Phase boundary or every 3-5
+commits).

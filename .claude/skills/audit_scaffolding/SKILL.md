@@ -23,10 +23,24 @@ audit.
 
 ## When to invoke
 
-- **Phase boundary**: every time §9.X completes (last `[ ]` becomes `[x]`).
-- **Cadence**: every ~10 ja docs (`docs/ja/learn_clojurewasm/00NN`).
-- **Pre-release**: before tagging v0.X.0.
-- **Explicit**: user says "audit scaffolding" / "check for drift" / similar.
+### Mandatory triggers
+
+1. **Phase boundary**: every time §9.X completes (last `[ ]` becomes `[x]`).
+2. **Debt stale escalation**: `.dev/debt.md` rows where Last reviewed > 14 days.
+3. **Resume cycle count**: every 3rd `/continue` resume (rough rolling).
+4. **Pre-release**: before tagging v0.X.0.
+5. **Explicit**: user says "audit scaffolding" / "check for drift" / similar.
+
+### Adaptive trigger
+
+6. **Large scope work**: a single task touches >5 files or >500 LOC.
+
+### Mode
+
+- Mandatory 1, 2: narrow mode (debt-coherence checks only, §F).
+- Mandatory 3, 4, 5: full audit (all sections A-G).
+- Adaptive 6: inline by default; subagent fork only if findings text exceeds 500 lines.
+- **Cadence supplement**: every ~10 ja docs (`docs/ja/learn_clojurewasm/00NN`) still applies as a soft cadence reminder.
 
 ## Procedure
 
