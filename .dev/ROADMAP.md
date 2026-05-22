@@ -132,6 +132,13 @@ These do not change between phases. Changing one requires an ADR.
 | A13 | Debt ledger maintenance                                         | `.dev/debt.md` row-level predicates; phase boundary audit per row                                                                                           |
 | A14 | Structural discipline markers                                   | `FILE-SIZE-EXEMPT`, `SIBLING-PUB`, `SKIP-<reason>` markers, grep-indexed                                                                                    |
 | A15 | Error catalog as Single Source Of Truth                         | `src/runtime/error_catalog.zig` owns every user-facing message; returns `ClojureWasmError` (ADR-0018). Crash policy split across Layer 1 / 2 / 3 (ADR-0019) |
+| A16 | Test taxonomy is 5-layer at Phase 4 entry                       | `test/README.md` lists Layer 1-5 with Phase activation (ADR-0021)                                                                                           |
+| A17 | Differential testing is CI mandatory                            | `test/diff/runner.zig` + `cases.yaml` (ADR-0005, ADR-0022)                                                                                                  |
+| A18 | Source-scan gates share a framework                             | `scripts/scan_lib.sh` (ADR-0024); existing 4 check_*.sh adopt at Phase 5                                                                                    |
+| A19 | ARCHITECTURE.md is the 5-minute orientation                     | repo root `ARCHITECTURE.md` (ADR-0020)                                                                                                                      |
+| A20 | run_step is the runner dispatch pattern                         | `test/run_all.sh` `run_step` + summary (ADR-0024)                                                                                                           |
+| A21 | Comptime conditional import + stub struct for phase staging     | `runtime/X/stub.zig` parallels real X, `build_options.phase_at_least_N` switches (ADR-0023)                                                                 |
+| A22 | ADRs carry "Affected files" from 0020 onward                    | `.dev/decisions/0000_template.md` + every new ADR (ADR-0020)                                                                                                |
 
 ---
 
@@ -1015,20 +1022,28 @@ producing zero intermediate lazy seqs. This is the mechanism that won v1's
 
 ### 11.2 Three test layers
 
-| Layer           | Contents                    | Files               |
-|-----------------|-----------------------------|---------------------|
-| Zig unit        | `test "..." { ... }` blocks | each `src/**/*.zig` |
-| Clojure deftest | `clojure.test` (Phase 11+)  | `test/clj/**/*.clj` |
-| E2E             | CLI round-trips             | `test/e2e/*.sh`     |
-| Upstream port   | Adapted Clojure JVM tests   | `test/upstream/**`  |
+5-layer taxonomy per ADR-0021 (`test/README.md` is the operational
+reference):
 
-`test/run_all.sh` is the unified runner. Phase 1 = Zig unit only → Phase 11+ adds the rest.
+| # | Layer        | Files                                         | Open at  |
+|---|--------------|-----------------------------------------------|----------|
+| 1 | Unit (Zig)   | `test "..." { ... }` blocks in `src/**/*.zig` | Phase 0  |
+| 2 | E2E (CLI)    | `test/e2e/*.sh`                               | Phase 2  |
+| 3 | Differential | `test/diff/` (Evaluator.compare, ADR-0022)    | Phase 4  |
+| 4 | Bench quick  | `bench/quick.sh` (informational)              | Phase 4  |
+| 5 | Conformance  | `test/clj/` (clojure.test port)               | Phase 11 |
 
-### 11.3 Dual-backend compare (Phase 8+)
+`test/run_all.sh` is the unified runner (run_step pattern per
+ADR-0024, with `--list` / `--skip` / `--only` flags and a summary).
 
-From Phase 8, every deftest runs on both VM and TreeWalk and asserts
-equality. **Any divergence → identify the root cause** (decide which is
-correct; fix the other).
+### 11.3 Dual-backend compare (Phase 4+, CI mandatory)
+
+From Phase 4, the differential layer (`test/diff/`, ADR-0021 Layer 3,
+ADR-0022 implementation) runs every case on both VM and TreeWalk
+and asserts equality. **Any divergence → identify the root cause**
+(decide which is correct; fix the other). CI mandatory per ADR-0005.
+Phase 17 extends the comparison to a third backend (JIT) per
+ADR-0022's compareThree path.
 
 ### 11.4 Upstream-test porting rules (Tier A check)
 
@@ -1063,7 +1078,7 @@ they are wired.
 |----|----------------------------------------------------------------|----------------------------------------------------------|------------------------------------------|
 | 4  | `zig fmt --check src/`                                         | `scripts/format_check.sh`, called from `test/run_all.sh` | Phase 1 (when src/ grows past bootstrap) |
 | 5  | x86_64 cross-arch test (OrbStack Ubuntu)                       | manual `orb run ... zig build test`                      | Phase 1.12                               |
-| 6  | Dual-backend `--compare` (TreeWalk == VM)                      | inline in test runner                                    | Phase 8                                  |
+| 6  | Dual-backend `--compare` (TreeWalk == VM)                      | `test/diff/runner.zig` + `cases.yaml`                    | Phase 4 (CI mandatory; ADR-0005)         |
 | 7  | Bench regression ≤ 1.2x                                       | `bench/bench.sh record` + `bench/history.yaml` diff      | Phase 8 (full); Phase 4 quick harness    |
 | 8  | Tier-A upstream test green                                     | inline in `test/run_all.sh`                              | Phase 11                                 |
 | 9  | Tier-change ADR present                                        | `scripts/tier_check.sh`                                  | Phase 9                                  |
@@ -1263,6 +1278,7 @@ The minimum surface that must always exist:
 
 - `CLAUDE.md` — Claude Code project memory (short, points to this file)
 - `README.md` — public-facing description
+- `ARCHITECTURE.md` — 5-minute orientation (ADR-0020 / ADR-0023)
 - `LICENSE` — EPL-2.0
 - `.dev/ROADMAP.md` (this file) — single source of truth
 - `.dev/README.md` — index / convention pointer

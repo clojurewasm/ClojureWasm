@@ -16,12 +16,15 @@
 ## Current state
 
 - **Phase**: **Phase 3 DONE; Phase 4 IN-PROGRESS, §9.6 OPEN.**
-  Phase-4-entry scaffolding wave landed 2026-05-23: 16 new ADRs
-  (0004-0019; ADR-0018 Error catalog SSOT amended twice — 命名規則
-  `<target>_<state-adjective>`, Tier D を 5 個別 Code に分割,
-  `ClojureWasmError` 命名採用, sub-feature 段階運用パターン;
-  ADR-0019 Crash policy added), 10 new rules
-  (`error_catalog_only.md` added and amended in lockstep),
+  Phase-4-entry scaffolding wave landed 2026-05-23: 21 new ADRs
+  (0004-0024; ADR-0018 amended twice for Error catalog SSOT,
+  ADR-0019 Crash policy, ADR-0020 ADR governance,
+  ADR-0021 Test taxonomy, ADR-0022 Differential wiring,
+  ADR-0023 Comptime stub, ADR-0024 Scan framework + run_step;
+  ADR-0015 amend 1 Two-tier strategy, ADR-0016 amend 1 promoted
+  to Accepted with zwasm evidence), 12 new rules
+  (`error_catalog_only.md`, `test_taxonomy.md`,
+  `exploration_vs_done.md` added),
   `src/runtime/error_catalog.zig` (~280 lines including tests;
   the file ships under the original 28-Code names and will be
   reshaped in task 4.26 per ADR-0018 amendment 2),
