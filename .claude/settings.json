@@ -69,10 +69,25 @@
         ]
       }
     ],
+    "PostCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/scripts/print_handover_brief.sh"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_stale_git_lock.sh"
+          },
           {
             "type": "command",
             "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_learning_doc.sh"
@@ -80,6 +95,15 @@
           {
             "type": "command",
             "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_md_tables.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_roadmap_amendment.sh"
           }
         ]
       }
