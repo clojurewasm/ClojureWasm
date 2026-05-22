@@ -185,6 +185,7 @@ test "smoke: main module loads" {
 test {
     _ = @import("runtime/value.zig");
     _ = @import("runtime/error.zig");
+    _ = @import("runtime/error_catalog.zig");
     _ = @import("runtime/error_print.zig");
     _ = @import("runtime/gc/arena.zig");
     _ = @import("runtime/collection/ex_info.zig");
