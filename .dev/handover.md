@@ -16,10 +16,15 @@
 ## Current state
 
 - **Phase**: **Phase 3 DONE; Phase 4 IN-PROGRESS, §9.6 OPEN.**
-  Phase-4-entry scaffolding wave landed 2026-05-23: 15 new ADRs
-  (0004-0018; ADR-0018 added Error catalog SSOT after the initial
-  batch), 10 new rules (`error_catalog_only.md` added),
-  `src/runtime/error_catalog.zig` (~280 lines including tests),
+  Phase-4-entry scaffolding wave landed 2026-05-23: 16 new ADRs
+  (0004-0019; ADR-0018 Error catalog SSOT amended twice — 命名規則
+  `<target>_<state-adjective>`, Tier D を 5 個別 Code に分割,
+  `ClojureWasmError` 命名採用, sub-feature 段階運用パターン;
+  ADR-0019 Crash policy added), 10 new rules
+  (`error_catalog_only.md` added and amended in lockstep),
+  `src/runtime/error_catalog.zig` (~280 lines including tests;
+  the file ships under the original 28-Code names and will be
+  reshaped in task 4.26 per ADR-0018 amendment 2),
   8 new scripts + `.githooks/pre-push`,
   4 new `.dev/` files (`debt.md`, `reference_clones.md`,
   `lessons/INDEX.md`, `compat_tiers.yaml`), 4 skill modifications
@@ -104,8 +109,14 @@ numbers, does not assert pass/fail until §10.1 lock at Phase 8).
 - 4.23: `numeric/big_int.zig` struct (no arithmetic yet).
 - 4.24: `lazy_seq.zig` struct (no `force()` yet).
 - 4.25: `dispatch/method_table.zig` structs (no `dispatch()` yet).
-- 4.26: Migrate the existing ~100 `setErrorFmt` call sites to
-  `error_catalog.raise(.code, loc, args)` per ADR-0018.
+- 4.26: Error system migration (six sub-tasks per ADR-0018
+  amendment 2 + ADR-0019). (a) Rename 28 existing Codes to
+  `<target>_<state-adjective>`. (b) Split `tier_d_form` into 5
+  per-form Codes with hand-written templates. (c) Rename the Zig
+  error union `Error` → `ClojureWasmError`. (d) Migrate ~116
+  existing `setErrorFmt` sites. (e) Audit `@panic` /
+  `unreachable` sites per ADR-0019. (f) Wire top-level catch in
+  `main()` with exit codes 0 / 1 / 70 / 130.
 
 **Boundary-chain artefacts (just landed, this session)**:
 - Chapter 0020 covers 3.8–3.14 + meta in 1075 lines (`cc46a48`).
