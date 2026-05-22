@@ -266,17 +266,17 @@ test "unsupported_feature uses .name slot, no Phase or ADR leak" {
     const info = error_mod.getLastError().?;
     try testing.expectEqualStrings("dosync is not supported in ClojureWasm", info.message);
     // The user-facing message must not contain development markers.
-    try testing.expect(std.mem.indexOf(u8, info.message, "Phase") == null);
-    try testing.expect(std.mem.indexOf(u8, info.message, "ADR-") == null);
-    try testing.expect(std.mem.indexOf(u8, info.message, "http") == null);
+    try testing.expect(std.mem.find(u8, info.message, "Phase") == null);
+    try testing.expect(std.mem.find(u8, info.message, "ADR-") == null);
+    try testing.expect(std.mem.find(u8, info.message, "http") == null);
 }
 
 test "tier_d_form names the form, never the tier classification" {
     _ = raise(.tier_d_form, .{}, .{ .name = "gen-class" }) catch {};
     const info = error_mod.getLastError().?;
     try testing.expectEqualStrings("gen-class is not part of ClojureWasm", info.message);
-    try testing.expect(std.mem.indexOf(u8, info.message, "Tier") == null);
-    try testing.expect(std.mem.indexOf(u8, info.message, "ADR-") == null);
+    try testing.expect(std.mem.find(u8, info.message, "Tier") == null);
+    try testing.expect(std.mem.find(u8, info.message, "ADR-") == null);
 }
 
 test "arity templates render all three variants" {

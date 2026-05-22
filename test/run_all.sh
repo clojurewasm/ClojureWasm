@@ -3,6 +3,8 @@
 # repository to be green" is unambiguous. Suites grow as phases land;
 # do not add ad-hoc test scripts elsewhere — wire them in here.
 #
+# Per ADR-0024: run_step dispatcher with --list / --skip / --only / summary.
+#
 # Run on **both** the Mac host and Ubuntu x86_64 before every commit
 # (CLAUDE.md "Working agreement"):
 #
@@ -11,56 +13,156 @@
 #
 # Setup for the Linux side: .dev/orbstack_setup.md.
 #
-# Active suites:
-#   1.  zig build test                 Zig unit tests in each src/**/*.zig
-#   2.  scripts/zone_check.sh          zone-dependency gate (--gate mode)
-#   2a. zig build lint                 zlinter no_deprecated gate (Mac only, ADR-0003)
-#   3.  test/e2e/phase2_exit.sh        Phase-2 CLI exit criteria
-#   4.  test/e2e/phase3_cli.sh         Phase-3 CLI entry points (3.1)
-#   5.  test/e2e/phase3_exit.sh        Phase-3 CLI exit criteria (3.14)
+# Flags (per ADR-0024):
+#   --list                  List step names without running.
+#   --skip name[,name,...]  Skip the named steps.
+#   --only name[,name,...]  Run only the named steps.
 #
-# Future suites (uncomment as their phase lands):
-#   - test/clj/**/*.clj         clojure.test suites                 (Phase 11)
-#   - test/upstream/**/*.clj    upstream-ported Tier-A verification (Phase 11)
-#   - bash scripts/tier_check.sh                                    (Phase 14)
-#
-# Exit code 0 iff every suite passed. Any failure exits immediately.
+# Exit code 0 iff every non-optional step passed. `optional` steps
+# (e.g. bench/quick.sh once it lands) are reported but do not fail
+# the run.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "==> 1. zig build test"
-zig build test
-echo "    OK"
+# --- Flag parsing ---
 
-echo "==> 2. zone_check --gate"
-bash scripts/zone_check.sh --gate
-echo "    OK"
+LIST_ONLY=0
+SKIP_STEPS=""
+ONLY_STEPS=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --list)
+            LIST_ONLY=1
+            shift
+            ;;
+        --skip)
+            SKIP_STEPS="$2"
+            shift 2
+            ;;
+        --only)
+            ONLY_STEPS="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown flag: $1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+# --- run_step framework (per ADR-0024) ---
+
+declare -a STEPS_PASSED=()
+declare -a STEPS_FAILED=()
+declare -a STEPS_FAILED_OPTIONAL=()
+declare -a STEPS_SKIPPED=()
+declare -a ALL_STEP_NAMES=()
+
+step_in_csv() {
+    local name="$1"
+    local csv="$2"
+    [[ -z "$csv" ]] && return 1
+    [[ ",${csv}," == *",${name},"* ]]
+}
+
+run_step() {
+    local name="$1"
+    local cmd="$2"
+    local optional="${3:-}"
+
+    ALL_STEP_NAMES+=("$name")
+
+    if (( LIST_ONLY )); then
+        echo "$name${optional:+ (optional)}"
+        return 0
+    fi
+
+    if [[ -n "$ONLY_STEPS" ]] && ! step_in_csv "$name" "$ONLY_STEPS"; then
+        STEPS_SKIPPED+=("$name")
+        return 0
+    fi
+
+    if step_in_csv "$name" "$SKIP_STEPS"; then
+        echo "[skip] $name"
+        STEPS_SKIPPED+=("$name")
+        return 0
+    fi
+
+    echo "==> $name"
+    local start
+    start=$(date +%s)
+    if eval "$cmd"; then
+        local elapsed=$(( $(date +%s) - start ))
+        echo "    [pass] (${elapsed}s)"
+        STEPS_PASSED+=("$name")
+    else
+        local exit_code=$?
+        local elapsed=$(( $(date +%s) - start ))
+        echo "    [fail] (exit $exit_code, ${elapsed}s)"
+        if [[ "$optional" == "optional" ]]; then
+            STEPS_FAILED_OPTIONAL+=("$name")
+        else
+            STEPS_FAILED+=("$name")
+        fi
+    fi
+}
+
+print_summary() {
+    echo ""
+    echo "=== Summary ==="
+    echo "  passed:           ${#STEPS_PASSED[@]}"
+    echo "  failed:           ${#STEPS_FAILED[@]}"
+    echo "  failed (optional): ${#STEPS_FAILED_OPTIONAL[@]}"
+    echo "  skipped:          ${#STEPS_SKIPPED[@]}"
+
+    if [[ ${#STEPS_FAILED_OPTIONAL[@]} -gt 0 ]]; then
+        echo ""
+        echo "  Failed optional (informational):"
+        printf "    - %s\n" "${STEPS_FAILED_OPTIONAL[@]}"
+    fi
+
+    if [[ ${#STEPS_FAILED[@]} -gt 0 ]]; then
+        echo ""
+        echo "  Failed (blocking):"
+        printf "    - %s\n" "${STEPS_FAILED[@]}"
+        return 1
+    fi
+    return 0
+}
+
+# --- Steps ---
+
+run_step "zig_build_test"      "zig build test"
+run_step "zone_check"           "bash scripts/zone_check.sh --gate"
 
 # zlinter no_deprecated gate (ADR-0003) — Mac-host only. zlinter is
-# fetched via `zig fetch` against GitHub; OrbStack runs are intentionally
-# network-free per .dev/orbstack_setup.md. Deprecation findings are
-# platform-independent so a single host is enough to catch them.
+# fetched via `zig fetch` against GitHub; OrbStack runs are network-
+# free per .dev/orbstack_setup.md.
 if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo "==> 2a. zig build lint -- --max-warnings 0  (Mac only)"
-    zig build lint -- --max-warnings 0
-    echo "    OK"
-else
-    echo "==> 2a. zig build lint  (skipped on $(uname -s))"
+    run_step "zlinter"          "zig build lint -- --max-warnings 0"
 fi
 
-echo "==> 3. e2e: Phase-2 exit criteria"
-bash test/e2e/phase2_exit.sh
-echo "    OK"
+run_step "e2e_phase2_exit"     "bash test/e2e/phase2_exit.sh"
+run_step "e2e_phase3_cli"      "bash test/e2e/phase3_cli.sh"
+run_step "e2e_phase3_exit"     "bash test/e2e/phase3_exit.sh"
 
-echo "==> 4. e2e: Phase-3 CLI entry points"
-bash test/e2e/phase3_cli.sh
-echo "    OK"
+# Informational scans (ADR-0024). Phase 5+ they become blocking.
+run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional
+run_step "scan_panic_audit"    "bash scripts/scan_panic_audit.sh"  optional
 
-echo "==> 5. e2e: Phase-3 exit criteria"
-bash test/e2e/phase3_exit.sh
-echo "    OK"
+# Future suites (uncomment as their phase lands):
+#   run_step "diff_runner"  "zig build test -Dtest-filter='differential cases'"
+#   run_step "bench_quick"  "bash bench/quick.sh" optional
+#   run_step "test_clj"     "bash scripts/run_clj_tests.sh"  # Phase 11
+#   run_step "tier_check"   "bash scripts/tier_check.sh"     # Phase 14
 
-echo
-echo "All test suites passed."
+# --- Summary ---
+
+if (( LIST_ONLY )); then
+    exit 0
+fi
+
+print_summary
