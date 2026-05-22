@@ -34,8 +34,21 @@ For each rejected option:
 - **Negative**: …
 - **Neutral / follow-ups**: items that need separate ADRs or future tasks.
 
+## Affected files
+
+(per ADR-0020 — required for ADR-0020 onward)
+
+- `src/path/to/file.zig` — what changes here
+- `.dev/ROADMAP.md` §X.Y — what is amended
+- `.claude/rules/foo.md` — new / amended
+- (etc.)
+
 ## References
 
 - ROADMAP § N.M
 - Related ADRs: NNNN
 - External: links / file paths
+
+## Revision history
+
+- YYYY-MM-DD: Status: Proposed -> Accepted (initial landing).
