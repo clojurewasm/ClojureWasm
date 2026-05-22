@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# .githooks/pre-push — runs before each git push.
+# Enforces zone_check.sh --gate (per ROADMAP §A1 zone discipline, Decision 28).
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+if ! bash "$REPO_ROOT/scripts/zone_check.sh" --gate; then
+    echo "[pre-push] zone_check.sh --gate failed (BASELINE=0 violated)."
+    echo "Run 'bash scripts/zone_check.sh' to inspect violations."
+    exit 1
+fi
+
+exit 0
