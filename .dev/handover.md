@@ -7,63 +7,75 @@
 ## Next 3 files to read (cold-start order)
 
 1. `.dev/handover.md` (this file)
-2. `.dev/ROADMAP.md` — find IN-PROGRESS phase in §9, take the
-   first `[ ]` row in §9.<N>.
-3. The most recent `docs/ja/learn_clojurewasm/NNNN_*.md` chapter —
-   to recover the conceptual baseline for the active phase.
+2. `CLAUDE.md` § Project spirit — newly added at top, governs all
+   other rules; especially the **Reservation-as-bias** and
+   **Smallest-diff bias** smells in `.dev/principle.md`.
+3. `.dev/ROADMAP.md` — find IN-PROGRESS phase in §9, take the
+   first `[ ]` row in §9.<N>. (Note 2026-05-23 cleanup-wave smell
+   banner above the §9.6 row table — debt D-028 audit pending.)
 
 ## Current state
 
-- **Phase**: Phase 4 IN-PROGRESS. §9.6 cluster A done
-  (tasks 4.1 / 4.2 / 4.3); **critical-path closed**: 4.0 / 4.0a /
-  4.4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.10 / 4.11 / 4.12 done.
-  Cleanup wave in progress: 4.13–4.24 done. Remaining §9.6 rows
-  (4.25–4.26.f) — method_table skeleton, error-system migration.
-- **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived;
-  push free after gate green; never push to `main`).
-- **Last commit**: see `git log -1` (compute on resume — the
-  resume procedure reads it directly).
-- **Gate**: Mac (9/9) + OrbStack Ubuntu x86_64 (8/8) green at
+- **Phase**: Phase 4 IN-PROGRESS. §9.6 critical-path closed
+  (4.0 / 4.0a / 4.1 / 4.2 / 4.3 / 4.4 / 4.5 / 4.6 / 4.7 / 4.8 /
+  4.9 / 4.10 / 4.11 / 4.12 done). Cleanup wave: 4.13–4.24 done
+  (status table refreshed 2026-05-23). Remaining §9.6 rows
+  (4.25 / 4.26.a-f) — method_table skeleton + error-system
+  migration.
+- **Branch**: `cw-from-scratch` (long-lived; push free after gate
+  green; never push to `main`).
+- **Gate**: Mac 12/12 + OrbStack Ubuntu x86_64 11/11 green at
   HEAD. 🔒 fresh OrbStack run due at Phase 4 close.
-- **Last paired chapter commit**: `cc46a48` (chapter 0020 —
-  Phase 3 closure, covers §9.5 / 3.8–3.14).
-- **Unpaired source SHAs**: `git log cc46a48..HEAD --oneline -- src/`
-  (compute on resume; chapter pairing decision is per the
-  `code_learning_doc` skill's two-cadence rule).
+- **Chapter cadence**: dormant per ADR-0025; existing chapters
+  under `docs/ja/archive/`. `private/notes/<task>.md` continues.
+- **Unpaired source SHAs**: irrelevant during dormancy. Resumption
+  ADR re-engages chapter cadence.
 
-## Recent landings (post-stop)
+## Guardrail refresh (post-2026-05-23 session)
 
-User-directed cleanup landed in 4 commits after the 4c54682 stop:
+User-directed correction. The autonomous loop accumulated multiple
+smells during the cleanup wave; the guardrails were strengthened
+so the next session does not re-produce them:
 
-- 58939f6 — rules: `no_op_stub_forbidden` reframed as
-  "Permanent no-op forbidden — transient stubs OK" (skeleton-then-
-  rewrite explicitly endorsed).
-- bbae2e0 / a0331c1 — ADR-0006 + 0012 amendment 1: NaN-box slots
-  `wasm_module` (29) / `wasm_fn` (30) released and re-purposed for
-  `big_int` / `ratio`; BigInt dropped its `PHASE4_PLACEHOLDER_TAG`
-  smell.
-- 302e4ec + (this commit) — ADR-0029 chapter archive boundary:
-  `learn_clojurewasm` (20 chapters) + `learn_zig`副読本 moved to
-  `docs/ja/archive/`; cadence dormant.
+- **Project spirit** — added to CLAUDE.md top: finished-form
+  cleanliness wins, shipping fast and avoiding rework are
+  second-tier. Surgical big edits welcome when the plan misses
+  something.
+- **Bad Smell catalogue** — 3 new entries in `principle.md`:
+  **Smallest-diff bias**, **Reservation-as-bias**,
+  **Progress-pressure**. ROADMAP P5 ("smallest diff first")
+  re-framed as a tie-breaker, not a veto.
+- **D-021 retired** — ADR number reservation is a smell; numbers
+  are time-ordered (`max + 1` at issue).
+- **D-027 added** — NaN-box layout 第二世代 ADR is owed at Phase
+  5 entry (current `big_int` / `ratio` at Group D is a
+  smallest-diff landing, not the finished form).
+- **D-028 added** — ROADMAP §9.6 cleanup-wave rows (4.13 / 4.16 /
+  4.17 / 4.18 / 4.20 / 4.22) need audit + amendment before Phase
+  5 entry; the row table now carries a smell banner.
+- **ADR-0029 → ADR-0025** rename — chapter archive boundary
+  re-numbered to time-ordered slot.
 
 ## Active task — §9.6 / 4.25
 
 `src/runtime/dispatch/method_table.zig` — `MethodEntry` struct
 (interned symbol + fn ptr) and `CallSite` struct (`last_type` +
-`last_method` cache slots) declaration. The `dispatch` function
-lands in Phase 7 (per ADR-0008). Phase 4 has only the struct
-declarations.
+`last_method` cache slots) declaration. **But first re-read D-028**
+— 4.25 is itself a skeleton-row candidate; consider whether the
+smallest-diff landing or "Phase 7 entry: struct + dispatch
+together" is the cleaner shape before writing the file.
 
 **Retrievable identifiers**:
 
-- ROADMAP §9.6 task 4.25, ADR-0008 (protocol dispatch unify).
-- `src/runtime/dispatch.zig` already exists at the same path
-  level (Layer 0 vtable). The new file lives in a
-  `src/runtime/dispatch/` subdirectory which does not yet exist
-  — create it.
+- ROADMAP §9.6 task 4.25, ADR-0008 (protocol dispatch unify),
+  debt D-028 (cleanup-wave audit).
+- The new file lives in a `src/runtime/dispatch/` subdirectory
+  which does not yet exist — create it.
 
 ## Open questions / blockers
 
-None. External blockers, recall triggers, and follow-up
+None testable from inside the loop. Recall triggers + follow-up
 candidates live in [`debt.md`](./debt.md) (rows `D-005` through
-`D-026`). The resume Step 0.5 debt sweep walks them.
+`D-028`). Step 0.5 debt sweep walks them at resume; pay attention
+to **D-027 / D-028** which encode the design surgery this
+session's guardrail refresh anticipates.
