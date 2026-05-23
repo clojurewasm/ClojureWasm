@@ -121,13 +121,32 @@ pub const HeapHeader = extern struct {
     tag: u8,
     /// Per-object GC and lifecycle flags.
     flags: Flags,
+    /// Padding so `gc_and_lock` lands on its natural 4-byte boundary.
+    _pad: [2]u8 = .{ 0, 0 },
+    /// ROADMAP §9.6 / 4.19 + ADR-0009: low 2 bits are the heap-only
+    /// lock state, high 30 bits are the GC mark / age. Phase 4 only
+    /// reserves the slot; Phase 5 wires read/write paths
+    /// (`cmpxchgLockBits`, mark-sweep mark/clear). Phase 15 wires
+    /// `monitor-enter` / `monitor-exit` / `locking` to the lock_state
+    /// bits and `dosync` to the STM scaffold on top.
+    gc_and_lock: GcAndLock = .{},
 
     pub const Flags = packed struct(u8) {
-        /// GC mark bit for mark-sweep collection.
+        /// GC mark bit for mark-sweep collection. Phase 5 migrates
+        /// this into `gc_and_lock.gc_mark`; Phase 4 still reads here.
         marked: bool = false,
         /// Arena freeze flag — prevents mutation after snapshot.
         frozen: bool = false,
         _pad: u6 = 0,
+    };
+
+    pub const GcAndLock = packed struct(u32) {
+        /// 0 = unlocked, 1 = light-locked, 2 = heavyweight, 3 = reserved.
+        lock_state: u2 = 0,
+        /// Phase 5 mark-sweep collector reads/writes this. Wider than
+        /// strictly necessary for a single bit so a generational
+        /// counter can fit later without a struct migration.
+        gc_mark: u30 = 0,
     };
 
     pub fn init(heap_tag: HeapTag) HeapHeader {
@@ -527,6 +546,27 @@ test "Value is 8 bytes" {
     try testing.expectEqual(@as(usize, 8), @sizeOf(Value));
 }
 
-test "HeapHeader is 2 bytes" {
-    try testing.expectEqual(@as(usize, 2), @sizeOf(HeapHeader));
+test "HeapHeader is 8 bytes (tag + flags + pad + gc_and_lock)" {
+    // Phase 4 task 4.19 + ADR-0009 extend the header from 2 → 8 bytes
+    // to reserve the gc_and_lock u32 slot (with natural 4-byte
+    // alignment after tag/flags + 2 bytes of padding).
+    try testing.expectEqual(@as(usize, 8), @sizeOf(HeapHeader));
+}
+
+test "HeapHeader.GcAndLock packs lock_state + gc_mark into 4 bytes" {
+    try testing.expectEqual(@as(usize, 4), @sizeOf(HeapHeader.GcAndLock));
+    var gl: HeapHeader.GcAndLock = .{};
+    try testing.expectEqual(@as(u2, 0), gl.lock_state);
+    try testing.expectEqual(@as(u30, 0), gl.gc_mark);
+
+    gl.lock_state = 2;
+    gl.gc_mark = 0x3F_FF_FF_FF;
+    try testing.expectEqual(@as(u2, 2), gl.lock_state);
+    try testing.expectEqual(@as(u30, 0x3F_FF_FF_FF), gl.gc_mark);
+}
+
+test "HeapHeader.init zero-initialises gc_and_lock" {
+    const hdr = HeapHeader.init(.string);
+    try testing.expectEqual(@as(u2, 0), hdr.gc_and_lock.lock_state);
+    try testing.expectEqual(@as(u30, 0), hdr.gc_and_lock.gc_mark);
 }
