@@ -1423,11 +1423,20 @@ shouldn't). The audit produces a report; the user decides what to fix.
 - Never commit when tests are red.
 - Never bypass the pre-commit hook with `--no-verify` — fix the issue.
 
-### 12.2 Commit pairing (skill `code_learning_doc` is canonical)
+### 12.2 Commit pairing (skill `code_learning_doc` — DORMANT per ADR-0029)
+
+> **Chapter cadence suspended.** The per-concept chapter half of the
+> `code_learning_doc` skill is dormant at Phase-4 critical-path close
+> per ADR-0029. Existing chapters (Phase 1-3) live read-only under
+> [`docs/ja/archive/`](../docs/ja/archive/). The pre-commit pairing
+> gate (`scripts/check_learning_doc.sh`) is a no-op. A future
+> resumption ADR re-activates the cadence; the rest of this section
+> is the pre-dormancy reference.
 
 Source-bearing commits accumulate freely; when a unit of work is ready
-to be told as one story, write `docs/ja/learn_clojurewasm/NNNN_<slug>.md` in a separate
-commit whose `commits:` front-matter cites every source SHA it covers.
+to be told as one story (and the cadence is active), write
+`docs/ja/learn_clojurewasm/NNNN_<slug>.md` in a separate commit whose
+`commits:` front-matter cites every source SHA it covers.
 
 The full definition (source-bearing file set, the two gate rules, the
 template, the workflow) lives in

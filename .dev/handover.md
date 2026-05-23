@@ -31,13 +31,20 @@
   (compute on resume; chapter pairing decision is per the
   `code_learning_doc` skill's two-cadence rule).
 
-## Stopped — user requested
+## Recent landings (post-stop)
 
-User instruction (2026-05-23): 「OK、ここできりのいいところで止めて」
-after task 4.24 landed at commit 465d758. The cleanup wave
-through 4.13–4.24 is committed + pushed; the empty
-`src/runtime/dispatch/` directory created while opening 4.25
-was removed. Resume reads the next-task section below.
+User-directed cleanup landed in 4 commits after the 4c54682 stop:
+
+- 58939f6 — rules: `no_op_stub_forbidden` reframed as
+  "Permanent no-op forbidden — transient stubs OK" (skeleton-then-
+  rewrite explicitly endorsed).
+- bbae2e0 / a0331c1 — ADR-0006 + 0012 amendment 1: NaN-box slots
+  `wasm_module` (29) / `wasm_fn` (30) released and re-purposed for
+  `big_int` / `ratio`; BigInt dropped its `PHASE4_PLACEHOLDER_TAG`
+  smell.
+- 302e4ec + (this commit) — ADR-0029 chapter archive boundary:
+  `learn_clojurewasm` (20 chapters) + `learn_zig`副読本 moved to
+  `docs/ja/archive/`; cadence dormant.
 
 ## Active task — §9.6 / 4.25
 

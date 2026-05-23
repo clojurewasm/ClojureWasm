@@ -38,8 +38,11 @@ the v0.5.0 git history**:
 
 Public project. **English by default** for code, comments, identifiers,
 commit messages, README, ROADMAP, ADRs, `.dev/`, `.claude/`, all
-configuration. **Japanese** for chat replies and `docs/ja/learn_clojurewasm/NNNN_*.md`
-learning narratives.
+configuration. **Japanese** for chat replies, `private/notes/<task>.md`
+per-task notes, and (when re-activated) `docs/ja/learn_clojurewasm/NNNN_*.md`
+learning narratives. The per-chapter cadence is currently **dormant**
+per ADR-0029; existing chapters live read-only under
+[`docs/ja/archive/`](docs/ja/archive/).
 
 Don't mix Japanese into English docs. In `docs/ja/`, body is Japanese;
 code blocks keep their original English identifiers.
@@ -70,9 +73,10 @@ turn 1 must be Japanese.
   Don't bypass hooks. The runner includes the zlinter `no_deprecated`
   gate on Mac only (ADR-0003) — Linux skips it because OrbStack
   runs are network-free.
-- Commit at the natural granularity of code changes; chapters
-  (`docs/ja/learn_clojurewasm/NNNN_*.md`) are written **per concept** at phase
-  boundaries — see skill `code_learning_doc` for the two-cadence flow.
+- Commit at the natural granularity of code changes. The per-concept
+  chapter cadence (`docs/ja/learn_clojurewasm/NNNN_*.md`) is **dormant**
+  per ADR-0029 until a resumption ADR fires; only the per-task notes
+  half of the `code_learning_doc` skill is active.
 - Subagent fork is the default for: Step 0 surveys, large test logs
   (>200 lines), cross-codebase searches (>5 files), phase-boundary
   audit / simplify / security-review fan-out. Stay in main only for
@@ -257,13 +261,15 @@ considered" section, and continues.
 
 These hold the canonical procedures; CLAUDE.md only points to them.
 
-- **`code_learning_doc`** — two-cadence Japanese learning material:
-  per-task notes (private, gitignored) and per-concept chapters
-  (`docs/ja/learn_clojurewasm/NNNN_*.md`, gated). Templates: `TEMPLATE_TASK_NOTE.md` and
-  `TEMPLATE_PHASE_DOC.md`. Chapters are **pure exposition** — narrative
-  concept sections, design-alternatives table, "Try it" snippet,
-  textbook comparison. No exercises, predict-then-verify, L1/L2/L3,
-  Feynman, or checklists. They are textbook units, not a project diary.
+- **`code_learning_doc`** — Japanese learning material skill.
+  **DORMANT per ADR-0029**: only the per-task notes half is active
+  (Step 7 writes `private/notes/<task>.md` from hot context). The
+  per-concept chapter half (`docs/ja/learn_clojurewasm/NNNN_*.md`) is
+  suspended; the pre-commit pairing gate is a no-op; existing chapters
+  live under [`docs/ja/archive/`](docs/ja/archive/). A future resumption
+  ADR re-activates the chapter cadence; until then the templates
+  (`TEMPLATE_TASK_NOTE.md` / `TEMPLATE_PHASE_DOC.md`) are preserved
+  for that day.
 - **`continue`** — resume procedure + per-task TDD loop (Step 0
   Survey → Step 7 per-task note → next task's Step 0) + multi-agent
   Phase-boundary review chain (audits run, then loop continues into

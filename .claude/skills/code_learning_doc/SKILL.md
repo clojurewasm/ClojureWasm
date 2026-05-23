@@ -1,9 +1,44 @@
 ---
 name: code_learning_doc
-description: Write Japanese learning material under docs/ja/ as a textbook. Two cadences — (a) per-task short notes during the per-task TDD loop, (b) per-concept full chapters at phase boundary or every 3-5 source commits. Required by the pre-commit gate (scripts/check_learning_doc.sh).
+description: Write Japanese per-task notes under private/notes/ during the per-task TDD loop. The per-concept chapter half (docs/ja/learn_clojurewasm/NNNN_*.md) is DORMANT per ADR-0029 — no new chapters land, pre-commit gate is a no-op, existing chapters live in docs/ja/archive/. Re-activates by a future ADR.
 ---
 
 # code_learning_doc
+
+## ⚠ DORMANT — chapter cadence suspended per ADR-0029
+
+The **per-concept chapter half** of this skill is currently dormant.
+Existing chapters (learn_clojurewasm 0001-0020 + learn_zig副読本) live
+under `docs/ja/archive/`. `scripts/check_learning_doc.sh` is a no-op
+gate (early `exit 0`). CLAUDE.md references the dormant state.
+
+**What still applies during dormancy**:
+
+- The **per-task short note** half (Step 7 of the TDD loop —
+  `private/notes/<task>.md` from hot context). These remain
+  load-bearing as inputs for the eventual chapter regeneration.
+- The big-bang regeneration policy below (the trigger that brought
+  us here).
+
+**What does NOT apply during dormancy**:
+
+- The two-cadence pairing rule (no docs/ja/learn_clojurewasm/ chapter is
+  required after source commits).
+- The chapter template (`TEMPLATE_PHASE_DOC.md`) — preserved for the
+  resumption but not actively consumed.
+- The pre-commit pairing gate.
+
+**Re-activation**: a future ADR (`Resume chapter sequence at Phase
+<N> entry`) flips the dormancy off. Edit points are this banner,
+the `scripts/check_learning_doc.sh` early-exit block, and the
+CLAUDE.md skill reference.
+
+The rest of this document describes the *pre-dormancy* design and
+remains the reference for the regeneration.
+
+---
+
+# code_learning_doc (pre-dormancy reference)
 
 `docs/ja/` is **a textbook**, not a project diary. The reader is a future
 self (and a Conj 2026 audience) studying how a Clojure runtime gets built

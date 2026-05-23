@@ -32,6 +32,15 @@
 
 set -euo pipefail
 
+# --- DORMANT (ADR-0029) -----------------------------------------------------
+# The chapter cadence is suspended at Phase-4 critical-path close. Existing
+# chapters live read-only under docs/ja/archive/. This gate is a no-op until
+# a future "resume chapter sequence" ADR re-activates it.
+#
+# To re-activate: delete this block (the `exit 0` below) and the rest of the
+# script re-engages the source-commit → doc-commit pairing check.
+exit 0
+
 # --- 1. Read the Claude Code hook payload from stdin -------------------------
 INPUT="$(cat)"
 
