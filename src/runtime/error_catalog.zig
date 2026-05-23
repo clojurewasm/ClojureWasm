@@ -90,14 +90,16 @@ pub const Code = enum {
     /// args: `.{ .name = "<feature>" }`
     feature_not_supported,
 
-    /// Feature is permanently outside cw scope (Tier D per ADR-0013).
-    /// Same shape as `feature_not_supported` from the user's
-    /// perspective — the user sees the feature name, not the tier
-    /// classification. Task 4.26.b splits this into per-form Codes
-    /// (tier_d_gen_class, ...) each with a hand-written template.
-    ///
-    /// args: `.{ .name = "<form>" }`
-    tier_d_form,
+    /// Tier D forms — permanently outside cw scope (ADR-0013). One
+    /// Code per form, each with a hand-written multi-sentence
+    /// template that explains the reason and suggests the
+    /// cw-native alternative. No `.name` slot: the form name is
+    /// baked into the template.
+    tier_d_gen_class,
+    tier_d_gen_interface,
+    tier_d_compile,
+    tier_d_proxy_deep,
+    tier_d_bean_deep,
 
     // --- System ---
     out_of_memory,
@@ -225,9 +227,40 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .not_implemented, .phase = .eval,
             .template = "{[name]s} is not supported in ClojureWasm",
         },
-        .tier_d_form => .{
+        .tier_d_gen_class => .{
             .kind = .not_implemented, .phase = .analysis,
-            .template = "{[name]s} is not part of ClojureWasm",
+            .template =
+                "gen-class is not part of ClojureWasm. " ++
+                "gen-class emits JVM bytecode classes, which are not produced by the cw runtime. " ++
+                "Use deftype + defprotocol for cw-native type definitions.",
+        },
+        .tier_d_gen_interface => .{
+            .kind = .not_implemented, .phase = .analysis,
+            .template =
+                "gen-interface is not part of ClojureWasm. " ++
+                "gen-interface emits JVM bytecode interfaces, which are not produced by the cw runtime. " ++
+                "Use defprotocol to declare an interface in cw.",
+        },
+        .tier_d_compile => .{
+            .kind = .not_implemented, .phase = .analysis,
+            .template =
+                "compile is not part of ClojureWasm. " ++
+                "compile triggers JVM bytecode emission to ahead-of-time .class files. " ++
+                "cw binaries are produced by `cljw build` from source; per-namespace AOT is not on the roadmap.",
+        },
+        .tier_d_proxy_deep => .{
+            .kind = .not_implemented, .phase = .analysis,
+            .template =
+                "proxy against this base class is not part of ClojureWasm. " ++
+                "proxy targeting AWT, Swing, Apache HttpComponents, or java.util.logging requires deep JVM class extension. " ++
+                "Use reify against cw-native protocols for anonymous instances; GUI, HTTP, and logging have cw-native replacements.",
+        },
+        .tier_d_bean_deep => .{
+            .kind = .not_implemented, .phase = .analysis,
+            .template =
+                "bean's deep reflection is not part of ClojureWasm. " ++
+                "Reflecting JVM property names beyond what TypeDescriptor exposes is not supported. " ++
+                "Use explicit :keys destructuring on records and hash-maps; basic field walk via TypeDescriptor stays available.",
         },
 
         // --- System ---
@@ -285,12 +318,29 @@ test "feature_not_supported uses .name slot, no Phase or ADR leak" {
     try testing.expect(std.mem.find(u8, info.message, "http") == null);
 }
 
-test "tier_d_form names the form, never the tier classification" {
-    _ = raise(.tier_d_form, .{}, .{ .name = "gen-class" }) catch {};
+test "tier_d_gen_class template names the form + suggests cw alternative" {
+    _ = raise(.tier_d_gen_class, .{}, .{}) catch {};
     const info = error_mod.getLastError().?;
-    try testing.expectEqualStrings("gen-class is not part of ClojureWasm", info.message);
+    try testing.expect(std.mem.find(u8, info.message, "gen-class is not part of ClojureWasm") != null);
+    try testing.expect(std.mem.find(u8, info.message, "deftype") != null);
+    // User-facing message never names the tier or ADR.
     try testing.expect(std.mem.find(u8, info.message, "Tier") == null);
     try testing.expect(std.mem.find(u8, info.message, "ADR-") == null);
+}
+
+test "tier_d_proxy_deep template explains the deep-extension constraint" {
+    _ = raise(.tier_d_proxy_deep, .{}, .{}) catch {};
+    const info = error_mod.getLastError().?;
+    try testing.expect(std.mem.find(u8, info.message, "proxy") != null);
+    try testing.expect(std.mem.find(u8, info.message, "reify") != null);
+    try testing.expect(std.mem.find(u8, info.message, "Tier") == null);
+}
+
+test "tier_d_bean_deep keeps basic TypeDescriptor field walk available in the wording" {
+    _ = raise(.tier_d_bean_deep, .{}, .{}) catch {};
+    const info = error_mod.getLastError().?;
+    try testing.expect(std.mem.find(u8, info.message, "bean") != null);
+    try testing.expect(std.mem.find(u8, info.message, "TypeDescriptor") != null);
 }
 
 test "arity templates render all three variants" {
