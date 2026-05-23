@@ -216,6 +216,7 @@ test {
     _ = @import("runtime/io_interface.zig");
     _ = @import("runtime/type_descriptor.zig");
     _ = @import("runtime/protocol.zig");
+    _ = @import("runtime/host/_host_api.zig");
     _ = @import("eval/form.zig");
     _ = @import("eval/tokenizer.zig");
     _ = @import("eval/reader.zig");

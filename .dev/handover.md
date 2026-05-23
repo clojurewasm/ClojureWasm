@@ -17,10 +17,9 @@
 - **Phase**: Phase 4 IN-PROGRESS. §9.6 cluster A done
   (tasks 4.1 / 4.2 / 4.3); **critical-path closed**: 4.0 / 4.0a /
   4.4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.10 / 4.11 / 4.12 done.
-  Cleanup wave in progress: 4.13–4.19 done. Remaining §9.6 rows
-  (4.20–4.26.f) — host extension / deftype-raise / binding_stack /
-  big_int / lazy_seq / method_table skeletons, error-system
-  migration.
+  Cleanup wave in progress: 4.13–4.20 done. Remaining §9.6 rows
+  (4.21–4.26.f) — deftype-raise / binding_stack / big_int /
+  lazy_seq / method_table skeletons, error-system migration.
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived;
   push free after gate green; never push to `main`).
 - **Last commit**: see `git log -1` (compute on resume — the
@@ -33,25 +32,27 @@
   (compute on resume; chapter pairing decision is per the
   `code_learning_doc` skill's two-cadence rule).
 
-## Active task — §9.6 / 4.20
+## Active task — §9.6 / 4.21
 
-`src/runtime/host/` directory + `_host_api.zig` (per ADR-0011) —
-empty subdirectories with one placeholder `.zig` each.
-`_host_api.zig` defines the `Extension` struct and
-`___HOST_EXTENSION` marker contract.
+`deftype` / `defrecord` / `reify` / `definterface` analyzer
+recognition (per ADR-0007). Reader accepts the syntax; analyzer
+raises `Code.feature_not_supported` (the generic fallback per
+ADR-0018 amendment 2) with the form name as `.{ .name = "deftype" }`.
+Task 4.26.b later promotes these to named sub-feature Codes
+(`deftype_not_supported`, `defrecord_not_supported`, ...). No
+fall-through, no no-op stub.
 
 **Retrievable identifiers**:
 
-- ROADMAP §9.6 task 4.20, ADR-0011 (host extension mechanism),
-  debt D-017 (Zig has no directory `@import`; need explicit
-  aggregator pattern).
-- ADR-0011 lists the subdirectory tree: lang / io / util / time /
-  net / nio / math / security / sql / text / reflect / concurrent.
-- `compat_tiers.yaml::host_classes` (4.15) — 40 entries each
-  pointing at `cljw.host.java.<pkg>.<Class>`; the directory
-  layout mirrors `java.<pkg>` so the file at
-  `src/runtime/host/<pkg>/<Class>.zig` lights up that compat
-  entry.
+- ROADMAP §9.6 task 4.21, ADR-0007 (TypeDescriptor Option β),
+  ADR-0018 (error catalog SSOT — amendment 2 lists the named
+  Code progression).
+- `src/eval/analyzer.zig::analyzeSymbol` / `analyzeList` — the
+  fallback path that currently raises `analysis_unable_to_resolve`
+  for unrecognised forms. 4.21 routes deftype / defrecord /
+  reify / definterface through `unsupported_feature` with the
+  form-name slot.
+- Per `no_op_stub_forbidden.md`, no silent fall-through.
 
 ## Open questions / blockers
 
