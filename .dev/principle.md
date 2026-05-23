@@ -105,12 +105,19 @@ external review gate. See CLAUDE.md § Autonomous Workflow
 **Devil's-advocate subagent is mandatory at depth ≥ 2.** Before
 the ADR is accepted, a `general-purpose` subagent is forked with
 **fresh context** to produce 3 alternative shapes (smallest-diff /
-finished-form-clean / wildcard). The output is embedded verbatim
-into the ADR's "Alternatives considered" section. This is the
-antidote to the loop's accumulated goal-drift / instruction
-centrifugation — alternatives sourced from a context without the
-main loop's momentum surface options the main loop is
-attention-suppressed against.
+finished-form-clean / wildcard) **within the active F-NNN
+envelope from `project_facts.md`**. The brief explicitly
+instructs the subagent to *not* propose alternatives that
+violate any F-NNN; if the only finished-form-clean option would
+require violating an F-NNN, the subagent says so explicitly and
+stops (= user-touchpoint candidate, not an ADR — falls under
+stop condition 3 in CLAUDE.md). The output (3 alternatives + any
+"violates F-NNN" finding) is embedded verbatim into the ADR's
+"Alternatives considered" section. This is the antidote to the
+loop's accumulated goal-drift / instruction centrifugation —
+alternatives sourced from a context without the main loop's
+momentum surface options the main loop is attention-suppressed
+against.
 
 ## Three questions to picture the finished form
 
@@ -129,6 +136,30 @@ When you stop, ask:
 > imagination cycles lives in `.dev/structure_plan.md`
 > (anticipated directory tree Phase 5-20). New imagination
 > cycles amend that file in place.
+>
+> **Scope boundary** (added 2026-05-24 to close a sabotage
+> path): Structural imagination applies only to **open
+> structural plans** — plans where the direction is not yet
+> determined by an `F-NNN` in `project_facts.md`. When an F-NNN
+> already fixes the direction, that direction **is the decision**;
+> the loop's job is to implement it cleanly, not to re-imagine
+> it. Examples at 2026-05-24:
+>
+> - F-004 fixes NaN-box second generation = 4 × 16 = 64 slot,
+>   44-bit pointer. The Phase 5 entry's loop does **not** imagine
+>   other layouts; it implements F-004.
+> - F-005 fixes the numeric tower shape. The Phase 5 entry's
+>   loop does **not** imagine alternative numeric semantics; it
+>   implements F-005.
+> - F-006 fixes the GC strategy. The Phase 5 entry's loop does
+>   **not** consider generational at Phase 5; it implements F-006.
+> - F-007 fixes chapter cadence = dormant. The loop does **not**
+>   propose resumption on its own.
+>
+> Where F-NNN leaves room (= directory split timing, file naming
+> within the laid-out tree, internal helper organisation, etc.),
+> the Structural imagination phase **does** apply, and decisions
+> defer to the owning Phase entry's owner as before.
 
 ROADMAP extends through Phase 20. When a task touches a
 **structural plan** that future phases will live with, the

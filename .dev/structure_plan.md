@@ -1,15 +1,40 @@
 # Anticipated directory structure — Phase 5-20 imagination
 
 > Output of the Structural imagination phase
-> (`.dev/principle.md`). The tree below predicts what the cw v2
+> (`.dev/principle.md`). The tree below predicts what the cw v1
 > source tree will look like as Phase 5-20 ROADMAP entries land.
 >
-> **This is imagination, not a decree.** Per F-003, decisions on
-> splits / moves / new subdirectories belong to **each owning
-> Phase entry's owner**, not to the imagination author. Each
-> entry's owner reads this file when expanding the §9.<N>
-> placeholder, takes the parts that still make sense, and amends
-> the parts that do not.
+> ## Two kinds of entries below (read this before assuming "owner can amend")
+>
+> - **Decree** (≈ project law): entries directly tied to an
+>   `F-NNN` in `.dev/project_facts.md` are **decreed**. The
+>   owning Phase entry's owner does **not** re-decide them; the
+>   owner implements them. Examples in the tree:
+>   - `runtime/value/` split layout — decreed by F-004 +
+>     co-related D-029.
+>   - `runtime/numeric/{big_int,ratio,big_decimal,promote}.zig`
+>     — decreed by F-005.
+>   - `runtime/gc/{mark_sweep,root_set,free_pool,arena_node,
+>     gc_strategy}.zig` — decreed by F-006.
+>   - `runtime/wasm/{engine,linker,marshal,trap_map,host_func,
+>     wasi,funcref,externref,…}.zig` — decreed by F-001 + F-008.
+>   - `runtime/collection/{map_entry,range}.zig`,
+>     `runtime/seq/{string_seq,array_seq}.zig`,
+>     `runtime/reader_extra/{tagged_literal,reader_conditional}.zig`
+>     — decreed by F-004 (day-1 64-slot enumeration).
+>   - These entries are tagged **(F-NNN)** below. Owner amends
+>     them **only** by user direction + F-NNN Revision history.
+>
+> - **Imagination** (open structural plans): entries not tied
+>   to an F-NNN. The owning Phase entry's owner takes the part
+>   that still makes sense and amends the part that does not,
+>   per F-003 Structural imagination phase. Examples in the tree:
+>   - `analyzer/` split exact file names (D-030 picks the
+>     decomposition).
+>   - `app/` internal organisation (D-031 picks file boundaries).
+>   - `modules/` internal layout (D-034 picks per-module split).
+>   - These entries are tagged **★new** / **★split** + a
+>     (D-NNN) debt pointer.
 >
 > Markers used below:
 >
@@ -18,7 +43,10 @@
 > - **★split** = current single file expected to fan out under
 >   the noted Phase (per debt D-029 / D-030 / D-031 / D-033 /
 >   D-035).
-> - **(D-NNN)** = debt row that owns the decision.
+> - **(F-NNN)** = decreed by that F-NNN in project_facts.md;
+>   owner implements, does not re-decide.
+> - **(D-NNN)** = open structural plan; owning Phase entry
+>   owner picks the shape within the F-NNN envelope.
 
 ## Origins of this file
 
@@ -249,11 +277,14 @@ ClojureWasmFromScratch/
 
 ## When to update this file
 
-- A Phase entry's owner amends the relevant subtree as decisions
-  land (and records which sections they touched).
-- A user-declared invariant (new F-NNN in `project_facts.md`) may
-  invalidate part of this tree — note the invalidation here, do
-  not silently rewrite.
+- A Phase entry's owner amends the **★new / ★split (D-NNN)
+  parts**  as decisions land (and records which sections they
+  touched).
+- **(F-NNN) parts are not amended by the loop on its own.** A
+  user-declared invariant (new F-NNN in `project_facts.md`) is
+  the only thing that can change a decreed entry. When that
+  happens, the F-NNN's Revision history records the change, and
+  this file follows.
 - Audits (`audit_scaffolding` skill) flag drift between this file
   and the live src/ tree.
 

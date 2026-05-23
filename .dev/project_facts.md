@@ -1,33 +1,88 @@
 # Project facts — user-declared invariants
 
-> **What this file is for.** ClojureWasm v2's ROADMAP / ADRs /
-> rules describe the *engineering decisions* the project has
-> committed to. This file captures the **invariants the user has
-> declared** that those documents may not yet reflect — facts the
-> autonomous loop must treat as load-bearing even when ROADMAP /
-> ADR text appears to admit other readings.
+> ## ⚠️ THIS FILE IS PROJECT LAW
 >
-> The autonomous loop must read this file as part of every Phase
-> entry's reading list (CLAUDE.md Step 1a) and consult it whenever
-> a planned change touches the topics below.
+> Every `F-NNN` entry below is **confirmed direction (treat as
+> law, not preference)**. The autonomous loop must NOT:
 >
-> This file is **append-only history** — entries are dated and
-> never silently rewritten. A later fact that supersedes an
-> earlier one is added as a new entry with a `Supersedes: <id>`
-> line; the earlier entry stays, annotated `Superseded by: <id>`.
+> - re-decide an F-NNN to a different shape on its own
+> - treat F-NNN as "informational" / "recommended" / "tie-breaker"
+> - propose alternatives that violate an F-NNN
+> - skip reading an F-NNN at the trigger points below
+>
+> When ROADMAP / ADR / rule text disagrees with an F-NNN, the
+> F-NNN wins. Edit the ROADMAP / ADR / rule to match (this is
+> the **only** allowed reconciliation; never the reverse).
+>
+> **Priority order (highest first)** for the autonomous loop:
+>
+> 1. `project_facts.md` (this file) — user-declared invariants
+> 2. ROADMAP — engineering plan
+> 3. ADRs + rules — implementation decisions
+> 4. principle.md heuristics — smell sensors, depth selection
+> 5. AI judgement — fills in everything the above leave open
+>
+> Anything at level N may be edited only to align with level
+> N-1 (or above). Level 1 (F-NNN) is edited **only** by user
+> direction in chat + a new `Revision history` entry on the
+> affected F-NNN; the loop never amends F-NNN on its own.
 
-## How to add an entry
+## What this file is for
 
-User declares a project-level invariant in chat that the loop
-should treat as fact. The loop captures it here as the next
-`F-NNN` entry with verbatim or near-verbatim quoting + a one-line
-"why this matters for the loop" + cross-reference to the ROADMAP
-section / ADR / debt row it interacts with. The user reviews the
-entry at end of session.
+ClojureWasm v1's ROADMAP / ADRs / rules describe the
+*engineering decisions* the project has committed to. This file
+captures the **invariants the user has declared** that those
+documents may not yet reflect — facts the autonomous loop must
+treat as load-bearing even when ROADMAP / ADR text appears to
+admit other readings.
+
+The autonomous loop reads this file:
+
+- At cold-start (handover Next files to read, item #3)
+- As part of every Phase entry's reading list (CLAUDE.md Step 1a)
+- Whenever a planned change touches the topics any F-NNN covers
+- When the Devil's-advocate subagent is briefed — **the subagent
+  must not propose alternatives that violate any F-NNN**
+
+This file is **append-only history** — entries are dated and
+never silently rewritten. A later fact that supersedes an
+earlier one is added as a new entry with a `Supersedes: <id>`
+line; the earlier entry stays, annotated `Superseded by: <id>`.
+
+## How an F-NNN entry is created or amended
+
+**Creation** (new F-NNN):
+
+1. User declares a project-level invariant in chat (verbatim
+   quote captured below).
+2. Loop captures the declaration as the next `F-NNN` entry with
+   verbatim quote + "What this changes for the loop" + cross-
+   references. Initial `Status: confirmed` is set at creation.
+3. User reviews end-of-session (or in the next session via
+   project_facts at handover read).
+
+**Amendment** (modify an existing F-NNN):
+
+1. **User direction in chat is required** — the loop never
+   amends an F-NNN on its own initiative.
+2. The original F-NNN entry's body is updated and an entry is
+   appended to its `Revision history` block (date + summary of
+   change + user's verbatim quote).
+3. If the change is large enough to be a different fact,
+   create a **new F-NNN with `Supersedes: F-<old>`** and mark
+   the old entry `Superseded by: F-<new>` instead of editing.
+
+**Pre-commit gate**: `scripts/check_facts_immutable.sh` blocks
+commits that modify an F-NNN body without either (a) a matching
+`Revision history` update in the same commit + a
+`Project-facts-amend: F-NNN` line in the commit message, or
+(b) the explicit creation of a `Supersedes:` chain.
 
 ---
 
 ## F-001 — zwasm v2 integration is unavoidable
+
+**Status**: `confirmed` — direction of travel is law. Amendable only by user direction + Revision history entry.
 
 **Declared**: 2026-05-23 (user chat).
 **Verbatim**: 「このプロジェクトがzwasmと連携するのは確実です。zwasm
@@ -64,6 +119,8 @@ the ADR); debt D-036 (Phase 16 inline-vs-Pod decision); ROADMAP
 
 ## F-002 — Finished-form cleanliness wins; shipping fast / avoiding rework are second-tier
 
+**Status**: `confirmed` — direction of travel is law. Amendable only by user direction + Revision history entry.
+
 **Declared**: 2026-05-23 (user chat).
 **Verbatim**: 「完成した時の綺麗さ、 が何よりも優先されています。
 さっさと作る、 手戻りしない、 は二の次です(もちろん少ないに越した
@@ -71,26 +128,47 @@ the ADR); debt D-036 (Phase 16 inline-vs-Pod decision); ROADMAP
 
 **What this changes for the loop**:
 
-1. Big surgery (depth 3-4 in `.dev/principle.md`) is welcome when
-   the plan misses something. The autonomous loop must not
-   hesitate at ADR-level revisions.
-2. ROADMAP P5 ("smallest-diff first") is a tie-breaker, not a
-   veto. If smallest-diff and finished-form collide, finished-form
-   wins.
+1. **Big surgery (depth 3-4 in `.dev/principle.md`) is the
+   default response to a structural smell, not the exception.**
+   When the plan misses something, the loop **must** take the
+   surgery; "I'll patch it now and refactor later" is the
+   Progress-pressure smell and is forbidden in this project.
+2. **Finished-form ALWAYS wins over smallest-diff.** ROADMAP P5
+   ("smallest-diff first") is not a tie-breaker; it is a
+   *secondary preference that applies only when the candidate
+   options would each reach the same finished form*. If two
+   options reach **different** finished forms, the cleaner
+   finished form wins regardless of diff size. Treating
+   smallest-diff as a tie-breaker (= "well, they're both
+   acceptable, so smaller wins") is the **Smallest-diff bias
+   smell** and is forbidden.
 3. Skeleton-then-rewrite is endorsed (per
-   `permanent_noop_forbidden.md`), but excessive skeletons are a
-   smell (Smallest-diff bias smell in principle.md).
+   `permanent_noop_forbidden.md`), but **excessive skeletons
+   are a smell** — each skeleton must demonstrably reduce the
+   eventual rewrite cost, not enlarge it.
 4. Reservations (ADR numbers, NaN-box slots, debt rows promising
    future ADRs) are memos, not contracts. ADR numbers are
-   time-ordered (`max + 1` at issue).
+   time-ordered (`max + 1` at issue). Treating a reservation as
+   binding is the **Reservation-as-bias smell** and is forbidden.
+5. **Rework, when it leads to a cleaner finished form, is a
+   feature, not a failure.** The loop is not graded on commit
+   count or speed; it is graded on the shape of the finished
+   form. If a Phase 5-entry ADR cluster requires re-writing
+   half of `value.zig` plus a NaN-box layout migration plus a
+   GC root-set restructure, **that is the right amount of work
+   to do**.
 
 **Cross-references**: CLAUDE.md § Project spirit (top); ADR-0029
 → ADR-0025 rename history; D-021 retirement; principle.md Bad
-Smell catalogue.
+Smell catalogue (Smallest-diff bias / Reservation-as-bias /
+Progress-pressure entries — these are the named smells F-002
+generates).
 
 ---
 
 ## F-003 — Decision-deferral over decision-seizure on structural plans
+
+**Status**: `confirmed` — direction of travel is law. Amendable only by user direction + Revision history entry.
 
 **Declared**: 2026-05-23 (user chat).
 **Verbatim**: 「すでにロードマップが将来にわたるまであるのだから、
@@ -120,6 +198,8 @@ D-031 / D-032 / D-034 / D-035 / D-036.
 ---
 
 ## F-004 — NaN-box layout 第二世代 = 4 group × 16 sub-type = 64 slot (44-bit pointer)
+
+**Status**: `confirmed` — direction of travel is law. Amendable only by user direction + Revision history entry.
 
 **Declared**: 2026-05-24 (user chat after struct-imagination
 research; see `private/notes/struct_imagination_research.md`
@@ -203,6 +283,8 @@ the smallest-diff landing, not the finished form).
 
 ## F-005 — Numeric tower: Clojure JVM surface compatibility, Zig-native internal implementation
 
+**Status**: `confirmed` — direction of travel is law. Amendable only by user direction + Revision history entry.
+
 **Declared**: 2026-05-24 (user chat).
 **Verbatim**: 「数値タワーの互換性はあって良いんじゃないか(ただし
 見た目や表出する振る舞いだけで内部はZig実装に親和のやり方という認識)」
@@ -236,6 +318,8 @@ entry per F-004).
 ---
 
 ## F-006 — GC strategy = mark-sweep + 3-layer allocator (cw v0 inheritance); zwasm v2 heap is separate, cw GC allocator injects into zwasm bookkeeping
+
+**Status**: `confirmed` — direction of travel is law. Amendable only by user direction + Revision history entry.
 
 **Declared**: 2026-05-24 (user chat after research review).
 **Verbatim** (paraphrased): 「2 種類に分けてやる系の GC が
@@ -287,6 +371,8 @@ debt D-020 (header bit helpers, `cmpxchgLockBits`); debt D-036
 
 ## F-007 — Chapter cadence (`docs/ja/learn_clojurewasm/`) is intentionally NOT to be re-produced; archive is permanent
 
+**Status**: `confirmed` — direction of travel is law. Amendable only by user direction + Revision history entry.
+
 **Declared**: 2026-05-23 (user chat, paraphrased as 「参考書作成の
 ことであれば、 (しなくていい) というのがわたしの意見として反映
 したはず」).
@@ -326,6 +412,8 @@ remain with each owner.
 ---
 
 ## F-008 — zwasm v2 zig_api_design.md (ADR-0109) review record + cw v1 stances
+
+**Status**: `confirmed` — direction of travel is law. Amendable only by user direction + Revision history entry.
 
 **Declared**: 2026-05-24 (user provided zwasm v2 spec; cw v1
 reviewed it via this session).

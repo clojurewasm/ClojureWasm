@@ -39,7 +39,26 @@ ROADMAP / ADR text reads differently live in
 unavoidable, F-002 finished-form wins, F-003 deferral on
 structural plans, F-004 NaN-box 64-slot, F-005 numeric tower
 JVM-surface, F-006 GC strategy, F-007 chapter cadence dormant
-permanently — read this file when in doubt).
+permanently, F-008 zwasm v2 spec review — read this file when in
+doubt).
+
+### Priority order (the loop obeys this chain top-down)
+
+1. **`project_facts.md`** — user-declared invariants, treated as
+   project law. The loop **never amends an F-NNN on its own**;
+   amendments require user direction in chat + a Revision history
+   entry on the affected F-NNN.
+2. **ROADMAP** — engineering plan + Phase order.
+3. **ADRs + rules** — implementation decisions, amendable by the
+   loop autonomously (depth 2-4 per principle.md).
+4. **principle.md heuristics** — smell sensors, depth selection.
+5. **AI judgement** — fills in everything the above leave open.
+
+When two levels conflict, the higher level wins, and the lower
+level is edited to align. Never the reverse. In particular,
+treating an F-NNN as "informational" / "tie-breaker" /
+"recommendation" is the **Smallest-diff bias smell** and is
+forbidden.
 
 ## Identity / Context (read first)
 
@@ -227,15 +246,25 @@ Before staging:
    - depth 2-4: land the ADR amendment / new ADR / `debt.md` row
      / `private/notes/` entry **autonomously**. Before drafting
      the ADR, **fork a `general-purpose` subagent with fresh
-     context as Devil's advocate**: brief the subagent on the
-     decision and ask for 3 alternative shapes (one smallest-diff,
-     one finished-form-clean, one "wildcard"). Reflect the
-     subagent's output verbatim into the ADR's "Alternatives
-     considered" section before stamping
-     `Status: Proposed → Accepted`. Commits the doc change first,
-     then commits + pushes the source separately. No external
-     review gate — ADR history (plus the Devil's-advocate output
-     embedded in it) is the rationale record.
+     context as Devil's advocate**. Brief the subagent with the
+     decision under consideration **AND the active F-NNN
+     constraints** (paste in or link to project_facts.md). Ask
+     for 3 alternative shapes within the F-NNN envelope (one
+     smallest-diff, one finished-form-clean, one "wildcard"
+     within the constraints). **Subagent is instructed: "do NOT
+     propose alternatives that violate any F-NNN; if the only
+     finished-form-clean option requires violating an F-NNN, say
+     so explicitly and stop — that becomes a user-touchpoint
+     candidate, not an ADR".** Reflect the subagent's output
+     verbatim into the ADR's "Alternatives considered" section
+     before stamping `Status: Proposed → Accepted`. Commits the
+     doc change first, then commits + pushes the source
+     separately. No external review gate for ADR — ADR history
+     (plus the Devil's-advocate output embedded in it) is the
+     rationale record. Exception: if the subagent surfaces a
+     would-violate-F-NNN finding, **stop and surface to user**
+     (stop condition 3 in the closed stop list — patterned smell
+     against project law).
 
 Then:
 
@@ -337,16 +366,27 @@ is the runway for this.
 
 **Devil's-advocate subagent is mandatory at depth ≥ 2.** Before
 stamping `Status: Proposed → Accepted`, fork a `general-purpose`
-subagent with **fresh context** and brief it: "Devil's advocate
-this ADR. Produce 3 alternative shapes (one smallest-diff, one
-finished-form-clean, one wildcard); for each, name what it does
-better than the current draft and what it breaks." The subagent's
-output is reflected verbatim into the ADR's "Alternatives
-considered" section. This counters goal-drift / instruction
-centrifugation by sourcing the alternatives from a context
-without the main loop's accumulated momentum. The subagent's
-recommendation is **not binding** — the main loop still chooses
-— but the alternatives must appear in the ADR.
+subagent with **fresh context** and brief it:
+
+> "Devil's advocate this ADR. The active F-NNN constraints from
+> `.dev/project_facts.md` are: [paste]. Produce 3 alternative
+> shapes **within those constraints** (one smallest-diff, one
+> finished-form-clean, one wildcard); for each, name what it
+> does better than the current draft and what it breaks. Do NOT
+> propose alternatives that violate any F-NNN; if the only
+> finished-form-clean option requires violating an F-NNN, say
+> so explicitly and stop — that is a user-touchpoint candidate,
+> not an ADR."
+
+The subagent's output is reflected verbatim into the ADR's
+"Alternatives considered" section. This counters goal-drift /
+instruction centrifugation by sourcing the alternatives from a
+context without the main loop's accumulated momentum. The
+subagent's recommendation is **not binding** within the F-NNN
+envelope — the main loop still chooses — but the alternatives
+must appear in the ADR. **Outside the F-NNN envelope**, the
+subagent's "stop and surface" finding is binding (= stop
+condition 3 in the closed stop list).
 
 The phrases "this needs human judgement" / "cannot be
 self-decided" / "user touchpoint required" are forbidden framings
