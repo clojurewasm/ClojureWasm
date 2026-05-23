@@ -26,6 +26,15 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "phase_at_least_14", false);
     build_options.addOption(bool, "phase_at_least_15", false);
     build_options.addOption(bool, "phase_at_least_17", false);
+
+    // ROADMAP §9.6 / 4.8 — backend gate (ADR-0005). `tree-walk` is the
+    // default; `vm` flips the top-level driver to compile each form
+    // via `vm/compiler` and run it through `vm.eval`. 4.12 flips the
+    // default once differential parity (4.10) is green.
+    const Backend = enum { tree_walk, vm };
+    const backend = b.option(Backend, "backend", "Evaluation backend (tree-walk default, vm experimental)") orelse .tree_walk;
+    build_options.addOption(Backend, "backend", backend);
+
     exe_mod.addOptions("build_options", build_options);
 
     const exe = b.addExecutable(.{

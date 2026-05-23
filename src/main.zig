@@ -18,7 +18,7 @@ const Writer = std.Io.Writer;
 const Reader = @import("eval/reader.zig").Reader;
 const analyzeForm = @import("eval/analyzer.zig").analyze;
 const macro_dispatch = @import("eval/macro_dispatch.zig");
-const tree_walk = @import("eval/backend/tree_walk.zig");
+const driver = @import("eval/driver.zig");
 const Runtime = @import("runtime/runtime.zig").Runtime;
 const Env = @import("runtime/env.zig").Env;
 const Value = @import("runtime/value.zig").Value;
@@ -115,7 +115,7 @@ pub fn main(init: std.process.Init) !void {
     var env = try Env.init(&rt);
     defer env.deinit();
 
-    tree_walk.installVTable(&rt);
+    driver.installVTable(&rt);
     try primitive.registerAll(&env);
 
     // Bootstrap macros (Phase 3.7): intern `let` / `when` / `cond` /
@@ -151,8 +151,8 @@ pub fn main(init: std.process.Init) !void {
             std.process.exit(1);
         };
 
-        var locals: [tree_walk.MAX_LOCALS]Value = [_]Value{.nil_val} ** tree_walk.MAX_LOCALS;
-        const result = tree_walk.eval(&rt, &env, &locals, node) catch |err| {
+        var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
+        const result = driver.evalForm(&rt, &env, &locals, arena, node) catch |err| {
             try renderError(stderr, ctx, err);
             std.process.exit(1);
         };
@@ -221,6 +221,7 @@ test {
     _ = @import("eval/macro_dispatch.zig");
     _ = @import("eval/backend/tree_walk.zig");
     _ = @import("eval/backend/vm.zig");
+    _ = @import("eval/driver.zig");
     _ = @import("eval/backend/vm/opcode.zig");
     _ = @import("eval/backend/vm/compiler.zig");
     _ = @import("lang/primitive/math.zig");

@@ -68,6 +68,21 @@ pub const CallFn = *const fn (
 /// HeapTag).
 pub const ValueTypeKeyFn = *const fn (val: Value) []const u8;
 
+/// VM backend hook: evaluate a compiled bytecode chunk in the current
+/// frame. Installed by `vm.installVTable` and consulted by
+/// `tree_walk.callFunction` when the callee's `Function.bytecode` is
+/// non-null. `null` ⇒ the tree-walk fn body is evaluated instead.
+///
+/// `chunk` is `*const anyopaque` so the Layer-0 vtable does not import
+/// the Layer-1 `BytecodeChunk` type (per `zone_deps.md`). The VM
+/// backend casts back to the concrete pointer at its end.
+pub const EvalChunkFn = *const fn (
+    rt: *Runtime,
+    env: *Env,
+    locals: []Value,
+    chunk: *const anyopaque,
+) anyerror!Value;
+
 /// Layer-0 → Layer-1+ dispatch table. Stored as a field on `Runtime`,
 /// not as a `pub var`, so multiple Runtimes can carry independent
 /// backends (parallel tests, multi-tenant nREPL, mock injection).
@@ -77,6 +92,7 @@ pub const ValueTypeKeyFn = *const fn (val: Value) []const u8;
 pub const VTable = struct {
     callFn: CallFn,
     valueTypeKey: ValueTypeKeyFn,
+    evalChunk: ?EvalChunkFn = null,
 };
 
 // --- threadlocal call-scoped state ---

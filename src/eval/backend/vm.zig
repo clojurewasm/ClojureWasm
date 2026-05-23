@@ -327,6 +327,34 @@ fn raiseInternal(comptime detail: []const u8) anyerror {
     return error_catalog.raise(.internal_error, .{}, .{ .detail = detail });
 }
 
+/// Populate `rt.vtable` for the VM backend (ROADMAP §9.6 / 4.8). The
+/// `callFn` reuses `tree_walk.treeWalkCall` because the dispatch shape
+/// per `Value.Tag` is identical across backends; the per-fn divergence
+/// happens inside `tree_walk.callFunction`, which routes through the
+/// new `evalChunk` vtable slot when the callee's `Function.bytecode`
+/// is non-null. TreeWalk's `installVTable` leaves `evalChunk = null`,
+/// so the two backends differ only in this single function-pointer
+/// slot.
+pub fn installVTable(rt: *Runtime) void {
+    rt.vtable = .{
+        .callFn = &tree_walk.treeWalkCall,
+        .valueTypeKey = &tree_walk.valueTypeKey,
+        .evalChunk = &evalChunkErased,
+    };
+}
+
+/// Trampoline that casts the Layer-0 `*const anyopaque` chunk pointer
+/// back to `*const BytecodeChunk` (the concrete VM type) so the vtable
+/// stays Layer-0-only (per `zone_deps.md`).
+fn evalChunkErased(
+    rt: *Runtime,
+    env: *Env,
+    locals: []Value,
+    chunk: *const anyopaque,
+) anyerror!Value {
+    return eval(rt, env, locals, @ptrCast(@alignCast(chunk)));
+}
+
 fn applyJump(ip: usize, offset: i16) ?usize {
     if (offset >= 0) {
         return ip + @as(usize, @intCast(offset));

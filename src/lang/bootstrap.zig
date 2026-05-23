@@ -27,7 +27,7 @@ const std = @import("std");
 const Reader = @import("../eval/reader.zig").Reader;
 const analyzeForm = @import("../eval/analyzer.zig").analyze;
 const macro_dispatch = @import("../eval/macro_dispatch.zig");
-const tree_walk = @import("../eval/backend/tree_walk.zig");
+const driver = @import("../eval/driver.zig");
 const Runtime = @import("../runtime/runtime.zig").Runtime;
 const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
@@ -61,8 +61,8 @@ pub fn loadCore(
 
         const node = try analyzeForm(arena, rt, env, null, form, macro_table);
 
-        var locals: [tree_walk.MAX_LOCALS]Value = [_]Value{.nil_val} ** tree_walk.MAX_LOCALS;
-        _ = try tree_walk.eval(rt, env, &locals, node);
+        var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
+        _ = try driver.evalForm(rt, env, &locals, arena, node);
     }
 }
 
@@ -86,7 +86,7 @@ const Fixture = struct {
         self.arena = std.heap.ArenaAllocator.init(alloc);
         self.table = macro_dispatch.Table.init(alloc);
 
-        tree_walk.installVTable(&self.rt);
+        driver.installVTable(&self.rt);
         try primitive.registerAll(&self.env);
         try macro_transforms.registerInto(&self.env, &self.table);
     }

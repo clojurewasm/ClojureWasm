@@ -410,7 +410,7 @@ pub fn treeWalkCall(
     };
 }
 
-fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation) !Value {
+pub fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation) !Value {
     const f = fn_val.decodePtr(*Function);
     if (!f.has_rest) {
         if (args.len != f.arity)
@@ -441,6 +441,15 @@ fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc
         // Phase-2 test hits a `& rest` body that observes this.
         locals[f.slot_base + f.arity] = .nil_val;
     }
+    // VM backend hook: when the Function carries compiled bytecode and
+    // the vtable has the `evalChunk` slot wired (vm.installVTable), run
+    // the chunk instead of walking the Node body. The TreeWalk backend
+    // leaves `evalChunk` null and always reaches the `eval(...)` line.
+    if (f.bytecode) |chunk| {
+        if (rt.vtable) |vt| {
+            if (vt.evalChunk) |ec| return ec(rt, env, &locals, @ptrCast(chunk));
+        }
+    }
     return eval(rt, env, &locals, f.body);
 }
 
@@ -463,7 +472,7 @@ pub fn installVTable(rt: *Runtime) void {
     };
 }
 
-fn valueTypeKey(v: Value) []const u8 {
+pub fn valueTypeKey(v: Value) []const u8 {
     return @tagName(v.tag());
 }
 
