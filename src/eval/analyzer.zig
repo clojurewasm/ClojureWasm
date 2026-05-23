@@ -172,6 +172,18 @@ const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
     .{ "throw", .throw_form },
 });
 
+/// Forms the analyser recognises but the runtime does not yet
+/// support — landed at Phase 4 task 4.21 per ADR-0007 + ADR-0018
+/// amendment 2. Each entry raises `unsupported_feature` with the
+/// form name in the `.name` slot. Task 4.26.b later promotes these
+/// to named per-form Codes (`deftype_not_supported`, etc.).
+const STAGED_UNSUPPORTED_FORMS = std.StaticStringMap(void).initComptime(.{
+    .{ "deftype", {} },
+    .{ "defrecord", {} },
+    .{ "reify", {} },
+    .{ "definterface", {} },
+});
+
 // --- Top-level entry ---
 
 /// Analyse `form` and return the resulting Node tree. Top-level
@@ -295,6 +307,9 @@ fn analyzeList(
         if (head.ns == null) {
             if (SPECIAL_FORMS.get(head.name)) |kind| {
                 return analyzeSpecial(arena, rt, env, scope, kind, items, form, macro_table);
+            }
+            if (STAGED_UNSUPPORTED_FORMS.has(head.name)) {
+                return error_catalog.raise(.unsupported_feature, form.location, .{ .name = head.name });
             }
         }
         // Macro path: only consult the table when we can actually
@@ -1302,4 +1317,19 @@ test "recur arity mismatch reports the loop's expected arity" {
     try testing.expectError(AnalyzeError.ArityError, fix.analyzeStr("(loop* [i 0 j 0] (recur 1))"));
     const info = error_mod.peekLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Kind.arity_error, info.kind);
+}
+
+test "deftype / defrecord / reify / definterface raise unsupported_feature with form name" {
+    inline for ([_][]const u8{ "deftype", "defrecord", "reify", "definterface" }) |form_name| {
+        var fix: TestFixture = undefined;
+        try fix.init(testing.allocator);
+        defer fix.deinit();
+
+        const src = "(" ++ form_name ++ " Foo [x])";
+        try testing.expectError(AnalyzeError.NotImplemented, fix.analyzeStr(src));
+        const info = error_mod.peekLastError() orelse return error.TestUnexpectedResult;
+        try testing.expectEqual(error_mod.Kind.not_implemented, info.kind);
+        try testing.expect(std.mem.find(u8, info.message, form_name) != null);
+        try testing.expect(std.mem.find(u8, info.message, "not supported in ClojureWasm") != null);
+    }
 }
