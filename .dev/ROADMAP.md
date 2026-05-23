@@ -17,7 +17,31 @@
 
 ---
 
-## 0. Table of contents
+## 0. How to read this file
+
+A cold-context AI (or new contributor) starting from `/continue`
+hits this stack in order:
+
+1. **`CLAUDE.md`** (every-turn auto-load) — `§ Autonomous Workflow`
+   Step 0-8 loop + Stop ONLY / Do NOT stop / When in doubt continue.
+2. **`ARCHITECTURE.md`** (5-minute orientation) — zones / backends /
+   error / tier / phase map. Pointers to all the documents below.
+3. **`.dev/principle.md`** — working principles + Bad Smell
+   catalogue + four depths of revision. Re-read at Step 1 / 4 / 6.
+4. **`.dev/handover.md`** — current state, Active task, Next Phase
+   Queue. The `SessionStart` hook auto-prints the Current state +
+   Active task sections.
+5. **This file (`.dev/ROADMAP.md`)** — authoritative plan, with
+   §15.0 listing all entry points if you need to scan further.
+6. **`.dev/decisions/NNNN_*.md`** — 25 ADRs (browse on demand,
+   §15.1 ADR category index).
+
+The autonomous TDD loop runs entirely from this stack — there are
+no other "must-read" documents. Phase open procedure is in
+CLAUDE.md `§ Autonomous Workflow`; ROADMAP placeholders for
+Phase 5-20 (§9.7-§9.22) are the targets the procedure expands.
+
+## 0.1 Table of contents
 
 1. [Mission and differentiation](#1-mission-and-differentiation)
 2. [Inviolable principles](#2-inviolable-principles)
@@ -978,9 +1002,46 @@ ships the `bench/quick.sh` harness §10.2 has so far only described.
 | 4.26.e | Error system migration (e) — audit every `@panic(` and `unreachable` site in `src/` per ADR-0019. Convert any user-reachable site to `error_catalog.raise(.internal_error, ...)`. For sites the compiler can prove unreachable (exhaustive switch arms), annotate with a `// @panic: compiler-proved unreachable` comment. The `scripts/scan_panic_audit.sh` count should match the annotated set                                                                                                                                                                                        | [ ]    |
 | 4.26.f | Error system migration (f) — wire the top-level catch in `src/main.zig` (`pub fn main(init: std.process.Init)`) to format catalog errors and exit with the per-Kind exit codes from ADR-0019: 0 success / 1 user-facing catalog error / 70 internal error / 130 SIGINT. Test: `cljw -e '(+ 1 :foo)'` exits 1, `cljw -e '(throw (ex-info "" {}))'` exits 1, an `internal_error` raise produces exit 70                                                                                                                                                                                    | [ ]    |
 
+### 9.6.x Dependency graph (Phase 4 task ordering)
+
+For autonomous execution, the 33 task rows (4.0 + 4.0a + 4.1-4.25 +
+4.26.a-f) decompose into clusters that can run in parallel and a
+critical path that must run in sequence:
+
+- **Parallel cluster A — analyser hardening** (4.1 / 4.2 / 4.3):
+  independent of each other and of the VM tasks. Earliest 3 tasks.
+- **Parallel cluster B — infrastructure** (4.13 io_interface / 4.14
+  debt populate / 4.15 compat_tiers / 4.20 host/): independent of
+  each other and of the VM tasks.
+- **Parallel cluster C — Wasm removal** (4.16): independent.
+- **Critical path (sequential)**:
+  `4.0 (bench) → 4.0a (build_options) → 4.4 (Opcode enum) → 4.5
+  (Compiler) → 4.6 (VM dispatch) → 4.7 (Phase-3 forms) → 4.17
+  (TypeDescriptor) → 4.18 (Protocol) → 4.19 (ObjectHeader) → 4.21
+  (deftype analyzer recognition) → 4.22-4.25 (binding_stack /
+  big_int / lazy_seq / method_table skeletons) → 4.8 (build.zig
+  backend gate) → 4.9 (full test both backends) → 4.10
+  (Evaluator.compare + test/diff/) → 4.11 (phase4_cli) → 4.12
+  (exit smoke)`.
+- **Task 4.26 (Error system migration, six sub-tasks)** runs *after*
+  the critical path is complete and the dual backend is verified.
+  Sub-tasks ordering: `4.26.a (Code rename) → 4.26.b (Tier D split)
+  → 4.26.c (ClojureWasmError rename, signature sweep) → 4.26.d
+  (~116 setErrorFmt migration by region) → 4.26.e (@panic audit)
+  → 4.26.f (main top-level catch)`. Each is a separate commit;
+  they can paint partial green builds because the catalog already
+  ships and the Zig union rename is a search-and-replace.
+
+Total task days (AI basis): approximately 12-16 days for the
+critical path plus parallel clusters, plus 2-3 days for task 4.26
+sub-tasks. Autonomous continuous execution may shorten the clock
+time below the AI-day estimate by overlapping unrelated tasks
+inside the same commit window.
+
 After 4.0-4.26 land as `[x]`, the §9 phase tracker flips Phase 4 from
 IN-PROGRESS to DONE and Phase 5 IN-PROGRESS (🔒 x86_64 gate);
-expand Phase 5 inline in §9.7.
+expand Phase 5 inline in §9.7 per CLAUDE.md § Autonomous Workflow
+"When the current phase's task queue empties".
 
 > 4.13-4.25 are the V3 additions per ADR-0007 through ADR-0017
 > (TypeDescriptor / Protocol dispatch / Object header lock / STM
@@ -1713,7 +1774,7 @@ When amending, do all four — none of them are optional:
   it gets its own ADR and a sweep of every `§N.M` reference under
   `.claude/`, `.dev/`, `docs/ja/`, and source comments.
 
-### 17.5 ADR Status lifecycle
+### 17.4 ADR Status lifecycle
 
 ADRs progress through these statuses:
 
@@ -1728,7 +1789,7 @@ Status changes are recorded in the ADR's `## Revision history`
 section. `scripts/check_adr_history.sh` (pre-commit gate) requires
 the section on every ADR.
 
-### 17.4 Why this exists
+### 17.5 Why this exists
 
 Without 17.1–17.3 the project drifts in one of two failure modes:
 
