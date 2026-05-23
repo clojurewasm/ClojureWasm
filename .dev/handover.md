@@ -17,12 +17,12 @@
 - **Phase**: Phase 4 IN-PROGRESS. §9.6 cluster A done
   (tasks 4.1 / 4.2 / 4.3); **critical-path closed**: 4.0 / 4.0a /
   4.4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.10 / 4.11 / 4.12 done.
-  Remaining §9.6 rows (4.13–4.26.f) form the post-VM cleanup
-  wave (io abstraction, debt operationalisation, compat_tiers
+  Cleanup wave in progress: 4.13 done. Remaining §9.6 rows
+  (4.14–4.26.f) — debt operationalisation, compat_tiers
   expansion, Wasm FFI removal, type_descriptor / protocol /
   object_header / host extension / deftype-raise / binding_stack /
   big_int / lazy_seq / method_table skeletons, error-system
-  migration).
+  migration.
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived;
   push free after gate green; never push to `main`).
 - **Last commit**: see `git log -1` (compute on resume — the
@@ -35,21 +35,20 @@
   (compute on resume; chapter pairing decision is per the
   `code_learning_doc` skill's two-cadence rule).
 
-## Active task — §9.6 / 4.13
+## Active task — §9.6 / 4.14
 
-`src/runtime/io_interface.zig` (new) — Zone 0 vtable abstraction
-for `Reader` / `Writer` / `Net` / `Process` (per ADR-0015).
-Concrete `io_default.zig` (Zone 1) wires it to current `std.Io`.
-Insulates the runtime from Zig stdlib reshape.
+`.dev/debt.md` operationalise — populate against the existing
+26-row skeleton, add Phase-4 row entries as the wave proceeds.
+`continue` Step 0.5 debt sweep already reads from this file each
+resume. 4.14 is the deliberate refresh moment.
 
 **Retrievable identifiers**:
 
-- ROADMAP §9.6 task 4.13 + dependency-graph at §9.6.x.
-- ADR-0015 (io abstraction). Pattern mirror: ADR-0011 host
-  extension dispatch (4.20 ships its sibling skeleton).
-- Existing zone-0 vtable: `src/runtime/dispatch.zig::VTable` —
-  the new io vtable should follow the same `?fn-ptr` shape with
-  default no-op fallbacks where applicable.
+- ROADMAP §9.6 task 4.14, §A13 (debt ledger discipline).
+- `.dev/debt.md` — current state has D-001..D-026. D-018 (cases.yaml
+  parser strategy) can be discharged now that 4.10 took the
+  hardcoded-Zig-tests path. Other D-NNN rows whose Phase target
+  has shifted need their Last reviewed field refreshed.
 
 ## Open questions / blockers
 
