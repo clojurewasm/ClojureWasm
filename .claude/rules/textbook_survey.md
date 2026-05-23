@@ -24,10 +24,19 @@ codebases without being pulled by their styles.
 | `~/Documents/OSS/wasmtime/`                                        | Wasm runtime reference.                                                                                 | Phase 14, 19.                                                                                               |
 | `~/Documents/OSS/mattpocock_skills/improve-codebase-architecture/` | Module / Interface / Depth / Seam vocabulary.                                                           | When a new module is being introduced.                                                                      |
 
-## Survey procedure (default brief for Explore subagent)
+## Survey procedure (default brief for the survey subagent)
 
-Step 0 of the TDD loop dispatches an Explore subagent. Use this
-brief shape:
+Step 0 of the TDD loop dispatches a **`general-purpose`** subagent
+(NOT `Explore`). The deliverable is a written file at
+`private/notes/<phase>-<task>-survey.md`, and the built-in `Explore`
+agent is shipped without `Edit` / `Write` / `NotebookEdit` (it is
+read-only by design — see Claude Code's subagent definitions). A
+read-only agent forces the main agent to re-route the survey body
+through its own context to persist the file, which wastes context
+and breaks on auto-compaction.
+
+Use `general-purpose` (which carries the full tool set) so the
+subagent writes the survey note directly. Use this brief shape:
 
 ```
 Survey how <CONCEPT> is implemented in:

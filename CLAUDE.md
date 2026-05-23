@@ -53,9 +53,11 @@ turn 1 must be Japanese.
 ## Working agreement
 
 - TDD: red → green → refactor.
-- **Step 0 (Survey) before each task**: an Explore subagent surveys
-  the textbook codebases (v1, v1_ref, Clojure JVM, Babashka, Zig
-  stdlib) and lands a 200–400 line note in `private/notes/`. See
+- **Step 0 (Survey) before each task**: a `general-purpose` subagent
+  surveys the textbook codebases (v1, v1_ref, Clojure JVM, Babashka,
+  Zig stdlib) and lands a 200–400 line note in `private/notes/`.
+  `general-purpose` (not the read-only `Explore`) is required so the
+  subagent can write the survey note itself. See
   `.claude/rules/textbook_survey.md` for guardrails (cite ROADMAP
   principles before adopting an idiom; always note one DIVERGENCE).
 - After each task, write a 5-minute per-task note from hot context
@@ -100,11 +102,13 @@ Step 0**. Do not summarize, do not ask for confirmation. The next
 task starts now. Auto-compaction handles context size transparently;
 no agent action is needed.
 
-**Step 0 — Survey** (subagent: Explore, default mode "medium")
+**Step 0 — Survey** (subagent: `general-purpose`, default mode
+"medium")
 Survey the related codebase per `.claude/rules/textbook_survey.md`.
-Skip only when the task is a clear continuation (refactor / rename
-/ doc-only). Output lands in
-`private/notes/<phase>-<task>-survey.md`.
+`general-purpose` (not the read-only `Explore`) is required so the
+subagent writes the survey note directly. Skip only when the task
+is a clear continuation (refactor / rename / doc-only). Output
+lands in `private/notes/<phase>-<task>-survey.md`.
 
 **Step 0.5 — Debt sweep**
 Read `.dev/debt.md`. For each row whose `Last reviewed > 14 days
