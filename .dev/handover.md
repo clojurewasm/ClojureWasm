@@ -35,20 +35,22 @@
   (compute on resume; chapter pairing decision is per the
   `code_learning_doc` skill's two-cadence rule).
 
-## Active task — §9.6 / 4.14
+## Active task — §9.6 / 4.15
 
-`.dev/debt.md` operationalise — populate against the existing
-26-row skeleton, add Phase-4 row entries as the wave proceeds.
-`continue` Step 0.5 debt sweep already reads from this file each
-resume. 4.14 is the deliberate refresh moment.
+`compat_tiers.yaml` expansion — populate `clojure.core`
+`var_count_target` (currently `TBD-by-task-4.15`) from JVM
+source enumeration; expand `host_classes` to the 40 entries
+promised in ADR-0011.
 
 **Retrievable identifiers**:
 
-- ROADMAP §9.6 task 4.14, §A13 (debt ledger discipline).
-- `.dev/debt.md` — current state has D-001..D-026. D-018 (cases.yaml
-  parser strategy) can be discharged now that 4.10 took the
-  hardcoded-Zig-tests path. Other D-NNN rows whose Phase target
-  has shifted need their Last reviewed field refreshed.
+- ROADMAP §9.6 task 4.15, ADR-0011 (host extension mechanism).
+- `compat_tiers.yaml` — top-level. The `var_count_target` field
+  currently has a TBD marker; counting symbols in
+  `~/Documents/OSS/clojure/src/clj/clojure/core.clj` gives the
+  authoritative number.
+- `host_classes` section — needs the 40 entries enumerated in
+  ADR-0011 (java.lang.String, java.io.File, etc.).
 
 ## Open questions / blockers
 
