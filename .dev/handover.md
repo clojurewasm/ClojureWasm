@@ -39,8 +39,8 @@
   Workflow; continue/SKILL.md is now the thin invocation trigger;
   Step 0.5 debt sweep, audit two-tier triggers,
   big-bang regeneration policy), `.claude/settings.json` PostCompact
-  + Edit\|Write hooks, ROADMAP §1.4 / §A10-A14 / §3.2 / §6.0 / §9.6
-  4.13-4.25 / §11.8 / §14 / §17.5 amendments. All §9.5 / 3.1–3.14
+  + Edit\|Write hooks, ROADMAP §1.4 / §A10-A24 / §3.2 / §6.0 / §9.6
+  4.0-4.26.f / §11.7 / §14 / §17.4 amendments. All §9.5 / 3.1–3.14
   cells `[x]`, paired through chapter 0020 (`cc46a48`). 🔒 OrbStack
   x86_64 gate PASSED 2026-04-27 (pre-scaffolding state). Next
   re-run after Phase 4 entry commits.
@@ -95,15 +95,15 @@ optimisation work needs a measuring stick from day one. Wired into
 numbers, does not assert pass/fail until §10.1 lock at Phase 8).
 
 **Retrievable identifiers**:
-- ROADMAP §9.6 — full Phase 4 task table (4.0 → 4.25 after the V3
-  scaffolding wave).
+- ROADMAP §9.6 — full Phase 4 task table (4.0 → 4.26.f after the V3
+  scaffolding wave + ADR-0018 amendment 2 error system split).
 - ROADMAP §10.2 — quick bench policy + intent.
 - ROADMAP §10.3 — v0.1.0 target numbers.
 - `bench/quick.sh` — already exists from Phase 1, with `# TODO(phase4)`
   placeholders. 4.0 fills those in and wires it into
   `test/run_all.sh`.
 
-**Phase 4 task list (4.0 - 4.25, expanded by ADR-0004 through 0017)**:
+**Phase 4 task list (4.0 - 4.26.f, expanded by ADR-0004 through 0024)**:
 
 - 4.0-4.12: bench harness, errdefer + bound check fixes, Opcode enum,
   VM compiler / dispatch / Phase-3 special forms, backend gate,
@@ -148,7 +148,8 @@ queue empties":
 - Object header bit helpers `cmpxchgLockBits` etc. (per
   ADR-0009 + D-020)
 - `LazySeq.force()` + trampoline + thread-safe realisation (per
-  ADR-0009 + JVM_TO_ZIG §9, activates task 4.24 skeleton)
+  JVM_TO_ZIG §9; uses ADR-0009 object-header bit helpers for
+  thread-safe init; activates task 4.24 skeleton)
 - BigInt arithmetic + promotion (per ADR-0012 + JVM_TO_ZIG §12,
   activates task 4.23 skeleton)
 - `TypeDescriptor.lookupMethod` + `register` + `new`; deftype /
@@ -178,7 +179,8 @@ queue empties":
 - 14 new ADRs (`.dev/decisions/0004` through `0017`) + retroactive
   Revision history added to ADR-0001/2/3 to satisfy
   `scripts/check_adr_history.sh`.
-- 9 new `.claude/rules/` files (total 14 rules now).
+- 9 new `.claude/rules/` files in the entry batch; subsequent
+  amendments brought the total to 19 rules.
 - 8 new `scripts/` files + `.githooks/pre-push` zone gate.
 - 4 new `.dev/` files: `debt.md`, `reference_clones.md`,
   `lessons/INDEX.md`, plus `compat_tiers.yaml` at repo root.
@@ -190,8 +192,8 @@ queue empties":
   triggers, `code_learning_doc/SKILL.md` big-bang regeneration
   policy.
 - `.claude/settings.json` PostCompact + Edit\|Write hooks.
-- ROADMAP amendments (§1.4 / §A10-A14 / §3.2 / §6.0 / §9.6
-  4.13-4.25 / §11.8 / §14 per-row predicate / §17.5).
+- ROADMAP amendments (§1.4 / §A10-A24 / §3.2 / §6.0 / §9.6
+  4.0-4.26.f / §11.7 / §14 per-row predicate / §17.4).
 
 **Open questions / deferred (from DECISIONS_V2)**:
 

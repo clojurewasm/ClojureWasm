@@ -295,7 +295,9 @@ zig fmt src/           # format
   conflicts with the roadmap, the roadmap wins.
 - [`.dev/handover.md`](.dev/handover.md) — short, mutable, current state.
 - [`.dev/decisions/`](.dev/decisions/) — ADRs (load-bearing decisions).
-  Phase 4 entry batch: ADR-0004 through ADR-0017 (Day-1 enums, dual
+  Phase 4 entry batch: ADR-0004 through ADR-0024 (Day-1 enums, dual
   backend, Wasm defer, TypeDescriptor, protocol unify, heap-only lock,
   STM Tier A, host extension, ValueTag, Tier D permanent, UTF-8,
-  io_interface, file size smell, Allocator strategy).
+  io_interface, file size smell, Allocator strategy, error catalog
+  SSOT, crash policy, ADR governance, test taxonomy, differential
+  wiring, comptime stub, scan framework + run_step).
