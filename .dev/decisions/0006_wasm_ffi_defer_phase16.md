@@ -74,3 +74,16 @@ Re-introduction conditions (evaluated at Phase 16 entry):
 ## Revision history
 
 - 2026-05-23: Status: Proposed -> Accepted (initial landing).
+- 2026-05-23 (amendment 1): **NaN-box slots for `wasm_module` /
+  `wasm_fn` are released and re-purposed for `big_int` / `ratio`**
+  (ADR-0012 amendment 1). Rationale: Phase 16 reintroduces Wasm via
+  a Pod boundary (out-of-process or sandboxed in-process), which
+  exposes Wasm modules as opaque host values rather than
+  NaN-box-tagged inline pointers. The day-1 reservation made sense
+  while a bundled Wasm runtime was on the table; with the Pod
+  boundary, Phase 16 can mint fresh slots if (and only if) the Pod
+  protocol decides to surface Wasm modules as first-class cw
+  Values. Releasing the slots now lets Phase 4 close `big_int` (and
+  reserve `ratio`) at their natural NaN-box position rather than the
+  PHASE4_PLACEHOLDER_TAG smell that 4.23 entry shipped at
+  commit df6958f.

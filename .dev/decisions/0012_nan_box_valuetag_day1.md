@@ -80,3 +80,15 @@ Phase 4 entry; subsequent additions are amendments to this ADR.
 
 - 2026-05-23: Status: Proposed -> Accepted (initial landing). Option A
   (3-slot) selected; Option B (1-slot + flag) recorded as alternative.
+- 2026-05-23 (amendment 1): **`big_int` lands at HeapTag slot 29 and
+  `ratio` is reserved at slot 30**, replacing the released
+  `wasm_module` / `wasm_fn` slots (ADR-0006 amendment 1). The
+  existing NaN-box layout (4 groups × 8 sub-types = 32 slots, group
+  bands `0xFFF8`-`0xFFFB`) is preserved — extending to a fifth group
+  is blocked by `0xFFFC` already serving as `NB_INT_TAG`, and
+  shrinking sub-type bits would halve the pointer space. Re-purposing
+  the released Wasm slots is the smallest-diff path. Phase 5 numeric
+  tower work (long → BigInt promotion, ratio arithmetic) consumes
+  these slots; the BigInt heap struct landed at task 4.23 swaps
+  away from `PHASE4_PLACEHOLDER_TAG = 0xFF` to `HeapTag.big_int` in
+  the same commit as this amendment.
