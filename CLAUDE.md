@@ -268,8 +268,11 @@ Before staging:
 
 Then:
 
-4. `git add` source files; `git commit` with **a two-line message
-   shape**:
+4. `git add` source files **and** `bench/quick_baseline.txt`
+   (gate-generated observability log; default to include in
+   source-bearing commits so number-changes line up with the
+   source diff that caused them — see policy note below).
+   Then `git commit` with **a two-line message shape**:
    ```
    <type>(<scope>): <one line summary>
    
@@ -282,6 +285,19 @@ Then:
    Step 6's self-audit was actually performed. The pre-commit gate
    auto-aligns Markdown tables; only genuine table-syntax errors
    block.
+
+   **`bench/quick_baseline.txt` commit policy** (added 2026-05-24
+   after the user audit): the file is auto-appended by `bench/quick.sh`
+   on every gate run. Treat it as source-coupled telemetry:
+   - **Source-bearing commit**: include `bench/quick_baseline.txt`
+     in the same commit (= numbers line up with the source diff
+     that may have caused them).
+   - **Doc-only / chore commit**: do NOT include (= the numbers
+     have no source explanation to anchor against).
+   - **Phase boundary**: if doc-only commits left bench deltas
+     dangling, the Phase boundary review chain (continue skill)
+     sweeps them into one `bench: accumulated samples through
+     <phase>` commit.
 5. `git push origin cw-from-scratch` runs immediately on the
    commit's success. **The `scripts/check_smell_audit.sh` PreToolUse
    hook physically blocks pushes that include any source-bearing
