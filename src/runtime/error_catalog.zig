@@ -1,5 +1,6 @@
 //! Error catalog — Single Source Of Truth for cw user-facing error
-//! messages. Per ADR-0018.
+//! messages. Per ADR-0018 (amendment 2 — `<target>_<state-adjective>`
+//! naming convention; phase no longer encoded in the Code name).
 //!
 //! Why this file exists:
 //!   - `error.zig` centralises Kind / Phase / Info / call stack, but
@@ -35,46 +36,51 @@ pub const Error = error_mod.Error;
 
 /// One variant per distinct user-facing message.
 ///
-/// Conventions:
-///   - Prefix indicates the phase (`parse_` / `analysis_` /
-///     `macro_` / `eval_`) or the cross-phase category (`unsupported_`,
-///     `tier_d_`).
-///   - Names describe what the user did wrong, not how the runtime
-///     classifies it internally.
+/// Naming convention (ADR-0018 amendment 2):
+/// `<target>_<state-adjective>` — name the construct the user wrote
+/// and the way it is wrong, not how the runtime classifies it
+/// internally. `Phase` is no longer encoded in the name; it lives
+/// on the `entry()` arm.
+///
+/// Exceptions: `tier_d_<form-slug>` for Tier D forms (one Code per
+/// form), `<feature>_<sub-op>_not_supported` for sub-feature staged
+/// unsupported, and the generic `feature_not_supported` fallback.
 pub const Code = enum {
-    // --- Parse ---
-    parse_unexpected_delimiter,
-    parse_unexpected_eof,
-    parse_invalid_token,
-    parse_invalid_integer,
-    parse_invalid_float,
-    parse_unterminated_string,
-    parse_map_literal_odd_forms,
+    // --- Parse / read ---
+    delimiter_unexpected,
+    eof_unexpected,
+    token_invalid,
+    integer_literal_invalid,
+    float_literal_invalid,
+    string_unterminated,
+    map_literal_arity_odd,
 
-    // --- Analysis ---
-    analysis_def_arity,
-    analysis_def_name_must_be_symbol,
-    analysis_if_arity,
-    analysis_unable_to_resolve,
-    analysis_let_bindings_must_be_vector,
-    analysis_let_bindings_must_be_even,
+    // --- Analysis (def / if / let / symbol resolution / arity) ---
+    def_arity_invalid,
+    def_name_not_symbol,
+    if_arity_invalid,
+    symbol_unresolved,
+    let_bindings_not_vector,
+    let_bindings_arity_odd,
     /// loop* / recur arity exceeds the internal slot-index width.
     /// args: `.{ .form = "loop*"|"recur", .got = N, .max = 65535 }`
-    analysis_arity_too_large,
+    arity_too_large,
 
     // --- Macroexpand ---
-    macro_let_requires_bindings_and_body,
-    macro_cond_requires_even_forms,
+    let_form_incomplete,
+    cond_clauses_arity_odd,
 
-    // --- Eval (type / arity) ---
-    eval_type_expected_number,
-    eval_type_expected_integer,
-    eval_type_expected_boolean,
-    eval_type_cannot_call,
-    eval_arity_wrong,
-    eval_arity_at_least,
-    eval_arity_between,
-    eval_arity_exact,
+    // --- Eval (type) ---
+    type_arg_not_number,
+    type_arg_not_integer,
+    type_arg_not_boolean,
+    value_not_callable,
+
+    // --- Eval (arity at call) ---
+    arity_invalid,
+    arity_below_min,
+    arity_out_of_range,
+    arity_not_expected,
 
     // --- Unsupported / Tier ---
     /// Feature is on the cw roadmap but not yet implemented in this
@@ -82,12 +88,13 @@ pub const Code = enum {
     /// calendar (Phase numbers, ADR identifiers) stays internal.
     ///
     /// args: `.{ .name = "<feature>" }`
-    unsupported_feature,
+    feature_not_supported,
 
     /// Feature is permanently outside cw scope (Tier D per ADR-0013).
-    /// Same shape as `unsupported_feature` from the user's
+    /// Same shape as `feature_not_supported` from the user's
     /// perspective — the user sees the feature name, not the tier
-    /// classification.
+    /// classification. Task 4.26.b splits this into per-form Codes
+    /// (tier_d_gen_class, ...) each with a hand-written template.
     ///
     /// args: `.{ .name = "<form>" }`
     tier_d_form,
@@ -107,114 +114,114 @@ const Entry = struct {
 /// authoritative template strings.
 pub fn entry(comptime code: Code) Entry {
     return switch (code) {
-        // --- Parse ---
-        .parse_unexpected_delimiter => .{
+        // --- Parse / read ---
+        .delimiter_unexpected => .{
             .kind = .syntax_error, .phase = .parse,
             .template = "Unexpected delimiter '{[delim]s}'",
         },
-        .parse_unexpected_eof => .{
+        .eof_unexpected => .{
             .kind = .syntax_error, .phase = .parse,
             .template = "Unexpected EOF while reading form",
         },
-        .parse_invalid_token => .{
+        .token_invalid => .{
             .kind = .syntax_error, .phase = .parse,
             .template = "Invalid token '{[token]s}'",
         },
-        .parse_invalid_integer => .{
+        .integer_literal_invalid => .{
             .kind = .number_error, .phase = .parse,
             .template = "Invalid integer literal '{[text]s}'",
         },
-        .parse_invalid_float => .{
+        .float_literal_invalid => .{
             .kind = .number_error, .phase = .parse,
             .template = "Invalid float literal '{[text]s}'",
         },
-        .parse_unterminated_string => .{
+        .string_unterminated => .{
             .kind = .string_error, .phase = .parse,
             .template = "Unterminated string literal",
         },
-        .parse_map_literal_odd_forms => .{
+        .map_literal_arity_odd => .{
             .kind = .syntax_error, .phase = .parse,
             .template = "Map literal must contain an even number of forms",
         },
 
         // --- Analysis ---
-        .analysis_def_arity => .{
+        .def_arity_invalid => .{
             .kind = .syntax_error, .phase = .analysis,
             .template = "def expects 1 or 2 args, got {[got]d}",
         },
-        .analysis_def_name_must_be_symbol => .{
+        .def_name_not_symbol => .{
             .kind = .syntax_error, .phase = .analysis,
             .template = "First argument to def must be a symbol",
         },
-        .analysis_if_arity => .{
+        .if_arity_invalid => .{
             .kind = .syntax_error, .phase = .analysis,
             .template = "if expects 2 or 3 args, got {[got]d}",
         },
-        .analysis_unable_to_resolve => .{
+        .symbol_unresolved => .{
             .kind = .name_error, .phase = .analysis,
             .template = "Unable to resolve symbol: '{[sym]s}'",
         },
-        .analysis_let_bindings_must_be_vector => .{
+        .let_bindings_not_vector => .{
             .kind = .syntax_error, .phase = .analysis,
             .template = "let* bindings must be a vector",
         },
-        .analysis_let_bindings_must_be_even => .{
+        .let_bindings_arity_odd => .{
             .kind = .syntax_error, .phase = .analysis,
             .template = "let* bindings must have an even number of forms",
         },
-        .analysis_arity_too_large => .{
+        .arity_too_large => .{
             .kind = .not_implemented, .phase = .analysis,
             .template = "{[form]s} arity {[got]d} exceeds the limit of {[max]d}",
         },
 
         // --- Macroexpand ---
-        .macro_let_requires_bindings_and_body => .{
+        .let_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "let requires bindings vector and at least one body form",
         },
-        .macro_cond_requires_even_forms => .{
+        .cond_clauses_arity_odd => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "cond requires an even number of forms (got {[got]d})",
         },
 
         // --- Eval (type) ---
-        .eval_type_expected_number => .{
+        .type_arg_not_number => .{
             .kind = .type_error, .phase = .eval,
             .template = "{[fn_name]s}: expected number, got {[actual]s}",
         },
-        .eval_type_expected_integer => .{
+        .type_arg_not_integer => .{
             .kind = .type_error, .phase = .eval,
             .template = "{[fn_name]s}: expected integer, got {[actual]s}",
         },
-        .eval_type_expected_boolean => .{
+        .type_arg_not_boolean => .{
             .kind = .type_error, .phase = .eval,
             .template = "{[fn_name]s}: expected boolean, got {[actual]s}",
         },
-        .eval_type_cannot_call => .{
+        .value_not_callable => .{
             .kind = .type_error, .phase = .eval,
             .template = "Cannot call value of type '{[actual]s}'",
         },
 
         // --- Eval (arity) ---
-        .eval_arity_wrong => .{
+        .arity_invalid => .{
             .kind = .arity_error, .phase = .eval,
             .template = "Wrong number of args ({[got]d}) passed to {[fn_name]s}",
         },
-        .eval_arity_at_least => .{
+        .arity_below_min => .{
             .kind = .arity_error, .phase = .eval,
             .template = "Wrong number of args ({[got]d}) passed to {[fn_name]s}, expected at least {[min]d}",
         },
-        .eval_arity_between => .{
+        .arity_out_of_range => .{
             .kind = .arity_error, .phase = .eval,
             .template = "Wrong number of args ({[got]d}) passed to {[fn_name]s}, expected {[min]d} to {[max]d}",
         },
-        .eval_arity_exact => .{
+        .arity_not_expected => .{
             .kind = .arity_error, .phase = .eval,
             .template = "Wrong number of args ({[got]d}) passed to {[fn_name]s}, expected {[expected]d}",
         },
 
         // --- Unsupported / Tier ---
-        .unsupported_feature => .{
+        .feature_not_supported => .{
             .kind = .not_implemented, .phase = .eval,
             .template = "{[name]s} is not supported in ClojureWasm",
         },
@@ -255,7 +262,7 @@ pub fn raise(comptime code: Code, location: SourceLocation, args: anytype) Error
 const testing = std.testing;
 
 test "raise produces matching Kind / Phase and renders template" {
-    const err = raise(.eval_type_expected_number, .{ .file = "t.clj", .line = 1, .column = 0 }, .{
+    const err = raise(.type_arg_not_number, .{ .file = "t.clj", .line = 1, .column = 0 }, .{
         .fn_name = "+",
         .actual = "keyword",
     });
@@ -268,8 +275,8 @@ test "raise produces matching Kind / Phase and renders template" {
     try testing.expectEqualStrings("t.clj", info.location.file);
 }
 
-test "unsupported_feature uses .name slot, no Phase or ADR leak" {
-    _ = raise(.unsupported_feature, .{}, .{ .name = "dosync" }) catch {};
+test "feature_not_supported uses .name slot, no Phase or ADR leak" {
+    _ = raise(.feature_not_supported, .{}, .{ .name = "dosync" }) catch {};
     const info = error_mod.getLastError().?;
     try testing.expectEqualStrings("dosync is not supported in ClojureWasm", info.message);
     // The user-facing message must not contain development markers.
@@ -287,19 +294,19 @@ test "tier_d_form names the form, never the tier classification" {
 }
 
 test "arity templates render all three variants" {
-    _ = raise(.eval_arity_wrong, .{}, .{ .got = 3, .fn_name = "inc" }) catch {};
+    _ = raise(.arity_invalid, .{}, .{ .got = 3, .fn_name = "inc" }) catch {};
     try testing.expectEqualStrings(
         "Wrong number of args (3) passed to inc",
         error_mod.getLastError().?.message,
     );
 
-    _ = raise(.eval_arity_at_least, .{}, .{ .got = 1, .fn_name = "+", .min = 2 }) catch {};
+    _ = raise(.arity_below_min, .{}, .{ .got = 1, .fn_name = "+", .min = 2 }) catch {};
     try testing.expectEqualStrings(
         "Wrong number of args (1) passed to +, expected at least 2",
         error_mod.getLastError().?.message,
     );
 
-    _ = raise(.eval_arity_between, .{}, .{ .got = 0, .fn_name = "subs", .min = 2, .max = 3 }) catch {};
+    _ = raise(.arity_out_of_range, .{}, .{ .got = 0, .fn_name = "subs", .min = 2, .max = 3 }) catch {};
     try testing.expectEqualStrings(
         "Wrong number of args (0) passed to subs, expected 2 to 3",
         error_mod.getLastError().?.message,

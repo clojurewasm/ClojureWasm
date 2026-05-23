@@ -277,7 +277,7 @@ fn stepOnce(
                 // routes through `op_call` + vtable). Per
                 // `no_op_stub_forbidden.md`, raise rather than fall
                 // through silently.
-                return error_catalog.raise(.unsupported_feature, .{}, .{ .name = "op_invoke_builtin" });
+                return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "op_invoke_builtin" });
             },
             .op_push_handler => {
                 const offset: i16 = @bitCast(instr.operand);

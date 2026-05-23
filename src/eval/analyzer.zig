@@ -309,7 +309,7 @@ fn analyzeList(
                 return analyzeSpecial(arena, rt, env, scope, kind, items, form, macro_table);
             }
             if (STAGED_UNSUPPORTED_FORMS.has(head.name)) {
-                return error_catalog.raise(.unsupported_feature, form.location, .{ .name = head.name });
+                return error_catalog.raise(.feature_not_supported, form.location, .{ .name = head.name });
             }
         }
         // Macro path: only consult the table when we can actually
@@ -691,7 +691,7 @@ fn analyzeLoopStar(
         return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "loop* bindings must have an even number of forms", .{});
     const pair_count = binding_forms.len / 2;
     if (pair_count > std.math.maxInt(u16))
-        return error_catalog.raise(.analysis_arity_too_large, items[1].location, .{
+        return error_catalog.raise(.arity_too_large, items[1].location, .{
             .form = "loop*",
             .got = pair_count,
             .max = @as(usize, std.math.maxInt(u16)),
@@ -758,7 +758,7 @@ fn analyzeRecur(
 
     const supplied_raw = items.len - 1;
     if (supplied_raw > std.math.maxInt(u16))
-        return error_catalog.raise(.analysis_arity_too_large, form.location, .{
+        return error_catalog.raise(.arity_too_large, form.location, .{
             .form = "recur",
             .got = supplied_raw,
             .max = @as(usize, std.math.maxInt(u16)),
