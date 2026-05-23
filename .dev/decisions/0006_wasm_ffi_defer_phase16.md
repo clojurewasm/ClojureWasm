@@ -74,6 +74,34 @@ Re-introduction conditions (evaluated at Phase 16 entry):
 ## Revision history
 
 - 2026-05-23: Status: Proposed -> Accepted (initial landing).
+- 2026-05-23 (amendment 3): **Wasm FFI is confirmed unavoidable; zwasm v2
+  is the target counterparty.** User direction (2026-05-23) clarified
+  that cw v2 will integrate with `zwasm_from_scratch` (zwasm v2 — still
+  in development) and that wasm FFI is "an indispensable element".
+  zwasm v2 itself provides JIT and memory management. Implications:
+    - The "Pod boundary" framing in §Decision remains the default
+      *protocol shape*, but the **inline-vs-Pod choice is reopened**
+      at Phase 16 entry. If inline (NaN-box-tagged) wasm Values are
+      chosen, the slots released by amendment 1 (`big_int` / `ratio`
+      now at 29 / 30) cannot be reclaimed — Phase 16 must mint fresh
+      slots, co-ordinated with D-027 (NaN-box layout 第二世代).
+    - The cw v2 Phase 5 mark-sweep GC and the cw v2 Phase 17 JIT
+      (ADR-0005 3rd backend) **overlap territorially** with zwasm v2's
+      own GC and JIT. Phase 16 entry resolves the heap-boundary and
+      JIT-coordination design (separate cw-heap vs wasm-heap, JIT
+      compilation handoff, etc.).
+    - The Phase 16 re-introduction-conditions list in §Decision
+      should be re-read with zwasm v2's actual progress in mind, not
+      v1's. Specifically, condition 1 ("zwasm v2 has reached Wasm
+      3.0 100% PASS on three platforms") is the gating signal cw v2
+      monitors.
+  Recorded as debt D-036 for the Phase 16 entry owner.
+- 2026-05-23 (amendment 2): **`-Dwasm=false` build option reverted.**
+  D-028 audit found the option had no consumer — the cw-from-scratch
+  branch never carried the wasm FFI surface this option was meant to
+  gate. Phase 16 re-introduction (per the Pod boundary plan above)
+  mints its own build option at that time. The 4.16 ROADMAP row stays
+  as a record of the revert; no source surface remains.
 - 2026-05-23 (amendment 1): **NaN-box slots for `wasm_module` /
   `wasm_fn` are released and re-purposed for `big_int` / `ratio`**
   (ADR-0012 amendment 1). Rationale: Phase 16 reintroduces Wasm via
