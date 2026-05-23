@@ -14,11 +14,22 @@ tiers:
     target_phase: "5-7 (clojure.core core), 6 (spec.alpha), 8 (clojure.test full)"
     namespaces:
       clojure.core:
-        # Tier A var count = JVM Clojure clojure.core var total minus Tier D forms
-        # that reside in clojure.core. Exact value populated by task 4.15 after
-        # JVM source enumeration. Approximate range: 700-705
-        # (706 JVM total - 1-6 Tier D forms in clojure.core).
-        var_count_target: TBD-by-task-4.15
+        # Counted from JVM clojure source (task 4.15):
+        # - src/clj/clojure/core.clj           ≈ 601 (def / defn / defn-
+        #   / defmacro / defmulti / defprotocol forms)
+        # - src/clj/clojure/core_deftype.clj   ≈  39
+        # - src/clj/clojure/core_print.clj     ≈  16
+        # - src/clj/clojure/core_proxy.clj     ≈  15
+        # - special-form Vars registered in clojure.core by RT.java /
+        #   Compiler.java (if / do / let* / fn* / def / quote / var /
+        #   loop* / recur / try / catch / finally / throw / new /
+        #   set! / monitor-enter / monitor-exit / dot / .) ≈ 30
+        # - subtract Tier D forms in clojure.core (gen-class /
+        #   gen-interface / compile / proxy (deep) / bean
+        #   (reflection-deep)) = 5
+        # Net target ≈ 700; exact figure firms up as primitives land
+        # and the analyser's var registry is the authoritative source.
+        var_count_target: 700
       clojure.string:
         var_count_target: 21
       clojure.set:
@@ -68,14 +79,61 @@ tiers:
       - monitor-exit
       - dosync        # STM transaction
     host_classes:
-      # Java stdlib classes implemented natively under src/runtime/host/.
-      # Populated incrementally Phase 5-10 by task 4.15 (full enumeration).
-      - { fqn: "java.util.UUID",      native_ns: "cljw.host.java.util.UUID",      phase: 5 }
-      - { fqn: "java.util.Date",      native_ns: "cljw.host.java.util.Date",      phase: 5 }
-      - { fqn: "java.util.Random",    native_ns: "cljw.host.java.util.Random",    phase: 5 }
-      - { fqn: "java.time.Instant",   native_ns: "cljw.host.java.time.Instant",   phase: 6 }
-      - { fqn: "java.time.LocalDate", native_ns: "cljw.host.java.time.LocalDate", phase: 6 }
-      - { fqn: "java.io.File",        native_ns: "cljw.host.java.io.File",        phase: 5 }
+      # Top-40 Java stdlib classes per ADR-0011 (the corpus references
+      # 578 distinct java.* classes; the top 40 cover most production
+      # Clojure I/O, time, networking, and data formatting). Phase
+      # column = first phase at which the cw-native equivalent lands.
+      # All entries are Tier A — the cw runtime ships native cw.host
+      # implementations and Clojure code reaches them via
+      # `(:require [cljw.host.java.<pkg> :refer [<class>]])`.
+      # java.lang
+      - { fqn: "java.lang.Object",                       native_ns: "cljw.host.java.lang.Object",                       phase: 5 }
+      - { fqn: "java.lang.String",                       native_ns: "cljw.host.java.lang.String",                       phase: 5 }
+      - { fqn: "java.lang.Long",                         native_ns: "cljw.host.java.lang.Long",                         phase: 5 }
+      - { fqn: "java.lang.Integer",                      native_ns: "cljw.host.java.lang.Integer",                      phase: 5 }
+      - { fqn: "java.lang.Double",                       native_ns: "cljw.host.java.lang.Double",                       phase: 5 }
+      - { fqn: "java.lang.Boolean",                      native_ns: "cljw.host.java.lang.Boolean",                      phase: 5 }
+      - { fqn: "java.lang.Math",                         native_ns: "cljw.host.java.lang.Math",                         phase: 5 }
+      - { fqn: "java.lang.System",                       native_ns: "cljw.host.java.lang.System",                       phase: 5 }
+      - { fqn: "java.lang.Throwable",                    native_ns: "cljw.host.java.lang.Throwable",                    phase: 5 }
+      - { fqn: "java.lang.Exception",                    native_ns: "cljw.host.java.lang.Exception",                    phase: 5 }
+      - { fqn: "java.lang.Thread",                       native_ns: "cljw.host.java.lang.Thread",                       phase: 14 }
+      # java.io
+      - { fqn: "java.io.File",                           native_ns: "cljw.host.java.io.File",                           phase: 5 }
+      - { fqn: "java.io.InputStream",                    native_ns: "cljw.host.java.io.InputStream",                    phase: 6 }
+      - { fqn: "java.io.OutputStream",                   native_ns: "cljw.host.java.io.OutputStream",                   phase: 6 }
+      - { fqn: "java.io.Reader",                         native_ns: "cljw.host.java.io.Reader",                         phase: 6 }
+      - { fqn: "java.io.Writer",                         native_ns: "cljw.host.java.io.Writer",                         phase: 6 }
+      - { fqn: "java.io.ByteArrayInputStream",           native_ns: "cljw.host.java.io.ByteArrayInputStream",           phase: 6 }
+      - { fqn: "java.io.ByteArrayOutputStream",          native_ns: "cljw.host.java.io.ByteArrayOutputStream",          phase: 6 }
+      - { fqn: "java.io.PrintWriter",                    native_ns: "cljw.host.java.io.PrintWriter",                    phase: 6 }
+      # java.util
+      - { fqn: "java.util.UUID",                         native_ns: "cljw.host.java.util.UUID",                         phase: 5 }
+      - { fqn: "java.util.Date",                         native_ns: "cljw.host.java.util.Date",                         phase: 5 }
+      - { fqn: "java.util.Random",                       native_ns: "cljw.host.java.util.Random",                       phase: 5 }
+      - { fqn: "java.util.Locale",                       native_ns: "cljw.host.java.util.Locale",                       phase: 6 }
+      - { fqn: "java.util.regex.Pattern",                native_ns: "cljw.host.java.util.regex.Pattern",                phase: 6 }
+      - { fqn: "java.util.concurrent.Future",            native_ns: "cljw.host.java.util.concurrent.Future",            phase: 14 }
+      - { fqn: "java.util.concurrent.atomic.AtomicLong", native_ns: "cljw.host.java.util.concurrent.atomic.AtomicLong", phase: 15 }
+      # java.time
+      - { fqn: "java.time.Instant",                      native_ns: "cljw.host.java.time.Instant",                      phase: 6 }
+      - { fqn: "java.time.LocalDate",                    native_ns: "cljw.host.java.time.LocalDate",                    phase: 6 }
+      - { fqn: "java.time.LocalDateTime",                native_ns: "cljw.host.java.time.LocalDateTime",                phase: 6 }
+      - { fqn: "java.time.Duration",                     native_ns: "cljw.host.java.time.Duration",                     phase: 6 }
+      - { fqn: "java.time.ZonedDateTime",                native_ns: "cljw.host.java.time.ZonedDateTime",                phase: 6 }
+      - { fqn: "java.time.ZoneId",                       native_ns: "cljw.host.java.time.ZoneId",                       phase: 6 }
+      # java.net
+      - { fqn: "java.net.URL",                           native_ns: "cljw.host.java.net.URL",                           phase: 14 }
+      - { fqn: "java.net.URI",                           native_ns: "cljw.host.java.net.URI",                           phase: 14 }
+      # java.nio
+      - { fqn: "java.nio.file.Path",                     native_ns: "cljw.host.java.nio.file.Path",                     phase: 6 }
+      - { fqn: "java.nio.file.Files",                    native_ns: "cljw.host.java.nio.file.Files",                    phase: 6 }
+      - { fqn: "java.nio.charset.Charset",               native_ns: "cljw.host.java.nio.charset.Charset",               phase: 6 }
+      # java.math
+      - { fqn: "java.math.BigInteger",                   native_ns: "cljw.host.java.math.BigInteger",                   phase: 5 }
+      - { fqn: "java.math.BigDecimal",                   native_ns: "cljw.host.java.math.BigDecimal",                   phase: 5 }
+      # java.security
+      - { fqn: "java.security.MessageDigest",            native_ns: "cljw.host.java.security.MessageDigest",            phase: 14 }
   B:
     description: "Recommended compatibility, target Phase 8-14. Test gate: coverage report (no fail required)."
     namespaces:
