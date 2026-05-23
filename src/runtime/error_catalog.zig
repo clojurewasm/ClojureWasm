@@ -58,6 +58,9 @@ pub const Code = enum {
     analysis_unable_to_resolve,
     analysis_let_bindings_must_be_vector,
     analysis_let_bindings_must_be_even,
+    /// loop* / recur arity exceeds the internal slot-index width.
+    /// args: `.{ .form = "loop*"|"recur", .got = N, .max = 65535 }`
+    analysis_arity_too_large,
 
     // --- Macroexpand ---
     macro_let_requires_bindings_and_body,
@@ -158,6 +161,10 @@ pub fn entry(comptime code: Code) Entry {
         .analysis_let_bindings_must_be_even => .{
             .kind = .syntax_error, .phase = .analysis,
             .template = "let* bindings must have an even number of forms",
+        },
+        .analysis_arity_too_large => .{
+            .kind = .not_implemented, .phase = .analysis,
+            .template = "{[form]s} arity {[got]d} exceeds the limit of {[max]d}",
         },
 
         // --- Macroexpand ---

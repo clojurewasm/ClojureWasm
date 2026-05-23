@@ -47,6 +47,7 @@ const keyword = @import("../runtime/keyword.zig");
 const string_collection = @import("../runtime/collection/string.zig");
 const list_collection = @import("../runtime/collection/list.zig");
 const error_mod = @import("../runtime/error.zig");
+const error_catalog = @import("../runtime/error_catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const macro_dispatch = @import("macro_dispatch.zig");
 
@@ -673,8 +674,15 @@ fn analyzeLoopStar(
     const binding_forms = items[1].data.vector;
     if (binding_forms.len % 2 != 0)
         return error_mod.setErrorFmt(.analysis, .syntax_error, items[1].location, "loop* bindings must have an even number of forms", .{});
+    const pair_count = binding_forms.len / 2;
+    if (pair_count > std.math.maxInt(u16))
+        return error_catalog.raise(.analysis_arity_too_large, items[1].location, .{
+            .form = "loop*",
+            .got = pair_count,
+            .max = @as(usize, std.math.maxInt(u16)),
+        });
 
-    const arity_u: u16 = @intCast(binding_forms.len / 2);
+    const arity_u: u16 = @intCast(pair_count);
     const slot_base: u16 = if (scope) |s| s.next_slot else 0;
 
     // Pre-allocate the scope WITH the recur target so the binding
@@ -733,7 +741,14 @@ fn analyzeRecur(
     const target = if (scope) |s| s.recur_target else null;
     const tgt = target orelse return error_mod.setErrorFmt(.analysis, .syntax_error, form.location, "recur is only valid inside a loop* or fn*", .{});
 
-    const supplied: u16 = @intCast(items.len - 1);
+    const supplied_raw = items.len - 1;
+    if (supplied_raw > std.math.maxInt(u16))
+        return error_catalog.raise(.analysis_arity_too_large, form.location, .{
+            .form = "recur",
+            .got = supplied_raw,
+            .max = @as(usize, std.math.maxInt(u16)),
+        });
+    const supplied: u16 = @intCast(supplied_raw);
     if (supplied != tgt.arity) {
         const kind_str = switch (tgt.kind) {
             .loop_kw => "loop*",
@@ -1235,6 +1250,48 @@ test "recur outside any loop*/fn* is a syntax error" {
     const info = error_mod.peekLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Phase.analysis, info.phase);
     try testing.expectEqual(error_mod.Kind.syntax_error, info.kind);
+}
+
+test "loop* with 65537 bindings raises an analysis error before the @intCast" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    var src: std.ArrayList(u8) = .empty;
+    defer src.deinit(testing.allocator);
+    try src.appendSlice(testing.allocator, "(loop* [\n");
+    var i: usize = 0;
+    // One binding pair per line; tokenizer column is u16, so a single
+    // 262 KB line would overflow before reaching the analyzer.
+    while (i < 65537) : (i += 1) try src.appendSlice(testing.allocator, "x 0\n");
+    try src.appendSlice(testing.allocator, "] 1)");
+
+    try testing.expectError(AnalyzeError.NotImplemented, fix.analyzeStr(src.items));
+    const info = error_mod.peekLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Phase.analysis, info.phase);
+    try testing.expect(std.mem.find(u8, info.message, "loop*") != null);
+    try testing.expect(std.mem.find(u8, info.message, "65537") != null);
+}
+
+test "recur with 65537 args raises an analysis error before the @intCast" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    // Outer loop arity is 1; recur arity check would otherwise compare
+    // 65537 != 1, but the @intCast bound-check fires first.
+    var src: std.ArrayList(u8) = .empty;
+    defer src.deinit(testing.allocator);
+    try src.appendSlice(testing.allocator, "(loop* [x 0] (recur\n");
+    var i: usize = 0;
+    while (i < 65537) : (i += 1) try src.appendSlice(testing.allocator, "0\n");
+    try src.appendSlice(testing.allocator, "))");
+
+    try testing.expectError(AnalyzeError.NotImplemented, fix.analyzeStr(src.items));
+    const info = error_mod.peekLastError() orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(error_mod.Phase.analysis, info.phase);
+    try testing.expect(std.mem.find(u8, info.message, "recur") != null);
+    try testing.expect(std.mem.find(u8, info.message, "65537") != null);
 }
 
 test "recur arity mismatch reports the loop's expected arity" {

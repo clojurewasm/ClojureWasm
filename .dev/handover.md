@@ -85,23 +85,36 @@
 
 ## In-flight work
 
-なし。§9.6 / 4.0 (quick-bench, b5ddc0c) と §9.6 / 4.0a (build_options
-comptime bools, pending SHA) を 2026-05-23 完了。次は cluster A の
-先頭 §9.6 / 4.1 (analyzer u16 bound-check)。
+なし。§9.6 / 4.0 (b5ddc0c) / §9.6 / 4.0a (e4e079e) / §9.6 / 4.1
+(pending SHA) を 2026-05-23 完了。次は cluster A の残り §9.6 / 4.2
+(uniform errdefer across string/ex_info/list/fn alloc paths)。
 
-## Active task — §9.6 / 4.1 (next)
+## Active task — §9.6 / 4.2 (next)
 
-`src/eval/analyzer.zig::analyzeLoopStar` (line ~678) と `analyzeRecur`
-(line ~737) で `binding_forms.len / 2` と `items.len - 1` を `@intCast`
-する前に `std.math.maxInt(u16)` と bound-check する。Overflow 時は
-`error_mod.setErrorFmt(.analysis, .not_implemented, ..., "loop*/recur
-arity {d} exceeds u16 limit", ...)` を raise。65537 bindings の回帰
-テストを追加。Cluster A の security hardening 3 タスクの 1 つ目。
+`runtime/collection/string.zig::alloc`, `runtime/collection/ex_info.zig
+::alloc`, `runtime/collection/list.zig::consHeap`, `eval/backend/
+tree_walk.zig::allocFunction` の 4 箇所に統一的に `errdefer rt.gpa
+.destroy(s)` (または `ensureUnusedCapacity` + `appendAssumeCapacity`)
+を入れる。`testing.allocator` での failing-mode injection でテスト。
+adversarial uniform-pattern allocator-failure leak 対策 (Phase 3
+boundary security review H2)。
 
 **Retrievable identifiers**:
-- ROADMAP §9.6 task 4.1.
-- `src/eval/analyzer.zig` `analyzeLoopStar` / `analyzeRecur`。
-- 既存テストの近くに 65537 bindings の regression test を追加。
+- ROADMAP §9.6 task 4.2.
+- 4 箇所のファイル / 関数: 上記 4 つ。
+- `std.testing.FailingAllocator` (Zig 0.16 stdlib) で injection。
+
+## Just landed — §9.6 / 4.1
+
+`src/runtime/error_catalog.zig` に新 Code `analysis_arity_too_large`
+(template `"{[form]s} arity {[got]d} exceeds the limit of {[max]d}"`)、
+`src/eval/analyzer.zig` の `analyzeLoopStar` / `analyzeRecur` で
+`@intCast(u16)` 前に `> std.math.maxInt(u16)` を check し overflow
+時に `error_catalog.raise(.analysis_arity_too_large, ...)`。65537
+bindings / args の 2 unit test で回帰防御。Mac (9/9) + Linux (8/8)
+green。debt.md D-003 Discharged。詳細 `private/notes/phase4-4.1.md`。
+テスト中の入力は newline で各 pair を区切る (tokenizer の column
+が u16 で 262KB 1 行を扱えないため; 詳細は note 参照)。
 
 ## Just landed — §9.6 / 4.0a
 
