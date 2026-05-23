@@ -85,35 +85,43 @@
 
 ## In-flight work
 
-なし。§9.6 / 4.0 (quick-bench harness extension) を 2026-05-23 完了。
-次は §9.6 / 4.0a (`build.zig` `phase_at_least_N` comptime bool 群)。
+なし。§9.6 / 4.0 (quick-bench, b5ddc0c) と §9.6 / 4.0a (build_options
+comptime bools, pending SHA) を 2026-05-23 完了。次は cluster A の
+先頭 §9.6 / 4.1 (analyzer u16 bound-check)。
 
-## Active task — §9.6 / 4.0a (next)
+## Active task — §9.6 / 4.1 (next)
 
-`build.zig` に `build_options.phase_at_least_5` / `_7` / `_11` / `_14`
-/ `_15` / `_17` の comptime bool 群を追加 (全部 Phase 4 entry では
-`false`)。これは ADR-0023 comptime conditional imports の scaffolding。
-タスク 4.17 / 4.19 / 4.22-4.25 が読む。各 bool は対応 Phase 開始時に
-`true` に flip される (フリップ task は §9.7 以降の placeholder で
-管理)。
+`src/eval/analyzer.zig::analyzeLoopStar` (line ~678) と `analyzeRecur`
+(line ~737) で `binding_forms.len / 2` と `items.len - 1` を `@intCast`
+する前に `std.math.maxInt(u16)` と bound-check する。Overflow 時は
+`error_mod.setErrorFmt(.analysis, .not_implemented, ..., "loop*/recur
+arity {d} exceeds u16 limit", ...)` を raise。65537 bindings の回帰
+テストを追加。Cluster A の security hardening 3 タスクの 1 つ目。
 
 **Retrievable identifiers**:
-- ROADMAP §9.6 task 4.0a — `build.zig` comptime bool group spec.
-- ADR-0023 — comptime stub policy (`@import` を `if (phase_at_least_N)`
-  で囲む基本パターン)。
-- `build.zig` — 既存。`pub fn build(b: *std.Build)` の中に
-  `b.addOptions("build_options", ...)` を生やす想定。
+- ROADMAP §9.6 task 4.1.
+- `src/eval/analyzer.zig` `analyzeLoopStar` / `analyzeRecur`。
+- 既存テストの近くに 65537 bindings の regression test を追加。
+
+## Just landed — §9.6 / 4.0a
+
+`build.zig` に `b.addOptions(...)` で `build_options.phase_at_least_5
+/_7/_11/_14/_15/_17` の 6 comptime bool を追加 (全部 `false`)、
+`exe_mod.addOptions("build_options", ...)` で公開。`src/main.zig` に
+型・値を確認する `test "build_options exposes phase_at_least_N ..."`
+を追加。Mac (9/9) + Linux (8/8) green。ADR-0023 Pattern A の
+scaffolding 完了。Phase 5 / 7 / 11 / 14 / 15 / 17 開始時、対応 bool
+を `true` に flip するだけで real module の import が活性化する。
+詳細 `private/notes/phase4-4.0a.md`。
 
 ## Just landed — §9.6 / 4.0
 
 `bench/fixtures/{fib_recursive, arith_loop, list_build, quote_chain,
-let_chain}.clj` 5 本を追加、`bench/quick.sh` の TODO(phase4) を埋め、
-`test/run_all.sh` に `bench_quick` step を `optional` として配線。
-Mac (9/9) + OrbStack Ubuntu x86_64 (8/8) 双方 green。詳細は
-`private/notes/phase4-4.0.md`。Phase 4 entry の primitive 制約
-(`loop` macro 無し → `loop*`、recursive `defn` 不可 → `def fib nil`
-+ `def fib (fn* ...)` forward-decl、シンボル quote 未実装 → 整数
-leaves) は per-task note に記録済み。
+let_chain}.clj` 5 本、`bench/quick.sh` の TODO(phase4) 埋め、
+`test/run_all.sh` に `bench_quick` を `optional` 配線
+(commits b5ddc0c + cfe2ac8)。Phase 4 entry の primitive 制約は
+`private/notes/phase4-4.0.md` 参照 (`loop*`, forward-decl recursion,
+integer-leaf quote chain)。
 
 **Phase 4 task list (4.0 - 4.26.f, expanded by ADR-0004 through 0024)**:
 

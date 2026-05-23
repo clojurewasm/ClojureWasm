@@ -14,6 +14,20 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Phase activation manifest (ADR-0023 Pattern A). One comptime
+    // bool per future phase boundary; each flips from false to true
+    // at the phase's opening commit. Source uses
+    // `if (build_options.phase_at_least_N) ... else stub` to choose
+    // between the real and stub modules without a runtime branch.
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "phase_at_least_5", false);
+    build_options.addOption(bool, "phase_at_least_7", false);
+    build_options.addOption(bool, "phase_at_least_11", false);
+    build_options.addOption(bool, "phase_at_least_14", false);
+    build_options.addOption(bool, "phase_at_least_15", false);
+    build_options.addOption(bool, "phase_at_least_17", false);
+    exe_mod.addOptions("build_options", build_options);
+
     const exe = b.addExecutable(.{
         .name = "cljw",
         .root_module = exe_mod,

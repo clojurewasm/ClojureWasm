@@ -180,6 +180,22 @@ test "smoke: main module loads" {
     try std.testing.expect(true);
 }
 
+test "build_options exposes phase_at_least_N comptime bools (ADR-0023)" {
+    const build_options = @import("build_options");
+    try std.testing.expect(@TypeOf(build_options.phase_at_least_5) == bool);
+    try std.testing.expect(@TypeOf(build_options.phase_at_least_7) == bool);
+    try std.testing.expect(@TypeOf(build_options.phase_at_least_11) == bool);
+    try std.testing.expect(@TypeOf(build_options.phase_at_least_14) == bool);
+    try std.testing.expect(@TypeOf(build_options.phase_at_least_15) == bool);
+    try std.testing.expect(@TypeOf(build_options.phase_at_least_17) == bool);
+    try std.testing.expect(build_options.phase_at_least_5 == false);
+    try std.testing.expect(build_options.phase_at_least_7 == false);
+    try std.testing.expect(build_options.phase_at_least_11 == false);
+    try std.testing.expect(build_options.phase_at_least_14 == false);
+    try std.testing.expect(build_options.phase_at_least_15 == false);
+    try std.testing.expect(build_options.phase_at_least_17 == false);
+}
+
 // Pull in tests from the source tree. As more files appear under
 // src/, add them here so the unified `zig build test` discovers them.
 test {
