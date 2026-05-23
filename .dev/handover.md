@@ -17,11 +17,11 @@
 - **Phase**: Phase 4 IN-PROGRESS. §9.6 cluster A done
   (tasks 4.1 / 4.2 / 4.3); **critical-path closed**: 4.0 / 4.0a /
   4.4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.10 / 4.11 / 4.12 done.
-  Cleanup wave in progress: 4.13 / 4.14 / 4.15 done. Remaining
-  §9.6 rows (4.16–4.26.f) — Wasm FFI removal, type_descriptor /
-  protocol / object_header / host extension / deftype-raise /
-  binding_stack / big_int / lazy_seq / method_table skeletons,
-  error-system migration.
+  Cleanup wave in progress: 4.13 / 4.14 / 4.15 / 4.16 done.
+  Remaining §9.6 rows (4.17–4.26.f) — type_descriptor / protocol /
+  object_header / host extension / deftype-raise / binding_stack /
+  big_int / lazy_seq / method_table skeletons, error-system
+  migration.
 - **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived;
   push free after gate green; never push to `main`).
 - **Last commit**: see `git log -1` (compute on resume — the
@@ -34,19 +34,22 @@
   (compute on resume; chapter pairing decision is per the
   `code_learning_doc` skill's two-cadence rule).
 
-## Active task — §9.6 / 4.16
+## Active task — §9.6 / 4.17
 
-Wasm FFI removal (per ADR-0006) — `-Dwasm=false` default in
-`build.zig`, remove the `cljw.wasm` namespace, drop the `zwasm`
-dependency from `build.zig.zon`.
+`src/runtime/type_descriptor.zig` skeleton (per ADR-0007) —
+`TypeDescriptor` struct + `TypedInstance` + `ReifiedInstance`
+declarations. No `lookupMethod` / `register` / `new` functions
+yet (those land in Phase 5).
 
 **Retrievable identifiers**:
 
-- ROADMAP §9.6 task 4.16, ADR-0006 (Wasm FFI deferred to Phase
-  16).
-- `build.zig.zon` — `zwasm` dependency entry.
-- `src/lang/wasm/` if a namespace already exists, otherwise the
-  removal is the option flip + zon edit only.
+- ROADMAP §9.6 task 4.17, ADR-0007 (TypeDescriptor Option β —
+  unified type-descriptor for deftype / defrecord / reify /
+  definterface).
+- `src/runtime/host/` directory (4.20 sibling) — host
+  TypeDescriptor entries will live alongside cw-native ones.
+- The skeleton is declaration-only: a Phase 4 zone-0 stub that
+  Phase 5+ tasks fill with `lookupMethod` / `register` / `new`.
 
 ## Open questions / blockers
 

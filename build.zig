@@ -35,6 +35,13 @@ pub fn build(b: *std.Build) void {
     const backend = b.option(Backend, "backend", "Evaluation backend (tree-walk default, vm experimental)") orelse .tree_walk;
     build_options.addOption(Backend, "backend", backend);
 
+    // ROADMAP §9.6 / 4.16 — Wasm FFI removed at this branch's origin
+    // per ADR-0006 (deferred to Phase 16 via the Pod boundary). The
+    // option exists so future re-introduction has an established
+    // toggle; current default and only supported value is `false`.
+    const wasm = b.option(bool, "wasm", "Wasm FFI surface (deferred to Phase 16; default false)") orelse false;
+    build_options.addOption(bool, "wasm", wasm);
+
     exe_mod.addOptions("build_options", build_options);
 
     const exe = b.addExecutable(.{
