@@ -26,8 +26,13 @@ const Value = @import("../../../runtime/value.zig").Value;
 ///   - `op_const`           operand = index into the chunk's constant pool
 ///   - `op_load_local` /
 ///     `op_store_local`     operand = frame slot index
-///   - `op_get_var` /
-///     `op_def`             operand = constants index of an interned symbol
+///   - `op_get_var`         operand = constants index of a heap-tagged
+///                          `Var` Value (analyzer pre-resolves the
+///                          pointer; the VM decodes and calls
+///                          `Var.deref`)
+///   - `op_def`             operand = constants index of the symbol-name
+///                          Value (the VM passes the bytes to
+///                          `env.intern` at execute time)
 ///   - `op_jump` /
 ///     `op_jump_if_false`   operand = signed instruction offset (bitcast to i16)
 ///   - `op_call` /

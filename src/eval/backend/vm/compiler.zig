@@ -17,6 +17,7 @@ const std = @import("std");
 const node_mod = @import("../../node.zig");
 const opcode_mod = @import("opcode.zig");
 const value_mod = @import("../../../runtime/value.zig");
+const env_mod = @import("../../../runtime/env.zig");
 
 const Node = node_mod.Node;
 const Opcode = opcode_mod.Opcode;
@@ -27,6 +28,7 @@ const Value = value_mod.Value;
 pub const Error = error{
     TooManyConstants,
     JumpTooFar,
+    TooManyCallArgs,
     NotImplemented,
 } || std.mem.Allocator.Error;
 
@@ -64,8 +66,10 @@ const Compiler = struct {
             .quote_node => |n| try self.emitConst(n.quoted),
             .do_node => |n| try self.compileDo(n.forms),
             .local_ref => |n| try self.emit(.op_load_local, n.index),
+            .var_ref => |n| try self.compileVarRef(n),
             .if_node => |n| try self.compileIf(n),
             .let_node => |n| try self.compileLet(n),
+            .call_node => |n| try self.compileCall(n),
             else => {
                 // The VM backend is dev-only until task 4.8 flips
                 // `-Dbackend=vm`; no user-facing path reaches the
@@ -114,6 +118,23 @@ const Compiler = struct {
             try self.emit(.op_store_local, b.index);
         }
         try self.compileNode(n.body);
+    }
+
+    fn compileVarRef(self: *Compiler, n: node_mod.VarRef) Error!void {
+        // The analyzer has already resolved the Var pointer. Encode it
+        // as a heap-tagged Value, stash it in the constant pool, and
+        // emit `op_get_var <idx>` — the VM dispatch loop decodes the
+        // pointer and calls `Var.deref`.
+        const var_value = Value.encodeHeapPtr(.var_ref, n.var_ptr);
+        const idx = try self.addConstant(var_value);
+        try self.emit(.op_get_var, idx);
+    }
+
+    fn compileCall(self: *Compiler, n: node_mod.CallNode) Error!void {
+        try self.compileNode(n.callee);
+        if (n.args.len > std.math.maxInt(u16)) return error.TooManyCallArgs;
+        for (n.args) |*a| try self.compileNode(a);
+        try self.emit(.op_call, @intCast(n.args.len));
     }
 
     /// Emit a jump opcode with a placeholder operand and return the
@@ -283,6 +304,61 @@ test "compile let* stores each binding then evaluates the body" {
     try testing.expectEqual(Opcode.op_load_local, chunk.instructions[4].opcode);
     try testing.expectEqual(@as(u16, 1), chunk.instructions[4].operand);
     try testing.expectEqual(Opcode.op_ret, chunk.instructions[5].opcode);
+}
+
+test "compile var_ref stores the Var pointer Value and emits op_get_var" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    // The test does not deref the Var; it only checks that the
+    // compiler encodes the pointer into the constant pool and emits
+    // op_get_var with the correct index.
+    var dummy_ns: env_mod.Namespace = undefined;
+    var dummy_var: env_mod.Var = .{ .ns = &dummy_ns, .name = "x" };
+    const node: Node = .{ .var_ref = .{ .var_ptr = &dummy_var } };
+    const chunk = try compile(arena.allocator(), &node);
+
+    try testing.expectEqual(@as(usize, 2), chunk.instructions.len);
+    try testing.expectEqual(Opcode.op_get_var, chunk.instructions[0].opcode);
+    try testing.expectEqual(@as(u16, 0), chunk.instructions[0].operand);
+    try testing.expectEqual(Opcode.op_ret, chunk.instructions[1].opcode);
+    try testing.expectEqual(@as(usize, 1), chunk.constants.len);
+    try testing.expectEqual(Value.encodeHeapPtr(.var_ref, &dummy_var), chunk.constants[0]);
+}
+
+test "compile call emits callee, args, op_call <arity>" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const callee: Node = .{ .constant = .{ .value = Value.true_val } };
+    const args = [_]Node{
+        .{ .constant = .{ .value = Value.false_val } },
+        .{ .constant = .{ .value = Value.nil_val } },
+    };
+    const node: Node = .{ .call_node = .{ .callee = &callee, .args = &args } };
+    const chunk = try compile(arena.allocator(), &node);
+
+    // op_const callee ; op_const arg0 ; op_const arg1 ; op_call 2 ; op_ret
+    try testing.expectEqual(@as(usize, 5), chunk.instructions.len);
+    try testing.expectEqual(Opcode.op_const, chunk.instructions[0].opcode);
+    try testing.expectEqual(Opcode.op_const, chunk.instructions[1].opcode);
+    try testing.expectEqual(Opcode.op_const, chunk.instructions[2].opcode);
+    try testing.expectEqual(Opcode.op_call, chunk.instructions[3].opcode);
+    try testing.expectEqual(@as(u16, 2), chunk.instructions[3].operand);
+    try testing.expectEqual(Opcode.op_ret, chunk.instructions[4].opcode);
+}
+
+test "compile call with zero args emits op_call 0" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const callee: Node = .{ .constant = .{ .value = Value.true_val } };
+    const node: Node = .{ .call_node = .{ .callee = &callee, .args = &.{} } };
+    const chunk = try compile(arena.allocator(), &node);
+
+    try testing.expectEqual(@as(usize, 3), chunk.instructions.len);
+    try testing.expectEqual(Opcode.op_call, chunk.instructions[1].opcode);
+    try testing.expectEqual(@as(u16, 0), chunk.instructions[1].operand);
 }
 
 test "compile do pops intermediate forms and keeps the last" {
