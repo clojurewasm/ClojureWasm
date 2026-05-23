@@ -25,9 +25,12 @@
    dormant — user trigger only, AI must not re-propose) /
    **F-008** (zwasm v2 ADR-0109 spec review + cw v1 stances on
    6 open questions; 2026-05-24).
-4. `.dev/principle.md` — Bad Smell catalogue (8 entries) +
-   Structural imagination phase + Devil's-advocate subagent
-   mandate at depth ≥ 2.
+4. `.dev/principle.md` — Bad Smell catalogue (**16 entries**
+   incl. Smallest-diff bias / Reservation-as-bias /
+   Progress-pressure / Silent default-shift — invisible drift
+   family) + Structural imagination phase (with Scope boundary)
+   + Devil's-advocate subagent mandate at depth ≥ 2 (with
+   F-NNN envelope constraint).
 5. `.dev/structure_plan.md` — anticipated directory tree
    Phase 5-20. Each Phase entry owner amends in place; this is
    the structural-imagination output map.
