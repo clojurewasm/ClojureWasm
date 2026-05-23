@@ -9,7 +9,10 @@ Project-level design and operational metadata. Tracked in git. English.
   Single source of truth. If anything elsewhere disagrees with this file,
   this file wins.
 - [`handover.md`](./handover.md) — short, mutable, current session state.
-  Read at session start, updated 1–2 lines at session end.
+  Read at session start, updated at session end. **Framing discipline
+  enforced** via [`.claude/rules/handover_framing.md`](../.claude/rules/handover_framing.md)
+  (≤ 100 lines, no log accumulation, no forecast tables, no stop-
+  rationalisation phrases).
 - [`orbstack_setup.md`](./orbstack_setup.md) — one-time VM setup,
   iteration loop, and gate integration for the 🔒 OrbStack x86_64
   cross-platform gate (ROADMAP §11.5).

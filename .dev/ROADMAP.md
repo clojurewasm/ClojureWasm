@@ -1657,14 +1657,14 @@ using the templates below.
 
 #### `.dev/handover.md` — when a session ends mid-task and the next session needs context that `git log` + ROADMAP cannot convey
 
-```markdown
-# Session handover
-- Phase:       <Phase N — name>
-- Last commit: <SHA — title>
-- In-progress: <what is half-done>
-- Next step:   <single concrete next move>
-- Open Qs:     <one-liners only>
-```
+Framing discipline is enforced by
+[`.claude/rules/handover_framing.md`](../.claude/rules/handover_framing.md)
+(≤ 100 lines hard limit; driving doc; no log accumulation; no
+forecast tables; no stop-rationalisation phrases). The current
+`.dev/handover.md` is the canonical shape — start from a copy of
+it (sections: cold-start reading order / current state / active
+task / next phase queue / open questions) and shrink to fit the
+session's actual state.
 
 #### `.dev/known_issues.md` — when the first long-lived issue surfaces
 

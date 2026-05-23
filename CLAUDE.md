@@ -282,6 +282,8 @@ zig fmt src/           # format
   phase plan. **Single source of truth**; if anything in this file
   conflicts with the roadmap, the roadmap wins.
 - [`.dev/handover.md`](.dev/handover.md) — short, mutable, current state.
+  Framing per [`.claude/rules/handover_framing.md`](.claude/rules/handover_framing.md)
+  (≤ 100 lines; driving doc, not session log).
 - [`.dev/decisions/`](.dev/decisions/) — ADRs (load-bearing decisions).
   Phase 4 entry batch: ADR-0004 through ADR-0024 (Day-1 enums, dual
   backend, Wasm defer, TypeDescriptor, protocol unify, heap-only lock,

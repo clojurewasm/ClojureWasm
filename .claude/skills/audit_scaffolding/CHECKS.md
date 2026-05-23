@@ -57,6 +57,18 @@ Severity: **block** for any MISSING.
 
 Severity: **block** on mismatch.
 
+### A5b. handover.md framing compliance (per `.claude/rules/handover_framing.md`)
+
+```sh
+wc -l .dev/handover.md                       # ≤ 100 lines
+grep -nE 'コンテキスト圧があるため|キリがいい|自然な区切り|natural break|good stopping point|この辺で一旦停止|Phase boundary reached AND|If above ~60%|context budget|/compact' .dev/handover.md
+grep -c '^## Just landed' .dev/handover.md   # ≤ 1
+grep -nE '^## Future .* shopping list|^## Notes for the next session' .dev/handover.md
+```
+
+Severity: **block** on length > 100, forbidden phrase hit, `Just
+landed` count > 1, or any forbidden structural pattern.
+
 ### A6. ROADMAP / SKILL / CLAUDE references to files that exist
 
 ```sh
@@ -82,6 +94,8 @@ wc -l CLAUDE.md README.md .dev/ROADMAP.md .dev/README.md \
 
 Soft limits (rule of thumb):
 - `CLAUDE.md`: ~100 lines (always loaded; bigger = context cost)
+- `.dev/handover.md`: **hard 100-line limit** per
+  [`handover_framing.md`](../../rules/handover_framing.md)
 - `.claude/rules/*.md`: ~200 lines each
 - `.claude/skills/*/SKILL.md`: ~150 lines each (split body into adjacent files)
 - `.dev/ROADMAP.md`: ~1500 lines (reference doc, can be large)

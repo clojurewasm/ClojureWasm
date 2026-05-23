@@ -1,314 +1,71 @@
 # Session handover
 
-> Read this at session start. Update at session end (1–2 lines).
-> Mutable, current-state only. Authoritative plan is `.dev/ROADMAP.md`.
-> The `progress.txt` shape is intentional: future-Claude reads this in
-> a fresh context window and must understand the state in < 30 seconds.
+> ≤ 100 lines. Driving doc; framing per
+> [`.claude/rules/handover_framing.md`](../.claude/rules/handover_framing.md).
+> Updated at session end; reads in < 30 sec at cold start.
 
 ## Next 3 files to read (cold-start order)
 
 1. `.dev/handover.md` (this file)
-2. `.dev/ROADMAP.md` — find the IN-PROGRESS phase in §9, then its
-   expanded `§9.<N>` task list; pick up the first `[ ]` task.
-3. The chapter file most recently added under `docs/ja/learn_clojurewasm/` — to recover
-   the conceptual baseline for the active phase.
+2. `.dev/ROADMAP.md` — find IN-PROGRESS phase in §9, take the
+   first `[ ]` row in §9.<N>.
+3. The most recent `docs/ja/learn_clojurewasm/NNNN_*.md` chapter —
+   to recover the conceptual baseline for the active phase.
 
 ## Current state
 
-- **Phase**: **Phase 3 DONE; Phase 4 IN-PROGRESS, §9.6 OPEN.**
-  Phase-4-entry scaffolding wave landed 2026-05-23: 21 new ADRs
-  (0004-0024; ADR-0018 amended twice for Error catalog SSOT,
-  ADR-0019 Crash policy, ADR-0020 ADR governance,
-  ADR-0021 Test taxonomy, ADR-0022 Differential wiring,
-  ADR-0023 Comptime stub, ADR-0024 Scan framework + run_step;
-  ADR-0015 amend 1 Two-tier strategy, ADR-0016 amend 1 promoted
-  to Accepted with zwasm evidence), 13 new rules
-  (`error_catalog_only.md`, `test_taxonomy.md`,
-  `exploration_vs_done.md`, `plan_revision_thinking.md` added),
-  `.dev/principle.md` (project-wide principles + Bad Smell
-  catalogue, the meta layer above ROADMAP / ADRs; SSOT for
-  plan-vs-reality revision triggered from
-  `continue/SKILL.md` Step 1 / Step 4 / Step 6),
-  `src/runtime/error_catalog.zig` (~280 lines including tests;
-  the file ships under the original 28-Code names and will be
-  reshaped in task 4.26 per ADR-0018 amendment 2),
-  8 new scripts + `.githooks/pre-push`,
-  4 new `.dev/` files (`debt.md`, `reference_clones.md`,
-  `lessons/INDEX.md`, `compat_tiers.yaml`), 4 skill modifications
-  (per-task TDD loop spec moved into CLAUDE.md § Autonomous
-  Workflow; continue/SKILL.md is now the thin invocation trigger;
-  Step 0.5 debt sweep, audit two-tier triggers,
-  big-bang regeneration policy), `.claude/settings.json` PostCompact
-  + Edit\|Write hooks, ROADMAP §1.4 / §A10-A25 / §3.2 / §6.0 / §9.6
-  4.0-4.26.f / §9.7-§9.19 placeholders (flip task rows for
-  `build_options.phase_at_least_N`) / §11.7 / §14 / §17.4
-  amendments. A25 ("Existing code is mutable") +
-  ADR-0007 / 0008 / 0009 / 0010 / 0015 / 0017 migration-note
-  amendments make skeleton-activation rewrite an expected design
-  step, not debt. All §9.5 / 3.1–3.14
-  cells `[x]`, paired through chapter 0020 (`cc46a48`). 🔒 OrbStack
-  x86_64 gate PASSED 2026-04-27 (pre-scaffolding state). Next
-  re-run after Phase 4 entry commits.
-- **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived).
-- **Last paired chapter commit**: `cc46a48` (0020 — Phase 3 の閉幕)
-  covering all of `772ebcf` `28c2bc3` `c16380f` `99efd07` `a1a70aa`
-  `f725f58` `22881a1` `8e63134` `399cb31` `4ad8270` (3.8–3.14 + meta
-  + simplify pass, ten SHAs in one chapter to satisfy the gate's
-  "every unpaired SHA since the last doc" rule).
-- **Unpaired source SHAs awaiting chapter**: none.
-- **Build**: `bash test/run_all.sh` all green on **both Mac
-  (aarch64-darwin) and OrbStack Ubuntu x86_64** —
-  `zig build test`, `zone_check --gate`,
-  `test/e2e/phase2_exit.sh` (3/3),
-  `test/e2e/phase3_cli.sh` (30/30 — cases 24–30 cover loop/recur,
-  try/throw/catch, finally side-effect, lexical closure, bootstrap
-  `not`, `defn` macro single+multi-body),
-  `test/e2e/phase3_exit.sh` (2/2 — Phase-3 exit smoke).
-  Mac runs additionally pass `zig build lint -- --max-warnings 0`
-  (zlinter Phase A+B: `no_deprecated`, `no_orelse_unreachable`,
-  `no_empty_block`, `no_unused`; ADR-0003).
-- **End-to-end error rendering activated** (3.1–3.4):
-  `cljw -e '(+ 1 :foo)'` prints `<-e>:1:0: type_error [eval]\n
-  (+ 1 :foo)\n  ^\n+: expected number, got keyword`. Reader /
-  Analyzer / TreeWalk + primitives all route through `setErrorFmt`.
-- **Heap collection Values activated** (3.5–3.6):
-  `cljw -e '"hello"'` → `"hello"`. `cljw - <<<'(quote (1 :a "b"))'`
-  → `(1 :a "b")`. `(quote ())` → `nil` (deviation from JVM Clojure;
-  see private/notes/phase3-3.6.md for the Phase 8+ follow-up).
-- **Bootstrap macros activated (3.7)**: `let / when / cond / -> /
-  ->> / and / or / if-let / when-let` expand at analyse time via
-  `eval/macro_dispatch.Table` (Layer 1) populated by
-  `lang/macro_transforms.registerInto` (Layer 2). **`Runtime.vtable
-  .expandMacro` was removed** — macro expansion is no longer a
-  backend concern (ADR 0001). `Runtime` gained
-  `gensym(arena, prefix)` for hygienic auto-symbols.
+- **Phase**: Phase 4 IN-PROGRESS. §9.6 cluster A done
+  (tasks 4.1 / 4.2 / 4.3); critical-path entry done (4.0 / 4.0a).
+- **Branch**: `cw-from-scratch` (long-lived; v0.5.0-derived;
+  push free after gate green; never push to `main`).
+- **Last commit**: `b09b54e` (autonomous-workflow spec revision —
+  closed 3-condition stop list, dropped Step 8 compact gate).
+- **Gate**: Mac (9/9) + OrbStack Ubuntu x86_64 (8/8) green at
+  `b09b54e`. 🔒 fresh OrbStack run due at Phase 4 close.
+- **Last paired chapter commit**: `cc46a48` (chapter 0020 —
+  Phase 3 closure, covers §9.5 / 3.8–3.14).
+- **Unpaired source SHAs**: `git log cc46a48..HEAD --oneline -- src/`
+  (compute on resume; chapter pairing decision is per the
+  `code_learning_doc` skill's two-cadence rule).
 
-## In-flight work
+## Active task — §9.6 / 4.4
 
-なし。Cluster A 全 3 タスク + critical path 先頭 2 タスクを
-2026-05-23 完了:
-- §9.6 / 4.0  (b5ddc0c) — bench/quick.sh 5 fixtures
-- §9.6 / 4.0a (e4e079e) — build_options phase_at_least_N comptime bools
-- §9.6 / 4.1  (bc8db41) — analyzer loop*/recur u16 bound-check
-- §9.6 / 4.2  (62118dd) — uniform errdefer across 4 heap alloc paths
-- §9.6 / 4.3  (pending SHA) — expandAnd/Or non-recursive
-
-次は critical path 続行 §9.6 / 4.4 (Opcode enum + BytecodeChunk) か、
-cluster B の §9.6 / 4.13 (io_interface) / 4.14 (debt populate) /
-4.15 (compat_tiers expansion) / 4.20 (host/) のいずれか。VM 群
-(4.4-4.12) は逐次依存があるため、cluster B の独立タスクを先に
-拾える。
-
-## Active task — §9.6 / 4.4 (next, critical path)
-
-`src/eval/backend/vm/opcode.zig` を新規作成し、Opcode enum
-(`op_const` / `op_load_local` / `op_store_local` / `op_def` /
-`op_get_var` / `op_jump` / `op_jump_if_false` / `op_call` / `op_ret`
-/ `op_pop` / `op_dup` / `op_throw` / `op_make_fn` / `op_recur` /
+`src/eval/backend/vm/opcode.zig` (new file) — Opcode enum
+(`op_const`, `op_load_local`, `op_store_local`, `op_def`,
+`op_get_var`, `op_jump`, `op_jump_if_false`, `op_call`, `op_ret`,
+`op_pop`, `op_dup`, `op_throw`, `op_make_fn`, `op_recur`,
 `op_invoke_builtin`) + `BytecodeChunk` struct + per-chunk constant
-pool を定義。Phase 4 critical path の VM 開始点。
+pool. Critical-path VM start point — 4.4 → 4.5 (compiler) → 4.6
+(dispatch loop) → 4.7 (Phase-3 special forms) → … → 4.12 (exit
+smoke).
 
 **Retrievable identifiers**:
-- ROADMAP §9.6 task 4.4。
-- 新規ファイル `src/eval/backend/vm/opcode.zig`。
-- ADR-0005 (dual backend strategy)、ADR-0022 (differential wiring)。
 
-## Just landed — §9.6 / 4.3
+- ROADMAP §9.6 task 4.4 + the dependency-graph section at §9.6.x.
+- ADR-0005 (dual backend strategy), ADR-0022 (differential
+  wiring), ADR-0024 (scan framework + run_step).
+- New file path: `src/eval/backend/vm/opcode.zig`.
 
-`src/lang/macro_transforms.zig::expandAnd` / `expandOr` を再帰展開
-(展開結果に `(and a1..aN)` を含める間接再帰) から、右端から左端へ
-acc を `buildShortCircuit` で 1-pass に巻き戻す non-recursive
-left-fold へ書き換え。`buildSelfCall` ヘルパー削除。10000-arg
-入力での StackOverflow 防御テスト 2 本追加 (and / or)。Mac (9/9)
-+ Linux (8/8) green。debt.md D-001 Discharged。詳細
-`private/notes/phase4-4.3.md`。
+## Next Phase Queue (Phase 5 entry — promote when §9.6 closes)
 
-## Just landed — §9.6 / 4.2
-
-`String.alloc` / `ExInfo.alloc` / `consHeap` / `allocFunction` の 4
-箇所に `errdefer rt.gpa.destroy(...)` 追加 (`gpa.create` 直後)、
-trackHeap 失敗時の struct leak を塞ぐ。各ファイルに
-`std.testing.checkAllAllocationFailures` ベースの failing-allocator
-test 1 本追加 (tree_walk の test は env layer leak を巻き込まない
-よう手作り FnNode で allocFunction を直接呼ぶ形)。Mac (9/9) +
-Linux (8/8) green。debt.md D-002 Discharged。詳細
-`private/notes/phase4-4.2.md`。env layer の findOrCreateNs leak
-(今回テスト副産物) は別 task で対処予定。
-
-## Just landed — §9.6 / 4.1
-
-`src/runtime/error_catalog.zig` に新 Code `analysis_arity_too_large`
-(template `"{[form]s} arity {[got]d} exceeds the limit of {[max]d}"`)、
-`src/eval/analyzer.zig` の `analyzeLoopStar` / `analyzeRecur` で
-`@intCast(u16)` 前に `> std.math.maxInt(u16)` を check し overflow
-時に `error_catalog.raise(.analysis_arity_too_large, ...)`。65537
-bindings / args の 2 unit test で回帰防御。Mac (9/9) + Linux (8/8)
-green。debt.md D-003 Discharged。詳細 `private/notes/phase4-4.1.md`。
-テスト中の入力は newline で各 pair を区切る (tokenizer の column
-が u16 で 262KB 1 行を扱えないため; 詳細は note 参照)。
-
-## Just landed — §9.6 / 4.0a
-
-`build.zig` に `b.addOptions(...)` で `build_options.phase_at_least_5
-/_7/_11/_14/_15/_17` の 6 comptime bool を追加 (全部 `false`)、
-`exe_mod.addOptions("build_options", ...)` で公開。`src/main.zig` に
-型・値を確認する `test "build_options exposes phase_at_least_N ..."`
-を追加。Mac (9/9) + Linux (8/8) green。ADR-0023 Pattern A の
-scaffolding 完了。Phase 5 / 7 / 11 / 14 / 15 / 17 開始時、対応 bool
-を `true` に flip するだけで real module の import が活性化する。
-詳細 `private/notes/phase4-4.0a.md`。
-
-## Just landed — §9.6 / 4.0
-
-`bench/fixtures/{fib_recursive, arith_loop, list_build, quote_chain,
-let_chain}.clj` 5 本、`bench/quick.sh` の TODO(phase4) 埋め、
-`test/run_all.sh` に `bench_quick` を `optional` 配線
-(commits b5ddc0c + cfe2ac8)。Phase 4 entry の primitive 制約は
-`private/notes/phase4-4.0.md` 参照 (`loop*`, forward-decl recursion,
-integer-leaf quote chain)。
-
-**Phase 4 task list (4.0 - 4.26.f, expanded by ADR-0004 through 0024)**:
-
-- 4.0-4.12: bench harness, errdefer + bound check fixes, Opcode enum,
-  VM compiler / dispatch / Phase-3 special forms, backend gate,
-  dual-backend run, `Evaluator.compare()` CI mandatory, phase4_cli,
-  exit smoke (the original V2 task set).
-- 4.13: `io_interface.zig` Zone 0 vtable (ADR-0015).
-- 4.14: `.dev/debt.md` operationalize.
-- 4.15: `compat_tiers.yaml` expansion (full clojure.core + 40
-  host_classes).
-- 4.16: Wasm FFI removal (ADR-0006).
-- 4.17: `TypeDescriptor` skeleton (ADR-0007).
-- 4.18: Protocol dispatch table skeleton (ADR-0008).
-- 4.19: Object header `u32 gc_and_lock` packed slot (ADR-0009).
-- 4.20: `src/runtime/host/` directory + `_host_api.zig` (ADR-0011).
-- 4.21: `deftype` / `defrecord` / `reify` / `definterface` analyzer
-  recognition with structured compile error (ADR-0007).
-- 4.22: `binding_stack.zig` with `threadlocal var dval_top`
-  (real impl from Phase 2-3 onward).
-- 4.23: `numeric/big_int.zig` struct (no arithmetic yet).
-- 4.24: `lazy_seq.zig` struct (no `force()` yet).
-- 4.25: `dispatch/method_table.zig` structs (no `dispatch()` yet).
-- 4.0a: `build.zig` `build_options.phase_at_least_N` bool group
-  (Phase 5 / 7 / 11 / 14 / 15 / 17). Scaffolding for ADR-0023
-  comptime conditional imports. Tasks 4.17 / 4.19 / 4.22-4.25
-  depend on it.
-- 4.26.a-f: Error system migration, now six independent task rows
-  (a) 28 Code rename / (b) Tier D 5 per-form Codes / (c)
-  `Error` → `ClojureWasmError` rename / (d) ~116 setErrorFmt
-  migration by region / (e) @panic / unreachable audit / (f)
-  main() top-level catch + exit codes 0 / 1 / 70 / 130.
-
-## Next Phase Queue (Phase 5 entry)
-
-When Phase 4 closes, promote these to §9.7 task table per
-CLAUDE.md § Autonomous Workflow "When the current phase's task
-queue empties":
-
-- HAMT persistent vector (per ADR-0007 / JVM_TO_ZIG §10)
-- HAMT persistent hashmap + hashset
+- HAMT persistent vector / hashmap / hashset (per ADR-0007 +
+  `private/JVM_TO_ZIG.md` §10).
 - Mark-sweep GC `GcHeap.collect` + roots + threshold trigger (per
-  ADR-0017 / JVM_TO_ZIG §3)
-- Object header bit helpers `cmpxchgLockBits` etc. (per
-  ADR-0009 + D-020)
-- `LazySeq.force()` + trampoline + thread-safe realisation (per
-  JVM_TO_ZIG §9; uses ADR-0009 object-header bit helpers for
-  thread-safe init; activates task 4.24 skeleton)
-- BigInt arithmetic + promotion (per ADR-0012 + JVM_TO_ZIG §12,
-  activates task 4.23 skeleton)
-- `TypeDescriptor.lookupMethod` + `register` + `new`; deftype /
-  defrecord / reify activation (per ADR-0007 + task 4.17 / 4.21)
-- `flip build_options.phase_at_least_5 = true` (per ADR-0023 +
-  task 4.0a)
-
-## Future ADR shopping list (recall trigger via debt.md D-021)
-
-| Future ADR | Title                                       | Trigger Phase         | Reference                                                    |
-|------------|---------------------------------------------|-----------------------|--------------------------------------------------------------|
-| ADR-0025   | Upstream skip taxonomy                      | Phase 11 entry        | ADR-0021 deferred-layer table; `test/clj/skip_taxonomy.yaml` |
-| ADR-0026   | Golden snapshot framework                   | Phase 7+              | ADR-0021 deferred-layer table                                |
-| ADR-0027   | bench/history.yaml schema                   | Phase 8 lock baseline | ROADMAP §10.1                                               |
-| ADR-0028   | State machine domain (REPL / nREPL / build) | Phase 14+             | Pollaroid INSIGHTS §2                                       |
-
-**Boundary-chain artefacts (just landed, this session)**:
-- Chapter 0020 covers 3.8–3.14 + meta in 1075 lines (`cc46a48`).
-- Simplify apply-now (`4ad8270`) shipped.
-- `private/` cleaned of absorbed strategic dumps; `audit` and
-  `continue` no longer treat `private/` as authoritative
-  (`e3de44f`).
-- §9.6 expanded inline in ROADMAP (this commit).
-
-**Phase 4 entry scaffolding (just landed, this commit batch)**:
-
-- 14 new ADRs (`.dev/decisions/0004` through `0017`) + retroactive
-  Revision history added to ADR-0001/2/3 to satisfy
-  `scripts/check_adr_history.sh`.
-- 9 new `.claude/rules/` files in the entry batch; subsequent
-  amendments brought the total to 19 rules.
-- 8 new `scripts/` files + `.githooks/pre-push` zone gate.
-- 4 new `.dev/` files: `debt.md`, `reference_clones.md`,
-  `lessons/INDEX.md`, plus `compat_tiers.yaml` at repo root.
-- 4 skill modifications: continue skill now delegates loop spec
-  to CLAUDE.md § Autonomous Workflow (Step 0-8 + Stop ONLY /
-  Do NOT stop / When in doubt). SKILL.md is the thin trigger.
-  Step 0.5 debt sweep,
-  Step 0.5 + Step 1a, `audit_scaffolding/SKILL.md` two-tier
-  triggers, `code_learning_doc/SKILL.md` big-bang regeneration
-  policy.
-- `.claude/settings.json` PostCompact + Edit\|Write hooks.
-- ROADMAP amendments (§1.4 / §A10-A24 / §3.2 / §6.0 / §9.6
-  4.0-4.26.f / §11.7 / §14 per-row predicate / §17.4).
-
-**Open questions / deferred (from DECISIONS_V2)**:
-
-- v0.1.0 deliverable specification (minimum success criterion within
-  Tier A) — finalized in Phase 11+; the SemVer rule (§1.4) holds
-  independently.
-- ValueTag enum slot design — ADR-0012 selected Option A (3 slot).
-  Open for revisit during Phase 5 implementation if Option B
-  measurements emerge.
-- D02-D30 follow-up propagation (numeric tower BigDecimal Tier B,
-  exception `:type` keyword, multimethod + TypeDescriptor, protocol
-  + TypeDescriptor) — Phase 5-7 individual ADR amendments.
-
-**Post-3.11 small cleanup queued** (not blocking, picked up in §9.6
-or later):
-- Split `test/e2e/phase3_cli.sh` into `cli_entry.sh` (CLI plumbing
-  only — 6 cases: -e / file / stdin / unknown flag / missing file /
-  error label) and `lang_smoke.sh` (language semantics — macros /
-  ex_info / try-catch / loop). Phase 11 will then mechanically
-  migrate `lang_smoke.sh` cases to `test/clj/lang_smoke_test.clj`
-  (`clojure.test` deftest) without touching `cli_entry.sh`. Wire
-  both into `run_all.sh` to keep the single-entry rule intact.
+  ADR-0017; activates skeletons from task 4.0a flip of
+  `phase_at_least_5`).
+- Object header bit helpers `cmpxchgLockBits` / mark-bit ops (per
+  ADR-0009 + debt `D-020`).
+- `LazySeq.force()` + trampoline (per `JVM_TO_ZIG.md` §9; activates
+  task 4.24 skeleton).
+- BigInt arithmetic + promotion (per ADR-0012; activates task
+  4.23 skeleton).
+- `TypeDescriptor.lookupMethod` / `register` / `new`; deftype /
+  defrecord / reify activation (per ADR-0007 + tasks 4.17 / 4.21).
+- Flip `build_options.phase_at_least_5 = true` (per ADR-0023 +
+  task 4.0a).
 
 ## Open questions / blockers
 
-(none — §9.6 task list is the next concrete work)
-
-## Notes for the next session
-
-- Skill `continue` (`.claude/skills/continue/SKILL.md`) handles
-  "続けて" / "/continue" / "resume". It auto-triggers on those phrases
-  and drives a Step 0 (Survey) → Step 7 (per-task note) → next
-  task's Step 0 loop with multi-agent fan-out at phase boundaries.
-  Auto-compaction is system-handled; the loop has no compact gate.
-  Stops only per the closed 3-condition list in CLAUDE.md
-  § Autonomous Workflow.
-- Skill `code_learning_doc` is **two-cadence**: per-task notes
-  (private, gitignored) and per-concept chapters (`docs/ja/learn_clojurewasm/NNNN_*.md`,
-  gated). Use `TEMPLATE_TASK_NOTE.md` and `TEMPLATE_PHASE_DOC.md`. Do
-  **not** revert to the old "diary per phase" shape.
-- Skill `audit_scaffolding` runs at every Phase boundary or every ~10
-  chapters. Section F covers per-task note volume and audit-report
-  cadence only — not strategic-note adoption (that belongs in
-  ROADMAP / ADR / `docs/ja/` / handover, never in gitignored
-  `private/`).
-- Rule `.claude/rules/textbook_survey.md` — auto-loaded on
-  `src/**/*.zig`; defines the Step 0 brief and the four anti-pull
-  guardrails.
-- The 🔒 marker on Phase 4 (and 5 / 8 / 14 / 15) means a fresh
-  OrbStack x86_64 gate is due at that phase boundary. The gate is
-  **agent-runnable** via the Bash tool:
-  `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` (set
-  Bash timeout ≥ 600s for cold builds). Setup, iteration loop, and
-  gate integration are documented in `.dev/orbstack_setup.md`.
+None. External blockers, recall triggers, and follow-up
+candidates live in [`debt.md`](./debt.md) (rows `D-005` through
+`D-026`). The resume Step 0.5 debt sweep walks them.
