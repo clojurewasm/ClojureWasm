@@ -300,6 +300,52 @@ pub fn pop(rt: *Runtime, v: Value) !Value {
     return try newVector(rt, old.count - 1, new_shift, new_root, new_tail, old.meta);
 }
 
+/// Replace the element at `i` with `x`. Per clojure JVM `assocN`:
+///   - `i == count` is equivalent to `conj` (append semantics)
+///   - `i in [0, tailoff)` walks root, copy-on-writes the path
+///   - `i in [tailoff, count)` copies tail with slot[i - tailoff] = x
+///   - `i > count` returns `error.AssocOutOfBounds` (Clojure's
+///     IndexOutOfBoundsException maps to a runtime error catalog
+///     Code at the analyzer level later)
+pub fn assoc(rt: *Runtime, v: Value, i: u32, x: Value) !Value {
+    std.debug.assert(v.tag() == .vector);
+    const old = v.decodePtr(*const Vector);
+    if (i == old.count) return try conj(rt, v, x);
+    if (i > old.count) return error.AssocOutOfBounds;
+
+    if (i >= tailoff(old.count)) {
+        const tail_size = if (old.tail) |t| t.len else 0;
+        const new_tail = try rt.gc.alloc(TailNode);
+        new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_size };
+        @memcpy(new_tail.slots[0..tail_size], old.tail.?.slots[0..tail_size]);
+        new_tail.slots[i - tailoff(old.count)] = x;
+        return try newVector(rt, old.count, old.shift, old.root, new_tail, old.meta);
+    }
+
+    // In-root path: recursive copy-on-write descent.
+    const new_root = try assocInRoot(rt, old.shift, old.root.?, i, x);
+    return try newVector(rt, old.count, old.shift, new_root, old.tail, old.meta);
+}
+
+/// Recursive helper for assoc's in-root path. Copy-on-write descent:
+/// duplicate the node at each level, overwrite the slot on the path
+/// to `i`, recurse until shift==0 then overwrite the leaf slot.
+fn assocInRoot(rt: *Runtime, level: u32, node: *const HamtNode, i: u32, x: Value) !*HamtNode {
+    const dup = try rt.gc.alloc(HamtNode);
+    dup.* = .{ .header = HeapHeader.init(.hamt_node) };
+    @memcpy(&dup.slots, &node.slots);
+
+    if (level == 0) {
+        dup.slots[i & MASK] = x;
+        return dup;
+    }
+    const sub_index = (i >> @as(u5, @intCast(level))) & MASK;
+    const child = node.slots[sub_index].decodePtr(*const HamtNode);
+    const new_child = try assocInRoot(rt, level - SHIFT_BITS, child, i, x);
+    dup.slots[sub_index] = Value.encodeHeapPtr(.hamt_node, new_child);
+    return dup;
+}
+
 /// Allocate a new Vector with the given fields. Helper to keep conj /
 /// pop / assoc bodies tight.
 fn newVector(
@@ -628,6 +674,54 @@ test "pop on empty: returns error.PopEmpty" {
     defer fix.deinit();
 
     try testing.expectError(error.PopEmpty, pop(&fix.rt, empty()));
+}
+
+test "assoc in-tail: replaces slot, preserves count" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var v = empty();
+    for (0..5) |i| v = try conj(&fix.rt, v, Value.initInteger(@intCast(i)));
+    const v2 = try assoc(&fix.rt, v, 2, Value.initInteger(99));
+
+    try testing.expectEqual(@as(u32, 5), count(v2));
+    try testing.expectEqual(@as(i48, 99), nth(v2, 2).asInteger());
+    try testing.expectEqual(@as(i48, 1), nth(v2, 1).asInteger()); // adjacent unchanged
+    try testing.expectEqual(@as(i48, 2), nth(v, 2).asInteger()); // original unchanged
+}
+
+test "assoc in-root: copy-on-write path to leaf, structural sharing of siblings" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var v = empty();
+    for (0..100) |i| v = try conj(&fix.rt, v, Value.initInteger(@intCast(i)));
+    const v2 = try assoc(&fix.rt, v, 0, Value.initInteger(-1));
+
+    try testing.expectEqual(@as(u32, 100), count(v2));
+    try testing.expectEqual(@as(i48, -1), nth(v2, 0).asInteger());
+    try testing.expectEqual(@as(i48, 99), nth(v2, 99).asInteger());
+    try testing.expectEqual(@as(i48, 0), nth(v, 0).asInteger()); // immutable
+}
+
+test "assoc at count = conj (append semantics)" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var v = empty();
+    for (0..3) |i| v = try conj(&fix.rt, v, Value.initInteger(@intCast(i)));
+    const v2 = try assoc(&fix.rt, v, 3, Value.initInteger(99));
+
+    try testing.expectEqual(@as(u32, 4), count(v2));
+    try testing.expectEqual(@as(i48, 99), nth(v2, 3).asInteger());
+}
+
+test "assoc out-of-bounds: returns error.AssocOutOfBounds" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    const v = try conj(&fix.rt, empty(), Value.initInteger(1));
+    try testing.expectError(error.AssocOutOfBounds, assoc(&fix.rt, v, 5, Value.nil_val));
 }
 
 test "nth in-root path: handcrafted shift=5 vector with 33 elements" {
