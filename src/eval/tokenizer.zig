@@ -24,6 +24,12 @@ pub const TokenKind = enum(u8) {
 
     integer,
     float,
+    /// `42N` — arbitrary-precision integer literal. Token text includes
+    /// the trailing `N`; the reader strips it before parsing.
+    big_int_literal,
+    /// `1.5M` — arbitrary-precision decimal literal. Token text includes
+    /// the trailing `M`; the reader strips it before parsing.
+    big_decimal_literal,
     string,
     symbol,
     keyword,
@@ -172,13 +178,17 @@ pub const Tokenizer = struct {
             while (self.pos < self.source.len and isDigit(self.source[self.pos])) self.advance();
         }
 
-        // Phase 1 treats the BigInt `N` and BigDecimal `M` suffixes as
-        // ordinary int / float; the analyzer will round-trip them later.
+        // Phase 5.10.d: BigInt `N` and BigDecimal `M` suffixes get
+        // their own token kinds so the reader can parse them via
+        // std.math.big.int.Managed.setString (lossless) instead of
+        // i64 / f64 parse (lossy on overflow).
         if (self.pos < self.source.len and self.source[self.pos] == 'N') {
             self.advance();
-        } else if (self.pos < self.source.len and self.source[self.pos] == 'M') {
-            is_float = true;
+            return self.makeToken(.big_int_literal, start, start_line, start_col);
+        }
+        if (self.pos < self.source.len and self.source[self.pos] == 'M') {
             self.advance();
+            return self.makeToken(.big_decimal_literal, start, start_line, start_col);
         }
 
         return self.makeToken(if (is_float) .float else .integer, start, start_line, start_col);

@@ -22,6 +22,12 @@ pub const FormData = union(enum) {
     boolean: bool,
     integer: i64,
     float: f64,
+    /// `42N`. The string slice is the digits without the trailing `N`,
+    /// i.e. exactly what `std.math.big.int.Managed.setString` accepts.
+    big_int_literal: []const u8,
+    /// `1.5M`. The string slice is the decimal representation without
+    /// the trailing `M`. Analyzer parses it into unscaled + scale.
+    big_decimal_literal: []const u8,
     string: []const u8,
 
     symbol: SymbolRef,
@@ -46,6 +52,8 @@ pub const Form = struct {
             .boolean => "boolean",
             .integer => "integer",
             .float => "float",
+            .big_int_literal => "big_int_literal",
+            .big_decimal_literal => "big_decimal_literal",
             .string => "string",
             .symbol => "symbol",
             .keyword => "keyword",
@@ -71,6 +79,8 @@ pub const Form = struct {
             .boolean => |b| try w.writeAll(if (b) "true" else "false"),
             .integer => |i| try w.print("{d}", .{i}),
             .float => |f| try formatFloat(w, f),
+            .big_int_literal => |s| try w.print("{s}N", .{s}),
+            .big_decimal_literal => |s| try w.print("{s}M", .{s}),
             .string => |s| try formatString(w, s),
             .symbol => |sym| {
                 if (sym.ns) |ns| {

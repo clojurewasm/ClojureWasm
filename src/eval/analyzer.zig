@@ -46,6 +46,8 @@ const Var = env_mod.Var;
 const keyword = @import("../runtime/keyword.zig");
 const string_collection = @import("../runtime/collection/string.zig");
 const list_collection = @import("../runtime/collection/list.zig");
+const big_int = @import("../runtime/numeric/big_int.zig");
+const big_decimal = @import("../runtime/numeric/big_decimal.zig");
 const error_mod = @import("../runtime/error/info.zig");
 const error_catalog = @import("../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
@@ -210,6 +212,8 @@ pub fn analyze(
         .boolean => |b| try makeConstant(arena, if (b) .true_val else .false_val, form),
         .integer => |i| try makeConstant(arena, Value.initInteger(i), form),
         .float => |f| try makeConstant(arena, Value.initFloat(f), form),
+        .big_int_literal => |s| try makeConstant(arena, try parseBigIntLiteral(rt, s, form.location), form),
+        .big_decimal_literal => |s| try makeConstant(arena, try parseBigDecimalLiteral(rt, s, form.location), form),
         .keyword => |sym| {
             const v = try keyword.intern(rt, sym.ns, sym.name);
             return try makeConstant(arena, v, form);
@@ -228,6 +232,61 @@ pub fn analyze(
 }
 
 // --- Helpers ---
+
+/// Parse `42N`-style digits into a BigInt Value via Managed.setString.
+/// Used by both the atom-analyzer path and the quote-lift path.
+fn parseBigIntLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
+    var m = try std.math.big.int.Managed.init(rt.gc.infra);
+    defer m.deinit();
+    m.setString(10, digits) catch
+        return error_catalog.raise(.integer_literal_invalid, loc, .{ .text = digits });
+    return try big_int.allocFromManaged(rt, &m);
+}
+
+/// Parse `1.5M`-style digits into a BigDecimal Value. The unscaled
+/// integer is the input with the decimal point removed; the scale is
+/// the number of digits after the dot.
+fn parseBigDecimalLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
+    // Locate the decimal point if any. JVM accepts `1M`, `1.5M`, and
+    // exponent `1.5e3M` — the latter is left as a debt row.
+    var dot_pos: ?usize = null;
+    for (digits, 0..) |c, idx| {
+        if (c == '.') {
+            dot_pos = idx;
+            break;
+        }
+    }
+
+    // Build unscaled by concatenating the pre-dot and post-dot digit
+    // runs into a scratch buffer, then setString.
+    var buf: [256]u8 = undefined;
+    var buf_len: usize = 0;
+    var scale: i32 = 0;
+    if (dot_pos) |p| {
+        const pre = digits[0..p];
+        const post = digits[p + 1 ..];
+        if (pre.len + post.len > buf.len) {
+            return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+        }
+        std.mem.copyForwards(u8, buf[0..pre.len], pre);
+        std.mem.copyForwards(u8, buf[pre.len .. pre.len + post.len], post);
+        buf_len = pre.len + post.len;
+        scale = @intCast(post.len);
+    } else {
+        if (digits.len > buf.len) {
+            return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+        }
+        std.mem.copyForwards(u8, buf[0..digits.len], digits);
+        buf_len = digits.len;
+    }
+
+    var unscaled = try std.math.big.int.Managed.init(rt.gc.infra);
+    defer unscaled.deinit();
+    unscaled.setString(10, buf[0..buf_len]) catch
+        return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+
+    return try big_decimal.allocFromManagedScale(rt, &unscaled, scale);
+}
 
 fn makeConstant(arena: std.mem.Allocator, v: Value, form: Form) !*const Node {
     const n = try arena.create(Node);
@@ -498,6 +557,8 @@ fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
         .boolean => |b| if (b) .true_val else .false_val,
         .integer => |i| Value.initInteger(i),
         .float => |f| Value.initFloat(f),
+        .big_int_literal => |s| try parseBigIntLiteral(rt, s, form.location),
+        .big_decimal_literal => |s| try parseBigDecimalLiteral(rt, s, form.location),
         .keyword => |sym| try keyword.intern(rt, sym.ns, sym.name),
         .string => |s| try string_collection.alloc(rt, s),
         .list => |items| try listFormToValue(rt, items),

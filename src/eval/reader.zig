@@ -80,6 +80,8 @@ pub const Reader = struct {
             .symbol => self.readSymbol(tok),
             .integer => self.readInteger(tok),
             .float => self.readFloat(tok),
+            .big_int_literal => self.readBigIntLiteral(tok),
+            .big_decimal_literal => self.readBigDecimalLiteral(tok),
             .string => self.readString(tok),
             .keyword => self.readKeyword(tok),
             .lparen => self.readList(tok),
@@ -107,22 +109,32 @@ pub const Reader = struct {
 
     fn readInteger(self: *Reader, tok: Token) ReadError!Form {
         const txt = tok.text(self.source);
-        var s = txt;
-        // Phase 1 accepts the BigInt `N` suffix syntactically without
-        // preserving precision — strip it before std.fmt parses.
-        if (s.len > 0 and s[s.len - 1] == 'N') s = s[0 .. s.len - 1];
-        const val = std.fmt.parseInt(i64, s, 0) catch
+        const val = std.fmt.parseInt(i64, txt, 0) catch
             return error_catalog.raise(.integer_literal_invalid, self.locOf(tok), .{ .text = txt });
         return Form{ .data = .{ .integer = val }, .location = self.locOf(tok) };
     }
 
     fn readFloat(self: *Reader, tok: Token) ReadError!Form {
         const txt = tok.text(self.source);
-        var s = txt;
-        if (s.len > 0 and s[s.len - 1] == 'M') s = s[0 .. s.len - 1];
-        const val = std.fmt.parseFloat(f64, s) catch
+        const val = std.fmt.parseFloat(f64, txt) catch
             return error_catalog.raise(.float_literal_invalid, self.locOf(tok), .{ .text = txt });
         return Form{ .data = .{ .float = val }, .location = self.locOf(tok) };
+    }
+
+    /// `42N` — keep the digit string without the trailing `N`. The
+    /// analyzer parses it into a BigInt via Managed.setString.
+    fn readBigIntLiteral(self: *Reader, tok: Token) ReadError!Form {
+        const txt = tok.text(self.source);
+        // Strip the trailing `N` (tokenizer guarantees it's there).
+        const digits = txt[0 .. txt.len - 1];
+        return Form{ .data = .{ .big_int_literal = digits }, .location = self.locOf(tok) };
+    }
+
+    /// `1.5M` — keep the decimal string without the trailing `M`.
+    fn readBigDecimalLiteral(self: *Reader, tok: Token) ReadError!Form {
+        const txt = tok.text(self.source);
+        const digits = txt[0 .. txt.len - 1];
+        return Form{ .data = .{ .big_decimal_literal = digits }, .location = self.locOf(tok) };
     }
 
     fn readString(self: *Reader, tok: Token) ReadError!Form {
@@ -368,6 +380,33 @@ test "atoms: nil / true / false / int / float / string / symbol / keyword" {
     const qkw = try ctx.read(":my.ns/bar");
     try testing.expectEqualStrings("my.ns", qkw.data.keyword.ns.?);
     try testing.expectEqualStrings("bar", qkw.data.keyword.name);
+}
+
+test "big_int_literal `42N` keeps digits without the suffix" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    const f = try ctx.read("42N");
+    try testing.expectEqualStrings("big_int_literal", f.typeName());
+    try testing.expectEqualStrings("42", f.data.big_int_literal);
+}
+
+test "big_decimal_literal `1.5M` keeps digits without the suffix" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    const f = try ctx.read("1.5M");
+    try testing.expectEqualStrings("big_decimal_literal", f.typeName());
+    try testing.expectEqualStrings("1.5", f.data.big_decimal_literal);
+}
+
+test "big_int_literal accepts values beyond i64 range (2^65)" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    const f = try ctx.read("36893488147419103232N"); // 2^65
+    try testing.expectEqualStrings("big_int_literal", f.typeName());
+    try testing.expectEqualStrings("36893488147419103232", f.data.big_int_literal);
 }
 
 test "string escape sequences and unicode" {
