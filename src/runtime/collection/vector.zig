@@ -346,6 +346,31 @@ fn assocInRoot(rt: *Runtime, level: u32, node: *const HamtNode, i: u32, x: Value
     return dup;
 }
 
+/// Slice a vector to `[start, end)`. Per clojure JVM `subvec`:
+///   - 0 ≤ start ≤ end ≤ count v (else error.SubvecOutOfBounds)
+///   - subvec v 0 (count v) is equivalent to v (we copy structurally
+///     anyway for simplicity; the result is a fresh Vector)
+///
+/// **5.4.d implementation choice**: eager copy via repeated `conj`.
+/// Lazy SubVector wrapper (clojure JVM's actual approach with
+/// structural sharing of the parent) is deferred to a Phase 7+
+/// follow-up — it requires a new SubVector type + Tag slot +
+/// polymorphic op dispatch, which is genuinely substantial. Eager
+/// copy is O(n) where n = end - start; typical subvec call sites
+/// (small ranges over large vectors) keep the cost bounded.
+/// Recorded as D-044 candidate at row 5.4 close handover.
+pub fn subvec(rt: *Runtime, v: Value, start: u32, end: u32) !Value {
+    std.debug.assert(v.tag() == .vector);
+    const old = v.decodePtr(*const Vector);
+    if (start > end or end > old.count) return error.SubvecOutOfBounds;
+    var out = empty();
+    var i: u32 = start;
+    while (i < end) : (i += 1) {
+        out = try conj(rt, out, nth(v, i));
+    }
+    return out;
+}
+
 /// Allocate a new Vector with the given fields. Helper to keep conj /
 /// pop / assoc bodies tight.
 fn newVector(
@@ -722,6 +747,56 @@ test "assoc out-of-bounds: returns error.AssocOutOfBounds" {
 
     const v = try conj(&fix.rt, empty(), Value.initInteger(1));
     try testing.expectError(error.AssocOutOfBounds, assoc(&fix.rt, v, 5, Value.nil_val));
+}
+
+test "subvec inner range: preserves slice values + new count" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var v = empty();
+    for (0..10) |i| v = try conj(&fix.rt, v, Value.initInteger(@intCast(i)));
+    const sv = try subvec(&fix.rt, v, 2, 7);
+
+    try testing.expectEqual(@as(u32, 5), count(sv));
+    try testing.expectEqual(@as(i48, 2), nth(sv, 0).asInteger());
+    try testing.expectEqual(@as(i48, 6), nth(sv, 4).asInteger());
+    try testing.expect(nth(sv, 5).isNil()); // out-of-bounds of subvec
+    // Parent unchanged
+    try testing.expectEqual(@as(u32, 10), count(v));
+}
+
+test "subvec full range: equivalent to original vector" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var v = empty();
+    for (0..5) |i| v = try conj(&fix.rt, v, Value.initInteger(@intCast(i)));
+    const sv = try subvec(&fix.rt, v, 0, count(v));
+
+    try testing.expectEqual(@as(u32, 5), count(sv));
+    for (0..5) |i| {
+        try testing.expectEqual(nth(v, @intCast(i)), nth(sv, @intCast(i)));
+    }
+}
+
+test "subvec empty range: returns empty vector" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var v = empty();
+    for (0..5) |i| v = try conj(&fix.rt, v, Value.initInteger(@intCast(i)));
+    const sv = try subvec(&fix.rt, v, 3, 3);
+
+    try testing.expectEqual(@as(u32, 0), count(sv));
+}
+
+test "subvec out-of-bounds: errors" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    const v = try conj(&fix.rt, empty(), Value.initInteger(1));
+    try testing.expectError(error.SubvecOutOfBounds, subvec(&fix.rt, v, 0, 5));
+    try testing.expectError(error.SubvecOutOfBounds, subvec(&fix.rt, v, 5, 0));
 }
 
 test "nth in-root path: handcrafted shift=5 vector with 33 elements" {
