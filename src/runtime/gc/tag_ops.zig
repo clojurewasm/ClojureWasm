@@ -2,15 +2,23 @@
 //! Per-Tag dispatch infrastructure for cw v1 mark-sweep GC + class
 //! system (ADR-0028 §4 + ADR-0027 §3 cross-reference).
 //!
-//! **Phase 5 row 5.2.b skeleton.** This file lands the empty
-//! infrastructure scaffold; the three Tag-indexed dispatch tables
-//! (`tag_descriptor_table` / `tag_trace_table` / `tag_finaliser_table`)
-//! are declared with all-null entries. §9.7 row 5.3 GC implementation
-//! owner fills the entries that have behaviour, picks between the
-//! "three parallel arrays" shape declared here vs the alternative
-//! `TagOps = struct { descriptor, trace, finaliser }` struct-of-arrays
-//! shape per ADR-0028 §4 main loop disposition (F-003 deferral on the
-//! shape choice).
+//! **Phase 5 row 5.2.b skeleton + 5.3.d.2 register helpers.** The
+//! three Tag-indexed dispatch tables (`tag_descriptor_table` /
+//! `tag_trace_table` / `tag_finaliser_table`) are declared as
+//! `pub var` with all-null defaults; per-Tag entries get filled at
+//! startup via the `register*` helpers below. §9.7 row 5.3 GC
+//! implementation owner chose "three parallel arrays" over the
+//! alternative `TagOps` struct-of-arrays shape per ADR-0028 §4 main
+//! loop disposition + F-003 deferral — parallel arrays match the
+//! existing call-site pattern `if (tag_finaliser_table[tag]) |f|
+//! f(header);` and survive future entry width changes
+//! independently per table.
+//!
+//! Registration is **idempotent** at the same (tag, fn) pair — Runtime
+//! tests construct multiple `Runtime` instances and each `Runtime.init`
+//! may re-register Layer 0 finalisers (strings / collections / etc.).
+//! Re-registering a different fn for the same tag is asserted against
+//! in debug builds as a programming error.
 //!
 //! No-behaviour-wired entries stay `null`; access sites use the
 //! pattern `if (tag_finaliser_table[tag]) |f| f(header);` so a missing
@@ -45,7 +53,7 @@ const HeapHeader = heap_header.HeapHeader;
 /// activation refines it to `?*const TypeDescriptor` once the
 /// descriptor struct's full layout is wired without forward-decl
 /// cycles.
-pub const tag_descriptor_table: [64]?*const anyopaque = @splat(null);
+pub var tag_descriptor_table: [64]?*const anyopaque = @splat(null);
 
 /// Per-HeapTag GC mark-phase trace function. Called by `gc.mark(value)`
 /// when descending into a heap object's outgoing pointers (ADR-0028 §5).
@@ -64,7 +72,9 @@ pub const tag_descriptor_table: [64]?*const anyopaque = @splat(null);
 /// data on `infra_alloc`). `null` is the safe default; missing-but-
 /// needed entries surface as live-leak symptoms in the bench harness
 /// at 5.3 onward.
-pub const tag_trace_table: [64]?*const fn (gc: *anyopaque, header: *HeapHeader) void = @splat(null);
+pub var tag_trace_table: [64]?*const fn (gc: *anyopaque, header: *HeapHeader) void = @splat(null);
+
+pub const TraceFn = *const fn (gc: *anyopaque, header: *HeapHeader) void;
 
 /// Per-HeapTag finaliser function. Called by sweep before unlink + free-
 /// pool push (ADR-0028 §4). May only `infra_alloc.free` or no-op;
@@ -89,7 +99,46 @@ pub const tag_trace_table: [64]?*const fn (gc: *anyopaque, header: *HeapHeader) 
 ///
 /// Phase 5 row 5.3 wires the entries that have known finalisers; the
 /// rest stay `null` until their owning Phase entry lands behaviour.
-pub const tag_finaliser_table: [64]?*const fn (header: *HeapHeader) void = @splat(null);
+pub var tag_finaliser_table: [64]?*const fn (header: *HeapHeader) void = @splat(null);
+
+pub const FinaliserFn = *const fn (header: *HeapHeader) void;
+
+/// Register a finaliser for `tag`. Idempotent at the same `fn_ptr` —
+/// re-registering the same function is a no-op (matches multi-
+/// `Runtime` semantics where each `Runtime.init` re-binds Layer 0
+/// finalisers). Re-registering a **different** function for the
+/// same tag is a programming error (asserted in debug builds).
+pub fn registerFinaliser(tag: HeapTag, fn_ptr: FinaliserFn) void {
+    const idx = @intFromEnum(tag);
+    if (tag_finaliser_table[idx]) |existing| {
+        const std = @import("std");
+        std.debug.assert(existing == fn_ptr);
+        return;
+    }
+    tag_finaliser_table[idx] = fn_ptr;
+}
+
+/// Register a per-tag trace function (called from `mark` to walk
+/// outgoing GC-managed pointers). Same idempotent semantics as
+/// `registerFinaliser`.
+pub fn registerTrace(tag: HeapTag, fn_ptr: TraceFn) void {
+    const idx = @intFromEnum(tag);
+    if (tag_trace_table[idx]) |existing| {
+        const std = @import("std");
+        std.debug.assert(existing == fn_ptr);
+        return;
+    }
+    tag_trace_table[idx] = fn_ptr;
+}
+
+/// Test-only: reset every table to all-null. Tests that exercise
+/// registration must call this in `defer` so they don't leak state
+/// across the test runner.
+pub fn resetForTest() void {
+    tag_descriptor_table = @splat(null);
+    tag_trace_table = @splat(null);
+    tag_finaliser_table = @splat(null);
+}
 
 // --- tests ---
 
@@ -101,10 +150,41 @@ test "tag_*_table arrays are 64 entries (heap-tag slot space)" {
     try testing.expectEqual(@as(usize, 64), tag_finaliser_table.len);
 }
 
-test "tag_*_table skeleton: all entries are null at Phase 5 row 5.2.b" {
+test "tag_*_table default: all entries are null before any registration" {
+    defer resetForTest();
+    resetForTest();
     for (tag_descriptor_table) |entry| try testing.expect(entry == null);
     for (tag_trace_table) |entry| try testing.expect(entry == null);
     for (tag_finaliser_table) |entry| try testing.expect(entry == null);
+}
+
+test "registerFinaliser sets the entry; re-registering same fn is idempotent" {
+    defer resetForTest();
+    const noop = struct {
+        fn f(_: *HeapHeader) void {
+            // Test-only no-op finaliser; production finalisers free
+            // owned slices (e.g. String.bytes) back to infra_alloc.
+        }
+    }.f;
+    registerFinaliser(.string, &noop);
+    try testing.expect(tag_finaliser_table[@intFromEnum(HeapTag.string)] != null);
+    // Re-register same fn — idempotent.
+    registerFinaliser(.string, &noop);
+    try testing.expect(tag_finaliser_table[@intFromEnum(HeapTag.string)] == &noop);
+}
+
+test "registerTrace sets the entry; re-registering same fn is idempotent" {
+    defer resetForTest();
+    const noop = struct {
+        fn f(_: *anyopaque, _: *HeapHeader) void {
+            // Test-only no-op trace; production tracers walk
+            // outgoing GC-managed pointers + call gc.mark on each.
+        }
+    }.f;
+    registerTrace(.fn_val, &noop);
+    try testing.expect(tag_trace_table[@intFromEnum(HeapTag.fn_val)] != null);
+    registerTrace(.fn_val, &noop);
+    try testing.expect(tag_trace_table[@intFromEnum(HeapTag.fn_val)] == &noop);
 }
 
 test "HeapTag enum integer indices fit the dispatch table bounds (0..63)" {
