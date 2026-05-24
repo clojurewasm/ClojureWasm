@@ -28,16 +28,19 @@ cw v0 NaN-box archaeology was surveyed at `private/notes/phase5-5.1-survey.md` (
 
 Bit allocation inside the quiet-NaN payload (51 payload bits):
 
-| Bits   | Field            | Width | Notes                                                                                              |
-|--------|------------------|-------|----------------------------------------------------------------------------------------------------|
-| 63..52 | quiet-NaN signal | 13    | `0xFFF8` band (sign + exp_all_one + quiet bit); same band cw v0 / cw v1 g1 used                    |
-| 50..49 | group            | 2     | 4 groups (A / B / C / D)                                                                           |
-| 48..45 | sub-type         | 4     | 16 sub-types per group → 64 slot total                                                            |
-| 44..0  | pointer payload  | 45    | shifted right by 3 (align-8 invariant) → 48-bit byte address = 256 TB (exceeds canonical user VA) |
+| Bits   | Field            | Width | Notes                                                                                                     |
+|--------|------------------|-------|-----------------------------------------------------------------------------------------------------------|
+| 63..51 | quiet-NaN signal | 13    | sign (1) + exp_all_one (11) + quiet (1); band selector `0xFFF8` … `0xFFFB` for heap groups A / B / C / D |
+| 50..49 | group            | 2     | 4 groups (A / B / C / D), low 2 bits of `0xFFFx` band (in top16 = bits 63..48)                            |
+| 48..45 | sub-type         | 4     | 16 sub-types per group → 64 heap slots total                                                             |
+| 44..1  | pointer payload  | 44    | shifted right by 3 (align-8 invariant) → 47-bit byte address = **128 TB user space** per F-004 decree    |
+| 0      | reserved         | 1     | reserved per F-004 implicit (51-bit payload − 2 group − 4 sub − 44 pointer = 1 residual). See note below. |
 
-Bit 51 is the quiet bit (always 1 for non-float Values); the remaining 51 bits of payload sit at 50..0 and are partitioned as above. The 45-bit shifted pointer covers 256 TB which exceeds the canonical 48-bit user-mode VA (128 TB user portion) on every supported platform (Linux x86_64 / aarch64, macOS aarch64, Windows x86_64) — the spare top bit gives one bit of future headroom without committing a use case.
+The 44-bit shifted pointer matches F-004 verbatim: the 47-bit byte address covers the canonical 48-bit user-mode VA's user portion (128 TB) on Linux x86_64 / aarch64, macOS aarch64, Windows x86_64. F-004 is decree on this field width.
 
-**Why no reserved discriminant bit at position 0** (per Devil's-advocate Alt 2 item 3): the g2 draft initially carried a 1-bit reservation at position 0 for "future interned-flag (e.g. keyword identity accelerator)". Per F-002 (finished form wins; Reservation-as-bias smell), reservations without a Phase-5-to-15 horizon use case are memos, not contracts. The bit is reclaimed into the pointer payload; the interned-flag candidate is recorded as `D-043` (Phase 7+ immediate-band ADR — see Devil's-advocate Alt 3 wildcard for the larger pattern this would land into).
+**The bit-0 reservation is F-004-decreed** (per F-NNN priority chain): the 51-bit payload − 2 group − 4 sub − 44 pointer leaves 1 residual bit. F-004 commits to "44-bit shifted pointer" verbatim, which implicitly reserves the residual; widening the pointer field to 45 bits would exceed F-004's 128 TB bound. The g2 draft of this ADR (and amendment 1's narrative) erroneously reclaimed the bit; amendment 2 restores the F-004-decreed layout. Devil's-advocate Alt 2 item 3 verdict ("decide the bit-0 reservation explicitly — interned-flag or widen pointer") **does not survive F-004**: widening violates the F-NNN; naming requires a use case with a Phase-5-to-15 horizon. The interned-flag candidate is recorded as a Phase 7+ immediate-band ADR seed in debt `D-043` — if that wildcard lands, it consumes the bit; otherwise the bit stays 0.
+
+The encode/decode contract (§4) treats bit 0 as **must-be-zero** — `encodePointer` asserts `addr & 0b111 == 0` per align-8, which guarantees the low 3 bits of the shifted byte address are zero (so bit 0 of the shifted-by-3 field is zero by construction). `decodePtr` masks the 44-bit shifted-pointer field via `NB_ADDR_SHIFTED_MASK = 0x0FFF_FFFF_FFFF` (44-bit mask, NOT the existing g1 source's `0x1FFF_FFFF_FFFF` 45-bit mask — 5.2 implementation updates the constant) excluding bit 0, then shifts left by 3 to recover the byte address.
 
 `int_53` (immediate 53-bit signed integer) keeps its dedicated tag band (`NB_INT_TAG = 0xFFFC`) reserved by g1 — it is not in the 64-slot group/sub-type space because it consumes the full 53-bit payload as a value, not a pointer.
 
