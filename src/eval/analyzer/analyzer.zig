@@ -236,7 +236,7 @@ pub fn analyze(
 
 /// Parse `42N`-style digits into a BigInt Value via Managed.setString.
 /// Used by both the atom-analyzer path and the quote-lift path.
-fn parseBigIntLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
+pub fn parseBigIntLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
     var m = try std.math.big.int.Managed.init(rt.gc.infra);
     defer m.deinit();
     m.setString(10, digits) catch
@@ -247,7 +247,7 @@ fn parseBigIntLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLoc
 /// Parse `1.5M`-style digits into a BigDecimal Value. The unscaled
 /// integer is the input with the decimal point removed; the scale is
 /// the number of digits after the dot.
-fn parseBigDecimalLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
+pub fn parseBigDecimalLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
     // Locate the decimal point if any. JVM accepts `1M`, `1.5M`, and
     // exponent `1.5e3M` — the latter is left as a debt row.
     var dot_pos: ?usize = null;
@@ -289,7 +289,7 @@ fn parseBigDecimalLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.Sourc
     return try big_decimal.allocFromManagedScale(rt, &unscaled, scale);
 }
 
-fn makeConstant(arena: std.mem.Allocator, v: Value, form: Form) !*const Node {
+pub fn makeConstant(arena: std.mem.Allocator, v: Value, form: Form) !*const Node {
     const n = try arena.create(Node);
     n.* = .{ .constant = .{ .value = v, .loc = form.location } };
     return n;
@@ -371,14 +371,14 @@ fn analyzeList(
             }
             // 5.12.a: `Name.` (trailing dot) -> constructor call.
             if (head.name.len >= 2 and head.name[head.name.len - 1] == '.') {
-                return try analyzeCtorCall(arena, rt, env, scope, head.name[0 .. head.name.len - 1], items[1..], form, macro_table);
+                return try special_forms.analyzeCtorCall(arena, rt, env, scope, head.name[0 .. head.name.len - 1], items[1..], form, macro_table);
             }
             // 5.12.a: `.field` (leading dot, single arg) -> field access.
             // Phase 5.12.a only handles arity 2 (`.field instance`) as
             // a struct field read. Multi-arg (`.method instance args...`)
             // protocol method dispatch lands at 5.12.d.
             if (head.name.len >= 2 and head.name[0] == '.' and items.len == 2) {
-                return try analyzeFieldAccess(arena, rt, env, scope, head.name[1..], items[1], form, macro_table);
+                return try special_forms.analyzeFieldAccess(arena, rt, env, scope, head.name[1..], items[1], form, macro_table);
             }
             if (STAGED_UNSUPPORTED_FORMS.has(head.name)) {
                 return error_catalog.raise(.feature_not_supported, form.location, .{ .name = head.name });
@@ -457,16 +457,16 @@ fn analyzeSpecial(
     macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
     return switch (kind) {
-        .def => analyzeDef(arena, rt, env, scope, items, form, macro_table),
-        .if_form => analyzeIf(arena, rt, env, scope, items, form, macro_table),
-        .do_form => analyzeDo(arena, rt, env, scope, items, form, macro_table),
-        .quote_form => analyzeQuote(arena, rt, items, form),
+        .def => special_forms.analyzeDef(arena, rt, env, scope, items, form, macro_table),
+        .if_form => special_forms.analyzeIf(arena, rt, env, scope, items, form, macro_table),
+        .do_form => special_forms.analyzeDo(arena, rt, env, scope, items, form, macro_table),
+        .quote_form => special_forms.analyzeQuote(arena, rt, items, form),
         .fn_star => analyzeFnStar(arena, rt, env, scope, items, form, macro_table),
         .let_star => analyzeLetStar(arena, rt, env, scope, items, form, macro_table),
         .loop_star => analyzeLoopStar(arena, rt, env, scope, items, form, macro_table),
         .recur_form => analyzeRecur(arena, rt, env, scope, items, form, macro_table),
         .try_form => analyzeTry(arena, rt, env, scope, items, form, macro_table),
-        .throw_form => analyzeThrow(arena, rt, env, scope, items, form, macro_table),
+        .throw_form => special_forms.analyzeThrow(arena, rt, env, scope, items, form, macro_table),
         .deftype_form => special_forms.analyzeDeftype(arena, items, form),
     };
 }
@@ -479,144 +479,11 @@ const special_forms = @import("special_forms.zig");
 /// already raising on them via STAGED_UNSUPPORTED_FORMS prior to
 /// this commit; the analyzer now treats trailing forms as no-op
 /// until 5.12.d wires protocol method dispatch).
-fn analyzeCtorCall(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    type_name: []const u8,
-    arg_forms: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    const args = try arena.alloc(Node, arg_forms.len);
-    for (arg_forms, 0..) |af, i| {
-        const sub = try analyze(arena, rt, env, scope, af, macro_table);
-        args[i] = sub.*;
-    }
-    const n = try arena.create(Node);
-    n.* = .{ .ctor_call_node = .{
-        .type_name = type_name,
-        .args = args,
-        .loc = form.location,
-    } };
-    return n;
-}
-
-fn analyzeFieldAccess(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    field_name: []const u8,
-    target_form: Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    const target = try analyze(arena, rt, env, scope, target_form, macro_table);
-    const n = try arena.create(Node);
-    n.* = .{ .field_access_node = .{
-        .field_name = field_name,
-        .target = target,
-        .loc = form.location,
-    } };
-    return n;
-}
-
-fn analyzeDef(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    items: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    // (def name) | (def name value)
-    if (items.len < 2 or items.len > 3)
-        return error_catalog.raise(.def_arity_invalid, form.location, .{ .got = items.len - 1 });
-    if (items[1].data != .symbol)
-        return error_catalog.raise(.def_name_not_symbol, items[1].location, .{});
-    const name_sym = items[1].data.symbol;
-    if (name_sym.ns != null)
-        return error_catalog.raise(.def_name_namespace_qualified, items[1].location, .{ .ns = name_sym.ns.?, .name = name_sym.name });
-    const value_node = if (items.len == 3)
-        try analyze(arena, rt, env, scope, items[2], macro_table)
-    else
-        try makeConstant(arena, .nil_val, items[1]);
-    const n = try arena.create(Node);
-    n.* = .{ .def_node = .{
-        .name = name_sym.name,
-        .value_expr = value_node,
-        .loc = form.location,
-    } };
-    return n;
-}
-
-fn analyzeIf(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    items: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    if (items.len < 3 or items.len > 4)
-        return error_catalog.raise(.if_arity_invalid, form.location, .{ .got = items.len - 1 });
-    const cond = try analyze(arena, rt, env, scope, items[1], macro_table);
-    const then_b = try analyze(arena, rt, env, scope, items[2], macro_table);
-    const else_b: ?*const Node = if (items.len == 4)
-        try analyze(arena, rt, env, scope, items[3], macro_table)
-    else
-        null;
-    const n = try arena.create(Node);
-    n.* = .{ .if_node = .{
-        .cond = cond,
-        .then_branch = then_b,
-        .else_branch = else_b,
-        .loc = form.location,
-    } };
-    return n;
-}
-
-fn analyzeDo(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    items: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    var forms = try arena.alloc(Node, items.len - 1);
-    for (items[1..], 0..) |f, i| {
-        const sub = try analyze(arena, rt, env, scope, f, macro_table);
-        forms[i] = sub.*;
-    }
-    const n = try arena.create(Node);
-    n.* = .{ .do_node = .{ .forms = forms, .loc = form.location } };
-    return n;
-}
-
-fn analyzeQuote(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    items: []const Form,
-    form: Form,
-) AnalyzeError!*const Node {
-    if (items.len != 2)
-        return error_catalog.raise(.quote_arity_invalid, form.location, .{ .got = items.len - 1 });
-    const v = try formToValue(rt, items[1]);
-    const n = try arena.create(Node);
-    n.* = .{ .quote_node = .{ .quoted = v, .loc = form.location } };
-    return n;
-}
-
 /// Form atom → Value lift (used by `quote` only in Phase 2). Symbols,
 /// strings, and collection literals need heap support that lands in
-/// later phases.
-fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
+/// later phases. **pub** so `analyzer/special_forms.zig::analyzeQuote`
+/// can call back into it (cyclic-import contract).
+pub fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
     return switch (form.data) {
         .nil => .nil_val,
         .boolean => |b| if (b) .true_val else .false_val,
@@ -908,23 +775,6 @@ fn analyzeRecur(
     return n;
 }
 
-fn analyzeThrow(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    items: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    if (items.len != 2)
-        return error_catalog.raise(.throw_arity_invalid, form.location, .{ .got = items.len - 1 });
-    const expr = try analyze(arena, rt, env, scope, items[1], macro_table);
-
-    const n = try arena.create(Node);
-    n.* = .{ .throw_node = .{ .expr = expr, .loc = form.location } };
-    return n;
-}
 
 fn analyzeTry(
     arena: std.mem.Allocator,
