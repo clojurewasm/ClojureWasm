@@ -199,58 +199,6 @@ pub fn clearCallStack() void {
 /// `(rt, env, args, loc)`; the typedef will then move to `dispatch.zig`.
 pub const BuiltinFn = *const fn (args: []const Value, loc: SourceLocation) ClojureWasmError!Value;
 
-// --- Tag name helper ---
-
-fn tagName(val: Value) []const u8 {
-    return @tagName(val.tag());
-}
-
-// --- Type assertion helpers ---
-
-/// Assert `val` is a number; widen to f64.
-pub fn expectNumber(val: Value, name: []const u8, loc: SourceLocation) ClojureWasmError!f64 {
-    return switch (val.tag()) {
-        .integer => @floatFromInt(val.asInteger()),
-        .float => val.asFloat(),
-        else => setErrorFmt(.eval, .type_error, loc, "{s}: expected number, got {s}", .{ name, tagName(val) }),
-    };
-}
-
-/// Assert `val` is an integer.
-pub fn expectInteger(val: Value, name: []const u8, loc: SourceLocation) ClojureWasmError!i48 {
-    if (val.tag() == .integer) return val.asInteger();
-    return setErrorFmt(.eval, .type_error, loc, "{s}: expected integer, got {s}", .{ name, tagName(val) });
-}
-
-/// Assert `val` is a boolean.
-pub fn expectBoolean(val: Value, name: []const u8, loc: SourceLocation) ClojureWasmError!bool {
-    if (val.tag() == .boolean) return val.asBoolean();
-    return setErrorFmt(.eval, .type_error, loc, "{s}: expected boolean, got {s}", .{ name, tagName(val) });
-}
-
-// --- Arity check helpers ---
-
-/// Exact arity check.
-pub fn checkArity(name: []const u8, args: []const Value, expected: usize, loc: SourceLocation) ClojureWasmError!void {
-    if (args.len != expected) {
-        return setErrorFmt(.eval, .arity_error, loc, "Wrong number of args ({d}) passed to {s}", .{ args.len, name });
-    }
-}
-
-/// Minimum-arity check (variadic primitives).
-pub fn checkArityMin(name: []const u8, args: []const Value, min: usize, loc: SourceLocation) ClojureWasmError!void {
-    if (args.len < min) {
-        return setErrorFmt(.eval, .arity_error, loc, "Wrong number of args ({d}) passed to {s}, expected at least {d}", .{ args.len, name, min });
-    }
-}
-
-/// Inclusive arity-range check.
-pub fn checkArityRange(name: []const u8, args: []const Value, min: usize, max: usize, loc: SourceLocation) ClojureWasmError!void {
-    if (args.len < min or args.len > max) {
-        return setErrorFmt(.eval, .arity_error, loc, "Wrong number of args ({d}) passed to {s}, expected {d} to {d}", .{ args.len, name, min, max });
-    }
-}
-
 // --- ClojureWasmError formatting ---
 
 /// Render an `Info` into `buf` for human display. Returns a slice of
@@ -326,57 +274,6 @@ test "clearLastError" {
     try testing.expect(peekLastError() == null);
 }
 
-test "checkArity exact pass" {
-    const args = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
-    try checkArity("+", &args, 2, .{});
-}
-
-test "checkArity exact fail" {
-    clearLastError();
-    const args = [_]Value{Value.initInteger(1)};
-    try testing.expectError(ClojureWasmError.ArityError, checkArity("+", &args, 2, .{}));
-    const info = getLastError().?;
-    try testing.expectEqualStrings("Wrong number of args (1) passed to +", info.message);
-}
-
-test "checkArityMin pass and fail" {
-    const args2 = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
-    try checkArityMin("str", &args2, 1, .{});
-
-    const args0 = [_]Value{};
-    try testing.expectError(ClojureWasmError.ArityError, checkArityMin("str", &args0, 1, .{}));
-}
-
-test "checkArityRange pass and fail (low/high)" {
-    const args2 = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
-    try checkArityRange("subs", &args2, 2, 3, .{});
-
-    const args1 = [_]Value{Value.initInteger(1)};
-    try testing.expectError(ClojureWasmError.ArityError, checkArityRange("subs", &args1, 2, 3, .{}));
-
-    const args4 = [_]Value{ .nil_val, .nil_val, .nil_val, .nil_val };
-    try testing.expectError(ClojureWasmError.ArityError, checkArityRange("subs", &args4, 2, 3, .{}));
-}
-
-test "expectNumber accepts int and float, rejects nil" {
-    clearLastError();
-    try testing.expectEqual(@as(f64, 42.0), try expectNumber(Value.initInteger(42), "f", .{}));
-    try testing.expectApproxEqRel(@as(f64, 3.14), try expectNumber(Value.initFloat(3.14), "f", .{}), 1e-10);
-
-    try testing.expectError(ClojureWasmError.TypeError, expectNumber(.nil_val, "f", .{}));
-    const info = getLastError().?;
-    try testing.expectEqualStrings("f: expected number, got nil", info.message);
-}
-
-test "expectInteger pass; float fails" {
-    try testing.expectEqual(@as(i48, -7), try expectInteger(Value.initInteger(-7), "nth", .{}));
-    try testing.expectError(ClojureWasmError.TypeError, expectInteger(Value.initFloat(1.5), "nth", .{}));
-}
-
-test "expectBoolean pass; nil fails" {
-    try testing.expect(try expectBoolean(.true_val, "t", .{}));
-    try testing.expectError(ClojureWasmError.TypeError, expectBoolean(.nil_val, "t", .{}));
-}
 
 test "call stack push/pop and overflow are silent" {
     clearCallStack();

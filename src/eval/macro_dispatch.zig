@@ -29,6 +29,7 @@ const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const Var = env_mod.Var;
 const error_mod = @import("../runtime/error.zig");
+const error_catalog = @import("../runtime/error_catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 
 /// Signature of a Zig-level macro transform. Receives the call-site
@@ -37,12 +38,13 @@ const SourceLocation = error_mod.SourceLocation;
 /// transform can call `rt.gensym(...)` for hygienic auto-symbols
 /// (used by `and` / `or` / `if-let` / `when-let`).
 ///
-/// Errors should be reported via `error_mod.setErrorFmt(.macroexpand,
-/// kind, loc, ...)` so the renderer attributes them to the call site.
-/// The return error set is `error_mod.ClojureWasmError` (the wide tag set used
-/// throughout the analyzer) so call sites in `analyze` can `try` the
-/// result without a type widen — see `reader.ReadError` /
-/// `analyzer.AnalyzeError` for the same pattern.
+/// Errors should be reported via `error_catalog.raise(.code, loc,
+/// args)` so the renderer attributes them to the call site and the
+/// template stays in the catalog SSOT. The return error set is
+/// `error_mod.ClojureWasmError` (the wide tag set used throughout the
+/// analyzer) so call sites in `analyze` can `try` the result without
+/// a type widen — see `reader.ReadError` / `analyzer.AnalyzeError`
+/// for the same pattern.
 pub const ExpandError = error_mod.ClojureWasmError;
 pub const ZigExpandFn = *const fn (
     arena: std.mem.Allocator,
@@ -102,13 +104,7 @@ pub fn expandIfMacro(
     if (table.lookup(head_name)) |f| {
         return try f(arena, rt, args, loc);
     }
-    return error_mod.setErrorFmt(
-        .macroexpand,
-        .not_implemented,
-        loc,
-        "User-defined macro '{s}' cannot be expanded yet (Phase 3.12+)",
-        .{head_name},
-    );
+    return error_catalog.raise(.user_macro_not_supported, loc, .{ .name = head_name });
 }
 
 // --- Form construction helpers (for macro impls) ---

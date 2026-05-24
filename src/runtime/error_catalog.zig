@@ -28,6 +28,7 @@
 
 const std = @import("std");
 const error_mod = @import("error.zig");
+const Value = @import("value.zig").Value;
 
 pub const Kind = error_mod.Kind;
 pub const Phase = error_mod.Phase;
@@ -135,6 +136,8 @@ pub const Code = enum {
     defn_name_invalid,
     defn_params_not_vector,
     when_let_form_incomplete,
+    /// args: `.{ .name = "<macro-name>" }`
+    user_macro_not_supported,
 
     // --- Eval (type) ---
     type_arg_not_number,
@@ -448,6 +451,10 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "when-let requires [name expr] and at least one body form",
         },
+        .user_macro_not_supported => .{
+            .kind = .not_implemented, .phase = .macroexpand,
+            .template = "User-defined macro '{[name]s}' is not supported in ClojureWasm",
+        },
 
         // --- Eval (type) ---
         .type_arg_not_number => .{
@@ -557,6 +564,57 @@ pub fn raise(comptime code: Code, location: SourceLocation, args: anytype) Cloju
     return error_mod.setErrorFmt(e.phase, e.kind, location, e.template, args);
 }
 
+// --- Type assertion helpers ---
+
+/// Assert `val` is a number; widen to f64. Raises
+/// `type_arg_not_number` on mismatch.
+pub fn expectNumber(val: Value, name: []const u8, loc: SourceLocation) ClojureWasmError!f64 {
+    return switch (val.tag()) {
+        .integer => @floatFromInt(val.asInteger()),
+        .float => val.asFloat(),
+        else => raise(.type_arg_not_number, loc, .{ .fn_name = name, .actual = @tagName(val.tag()) }),
+    };
+}
+
+/// Assert `val` is an integer. Raises `type_arg_not_integer` on
+/// mismatch.
+pub fn expectInteger(val: Value, name: []const u8, loc: SourceLocation) ClojureWasmError!i48 {
+    if (val.tag() == .integer) return val.asInteger();
+    return raise(.type_arg_not_integer, loc, .{ .fn_name = name, .actual = @tagName(val.tag()) });
+}
+
+/// Assert `val` is a boolean. Raises `type_arg_not_boolean` on
+/// mismatch.
+pub fn expectBoolean(val: Value, name: []const u8, loc: SourceLocation) ClojureWasmError!bool {
+    if (val.tag() == .boolean) return val.asBoolean();
+    return raise(.type_arg_not_boolean, loc, .{ .fn_name = name, .actual = @tagName(val.tag()) });
+}
+
+// --- Arity check helpers ---
+
+/// Exact arity check. Raises `arity_invalid` on mismatch.
+pub fn checkArity(name: []const u8, args: []const Value, expected: usize, loc: SourceLocation) ClojureWasmError!void {
+    if (args.len != expected) {
+        return raise(.arity_invalid, loc, .{ .got = args.len, .fn_name = name });
+    }
+}
+
+/// Minimum-arity check (variadic primitives). Raises `arity_below_min`
+/// when under.
+pub fn checkArityMin(name: []const u8, args: []const Value, min: usize, loc: SourceLocation) ClojureWasmError!void {
+    if (args.len < min) {
+        return raise(.arity_below_min, loc, .{ .got = args.len, .fn_name = name, .min = min });
+    }
+}
+
+/// Inclusive arity-range check. Raises `arity_out_of_range` when
+/// outside `[min, max]`.
+pub fn checkArityRange(name: []const u8, args: []const Value, min: usize, max: usize, loc: SourceLocation) ClojureWasmError!void {
+    if (args.len < min or args.len > max) {
+        return raise(.arity_out_of_range, loc, .{ .got = args.len, .fn_name = name, .min = min, .max = max });
+    }
+}
+
 // --- Tests ---
 
 const testing = std.testing;
@@ -628,4 +686,58 @@ test "arity templates render all three variants" {
         "Wrong number of args (0) passed to subs, expected 2 to 3",
         error_mod.getLastError().?.message,
     );
+}
+
+// --- Helper tests (moved from error.zig in 4.26.d region 6) ---
+
+test "checkArity exact pass" {
+    const args = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
+    try checkArity("+", &args, 2, .{});
+}
+
+test "checkArity exact fail" {
+    error_mod.clearLastError();
+    const args = [_]Value{Value.initInteger(1)};
+    try testing.expectError(ClojureWasmError.ArityError, checkArity("+", &args, 2, .{}));
+    const info = error_mod.getLastError().?;
+    try testing.expectEqualStrings("Wrong number of args (1) passed to +", info.message);
+}
+
+test "checkArityMin pass and fail" {
+    const args2 = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
+    try checkArityMin("str", &args2, 1, .{});
+
+    const args0 = [_]Value{};
+    try testing.expectError(ClojureWasmError.ArityError, checkArityMin("str", &args0, 1, .{}));
+}
+
+test "checkArityRange pass and fail (low/high)" {
+    const args2 = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
+    try checkArityRange("subs", &args2, 2, 3, .{});
+
+    const args1 = [_]Value{Value.initInteger(1)};
+    try testing.expectError(ClojureWasmError.ArityError, checkArityRange("subs", &args1, 2, 3, .{}));
+
+    const args4 = [_]Value{ .nil_val, .nil_val, .nil_val, .nil_val };
+    try testing.expectError(ClojureWasmError.ArityError, checkArityRange("subs", &args4, 2, 3, .{}));
+}
+
+test "expectNumber accepts int and float, rejects nil" {
+    error_mod.clearLastError();
+    try testing.expectEqual(@as(f64, 42.0), try expectNumber(Value.initInteger(42), "f", .{}));
+    try testing.expectApproxEqRel(@as(f64, 3.14), try expectNumber(Value.initFloat(3.14), "f", .{}), 1e-10);
+
+    try testing.expectError(ClojureWasmError.TypeError, expectNumber(.nil_val, "f", .{}));
+    const info = error_mod.getLastError().?;
+    try testing.expectEqualStrings("f: expected number, got nil", info.message);
+}
+
+test "expectInteger pass; float fails" {
+    try testing.expectEqual(@as(i48, -7), try expectInteger(Value.initInteger(-7), "nth", .{}));
+    try testing.expectError(ClojureWasmError.TypeError, expectInteger(Value.initFloat(1.5), "nth", .{}));
+}
+
+test "expectBoolean pass; nil fails" {
+    try testing.expect(try expectBoolean(.true_val, "t", .{}));
+    try testing.expectError(ClojureWasmError.TypeError, expectBoolean(.nil_val, "t", .{}));
 }
