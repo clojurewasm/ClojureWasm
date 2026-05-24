@@ -50,7 +50,7 @@
 
 const std = @import("std");
 const Value = @import("../runtime/value/value.zig").Value;
-const SourceLocation = @import("../runtime/error.zig").SourceLocation;
+const SourceLocation = @import("../runtime/error/info.zig").SourceLocation;
 const Var = @import("../runtime/env.zig").Var;
 
 /// Analysed AST. `union(enum)` lets the backend `switch` exhaustively.

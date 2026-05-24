@@ -8,7 +8,7 @@
 
 const std = @import("std");
 const Writer = std.Io.Writer;
-const SourceLocation = @import("../runtime/error.zig").SourceLocation;
+const SourceLocation = @import("../runtime/error/info.zig").SourceLocation;
 
 /// Namespace-qualified identifier reference (symbol or keyword).
 pub const SymbolRef = struct {

@@ -15,7 +15,7 @@
 //! the matching `Info` payload.
 
 const std = @import("std");
-const Value = @import("value/value.zig").Value;
+const Value = @import("../value/value.zig").Value;
 
 // --- Source location ---
 

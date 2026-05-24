@@ -38,7 +38,7 @@ const std = @import("std");
 const Value = @import("value/value.zig").Value;
 const Runtime = @import("runtime.zig").Runtime;
 const Env = @import("env.zig").Env;
-const SourceLocation = @import("error.zig").SourceLocation;
+const SourceLocation = @import("error/info.zig").SourceLocation;
 
 /// Phase-2 built-in signature. All `lang/primitive/*.zig` functions
 /// have this shape.

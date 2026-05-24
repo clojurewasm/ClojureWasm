@@ -46,8 +46,8 @@ const Var = env_mod.Var;
 const keyword = @import("../runtime/keyword.zig");
 const string_collection = @import("../runtime/collection/string.zig");
 const list_collection = @import("../runtime/collection/list.zig");
-const error_mod = @import("../runtime/error.zig");
-const error_catalog = @import("../runtime/error_catalog.zig");
+const error_mod = @import("../runtime/error/info.zig");
+const error_catalog = @import("../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const macro_dispatch = @import("macro_dispatch.zig");
 

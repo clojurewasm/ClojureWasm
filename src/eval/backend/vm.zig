@@ -24,8 +24,8 @@ const env_mod = @import("../../runtime/env.zig");
 const runtime_mod = @import("../../runtime/runtime.zig");
 const string_mod = @import("../../runtime/collection/string.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
-const error_mod = @import("../../runtime/error.zig");
-const error_catalog = @import("../../runtime/error_catalog.zig");
+const error_mod = @import("../../runtime/error/info.zig");
+const error_catalog = @import("../../runtime/error/catalog.zig");
 const tree_walk = @import("tree_walk.zig");
 const ex_info_mod = @import("../../runtime/collection/ex_info.zig");
 

@@ -28,8 +28,8 @@ const Runtime = @import("../runtime/runtime.zig").Runtime;
 const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const Var = env_mod.Var;
-const error_mod = @import("../runtime/error.zig");
-const error_catalog = @import("../runtime/error_catalog.zig");
+const error_mod = @import("../runtime/error/info.zig");
+const error_catalog = @import("../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 
 /// Signature of a Zig-level macro transform. Receives the call-site

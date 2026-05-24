@@ -18,8 +18,8 @@ const tok_mod = @import("tokenizer.zig");
 const Tokenizer = tok_mod.Tokenizer;
 const Token = tok_mod.Token;
 const TokenKind = tok_mod.TokenKind;
-const error_mod = @import("../runtime/error.zig");
-const error_catalog = @import("../runtime/error_catalog.zig");
+const error_mod = @import("../runtime/error/info.zig");
+const error_catalog = @import("../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 
 /// Reader error surface. Aliases `error_mod.ClojureWasmError` so that

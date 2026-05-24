@@ -18,7 +18,7 @@
 
 const std = @import("std");
 const Writer = std.Io.Writer;
-const error_mod = @import("error.zig");
+const error_mod = @import("info.zig");
 
 /// Source context passed to the renderer. The caller (typically
 /// `main.zig`) knows the filename label and the full source text.

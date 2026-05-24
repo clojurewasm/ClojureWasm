@@ -36,8 +36,8 @@ const Value = @import("runtime/value/value.zig").Value;
 const primitive = @import("lang/primitive.zig");
 const macro_transforms = @import("lang/macro_transforms.zig");
 const bootstrap = @import("lang/bootstrap.zig");
-const error_mod = @import("runtime/error.zig");
-const error_print = @import("runtime/error_print.zig");
+const error_mod = @import("runtime/error/info.zig");
+const error_print = @import("runtime/error/print.zig");
 const print = @import("runtime/print.zig");
 
 pub fn main(init: std.process.Init) !void {
@@ -243,9 +243,9 @@ test "build_options exposes phase_at_least_N comptime bools (ADR-0023)" {
 // src/, add them here so the unified `zig build test` discovers them.
 test {
     _ = @import("runtime/value/value.zig");
-    _ = @import("runtime/error.zig");
-    _ = @import("runtime/error_catalog.zig");
-    _ = @import("runtime/error_print.zig");
+    _ = @import("runtime/error/info.zig");
+    _ = @import("runtime/error/catalog.zig");
+    _ = @import("runtime/error/print.zig");
     _ = @import("runtime/gc/arena.zig");
     _ = @import("runtime/gc/tag_ops.zig");
     _ = @import("runtime/gc/gc_heap.zig");
@@ -268,7 +268,7 @@ test {
     _ = @import("runtime/runtime.zig");
     _ = @import("runtime/dispatch.zig");
     _ = @import("runtime/env.zig");
-    _ = @import("runtime/io_interface.zig");
+    _ = @import("runtime/io/interface.zig");
     _ = @import("runtime/type_descriptor.zig");
     _ = @import("runtime/protocol.zig");
     _ = @import("runtime/dispatch/method_table.zig");

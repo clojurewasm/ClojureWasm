@@ -27,8 +27,8 @@
 //! call sites migrate incrementally.
 
 const std = @import("std");
-const error_mod = @import("error.zig");
-const Value = @import("value/value.zig").Value;
+const error_mod = @import("info.zig");
+const Value = @import("../value/value.zig").Value;
 
 pub const Kind = error_mod.Kind;
 pub const Phase = error_mod.Phase;
