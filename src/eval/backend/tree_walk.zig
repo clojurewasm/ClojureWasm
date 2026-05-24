@@ -239,7 +239,7 @@ pub fn eval(
 fn evalDef(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.DefNode) !Value {
     const v = try eval(rt, env, locals, n.value_expr);
     const ns = env.current_ns orelse
-        return error_catalog.raise(.internal_error, n.loc, .{ .detail = "def: no current namespace" });
+        return error_catalog.raiseInternal(n.loc, "def: no current namespace");
     const var_ptr = try env.intern(ns, n.name, v);
     var_ptr.flags.dynamic = n.is_dynamic;
     var_ptr.flags.macro_ = n.is_macro;
@@ -332,7 +332,7 @@ fn evalTry(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.TryNode) anyerr
         return result;
     } else |err| switch (err) {
         error.ThrownValue => {
-            const thrown = dispatch.last_thrown_exception orelse return error_catalog.raise(.internal_error, n.loc, .{ .detail = "ThrownValue without last_thrown_exception" });
+            const thrown = dispatch.last_thrown_exception orelse return error_catalog.raiseInternal(n.loc, "ThrownValue without last_thrown_exception");
             // Walk catch clauses linearly — Phase 3 only matches
             // `ExceptionInfo` against `.ex_info`-tagged Values.
             for (n.catch_clauses) |cc| {
@@ -390,7 +390,7 @@ fn evalCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.CallNode) !Val
     if (rt.vtable) |vt| {
         return vt.callFn(rt, env, callee, args, n.loc);
     }
-    return error_catalog.raise(.internal_error, n.loc, .{ .detail = "Runtime vtable not installed; cannot dispatch call" });
+    return error_catalog.raiseInternal(n.loc, "Runtime vtable not installed; cannot dispatch call");
 }
 
 // --- Backend's callFn (registered as rt.vtable.callFn) ---

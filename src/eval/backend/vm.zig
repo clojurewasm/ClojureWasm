@@ -160,7 +160,7 @@ fn stepOnce(
                 if (!name_val.isString())
                     return raiseInternal("vm: op_def constant is not a String");
                 const ns = env.current_ns orelse
-                    return error_catalog.raise(.internal_error, .{}, .{ .detail = "def: no current namespace" });
+                    return error_catalog.raiseInternal(.{}, "def: no current namespace");
                 const var_ptr = try env.intern(ns, string_mod.asString(name_val), value);
                 var_ptr.flags.dynamic = (instr.operand & opcode_mod.DEF_FLAG_DYNAMIC) != 0;
                 var_ptr.flags.macro_ = (instr.operand & opcode_mod.DEF_FLAG_MACRO) != 0;
@@ -202,7 +202,7 @@ fn stepOnce(
                 const callee = stack[sp];
                 const args = stack[sp + 1 .. sp + 1 + arg_count];
                 const vt = rt.vtable orelse
-                    return error_catalog.raise(.internal_error, .{}, .{ .detail = "Runtime vtable not installed; cannot dispatch call" });
+                    return error_catalog.raiseInternal(.{}, "Runtime vtable not installed; cannot dispatch call");
                 const result = try vt.callFn(rt, env, callee, args, .{});
                 if (sp >= OPERAND_STACK_MAX)
                     return raiseInternal("vm: operand stack overflow");
@@ -324,7 +324,7 @@ fn matchExceptionClass(class_name: []const u8, thrown: Value) bool {
 }
 
 fn raiseInternal(comptime detail: []const u8) anyerror {
-    return error_catalog.raise(.internal_error, .{}, .{ .detail = detail });
+    return error_catalog.raiseInternal(.{}, detail);
 }
 
 /// Populate `rt.vtable` for the VM backend (ROADMAP §9.6 / 4.8). The

@@ -611,6 +611,18 @@ pub fn checkArityRange(name: []const u8, args: []const Value, min: usize, max: u
     }
 }
 
+/// Raise an `internal_error` with the given `detail`. Convenience
+/// wrapper that collapses the `raise(.internal_error, loc, .{ .detail
+/// = ... })` shape into a single call. Pass `.{}` for unknown
+/// locations (VM bytecode-level errors); pass the form's source
+/// location for AST-level invariant violations (analyzer / tree_walk).
+///
+/// Lifted from `eval/backend/vm.zig::raiseInternal` per D-041 (c) so
+/// every backend / pass reaches the helper through one canonical site.
+pub fn raiseInternal(loc: SourceLocation, detail: []const u8) ClojureWasmError {
+    return raise(.internal_error, loc, .{ .detail = detail });
+}
+
 // --- Tests ---
 
 const testing = std.testing;
