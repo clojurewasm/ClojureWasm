@@ -229,6 +229,11 @@ pub const Value = enum(u64) {
             1 => NB_HEAP_TAG_B,
             2 => NB_HEAP_TAG_C,
             3 => NB_HEAP_TAG_D,
+            // @panic: cw runtime invariant — HeapTag is bounded to
+            // 4 × NB_HEAP_GROUP_SIZE entries (F-004 NaN-box second
+            // generation layout). Adding a 65th HeapTag would require
+            // a layout extension; this arm guards against silent
+            // drift past that bound.
             else => unreachable,
         };
         const sub_type: u64 = type_val % NB_HEAP_GROUP_SIZE;
@@ -293,10 +298,19 @@ pub const Value = enum(u64) {
             NB_TAG_CONST => switch (bits & NB_PAYLOAD_MASK) {
                 0 => .nil,
                 1, 2 => .boolean,
+                // @panic: cw runtime invariant — NB_TAG_CONST payload
+                // is constructed only as nil_val (0) / true_val (1) /
+                // false_val (2). A NB_TAG_CONST Value with any other
+                // payload is a corrupt bit pattern.
                 else => unreachable,
             },
             NB_TAG_CHAR => .char,
             NB_TAG_BUILTIN => .builtin_fn,
+            // @panic: cw runtime invariant — top16 is constructed only
+            // as NB_TAG_INT / _A / _B / _C / _D / _CONST / _CHAR /
+            // _BUILTIN, or covered by the `< NB_FLOAT_TAG_BOUNDARY`
+            // early-return above. Any other top16 is a corrupt bit
+            // pattern.
             else => unreachable,
         };
     }

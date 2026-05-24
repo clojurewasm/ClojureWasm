@@ -862,7 +862,7 @@ fn analyzeTry(
             const fn_b = try analyzeFinallyClause(arena, rt, env, scope, cf, macro_table);
             finally_node = fn_b;
             seen_finally = true;
-        } else unreachable; // isClauseHead gated this
+        } else return error_catalog.raise(.internal_error, cf.location, .{ .detail = "try clause head escaped isClauseHead gate" });
     }
 
     const n = try arena.create(Node);
