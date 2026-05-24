@@ -190,6 +190,25 @@ pub fn decimalQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return if (args[0].tag() == .big_decimal) .true_val else .false_val;
 }
 
+/// `(some? x)` — true iff `x` is not nil. The non-nil counterpart of
+/// `nil?`. Matches clojure.core/some?.
+pub fn someQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("some?", args, 1, loc);
+    return if (args[0].isNil()) .false_val else .true_val;
+}
+
+/// `(not x)` — Clojure truthiness inversion. Returns true when x is
+/// nil or false; otherwise returns false. NOT a strict-true test
+/// (see `false?` for that).
+pub fn notFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("not", args, 1, loc);
+    return if (args[0].isNil() or args[0] == Value.false_val) .true_val else .false_val;
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -217,6 +236,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "float?", .f = &floatQ },
     .{ .name = "ratio?", .f = &ratioQ },
     .{ .name = "decimal?", .f = &decimalQ },
+    .{ .name = "some?", .f = &someQ },
+    .{ .name = "not", .f = &notFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
