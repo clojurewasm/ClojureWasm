@@ -1249,8 +1249,19 @@ type; the bootstrap prologue still loads. 🔒 OrbStack gate.
 **Deliverables**: `clojure.string` / `clojure.set` /
 `clojure.walk` / `clojure.zip` 完備、host stdlib first wave
 (`java.util.UUID` / `Date` / `Random` / `java.io.File`) per
-ADR-0011, UTF-8 string primitives, optional fuzz harness opens
-(per ADR-0021 deferred layer table).
+ADR-0029 (supersedes ADR-0011), UTF-8 string primitives, optional
+fuzz harness opens (per ADR-0021 deferred layer table).
+
+**Carried forward from Phase 5 (Phase 5 closing amendment,
+2026-05-24)**:
+
+- **5.13** — `eval/analyzer.zig` split per D-030 (1525 lines today).
+  Decompose into `eval/analyzer/{analyzer.zig (top + dispatch),
+  special_forms.zig (def/if/do/quote/throw/deftype + ctor + field),
+  bindings.zig (let*/loop*/fn*), recur.zig, try.zig}`.
+  Behaviour-preserving; tests stay green. Lands inside the
+  Phase 5 → 6 boundary review chain's simplify subagent, or as
+  the first Phase 6 entry source-bearing task.
 
 ### 9.9 Phase 7 — task list (PENDING, expand at Phase 7 entry)
 
