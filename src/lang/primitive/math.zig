@@ -21,6 +21,7 @@ const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
+const promote = @import("../../runtime/numeric/promote.zig");
 
 // --- numeric helpers ---
 
@@ -49,7 +50,7 @@ fn toI64(v: Value) i64 {
 fn ensureNumeric(args: []const Value, name: []const u8, loc: SourceLocation) !void {
     for (args) |v| {
         switch (v.tag()) {
-            .integer, .float => continue,
+            .integer, .float, .big_int, .ratio, .big_decimal => continue,
             else => |t| return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = name, .actual = @tagName(t) }),
         }
     }
@@ -57,57 +58,51 @@ fn ensureNumeric(args: []const Value, name: []const u8, loc: SourceLocation) !vo
 
 // --- arithmetic ---
 
-/// `(+ ...)` — 0 args → 0, 1 arg → identity, N args → sum. Float-
-/// contagious.
+/// `(+ ...)` — 0 args → 0, 1 arg → identity, N args → fold via
+/// `promote.addPromoting`. i48 overflow auto-promotes to BigInt
+/// (per ROADMAP §9.7 / 5.10 + F-005); float is contagious.
 pub fn plus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try ensureNumeric(args, "+", loc);
     if (args.len == 0) return Value.initInteger(0);
-    if (anyFloat(args)) {
-        var sum: f64 = 0.0;
-        for (args) |v| sum += toF64(v);
-        return Value.initFloat(sum);
+    var acc = args[0];
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        acc = try promote.addPromoting(rt, acc, args[i]);
     }
-    var sum: i64 = 0;
-    for (args) |v| sum += toI64(v);
-    return Value.initInteger(sum); // overflow → float promotion handled inside
+    return acc;
 }
 
-/// `(- x ...)` — 1 arg negates; N args subtract from the first. 0
-/// args is an error (matches Clojure).
+/// `(- x ...)` — 1 arg negates; N args subtract from the first via
+/// `promote.subPromoting`. 0 args is an error (matches Clojure).
 pub fn minus(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try ensureNumeric(args, "-", loc);
     if (args.len == 0)
         return error_catalog.raise(.arity_below_min, loc, .{ .got = @as(usize, 0), .fn_name = "-", .min = @as(usize, 1) });
-    if (anyFloat(args)) {
-        var acc: f64 = toF64(args[0]);
-        if (args.len == 1) return Value.initFloat(-acc);
-        for (args[1..]) |v| acc -= toF64(v);
-        return Value.initFloat(acc);
+    if (args.len == 1) {
+        return try promote.subPromoting(rt, Value.initInteger(0), args[0]);
     }
-    var acc: i64 = toI64(args[0]);
-    if (args.len == 1) return Value.initInteger(-acc);
-    for (args[1..]) |v| acc -= toI64(v);
-    return Value.initInteger(acc);
+    var acc = args[0];
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        acc = try promote.subPromoting(rt, acc, args[i]);
+    }
+    return acc;
 }
 
-/// `(* ...)` — 0 args → 1, 1 arg → identity, N args → product.
+/// `(* ...)` — 0 args → 1, 1 arg → identity, N args → fold via
+/// `promote.mulPromoting`.
 pub fn star(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try ensureNumeric(args, "*", loc);
     if (args.len == 0) return Value.initInteger(1);
-    if (anyFloat(args)) {
-        var prod: f64 = 1.0;
-        for (args) |v| prod *= toF64(v);
-        return Value.initFloat(prod);
+    var acc = args[0];
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        acc = try promote.mulPromoting(rt, acc, args[i]);
     }
-    var prod: i64 = 1;
-    for (args) |v| prod *= toI64(v);
-    return Value.initInteger(prod);
+    return acc;
 }
 
 // --- comparison ---
