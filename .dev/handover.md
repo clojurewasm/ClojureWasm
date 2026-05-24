@@ -47,10 +47,13 @@
   (4.0 / 4.0a / 4.1 / 4.2 / 4.3 / 4.4 / 4.5 / 4.6 / 4.7 / 4.8 /
   4.9 / 4.10 / 4.11 / 4.12 done). Cleanup wave: 4.13–4.25 done.
   Error-system migration: 4.26.a (Code rename) + 4.26.b
-  (tier_d_form split) done. Remaining §9.6 rows: 4.26.c
-  (Error → ClojureWasmError union rename) / 4.26.d (~116
-  setErrorFmt → raise migration) / 4.26.e (@panic/unreachable
-  audit) / 4.26.f (main top-level catch).
+  (tier_d_form split) + 4.26.c (Error → ClojureWasmError union
+  rename) done. 4.26.d in progress as a 6-region split: 1/6
+  (reader, 21 sites) **done** at fe96fe7. Remaining 4.26.d
+  regions: analyzer (38) / tree_walk (15) / macro_transforms
+  (14) / primitive (7) / error.zig helpers (11) — each commits
+  as its own region. Then 4.26.e (@panic/unreachable audit) /
+  4.26.f (main top-level catch).
 - **Branch**: `cw-from-scratch` (long-lived; push free after gate
   green; never push to `main`).
 - **Gate**: Mac 12/12 + OrbStack Ubuntu x86_64 11/11 green at
@@ -263,31 +266,51 @@ away from committed intent.
 
 ## Stopped — user requested
 
-User instruction (2026-05-24): 「きりの良いところで止めてください」.
-Last landed 4.26.b at d9bed4d (ROADMAP mark-up); gate Mac 12/12 +
+User instruction (2026-05-24, prior session): 「きりの良いところで
+止めてください」. Applied to this session at the same threshold —
+region 1 of 4.26.d (reader) landed at fe96fe7; gate Mac 12/12 +
 OrbStack Ubuntu 11/11 green.
 
-## Active task — §9.6 / 4.26.c (on resume)
+## Active task — §9.6 / 4.26.d region 2 (analyzer, 38 sites) on resume
 
-Rename the Zig error union from `Error` to `ClojureWasmError` in
-`src/runtime/error.zig` and update every `pub fn ... !Value`
-signature across `src/`. Self-check: `grep -rn "error_mod.Error\b"
-src/ | wc -l` returns 0 when complete. Mechanical sweep — no new
-public API or behaviour change beyond the rename.
+`src/eval/analyzer.zig` has 38 `error_mod.setErrorFmt(...)` sites
+that rotate to `error_catalog.raise(.code, loc, args)`. Catalog
+needs ~25-30 new Code variants. Recommended grouping for the
+single analyzer commit:
+
+- cluster a: top-level resolution (224 / 225 / 277 / 279 / 280 / 301)
+- cluster b: def + if + quote (412-505)
+- cluster c: fn* (534-556)
+- cluster d: let* + loop* binding (629-722)
+- cluster e: recur + throw (757-796)
+- cluster f: try + catch (855-906)
+
+**Catalog amendment to surface during region 2**: existing
+`let_bindings_not_vector` / `let_bindings_arity_odd` (Phase 4.26.a)
+should generalise to `bindings_not_vector` / `bindings_arity_odd`
+with a `.form` slot so loop* / let* share one Code each. This is
+a depth-1 commit-body note within the analyzer region, not a
+separate amendment ADR — the catalog finished form prefers the
+generalised shape.
 
 **Retrievable identifiers**:
 
-- ROADMAP §9.6 task 4.26.c, ADR-0018 amendment 2 (f) (records
-  the rename rationale: "catch surface + failing test traces name
-  the project").
-- Catalog already re-exports `Error` (now to-be-renamed
-  `ClojureWasmError`) at `error_catalog.zig::pub const Error =
-  error_mod.Error;` — the re-export becomes
-  `pub const ClojureWasmError = error_mod.ClojureWasmError;`.
-- After 4.26.c lands, 4.26.d (~116 setErrorFmt → raise migration)
-  is the next critical-path row, split by source-tree region
-  per the row text (reader → analyzer → tree_walk → macro →
-  primitive → error helpers).
+- ROADMAP §9.6 4.26.d row text (region ordering: reader →
+  **analyzer** → tree_walk → macro → primitive → error helpers).
+- ADR-0018 amendment 2 (a) — `<target>_<state-adjective>` naming.
+- After 4.26.d completes, 4.26.e (`@panic` / `unreachable` audit
+  per ADR-0019) + 4.26.f (main top-level catch wiring) close §9.6
+  and Phase 4.
+
+## Housekeeping debt (separate from §9.6)
+
+handover.md hit 298 lines (≥ `handover_framing.md` 100-line hard
+limit). Wave 1-6 narration is the bulk. Trim is its own commit:
+condense Waves 1-6 into a single "Guardrail refresh history" line
+that points at `.dev/principle.md` + `.dev/project_facts.md`
+(those carry the load-bearing fragments). Run `/continue` Step 1
+lint at next session start; it will surface this as the first
+task.
 
 ## Open questions / blockers
 
