@@ -24,32 +24,48 @@
 
 ## Current state
 
-- **Phase**: **Phase 5 IN-PROGRESS** — §9.7 rows 5.0–5.8 `[x]`.
-  5.8 closed at 6fe11c6 (5.8.a struct shapes for ChunkBuffer +
-  ChunkedCons; 5.8.b range/lazy-seq integration deferred). 8 rows
-  remain (5.9–5.16). list.zig rename deferred per F-003 (no
-  behaviour win). ChunkedCons + ChunkBuffer trace fns registered.
-- **Branch**: `cw-from-scratch`. HEAD = 6fe11c6.
-- **Gate**: Mac 13/13 + OrbStack Ubuntu x86_64 12/12 green.
+- **Phase**: **Phase 5 IN-PROGRESS** — §9.7 rows 5.0–5.8 `[x]`,
+  5.9.a `[x]` (BigInt extern-struct migration; 5.3.d.9 deferral
+  resolved at 7e2ef17). 5.9.b/c/d (Ratio + BigDecimal + arithmetic)
+  remain; 5.10–5.16 also remain (7 row.subset units total).
+- **Branch**: `cw-from-scratch`. HEAD = 7e2ef17.
+- **Gate**: Mac 13/13 + OrbStack Ubuntu x86_64 12/12 green
+  (verified both gates' exit codes explicitly at HEAD).
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## Active task — §9.7.10 / 5.9 BigInt / Ratio / BigDecimal (F-005)
+## Stopped — user requested
 
-Owns the BigInt extern-struct restructure (5.3.d.9 deferral —
-Managed needs `*Managed` wrapper). New types: big_int.zig
-(activate), ratio.zig, big_decimal.zig, promote.zig. F-005 =
-JVM-surface compat + Zig-stdlib-affine internals.
+User instruction (2026-05-24): 「きりが良くなったら止めて
+（ユーザー介入）」. Stop honoured at HEAD = 7e2ef17 — 5.9.a (BigInt
+extern struct migration) landed + verified green on both gates +
+D-047 records the Zig 0.16 setString Linux platform bug. Next
+session resumes at §9.7.10 / 5.9.b (Ratio implementation).
+
+Extended-challenge items captured per `.claude/rules/extended_challenge.md`
+in `private/notes/phase5-5.9.md` (Alt hypothesis / Next experiment /
+Explicit blocker).
+
+## Active task at resume — §9.7.10 / 5.9.b Ratio (then .c BigDecimal, .d arithmetic)
+
+5.9.a (7e2ef17) shipped BigInt extern + `*Managed` wrapper +
+finaliser + `allocFromI64` / `allocFromManaged`. Next: 5.9.b Ratio
+`(*Managed, *Managed)` gcd-simplified; 5.9.c BigDecimal
+`(*Managed unscaled, i32 scale)`; 5.9.d arithmetic
+(`compare`/`+`/`-`/`*`/`/`) across the tower.
 
 **Step 0**: F-005 verbatim; ADR-0017; cw v0 collections.zig
-numeric tower; clojure JVM Numbers.java. `general-purpose`
-subagent for cw v0 + JVM survey.
+Ratio/BigDecimal; clojure JVM Numbers.java. Fork `general-purpose`
+survey subagent per `private/notes/phase5-5.9.md` Next experiment.
 
-**Open hazards**: (a) Managed wrapping + finaliser `Managed.deinit`;
-(b) Ratio gcd at construction; (c) auto-promotion paths in
-`+ - * /` per F-005 JVM-exact; (d) 5.10 covers auto-promotion
-dispatch — 5.9 lands arithmetic only.
-chunked seqs via the new types — 5.8 lands the data shape, range
-implementation may need a co-commit or separate row.
+**Process discipline**: Step 5 — always verify BOTH gates' exit
+codes explicitly (`echo "exit=$?"` + `grep "failed:[[:space:]]+0"`)
+before commit. 94d228b skipped this and pushed despite Linux
+failure; 7e2ef17 rolled forward. Add gate-verification hook or
+script-level enforcement.
+
+**Open hazards**: (a) Ratio `(*Managed, *Managed)` + gcd via
+`std.math.big.int.gcd` (verify Linux platform soundness post-D-047);
+(b) auto-promotion paths land at 5.10 (separate row).
 
 ## Open questions / blockers
 
