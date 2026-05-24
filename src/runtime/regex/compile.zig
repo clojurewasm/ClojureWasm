@@ -15,10 +15,10 @@
 //!   2. `runtime/java/util/regex/Pattern.zig` — Java surface
 //!      (`(java.util.regex.Pattern/compile ...)` etc.).
 //!
-//! Status: Phase 6.6 cycle 1 SKELETON — types declared, parser
-//! and IR emission land in the next commits of this cycle. Per
-//! `no_op_stub_forbidden`, `compile(...)` raises an explicit
-//! error rather than silently dropping semantics.
+//! Cycle 1 (Phase 6.6) supports: literal bytes, `.` wildcard,
+//! concatenation, alternation `|`, and the greedy quantifiers
+//! `*` / `+` / `?`. Character classes, escapes, anchors, capture
+//! groups, and named groups land in cycle 2+.
 
 const std = @import("std");
 
@@ -109,12 +109,16 @@ pub const Program = struct {
 };
 
 pub const CompileError = error{
-    /// Phase 6.6 cycle 1 skeleton — body lands in the next
-    /// commit. Per `no_op_stub_forbidden`, this is an explicit
-    /// "not implemented" rather than a silent drop.
+    /// Pattern source contains a feature not yet implemented at
+    /// cycle 1 (empty pattern, character classes `[...]`,
+    /// groups `(...)`, escapes `\\d` / `\\w`, anchors `^` / `$`,
+    /// bounded `{n,m}`). Per `no_op_stub_forbidden`, the error
+    /// is explicit rather than silent.
     NotImplemented,
 
-    /// Reserved for parser errors once the parser lands.
+    /// Parser-level syntax error: stray metacharacter, dangling
+    /// quantifier, etc. Replaces JVM's `PatternSyntaxException`
+    /// in cycle 1; refinement lands in cycle 5.
     UnexpectedToken,
     UnclosedGroup,
     UnclosedClass,
@@ -125,10 +129,6 @@ pub const CompileError = error{
 /// Compile a regex pattern source into a `Program`. Caller owns
 /// the resulting `Program` and must call `Program.deinit` to
 /// free the IR slice.
-///
-/// Status: skeleton — `compile` calls `parsePattern` then
-/// `emit`; both still return `CompileError.NotImplemented` until
-/// the recursive-descent parser + IR walker land.
 pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) CompileError!Program {
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -136,33 +136,111 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) Comp
     return try emit(alloc, node, flags);
 }
 
-/// Parser entry point: recursive-descent over the regex source,
-/// emits a `Node` tree into the supplied arena allocator.
+/// Recursive-descent parser entry: produces an AST `Node` tree
+/// into the supplied arena allocator.
 ///
-/// Cycle-1 step 2: ASCII literal sequence (concatenation).
-/// Metacharacters (`.`, `*`, `+`, `?`, `(`, `)`, `[`, `]`,
-/// `|`, `\\`, `^`, `$`, `{`, `}`) and the empty pattern all
-/// raise `NotImplemented`. Alternation / quantifiers /
-/// character classes / anchors are subsequent commits.
+/// Grammar (cycle 1):
+///
+/// ```text
+/// pattern := alt
+/// alt     := concat ('|' concat)*
+/// concat  := quant+               -- empty branches reject in cycle 1
+/// quant   := atom ('*' | '+' | '?')?
+/// atom    := '.' | literal_byte
+/// ```
 pub fn parsePattern(arena: std.mem.Allocator, pattern: []const u8, flags: Flags) CompileError!*const Node {
     _ = flags;
     if (pattern.len == 0) return CompileError.NotImplemented;
-    // Reject metachars other than '.' (which the cycle-1 atom
-    // parser handles below as a wildcard class).
-    for (pattern) |c| {
-        if (isMetaChar(c) and c != '.') return CompileError.NotImplemented;
+    var parser: Parser = .{ .src = pattern, .pos = 0, .arena = arena };
+    const node = try parser.parseAlt();
+    if (!parser.atEnd()) return CompileError.UnexpectedToken;
+    return node;
+}
+
+const Parser = struct {
+    src: []const u8,
+    pos: usize,
+    arena: std.mem.Allocator,
+
+    fn atEnd(self: Parser) bool {
+        return self.pos >= self.src.len;
     }
-    if (pattern.len == 1) {
-        const node = try arena.create(Node);
-        node.* = atomFor(pattern[0]);
+
+    fn peek(self: Parser) ?u8 {
+        if (self.atEnd()) return null;
+        return self.src[self.pos];
+    }
+
+    fn advance(self: *Parser) ?u8 {
+        if (self.atEnd()) return null;
+        const c = self.src[self.pos];
+        self.pos += 1;
+        return c;
+    }
+
+    fn parseAlt(self: *Parser) CompileError!*Node {
+        const first = try self.parseConcat();
+        if (self.peek() != @as(?u8, '|')) return first;
+        var children: std.ArrayList(Node) = .empty;
+        try children.append(self.arena, first.*);
+        while (self.peek() == @as(?u8, '|')) {
+            _ = self.advance();
+            const branch = try self.parseConcat();
+            try children.append(self.arena, branch.*);
+        }
+        const node = try self.arena.create(Node);
+        node.* = .{ .alt = try children.toOwnedSlice(self.arena) };
         return node;
     }
-    const children = try arena.alloc(Node, pattern.len);
-    for (pattern, 0..) |c, i| children[i] = atomFor(c);
-    const root = try arena.create(Node);
-    root.* = .{ .concat = children };
-    return root;
-}
+
+    fn parseConcat(self: *Parser) CompileError!*Node {
+        var children: std.ArrayList(Node) = .empty;
+        while (true) {
+            const p = self.peek() orelse break;
+            if (p == '|') break;
+            // Quantifier with no operand: '*' / '+' / '?' here is a syntax error.
+            if (p == '*' or p == '+' or p == '?') return CompileError.UnexpectedToken;
+            // Cycle-1 unsupported metas raise NotImplemented so the
+            // user sees an explicit not-yet message rather than a
+            // misleading "syntax error".
+            if (isMetaChar(p) and p != '.') return CompileError.NotImplemented;
+            const atom = try self.parseQuant();
+            try children.append(self.arena, atom.*);
+        }
+        if (children.items.len == 0) return CompileError.NotImplemented;
+        if (children.items.len == 1) {
+            const single = try self.arena.create(Node);
+            single.* = children.items[0];
+            return single;
+        }
+        const node = try self.arena.create(Node);
+        node.* = .{ .concat = try children.toOwnedSlice(self.arena) };
+        return node;
+    }
+
+    fn parseQuant(self: *Parser) CompileError!*Node {
+        const atom = try self.parseAtom();
+        const p = self.peek() orelse return atom;
+        const wrapped: Node = switch (p) {
+            '*' => .{ .star = atom },
+            '+' => .{ .plus = atom },
+            '?' => .{ .quest = atom },
+            else => return atom,
+        };
+        _ = self.advance();
+        const node = try self.arena.create(Node);
+        node.* = wrapped;
+        return node;
+    }
+
+    fn parseAtom(self: *Parser) CompileError!*Node {
+        const c = self.advance() orelse return CompileError.UnexpectedToken;
+        if (isMetaChar(c) and c != '.') return CompileError.NotImplemented;
+        const node = try self.arena.create(Node);
+        node.* = atomFor(c);
+        return node;
+    }
+};
 
 /// Cycle-1 atom builder: literal byte, or `.` → all-set
 /// character class (cycle-1 simplification — JVM `.` excludes
@@ -185,7 +263,7 @@ fn isMetaChar(c: u8) bool {
 }
 
 /// IR emitter: walks the AST and emits Pike-VM instructions
-/// into a flat `Inst` slice. Cycle-1 first cell: `.lit` only.
+/// into a flat `Inst` slice.
 fn emit(alloc: std.mem.Allocator, node: *const Node, flags: Flags) CompileError!Program {
     var list: std.ArrayList(Inst) = .empty;
     errdefer list.deinit(alloc);
@@ -205,8 +283,106 @@ fn emitNode(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, node: *const N
         .concat => |children| {
             for (children) |*ch| try emitNode(list, alloc, ch);
         },
+        .alt => |children| try emitAlt(list, alloc, children),
+        .star => |child| try emitStar(list, alloc, child),
+        .plus => |child| try emitPlus(list, alloc, child),
+        .quest => |child| try emitQuest(list, alloc, child),
         else => return CompileError.NotImplemented,
     }
+}
+
+/// `e1|e2|...|en` →
+/// ```text
+///   split{e1_start, rest_start}
+///   <e1>
+///   jmp end
+///   split{e2_start, rest_start}    -- for n ≥ 3, chained per branch
+///   <e2>
+///   jmp end
+///   ...
+///   <en>
+///   end:
+/// ```
+/// Each `split` and `jmp` is emitted as a placeholder and
+/// backpatched once the operand's IR position is known.
+fn emitAlt(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, children: []const Node) CompileError!void {
+    if (children.len == 0) return;
+    if (children.len == 1) {
+        try emitNode(list, alloc, &children[0]);
+        return;
+    }
+    var jmp_indices: std.ArrayList(u32) = .empty;
+    defer jmp_indices.deinit(alloc);
+
+    for (children, 0..) |*ch, i| {
+        if (i == children.len - 1) {
+            try emitNode(list, alloc, ch);
+        } else {
+            const split_idx = list.items.len;
+            try list.append(alloc, .{ .split = .{ .a = 0, .b = 0 } });
+            const ch_start: u32 = @intCast(list.items.len);
+            try emitNode(list, alloc, ch);
+            const jmp_idx: u32 = @intCast(list.items.len);
+            try list.append(alloc, .{ .jmp = 0 });
+            try jmp_indices.append(alloc, jmp_idx);
+            const next_branch_start: u32 = @intCast(list.items.len);
+            list.items[split_idx] = .{ .split = .{ .a = ch_start, .b = next_branch_start } };
+        }
+    }
+    const end: u32 = @intCast(list.items.len);
+    for (jmp_indices.items) |idx| {
+        list.items[idx] = .{ .jmp = end };
+    }
+}
+
+/// `e*` (greedy) →
+/// ```text
+///   L0: split{body, after}
+///       <e>
+///       jmp L0
+///   after:
+/// ```
+/// `split.a = body` puts the consume branch ahead of the skip
+/// branch — greedy semantics fall out of Pike VM thread priority.
+fn emitStar(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const Node) CompileError!void {
+    const L0: u32 = @intCast(list.items.len);
+    const split_idx = list.items.len;
+    try list.append(alloc, .{ .split = .{ .a = 0, .b = 0 } });
+    const body_start: u32 = @intCast(list.items.len);
+    try emitNode(list, alloc, child);
+    try list.append(alloc, .{ .jmp = L0 });
+    const after: u32 = @intCast(list.items.len);
+    list.items[split_idx] = .{ .split = .{ .a = body_start, .b = after } };
+}
+
+/// `e+` (greedy) →
+/// ```text
+///   L0: <e>
+///       split{L0, after}
+///   after:
+/// ```
+fn emitPlus(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const Node) CompileError!void {
+    const L0: u32 = @intCast(list.items.len);
+    try emitNode(list, alloc, child);
+    const split_idx = list.items.len;
+    try list.append(alloc, .{ .split = .{ .a = L0, .b = 0 } });
+    const after: u32 = @intCast(list.items.len);
+    list.items[split_idx].split.b = after;
+}
+
+/// `e?` (greedy) →
+/// ```text
+///   split{body, after}
+///   <e>
+///   after:
+/// ```
+fn emitQuest(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const Node) CompileError!void {
+    const split_idx = list.items.len;
+    try list.append(alloc, .{ .split = .{ .a = 0, .b = 0 } });
+    const body_start: u32 = @intCast(list.items.len);
+    try emitNode(list, alloc, child);
+    const after: u32 = @intCast(list.items.len);
+    list.items[split_idx] = .{ .split = .{ .a = body_start, .b = after } };
 }
 
 // --- tests ---
@@ -221,11 +397,18 @@ test "compile single-char literal emits [char, match]" {
     try testing.expectEqual({}, prog.insts[1].match);
 }
 
-test "compile rejects metacharacter / empty (NotImplemented)" {
-    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, ".", .{}));
-    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "*", .{}));
+test "compile rejects empty / unsupported metas / stray quantifier" {
+    // Empty pattern: cycle 1 holds the JVM-permitted empty match for later.
     try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "", .{}));
-    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "a*", .{}));
+    // Stray quantifier (no operand): syntax error.
+    try testing.expectError(CompileError.UnexpectedToken, compile(testing.allocator, "*", .{}));
+    try testing.expectError(CompileError.UnexpectedToken, compile(testing.allocator, "+", .{}));
+    try testing.expectError(CompileError.UnexpectedToken, compile(testing.allocator, "?", .{}));
+    // Cycle-1 unsupported metas: explicit not-implemented, not a lie.
+    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "(", .{}));
+    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "[", .{}));
+    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "\\", .{}));
+    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "^", .{}));
 }
 
 test "compile multi-char literal emits sequence of char + match" {
@@ -236,6 +419,53 @@ test "compile multi-char literal emits sequence of char + match" {
     try testing.expectEqual(@as(u8, 'b'), prog.insts[1].char);
     try testing.expectEqual(@as(u8, 'c'), prog.insts[2].char);
     try testing.expectEqual({}, prog.insts[3].match);
+}
+
+test "compile a|b emits split + char + jmp + char + match" {
+    var prog = try compile(testing.allocator, "a|b", .{});
+    defer prog.deinit(testing.allocator);
+    // Layout: 0 split{1,3}, 1 char 'a', 2 jmp 4, 3 char 'b', 4 match
+    try testing.expectEqual(@as(usize, 5), prog.insts.len);
+    try testing.expectEqual(@as(u32, 1), prog.insts[0].split.a);
+    try testing.expectEqual(@as(u32, 3), prog.insts[0].split.b);
+    try testing.expectEqual(@as(u8, 'a'), prog.insts[1].char);
+    try testing.expectEqual(@as(u32, 4), prog.insts[2].jmp);
+    try testing.expectEqual(@as(u8, 'b'), prog.insts[3].char);
+    try testing.expectEqual({}, prog.insts[4].match);
+}
+
+test "compile a* emits L0 split + char + jmp L0 + match" {
+    var prog = try compile(testing.allocator, "a*", .{});
+    defer prog.deinit(testing.allocator);
+    // Layout: 0 split{1,3}, 1 char 'a', 2 jmp 0, 3 match
+    try testing.expectEqual(@as(usize, 4), prog.insts.len);
+    try testing.expectEqual(@as(u32, 1), prog.insts[0].split.a);
+    try testing.expectEqual(@as(u32, 3), prog.insts[0].split.b);
+    try testing.expectEqual(@as(u8, 'a'), prog.insts[1].char);
+    try testing.expectEqual(@as(u32, 0), prog.insts[2].jmp);
+    try testing.expectEqual({}, prog.insts[3].match);
+}
+
+test "compile a+ emits char + split{L0,after} + match" {
+    var prog = try compile(testing.allocator, "a+", .{});
+    defer prog.deinit(testing.allocator);
+    // Layout: 0 char 'a', 1 split{0,2}, 2 match — body before after for greedy.
+    try testing.expectEqual(@as(usize, 3), prog.insts.len);
+    try testing.expectEqual(@as(u8, 'a'), prog.insts[0].char);
+    try testing.expectEqual(@as(u32, 0), prog.insts[1].split.a);
+    try testing.expectEqual(@as(u32, 2), prog.insts[1].split.b);
+    try testing.expectEqual({}, prog.insts[2].match);
+}
+
+test "compile a? emits split{1,2} + char + match" {
+    var prog = try compile(testing.allocator, "a?", .{});
+    defer prog.deinit(testing.allocator);
+    // Layout: 0 split{1,2}, 1 char 'a', 2 match
+    try testing.expectEqual(@as(usize, 3), prog.insts.len);
+    try testing.expectEqual(@as(u32, 1), prog.insts[0].split.a);
+    try testing.expectEqual(@as(u32, 2), prog.insts[0].split.b);
+    try testing.expectEqual(@as(u8, 'a'), prog.insts[1].char);
+    try testing.expectEqual({}, prog.insts[2].match);
 }
 
 test "isMetaChar covers the cycle-1 + future metachar set" {
