@@ -29,9 +29,9 @@
   (clojure.string/set/walk/zip — needs bootstrap multi-clj
   load), 6.13 (yaml sweep ~34 entries), 6.14 (exit smoke),
   6.15 (phase flip).
-- **Branch**: `cw-from-scratch`. HEAD ≈ 29435a5 (ADR-0031
-  regex engine-choice Proposed skeleton landed; 48 fns
-  total in 6.16 cluster).
+- **Branch**: `cw-from-scratch`. HEAD ≈ 854f3d1 (ADR-0031
+  Accepted — Alternative 2 two-tier IR + lazy DFA over
+  Pike-NFA, Devil's-advocate fork executed inline).
 - **Gate**: Mac 16/16 + OrbStack Ubuntu x86_64 15/15 green.
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
@@ -57,14 +57,21 @@ boundary — further single-primitive expansion is cheaper than
 the exit-criterion deliverable. The next session should pivot
 away from primitive accretion and take 6.6 directly.
 
-**Recommended next**: 6.6 (regex) finish. ADR-0031 skeleton
-already landed (29435a5) with the Devil's-advocate brief
-embedded. Next session: fork a `general-purpose` subagent
-with the brief copy-pasted from ADR-0031's "Devil's-advocate
-brief" section, paste the subagent's response verbatim into
-"Alternatives considered", flip Status to Accepted, then
-implement runtime/regex/{compile,match}.zig + the Java
-surface + the Clojure peer.
+**Recommended next**: 6.6 (regex) impl against ADR-0031
+Accepted (854f3d1). Cycle 1 lands the parser + AST + IR
+(`Program`) + Pike-NFA VM only — DFA fast path is cycle 2.
+Phase 6.6 exit smoke `(re-find #"\d+" "abc123")` → `"123"`
+should pass at the end of cycle 1.
+
+File targets (per ADR-0031 Decision):
+  runtime/regex/compile.zig (parser + AST + IR optimiser)
+  runtime/regex/match.zig (Pike VM, NFA correctness baseline)
+  runtime/regex/dfa.zig (cycle 2: lazy DFA)
+  runtime/regex/exec.zig (cycle 2: dispatcher)
+  runtime/java/util/regex/Pattern.zig (JVM-shaped surface)
+  lang/primitive/regex.zig (re-find / re-matches / re-seq /
+    re-groups / re-pattern, dispatch into Pattern)
+  compat_tiers.yaml (new java.util.regex.Pattern entry)
 
 Alternative parallel-track: 6.13 yaml sweep — mechanical bulk
 diff over ~34 legacy entries to ADR-0029 D5 schema. Low risk,
