@@ -695,7 +695,6 @@ fn analyzeLoopStar(
         return error_catalog.raise(.arity_too_large, items[1].location, .{
             .form = "loop*",
             .got = pair_count,
-            .max = @as(usize, std.math.maxInt(u16)),
         });
 
     const arity_u: u16 = @intCast(pair_count);
@@ -762,7 +761,6 @@ fn analyzeRecur(
         return error_catalog.raise(.arity_too_large, form.location, .{
             .form = "recur",
             .got = supplied_raw,
-            .max = @as(usize, std.math.maxInt(u16)),
         });
     const supplied: u16 = @intCast(supplied_raw);
     if (supplied != tgt.arity) {

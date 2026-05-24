@@ -262,7 +262,7 @@ pub fn entry(comptime code: Code) Entry {
         },
         .arity_too_large => .{
             .kind = .not_implemented, .phase = .analysis,
-            .template = "{[form]s} arity {[got]d} exceeds the limit of {[max]d}",
+            .template = "{[form]s} arity {[got]d} exceeds the limit of 65535",
         },
         .namespace_unknown => .{
             .kind = .name_error, .phase = .analysis,
