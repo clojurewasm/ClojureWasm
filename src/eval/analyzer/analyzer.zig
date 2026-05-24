@@ -461,9 +461,9 @@ fn analyzeSpecial(
         .if_form => special_forms.analyzeIf(arena, rt, env, scope, items, form, macro_table),
         .do_form => special_forms.analyzeDo(arena, rt, env, scope, items, form, macro_table),
         .quote_form => special_forms.analyzeQuote(arena, rt, items, form),
-        .fn_star => analyzeFnStar(arena, rt, env, scope, items, form, macro_table),
-        .let_star => analyzeLetStar(arena, rt, env, scope, items, form, macro_table),
-        .loop_star => analyzeLoopStar(arena, rt, env, scope, items, form, macro_table),
+        .fn_star => bindings.analyzeFnStar(arena, rt, env, scope, items, form, macro_table),
+        .let_star => bindings.analyzeLetStar(arena, rt, env, scope, items, form, macro_table),
+        .loop_star => bindings.analyzeLoopStar(arena, rt, env, scope, items, form, macro_table),
         .recur_form => analyzeRecur(arena, rt, env, scope, items, form, macro_table),
         .try_form => analyzeTry(arena, rt, env, scope, items, form, macro_table),
         .throw_form => special_forms.analyzeThrow(arena, rt, env, scope, items, form, macro_table),
@@ -472,6 +472,7 @@ fn analyzeSpecial(
 }
 
 const special_forms = @import("special_forms.zig");
+const bindings = @import("bindings.zig");
 
 /// `(deftype Name [field1 field2 ...])` per ADR-0007 Option β +
 /// ROADMAP §9.7 / 5.12.a. Phase 5.12.a accepts declaration only —
@@ -514,228 +515,7 @@ fn listFormToValue(rt: *Runtime, items: []const Form) AnalyzeError!Value {
     return acc;
 }
 
-fn analyzeFnStar(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    items: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    // (fn* [params] body...)
-    if (items.len < 3)
-        return error_catalog.raise(.fn_star_form_incomplete, form.location, .{});
-    if (items[1].data != .vector)
-        return error_catalog.raise(.fn_star_params_not_vector, items[1].location, .{});
-    const params_form = items[1].data.vector;
-
-    var has_rest = false;
-    var arity: u16 = 0;
-    var param_names: std.ArrayList([]const u8) = .empty;
-    defer param_names.deinit(arena);
-
-    var i: usize = 0;
-    while (i < params_form.len) : (i += 1) {
-        if (params_form[i].data != .symbol)
-            return error_catalog.raise(.fn_star_param_not_symbol, params_form[i].location, .{});
-        const ps = params_form[i].data.symbol;
-        if (ps.ns != null)
-            return error_catalog.raise(.fn_star_param_namespace_qualified, params_form[i].location, .{});
-        if (std.mem.eql(u8, ps.name, "&")) {
-            // `& rest`: the next symbol is the rest-parameter.
-            if (i + 1 >= params_form.len)
-                return error_catalog.raise(.fn_star_rest_missing, params_form[i].location, .{});
-            if (params_form[i + 1].data != .symbol)
-                return error_catalog.raise(.fn_star_rest_not_symbol, params_form[i + 1].location, .{});
-            try param_names.append(arena, params_form[i + 1].data.symbol.name);
-            has_rest = true;
-            break;
-        }
-        try param_names.append(arena, ps.name);
-        arity += 1;
-    }
-
-    // `fn*` is a recur target: `recur` inside the body rebinds the
-    // parameter slots and re-enters. arity counts mandatory params
-    // only — Clojure's recur cannot rebind the rest-parameter as a
-    // single arg, so we exclude `& rest` from the recur arity.
-    const recur_arity = arity;
-    const slot_base: u16 = if (scope) |s| s.next_slot else 0;
-    var child_scope = if (scope) |s|
-        Scope.childWithRecur(s, .{ .arity = recur_arity, .slot_base = slot_base, .kind = .fn_kw })
-    else
-        Scope{ .recur_target = .{ .arity = recur_arity, .slot_base = 0, .kind = .fn_kw } };
-    defer child_scope.deinit(arena);
-    for (param_names.items) |name| {
-        _ = try child_scope.declare(arena, name);
-    }
-
-    const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form, macro_table);
-
-    const n = try arena.create(Node);
-    n.* = .{ .fn_node = .{
-        .arity = arity,
-        .has_rest = has_rest,
-        .params = try arena.dupe([]const u8, param_names.items),
-        .body = body_node,
-        .slot_base = slot_base,
-        .loc = form.location,
-    } };
-    return n;
-}
-
-/// Fold multiple body forms into a `do_node`; a single body form is
-/// returned as-is. Used by `fn*` and `let*`.
-fn analyzeBody(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: *const Scope,
-    body_forms: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    if (body_forms.len == 1) {
-        return analyze(arena, rt, env, scope, body_forms[0], macro_table);
-    }
-    var sub = try arena.alloc(Node, body_forms.len);
-    for (body_forms, 0..) |f, i| {
-        const n = try analyze(arena, rt, env, scope, f, macro_table);
-        sub[i] = n.*;
-    }
-    const n = try arena.create(Node);
-    n.* = .{ .do_node = .{ .forms = sub, .loc = form.location } };
-    return n;
-}
-
-fn analyzeLetStar(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    items: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    // (let* [k1 v1 k2 v2 ...] body...)
-    if (items.len < 3)
-        return error_catalog.raise(.bindings_form_incomplete, form.location, .{ .form = "let*" });
-    if (items[1].data != .vector)
-        return error_catalog.raise(.bindings_not_vector, items[1].location, .{ .form = "let*" });
-    const binding_forms = items[1].data.vector;
-    if (binding_forms.len % 2 != 0)
-        return error_catalog.raise(.bindings_arity_odd, items[1].location, .{ .form = "let*" });
-
-    var child_scope = if (scope) |s| Scope.child(s) else Scope{};
-    defer child_scope.deinit(arena);
-
-    var bindings = try arena.alloc(node_mod.LetNode.Binding, binding_forms.len / 2);
-    var bi: usize = 0;
-    var fi: usize = 0;
-    while (fi < binding_forms.len) : (fi += 2) {
-        if (binding_forms[fi].data != .symbol)
-            return error_catalog.raise(.binding_name_not_symbol, binding_forms[fi].location, .{ .form = "let*" });
-        const name_sym = binding_forms[fi].data.symbol;
-        if (name_sym.ns != null)
-            return error_catalog.raise(.binding_name_namespace_qualified, binding_forms[fi].location, .{ .form = "let*" });
-        // Analyse the value *before* declaring the name so each value
-        // expression sees the pre-shadow scope (Clojure `let` semantics:
-        // bindings are sequential; later bindings see earlier ones, but
-        // each value is evaluated in the scope-before-its-own-binding).
-        const value_node = try analyze(arena, rt, env, &child_scope, binding_forms[fi + 1], macro_table);
-        const slot = try child_scope.declare(arena, name_sym.name);
-        bindings[bi] = .{
-            .name = name_sym.name,
-            .index = slot,
-            .value_expr = value_node,
-        };
-        bi += 1;
-    }
-
-    const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form, macro_table);
-
-    const n = try arena.create(Node);
-    n.* = .{ .let_node = .{
-        .bindings = bindings,
-        .body = body_node,
-        .loc = form.location,
-    } };
-    return n;
-}
-
 // --- loop* / recur / throw / try ---
-
-fn analyzeLoopStar(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    items: []const Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    // (loop* [k1 v1 k2 v2 ...] body...)
-    if (items.len < 3)
-        return error_catalog.raise(.bindings_form_incomplete, form.location, .{ .form = "loop*" });
-    if (items[1].data != .vector)
-        return error_catalog.raise(.bindings_not_vector, items[1].location, .{ .form = "loop*" });
-    const binding_forms = items[1].data.vector;
-    if (binding_forms.len % 2 != 0)
-        return error_catalog.raise(.bindings_arity_odd, items[1].location, .{ .form = "loop*" });
-    const pair_count = binding_forms.len / 2;
-    if (pair_count > std.math.maxInt(u16))
-        return error_catalog.raise(.arity_too_large, items[1].location, .{
-            .form = "loop*",
-            .got = pair_count,
-        });
-
-    const arity_u: u16 = @intCast(pair_count);
-    const slot_base: u16 = if (scope) |s| s.next_slot else 0;
-
-    // Pre-allocate the scope WITH the recur target so the binding
-    // value-exprs cannot accidentally close over it. (Clojure's loop
-    // values are evaluated in the parent scope; recur is only valid
-    // *inside* the loop body. We mirror this by reusing the parent
-    // scope for value analysis below.)
-    var child_scope = if (scope) |s|
-        Scope.childWithRecur(s, .{ .arity = arity_u, .slot_base = slot_base, .kind = .loop_kw })
-    else
-        Scope{ .recur_target = .{ .arity = arity_u, .slot_base = 0, .kind = .loop_kw } };
-    defer child_scope.deinit(arena);
-
-    var bindings = try arena.alloc(node_mod.LetNode.Binding, arity_u);
-    var bi: usize = 0;
-    var fi: usize = 0;
-    while (fi < binding_forms.len) : (fi += 2) {
-        if (binding_forms[fi].data != .symbol)
-            return error_catalog.raise(.binding_name_not_symbol, binding_forms[fi].location, .{ .form = "loop*" });
-        const name_sym = binding_forms[fi].data.symbol;
-        if (name_sym.ns != null)
-            return error_catalog.raise(.binding_name_namespace_qualified, binding_forms[fi].location, .{ .form = "loop*" });
-        // Value is analysed in the *parent* scope (recur is scoped to
-        // the body, not to siblings; matching Clojure's semantics for
-        // initial values).
-        const value_node = try analyze(arena, rt, env, scope, binding_forms[fi + 1], macro_table);
-        const slot = try child_scope.declare(arena, name_sym.name);
-        bindings[bi] = .{
-            .name = name_sym.name,
-            .index = slot,
-            .value_expr = value_node,
-        };
-        bi += 1;
-    }
-
-    const body_node = try analyzeBody(arena, rt, env, &child_scope, items[2..], form, macro_table);
-
-    const n = try arena.create(Node);
-    n.* = .{ .loop_node = .{
-        .bindings = bindings,
-        .body = body_node,
-        .loc = form.location,
-    } };
-    return n;
-}
 
 fn analyzeRecur(
     arena: std.mem.Allocator,
