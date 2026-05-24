@@ -69,6 +69,9 @@ pub const Node = union(enum) {
     recur_node: RecurNode,
     try_node: TryNode,
     throw_node: ThrowNode,
+    deftype_node: DeftypeNode,
+    ctor_call_node: CtorCallNode,
+    field_access_node: FieldAccessNode,
 
     /// Source location of this Node. Returns the inner variant's `loc`
     /// — every variant carries one because Phase-2 errors must cite a
@@ -244,6 +247,39 @@ pub const TryNode = struct {
 /// `error.ThrownValue` Zig error.
 pub const ThrowNode = struct {
     expr: *const Node,
+    loc: SourceLocation = .{},
+};
+
+/// `(deftype Name [f1 f2 ...] ...)` — per ADR-0007 Option β. Phase
+/// 5.12.a lands declaration only; protocol-method bodies arrive in
+/// 5.12.d (per ADR-0008 a1). Eval registers a fresh TypeDescriptor
+/// into `rt.types` keyed on `name`.
+pub const DeftypeNode = struct {
+    /// Fully-qualified class name (e.g. `user.Point`).
+    name: []const u8,
+    /// Field names in declaration order.
+    fields: []const []const u8,
+    loc: SourceLocation = .{},
+};
+
+/// `(Name. arg ...)` — constructor call. The analyzer recognises the
+/// trailing-dot symbol shape and emits this node. Eval looks up
+/// `type_name` in `rt.types` and calls `type_descriptor.allocInstance`.
+pub const CtorCallNode = struct {
+    /// Fully-qualified name without the trailing dot.
+    type_name: []const u8,
+    args: []const Node,
+    loc: SourceLocation = .{},
+};
+
+/// `(.field instance)` — instance field read. The analyzer recognises
+/// the leading-dot symbol shape and emits this node. Eval looks up
+/// the field name in the instance's TypeDescriptor.field_layout and
+/// returns `field_values[index]`.
+pub const FieldAccessNode = struct {
+    /// Field name without the leading dot.
+    field_name: []const u8,
+    target: *const Node,
     loc: SourceLocation = .{},
 };
 

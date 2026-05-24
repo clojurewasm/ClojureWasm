@@ -104,6 +104,14 @@ const Compiler = struct {
             .try_node => |n| try self.compileTry(n),
             .loop_node => |n| try self.compileLoop(n),
             .recur_node => |n| try self.compileRecur(n),
+            // 5.12.a: VM wiring deferred to 5.12.a.4. The TreeWalk
+            // backend handles these nodes today; the VM compiler
+            // raises feature_not_supported until the bytecode shape
+            // for deftype / ctor / field-access is decided alongside
+            // the Phase 7 dispatch fn (ADR-0008 a1).
+            .deftype_node, .ctor_call_node, .field_access_node => {
+                return error.NotImplemented;
+            },
         }
     }
 

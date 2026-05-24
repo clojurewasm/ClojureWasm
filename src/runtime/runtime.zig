@@ -25,8 +25,10 @@ const std = @import("std");
 const KeywordInterner = @import("keyword.zig").KeywordInterner;
 const dispatch = @import("dispatch.zig");
 const gc_heap_mod = @import("gc/gc_heap.zig");
+const td_mod = @import("type_descriptor.zig");
 const VTable = dispatch.VTable;
 const GcHeap = gc_heap_mod.GcHeap;
+const TypeDescriptor = td_mod.TypeDescriptor;
 
 /// Process-wide execution context.
 ///
@@ -79,6 +81,14 @@ pub const Runtime = struct {
     /// via `&rt.gc`.
     gc: GcHeap,
 
+    /// User type registry per ADR-0007 + ROADMAP §9.7 / 5.11. Maps
+    /// the fully-qualified class name (e.g. `user.Point`) to a
+    /// process-lifetime TypeDescriptor allocated on `gpa`. Populated
+    /// by the deftype / defrecord analyzer (Phase 5.12). Read by the
+    /// constructor (`Foo. args`) and method-dispatch (`(.m inst)`)
+    /// eval paths.
+    types: std.StringHashMap(*const TypeDescriptor) = undefined,
+
     pub const HeapEntry = struct {
         ptr: *anyopaque,
         free: *const fn (gpa: std.mem.Allocator, ptr: *anyopaque) void,
@@ -128,6 +138,7 @@ pub const Runtime = struct {
             .gpa = gpa,
             .keywords = KeywordInterner.init(gpa),
             .gc = GcHeap.init(gpa),
+            .types = std.StringHashMap(*const TypeDescriptor).init(gpa),
         };
     }
 
@@ -136,6 +147,23 @@ pub const Runtime = struct {
             entry.free(self.gpa, entry.ptr);
         }
         self.heap_objects.deinit(self.gpa);
+        // Free each registered TypeDescriptor + its field_layout
+        // (the analyzer dup'd the names onto gpa per allocator
+        // strategy F-006).
+        var it = self.types.iterator();
+        while (it.next()) |entry| {
+            const td = entry.value_ptr.*;
+            if (td.field_layout) |layout| {
+                for (layout) |fe| self.gpa.free(fe.name);
+                self.gpa.free(layout);
+            }
+            if (td.fqcn) |n| self.gpa.free(n);
+            // method_table and protocol_impls slices are gpa-owned
+            // by the analyzer if populated; 5.12.a leaves them
+            // empty so no free needed yet.
+            self.gpa.destroy(@constCast(td));
+        }
+        self.types.deinit();
         self.gc.deinit();
         self.keywords.deinit();
     }

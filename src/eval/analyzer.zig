@@ -160,6 +160,7 @@ const SpecialFormKind = enum {
     recur_form,
     try_form,
     throw_form,
+    deftype_form,
 };
 
 const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
@@ -173,6 +174,7 @@ const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
     .{ "recur", .recur_form },
     .{ "try", .try_form },
     .{ "throw", .throw_form },
+    .{ "deftype", .deftype_form },
 });
 
 /// Forms the analyser recognises but the runtime does not yet
@@ -181,7 +183,6 @@ const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
 /// form name in the `.name` slot. Task 4.26.b later promotes these
 /// to named per-form Codes (`deftype_not_supported`, etc.).
 const STAGED_UNSUPPORTED_FORMS = std.StaticStringMap(void).initComptime(.{
-    .{ "deftype", {} },
     .{ "defrecord", {} },
     .{ "reify", {} },
     .{ "definterface", {} },
@@ -368,6 +369,17 @@ fn analyzeList(
             if (SPECIAL_FORMS.get(head.name)) |kind| {
                 return analyzeSpecial(arena, rt, env, scope, kind, items, form, macro_table);
             }
+            // 5.12.a: `Name.` (trailing dot) -> constructor call.
+            if (head.name.len >= 2 and head.name[head.name.len - 1] == '.') {
+                return try analyzeCtorCall(arena, rt, env, scope, head.name[0 .. head.name.len - 1], items[1..], form, macro_table);
+            }
+            // 5.12.a: `.field` (leading dot, single arg) -> field access.
+            // Phase 5.12.a only handles arity 2 (`.field instance`) as
+            // a struct field read. Multi-arg (`.method instance args...`)
+            // protocol method dispatch lands at 5.12.d.
+            if (head.name.len >= 2 and head.name[0] == '.' and items.len == 2) {
+                return try analyzeFieldAccess(arena, rt, env, scope, head.name[1..], items[1], form, macro_table);
+            }
             if (STAGED_UNSUPPORTED_FORMS.has(head.name)) {
                 return error_catalog.raise(.feature_not_supported, form.location, .{ .name = head.name });
             }
@@ -455,7 +467,94 @@ fn analyzeSpecial(
         .recur_form => analyzeRecur(arena, rt, env, scope, items, form, macro_table),
         .try_form => analyzeTry(arena, rt, env, scope, items, form, macro_table),
         .throw_form => analyzeThrow(arena, rt, env, scope, items, form, macro_table),
+        .deftype_form => analyzeDeftype(arena, items, form),
     };
+}
+
+/// `(deftype Name [field1 field2 ...])` per ADR-0007 Option β +
+/// ROADMAP §9.7 / 5.12.a. Phase 5.12.a accepts declaration only —
+/// protocol method bodies are silently dropped (the analyzer was
+/// already raising on them via STAGED_UNSUPPORTED_FORMS prior to
+/// this commit; the analyzer now treats trailing forms as no-op
+/// until 5.12.d wires protocol method dispatch).
+fn analyzeCtorCall(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    type_name: []const u8,
+    arg_forms: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    const args = try arena.alloc(Node, arg_forms.len);
+    for (arg_forms, 0..) |af, i| {
+        const sub = try analyze(arena, rt, env, scope, af, macro_table);
+        args[i] = sub.*;
+    }
+    const n = try arena.create(Node);
+    n.* = .{ .ctor_call_node = .{
+        .type_name = type_name,
+        .args = args,
+        .loc = form.location,
+    } };
+    return n;
+}
+
+fn analyzeFieldAccess(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    field_name: []const u8,
+    target_form: Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    const target = try analyze(arena, rt, env, scope, target_form, macro_table);
+    const n = try arena.create(Node);
+    n.* = .{ .field_access_node = .{
+        .field_name = field_name,
+        .target = target,
+        .loc = form.location,
+    } };
+    return n;
+}
+
+fn analyzeDeftype(arena: std.mem.Allocator, items: []const Form, form: Form) AnalyzeError!*const Node {
+    if (items.len < 3) {
+        return error_catalog.raise(.feature_not_supported, form.location, .{ .name = "deftype with no field list" });
+    }
+    if (items[1].data != .symbol) {
+        return error_catalog.raise(.def_name_not_symbol, items[1].location, .{});
+    }
+    const name_sym = items[1].data.symbol;
+    if (name_sym.ns != null) {
+        return error_catalog.raise(.def_name_namespace_qualified, items[1].location, .{ .ns = name_sym.ns.?, .name = name_sym.name });
+    }
+    if (items[2].data != .vector) {
+        return error_catalog.raise(.bindings_not_vector, items[2].location, .{ .form = "deftype" });
+    }
+    const field_forms = items[2].data.vector;
+    const field_names = try arena.alloc([]const u8, field_forms.len);
+    for (field_forms, 0..) |fld, i| {
+        if (fld.data != .symbol) {
+            return error_catalog.raise(.binding_name_not_symbol, fld.location, .{ .form = "deftype" });
+        }
+        if (fld.data.symbol.ns != null) {
+            return error_catalog.raise(.binding_name_namespace_qualified, fld.location, .{ .form = "deftype" });
+        }
+        field_names[i] = fld.data.symbol.name;
+    }
+    // items[3..] (protocol method bodies) silently dropped at
+    // 5.12.a; 5.12.d wires them via ADR-0008 a1 dispatch.
+    const n = try arena.create(Node);
+    n.* = .{ .deftype_node = .{
+        .name = name_sym.name,
+        .fields = field_names,
+        .loc = form.location,
+    } };
+    return n;
 }
 
 fn analyzeDef(
@@ -1379,8 +1478,39 @@ test "recur arity mismatch reports the loop's expected arity" {
     try testing.expectEqual(error_mod.Kind.arity_error, info.kind);
 }
 
-test "deftype / defrecord / reify / definterface raise unsupported_feature with form name" {
-    inline for ([_][]const u8{ "deftype", "defrecord", "reify", "definterface" }) |form_name| {
+test "deftype is now a real special form (5.12.a) — analyses without unsupported" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    const n = try fix.analyzeStr("(deftype Foo [x y])");
+    try testing.expect(n.* == .deftype_node);
+    try testing.expectEqualStrings("Foo", n.deftype_node.name);
+    try testing.expectEqual(@as(usize, 2), n.deftype_node.fields.len);
+}
+
+test "ctor call (Foo. ...) analyses into ctor_call_node" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    const n = try fix.analyzeStr("(Foo. 1 2)");
+    try testing.expect(n.* == .ctor_call_node);
+    try testing.expectEqualStrings("Foo", n.ctor_call_node.type_name);
+    try testing.expectEqual(@as(usize, 2), n.ctor_call_node.args.len);
+}
+
+test "field access (.x inst) analyses into field_access_node" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    // The target needs to be analyzable. Use a constant integer here
+    // because field-access type-checking happens at eval, not analyse.
+    const n = try fix.analyzeStr("(.x 1)");
+    try testing.expect(n.* == .field_access_node);
+    try testing.expectEqualStrings("x", n.field_access_node.field_name);
+}
+
+test "defrecord / reify / definterface still raise unsupported_feature (5.12.b/c)" {
+    inline for ([_][]const u8{ "defrecord", "reify", "definterface" }) |form_name| {
         var fix: TestFixture = undefined;
         try fix.init(testing.allocator);
         defer fix.deinit();

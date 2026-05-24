@@ -233,7 +233,85 @@ pub fn eval(
         .recur_node => |n| try evalRecur(rt, env, locals, n),
         .try_node => |n| try evalTry(rt, env, locals, n),
         .throw_node => |n| try evalThrow(rt, env, locals, n),
+        .deftype_node => |n| try evalDeftype(rt, n),
+        .ctor_call_node => |n| try evalCtorCall(rt, env, locals, n),
+        .field_access_node => |n| try evalFieldAccess(rt, env, locals, n),
     };
+}
+
+const type_descriptor_mod = @import("../../runtime/type_descriptor.zig");
+
+/// Evaluate a `(deftype Name [f1 f2 ...])` form. Allocates a fresh
+/// process-lifetime TypeDescriptor on `rt.gpa` and registers it in
+/// `rt.types` keyed on the declared name. Returns `nil` (Clojure's
+/// `deftype` return value).
+fn evalDeftype(rt: *Runtime, n: node_mod.DeftypeNode) !Value {
+    // Build the field_layout slice on rt.gpa (process-lifetime).
+    const layout = try rt.gpa.alloc(type_descriptor_mod.TypeDescriptor.FieldEntry, n.fields.len);
+    errdefer rt.gpa.free(layout);
+    for (n.fields, 0..) |fname, i| {
+        const dup = try rt.gpa.dupe(u8, fname);
+        layout[i] = .{ .name = dup, .index = @intCast(i) };
+    }
+
+    const td = try rt.gpa.create(type_descriptor_mod.TypeDescriptor);
+    errdefer rt.gpa.destroy(td);
+    const fqcn = try rt.gpa.dupe(u8, n.name);
+    td.* = .{
+        .fqcn = fqcn,
+        .kind = .deftype,
+        .field_layout = layout,
+        .protocol_impls = &.{},
+        .method_table = &.{},
+        .parent = null,
+        .meta = .nil_val,
+    };
+
+    // Re-register: replacing an existing entry frees the old one to
+    // keep `rt.types` consistent across REPL re-defs.
+    if (rt.types.fetchRemove(n.name)) |old| {
+        if (old.value.field_layout) |old_layout| {
+            for (old_layout) |fe| rt.gpa.free(fe.name);
+            rt.gpa.free(old_layout);
+        }
+        if (old.value.fqcn) |o_n| rt.gpa.free(o_n);
+        rt.gpa.destroy(@constCast(old.value));
+    }
+    const key = try rt.gpa.dupe(u8, n.name);
+    errdefer rt.gpa.free(key);
+    try rt.types.put(key, td);
+    return .nil_val;
+}
+
+fn evalCtorCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.CtorCallNode) !Value {
+    const td = rt.types.get(n.type_name) orelse
+        return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.type_name });
+    const expected = if (td.field_layout) |fl| fl.len else 0;
+    if (n.args.len != expected) {
+        return error_catalog.raise(.arity_not_expected, n.loc, .{ .got = n.args.len, .fn_name = n.type_name, .expected = expected });
+    }
+    const buf = try rt.gpa.alloc(Value, n.args.len);
+    defer rt.gpa.free(buf);
+    for (n.args, 0..) |arg_node, i| {
+        buf[i] = try eval(rt, env, locals, &arg_node);
+    }
+    return try type_descriptor_mod.allocInstance(rt, td, buf);
+}
+
+fn evalFieldAccess(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.FieldAccessNode) !Value {
+    const target_val = try eval(rt, env, locals, n.target);
+    if (target_val.tag() != .typed_instance) {
+        return error_catalog.raise(.type_arg_not_number, n.loc, .{ .fn_name = "field access", .actual = @tagName(target_val.tag()) });
+    }
+    const inst = target_val.decodePtr(*const type_descriptor_mod.TypedInstance);
+    const layout = inst.descriptor.field_layout orelse
+        return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.field_name });
+    for (layout) |fe| {
+        if (std.mem.eql(u8, fe.name, n.field_name)) {
+            return inst.fields()[fe.index];
+        }
+    }
+    return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.field_name });
 }
 
 fn evalDef(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.DefNode) !Value {
