@@ -30,6 +30,7 @@ const Runtime = @import("../runtime/runtime.zig").Runtime;
 const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const error_mod = @import("../runtime/error.zig");
+const error_catalog = @import("../runtime/error_catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 
 pub const RegisterError = error{
@@ -104,9 +105,9 @@ fn expandLet(
 ) macro_dispatch.ExpandError!Form {
     _ = rt;
     if (args.len < 2)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, loc, "let requires bindings vector and at least one body form", .{});
+        return error_catalog.raise(.let_form_incomplete, loc, .{});
     if (args[0].data != .vector)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, args[0].location, "let bindings must be a vector", .{});
+        return error_catalog.raise(.bindings_not_vector, args[0].location, .{ .form = "let" });
 
     var items = try arena.alloc(Form, args.len + 1);
     items[0] = sym("let*", loc);
@@ -124,7 +125,7 @@ fn expandWhen(
 ) macro_dispatch.ExpandError!Form {
     _ = rt;
     if (args.len < 2)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, loc, "when requires a test and at least one body form", .{});
+        return error_catalog.raise(.when_form_incomplete, loc, .{});
 
     const cond_form = args[0];
     const body = args[1..];
@@ -158,7 +159,7 @@ fn expandCond(
     _ = rt;
     if (args.len == 0) return nilForm(loc);
     if (args.len % 2 != 0)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, loc, "cond requires an even number of forms (got {d})", .{args.len});
+        return error_catalog.raise(.cond_clauses_arity_odd, loc, .{ .got = args.len });
 
     return buildCondTail(arena, args, loc);
 }
@@ -214,7 +215,7 @@ fn threadInto(
 ) macro_dispatch.ExpandError!Form {
     _ = rt;
     if (args.len == 0)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, loc, "{s} requires at least one argument", .{if (dir == .first) "->" else "->>"});
+        return error_catalog.raise(.thread_macro_arity_invalid, loc, .{ .op = if (dir == .first) "->" else "->>" });
 
     var acc = args[0];
     var i: usize = 1;
@@ -239,11 +240,11 @@ fn threadStep(
         return list(arena, items, step.location);
     }
     if (step.data != .list)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, step.location, "thread macro step must be a list or symbol, got {s}", .{step.typeName()});
+        return error_catalog.raise(.thread_macro_step_invalid_type, step.location, .{ .actual = step.typeName() });
 
     const orig = step.data.list;
     if (orig.len == 0)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, step.location, "thread macro step must not be an empty list", .{});
+        return error_catalog.raise(.thread_macro_step_empty_list, step.location, .{});
 
     const new_items = try arena.alloc(Form, orig.len + 1);
     switch (dir) {
@@ -348,13 +349,13 @@ fn expandIfLet(
     loc: SourceLocation,
 ) macro_dispatch.ExpandError!Form {
     if (args.len < 2 or args.len > 3)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, loc, "if-let requires [name expr] and a then form (else optional)", .{});
+        return error_catalog.raise(.if_let_form_incomplete, loc, .{});
     if (args[0].data != .vector or args[0].data.vector.len != 2)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, args[0].location, "if-let bindings must be a vector of [name expr]", .{});
+        return error_catalog.raise(.if_let_bindings_invalid, args[0].location, .{});
 
     const binding_v = args[0].data.vector;
     if (binding_v[0].data != .symbol or binding_v[0].data.symbol.ns != null)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, binding_v[0].location, "if-let binding name must be an unqualified symbol", .{});
+        return error_catalog.raise(.if_let_binding_name_invalid, binding_v[0].location, .{});
 
     const name_form = binding_v[0];
     const expr_form = binding_v[1];
@@ -393,11 +394,11 @@ fn expandDefn(
 ) macro_dispatch.ExpandError!Form {
     _ = rt;
     if (args.len < 3)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, loc, "defn requires a name, parameter vector, and at least one body form", .{});
+        return error_catalog.raise(.defn_form_incomplete, loc, .{});
     if (args[0].data != .symbol or args[0].data.symbol.ns != null)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, args[0].location, "defn name must be an unqualified symbol", .{});
+        return error_catalog.raise(.defn_name_invalid, args[0].location, .{});
     if (args[1].data != .vector)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, args[1].location, "defn parameter list must be a vector", .{});
+        return error_catalog.raise(.defn_params_not_vector, args[1].location, .{});
 
     const name_form = args[0];
     const params_form = args[1];
@@ -436,7 +437,7 @@ fn expandWhenLet(
 ) macro_dispatch.ExpandError!Form {
     _ = rt;
     if (args.len < 2)
-        return error_mod.setErrorFmt(.macroexpand, .syntax_error, loc, "when-let requires [name expr] and at least one body form", .{});
+        return error_catalog.raise(.when_let_form_incomplete, loc, .{});
 
     const binding_form = args[0];
     const body = args[1..];

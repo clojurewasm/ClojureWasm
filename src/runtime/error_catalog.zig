@@ -122,6 +122,19 @@ pub const Code = enum {
     // --- Macroexpand ---
     let_form_incomplete,
     cond_clauses_arity_odd,
+    when_form_incomplete,
+    /// args: `.{ .op = "->"|"->>" }`
+    thread_macro_arity_invalid,
+    /// args: `.{ .actual = "..." }`
+    thread_macro_step_invalid_type,
+    thread_macro_step_empty_list,
+    if_let_form_incomplete,
+    if_let_bindings_invalid,
+    if_let_binding_name_invalid,
+    defn_form_incomplete,
+    defn_name_invalid,
+    defn_params_not_vector,
+    when_let_form_incomplete,
 
     // --- Eval (type) ---
     type_arg_not_number,
@@ -389,6 +402,50 @@ pub fn entry(comptime code: Code) Entry {
         .cond_clauses_arity_odd => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "cond requires an even number of forms (got {[got]d})",
+        },
+        .when_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "when requires a test and at least one body form",
+        },
+        .thread_macro_arity_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "{[op]s} requires at least one argument",
+        },
+        .thread_macro_step_invalid_type => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "thread macro step must be a list or symbol, got {[actual]s}",
+        },
+        .thread_macro_step_empty_list => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "thread macro step must not be an empty list",
+        },
+        .if_let_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "if-let requires [name expr] and a then form (else optional)",
+        },
+        .if_let_bindings_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "if-let bindings must be a vector of [name expr]",
+        },
+        .if_let_binding_name_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "if-let binding name must be an unqualified symbol",
+        },
+        .defn_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defn requires a name, parameter vector, and at least one body form",
+        },
+        .defn_name_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defn name must be an unqualified symbol",
+        },
+        .defn_params_not_vector => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defn parameter list must be a vector",
+        },
+        .when_let_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "when-let requires [name expr] and at least one body form",
         },
 
         // --- Eval (type) ---
