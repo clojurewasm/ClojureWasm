@@ -120,6 +120,7 @@ pub const Runtime = struct {
         @import("lazy_seq.zig").registerGcHooks();
         @import("collection/chunked_cons.zig").registerGcHooks();
         @import("numeric/big_int.zig").registerGcHooks();
+        @import("numeric/ratio.zig").registerGcHooks();
         return .{
             .io = io,
             .gpa = gpa,
