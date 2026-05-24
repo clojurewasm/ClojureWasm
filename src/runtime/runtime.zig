@@ -132,6 +132,7 @@ pub const Runtime = struct {
         @import("numeric/big_int.zig").registerGcHooks();
         @import("numeric/ratio.zig").registerGcHooks();
         @import("numeric/big_decimal.zig").registerGcHooks();
+        @import("regex/value.zig").registerGcHooks();
         @import("type_descriptor.zig").registerGcHooks();
         return .{
             .io = io,
