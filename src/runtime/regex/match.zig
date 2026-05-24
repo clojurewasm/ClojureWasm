@@ -113,26 +113,60 @@ const ThreadList = struct {
 
 /// Add a thread at `pc`, expanding epsilon transitions
 /// (`jmp` / `split` / `save` / `anchor`) so the list contains
-/// only byte-consuming opcodes plus `.match`. Cycle-1 `save` and
-/// `anchor` are pass-through stubs; cycle-2 wires real semantics.
+/// only byte-consuming opcodes plus `.match`. Anchors consult
+/// the current `pos` against `input` (line_start at pos 0,
+/// line_end at input.len, \b on word/non-word transition);
+/// failed anchors silently drop the thread. Cycle-1 `save`
+/// stays a pass-through stub.
 fn addThread(
     list: *ThreadList,
     alloc: std.mem.Allocator,
     program: *const compile.Program,
     pc: u32,
+    pos: u32,
+    input: []const u8,
 ) MatchError!void {
     if (list.seen[pc]) return;
     list.seen[pc] = true;
     switch (program.insts[pc]) {
-        .jmp => |target| try addThread(list, alloc, program, target),
+        .jmp => |target| try addThread(list, alloc, program, target, pos, input),
         .split => |s| {
-            try addThread(list, alloc, program, s.a);
-            try addThread(list, alloc, program, s.b);
+            try addThread(list, alloc, program, s.a, pos, input);
+            try addThread(list, alloc, program, s.b, pos, input);
         },
-        .save => try addThread(list, alloc, program, pc + 1),
-        .anchor => try addThread(list, alloc, program, pc + 1),
+        .save => try addThread(list, alloc, program, pc + 1, pos, input),
+        .anchor => |a| {
+            if (anchorMatches(a, pos, input)) {
+                try addThread(list, alloc, program, pc + 1, pos, input);
+            }
+        },
         else => try list.pcs.append(alloc, pc),
     }
+}
+
+fn anchorMatches(a: compile.Anchor, pos: u32, input: []const u8) bool {
+    return switch (a) {
+        // Cycle 1 binds `^` and `$` to the string boundary;
+        // multiline (`(?m)`) embedded-newline handling lands in
+        // cycle 4.
+        .line_start => pos == 0,
+        .line_end => pos == input.len,
+        .word_boundary => isWordBoundary(pos, input),
+        .non_word_boundary => !isWordBoundary(pos, input),
+    };
+}
+
+fn isWordBoundary(pos: u32, input: []const u8) bool {
+    const left = pos != 0 and isWordByte(input[pos - 1]);
+    const right = pos < input.len and isWordByte(input[pos]);
+    return left != right;
+}
+
+fn isWordByte(b: u8) bool {
+    return (b >= 'a' and b <= 'z') or
+        (b >= 'A' and b <= 'Z') or
+        (b >= '0' and b <= '9') or
+        b == '_';
 }
 
 /// Try to match the program starting at `start` in `input`.
@@ -149,10 +183,9 @@ fn tryMatchAt(
     var next = try ThreadList.init(alloc, program.insts.len);
     defer next.deinit(alloc);
 
-    try addThread(&current, alloc, program, 0);
-
     var best: ?MatchResult = null;
     var pos: u32 = start;
+    try addThread(&current, alloc, program, 0, pos, input);
 
     while (true) {
         // Record any .match in the current set — greedy semantics
@@ -168,18 +201,19 @@ fn tryMatchAt(
         if (current.pcs.items.len == 0) break;
 
         const c = input[pos];
+        const next_pos = pos + 1;
         for (current.pcs.items) |pc| {
             switch (program.insts[pc]) {
-                .char => |cc| if (c == cc) try addThread(&next, alloc, program, pc + 1),
-                .class => |cls| if (cls.contains(c)) try addThread(&next, alloc, program, pc + 1),
-                .range => |r| if (c >= r.lo and c <= r.hi) try addThread(&next, alloc, program, pc + 1),
+                .char => |cc| if (c == cc) try addThread(&next, alloc, program, pc + 1, next_pos, input),
+                .class => |cls| if (cls.contains(c)) try addThread(&next, alloc, program, pc + 1, next_pos, input),
+                .range => |r| if (c >= r.lo and c <= r.hi) try addThread(&next, alloc, program, pc + 1, next_pos, input),
                 .match => {},
                 else => {}, // epsilon ops are pre-expanded by addThread
             }
         }
         std.mem.swap(ThreadList, &current, &next);
         next.clear();
-        pos += 1;
+        pos = next_pos;
     }
     return best;
 }
@@ -354,6 +388,54 @@ test "find \\. matches a literal dot in 1.2" {
     const r = (try find(testing.allocator, &prog, "1.2")).?;
     try testing.expectEqual(@as(u32, 1), r.start);
     try testing.expectEqual(@as(u32, 2), r.end);
+}
+
+test "find ^abc matches at string start only" {
+    var prog = try compile.compile(testing.allocator, "^abc", .{});
+    defer prog.deinit(testing.allocator);
+    try testing.expect((try find(testing.allocator, &prog, "abc")) != null);
+    try testing.expect((try find(testing.allocator, &prog, "abcdef")) != null);
+    try testing.expectEqual(@as(?MatchResult, null), try find(testing.allocator, &prog, "xabc"));
+}
+
+test "find abc$ matches at string end only" {
+    var prog = try compile.compile(testing.allocator, "abc$", .{});
+    defer prog.deinit(testing.allocator);
+    try testing.expect((try find(testing.allocator, &prog, "abc")) != null);
+    try testing.expect((try find(testing.allocator, &prog, "xabc")) != null);
+    try testing.expectEqual(@as(?MatchResult, null), try find(testing.allocator, &prog, "abcd"));
+}
+
+test "find ^abc$ anchors both ends" {
+    var prog = try compile.compile(testing.allocator, "^abc$", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "abc")).?;
+    try testing.expectEqual(@as(u32, 0), r.start);
+    try testing.expectEqual(@as(u32, 3), r.end);
+    try testing.expectEqual(@as(?MatchResult, null), try find(testing.allocator, &prog, "xabc"));
+    try testing.expectEqual(@as(?MatchResult, null), try find(testing.allocator, &prog, "abcx"));
+}
+
+test "find \\bword\\b matches whole word only" {
+    var prog = try compile.compile(testing.allocator, "\\bword\\b", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "a word z")).?;
+    try testing.expectEqual(@as(u32, 2), r.start);
+    try testing.expectEqual(@as(u32, 6), r.end);
+    // No match when "word" sits inside a longer word.
+    try testing.expectEqual(@as(?MatchResult, null), try find(testing.allocator, &prog, "swordfish"));
+}
+
+test "find \\Bxx\\B requires non-word boundary on both sides" {
+    var prog = try compile.compile(testing.allocator, "\\Bxx\\B", .{});
+    defer prog.deinit(testing.allocator);
+    // "axxb" — between 'a'-'x' is word|word boundary (NOT \B);
+    // between 'x'-'x' is word|word (IS \B); same on right.
+    // So \Bxx\B starts at pos 1 (between two word chars) and
+    // ends at pos 3 (between two word chars).
+    const r = (try find(testing.allocator, &prog, "axxb")).?;
+    try testing.expectEqual(@as(u32, 1), r.start);
+    try testing.expectEqual(@as(u32, 3), r.end);
 }
 
 test "ADR-0031 cycle-1 exit smoke: re-find #\"\\d+\" \"abc123\" → \"123\"" {

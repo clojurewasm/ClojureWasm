@@ -250,8 +250,16 @@ const Parser = struct {
             node.* = try self.parseEscape();
             return node;
         }
+        if (c == '^') {
+            node.* = .{ .anchor = .line_start };
+            return node;
+        }
+        if (c == '$') {
+            node.* = .{ .anchor = .line_end };
+            return node;
+        }
         if (c == ']') return CompileError.UnexpectedToken;
-        // Remaining cycle-1 unsupported metas: (, ), ^, $, {, }.
+        // Remaining cycle-1 unsupported metas: (, ), {, }.
         if (isMetaChar(c)) return CompileError.NotImplemented;
         node.* = .{ .lit = c };
         return node;
@@ -320,6 +328,8 @@ const Parser = struct {
             'n' => .{ .lit = '\n' },
             'r' => .{ .lit = '\r' },
             'f' => .{ .lit = 12 },
+            'b' => .{ .anchor = .word_boundary },
+            'B' => .{ .anchor = .non_word_boundary },
             '.', '*', '+', '?', '(', ')', '[', ']', '|', '\\', '^', '$', '{', '}', '/' => .{ .lit = c },
             else => CompileError.InvalidEscape,
         };
@@ -397,6 +407,7 @@ fn emitNode(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, node: *const N
     switch (node.*) {
         .lit => |c| try list.append(alloc, .{ .char = c }),
         .class => |cls| try list.append(alloc, .{ .class = cls }),
+        .anchor => |a| try list.append(alloc, .{ .anchor = a }),
         .concat => |children| {
             for (children) |*ch| try emitNode(list, alloc, ch);
         },
@@ -523,7 +534,7 @@ test "compile rejects empty / unsupported metas / stray quantifier" {
     try testing.expectError(CompileError.UnexpectedToken, compile(testing.allocator, "?", .{}));
     // Cycle-1 unsupported metas: explicit not-implemented.
     try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "(", .{}));
-    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "^", .{}));
+    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "{", .{}));
     // Lone trailing backslash: parseEscape sees end-of-input.
     try testing.expectError(CompileError.InvalidEscape, compile(testing.allocator, "\\", .{}));
     // Unclosed character class.
