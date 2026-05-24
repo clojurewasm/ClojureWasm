@@ -267,6 +267,25 @@ pub fn associativeQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     };
 }
 
+/// `(identity x)` — returns `x` unchanged. Useful as a place-holder
+/// function argument (e.g. `(map identity coll)`).
+pub fn identity(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("identity", args, 1, loc);
+    return args[0];
+}
+
+/// `(boolean x)` — Clojure truthiness coercion: returns true unless
+/// x is nil or false. The dual of `not` (NOT a tag check — see
+/// `boolean?` for that).
+pub fn booleanFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("boolean", args, 1, loc);
+    return if (args[0].isNil() or args[0] == Value.false_val) .false_val else .true_val;
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -300,6 +319,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "seq?", .f = &seqQ },
     .{ .name = "sequential?", .f = &sequentialQ },
     .{ .name = "associative?", .f = &associativeQ },
+    .{ .name = "identity", .f = &identity },
+    .{ .name = "boolean", .f = &booleanFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
