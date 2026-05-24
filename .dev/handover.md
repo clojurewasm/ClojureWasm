@@ -24,41 +24,36 @@
 
 ## Current state
 
-- **Phase**: **Phase 5 IN-PROGRESS** — §9.7 rows 5.0 / 5.1 / 5.2 `[x]`;
-  5.3 IN-PROGRESS through 5.3.b.4. 5.1 paired ADR cluster ADR-0027
-  + ADR-0028 Accepted (amendments 1/2/3 landed for §1 bit-layout
-  corrections). 5.2 split-then-widen (5e8d035 + 9fe4e20). 5.3
-  sub-commits: 5.3.a skeleton (a25b1b9) + 5.3.b.1 alloc body
-  (0ed5d2c) + 5.3.b.2 mark phase (839f859) + 5.3.c.1 sweep direct
-  (437cd53) + 5.3.c.2 free-pool push/pop + min-16 alloc (7567e31)
-  + 5.3.b.4 comptime check (1e1eaf4). 14 rows remain (5.3 close,
-  5.4–5.16). Phase 4 DONE.
-- **Branch**: `cw-from-scratch`. HEAD = 1e1eaf4.
+- **Phase**: **Phase 5 IN-PROGRESS** — §9.7 rows 5.0 / 5.1 / 5.2 / 5.3 `[x]`.
+  5.3 closed at 8864ca4 (16 micro-commits 5.3.a → 5.3.d.9 + ADR-0028
+  amendment 1 + handover/roadmap updates). 13 rows remain (5.4–5.16).
+  Phase 4 DONE. GC body fully wired; 3 types (String/Cons/ExInfo)
+  migrated to rt.gc.alloc; Keyword stays infra (interner-managed);
+  BigInt + auto-trigger collect deferred to 5.9 / 5.4 respectively.
+- **Branch**: `cw-from-scratch`. HEAD = 8864ca4.
 - **Gate**: Mac 13/13 + OrbStack Ubuntu x86_64 12/12 green.
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## Active task — §9.7.4 / 5.3 continuation: roots + collect + alloc migration
+## Active task — §9.7.5 / 5.4 Persistent Vector (HAMT shift=5 + tail)
 
-Remaining sub-commits to close row 5.3:
-- **5.3.b.3**: wire 10 root walkers into `root_set.zig` per ADR-0028
-  §5. Survey at `private/notes/phase5-5.3.b.3-survey.md` (subagent
-  output pending).
-- **5.3.b.5**: wire `GcHeap.collect()` = mark roots + sweep +
-  adaptive threshold (`max(default, last_live_bytes * 2)`); blocks
-  on 5.3.b.3 (roots needed for collect to be safe).
-- **5.3.d**: migrate Phase 1-4 alloc sites (string / Cons / ex_info
-  / Namespace / Var / Keyword) `gpa.create` → `gc.alloc`; flip
-  `Flags.marked` → `gc_and_lock.mark`; remove `gc_*_not_supported`
-  Codes per ADR-0017 a1; flip auto-trigger on in alloc.
+Land `runtime/collection/persistent_vector.zig`: HAMT (shift=5 =
+32-way) + 32-element tail for O(1) conj. Day-1 ops: `conj` / `nth`
+/ `count` / `pop` / `subvec` / `assoc`. `(vec ...)` reader literal
+hooked. HAMT nodes + Vector value extern struct (header at offset 0)
++ trace fn walks slots; per-tag register from this module.
 
-**Step 0 reading** (for 5.3.b.3): `private/notes/phase5-5.3.b.3-survey.md`
-+ ADR-0028 §5 root table + ADR-0017 a1 rewrite scope +
-`phase5-skeleton-audit.md` §"binding_stack.zig REVERTED".
+**Step 0 reading**: ADR-0028 §4 (registerTrace pattern per 5.3.d.5/.6)
++ ADR-0027 §2 (vector = A4) + F-005 + `phase5-5.1-survey.md` (cw v0
+HAMT) + OSS clojure `PersistentVector.java`.
 
-**Open hazards**: (a) auto-trigger of collect() must wait until
-5.3.b.3; (b) `ProtocolFn` / `MultiFn` caches may not exist in cw v1
-yet — survey confirms, walker for row 5 may declare `null`
-placeholder; (c) Runtime field `gc: *GcHeap` lands at 5.3.d.
+**Step 0 survey target** (`general-purpose` subagent): cw v0
+`~/Documents/MyProducts/ClojureWasm/src/runtime/collection/persistent_vector.zig`
++ clojure JVM PersistentVector. DIVERGENCE per F-002.
+
+**Open hazards**: (a) `(reduce + (range 1e6))` Phase 5 exit smoke
+will need auto-trigger collect — wire when alloc volume forces it;
+(b) tail-overflow → root push semantics match clojure JVM;
+(c) `subvec` aliasing — trace parent pointer in root_set.
 
 ## Open questions / blockers
 
