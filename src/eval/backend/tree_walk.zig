@@ -561,7 +561,7 @@ pub fn valueTypeKey(v: Value) []const u8 {
 
 const testing = std.testing;
 const Reader = @import("../reader.zig").Reader;
-const analyze = @import("../analyzer.zig").analyze;
+const analyze = @import("../analyzer/analyzer.zig").analyze;
 const macro_dispatch = @import("../macro_dispatch.zig");
 
 const TestFixture = struct {

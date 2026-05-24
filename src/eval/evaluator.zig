@@ -21,7 +21,7 @@
 
 const std = @import("std");
 const Reader = @import("reader.zig").Reader;
-const analyzer = @import("analyzer.zig");
+const analyzer = @import("analyzer/analyzer.zig");
 const macro_dispatch = @import("macro_dispatch.zig");
 const Runtime = @import("../runtime/runtime.zig").Runtime;
 const env_mod = @import("../runtime/env.zig");

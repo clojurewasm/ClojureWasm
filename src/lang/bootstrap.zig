@@ -25,7 +25,7 @@
 const std = @import("std");
 
 const Reader = @import("../eval/reader.zig").Reader;
-const analyzeForm = @import("../eval/analyzer.zig").analyze;
+const analyzeForm = @import("../eval/analyzer/analyzer.zig").analyze;
 const macro_dispatch = @import("../eval/macro_dispatch.zig");
 const driver = @import("../eval/driver.zig");
 const Runtime = @import("../runtime/runtime.zig").Runtime;

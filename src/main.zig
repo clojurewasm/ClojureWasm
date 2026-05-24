@@ -27,7 +27,7 @@ const std = @import("std");
 const Writer = std.Io.Writer;
 
 const Reader = @import("eval/reader.zig").Reader;
-const analyzeForm = @import("eval/analyzer.zig").analyze;
+const analyzeForm = @import("eval/analyzer/analyzer.zig").analyze;
 const macro_dispatch = @import("eval/macro_dispatch.zig");
 const driver = @import("eval/driver.zig");
 const Runtime = @import("runtime/runtime.zig").Runtime;
@@ -279,7 +279,7 @@ test {
     _ = @import("eval/tokenizer.zig");
     _ = @import("eval/reader.zig");
     _ = @import("eval/node.zig");
-    _ = @import("eval/analyzer.zig");
+    _ = @import("eval/analyzer/analyzer.zig");
     _ = @import("eval/macro_dispatch.zig");
     _ = @import("eval/backend/tree_walk.zig");
     _ = @import("eval/backend/vm.zig");

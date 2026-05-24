@@ -33,25 +33,25 @@
 //! eval ends by freeing the arena in one shot — no per-Node free.
 
 const std = @import("std");
-const Form = @import("form.zig").Form;
-const FormData = @import("form.zig").FormData;
-const SymbolRef = @import("form.zig").SymbolRef;
-const node_mod = @import("node.zig");
+const Form = @import("../form.zig").Form;
+const FormData = @import("../form.zig").FormData;
+const SymbolRef = @import("../form.zig").SymbolRef;
+const node_mod = @import("../node.zig");
 const Node = node_mod.Node;
-const Value = @import("../runtime/value/value.zig").Value;
-const Runtime = @import("../runtime/runtime.zig").Runtime;
-const env_mod = @import("../runtime/env.zig");
+const Value = @import("../../runtime/value/value.zig").Value;
+const Runtime = @import("../../runtime/runtime.zig").Runtime;
+const env_mod = @import("../../runtime/env.zig");
 const Env = env_mod.Env;
 const Var = env_mod.Var;
-const keyword = @import("../runtime/keyword.zig");
-const string_collection = @import("../runtime/collection/string.zig");
-const list_collection = @import("../runtime/collection/list.zig");
-const big_int = @import("../runtime/numeric/big_int.zig");
-const big_decimal = @import("../runtime/numeric/big_decimal.zig");
-const error_mod = @import("../runtime/error/info.zig");
-const error_catalog = @import("../runtime/error/catalog.zig");
+const keyword = @import("../../runtime/keyword.zig");
+const string_collection = @import("../../runtime/collection/string.zig");
+const list_collection = @import("../../runtime/collection/list.zig");
+const big_int = @import("../../runtime/numeric/big_int.zig");
+const big_decimal = @import("../../runtime/numeric/big_decimal.zig");
+const error_mod = @import("../../runtime/error/info.zig");
+const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
-const macro_dispatch = @import("macro_dispatch.zig");
+const macro_dispatch = @import("../macro_dispatch.zig");
 
 /// Analyser errors. Phase 2 covers syntax + name resolution only.
 /// Aliases the wide `error_mod.ClojureWasmError` set so calls to
@@ -1120,7 +1120,7 @@ fn analyzeFinallyClause(
 // --- tests ---
 
 const testing = std.testing;
-const Reader = @import("reader.zig").Reader;
+const Reader = @import("../reader.zig").Reader;
 
 const TestFixture = struct {
     threaded: std.Io.Threaded,
