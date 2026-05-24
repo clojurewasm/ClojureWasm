@@ -275,6 +275,22 @@ pub fn compare(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return Value.initInteger(c);
 }
 
+/// `(inc x)` — returns `(+ x 1)`. Matches clojure.core/inc.
+/// Delegates to `plus` so all promotion rules (Long → BigInt
+/// on overflow, Long → Float on contagion etc.) apply.
+pub fn inc(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("inc", args, 1, loc);
+    const pair = [_]Value{ args[0], Value.initInteger(1) };
+    return plus(rt, env, &pair, loc);
+}
+
+/// `(dec x)` — returns `(- x 1)`. Matches clojure.core/dec.
+pub fn dec(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("dec", args, 1, loc);
+    const pair = [_]Value{ args[0], Value.initInteger(1) };
+    return minus(rt, env, &pair, loc);
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -296,6 +312,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "<=", .f = &le },
     .{ .name = ">=", .f = &ge },
     .{ .name = "compare", .f = &compare },
+    .{ .name = "inc", .f = &inc },
+    .{ .name = "dec", .f = &dec },
 };
 
 /// Register the math primitives into `rt_ns`.
