@@ -24,47 +24,51 @@
 
 ## Current state
 
-- **Phase**: **Phase 5 IN-PROGRESS** — §9.7 row 5.0 `[x]`
-  (cleanup-wave audit closed at fd66df5 via ADR-0026 Accepted).
-  16 rows remain (5.1–5.16). Phase 4 DONE in this session.
-  Boundary chain artefacts: D-041 / D-042 queued; ADR-0026 records
-  the activation classification + critical-path ordering.
-- **Branch**: `cw-from-scratch`. HEAD = fd66df5.
+- **Phase**: **Phase 5 IN-PROGRESS** — §9.7 rows 5.0 / 5.1 `[x]`
+  (5.1 paired ADR cluster ADR-0027 + ADR-0028 Accepted; per-Tag
+  dispatch infrastructure consolidated in 0028 §4 per Devil's-
+  advocate Alt 1; bit-0 reservation reclaimed; A3 nil/bool split
+  into D14/D15; §6 bit allocation deferred to 5.3 owner per
+  F-003). 15 rows remain (5.2–5.16). Phase 4 DONE.
+- **Branch**: `cw-from-scratch`. HEAD = (5.1 ADR commit).
 - **Gate**: Mac 13/13 + OrbStack Ubuntu x86_64 12/12 green at
-  HEAD.
+  HEAD (doc-only commit; no source change).
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## Active task — §9.7.2 / 5.1 ADR cluster (NaN-box 第二世代 + GC)
+## Active task — §9.7.3 / 5.2 `runtime/value.zig` split + F-004 Tag widening
 
-Draft ADR-0027 (NaN-box 第二世代 = F-004 = 4 group × 16 sub-type =
-64 slot, 44-bit shifted pointer) + ADR-0028 (mark-sweep GC +
-3-layer allocator = F-006) as a **paired Accepted set**.
-Devil's-advocate subagent mandatory (depth 3 per principle.md).
+Apply ADR-0027 + ADR-0028 layout. Decompose 1335-line
+`src/runtime/value.zig` into `runtime/value/{value, nan_box,
+heap_tag, heap_header}.zig` per `.dev/structure_plan.md` decree
+(F-004 + D-029). Tag enum widens 32 → 64 entries per ADR-0027 §2
+slot map; new entries land as `Code.feature_not_supported` stubs
+per `no_op_stub_forbidden.md` explicit-error pattern. `HeapTag.
+big_int` rotates slot 29 → Group D slot 0 in the same commit.
 
-**Step 0 reading**: ADR-0026 (verdict + critical path) +
-`private/notes/phase5-skeleton-audit.md` §"5.1 input bullets"
-(quote verbatim — paraphrase risk on #2 `std.atomic.Mutex`
-Zig-0.16 gap); F-004 / F-006 / F-008; existing ADR-0007 / 0009 /
-0012 / 0017; `.dev/structure_plan.md` `runtime/value/` +
-`runtime/gc/`; ROADMAP §9.7 row 5.1 text.
+**Step 0 reading**: ADR-0027 (slot map + bit layout + encode/
+decode contract) + ADR-0028 §4 (per-Tag tables — 5.2 lands
+`tag_ops.zig` empty skeleton; 5.3 fills); F-004 verbatim;
+D-029 row; `.dev/structure_plan.md` `runtime/value/` decree.
 
-**Step 0 survey target** (`general-purpose` subagent): cw v0
-NaN-box + mark-sweep in `~/Documents/MyProducts/ClojureWasm/src/runtime/`
-solving each of the 8 input bullets; Zig 0.16 std.atomic vs
-std.Io.Mutex with LazySeq cache; DIVERGENCE per F-002.
+**Step 0 procedural note** (per ADR-0027 §5 disposition on
+Devil's-advocate Load-bearing concern #1): run the grep
+`rg -nE '@enumFromInt\(.*Tag|@intFromEnum\(.*Tag|@intFromEnum\(.*HeapTag' src/ test/`
+on row open to size the migration surface before drafting tests.
 
-**Open hazards**: (a) `LazySeq.lock` Zig-0.16 gap — 5.7 owns
-re-eval; (b) GC root-set enumerates `LazySeq.thunk/ctx/seq_cache`;
-(c) 29 spare `gc_mark` bits — record chosen use; (d) D-040
-collision deferred to Phase 7, do not rename in 5.1.
+**Open hazards**: (a) D-040 MethodEntry collision — do not
+rename in 5.2 (Phase 7 owns); (b) `tag_ops.zig` shape choice
+(3 parallel arrays vs `TagOps` struct-of-arrays) defers to
+5.3 owner per ADR-0028 §4 — 5.2 lands empty skeleton only.
 
 ## Open questions / blockers
 
 None testable from inside the loop. Recall triggers + follow-up
 candidates live in [`debt.md`](./debt.md) (rows D-005 through
-D-040). Step 0.5 debt sweep walks them at resume; pay attention
-to D-027 / D-028 (Phase 5 structural surgery), D-029
-(`value.zig` split), and D-040 (Phase 7 MethodEntry naming).
+D-043). Step 0.5 debt sweep walks them at resume; pay attention
+to D-008 / D-014a / D-014b / D-017 / D-030 (other Phase-5-target
+rows that 5.2-5.16 will land), D-040 (Phase 7 MethodEntry
+naming — do not touch in Phase 5), D-043 (anonymous slot
+reserves for Phase 7 entry to revisit).
 
 ## Guardrail refresh history (condensed)
 
