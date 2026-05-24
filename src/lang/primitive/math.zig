@@ -291,6 +291,21 @@ pub fn dec(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return minus(rt, env, &pair, loc);
 }
 
+/// `(inc' x) ≡ (+' x 1)`. Strict variant: raises integer_overflow
+/// instead of promoting Long to BigInt.
+pub fn incStrict(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("inc'", args, 1, loc);
+    const pair = [_]Value{ args[0], Value.initInteger(1) };
+    return plusStrict(rt, env, &pair, loc);
+}
+
+/// `(dec' x) ≡ (-' x 1)`. Strict variant — see `inc'`.
+pub fn decStrict(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("dec'", args, 1, loc);
+    const pair = [_]Value{ args[0], Value.initInteger(1) };
+    return minusStrict(rt, env, &pair, loc);
+}
+
 /// `(zero? x) ≡ (= x 0)`. Delegates to `equals` so all numeric
 /// type arms (Long / Float / BigInt / Ratio / BigDecimal) work.
 pub fn zeroQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -493,6 +508,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "compare", .f = &compare },
     .{ .name = "inc", .f = &inc },
     .{ .name = "dec", .f = &dec },
+    .{ .name = "inc'", .f = &incStrict },
+    .{ .name = "dec'", .f = &decStrict },
     .{ .name = "zero?", .f = &zeroQ },
     .{ .name = "pos?", .f = &posQ },
     .{ .name = "neg?", .f = &negQ },
