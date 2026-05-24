@@ -30,10 +30,11 @@ const testing = std.testing;
 
 const heap_header = @import("../value/heap_header.zig");
 const free_pool_mod = @import("free_pool.zig");
-const value_mod_for_test = @import("../value/value.zig"); // tests only — HeapTag tag-byte sanity
+const value_mod = @import("../value/value.zig");
 
 const HeapHeader = heap_header.HeapHeader;
 const FreePoolMap = free_pool_mod.FreePoolMap;
+const Value = value_mod.Value;
 
 /// Default GC trigger threshold (bytes since last collection).
 /// Adaptive at runtime: `threshold = max(default, last_live_bytes * 2)`
@@ -121,6 +122,13 @@ pub const GcHeap = struct {
     /// design decision: side-table chosen over intrusive next-pointer
     /// to preserve the 8-byte HeapHeader invariant.
     allocations: std.ArrayList(AllocRecord) = .empty,
+    /// Embedder-pinned root Values per ADR-0028 §5 row 10. Holds
+    /// `Value` entries that the embedder (FFI / test fixture / future
+    /// `cljw -e` REPL prompt buffer) wants to keep alive across
+    /// `collect()` cycles. `pin` appends, `unpin` swap-removes the
+    /// first match. The root walker yields each entry's
+    /// `Value.heapHeader()` (skipping immediates).
+    permanent_roots: std.ArrayList(Value) = .empty,
     /// Per-(size, alignment) free pool heads. Phase 5.3.c lands the
     /// intrusive FreeNode at offset 8 + recycling fast-path.
     free_pools: FreePoolMap = .empty,
@@ -151,7 +159,30 @@ pub const GcHeap = struct {
             self.infra.rawFree(mem, rec.alignment, @returnAddress());
         }
         self.allocations.deinit(self.infra);
+        self.permanent_roots.deinit(self.infra);
         self.free_pools.deinit(self.infra);
+    }
+
+    /// Pin a Value so it stays alive across `collect()` cycles. Returns
+    /// after appending to `permanent_roots`. Callers (FFI / test
+    /// fixtures / future REPL prompt buffer per ADR-0028 §5 row 10)
+    /// must pair every `pin` with an `unpin` to avoid steady-state
+    /// leaks. Immediates can be pinned too — the walker filters them.
+    pub fn pin(self: *GcHeap, v: Value) !void {
+        try self.permanent_roots.append(self.infra, v);
+    }
+
+    /// Unpin the first matching Value entry. Returns `true` on a hit,
+    /// `false` if the Value was not pinned (treated as a programming
+    /// error by callers — typically wrapped in `std.debug.assert`).
+    pub fn unpin(self: *GcHeap, v: Value) bool {
+        for (self.permanent_roots.items, 0..) |entry, i| {
+            if (entry == v) {
+                _ = self.permanent_roots.swapRemove(i);
+                return true;
+            }
+        }
+        return false;
     }
 
     /// Allocate a typed heap object on the GC heap. **Phase 5.3.c.2**:
@@ -217,9 +248,28 @@ test "GcHeap.init / deinit on an empty heap" {
     defer gc.deinit();
 
     try testing.expectEqual(@as(usize, 0), gc.allocations.items.len);
+    try testing.expectEqual(@as(usize, 0), gc.permanent_roots.items.len);
     try testing.expectEqual(@as(usize, 0), gc.stats.bytes_allocated);
     try testing.expectEqual(@as(u64, 0), gc.stats.alloc_count);
     try testing.expectEqual(@as(usize, default_gc_threshold_bytes), gc.threshold_bytes);
+}
+
+test "GcHeap.pin appends to permanent_roots; unpin removes first match" {
+    var gc = GcHeap.init(testing.allocator);
+    defer gc.deinit();
+
+    const a = Value.initInteger(42);
+    const b = Value.initInteger(7);
+    try gc.pin(a);
+    try gc.pin(b);
+    try testing.expectEqual(@as(usize, 2), gc.permanent_roots.items.len);
+
+    try testing.expect(gc.unpin(a));
+    try testing.expectEqual(@as(usize, 1), gc.permanent_roots.items.len);
+    try testing.expect(gc.unpin(b));
+    try testing.expectEqual(@as(usize, 0), gc.permanent_roots.items.len);
+
+    try testing.expect(!gc.unpin(a)); // already removed
 }
 
 test "GcHeap.alloc tracks bytes + count + bytes_since_last_gc" {
@@ -259,7 +309,7 @@ test "GcHeap.alloc returned pointer aliases the live-list HeapHeader" {
     const rec = gc.allocations.items[0];
     const hdr_via_cast: *HeapHeader = @ptrCast(c);
     try testing.expectEqual(rec.header, hdr_via_cast);
-    try testing.expectEqual(@as(u8, @intFromEnum(value_mod_for_test.HeapTag.list)), rec.header.tag);
+    try testing.expectEqual(@as(u8, @intFromEnum(value_mod.HeapTag.list)), rec.header.tag);
     try testing.expectEqual(@sizeOf(Cell), rec.size);
 }
 

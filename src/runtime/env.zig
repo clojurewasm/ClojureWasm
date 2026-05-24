@@ -76,7 +76,7 @@ pub const Var = struct {
 
 // --- Namespace ---
 
-const VarMap = std.StringHashMapUnmanaged(*Var);
+pub const VarMap = std.StringHashMapUnmanaged(*Var);
 const NsAliasMap = std.StringHashMapUnmanaged(*Namespace);
 
 /// Clojure namespace — the unit `(in-ns 'my.ns)` switches between.
@@ -124,7 +124,7 @@ pub const Namespace = struct {
 
 // --- threadlocal dynamic-binding stack ---
 
-const BindingMap = std.AutoHashMapUnmanaged(*const Var, Value);
+pub const BindingMap = std.AutoHashMapUnmanaged(*const Var, Value);
 
 /// One frame produced by a `(binding [*x* 1 *y* 2] ...)` form. Frames
 /// chain via `parent` so nested `binding` forms see the innermost
@@ -167,7 +167,7 @@ pub fn findBinding(v: *const Var) ?Value {
 
 // --- Env ---
 
-const NamespaceMap = std.StringHashMapUnmanaged(*Namespace);
+pub const NamespaceMap = std.StringHashMapUnmanaged(*Namespace);
 
 /// Per-session namespace graph.
 pub const Env = struct {
