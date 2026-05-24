@@ -53,6 +53,35 @@ pub fn identicalQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     return if (args[0] == args[1]) .true_val else .false_val;
 }
 
+/// `(string? x)` — true iff `x` is a String (clojure.core/string?).
+pub fn stringQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("string?", args, 1, loc);
+    return if (args[0].tag() == .string) .true_val else .false_val;
+}
+
+/// `(integer? x)` — true iff `x` is an integer (Long or BigInt;
+/// matches clojure.core/integer? which excludes Ratio and
+/// BigDecimal).
+pub fn integerQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("integer?", args, 1, loc);
+    const t = args[0].tag();
+    return if (t == .integer or t == .big_int) .true_val else .false_val;
+}
+
+/// `(number? x)` — true iff `x` is any numeric (Long / Float / BigInt
+/// / Ratio / BigDecimal). Matches clojure.core/number?.
+pub fn numberQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("number?", args, 1, loc);
+    const t = args[0].tag();
+    return if (t == .integer or t == .float or t == .big_int or t == .ratio or t == .big_decimal) .true_val else .false_val;
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -65,6 +94,9 @@ const ENTRIES = [_]Entry{
     .{ .name = "true?", .f = &trueQ },
     .{ .name = "false?", .f = &falseQ },
     .{ .name = "identical?", .f = &identicalQ },
+    .{ .name = "string?", .f = &stringQ },
+    .{ .name = "integer?", .f = &integerQ },
+    .{ .name = "number?", .f = &numberQ },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
