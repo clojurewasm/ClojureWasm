@@ -17,8 +17,10 @@ Two failure modes have repeatedly bloated cw's handover:
 2. **Surrender framing** — phrases like
    "コンテキスト圧があるため一旦 idle に入る" /
    "キリがいい" / "自然な区切り" turn the resume entry point
-   into a stop signal that the closed 2-condition list (CLAUDE.md
-   § Autonomous Workflow) does not authorise.
+   into a stop signal that CLAUDE.md § The only stop does not
+   authorise. The only stop is the user's explicit request, and
+   that record lives in `## Stopped — user requested` with the
+   user's verbatim quote — not as a euphemism in the body.
 
 ## The rule
 
@@ -49,17 +51,21 @@ repair before proceeding.
 
 ### Phrase-level (surrender / stop-rationalisation framing)
 
-| Phrase                                                                                              | Why forbidden                                                                                                        | Replace with                                                                                                            |
-|-----------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
-| `コンテキスト圧があるため` (and variants)                                                           | Auto-compaction is system-handled; not an agent concern                                                              | Just describe the next task                                                                                             |
-| `キリがいい` / `自然な区切り` / `natural break`                                                     | Implies a stop point the closed 2-condition list does not authorise                                                  | Drop entirely                                                                                                           |
-| `good stopping point` / `この辺で一旦停止`                                                          | Same                                                                                                                 | Drop entirely                                                                                                           |
-| `Phase boundary reached AND ...`                                                                    | Phase boundary is no longer a stop condition per CLAUDE.md § Autonomous Workflow                                    | Drop the "AND" clause; phase close runs review chain then continues into §9.<N+1>                                      |
-| `If above ~60%` / `/compact` / `context budget`                                                     | Compact-gate concept removed; `/compact` is not Skill-tool callable                                                  | Drop; auto-compaction is transparent                                                                                    |
-| `〜判断待ち` / `user 確認待ち` / `awaiting user confirmation` / `awaiting approval`                 | The closed stop list has no "awaiting user" state. Push is automatic; ADR-level designs are handled inline by the AI | Drop; if a real external block, file a `debt.md` row with `Status: blocked-by: <named external event>` and name it here |
-| `cannot be self-decided` / `human judgement` / `human judgment` / `needs human` / `user touchpoint` | The autonomous loop self-decides design choices; "needs human" reframes a self-decidable case as a stop              | Drop entirely; if the design is genuinely ADR-level, draft + accept the ADR inline per CLAUDE.md and link the ADR slug  |
-| `this needs human judgement` / `help wanted` / `awaiting human review` / `defer to user`            | Same family — invites a pause for human input that the closed stop list does not authorise                          | Drop entirely                                                                                                           |
-| `ADR-level decision` (as a stop reason)                                                             | ADR-level designs are inline work, not stop conditions, per CLAUDE.md § "ADR-level designs are handled inline"      | Rewrite as an Active task entry naming the candidate ADR slug + the smallest-diff design the AI is taking               |
+| Phrase                                                                                              | Why forbidden                                                                                                       | Replace with                                                                                                           |
+|-----------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| `コンテキスト圧があるため` (and variants)                                                           | Auto-compaction is system-handled; not an agent concern                                                             | Just describe the next task                                                                                            |
+| `キリがいい` / `自然な区切り` / `natural break`                                                     | Not a stop condition. The only stop is user explicit request                                                        | Drop entirely                                                                                                          |
+| `good stopping point` / `この辺で一旦停止` / `region boundary stop` / `task boundary stop`          | Same — region / cluster / task / commit boundaries all roll into the next unit of work                             | Drop entirely                                                                                                          |
+| `Phase boundary reached AND ...`                                                                    | Phase boundary is not a stop. The review chain runs and the loop continues into §9.<N+1>                           | Drop the "AND" clause                                                                                                  |
+| `If above ~60%` / `/compact` / `context budget`                                                     | Compact-gate concept removed; `/compact` is not Skill-tool callable                                                 | Drop; auto-compaction is transparent                                                                                   |
+| `〜判断待ち` / `user 確認待ち` / `awaiting user confirmation` / `awaiting approval`                 | "Awaiting user" is not a stop state. Push is automatic; ADR-level designs are handled inline                        | Drop; if a real external block, file a `debt.md` row with `Status: blocked-by: <named external event>` and name it     |
+| `cannot be self-decided` / `human judgement` / `human judgment` / `needs human` / `user touchpoint` | The loop self-decides design choices; "needs human" reframes a self-decidable case as a stop                        | Drop entirely; if the design is genuinely ADR-level, draft + accept the ADR inline per CLAUDE.md and link the ADR slug |
+| `this needs human judgement` / `help wanted` / `awaiting human review` / `defer to user`            | Same family — invites a pause for human input that is not a stop condition                                         | Drop entirely                                                                                                          |
+| `ADR-level decision` / `ADR-phase mode` (as a stop reason)                                          | ADR-level designs are inline work. Smell-driven ADR drafting is an interrupt, not a stop                            | Rewrite as an Active task entry naming the candidate ADR slug + the F-NNN-compliant shape the AI is taking             |
+| `smell-cluster trip` / `smell cluster` / `patterned smell` / `goal drift trip`                      | Smell triggers are interrupts, not stops. No frequency-counter rule exists                                          | Drop entirely; the surgery already landed inline at the interrupt                                                      |
+| `physically blocked` / `physical block` (when build / test failures are involved)                   | Build / test failure is not a stop condition either. Diagnose and fix; the loop owns getting back to green          | Drop the "block" framing; describe the failure as the current Active task with the diagnosis attempted                 |
+| `stopped — physical block` / `Stopped — physical block`                                           | No such stop condition exists                                                                                       | Rewrite into Active task naming the failing test / build artifact and what to try next                                 |
+| `physical block / blocker` as a *non-debt-row* reason in handover                                   | All real external blocks live in `debt.md` with a `blocked-by: <event>` Status; handover names the D-NNN by ID only | Move to `debt.md`, reference here as `D-NNN`                                                                           |
 
 ### Structural (log / forecast / reproduced-content accumulation)
 
@@ -121,7 +127,7 @@ phrases:
 
 ```sh
 wc -l .dev/handover.md   # warn if > 100
-grep -nE 'コンテキスト圧があるため|キリがいい|自然な区切り|natural break|good stopping point|この辺で一旦停止|Phase boundary reached AND|If above ~60%|context budget|/compact|user 確認待ち|awaiting user confirmation|awaiting approval|cannot be self-decided|human judgement|human judgment|needs human|user touchpoint|help wanted|awaiting human review|defer to user|ADR-level decision' .dev/handover.md
+grep -nE 'コンテキスト圧があるため|キリがいい|自然な区切り|natural break|good stopping point|この辺で一旦停止|region boundary stop|task boundary stop|Phase boundary reached AND|If above ~60%|context budget|/compact|user 確認待ち|awaiting user confirmation|awaiting approval|cannot be self-decided|human judgement|human judgment|needs human|user touchpoint|help wanted|awaiting human review|defer to user|ADR-level decision|ADR-phase mode|smell-cluster|smell cluster|patterned smell|goal drift trip|physically blocked|physical block|Stopped — physical block' .dev/handover.md
 grep -c '^## Just landed' .dev/handover.md   # warn if > 1
 grep -nE '^## Future .* shopping list|^## Notes for the next session' .dev/handover.md
 ```
@@ -136,38 +142,47 @@ session of mis-anchored work.
 
 ## Legitimate stop framing
 
-The closed stop list (CLAUDE.md § Autonomous Workflow) has only
-two conditions:
+There is only one legitimate stop and only one section shape for
+recording it. Per CLAUDE.md § The only stop:
 
-1. User explicitly requests stop.
-2. Physical block — unrecoverable build / test failure.
+> The user explicitly asks the loop to stop.
 
-Both produce a concrete handover entry. For condition 1, name the
-user instruction verbatim (or paraphrase) so the resume reads
-back what was asked. For condition 2, name the failing test /
-build artifact and the diagnosis attempted:
+Record the directive verbatim (or close paraphrase) under
+`## Stopped — user requested` so the next session reads back
+exactly what was asked. The directive applies to the session in
+which it was issued; the next `/continue` (or any automated
+re-invocation) resumes the loop normally:
 
 ```markdown
 ## Stopped — user requested
 
 User instruction (2026-MM-DD): "<verbatim or close paraphrase>".
-Resume at §9.<N>.<M> after the user signals continuation.
+Resume at §9.<N>.<M>.
 ```
 
-```markdown
-## Stopped — physical block
+No other `## Stopped — …` section is legal. In particular:
 
-`bash test/run_all.sh` fails at `<test_name>` on `<host>`.
-Diagnosed: <one sentence on what was tried and what is unknown>.
-Resume needs <named external fix>.
-```
+- Build / test failure is not a stop. The loop owns getting back
+  to green; describe the failure under `Active task` with the
+  diagnosis attempted, not under a stop heading.
+- ADR-level design choices are not a stop. They are handled
+  inline per CLAUDE.md; the AI drafts and accepts the ADR itself.
+  Handover entries that frame an ADR-level choice as a stop are a
+  block-level finding — rewrite as an Active task entry that
+  names the design choice and the candidate ADR slug.
+- Smell-driven interruption is not a stop. The surgery already
+  landed at the interrupt; the handover does not record it as a
+  stop event.
 
-ADR-level design choices are **not** a stop condition. They are
-handled inline per CLAUDE.md (the AI drafts and accepts the ADR
-itself, lands the doc commit, then proceeds with the source).
-Handover entries that frame an ADR-level choice as a stop are a
-block-level finding — rewrite as an Active task entry that names
-the design choice and the candidate ADR slug.
+## Resume must not propagate a stale stop
+
+When a fresh session reads handover and sees an existing
+`## Stopped — user requested` section, that section is **history
+of the previous session's end**, not a directive for the current
+session. Step 1 of `/continue` deletes the section as part of the
+resume rewrite (the user's directive applied to the previous
+session only — see CLAUDE.md § The only stop). The current
+session resumes the loop unchanged.
 
 ## Stale-ness
 
@@ -177,15 +192,14 @@ This rule is stale if:
   drift. Re-derive from
   `git log -p .dev/handover.md --since="90 days ago"` and surface
   new euphemisms.
-- The closed 2-condition stop list in CLAUDE.md § Autonomous
-  Workflow changes; the "Legitimate stop framing" section above
-  must mirror the canonical wording.
+- CLAUDE.md § The only stop changes; the "Legitimate stop
+  framing" section above must mirror the canonical wording.
 
 ## Related
 
 - [`no_handover_predictions.md`](no_handover_predictions.md) —
   forbids numeric / behaviour predictions (sibling rule).
-- CLAUDE.md § Autonomous Workflow — the closed 2-condition stop
-  list this rule references.
+- CLAUDE.md § The only stop — the single-condition stop
+  this rule references.
 - `~/Documents/MyProducts/zwasm_from_scratch/.claude/rules/handover_framing.md`
   — the v2 source rule cw adapted from.

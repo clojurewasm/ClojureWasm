@@ -17,8 +17,11 @@
   tool distorts the finished form, fix the plan side. Ad-hoc
   workarounds that bend the finished form are forbidden.
 - **Follow the Bad Smell**. Mid-implementation "wait, this feels
-  off" is a signal. Do not suppress it; you have the latitude to
-  stop and look.
+  off" is a signal. Do not suppress it; you have the latitude
+  (and the obligation) to interrupt the current activity and
+  investigate without compromise. The interrupt is not a stop —
+  the loop keeps running, the surgery just lands at the right
+  depth before the next step.
 - **Latitude and discipline coexist**. Without latitude you can't
   be creative; without discipline you don't reach the finished
   form. Hold both.
@@ -26,8 +29,8 @@
 ## Bad Smell catalogue
 
 Smells that surface during implementation. The list is a memory
-aid, not a checklist. Stop on any of these — and on others that
-fit the same shape:
+aid, not a checklist. Interrupt the current activity on any of
+these — and on others that fit the same shape:
 
 - **TODO smell** — wanting to leave a "fix this later" comment in
   the code.
@@ -94,13 +97,23 @@ The catalogue is not exhaustive. Any felt smell counts.
 
 ## When the smell triggers
 
-The procedure is fuzzy; the writer chooses:
+A trigger is an **interrupt**, not a stop. The loop suspends the
+current activity, investigates without compromise, takes the
+surgery at the right depth, then resumes. The procedure is fuzzy;
+the writer chooses:
 
-1. Pause for a while. Re-read the related ADR / ROADMAP /
-   surrounding implementation.
+1. Suspend the current edit. Re-read the related ADR / ROADMAP /
+   surrounding implementation as long as it takes.
 2. Fork a subagent if a deeper look is warranted.
 3. Imagine how this will look in the finished form.
-4. Pick a depth and act.
+4. Pick a depth and act on the spot.
+5. Land the surgery (commit / ADR / Supersedes chain), then return
+   to the per-task TDD flow.
+
+Multiple triggers per cycle just mean multiple interrupts. They do
+not accumulate into anything; each is handled and the loop
+continues. "Let me finish this task first and come back" is the
+Progress-pressure smell — interrupt now, not later.
 
 ## Four depths of revision
 
@@ -119,7 +132,7 @@ land their conclusion (ADR amendment / new ADR / archive move) in
 a separate commit before the source commit, then the loop
 continues. The AI drafts and accepts the ADR itself — there is no
 external review gate. See CLAUDE.md § Autonomous Workflow
-"ADR-level designs are handled inline, not as a stop".
+"ADR-level designs are handled inline".
 
 **Devil's-advocate subagent is mandatory at depth ≥ 2.** Before
 the ADR is accepted, a `general-purpose` subagent is forked with
@@ -128,9 +141,11 @@ finished-form-clean / wildcard) **within the active F-NNN
 envelope from `project_facts.md`**. The brief explicitly
 instructs the subagent to *not* propose alternatives that
 violate any F-NNN; if the only finished-form-clean option would
-require violating an F-NNN, the subagent says so explicitly and
-stops (= user-touchpoint candidate, not an ADR — falls under
-stop condition 3 in CLAUDE.md). The output (3 alternatives + any
+require violating an F-NNN, the subagent records that finding as
+the leading "Alternatives considered" entry — the main loop sees
+it, picks the best F-NNN-compliant shape, and continues. The
+finding never halts the loop (F-NNN amendment is a user action,
+not a loop action). The full output (3 alternatives + any
 "violates F-NNN" finding) is embedded verbatim into the ADR's
 "Alternatives considered" section. This is the antidote to the
 loop's accumulated goal-drift / instruction centrifugation —
@@ -140,7 +155,7 @@ against.
 
 ## Three questions to picture the finished form
 
-When you stop, ask:
+When the sensor interrupts, ask:
 
 1. How will this read when the project is done?
 2. Which later Phase actually feels the effect of this choice?

@@ -1,15 +1,24 @@
 ---
 name: continue
-description: Resume fully autonomous work on cw-from-scratch and drive the per-task TDD loop until the user intervenes. Trigger when the user says 続けて, "resume", "pick up where we left off", "/continue", "次", "go", or starts a fresh session expecting prior context. The full step-by-step loop spec (Step 0 → 7 + the closed 2-condition stop list) lives in CLAUDE.md § Autonomous Workflow and is loaded into every turn's system prompt; this skill is the invocation trigger and carries the resume procedure, the Phase-boundary review chain, the subagent delegation cheatsheet, and the model-selection guidance.
+description: Resume fully autonomous work on cw-from-scratch and drive the per-task TDD loop. Trigger when the user says 続けて, "resume", "pick up where we left off", "/continue", "次", "go", or starts a fresh session expecting prior context. `/continue` may also be re-invoked automatically (cron / wake hook); treat every invocation as the same go signal. The full step-by-step loop spec (Step 0 → 7) lives in CLAUDE.md § Autonomous Workflow + § The only stop (single condition: user explicit stop) and is loaded into every turn's system prompt; this skill is the invocation trigger and carries the resume procedure, the Phase-boundary review chain, the subagent delegation cheatsheet, and the model-selection guidance.
 ---
 
 # continue
 
 The `/continue` slash command's job is to start running the
 autonomous TDD loop. The loop's full step-by-step spec lives in
-`CLAUDE.md § Autonomous Workflow` (Step 0 → 7 + the closed
-2-condition stop list) which is loaded into every turn's system
-prompt.
+`CLAUDE.md § Autonomous Workflow` (Step 0 → 7) + `§ The only stop`
+(single condition: user explicit stop), loaded into every turn's
+system prompt.
+
+The loop never stops itself. Region / cluster / task / commit /
+Phase boundaries all roll into the next unit of work. Bad-Smell
+triggers are interrupts (see CLAUDE.md § Smell triggers are
+interrupts, not stops) — the surgery lands at the right depth,
+then the loop continues. Test failures are diagnosed and fixed
+in-flight, not handed off. `/continue` may also be re-invoked
+automatically (cron / wake hook); each invocation is the same go
+signal.
 
 This file carries the procedural context that is only needed at
 invocation time: the resume procedure, the Phase-boundary review
@@ -68,8 +77,10 @@ the SHA that flipped the last `[ ]` to `[x]` in §9.<N>. Run this
 chain in parallel where possible, **continue into §9.<N+1>
 without asking**:
 
-1. Run `audit_scaffolding`. Only block-severity findings stop the
-   loop.
+1. Run `audit_scaffolding`. Findings of any severity feed the
+   loop's next interrupt (block-severity ones become an immediate
+   surgery before the next Phase opens); the loop never halts on
+   them.
 2. In parallel (multi-agent fan-out, single message with multiple
    Agent tool calls):
    - **Subagent A**: built-in `simplify` on

@@ -11,8 +11,11 @@ paths:
 
 If "wait, this feels off" / "this seems different from what we
 planned" / "I'll fix it later" / "this looks like a hassle, let me
-take a side route" comes to mind while editing, stop and re-read
-`.dev/principle.md`.
+take a side route" comes to mind while editing, interrupt the
+current edit, re-read `.dev/principle.md`, and take the surgery
+at the right depth before continuing. The interrupt is not a
+session stop — the loop keeps running, the smell just lands its
+fix in-flight.
 
 ## Judgement is yours
 

@@ -156,8 +156,12 @@ turn 1 must be Japanese.
 ## Autonomous Workflow
 
 **Default mode: continuous autonomous execution.**
-After `/continue` or session resume, run the per-task TDD loop
-until a stop condition fires. Do **not** pause between tasks.
+After `/continue` or session resume, run the per-task TDD loop.
+The only thing that ends a session is the user explicitly asking
+for it (§ The only stop). Everything else — task boundaries,
+phase boundaries, smell triggers, ADR-level decisions, gate
+failures under investigation — is handled in-flight. Do **not**
+pause between tasks.
 
 ### Loop: Step 0 → 7 → next task's Step 0
 
@@ -253,18 +257,18 @@ Before staging:
      smallest-diff, one finished-form-clean, one "wildcard"
      within the constraints). **Subagent is instructed: "do NOT
      propose alternatives that violate any F-NNN; if the only
-     finished-form-clean option requires violating an F-NNN, say
-     so explicitly and stop — that becomes a user-touchpoint
-     candidate, not an ADR".** Reflect the subagent's output
-     verbatim into the ADR's "Alternatives considered" section
-     before stamping `Status: Proposed → Accepted`. Commits the
-     doc change first, then commits + pushes the source
-     separately. No external review gate for ADR — ADR history
-     (plus the Devil's-advocate output embedded in it) is the
-     rationale record. Exception: if the subagent surfaces a
-     would-violate-F-NNN finding, **stop and surface to user**
-     (stop condition 3 in the closed stop list — patterned smell
-     against project law).
+     finished-form-clean option requires violating an F-NNN,
+     record that finding as the leading entry of Alternatives
+     considered so the main loop sees it, but do not ask the loop
+     to halt — F-NNN amendment is a user action".** Reflect the
+     subagent's output verbatim into the ADR's "Alternatives
+     considered" section before stamping `Status: Proposed →
+     Accepted`. Commits the doc change first, then commits +
+     pushes the source separately. No external review gate for
+     ADR — ADR history (plus the Devil's-advocate output embedded
+     in it) is the rationale record. If the subagent surfaces a
+     would-violate-F-NNN finding, the main loop records it,
+     selects the best F-NNN-compliant shape, and continues.
 
 Then:
 
@@ -334,44 +338,55 @@ rows:
 5. Commit alone: `git commit -m "roadmap: open Phase <N+1> task list"`.
 6. Proceed to §9.<N+1>.1 Step 0.
 
-### Stop only when (closed list)
+### The only stop
 
-Three conditions, exhaustive:
+**One condition: the user explicitly asks the loop to stop.**
 
-1. **User explicitly requests stop** (any direct instruction).
-2. **Physically blocked** — build broken with no identifiable root
-   cause, or test failure that cannot be diagnosed after honest
-   investigation.
-3. **Smell-cluster trip** — a Bad Smell at depth ≥ 3 fires twice
-   within the same per-task TDD cycle (Step 0 → 7). This is
-   "patterned smell": the plan is structurally off, not just
-   locally smelly. **Don't stop the project** — the loop transitions
-   into **ADR-phase mode**: pause the current task at its last
-   green state, commit nothing more, fork a `general-purpose`
-   subagent with fresh context to draft a root-cause ADR
-   (`Supersedes <NNNN>` or net-new), accept it inline per the
-   ADR-phase rules below, then resume the per-task loop with the
-   ADR's verdict applied. This is a **mode switch, not a stop** —
-   the autonomous loop continues; only its current activity
-   changes.
+That is it. There are no other stop conditions. Specifically:
 
-Anything outside these three is continued through. The loop's
-quality discipline lives in `.dev/principle.md` (Bad Smell sensor,
-depth 1-4) and is applied per cycle — quality is a *how*, not a
-stop condition.
+- Task boundary, region boundary, cluster boundary, commit
+  boundary, Phase boundary — none of these end the session. Each
+  rolls straight into the next unit of work.
+- Bad-Smell trigger (any depth, any frequency) — does not stop.
+  It authorises **interrupt-style investigation and surgery** on
+  the spot (see "Smell triggers are interrupts, not stops" below).
+- ADR-level decision surfacing — does not stop. The AI drafts +
+  accepts the ADR inline ("ADR-level designs are handled inline"
+  below).
+- Test failure / gate red — does not stop. Diagnose and fix; the
+  loop is responsible for getting back to green, not for handing
+  off.
+- Long-running work, large diffs, big context — do not stop.
+  Auto-compaction is transparent; size is never the reason.
 
-This list intentionally avoids enumerating non-stop reasons. Closed
-stop conditions + open continue is the design. Condition 3 above
-exists because **depth ≥ 3 firing twice in one cycle indicates
-goal drift the per-cycle sensor is too narrow to catch** (per the
-2026-05-23 investigation into instruction centrifugation, recorded
-in `private/notes/llm_long_context_research.md`).
+A user "stop" directive applies to **the session in which it was
+issued**. It does not carry across to the next session — the next
+`/continue` (or any automated re-invocation) resumes the loop
+under this rule unchanged.
 
-### ADR-level designs are handled inline, not as a stop
+### Smell triggers are interrupts, not stops
+
+When the Bad Smell sensor (`.dev/principle.md`) fires, the loop
+**interrupts the current activity and investigates without
+compromise**. The investigation may be a one-line commit note
+(depth 1), an ADR amendment (depth 2), a new ADR (depth 3), or a
+Supersedes-chain rewrite (depth 4) — chosen per the sensor's
+read, not per a frequency counter. Multiple smell triggers in one
+cycle just mean multiple interrupts; they do not accumulate into
+a stop. After each interrupt is resolved — at depth that matches
+what the sensor surfaced — the loop returns to the per-task TDD
+flow and continues.
+
+The discipline is "do not defer the surgery; do not narrow the
+investigation to fit the task budget; do not let momentum override
+the sensor." Quality work is *how* the loop runs, not a reason to
+hand off.
+
+### ADR-level designs are handled inline
 
 When a design choice surfaces that would historically be called
 "ADR-level" (tier shift, scope change, principle deviation,
-load-bearing structural choice), the AI does **not** stop. It
+load-bearing structural choice), the AI handles it inline. It
 gathers the "should-be" materials itself — alternatives,
 trade-offs, references to existing ADRs — drafts the ADR with
 `Status: Proposed → Accepted` in the same cycle, fills Affected
@@ -391,8 +406,9 @@ subagent with **fresh context** and brief it:
 > does better than the current draft and what it breaks. Do NOT
 > propose alternatives that violate any F-NNN; if the only
 > finished-form-clean option requires violating an F-NNN, say
-> so explicitly and stop — that is a user-touchpoint candidate,
-> not an ADR."
+> so explicitly — record that finding as the leading entry of
+> Alternatives considered so the main loop sees it, but do not
+> ask the loop to halt."
 
 The subagent's output is reflected verbatim into the ADR's
 "Alternatives considered" section. This counters goal-drift /
@@ -400,16 +416,19 @@ instruction centrifugation by sourcing the alternatives from a
 context without the main loop's accumulated momentum. The
 subagent's recommendation is **not binding** within the F-NNN
 envelope — the main loop still chooses — but the alternatives
-must appear in the ADR. **Outside the F-NNN envelope**, the
-subagent's "stop and surface" finding is binding (= stop
-condition 3 in the closed stop list).
+must appear in the ADR. **Outside the F-NNN envelope**, a
+"would-violate-F-NNN" finding does not stop the loop; the main
+loop records the finding, picks the best F-NNN-compliant shape,
+and continues. (If the user wants F-NNN itself amended, that is
+a user action per `project_facts.md`'s amendment rule.)
 
 The phrases "this needs human judgement" / "cannot be
-self-decided" / "user touchpoint required" are forbidden framings
-in the autonomous loop. If the choice is between candidate
-designs, the AI picks one (preferring the smallest-diff option),
-records the rejected alternatives in the ADR's "Alternatives
-considered" section, and continues.
+self-decided" / "user touchpoint required" / "halt and surface"
+are forbidden framings in the autonomous loop. If the choice is
+between candidate designs, the AI picks one (finished-form first,
+smallest-diff as the secondary tiebreaker per F-002), records the
+rejected alternatives in the ADR's "Alternatives considered"
+section, and continues.
 
 ## Skills (the runnable procedures)
 
@@ -428,8 +447,9 @@ These hold the canonical procedures; CLAUDE.md only points to them.
   Survey → Step 7 per-task note → next task's Step 0) + multi-agent
   Phase-boundary review chain (audits run, then loop continues into
   §9.<N+1>). Auto-triggers on "続けて" / "/continue" / "resume".
-  **Fully autonomous from invocation**. Stops only per the closed
-  3-condition list in § Autonomous Workflow.
+  **Fully autonomous from invocation**. The only thing that ends a
+  session is the user explicitly asking for it (see § The only
+  stop).
 - **`audit_scaffolding`** — periodic audit for staleness, bloat, lies,
   and false positives across the tracked scaffolding (CLAUDE.md,
   `.dev/`, `.claude/`, `docs/`, `scripts/`). Auto-invoked by
