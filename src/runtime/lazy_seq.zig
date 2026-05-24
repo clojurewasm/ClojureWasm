@@ -41,6 +41,7 @@ const env_mod = @import("env.zig");
 const tag_ops = @import("gc/tag_ops.zig");
 const gc_heap_mod = @import("gc/gc_heap.zig");
 const mark_sweep = @import("gc/mark_sweep.zig");
+const list_mod = @import("collection/list.zig");
 
 /// LazySeq — extern struct with HeapHeader at offset 0; thunk +
 /// realized + meta Values; realized_flag discriminator since both
@@ -110,6 +111,46 @@ pub fn force(rt: *Runtime, env: *env_mod.Env, v: Value) !Value {
 pub fn seq(rt: *Runtime, env: *env_mod.Env, v: Value) !Value {
     if (v.tag() != .lazy_seq) return v;
     return try force(rt, env, v);
+}
+
+/// `(first v)` — head of the (possibly lazy) sequence. Force as
+/// many LazySeq layers as needed; route through `list.first` for
+/// .list Cons cells; return nil for everything else.
+pub fn first(rt: *Runtime, env: *env_mod.Env, v: Value) !Value {
+    var current = v;
+    while (current.tag() == .lazy_seq) {
+        current = try force(rt, env, current);
+    }
+    return switch (current.tag()) {
+        .list => list_mod.first(current),
+        .nil => Value.nil_val,
+        else => Value.nil_val,
+    };
+}
+
+/// `(rest v)` — tail of the (possibly lazy) sequence. Always
+/// returns a sequence (possibly empty); per Clojure semantics
+/// distinct from `(next v)` which returns nil for empty-tail.
+pub fn rest(rt: *Runtime, env: *env_mod.Env, v: Value) !Value {
+    var current = v;
+    while (current.tag() == .lazy_seq) {
+        current = try force(rt, env, current);
+    }
+    return switch (current.tag()) {
+        .list => list_mod.rest(current),
+        .nil => Value.nil_val,
+        else => Value.nil_val,
+    };
+}
+
+/// `(next v)` — like `rest` but returns nil for empty-tail (matches
+/// Clojure semantics: `(next ())` is nil, `(rest ())` is `()`).
+pub fn next(rt: *Runtime, env: *env_mod.Env, v: Value) !Value {
+    const tail = try rest(rt, env, v);
+    return switch (tail.tag()) {
+        .list => if (list_mod.countOf(tail) > 0) tail else Value.nil_val,
+        else => if (tail.isNil()) Value.nil_val else tail,
+    };
 }
 
 /// Per-tag trace fn — walks thunk + realized + meta.
@@ -213,4 +254,71 @@ test "force on uncached LazySeq without vtable: surfaces error.LazySeqVTableNotI
 
     const v = try alloc(&fix.rt, Value.true_val); // non-nil thunk so force tries to invoke
     try testing.expectError(error.LazySeqVTableNotInstalled, force(&fix.rt, &env, v));
+}
+
+test "first/rest/next on .list pass through to list ops" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var env = try env_mod.Env.init(&fix.rt);
+    defer env.deinit();
+
+    // Build (1 2 3) via consHeap.
+    const l3 = try list_mod.consHeap(&fix.rt, Value.initInteger(3), Value.nil_val);
+    const l2 = try list_mod.consHeap(&fix.rt, Value.initInteger(2), l3);
+    const l1 = try list_mod.consHeap(&fix.rt, Value.initInteger(1), l2);
+
+    try testing.expectEqual(@as(i48, 1), (try first(&fix.rt, &env, l1)).asInteger());
+    const r = try rest(&fix.rt, &env, l1);
+    try testing.expectEqual(@as(i48, 2), (try first(&fix.rt, &env, r)).asInteger());
+    const n = try next(&fix.rt, &env, l1);
+    try testing.expectEqual(@as(i48, 2), (try first(&fix.rt, &env, n)).asInteger());
+}
+
+test "first/rest/next on cached LazySeq route through realized" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var env = try env_mod.Env.init(&fix.rt);
+    defer env.deinit();
+
+    // Pre-cached LazySeq → realized = (42 99)
+    const tail = try list_mod.consHeap(&fix.rt, Value.initInteger(99), Value.nil_val);
+    const realised_list = try list_mod.consHeap(&fix.rt, Value.initInteger(42), tail);
+    const ls_val = try alloc(&fix.rt, Value.nil_val);
+    const ls = ls_val.decodePtr(*LazySeq);
+    ls.realized_flag = 1;
+    ls.realized = realised_list;
+
+    try testing.expectEqual(@as(i48, 42), (try first(&fix.rt, &env, ls_val)).asInteger());
+    const r = try rest(&fix.rt, &env, ls_val);
+    try testing.expectEqual(@as(i48, 99), (try first(&fix.rt, &env, r)).asInteger());
+}
+
+test "first/rest/next on empty seq return nil" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var env = try env_mod.Env.init(&fix.rt);
+    defer env.deinit();
+
+    try testing.expect((try first(&fix.rt, &env, Value.nil_val)).isNil());
+    try testing.expect((try rest(&fix.rt, &env, Value.nil_val)).isNil());
+    try testing.expect((try next(&fix.rt, &env, Value.nil_val)).isNil());
+}
+
+test "next on single-element list returns nil (vs rest returning ())" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    var env = try env_mod.Env.init(&fix.rt);
+    defer env.deinit();
+
+    const l1 = try list_mod.consHeap(&fix.rt, Value.initInteger(42), Value.nil_val);
+    // rest returns nil (since count was 1 → tail = nil_val per consHeap)
+    const r = try rest(&fix.rt, &env, l1);
+    try testing.expect(r.isNil());
+    // next also returns nil (rest's nil → nil)
+    const n = try next(&fix.rt, &env, l1);
+    try testing.expect(n.isNil());
 }
