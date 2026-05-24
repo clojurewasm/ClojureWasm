@@ -47,12 +47,12 @@ The Tag enum is decreed by F-004 — owner implements, does not re-decide. Each 
 
 **Group A (slots 0..15) — Hot data + persistent collections**
 ```
-A0  string          A4  list           A8  lazy_seq          A12  range
-A1  symbol          A5  vector         A9  cons              A13  string_seq
-A2  keyword         A6  array_map      A10 chunked_cons      A14  array_seq
-A3  nil_            A7  hash_map       A11 chunk_buffer      A15  map_entry
+A0  string          A4  vector         A8  lazy_seq          A12  range
+A1  symbol          A5  array_map      A9  cons              A13  string_seq
+A2  keyword         A6  hash_map       A10 chunked_cons      A14  array_seq
+A3  list            A7  hash_set       A11 chunk_buffer      A15  map_entry
 ```
-(`hash_set` shares no slot with `hash_map`; placed at C13 to keep Group A dense around persistent-collection hot paths. The draft initially crammed `nil` / `boolean_true` / `boolean_false` into A3 via a 3-value discriminant; per Devil's-advocate Alt 2 item 2 + F-002, that intra-slot multiplex is the same shape of surrender cw v0 made for the 5-type `delay` slot. A3 now carries `nil_` alone; `boolean_true` / `boolean_false` move into Group D — see below. The Group-A vs Group-C placement of `hash_set` is acknowledged as a Group categorisation leak per Devil's-advocate Load-bearing concern #3; the redraw is deferred per F-003 to a Phase 7+ owner with measured dispatch-frequency data.)
+(Matches F-004 indicative slot map verbatim. The g2 draft erroneously inserted `nil_` at A3 + `boolean_true` / `boolean_false` at D14 / D15 — see amendment 1 below for the correction. `nil` / `boolean_true` / `boolean_false` are **immediates** encoded via the `NB_CONST_TAG` band (payload 0 / 1 / 2), orthogonal to the 64-slot heap-pointer space — they do not consume a Tag slot. `hash_set` lives at A7 alongside `hash_map` (Group A's "persistent collection" cluster); the F-004 indicative map and ADR-0026 audit verdict agreed on this placement.)
 
 **Group B (slots 16..31) — Callables + reader extra**
 ```
@@ -65,22 +65,22 @@ B3  protocol_fn      B7  regex            B11 reified_instance      B15 reserved
 **Group C (slots 32..47) — Mutable + concurrency + transient + sorted/queue**
 ```
 C0  atom              C4  future            C8   transient_vector   C12 array_chunk
-C1  agent             C5  promise           C9   transient_map      C13 hash_set
+C1  agent             C5  promise           C9   transient_map      C13 persistent_queue
 C2  ref               C6  reduced           C10  transient_set      C14 sorted_map
-C3  volatile          C7  ex_info           C11  persistent_queue   C15 sorted_set
+C3  volatile          C7  ex_info           C11  reserved           C15 sorted_set
 ```
 
-**Group D (slots 48..63) — Numeric + wasm + extension + nil/bool overflow**
+**Group D (slots 48..63) — Numeric + wasm + extension**
 ```
 D0  big_int           D4  wasm_module       D8   matcher            D12 reserved
 D1  ratio             D5  wasm_fn           D9   tuple              D13 reserved
-D2  big_decimal       D6  wasm_funcref      D10  box                D14 boolean_true
-D3  array             D7  wasm_externref    D11  reserved           D15 boolean_false
+D2  big_decimal       D6  wasm_funcref      D10  box                D14 reserved
+D3  array             D7  wasm_externref    D11  reserved           D15 reserved
 ```
 
 `wasm_funcref` / `wasm_externref` at D6 / D7 are **inline-tagged**, committed by F-004 (decree). zwasm v2 §4.1 encodes `*const FuncEntity` with `align(8)` (F-008) — fits the 45-bit shifted pointer field with margin. The D-036 Phase 16 decision is **only about the marshalling wrapper** (whether `host_func.zig` exposes an additional Pod-shaped wrapper around the inline body for FFI hand-off); the slot encoding itself is decreed inline by F-004. This resolves the internal contradiction Devil's-advocate flagged on the §2 draft (cross-coupling §"wasm_funcref / wasm_externref inline reservation" row).
 
-`boolean_true` / `boolean_false` at D14 / D15 are the post-Devil's-advocate split landing place for what the g2 draft crammed into A3 multiplex. Group D's "Numeric + wasm + extension" categorisation accepts them as the "extension" subset — semantically the cleanest fit available without re-drawing the F-004 group boundaries (which is depth-4 surgery deferred per F-003 to a Phase 7+ owner). The remaining 3 anonymous reserves (D11 / D12 / D13) carry debt D-043 ("anonymous slot reservations to revisit at Phase 7 entry with the immediate-band wildcard analysis").
+Anonymous reserves at C11 / D11 / D12 / D13 / D14 / D15 carry debt D-043 ("anonymous slot reservations to revisit at Phase 7 entry with the immediate-band wildcard analysis"). Per F-002 Devil's-advocate Alt 2 item 1 verdict the count should shrink; per F-003 the redraw needs measured dispatch-frequency data which is row 5.3 onward owner's territory.
 
 `array` (D3) is Java-array compat (`Object[]` boundary for host interop). `matcher` (D8) is `java.util.regex.Matcher` analogue. `tuple` / `box` (D9 / D10) are reserved for transducer / mutable-box scaffolding (Phase 7).
 
@@ -248,3 +248,4 @@ Load-bearing concern #3 (Group A density vs Group D sparseness; `hash_set` displ
 ## Revision history
 
 - 2026-05-24: Status: Proposed → Accepted (autonomous-loop self-accept after Devil's-advocate subagent review reflected verbatim into Alternatives considered; Alt 1 applied — §3 dispatch table moved into ADR-0028 §4; Alt 2 item 2 applied — A3 nil/bool multiplex split into separate Tag slots; Alt 2 item 3 applied — bit-0 reservation reclaimed, pointer widened to 45 bits; §2 wasm_funcref contradiction resolved by aligning to F-004; remaining anonymous reserves captured by D-043). Co-issued with ADR-0028.
+- 2026-05-24 (amendment 1): Reverted §2 slot map placement of `nil_` (was A3) + `boolean_true` / `boolean_false` (were D14 / D15) — these are **immediates** encoded via the `NB_CONST_TAG` band (payload 0 / 1 / 2) per the existing g1 invariant; F-004's 64-slot enumeration is the heap-pointer Tag space, orthogonal to immediate encoding. The amendment-as-shipped: A3 = list, D14 / D15 = reserved (per F-004's indicative map verbatim). Devil's-advocate Alt 2 item 2 ("split A3 nil/bool into three separate Tag slots") was responding to the misframe in the original draft and is **withdrawn**: the underlying smell (cw v0 cramming surrender pattern) does not apply because `nil` / `true` / `false` were never crammed — they live in the immediate band and have always been independent Tag classifications (`Tag.nil` / `Tag.boolean`). D-043 reservation count updates from 3 (D11–D13) to 6 (C11 / D11–D15) to reflect the reverts; the §"shrink the slot count" verdict still applies but the redraw stays deferred per F-003. Smell trigger: caught in-flight during §9.7 row 5.2 implementation prep when reconciling the existing NB_CONST_TAG encoding against the §2 draft. Smell category: Spec-drift (ADR text drifted from F-NNN decree + existing source invariant) + Reservation-as-bias (the D14/D15 boolean placement was a contrived "extension subset" framing to host non-heap values in a heap-slot map).
