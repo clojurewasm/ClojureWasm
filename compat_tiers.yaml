@@ -154,7 +154,16 @@ tiers:
         methods: [randomUUID, fromString, toString]
         clojure_peer_vars: [clojure.core/random-uuid, clojure.core/parse-uuid]
       - { fqn: "java.util.Date",                         native_ns: "cljw.host.java.util.Date",                         phase: 5 }
-      - { fqn: "java.util.Random",                       native_ns: "cljw.host.java.util.Random",                       phase: 5 }
+      - fqn: java.util.Random
+        cljw_ns: cljw.java.util.Random
+        keyword: random
+        tier: A
+        phase: 6
+        files:
+          surface: runtime/java/util/Random.zig
+          impl: runtime/random.zig
+        methods: [nextInt, nextLong, nextDouble, setSeed]
+        clojure_peer_vars: []
       - { fqn: "java.util.Locale",                       native_ns: "cljw.host.java.util.Locale",                       phase: 6 }
       - { fqn: "java.util.regex.Pattern",                native_ns: "cljw.host.java.util.regex.Pattern",                phase: 6 }
       - { fqn: "java.util.concurrent.Future",            native_ns: "cljw.host.java.util.concurrent.Future",            phase: 14 }
