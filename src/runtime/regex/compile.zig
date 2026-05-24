@@ -139,19 +139,27 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) Comp
 /// Parser entry point: recursive-descent over the regex source,
 /// emits a `Node` tree into the supplied arena allocator.
 ///
-/// Cycle-1 first cell: single ASCII literal character only.
+/// Cycle-1 step 2: ASCII literal sequence (concatenation).
 /// Metacharacters (`.`, `*`, `+`, `?`, `(`, `)`, `[`, `]`,
-/// `|`, `\\`, `^`, `$`), multi-char patterns, and the empty
-/// pattern all raise `NotImplemented`. Subsequent commits
-/// extend the parser to handle each case.
+/// `|`, `\\`, `^`, `$`, `{`, `}`) and the empty pattern all
+/// raise `NotImplemented`. Alternation / quantifiers /
+/// character classes / anchors are subsequent commits.
 pub fn parsePattern(arena: std.mem.Allocator, pattern: []const u8, flags: Flags) CompileError!*const Node {
     _ = flags;
-    if (pattern.len != 1) return CompileError.NotImplemented;
-    const c = pattern[0];
-    if (isMetaChar(c)) return CompileError.NotImplemented;
-    const node = try arena.create(Node);
-    node.* = .{ .lit = c };
-    return node;
+    if (pattern.len == 0) return CompileError.NotImplemented;
+    for (pattern) |c| {
+        if (isMetaChar(c)) return CompileError.NotImplemented;
+    }
+    if (pattern.len == 1) {
+        const node = try arena.create(Node);
+        node.* = .{ .lit = pattern[0] };
+        return node;
+    }
+    const children = try arena.alloc(Node, pattern.len);
+    for (pattern, 0..) |c, i| children[i] = .{ .lit = c };
+    const root = try arena.create(Node);
+    root.* = .{ .concat = children };
+    return root;
 }
 
 fn isMetaChar(c: u8) bool {
@@ -178,6 +186,9 @@ fn emit(alloc: std.mem.Allocator, node: *const Node, flags: Flags) CompileError!
 fn emitNode(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, node: *const Node) CompileError!void {
     switch (node.*) {
         .lit => |c| try list.append(alloc, .{ .char = c }),
+        .concat => |children| {
+            for (children) |*ch| try emitNode(list, alloc, ch);
+        },
         else => return CompileError.NotImplemented,
     }
 }
@@ -194,9 +205,19 @@ test "compile single-char literal emits [char, match]" {
     try testing.expectEqual({}, prog.insts[1].match);
 }
 
-test "compile rejects metacharacter (NotImplemented at cycle 1)" {
+test "compile rejects metacharacter / empty (NotImplemented)" {
     try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, ".", .{}));
     try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "*", .{}));
-    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "ab", .{}));
     try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "", .{}));
+    try testing.expectError(CompileError.NotImplemented, compile(testing.allocator, "a*", .{}));
+}
+
+test "compile multi-char literal emits sequence of char + match" {
+    var prog = try compile(testing.allocator, "abc", .{});
+    defer prog.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 4), prog.insts.len);
+    try testing.expectEqual(@as(u8, 'a'), prog.insts[0].char);
+    try testing.expectEqual(@as(u8, 'b'), prog.insts[1].char);
+    try testing.expectEqual(@as(u8, 'c'), prog.insts[2].char);
+    try testing.expectEqual({}, prog.insts[3].match);
 }

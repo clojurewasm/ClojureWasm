@@ -143,6 +143,22 @@ test "matchFull only succeeds on full-string match" {
     try std.testing.expectEqual(@as(?MatchResult, null), r2);
 }
 
+test "find multi-char literal in middle of input" {
+    var prog = try compile.compile(std.testing.allocator, "bc", .{});
+    defer prog.deinit(std.testing.allocator);
+    const r = (try find(std.testing.allocator, &prog, "xabcd")).?;
+    try std.testing.expectEqual(@as(u32, 2), r.start);
+    try std.testing.expectEqual(@as(u32, 4), r.end);
+}
+
+test "matchFull green on exact multi-char literal" {
+    var prog = try compile.compile(std.testing.allocator, "abc", .{});
+    defer prog.deinit(std.testing.allocator);
+    const r = (try matchFull(std.testing.allocator, &prog, "abc")).?;
+    try std.testing.expectEqual(@as(u32, 0), r.start);
+    try std.testing.expectEqual(@as(u32, 3), r.end);
+}
+
 /// One Pike-VM step: advance every live thread by consuming
 /// (or rejecting) the input byte `c` at position `pos`.
 /// Epsilon-closure (`jmp` / `split` / `save`) is followed
