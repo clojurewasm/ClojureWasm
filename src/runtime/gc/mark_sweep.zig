@@ -64,11 +64,41 @@ pub fn clearMarks(gc: *GcHeap) void {
 }
 
 /// Walk the live list, finalise + recycle unreached objects, clear
-/// marks on reached ones. **Phase 5.3.c stub** — raises until 5.3.c
-/// wires the body (free-pool push + per-tag finaliser dispatch).
-pub fn sweep(gc: *GcHeap) !void {
-    _ = gc;
-    return error.GcSweepNotSupported;
+/// marks on reached ones. **Phase 5.3.c.1 body.** Iterates
+/// `gc.allocations` backward (so swap-remove indices stay valid).
+/// For each record:
+///   - mark bit 0 == 0 (dead): call per-tag finaliser via
+///     `tag_ops.tag_finaliser_table` (no-alloc invariant per
+///     ADR-0028 §4), `rawFree` the backing memory, swap-remove
+///     from allocations, bump `bytes_freed` + `sweep_count`.
+///   - mark bit 0 == 1 (live): clear the bit, sum into
+///     `last_live_bytes` for the next adaptive-threshold cycle.
+///
+/// Direct rawFree at 5.3.c.1; 5.3.c.2 inserts the free-pool push
+/// fast-path (`FreePoolMap.push`) before rawFree fallback, plus the
+/// pop fast-path in `GcHeap.alloc`.
+pub fn sweep(gc: *GcHeap) void {
+    var live_bytes: usize = 0;
+    var i: usize = gc.allocations.items.len;
+    while (i > 0) {
+        i -= 1;
+        const rec = gc.allocations.items[i];
+        const mark_bit: u30 = rec.header.gc_and_lock.gc_mark & 1;
+        if (mark_bit == 0) {
+            if (tag_ops.tag_finaliser_table[rec.header.tag]) |finaliser| {
+                finaliser(rec.header);
+            }
+            const mem = @as([*]u8, @ptrCast(rec.header))[0..rec.size];
+            gc.infra.rawFree(mem, rec.alignment, @returnAddress());
+            gc.stats.bytes_freed += rec.size;
+            _ = gc.allocations.swapRemove(i);
+        } else {
+            rec.header.gc_and_lock.gc_mark &= ~@as(u30, 1);
+            live_bytes += rec.size;
+        }
+    }
+    gc.stats.sweep_count += 1;
+    gc.stats.last_live_bytes = live_bytes;
 }
 
 // --- tests ---
@@ -135,9 +165,61 @@ test "clearMarks preserves bits 1..29 (only bit 0 is the mark)" {
     try testing.expectEqual(@as(u30, 0b101010100), c.header.gc_and_lock.gc_mark);
 }
 
-test "sweep stub raises GcSweepNotSupported at 5.3.b.2" {
+test "sweep removes unmarked allocations + frees their backing memory" {
     var gc = GcHeap.init(testing.allocator);
     defer gc.deinit();
 
-    try testing.expectError(error.GcSweepNotSupported, sweep(&gc));
+    const a = try gc.alloc(Cell);
+    a.* = .{ .header = HeapHeader.init(.string) };
+    const b = try gc.alloc(Cell);
+    b.* = .{ .header = HeapHeader.init(.vector) };
+    const c = try gc.alloc(Cell);
+    c.* = .{ .header = HeapHeader.init(.list) };
+
+    // Mark only `a` and `c` as reachable; `b` is dead.
+    mark(&gc, &a.header);
+    mark(&gc, &c.header);
+
+    sweep(&gc);
+
+    try testing.expectEqual(@as(usize, 2), gc.allocations.items.len);
+    try testing.expectEqual(@as(u64, 1), gc.stats.sweep_count);
+    try testing.expectEqual(@as(usize, @sizeOf(Cell)), gc.stats.bytes_freed);
+    try testing.expectEqual(@as(usize, 2 * @sizeOf(Cell)), gc.stats.last_live_bytes);
+
+    // Survivors retain their tag and have mark bit reset to 0 (ready
+    // for the next mark phase per the sweep contract).
+    for (gc.allocations.items) |rec| {
+        try testing.expectEqual(@as(u30, 0), rec.header.gc_and_lock.gc_mark & 1);
+    }
+}
+
+test "sweep on empty heap is a no-op (bumps sweep_count, no panics)" {
+    var gc = GcHeap.init(testing.allocator);
+    defer gc.deinit();
+
+    sweep(&gc);
+    try testing.expectEqual(@as(u64, 1), gc.stats.sweep_count);
+    try testing.expectEqual(@as(usize, 0), gc.stats.last_live_bytes);
+}
+
+test "sweep iterating backward keeps swap-remove indices valid" {
+    // Allocate 5 cells; mark only the middle one (index 2). Sweep
+    // should leave exactly that one allocation in place.
+    var gc = GcHeap.init(testing.allocator);
+    defer gc.deinit();
+
+    var survivor_addr: *HeapHeader = undefined;
+    for (0..5) |idx| {
+        const cell = try gc.alloc(Cell);
+        cell.* = .{ .header = HeapHeader.init(.string) };
+        if (idx == 2) {
+            mark(&gc, &cell.header);
+            survivor_addr = &cell.header;
+        }
+    }
+
+    sweep(&gc);
+    try testing.expectEqual(@as(usize, 1), gc.allocations.items.len);
+    try testing.expectEqual(survivor_addr, gc.allocations.items[0].header);
 }
