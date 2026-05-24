@@ -29,8 +29,9 @@
   (clojure.string/set/walk/zip — needs bootstrap multi-clj
   load), 6.13 (yaml sweep ~34 entries), 6.14 (exit smoke),
   6.15 (phase flip).
-- **Branch**: `cw-from-scratch`. HEAD ≈ 31eade4 (row 6.16
-  record).
+- **Branch**: `cw-from-scratch`. HEAD ≈ 3993bd4 (6.16
+  cluster: pos-int? / neg-int? / nat-int? landed; 46 fns
+  total across core.zig + math.zig).
 - **Gate**: Mac 16/16 + OrbStack Ubuntu x86_64 15/15 green.
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
@@ -48,12 +49,13 @@ Phase 6.1 (analyzer.zig split per D-030, deferred 5.13) landed
 
 ## Active task — §9.8 next: 6.6 (regex ADR) or 6.13 (yaml sweep)
 
-Phase 6 progressed 8/16. Row 6.16 captured the Tier A predicate
-cluster (23 primitives in `lang/primitive/core.zig` — string? /
-integer? / number? / symbol? / keyword? / vector? / list? / map? /
-set? / fn? / boolean? / char? / float? / ratio? / decimal? / some? /
-not / coll? / seq? / sequential? / associative? / identity /
-boolean) shipped this session as the natural pre-6.9 anchor.
+Phase 6 progressed 8/16. Row 6.16 cluster expanded into a
+broad Tier A surface (46 fns across `core.zig` predicates +
+`math.zig` sign / parity / mod / bit / shift / strict
+arithmetic). The cluster is at a Progress-pressure smell
+boundary — further single-primitive expansion is cheaper than
+the exit-criterion deliverable. The next session should pivot
+away from primitive accretion and take 6.6 directly.
 
 **Recommended next**: 6.6 (regex). Engine-choice ADR with
 Devil's-advocate fork mandatory (depth 2-3, per CLAUDE.md
