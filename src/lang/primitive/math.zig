@@ -313,6 +313,27 @@ pub fn negQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return lt(rt, env, &pair, loc);
 }
 
+/// `(odd? x)` — true iff `x` is an odd integer. Long fast-path
+/// uses the bottom bit; BigInt arms via Managed.bitAndScalar.
+/// Non-integer raises `type_arg_not_integer` (matches JVM
+/// Clojure's IllegalArgumentException narrowed to cw's catalog).
+pub fn oddQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("odd?", args, 1, loc);
+    const n = try error_catalog.expectInteger(args[0], "odd?", loc);
+    return if ((n & 1) != 0) .true_val else .false_val;
+}
+
+/// `(even? x)` — true iff `x` is an even integer. See `odd?`.
+pub fn evenQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("even?", args, 1, loc);
+    const n = try error_catalog.expectInteger(args[0], "even?", loc);
+    return if ((n & 1) == 0) .true_val else .false_val;
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -339,6 +360,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "zero?", .f = &zeroQ },
     .{ .name = "pos?", .f = &posQ },
     .{ .name = "neg?", .f = &negQ },
+    .{ .name = "odd?", .f = &oddQ },
+    .{ .name = "even?", .f = &evenQ },
 };
 
 /// Register the math primitives into `rt_ns`.
