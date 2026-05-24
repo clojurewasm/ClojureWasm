@@ -24,34 +24,41 @@
 
 ## Current state
 
-- **Phase**: **Phase 5 IN-PROGRESS** — §9.7 rows 5.0 / 5.1 / 5.2 `[x]`.
-  5.1 paired ADR cluster ADR-0027 + ADR-0028 Accepted (amendments
-  1/2/3 landed during 5.2.b for §1 bit-layout corrections).
-  5.2 split-then-widen: 5.2.a pure refactor (5e8d035), 5.2.b
-  F-004 widening + big_int Group D rotation + tag_ops.zig
-  skeleton (9fe4e20). 14 rows remain (5.3–5.16). Phase 4 DONE.
-- **Branch**: `cw-from-scratch`. HEAD = 9fe4e20.
+- **Phase**: **Phase 5 IN-PROGRESS** — §9.7 rows 5.0 / 5.1 / 5.2 `[x]`;
+  5.3 IN-PROGRESS through 5.3.b.4. 5.1 paired ADR cluster ADR-0027
+  + ADR-0028 Accepted (amendments 1/2/3 landed for §1 bit-layout
+  corrections). 5.2 split-then-widen (5e8d035 + 9fe4e20). 5.3
+  sub-commits: 5.3.a skeleton (a25b1b9) + 5.3.b.1 alloc body
+  (0ed5d2c) + 5.3.b.2 mark phase (839f859) + 5.3.c.1 sweep direct
+  (437cd53) + 5.3.c.2 free-pool push/pop + min-16 alloc (7567e31)
+  + 5.3.b.4 comptime check (1e1eaf4). 14 rows remain (5.3 close,
+  5.4–5.16). Phase 4 DONE.
+- **Branch**: `cw-from-scratch`. HEAD = 1e1eaf4.
 - **Gate**: Mac 13/13 + OrbStack Ubuntu x86_64 12/12 green.
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## Active task — §9.7.4 / 5.3 mark-sweep GC implementation
+## Active task — §9.7.4 / 5.3 continuation: roots + collect + alloc migration
 
-Land `runtime/gc/{mark_sweep, root_set, free_pool, gc_heap}.zig`
-per ADR-0028 + F-006 decree. 3-layer allocator boundary, free-
-pool intrusive at offset 8 (preserves HeapHeader at 0), per-tag
-finaliser dispatch via `tag_ops.zig` (5.2.b skeleton fills here),
-D100 5 root-set gaps pre-enumerated. `gc_and_lock.gc_mark` 30-bit
-partition is row 5.3 owner's call per ADR-0028 §6 F-003 deferral.
+Remaining sub-commits to close row 5.3:
+- **5.3.b.3**: wire 10 root walkers into `root_set.zig` per ADR-0028
+  §5. Survey at `private/notes/phase5-5.3.b.3-survey.md` (subagent
+  output pending).
+- **5.3.b.5**: wire `GcHeap.collect()` = mark roots + sweep +
+  adaptive threshold (`max(default, last_live_bytes * 2)`); blocks
+  on 5.3.b.3 (roots needed for collect to be safe).
+- **5.3.d**: migrate Phase 1-4 alloc sites (string / Cons / ex_info
+  / Namespace / Var / Keyword) `gpa.create` → `gc.alloc`; flip
+  `Flags.marked` → `gc_and_lock.mark`; remove `gc_*_not_supported`
+  Codes per ADR-0017 a1; flip auto-trigger on in alloc.
 
-**Step 0 reading**: ADR-0028 §1-9 verbatim; ADR-0027 §2-4 (slot
-map + encode/decode); F-006; D-011 + D-020; `private/notes/
-phase5-5.1-survey.md` Block B + Block C verbatim; ADR-0009 a2.
+**Step 0 reading** (for 5.3.b.3): `private/notes/phase5-5.3.b.3-survey.md`
++ ADR-0028 §5 root table + ADR-0017 a1 rewrite scope +
+`phase5-skeleton-audit.md` §"binding_stack.zig REVERTED".
 
-**Open hazards**: (a) `tag_ops.zig` shape pick (3 parallel arrays
-vs `TagOps` struct) per ADR-0028 §4 — measure access-pattern;
-(b) free-pool min alloc 16 bytes — Phase 1-3 alloc sites under 16
-round up; (c) ADR-0009 `Flags.marked` deletion vs migration to
-`gc_and_lock.mark` per ADR-0028 §6.
+**Open hazards**: (a) auto-trigger of collect() must wait until
+5.3.b.3; (b) `ProtocolFn` / `MultiFn` caches may not exist in cw v1
+yet — survey confirms, walker for row 5 may declare `null`
+placeholder; (c) Runtime field `gc: *GcHeap` lands at 5.3.d.
 
 ## Open questions / blockers
 
