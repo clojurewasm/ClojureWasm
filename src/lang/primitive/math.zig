@@ -485,6 +485,32 @@ pub fn unsignedBitShiftRight(rt: *Runtime, env: *Env, args: []const Value, loc: 
     return Value.initInteger(@truncate(@as(i64, @bitCast(r))));
 }
 
+/// `(min x & more)` — minimum across one or more numerics.
+/// Folds via the existing `<` ladder so all promotion rules
+/// (Long / Float / BigInt / Ratio / BigDecimal) apply.
+pub fn min(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    if (args.len == 0) return error_catalog.raise(.arity_below_min, loc, .{ .got = @as(usize, 0), .fn_name = "min", .min = @as(usize, 1) });
+    var best = args[0];
+    for (args[1..]) |a| {
+        const pair = [_]Value{ a, best };
+        const is_lt = try lt(rt, env, &pair, loc);
+        if (is_lt == Value.true_val) best = a;
+    }
+    return best;
+}
+
+/// `(max x & more)` — maximum across one or more numerics.
+pub fn max(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    if (args.len == 0) return error_catalog.raise(.arity_below_min, loc, .{ .got = @as(usize, 0), .fn_name = "max", .min = @as(usize, 1) });
+    var best = args[0];
+    for (args[1..]) |a| {
+        const pair = [_]Value{ a, best };
+        const is_gt = try gt(rt, env, &pair, loc);
+        if (is_gt == Value.true_val) best = a;
+    }
+    return best;
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -526,6 +552,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "bit-shift-left", .f = &bitShiftLeft },
     .{ .name = "bit-shift-right", .f = &bitShiftRight },
     .{ .name = "unsigned-bit-shift-right", .f = &unsignedBitShiftRight },
+    .{ .name = "min", .f = &min },
+    .{ .name = "max", .f = &max },
 };
 
 /// Register the math primitives into `rt_ns`.
