@@ -1271,6 +1271,22 @@ issuance).
 dispatch, rewrites the Phase 5 `.method` call sites to go through
 `CallSite.lookup` cache.
 
+**Carried forward from Phase 5 (per ADR-0030, 2026-05-24)**: the
+following ADR-0007 follow-up tasks land at Phase 7 entry alongside
+the protocol-dispatch ABI:
+
+- **5.12.b** — `defrecord` analyzer + eval. `deftype` shape +
+  implicit `IPersistentMap` semantics (get / assoc / keys / vals
+  over field names). Written against Phase 7 `dispatch(rt, cs,
+  receiver, protocol, method, args)` so the IPersistentMap path
+  uses the same CallSite cache the user-defined protocols use.
+- **5.12.c** — `reify` analyzer + eval. Anonymous TypeDescriptor +
+  closure capture + protocol-method bodies, written against Phase 7
+  dispatch ABI from day one (no pre-dispatch shim).
+- **5.12.d** — `(.method instance args)` protocol method dispatch
+  via CallSite cache. The general-arity dispatch fn that replaces
+  Phase 5's `.field`-only `FieldAccessNode` path.
+
 ### 9.10 Phase 8 — task list (PENDING, expand at Phase 8 entry)
 
 **Entry ADRs**: 0005 (Dual-backend differential — full bench).
