@@ -291,6 +291,28 @@ pub fn dec(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return minus(rt, env, &pair, loc);
 }
 
+/// `(zero? x) ≡ (= x 0)`. Delegates to `equals` so all numeric
+/// type arms (Long / Float / BigInt / Ratio / BigDecimal) work.
+pub fn zeroQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("zero?", args, 1, loc);
+    const pair = [_]Value{ args[0], Value.initInteger(0) };
+    return equals(rt, env, &pair, loc);
+}
+
+/// `(pos? x) ≡ (> x 0)`.
+pub fn posQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("pos?", args, 1, loc);
+    const pair = [_]Value{ args[0], Value.initInteger(0) };
+    return gt(rt, env, &pair, loc);
+}
+
+/// `(neg? x) ≡ (< x 0)`.
+pub fn negQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("neg?", args, 1, loc);
+    const pair = [_]Value{ args[0], Value.initInteger(0) };
+    return lt(rt, env, &pair, loc);
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -314,6 +336,9 @@ const ENTRIES = [_]Entry{
     .{ .name = "compare", .f = &compare },
     .{ .name = "inc", .f = &inc },
     .{ .name = "dec", .f = &dec },
+    .{ .name = "zero?", .f = &zeroQ },
+    .{ .name = "pos?", .f = &posQ },
+    .{ .name = "neg?", .f = &negQ },
 };
 
 /// Register the math primitives into `rt_ns`.
