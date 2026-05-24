@@ -25,28 +25,33 @@
 ## Current state
 
 - **Phase**: **Phase 5 IN-PROGRESS** — §9.7 rows 5.0–5.8 `[x]`,
-  5.9.a `[x]`. ADR-0029 cluster (2026-05-24) `[x]` (6 commits
-  58d8cc0..53dd7f2 + Commit 6 handover sweep). 5.9.b/c/d + 5.10-5.16
-  remain.
-- **Branch**: `cw-from-scratch`. HEAD = 53dd7f2 (Commit 6 will
-  advance this).
+  5.9.a `[x]`, 5.14 `[x]` (ADR-0029 cluster, 2026-05-24). 5.9.b/c/d +
+  5.10/5.11/5.12/5.13/5.15/5.16 remain.
+- **Branch**: `cw-from-scratch`. HEAD = d267c8a (this sweep
+  advances to next).
 - **Gate**: Mac 15/15 + OrbStack Ubuntu x86_64 14/14 green at
-  53dd7f2 (added 2 new steps: surface_marker, feature_keyword).
+  d267c8a (new steps surface_marker + feature_keyword from
+  Commit 5).
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## ADR-0029 cluster summary (landed 2026-05-24)
+## ADR-0029 cluster (2026-05-24, landed in 9 commits 58d8cc0..d267c8a)
 
-User-directed structural session landed the Java InterOp /
-cljw-original surface layout + feature-implementation neutrality
-invariant before Phase 6 starts adding host classes.
+User-directed structural session. Java InterOp / cljw-original
+surface layout + feature-implementation neutrality invariant
+established before Phase 6 host classes start landing. See
+`.dev/decisions/0029_runtime_java_cljw_layout.md` + F-009.
 
-- ADR-0029 Accepted (supersedes ADR-0011)
-- F-009 added to project_facts.md
-- runtime/host/ retired; runtime/java/ holds _host_api.zig
-- runtime/error/{info,catalog,print}.zig and
-  runtime/io/{interface[,default-Phase5+]}.zig consolidation
-- G1/G2/G3 gate scripts wired into test/run_all.sh
-- See `.dev/decisions/0029_runtime_java_cljw_layout.md` + F-009.
+- Commits 1-6 (58d8cc0..772e16c): ADR-0029 + F-009 + ADR-0011
+  supersede / ROADMAP+structure_plan+rules+compat_tiers schema /
+  runtime/error+io consolidation / runtime/host -> runtime/java /
+  G1/G2/G3 gate scripts / proposals scratch removed.
+- Commit 8 (876e53c): post-review G1 (lang/primitive surface
+  call gate) + G3 (Python parser robustness + keyword path-
+  component match) hardening from silent-failure-hunter
+  findings.
+- Commit 9 (d267c8a): post-review doc cleanup (compat_tiers.yaml
+  header / ADR-0029 §6.5→§6.0 / ROADMAP §4.5+§9.7.5.14+§13 /
+  _README section refs / D-032 closed + D-048/049/050 added).
 
 ## Active task after cluster — §9.7.10 / 5.9.b Ratio
 
