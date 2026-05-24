@@ -237,3 +237,34 @@ test "compile multi-char literal emits sequence of char + match" {
     try testing.expectEqual(@as(u8, 'c'), prog.insts[2].char);
     try testing.expectEqual({}, prog.insts[3].match);
 }
+
+test "isMetaChar covers the cycle-1 + future metachar set" {
+    try testing.expect(isMetaChar('.'));
+    try testing.expect(isMetaChar('*'));
+    try testing.expect(isMetaChar('+'));
+    try testing.expect(isMetaChar('?'));
+    try testing.expect(isMetaChar('('));
+    try testing.expect(isMetaChar(')'));
+    try testing.expect(isMetaChar('['));
+    try testing.expect(isMetaChar(']'));
+    try testing.expect(isMetaChar('|'));
+    try testing.expect(isMetaChar('\\'));
+    try testing.expect(isMetaChar('^'));
+    try testing.expect(isMetaChar('$'));
+    try testing.expect(isMetaChar('{'));
+    try testing.expect(isMetaChar('}'));
+    try testing.expect(!isMetaChar('a'));
+    try testing.expect(!isMetaChar('1'));
+    try testing.expect(!isMetaChar(' '));
+}
+
+test "CharClass set / contains is bit-exact" {
+    var cls: CharClass = .{};
+    cls.set('a');
+    cls.set('z');
+    try testing.expect(cls.contains('a'));
+    try testing.expect(cls.contains('z'));
+    try testing.expect(!cls.contains('b'));
+    try testing.expect(!cls.contains(0));
+    try testing.expect(!cls.contains(255));
+}
