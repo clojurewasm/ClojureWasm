@@ -388,6 +388,47 @@ pub fn mod(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return Value.initInteger(@mod(@as(i64, a), @as(i64, b)));
 }
 
+/// `(bit-and a b)` — bitwise AND on two integers.
+pub fn bitAnd(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("bit-and", args, 2, loc);
+    const a = try error_catalog.expectInteger(args[0], "bit-and", loc);
+    const b = try error_catalog.expectInteger(args[1], "bit-and", loc);
+    return Value.initInteger(@intCast(@as(i64, a) & @as(i64, b)));
+}
+
+/// `(bit-or a b)` — bitwise OR on two integers.
+pub fn bitOr(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("bit-or", args, 2, loc);
+    const a = try error_catalog.expectInteger(args[0], "bit-or", loc);
+    const b = try error_catalog.expectInteger(args[1], "bit-or", loc);
+    return Value.initInteger(@intCast(@as(i64, a) | @as(i64, b)));
+}
+
+/// `(bit-xor a b)` — bitwise XOR on two integers.
+pub fn bitXor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("bit-xor", args, 2, loc);
+    const a = try error_catalog.expectInteger(args[0], "bit-xor", loc);
+    const b = try error_catalog.expectInteger(args[1], "bit-xor", loc);
+    return Value.initInteger(@intCast(@as(i64, a) ^ @as(i64, b)));
+}
+
+/// `(bit-not x)` — bitwise NOT (logical complement) on an integer.
+/// In Clojure / Java this is the two's-complement negation pattern
+/// `~x = -x - 1`.
+pub fn bitNot(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("bit-not", args, 1, loc);
+    const a = try error_catalog.expectInteger(args[0], "bit-not", loc);
+    return Value.initInteger(@intCast(~@as(i64, a)));
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -420,6 +461,10 @@ const ENTRIES = [_]Entry{
     .{ .name = "quot", .f = &quot },
     .{ .name = "rem", .f = &rem },
     .{ .name = "mod", .f = &mod },
+    .{ .name = "bit-and", .f = &bitAnd },
+    .{ .name = "bit-or", .f = &bitOr },
+    .{ .name = "bit-xor", .f = &bitXor },
+    .{ .name = "bit-not", .f = &bitNot },
 };
 
 /// Register the math primitives into `rt_ns`.
