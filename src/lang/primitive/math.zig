@@ -334,6 +334,22 @@ pub fn evenQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     return if ((n & 1) == 0) .true_val else .false_val;
 }
 
+/// `(abs x)` — clojure.core/abs (1.11+). Returns |x| for any
+/// numeric. Implemented by `(if (neg? x) (- 0 x) x)` so the
+/// existing numeric comparison + subtraction ladder applies
+/// to every Tag (Long / Float / BigInt / Ratio / BigDecimal).
+pub fn abs(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("abs", args, 1, loc);
+    const zero = Value.initInteger(0);
+    const lt_pair = [_]Value{ args[0], zero };
+    const is_neg = try lt(rt, env, &lt_pair, loc);
+    if (is_neg == Value.true_val) {
+        const sub_pair = [_]Value{ zero, args[0] };
+        return minus(rt, env, &sub_pair, loc);
+    }
+    return args[0];
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -362,6 +378,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "neg?", .f = &negQ },
     .{ .name = "odd?", .f = &oddQ },
     .{ .name = "even?", .f = &evenQ },
+    .{ .name = "abs", .f = &abs },
 };
 
 /// Register the math primitives into `rt_ns`.
