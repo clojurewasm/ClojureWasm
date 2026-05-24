@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
     // `if (build_options.phase_at_least_N) ... else stub` to choose
     // between the real and stub modules without a runtime branch.
     const build_options = b.addOptions();
-    build_options.addOption(bool, "phase_at_least_5", false);
+    build_options.addOption(bool, "phase_at_least_5", true);
     build_options.addOption(bool, "phase_at_least_7", false);
     build_options.addOption(bool, "phase_at_least_11", false);
     build_options.addOption(bool, "phase_at_least_14", false);
