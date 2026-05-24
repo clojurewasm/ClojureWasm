@@ -209,6 +209,64 @@ pub fn notFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     return if (args[0].isNil() or args[0] == Value.false_val) .true_val else .false_val;
 }
 
+/// `(coll? x)` — true iff `x` is any IPersistentCollection: list,
+/// cons, lazy-seq, chunked-cons, vector, array-map, hash-map,
+/// sorted-map, hash-set, sorted-set, persistent-queue, range,
+/// string-seq, array-seq, map-entry. Matches clojure.core/coll?.
+pub fn collQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("coll?", args, 1, loc);
+    const t = args[0].tag();
+    return switch (t) {
+        .list, .cons, .lazy_seq, .chunked_cons, .vector, .array_map, .hash_map, .sorted_map, .hash_set, .sorted_set, .persistent_queue, .range, .string_seq, .array_seq, .map_entry => .true_val,
+        else => .false_val,
+    };
+}
+
+/// `(seq? x)` — true iff `x` implements ISeq: list, cons,
+/// lazy-seq, chunked-cons, range, string-seq, array-seq.
+/// vectors / maps / sets are NOT seqs in JVM Clojure
+/// (they become a seq via `(seq coll)`).
+pub fn seqQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("seq?", args, 1, loc);
+    const t = args[0].tag();
+    return switch (t) {
+        .list, .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq => .true_val,
+        else => .false_val,
+    };
+}
+
+/// `(sequential? x)` — true iff `x` implements Sequential
+/// (order-preserving collection): list / vector / cons / lazy-seq /
+/// chunked-cons / range / string-seq / array-seq /
+/// persistent-queue. maps / sets are NOT sequential.
+pub fn sequentialQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("sequential?", args, 1, loc);
+    const t = args[0].tag();
+    return switch (t) {
+        .list, .vector, .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq, .persistent_queue => .true_val,
+        else => .false_val,
+    };
+}
+
+/// `(associative? x)` — true iff `x` implements Associative
+/// (vector + maps). Matches clojure.core/associative?.
+pub fn associativeQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("associative?", args, 1, loc);
+    const t = args[0].tag();
+    return switch (t) {
+        .vector, .array_map, .hash_map, .sorted_map => .true_val,
+        else => .false_val,
+    };
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -238,6 +296,10 @@ const ENTRIES = [_]Entry{
     .{ .name = "decimal?", .f = &decimalQ },
     .{ .name = "some?", .f = &someQ },
     .{ .name = "not", .f = &notFn },
+    .{ .name = "coll?", .f = &collQ },
+    .{ .name = "seq?", .f = &seqQ },
+    .{ .name = "sequential?", .f = &sequentialQ },
+    .{ .name = "associative?", .f = &associativeQ },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
