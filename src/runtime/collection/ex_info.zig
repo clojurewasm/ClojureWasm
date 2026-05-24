@@ -33,44 +33,73 @@ const value_mod = @import("../value/value.zig");
 const Value = value_mod.Value;
 const HeapHeader = value_mod.HeapHeader;
 const Runtime = @import("../runtime.zig").Runtime;
+const tag_ops = @import("../gc/tag_ops.zig");
+const gc_heap_mod = @import("../gc/gc_heap.zig");
+const mark_sweep = @import("../gc/mark_sweep.zig");
 
 /// Heap ExInfo. `message` is owned (duped from caller bytes); `data`
 /// and `cause` are Values (`cause = .nil_val` when absent, mirroring
-/// the `(quote ())` → nil convention from §9.5/3.6).
-pub const ExInfo = struct {
+/// the `(quote ())` → nil convention from §9.5/3.6). `extern struct`
+/// for declaration-ordered layout (HeapHeader at offset 0); slice
+/// decomposed into `message_ptr` + `message_len` with a `message()`
+/// method for slice recovery.
+pub const ExInfo = extern struct {
     header: HeapHeader,
-    _pad: [6]u8 = undefined,
-    message: []const u8,
+    _pad: [6]u8 = .{ 0, 0, 0, 0, 0, 0 },
+    message_ptr: [*]const u8,
+    message_len: usize,
     data: Value,
     cause: Value,
 
     comptime {
         std.debug.assert(@alignOf(ExInfo) >= 8);
+        std.debug.assert(@offsetOf(ExInfo, "header") == 0);
+    }
+
+    pub fn message(self: *const ExInfo) []const u8 {
+        return self.message_ptr[0..self.message_len];
     }
 };
 
-/// Allocate a heap ExInfo. `msg_bytes` is duplicated; `data_v` /
-/// `cause_v` are stored by Value (no copy). Pass `cause_v = .nil_val`
-/// for the 2-arg `(ex-info msg data)` form.
+/// Allocate a heap ExInfo. `msg_bytes` is duplicated through
+/// `rt.gc.infra`; `data_v` / `cause_v` are stored by Value (no copy).
+/// Pass `cause_v = .nil_val` for the 2-arg `(ex-info msg data)` form.
 pub fn alloc(rt: *Runtime, msg_bytes: []const u8, data_v: Value, cause_v: Value) !Value {
-    const owned_msg = try rt.gpa.dupe(u8, msg_bytes);
-    errdefer rt.gpa.free(owned_msg);
-    const ex = try rt.gpa.create(ExInfo);
-    errdefer rt.gpa.destroy(ex);
+    const owned_msg = try rt.gc.infra.dupe(u8, msg_bytes);
+    errdefer rt.gc.infra.free(owned_msg);
+    const ex = try rt.gc.alloc(ExInfo);
     ex.* = .{
         .header = HeapHeader.init(.ex_info),
-        .message = owned_msg,
+        .message_ptr = owned_msg.ptr,
+        .message_len = owned_msg.len,
         .data = data_v,
         .cause = cause_v,
     };
-    try rt.trackHeap(.{ .ptr = @ptrCast(ex), .free = freeExInfo });
     return Value.encodeHeapPtr(.ex_info, ex);
 }
 
-fn freeExInfo(gpa: std.mem.Allocator, ptr: *anyopaque) void {
-    const ex: *ExInfo = @ptrCast(@alignCast(ptr));
-    gpa.free(ex.message);
-    gpa.destroy(ex);
+/// Per-tag finaliser called by sweep / GcHeap.deinit before unlink +
+/// rawFree. Frees the owned message slice back to `gc.infra`.
+pub fn finaliseGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
+    const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
+    const ex: *ExInfo = @ptrCast(@alignCast(header));
+    gc.infra.free(ex.message());
+}
+
+/// Per-tag trace fn called by mark phase. Walks `data` + `cause`
+/// (Values that may reference heap-managed children).
+pub fn traceGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
+    const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
+    const ex: *ExInfo = @ptrCast(@alignCast(header));
+    if (ex.data.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
+    if (ex.cause.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
+}
+
+/// Register ExInfo's finaliser + trace into tag_ops tables.
+/// Idempotent at the same fn pointers; called from `Runtime.init`.
+pub fn registerGcHooks() void {
+    tag_ops.registerFinaliser(.ex_info, &finaliseGc);
+    tag_ops.registerTrace(.ex_info, &traceGc);
 }
 
 /// Decode an ExInfo Value into the heap struct pointer. Caller must
@@ -82,7 +111,7 @@ pub fn asExInfo(val: Value) *const ExInfo {
 
 /// Convenience: pull the message slice without exposing the struct.
 pub fn message(val: Value) []const u8 {
-    return asExInfo(val).message;
+    return asExInfo(val).message();
 }
 
 /// Convenience: pull the data Value.

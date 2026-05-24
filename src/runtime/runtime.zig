@@ -113,6 +113,7 @@ pub const Runtime = struct {
     pub fn init(io: std.Io, gpa: std.mem.Allocator) Runtime {
         @import("collection/string.zig").registerGcHooks();
         @import("collection/list.zig").registerGcHooks();
+        @import("collection/ex_info.zig").registerGcHooks();
         return .{
             .io = io,
             .gpa = gpa,
