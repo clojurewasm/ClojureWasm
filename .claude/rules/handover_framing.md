@@ -37,11 +37,65 @@ either:
 Anything else is forbidden framing. The loop reads handover to
 decide **what to do next**, not whether to do anything.
 
+## Resume contract (mandatory top section, 3-5 lines)
+
+Every handover.md MUST start with a tight contract block before
+any other section (the cold-start reading list can follow it
+but the contract comes first):
+
+```markdown
+## Resume contract
+
+- HEAD: <sha or "see git log">
+- First commit on resume MUST be: <concrete task — §9.<N>.<M>
+  identifier, ADR slug, or file path>
+- Forbidden this session: <one-line list — empty is OK>
+```
+
+This is the first thing the next session reads. Vague /
+multi-option phrasing here is a block-level finding.
+
+- "First commit MUST be" wording is required, not "Recommended".
+  Soft phrasing ("consider", "next could be") allows the
+  resuming loop to substitute its own first task — that
+  defeats the purpose.
+- "Forbidden this session" exists to record the previous
+  session's surfaced-but-rejected directions ("expand primitive
+  cluster" when the real next task is regex impl) so the next
+  session does not re-derive the same pivot. Leave empty if
+  there is nothing to forbid.
+
 ## Hard length limit: ≤ 100 lines
 
 Above 100 lines, the framing has drifted into log / deliberation /
 forecast. Trim before commit. `git log` and `.dev/ROADMAP.md`
 already carry the history and the forecast.
+
+## Update frequency cap (≤ 2 / session)
+
+Per session: at most 2 handover updates, except at Phase
+boundary where the open-§9.<N+1> commit owns one update
+(that one does not count against the 2-cap).
+
+The cap exists because the most common failure mode is
+**HEAD-pointer churn**: the resuming loop wants to keep
+handover's `HEAD: <sha>` line synchronised with the latest
+push, and updates after almost every source commit. That is
+log accumulation, just disguised as a single-line edit.
+
+- **HEAD pointer is allowed to go stale.** `git log` is the
+  SSOT for current HEAD. handover's HEAD field is a coarse
+  pointer — "`HEAD ≈ X` (5 commits behind git)" is fine.
+- handover only refreshes when the **Active task identifier
+  itself changes** (e.g. §9.6 closed → §9.7 opens, or ADR
+  status flipped, or a new Forbidden item surfaced).
+- Cosmetic re-wording / count updates / "now there are 48
+  primitives not 33" edits are churn — they belong in `git
+  log` of the source files, not in handover.
+
+If a session hits the 2-update cap and still wants to
+record progress, write to `private/notes/<task>.md`
+(gitignored) instead.
 
 ## Forbidden patterns (grep-enforceable)
 
@@ -108,6 +162,9 @@ repair before proceeding.
 
 When reviewing a handover.md commit:
 
+- [ ] **Top section is `## Resume contract`** with 3 fields:
+      HEAD / First commit MUST be / Forbidden this session.
+      "MUST be" wording present (not "Recommended").
 - [ ] ≤ 100 lines total.
 - [ ] No phrase from the forbidden-phrase table.
 - [ ] At most **one** `## Just landed` section.
@@ -119,6 +176,10 @@ When reviewing a handover.md commit:
       D-NNN rows (named here by ID).
 - [ ] No numeric predictions (per
       [`no_handover_predictions.md`](no_handover_predictions.md)).
+- [ ] If this is the 3rd+ handover update in the session,
+      the change must be Active-task-identifier-level
+      (Phase boundary / ADR status flip / new Forbidden);
+      HEAD-pointer-only churn is rejected.
 
 ## How `/continue` enforces this
 
