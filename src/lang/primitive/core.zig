@@ -286,6 +286,34 @@ pub fn booleanFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     return if (args[0].isNil() or args[0] == Value.false_val) .false_val else .true_val;
 }
 
+/// `(pos-int? x)` — true iff x is a positive Long. BigInt arm is a
+/// follow-up; today BigInt → false (transient).
+pub fn posIntQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("pos-int?", args, 1, loc);
+    if (args[0].tag() != .integer) return .false_val;
+    return if (args[0].asInteger() > 0) .true_val else .false_val;
+}
+
+/// `(neg-int? x)` — true iff x is a negative Long.
+pub fn negIntQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("neg-int?", args, 1, loc);
+    if (args[0].tag() != .integer) return .false_val;
+    return if (args[0].asInteger() < 0) .true_val else .false_val;
+}
+
+/// `(nat-int? x)` — true iff x is a non-negative Long (includes 0).
+pub fn natIntQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("nat-int?", args, 1, loc);
+    if (args[0].tag() != .integer) return .false_val;
+    return if (args[0].asInteger() >= 0) .true_val else .false_val;
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -321,6 +349,9 @@ const ENTRIES = [_]Entry{
     .{ .name = "associative?", .f = &associativeQ },
     .{ .name = "identity", .f = &identity },
     .{ .name = "boolean", .f = &booleanFn },
+    .{ .name = "pos-int?", .f = &posIntQ },
+    .{ .name = "neg-int?", .f = &negIntQ },
+    .{ .name = "nat-int?", .f = &natIntQ },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
