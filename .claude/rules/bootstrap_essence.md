@@ -1,3 +1,12 @@
+---
+paths:
+  - "src/**/*.zig"
+  - "src/**/*.clj"
+  - "src/lang/bootstrap.zig"
+  - "src/eval/analyzer/**/*.zig"
+  - "src/eval/backend/**/*.zig"
+---
+
 # Bootstrap essence
 
 Auto-loaded when editing Zig or `.clj` source. A short reminder

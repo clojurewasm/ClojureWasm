@@ -6,95 +6,93 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (v5 plan + wiring landed; HEAD line refreshes
-  only on Active-task-identifier change).
-- **First commit on resume MUST be**: open **Phase 6.16.b-2** cycle —
-  D-061 (`#{...}` reader literal `.set` Form variant + tokenizer
-  `set_open` + readSet) + D-059 (map-literal-as-Value analyzer
-  `analyzeMapLiteral` + `analyzeSetLiteral` mirror of
-  `analyzeVectorLiteral` at `src/eval/analyzer/analyzer.zig`
-  L500-517) + TreeWalk eval + VM compile/opcode + tests. Ruler:
-  D-060 `op_vector_literal` landed at 1d20ce3 (~60 LOC analyzer +
-  Node + tree_walk + VM compile + opcode). Total LOC budget ~230
-  per `private/notes/phase6-6.16.b-survey.md` §4. e2e: new
-  `test/e2e/phase6_set_map_literal.sh`. After 6.16.b-2:
-  Phase 6.16.b-3 (Group C select/project/index/rename/join `.clj`
-  defns sitting on this infra). 6.16.b-1 landed at ddb7203
-  (Group A+B `.clj` defns + evalInNs rt/ auto-refer; D-070 finding
-  recorded — variadic + internal arity discrimination sidesteps
-  D-070 for union/intersection/difference; multi-arity dispatch
-  remains needed only for "different body per arity" cases).
-- **Forbidden this session**: (a) `__zig-` namespace prefix path (v5
-  §3.1 rejected; `defn-` + `-name` + `^:private :zig-leaf` metadata is
-  the confirmed scheme). (b) `clojure.X.impl/` sub-ns path (v5 §3 rejected
-  for取り残しリスク + 分散コスト). (c) `cljw build --source` / `--debug`
-  / `--aot` flag path (v5 §11.1 confirmed single mode, flag ゼロ). (d)
-  mixing human + EDN in single stderr stream (v5 §13.1 confirmed
-  stream-separated TTY=human / pipe=structured EDN). (e) ABI-level
-  bytecode format commitment (v5 §12.4 confirmed self-contained binary,
-  decoder-only永久互換性).
+- **HEAD**: see `git log` (HEAD refreshes only on Active-task-
+  identifier change).
+- **First commit on resume MUST be**: open **Phase 6.16.b-4** cycle
+  — ADR-0035 (require spec) + D-071 Part 3 (`^:private` enforcement)
+  + bootstrap loader topo-sort + circular detection + `:as` / `:refer`
+  / `:require :reload` semantics. Devil's-advocate fork mandatory
+  (depth-3 ADR). Discharges the **11-marker / 3-yaml-entry
+  ns-machinery cluster** (`runtime/eval/in_ns_auto_refer` +
+  `runtime/bootstrap/refer_table` + `runtime/eval/bare_in_ns_decl`)
+  once `(ns ...)` macro ships. Survey via general-purpose
+  subagent first (output `private/notes/phase6-6.16.b-4-survey.md`).
+  6.16.b-1/-2/-3 already landed (ddb7203 / 7a915f7 / 6211d8a);
+  framework + spike + review-fixes landed
+  (1fdc342 / 0fed954 / 89b8fae / 64c697c / ef4f683).
+- **Forbidden this session**: (a) `__zig-` namespace prefix path. (b)
+  `clojure.X.impl/` sub-ns path. (c) `cljw build --source/--debug/
+  --aot` flag path. (d) mixing human + EDN in single stderr stream.
+  (e) ABI-level bytecode format commitment. (f) introducing new
+  PROVISIONAL markers without same-commit yaml + debt.md sync (the
+  hook will physically block — see `.claude/rules/provisional_marker.md`).
 
 ## Cold-start reading order
 
 handover (this file) → CLAUDE.md (§ Project spirit + § Autonomous
-Workflow + § The only stop) → `.dev/project_facts.md` (F-001..F-009) →
-`.dev/principle.md` (Bad Smell + Devil's-advocate mandate) →
-**`private/notes/clj_vs_zig_split_proposal_v5.md` (placement +
-build + error 確定計画 SSOT)** →
-`.dev/structure_plan.md` → `.dev/ROADMAP.md` §9.8.
+Workflow + § The only stop) → `.dev/project_facts.md` (F-001..F-009)
+→ `.dev/principle.md` (Bad Smell + Devil's-advocate mandate) →
+**`private/notes/clj_vs_zig_split_proposal_v5.md` (placement /
+build / error 確定計画 SSOT)** → `.claude/rules/provisional_marker.md`
+(marker lifecycle + SSOT triad) → `feature_deps.yaml` (8 provisional
+entries / 16 marker sites) → `.dev/structure_plan.md` →
+`.dev/ROADMAP.md` §9.8.
 
 ## Current state
 
-- **Phase**: **Phase 6 IN-PROGRESS** — §9.8 14/24 `[x]` + 6.10 `[~]`
-  + 6.11 `[~] (3/10)` + 6.16.b-1 landed (Group A+B `.clj` defn
-  migration). v5 plan + ADR-0033/0034 + 6.16.a-0..a-3.2 + 6.16.b-1
-  (ddb7203). **Active task = Phase 6.16.b-2 cycle** (D-061 +
-  D-059 reader/analyzer infra).
-- **Branch**: `cw-from-scratch`. ADR-0032 issued (multi-file loader +
-  in-ns). v5 plan = `private/notes/clj_vs_zig_split_proposal_v5.md`
-  (1593 lines, self-contained, SSOT for ADR-0033/0034/0035).
-- **Gate**: Mac 31/31 + OrbStack Ubuntu x86_64 30/30 green at
-  ddb7203 (phase6_clojure_set_group_ab.sh registered).
+- **Phase**: **Phase 6 IN-PROGRESS** — §9.8 14/24 `[x]` + 6.16.a-0
+  … a-3.2 + b-1 + b-2 + b-3 landed. Framework (1.1..1.6) +
+  spike (2.1..2.3) + review-fix all landed.
+  **Active task = Phase 6.16.b-4** (ADR-0035 + D-071 Part 3 +
+  bootstrap loader topo-sort).
+- **Branch**: `cw-from-scratch`. v5 plan =
+  `private/notes/clj_vs_zig_split_proposal_v5.md` (1593 lines).
+- **Gate**: Mac 33/33 + OrbStack Ubuntu x86_64 32/32 green at
+  ef4f683.
+- **Provisional markers**: 16 markers / 8 entries in
+  `feature_deps.yaml`. Hook (`scripts/check_provisional_sync.sh`)
+  live + wired in `.claude/settings.json`. Audit checks
+  E2.1..E2.4 in `audit_scaffolding`.
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## Active task — Phase 6.16.b-2 (D-061 + D-059 reader/analyzer infra)
+## Active task — Phase 6.16.b-4 (ADR-0035 + D-071 Part 3)
 
-Open Phase 6.16.b-2: `#{...}` reader literal + `{...}` map-literal-
-as-Value analyzer. Files to touch: `src/eval/form.zig` (`.set`
-FormData variant), `src/eval/tokenizer.zig` (`set_open` kind +
-readDispatch `'{'` arm), `src/eval/reader.zig` (`readSet` mirror of
-`readMap`), `src/eval/node.zig` (`SetLiteralNode` + `MapLiteralNode`),
-`src/eval/analyzer/analyzer.zig` (`analyzeSetLiteral` +
-`analyzeMapLiteral` mirror of `analyzeVectorLiteral` L500-517),
-`src/eval/backend/tree_walk.zig` (`evalSetLiteral` + `evalMapLiteral`),
-`src/eval/backend/vm/compiler.zig` (`compileSetLiteral` +
-`compileMapLiteral`), `src/eval/backend/vm/opcode.zig`
-(`op_set_literal` + `op_map_literal`), `src/eval/backend/vm.zig`
-(dispatch). Ruler: D-060 `op_vector_literal` (1d20ce3). e2e:
-`test/e2e/phase6_set_map_literal.sh`. Closes D-061 + D-059. After:
-6.16.b-3 (Group C `.clj` defns + retire old phase6_clojure_set_cycle*).
+ADR-0035 issuance (require spec + multi-file dependency topo-sort
++ circular detection + `:as`/`:refer`/`:reload` semantics +
+bootstrap loader topo-sort extension + D-058 per-file
+SourceContext absorption + `(ns ...)` macro). Devil's-advocate
+fork mandatory (depth ≥ 3). Closes D-063 + D-071 (Part 1 already
+landed at 6.16.b-3; Part 3 `^:private` enforcement on
+`-*-eager` leaves lands here).
+
+Concurrent discharge: the 11-marker / 3-yaml-entry ns-machinery
+cluster (`runtime/eval/in_ns_auto_refer` + `runtime/bootstrap/
+refer_table` + `runtime/eval/bare_in_ns_decl`) — once `(ns ...)`
+macro ships these entries flip provisional → landed and the 11
+markers are removed in the same commit (the hook enforces sync).
 
 v5 follow-up amendments accumulating (fold into ADR-0033 amendment
 or next-cycle commit body):
 - §5.2 DIVERGENCE D1 wording (contains? on vector, 6.16.a-2)
 - §5.2 every?/some explicit Layer 2 designation (6.16.a-3.1)
-- §5.2 + §7 transducer arity cw v1 deviation + D-070 trigger spec (6.16.a-3.2)
-- ADR-0033 D6a amendment (partial 着地、 D-070 後 back-fill plan)
-- 6.16.b-1 evalInNs rt/ auto-refer (ADR-0032 amendment 候補、 ADR-0035
-  で `(ns ...)` macro が landing する時に正式置換予定)
+- §5.2 + §7 transducer arity cw v1 deviation + D-070 trigger spec
+- ADR-0033 D6a amendment (partial 着地、 D-070 後 back-fill)
+- 6.16.b-1..b-3 evalInNs + bootstrap.zig + core.clj provisional
+  (= ADR-0035 内包 discharge per spike 2.1)
 
 ## Open questions / blockers
 
 None testable from inside the loop. Step 0.5 debt sweep walks
-debt.md including new rows D-062..D-069 (v5 §21.1). D-062 cluster
-recall trigger anchored to placement.yaml — initial scaffold landed
-at `placement.yaml`, populated incrementally as cycles close.
+debt.md including D-062..D-076 (16 active rows). D-062 cluster
+recall trigger anchored to placement.yaml.
 
 ## Guardrail refresh history (condensed)
 
-Waves 1-12: spirit + Bad Smell + F-NNN + stop-list + ADR-0029 F-009
-+ ADR-0030 + 6.1 analyzer split + ADR-0031 Accepted (Alt 2) + 6.16
-cluster + silent-test-skip surgery + clock API port. **Wave 13-14
-(2026-05-25)**: ADR-0032 (in-ns) + v5 placement/build/error plan
-SSOT + ROADMAP §9.8 cycle rows 6.16.a-0..e + debt.md D-062..D-073
-+ ADR-0033/0034 issued / 0035 deferred to 6.16.b-4.
+Waves 1-12: spirit + Bad Smell + F-NNN + stop-list + ADR-0029
+F-009 + ADR-0030 + 6.1 analyzer split + ADR-0031 Accepted +
+6.16 cluster + silent-test-skip surgery + clock API port. **Wave
+13-14 (2026-05-25)**: ADR-0032 + v5 placement plan + ROADMAP
+§9.8 cycle rows + debt.md D-062..D-073 + ADR-0033/0034 issued
+/ 0035 deferred. **Wave 15 (2026-05-26)**: provisional-marker
+mechanisation (rule + SSOT yaml + sync hook + Step 0.7 + audit
+E2 + bootstrap_essence + 11+5 marker retrofit + review-fix).

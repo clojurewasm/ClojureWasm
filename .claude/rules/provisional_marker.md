@@ -1,3 +1,14 @@
+---
+paths:
+  - "src/**/*.zig"
+  - "src/**/*.clj"
+  - "build.zig"
+  - "build.zig.zon"
+  - "test/e2e/**/*.sh"
+  - "feature_deps.yaml"
+  - ".dev/debt.md"
+---
+
 # Provisional marker comments
 
 Auto-loaded when editing any source file. Codifies the
