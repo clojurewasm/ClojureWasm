@@ -336,3 +336,48 @@ Phase 6.16.a-0 cycle 以降の Affected files:
   reading で violation 寄りの旨を明示)。 v5 plan (1593 行、 self-
   contained) を SSOT として参照、 Phase 6.16.a-0 ~ .e の 10 cycle
   segment が ROADMAP §9.8 に landing。
+
+- 2026-05-26 D4 amendment (Phase 6.16.b-4 sub-cycle a) — D-071 Part 3
+  landed. `LEAF_ENTRIES` (`-map-eager` 6 個) を `rt` ns から
+  `clojure.core` ns に再配置 + `.private = true` flip。 当初 D4 の
+  「`-name` Pattern B2 leaves は rt 配置 + `(in-ns 'clojure.core)`
+  が core.clj に着地後に `.private = true` flip するだけで足りる」
+  という framing は不正確 (= `higher_order.zig:391-394` の
+  deferral comment が描いた path)。 analyzer cross-ns private check
+  (`analyzer.zig:374-381`) は `env.current_ns` と `v_ptr.ns` を
+  比較するため、 leaf が rt ns 滞在のままだと core.clj の wrapper
+  (`current_ns = clojure.core`, `v_ptr.ns = rt`) が異 ns 扱いで
+  bootstrap-time `private_access_error` を起こす。 leaf の所有 ns
+  自体を `clojure.core` に移すことで same-ns wrapper resolution
+  + cross-ns user 拒否の両立が finished-form-clean に得られる
+  (F-002 reasoning)。
+
+  実装: `Env.init` で `clojure.core` ns を boot-time 作成
+  (`runtime/env.zig:223-237`)、 `primitive.zig::registerAll` が
+  `clojure_core_ns` を look up して `higher_order.register(env,
+  rt_ns, clojure_core_ns)` に渡す、 `higher_order.register` が
+  `ENTRIES` (`some?`) を rt_ns に、 `LEAF_ENTRIES` を
+  clojure_core_ns + `.private = true` で intern。 core.clj の
+  `(in-ns 'clojure.core)` は既存 ns への switch に変わる (idempotent
+  per `findOrCreateNs`)。 evalInNs / op_in_ns の rt-auto-refer は
+  core.clj が依然として `count`/`conj`/`reduce` 等の rt primitive を
+  unqualified で参照するため維持 (= 削除は core.clj の全 rt 参照を
+  qualify する大規模 surgery を伴うため別 cycle)。
+
+  Devil's-advocate fork (fresh context) で F-002 / F-007 / F-009
+  envelope 内 3 alternatives 取得: Alt 1 (smallest-diff = "rt と
+  clojure.core を same-cluster 化する分析器拡張") は新 privacy 概念を
+  発明する Smallest-diff bias smell、 Alt 2 (finished-form-clean =
+  proposal + evalInNs rt-auto-refer 削除) は user-facing access の
+  cleanup として推奨されたが core.clj が rt primitives を unqualified
+  で多数参照する事実を見落としており full Alt 2 採択は sub-cycle 範囲
+  外 (= 別 cycle で再評価)、 Alt 3 wildcard (a: D-071 Part 3 を Phase 7
+  に defer、 b: `^:private` を convention-only に縮退、 c: macro inline)
+  はいずれも close-out predicate が満たされた状態を不必要に先送りする
+  Progress-pressure smell の逆方向。 採択: proposal そのまま (= leaf
+  re-home + private flip)。 violates-F-NNN finding: なし。
+
+  test 追加: `test/e2e/phase6_16_b_4_private_leaf.sh` 5 assertions
+  (public wrapper / user qualified denied / filter denied / same-ns
+  ok)。 D-071 row 更新は次 commit (sub-cycle b/c/d で ADR-0035 完了
+  時に併せて Part 3 完了に flip)。

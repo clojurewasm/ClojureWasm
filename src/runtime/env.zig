@@ -217,12 +217,23 @@ pub const Env = struct {
     /// Current value of `*ns*`. Right after `init`, points at `user`.
     current_ns: ?*Namespace = null,
 
-    /// Initialise with the two startup namespaces:
-    ///   - `rt`   → kernel primitives (Phase 2.7 registers `+`, `*`, …)
-    ///   - `user` → default eval target; `current_ns` set here.
+    /// Initialise with the three startup namespaces:
+    ///   - `rt`           → kernel primitives (`+`, `=`, `count`, …)
+    ///   - `clojure.core` → public Clojure surface + private leaves
+    ///                      (`-*-eager`) per ADR-0033 D4
+    ///   - `user`         → default eval target; `current_ns` set here.
+    ///
+    /// Creating `clojure.core` at init time (rather than letting
+    /// `(in-ns 'clojure.core)` in `core.clj` create it on demand) lets
+    /// `primitive.registerAll` intern Pattern B2 private leaves into
+    /// `clojure.core` before bootstrap runs, so the leaves are
+    /// same-ns visible from `core.clj`'s wrappers and cross-ns
+    /// `^:private`-blocked from `user/`. `findOrCreateNs` is
+    /// idempotent so `(in-ns 'clojure.core)` later just switches.
     pub fn init(rt: *Runtime) !Env {
         var env = Env{ .rt = rt, .alloc = rt.gpa };
         _ = try env.findOrCreateNs("rt");
+        _ = try env.findOrCreateNs("clojure.core");
         const user = try env.findOrCreateNs("user");
         env.current_ns = user;
         return env;

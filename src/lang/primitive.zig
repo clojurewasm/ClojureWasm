@@ -40,6 +40,7 @@ const walk_prim = @import("primitive/walk.zig");
 pub const RegisterError = error{
     RtNamespaceMissing,
     UserNamespaceMissing,
+    ClojureCoreNamespaceMissing,
     OutOfMemory,
 };
 
@@ -48,12 +49,13 @@ pub const RegisterError = error{
 pub fn registerAll(env: *Env) !void {
     const rt_ns = env.findNs("rt") orelse return RegisterError.RtNamespaceMissing;
     const user_ns = env.findNs("user") orelse return RegisterError.UserNamespaceMissing;
+    const clojure_core_ns = env.findNs("clojure.core") orelse return RegisterError.ClojureCoreNamespaceMissing;
 
     try math.register(env, rt_ns);
     try core.register(env, rt_ns);
     try sequence.register(env, rt_ns);
     try collection.register(env, rt_ns);
-    try higher_order.register(env, rt_ns);
+    try higher_order.register(env, rt_ns, clojure_core_ns);
     try error_prim.register(env, rt_ns);
     try uuid.register(env, rt_ns);
     try file_io_prim.register(env, rt_ns);

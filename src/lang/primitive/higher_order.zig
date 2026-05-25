@@ -380,18 +380,22 @@ const ENTRIES = [_]Entry{
     .{ .name = "some?", .f = &someQFn },
 };
 
-/// `-name` eager leaves per ADR-0033 D4 — registered in `rt_ns`
-/// (same as other Layer 2 builtins) with `^:zig-leaf` metadata.
+/// `-name` eager leaves per ADR-0033 D4 — registered in
+/// `clojure.core` (NOT `rt`) with `^:private :zig-leaf` metadata.
 ///
-/// **NOTE on `^:private`**: per ADR-0033 D4 these should be private
-/// to clojure.core, callable only from same-ns defns. But Phase
-/// 6.16.a-3.2 does **not** yet land `(in-ns 'clojure.core)` at the
-/// top of `core.clj` (= core.clj defs still go into `user` ns), so
-/// flagging the leaves `^:private` would block their use from
-/// core.clj. The `:private = true` flag is therefore **deferred**
-/// until `(in-ns 'clojure.core)` lands in core.clj (tracked at
-/// D-NEW-4 per 6.16.a-3.2 commit body). For now the `-` prefix is a
-/// convention/marker without enforcement.
+/// **Why clojure.core, not rt**: D-071 Part 3 closes the
+/// `^:private` enforcement on these leaves. The analyzer cross-ns
+/// private check (`analyzer.zig:374-381`) compares
+/// `env.current_ns` against `v_ptr.ns`; for the wrappers in
+/// `core.clj` (`(def map (fn* [f coll] (-map-eager f coll)))`)
+/// to resolve same-ns, the leaf's owning Var must live in the
+/// same namespace as the wrapper. Since `core.clj` opens with
+/// `(in-ns 'clojure.core)` (landed 6.16.b-3, commit 6211d8a),
+/// the leaves belong here too.
+///
+/// User-ns callers reaching for `(clojure.core/-map-eager …)`
+/// then trip the cross-ns private check and get
+/// `private_access_error` — the intended ADR-0033 D4 contract.
 const LEAF_ENTRIES = [_]Entry{
     .{ .name = "-map-eager", .f = &mapEagerFn },
     .{ .name = "-filter-eager", .f = &filterEagerFn },
@@ -401,13 +405,17 @@ const LEAF_ENTRIES = [_]Entry{
     .{ .name = "-remove-eager", .f = &removeEagerFn },
 };
 
-pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
+pub fn register(
+    env: *Env,
+    rt_ns: *env_mod.Namespace,
+    clojure_core_ns: *env_mod.Namespace,
+) !void {
     for (ENTRIES) |it| {
         _ = try env.intern(rt_ns, it.name, Value.initBuiltinFn(it.f), null);
     }
     for (LEAF_ENTRIES) |it| {
-        _ = try env.intern(rt_ns, it.name, Value.initBuiltinFn(it.f), .{
-            .private = false, // deferred per D-NEW-4 (see LEAF_ENTRIES note)
+        _ = try env.intern(clojure_core_ns, it.name, Value.initBuiltinFn(it.f), .{
+            .private = true,
             .zig_leaf = true,
         });
     }
