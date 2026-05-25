@@ -1,0 +1,492 @@
+# placement.yaml — Clojure-ns var placement SSOT
+#
+# Per v5 §15 (private/notes/clj_vs_zig_split_proposal_v5.md):
+#   - Clojure-ns vars の placement (Pattern A/B + status + dependencies)
+#   - compat_tiers.yaml と役割分担 (compat_tiers.yaml = Java + cljw surface)
+#
+# Schema (per v5 §15.2 + App D):
+#   schema_version: ADR-0033 起票時 "1.0" 固定 start、 amendment で incr
+#     自動検知: 完成形 (Phase 14 v0.1.0 release 近辺) で
+#     scripts/check_placement_schema.sh を着地予定 — schema 変更を
+#     Git diff で検知して gate fail させる仕組み。 開発期間中 (Phase 6-13)
+#     は schema が頻繁に変わるため手動管理、 ADR-0033 amendment ログで追跡
+#
+#   vars:
+#     <fqn>:
+#       pattern: A | B1 | B2 | C-thin | C-zig
+#         A      — Layer 3 .clj defn (composition)
+#         B1     — Layer 2 .zig 直 intern、 .clj 不在
+#         B2     — Layer 2 .zig -name leaf + Layer 3 1-line shim defn
+#         C-thin — .clj で 1-2 条件分岐 + leaf 呼出
+#         C-zig  — Layer 2 全実装 (B1 同形、 multi-arity 複雑 / hot path)
+#       status: transient_zig | ready_for_migration | stable | migrated
+#         transient_zig       — Zig 直書きだが Pattern A/B2 化予定
+#         ready_for_migration — composition_deps 全 registered、 .clj 化 ready
+#         stable              — 最終形 (Pattern B1 等で Zig が最終形)
+#         migrated            — transient_zig から .clj 化済
+#       leaf_deps: [<-name leaf> ...]            # Zig 側 leaf 依存
+#       composition_deps: [<fqn-or-short> ...]   # 他の user-callable Clojure var 依存
+#       target_loc: src/lang/clj/clojure/<ns>.clj  # .clj 着地先 (Pattern A/B2/C-thin の場合)
+#       leaf_loc: src/lang/primitive/<file>.zig    # Zig leaf 着地先 (Pattern B*/C-zig の場合)
+#       upstream_ref: ~/Documents/OSS/clojure/src/clj/clojure/<ns>.clj#L<n>
+#       recall_trigger: "<phase or cycle 完了> trigger"
+#       notes: "free-form"
+#
+# Used by:
+#   - scripts/check_placement_status.sh (audit + status flip suggestion)
+#   - cljw --list-vars (Phase 14+)
+#   - ADR-0033 amendment history reference
+#   - scripts/analyze_clojure_upstream.bb (Babashka generator for initial yaml)
+#   - scripts/gen_placement_yaml.bb (Babashka yaml generator from analysis edn)
+
+schema_version: "1.0"
+
+# Initial scaffold (2026-05-25):
+# Phase 6.9-6.11 で着地済の 32 vars + Phase 6.16.a-1 で着地予定の core glue
+# fundamentals を網羅。 placement_strategy フィールドはまだ全部 transient_zig 仮
+# (現状 Zig 直書き)、 Phase 6.16.X cycle で migration 進行に応じて更新。
+#
+# 完全 entry は ADR-0033 起票時 + Babashka analyze_clojure_upstream.bb 実行後に
+# populate される (v5 §10 + §15.4)。 ここでは ADR 起票前の scaffold として
+# 32 transitioning vars の shape のみ示す。
+
+vars:
+  # === clojure.string 22 vars (Phase 6.16.d-e で migration) ===
+  clojure.string/upper-case:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-upper-case]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    upstream_ref: ~/Documents/OSS/clojure/src/clj/clojure/string.clj
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/lower-case:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-lower-case]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    upstream_ref: ~/Documents/OSS/clojure/src/clj/clojure/string.clj
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/trim:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-trim]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/triml:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-triml]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/trimr:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-trimr]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/trim-newline:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-trim-newline]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/blank?:
+    pattern: C-thin
+    status: transient_zig
+    leaf_deps: [-str-blank?]
+    composition_deps: [nil?, or]
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.e cycle (C-thin .clj 化)"
+    notes: "(defn blank? [s] (or (nil? s) (-str-blank? s)))"
+
+  clojure.string/starts-with?:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-starts-with?]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/ends-with?:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-ends-with?]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/includes?:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-includes?]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/index-of:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-index-of]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/last-index-of:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-last-index-of]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/reverse:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-reverse]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/re-quote-replacement:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-str-re-quote-replacement]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.d cycle 着手"
+
+  clojure.string/capitalize:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [count, subs, str, upper-case, lower-case]
+    target_loc: src/lang/clj/clojure/string.clj
+    upstream_ref: ~/Documents/OSS/clojure/src/clj/clojure/string.clj
+    recall_trigger: "Phase 6.16.e cycle 着手 (Pattern A 着地)"
+
+  clojure.string/replace:
+    pattern: A
+    status: transient_zig
+    leaf_deps: [-str-replace-string, -str-replace-pattern, -str-replace-char]
+    composition_deps: [cond, instance?]
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.e cycle 着手"
+    notes: "cond 分岐 (string / pattern / char) each arm に leaf 呼出"
+
+  clojure.string/replace-first:
+    pattern: A
+    status: transient_zig
+    leaf_deps: [-str-replace-first-string, -str-replace-first-pattern, -str-replace-first-char]
+    composition_deps: [cond, instance?]
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.e cycle 着手"
+
+  clojure.string/escape:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [reduce, str, loop, recur, get]
+    target_loc: src/lang/clj/clojure/string.clj
+    upstream_ref: ~/Documents/OSS/clojure/src/clj/clojure/string.clj
+    recall_trigger: "Phase 6.16.e cycle (D-059 map literal analyzer gap 解消 + Pattern A 着地)"
+
+  clojure.string/split:
+    pattern: A
+    status: transient_zig
+    leaf_deps: [-str-split-by-regex]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/string.clj
+    leaf_loc: src/lang/primitive/string.zig
+    recall_trigger: "Phase 6.16.e cycle 着手"
+
+  clojure.string/split-lines:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [split]
+    target_loc: src/lang/clj/clojure/string.clj
+    recall_trigger: "Phase 6.16.e cycle 着手 (split 同時着地)"
+
+  clojure.string/join:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [reduce, str, interpose]
+    target_loc: src/lang/clj/clojure/string.clj
+    recall_trigger: "Phase 6.16.e cycle 着手 (reduce + str + interpose 全部 registered 後)"
+
+  # NOTE: clojure.string vars はあと: subs (Phase 6.16.a-3 で着地予定)、 str
+  #       (cw v1 既存 builtin)、 interpose (Phase 6.16.a-3+ で着地予定)
+  #       これらは clojure.core 側、 placement.yaml の core glue section へ。
+
+  # === clojure.set 12 vars (Phase 6.16.b で migration、 Group C 5 vars 含む) ===
+  clojure.set/union:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [reduce, conj, count, <]
+    target_loc: src/lang/clj/clojure/set.clj
+    upstream_ref: ~/Documents/OSS/clojure/src/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle 着手"
+
+  clojure.set/intersection:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [reduce, disj, count, <, contains?, if-not]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle 着手"
+
+  clojure.set/difference:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [reduce, disj, count, <, contains?]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle 着手"
+
+  clojure.set/subset?:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [<=, count, every?, contains?]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle 着手"
+
+  clojure.set/superset?:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [subset?]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle 着手"
+
+  clojure.set/rename-keys:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [reduce-kv, assoc, dissoc, contains?]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle (reduce-kv 着地必要 — Phase 6.16.a-3 に追加 or B1 Zig)"
+
+  clojure.set/map-invert:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [reduce, assoc, key, val]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle 着手"
+
+  # Group C (5 vars、 D-061 で deferred、 Phase 6.16.b で着地予定)
+  clojure.set/select:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [reduce, conj, disj]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle (D-061 + set-literal reader 同時解消)"
+
+  clojure.set/project:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [set, map, select-keys]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle (D-061 解消)"
+
+  clojure.set/rename:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [set, map, rename-keys]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle (D-061 解消)"
+
+  clojure.set/index:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [reduce, select-keys, update, fnil, conj]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle (D-061 解消、 update/fnil 着地必要)"
+
+  clojure.set/join:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [set, map, reduce, merge, index, select-keys]
+    target_loc: src/lang/clj/clojure/set.clj
+    recall_trigger: "Phase 6.16.b cycle (D-061 解消、 merge 着地必要)"
+
+  # === clojure.walk 10 vars (Phase 6.16.c で migration) ===
+  clojure.walk/walk:
+    pattern: B2
+    status: transient_zig
+    leaf_deps: [-walk-once]
+    composition_deps: []
+    target_loc: src/lang/clj/clojure/walk.clj
+    leaf_loc: src/lang/primitive/walk.zig
+    upstream_ref: ~/Documents/OSS/clojure/src/clj/clojure/walk.clj
+    recall_trigger: "Phase 6.16.c cycle (leaf rename + shim)"
+
+  clojure.walk/prewalk:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [walk, partial]
+    target_loc: src/lang/clj/clojure/walk.clj
+    recall_trigger: "Phase 6.16.c cycle (partial も Phase 6.16.a-3 完了が前提)"
+
+  clojure.walk/postwalk:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [walk, partial]
+    target_loc: src/lang/clj/clojure/walk.clj
+    recall_trigger: "Phase 6.16.c cycle (partial も Phase 6.16.a-3 完了が前提)"
+
+  clojure.walk/keywordize-keys:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [postwalk, map?, into, map, keyword]
+    target_loc: src/lang/clj/clojure/walk.clj
+    recall_trigger: "Phase 6.16.c cycle 着手"
+
+  clojure.walk/stringify-keys:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [postwalk, map?, into, map, name]
+    target_loc: src/lang/clj/clojure/walk.clj
+    recall_trigger: "Phase 6.16.c cycle 着手"
+
+  clojure.walk/prewalk-replace:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [prewalk, get]
+    target_loc: src/lang/clj/clojure/walk.clj
+    recall_trigger: "Phase 6.16.c cycle 着手"
+
+  clojure.walk/postwalk-replace:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [postwalk, get]
+    target_loc: src/lang/clj/clojure/walk.clj
+    recall_trigger: "Phase 6.16.c cycle 着手"
+
+  clojure.walk/prewalk-demo:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [prewalk, prn]
+    target_loc: src/lang/clj/clojure/walk.clj
+    recall_trigger: "Phase 6.16.c cycle 着手"
+
+  clojure.walk/postwalk-demo:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [postwalk, prn]
+    target_loc: src/lang/clj/clojure/walk.clj
+    recall_trigger: "Phase 6.16.c cycle 着手"
+
+  clojure.walk/macroexpand-all:
+    pattern: A
+    status: transient_zig
+    leaf_deps: []
+    composition_deps: [prewalk, seq?, macroexpand]
+    target_loc: src/lang/clj/clojure/walk.clj
+    recall_trigger: "Phase 7 macro 完成 (macroexpand builtin 着地後)"
+    notes: "Phase 6.16.c では `(declare ^:private ^:unsupported macroexpand-all)` declare-only、 Phase 7 で defn body 上書きで unsupport 解除"
+
+  # === Core glue (Phase 6.16.a-1 ~ a-3 で着地、 完成形 status: stable) ===
+  # 注: 6.16.a-1 着地時点で migrated → stable に更新、 .clj 化なし (Pattern B1 直接)
+  clojure.core/count:
+    pattern: B1
+    status: ready_for_migration   # = Phase 6.16.a-1 cycle で着地予定 (新規)
+    leaf_deps: []
+    composition_deps: []
+    leaf_loc: src/lang/primitive/core/core.zig
+    recall_trigger: "Phase 6.16.a-1 cycle 着地"
+    notes: "Tag switch + Protocol-ready interface (v5 §6.1 hybrid polymorphism)"
+
+  clojure.core/seq:
+    pattern: B1
+    status: ready_for_migration
+    leaf_deps: []
+    composition_deps: []
+    leaf_loc: src/lang/primitive/core/sequence.zig
+    recall_trigger: "Phase 6.16.a-1 cycle 着地"
+
+  clojure.core/first:
+    pattern: B1
+    status: ready_for_migration
+    leaf_deps: []
+    composition_deps: [seq]
+    leaf_loc: src/lang/primitive/core/sequence.zig
+    recall_trigger: "Phase 6.16.a-1 cycle 着地"
+
+  clojure.core/rest:
+    pattern: B1
+    status: ready_for_migration
+    leaf_deps: []
+    composition_deps: [seq]
+    leaf_loc: src/lang/primitive/core/sequence.zig
+    recall_trigger: "Phase 6.16.a-1 cycle 着地"
+
+  clojure.core/cons:
+    pattern: B1
+    status: ready_for_migration
+    leaf_deps: []
+    composition_deps: []
+    leaf_loc: src/lang/primitive/core/sequence.zig
+    recall_trigger: "Phase 6.16.a-1 cycle 着地"
+
+  clojure.core/empty:
+    pattern: B1
+    status: ready_for_migration
+    leaf_deps: []
+    composition_deps: []
+    leaf_loc: src/lang/primitive/core/sequence.zig
+    recall_trigger: "Phase 6.16.a-1 cycle 着地"
+
+  # NOTE: 残りの core glue (conj/disj/contains?/get/nth/assoc/dissoc/keys/vals,
+  #       apply/reduce/into/map/filter/etc, partial/comp/complement/constantly/juxt)
+  #       は Phase 6.16.a-2/a-3 cycle 着地時に entry 追加 (full set は v5 §5 参照)。
+  #
+  # NOTE: env.intern API metadata 拡張 (Phase 6.16.a-0、 D-065) 着地後、
+  #       Babashka analyze_clojure_upstream.bb で JVM upstream を再解析して
+  #       全 entry を upstream_ref 含めて populate する。 ADR-0033 起票時の
+  #       Devil's-advocate fork で per-var pattern 確認、 placement.yaml が
+  #       D6 表の source-of-truth として固定。

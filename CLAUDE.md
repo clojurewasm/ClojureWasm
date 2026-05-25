@@ -488,6 +488,13 @@ zig fmt src/           # format
   C / D classification per var, special form, and host class. Read by
   test runner, REPL error message, and future `cljw --list-vars`. See
   ADR-0013 for the Tier D rationale.
+- [`placement.yaml`](placement.yaml) — Clojure-ns var placement SSOT
+  (Pattern A/B + transient_zig migration status + dependencies). Read
+  by `scripts/check_placement_status.sh` (audit + status flip), future
+  `cljw --list-vars` (alongside compat_tiers.yaml), and ADR-0033
+  amendment history. Role split: compat_tiers.yaml = Java/cljw surface
+  (Class-level), placement.yaml = Clojure-ns vars (var-level). Per
+  `private/notes/clj_vs_zig_split_proposal_v5.md` §15.
 - [`.dev/debt.md`](.dev/debt.md) — row-level debt ledger. `continue`
   skill Step 0.5 sweeps this on every resume. See ROADMAP §A13.
 - [`.dev/reference_clones.md`](.dev/reference_clones.md) — explicit
