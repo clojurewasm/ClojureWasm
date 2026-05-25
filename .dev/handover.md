@@ -8,17 +8,19 @@
 
 - **HEAD**: see `git log` (v5 plan + wiring landed; HEAD line refreshes
   only on Active-task-identifier change).
-- **First commit on resume MUST be**: issue **ADR-0033** (placement +
-  naming + transducer + var-level order) per
-  `private/notes/clj_vs_zig_split_proposal_v5.md` §19.1. Devil's-advocate
-  fork mandatory (depth ≥ 2 per principle.md). Reflect Alt 1/2/3 verbatim
-  into `Alternatives considered`, stamp `Status: Proposed → Accepted`,
-  commit ADR alone. Then proceed: ADR-0034 (build pipeline) is **deferred
-  until Phase 6.16.a-1 cycle terminus** (size budget measured). ADR-0035
-  (require spec) is **deferred until Phase 6.16.b cycle terminus**
-  (multi-file .clj migration starts). Source-side first cycle after
-  ADR-0033 lands = **Phase 6.16.a-0** (env.intern API metadata expansion,
-  small prerequisite cycle per v5 §4.1 + §24.5 U-6).
+- **First commit on resume MUST be**: open **Phase 6.16.a-1** cycle —
+  core glue fundamentals (count / seq / first / rest / cons / empty)
+  per ADR-0033 D6 + ROADMAP §9.8 row 6.16.a-1 + v5 §5.2. Step 0 survey
+  required (general-purpose subagent, output
+  `private/notes/phase6-6.16.a-1-survey.md`), then TDD red/green/refactor
+  for the 6 primitives with polymorphic Tag switch + Protocol-ready
+  interface per v5 §6.1 hybrid polymorphism. Also include Tier 0
+  metadata size measurement bench (ADR-0034 prerequisite per v5 §11.5
+  + §24.5 U-1) within this cycle. e2e deliverable:
+  `test/e2e/composition_unlock_a1.sh`. After this cycle lands:
+  Phase 6.16.a-2 (collection ops conj/disj/contains?/get/nth/assoc/
+  dissoc/keys/vals). ADR-0033 (b5d44f7 not yet — landed at 2bf491b
+  earlier) and Phase 6.16.a-0 (b5d44f7) are both complete.
 - **Forbidden this session**: (a) `__zig-` namespace prefix path (v5
   §3.1 rejected; `defn-` + `-name` + `^:private :zig-leaf` metadata is
   the confirmed scheme). (b) `clojure.X.impl/` sub-ns path (v5 §3 rejected
@@ -40,31 +42,32 @@ build + error 確定計画 SSOT)** →
 
 ## Current state
 
-- **Phase**: **Phase 6 IN-PROGRESS** — §9.8 10/16 `[x]` + 6.10 `[~]
-  (7/12)` + 6.11 `[~] (3/10)`. v5 plan + ADR-0033/0034/0035 起票計画
-  + ROADMAP §9.8 phase 6.16.a-0..e cycle rows + D-062..D-069 debt rows
-  landed. **Active task = ADR-0033 issuance** (see Resume contract).
+- **Phase**: **Phase 6 IN-PROGRESS** — §9.8 11/24 `[x]` + 6.10 `[~]
+  (7/12)` + 6.11 `[~] (3/10)`. v5 plan + ADR-0033 (2bf491b、 Accepted)
+  + ROADMAP §9.8 rows 6.16.a-0..e + §9.14/16/18/19 v5 expansions +
+  debt rows D-062..D-069 (757a0b5) + Phase 6.16.a-0 env.intern metadata
+  expansion (b5d44f7、 D-065 解消). **Active task = Phase 6.16.a-1
+  cycle** (core glue fundamentals).
 - **Branch**: `cw-from-scratch`. ADR-0032 issued (multi-file loader +
   in-ns). v5 plan = `private/notes/clj_vs_zig_split_proposal_v5.md`
   (1593 lines, self-contained, SSOT for ADR-0033/0034/0035).
-- **Gate**: Mac 25/25 + OrbStack Ubuntu x86_64 24/24 green (last
-  green at commit 329cd35; v5 + wiring is doc-only, gate unchanged).
+- **Gate**: Mac 26/26 + OrbStack Ubuntu x86_64 24/24 green at b5d44f7
+  (Phase 6.16.a-0 e2e `phase6_16_a_0_metadata.sh` registered).
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## Active task — ADR-0033 issuance
+## Active task — Phase 6.16.a-1 (core glue fundamentals)
 
-Issue ADR-0033 (placement decision rule + `defn-`+`-name` naming +
-hybrid polymorphism + transducer 先取り + var-level dependency order
-+ 10 cycle migration plan + JIT independence claim) per v5 §19.1.
-Devil's-advocate fork required: brief the subagent with v5 §2-§9
-content + F-001/F-004/F-009 constraints, request 3 alternatives
-(Alt 1 smallest-diff = 現状維持 + ad-hoc migration / Alt 2
-finished-form-clean = v5 proposal / Alt 3 wildcard = sub-ns impl/
-[棄却見込み]). Reflect verbatim into ADR.
+Open Phase 6.16.a-1 cycle: count / seq / first / rest / cons / empty
+as Layer 2 polymorphic Tag switch + Protocol-ready interface (v5 §6.1
+hybrid polymorphism). Per ADR-0033 D6 + ROADMAP §9.8 row 6.16.a-1.
+Order: count → seq → first → rest → cons → empty. Include Tier 0
+metadata size measurement bench (ADR-0034 起票 prerequisite). e2e
+deliverable: `test/e2e/composition_unlock_a1.sh`. Step 0 survey via
+general-purpose subagent first; then TDD red/green/refactor.
 
-After ADR-0033 lands: open Phase 6.16.a-0 cycle (env.intern API
-metadata expansion — `MetadataMap{ private, zig_leaf, unsupported,
-doc, arglists }`) per v5 §4.1 + §24.5 U-6.
+After this cycle: Phase 6.16.a-2 (collection ops conj/disj/contains?/
+get/nth/assoc/dissoc/keys/vals). ADR-0033 (2bf491b) + ROADMAP wiring
+(757a0b5) + Phase 6.16.a-0 (b5d44f7) all landed.
 
 ## Open questions / blockers
 
