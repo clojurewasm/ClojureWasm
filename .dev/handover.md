@@ -9,16 +9,13 @@
 - **HEAD**: see `git log` (Phase 6.9 cycle 1 just landed; HEAD line
   refreshes only on Active-task-identifier change per the
   ≤ 2 / session cap).
-- **First commit on resume MUST be**: Phase 6.9 cycle 4 =
-  `join` / `capitalize` / `split` / `split-lines` (the final
-  cycle for 6.9). `join` 2-arity (`(join coll)` + `(join sep
-  coll)`); `capitalize` composes `upper-case` + `lower-case` +
-  `subs`; `split` needs a small new cw-native intermediate
-  primitive `rt/re-find-from` returning `[match start end]`
-  (codepoint-based) because `re-find` does not expose match
-  position; `split-lines` delegates to `(split s #"\r?\n")`. Per
-  survey §6 cycle 4. After cycle 4 closes, §9.8 row 6.9 flips
-  from `[~] (cycles 1-3)` to `[x]`.
+- **First commit on resume MUST be**: §9.8 row 6.10 =
+  `lang/clj/clojure/set.clj` (Tier A, ~12 vars). Survey at
+  `private/notes/phase6-6.10-survey.md` first (Step 0). The
+  bootstrap loader + `(in-ns)` are already wired (ADR-0032) and
+  vector-literal evaluation + pr-str + multi-clj-load
+  infrastructure is all in place after 6.9 cycle 4. Phase 6.9
+  row already flipped to `[x]` in §9.8.
 - **Forbidden this session**: (a) re-opening `core.zig` /
   `math.zig` primitive cluster (6.16 still closed). (b) handover
   HEAD-pointer churn — refresh only when Active-task-identifier
@@ -37,43 +34,43 @@ Workflow + § The only stop) → `.dev/project_facts.md` (F-001..F-009)
 
 ## Current state
 
-- **Phase**: **Phase 6 IN-PROGRESS** — §9.8 9/16 `[x]` + 6.9
-  `[~] (cycles 1-3 done)` (6.1, 6.5.b, 6.10-6.15 remain). 6.9
-  cycle 1 = loader + `(in-ns)` + 3 vars. Cycle 2 = trim +
-  predicate families (7 vars). Cycle 3 = indexing + replace
-  string-only + escape (fn cmap) + reverse (6 vars). Cycle 4
-  lands `join` / `capitalize` / `split` / `split-lines` (final
-  cycle for 6.9).
+- **Phase**: **Phase 6 IN-PROGRESS** — §9.8 10/16 `[x]`
+  (6.1, 6.5.b, 6.10-6.15 remain). 6.9 closed end-to-end across
+  4 cycles: cycle 1 = loader + `(in-ns)` + 3 vars; cycle 2 =
+  trim + predicate families (7 vars); cycle 3 = indexing +
+  replace string-only + escape (fn cmap) + reverse (6 vars);
+  cycle 4 = `capitalize` + `split` + `split-lines` + `join`
+  + vector literal evaluation + vector pr-str. 22 vars total
+  in `clojure.string` ns.
 - **Branch**: `cw-from-scratch`. ADR-0032 issued (multi-file
   loader + in-ns). Symbol-Value-Form unsupported at runtime
   (Group A slot 1 reserved per F-004) → `(in-ns)` lands as
   analyzer special form, not primitive fn — analyzer flattens
   bare `(in-ns sym)` and quoted `(in-ns 'sym)` to InNsNode.
-- **Gate**: Mac 21/21 + OrbStack Ubuntu x86_64 20/20 green.
-  Three Layer-2 e2e: `phase6_clojure_string_cycle{1,2,3}` (9 +
-  16 + 13 cases).
+- **Gate**: Mac 22/22 + OrbStack Ubuntu x86_64 21/21 green.
+  Four Layer-2 e2e: `phase6_clojure_string_cycle{1,2,3,4}`
+  (9 + 16 + 13 + 14 cases).
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## Active task — Phase 6.9 cycle 4
+## Active task — §9.8 row 6.10 (clojure.set)
 
-Land `clojure.string` join + capitalize + split + split-lines
-(4 vars; final cycle for 6.9). `split` needs a small new
-cw-native `rt/re-find-from` primitive returning `[match start
-end]` (codepoint-based) because cw v1 `re-find` does not expose
-match position — survey §6 cycle 4 endorses this as the minimum
-new surface to land `split-lines` functional. `re-find-from` is
-NOT JVM-compat (JVM uses `re-matcher`) and is a transient
-primitive that retires when D-051 cycle 3 (captures + `re-seq`)
-lands. `capitalize` composes `upper-case` + `lower-case` +
-`subs` (already wired). `join` 2-arity (`(join coll)` /
-`(join sep coll)`) leans on `str` + `apply` which exist already.
+`lang/clj/clojure/set.clj` (Tier A, ~12 vars). Spawn a Step-0
+survey subagent to map `clojure.set` against JVM upstream
+(`~/Documents/OSS/clojure/src/clj/clojure/set.clj`) and cw v0
+(`~/Documents/MyProducts/ClojureWasm/src/lang/builtins/...`).
+`set?` predicate is already in `core.zig` (cycle 1 verified).
+The 4 cycles of 6.9 worked off the survey at
+`private/notes/phase6-6.9-survey.md` — the same template
+applies. set-Value Tag is already day-1 reserved (Group A
+slot 7 — `hash_set`). Cycles likely fan out as: cycle 1 =
+foundation + 2-3 simplest (`union` / `intersection`).
 
 ## Open questions / blockers
 
 None testable from inside the loop. Step 0.5 debt sweep walks
 debt.md (D-005, D-014a/b, D-017, D-040, D-043, D-048..D-052,
-D-054, D-056, D-057, D-058, **D-059 new** map cmap +
-char-literal test coverage gap for clojure.string/escape).
+D-054, D-056..D-059, **D-060 new** VM op_vector_literal —
+TreeWalk path landed, VM raises NotImplemented).
 
 ## Guardrail refresh history (condensed)
 

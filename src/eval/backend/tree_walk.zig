@@ -40,6 +40,7 @@ const Env = env_mod.Env;
 const Var = env_mod.Var;
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
+const vector_collection = @import("../../runtime/collection/vector.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const node_mod = @import("../node.zig");
@@ -237,6 +238,7 @@ pub fn eval(
         .ctor_call_node => |n| try evalCtorCall(rt, env, locals, n),
         .field_access_node => |n| try evalFieldAccess(rt, env, locals, n),
         .in_ns_node => |n| try evalInNs(env, n),
+        .vector_literal_node => |n| try evalVectorLiteral(rt, env, locals, n),
     };
 }
 
@@ -247,6 +249,19 @@ pub fn eval(
 fn evalInNs(env: *Env, n: node_mod.InNsNode) !Value {
     env.current_ns = try env.findOrCreateNs(n.ns_name);
     return .nil_val;
+}
+
+/// `[expr1 expr2 ...]` — evaluate each child, conj into an empty
+/// PersistentVector. ROADMAP §9.7 PersistentVector is the heap shape;
+/// `vector_collection.empty()` + `conj` produces the Phase 5 HAMT-
+/// backed Value.
+fn evalVectorLiteral(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.VectorLiteralNode) !Value {
+    var v = vector_collection.empty();
+    for (n.elements) |*elt| {
+        const elt_val = try eval(rt, env, locals, elt);
+        v = try vector_collection.conj(rt, v, elt_val);
+    }
+    return v;
 }
 
 const type_descriptor_mod = @import("../../runtime/type_descriptor.zig");

@@ -73,6 +73,7 @@ pub const Node = union(enum) {
     ctor_call_node: CtorCallNode,
     field_access_node: FieldAccessNode,
     in_ns_node: InNsNode,
+    vector_literal_node: VectorLiteralNode,
 
     /// Source location of this Node. Returns the inner variant's `loc`
     /// — every variant carries one because Phase-2 errors must cite a
@@ -281,6 +282,17 @@ pub const FieldAccessNode = struct {
     /// Field name without the leading dot.
     field_name: []const u8,
     target: *const Node,
+    loc: SourceLocation = .{},
+};
+
+/// `[expr1 expr2 ...]` — vector literal in expression position. The
+/// analyzer recursively lifts each child Form to a Node; eval evaluates
+/// each, conj-ing the results into an empty `vector` Value. Phase 6.9
+/// cycle 4 — previously the analyzer raised `feature_not_supported`
+/// because `clojure.string/join` and friends could not be exercised
+/// from Clojure without literal vectors.
+pub const VectorLiteralNode = struct {
+    elements: []const Node,
     loc: SourceLocation = .{},
 };
 

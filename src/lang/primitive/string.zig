@@ -26,6 +26,9 @@ const dispatch = @import("../../runtime/dispatch.zig");
 const charset = @import("../../runtime/charset.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
+const vector_collection = @import("../../runtime/collection/vector.zig");
+const regex_value = @import("../../runtime/regex/value.zig");
+const regex_match = @import("../../runtime/regex/match.zig");
 
 /// `(clojure.string/upper-case s)` — ASCII upper-case fold per cycle
 /// 1. Non-ASCII codepoints pass through unchanged; full Unicode case
@@ -296,6 +299,165 @@ pub fn escape(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     return try string_collection.alloc(rt, out.items);
 }
 
+/// `(clojure.string/capitalize s)` — upper-case the first codepoint,
+/// lower-case the rest. Empty string returns "". Composes
+/// `charset.upperCaseAlloc` + `charset.lowerCaseAlloc` on byte ranges
+/// split at the first codepoint's boundary (no extra allocation
+/// beyond the per-step buffers + the final heap string).
+pub fn capitalize(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("capitalize", args, 1, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "capitalize", .actual = @tagName(args[0].tag()) });
+    const s = string_collection.asString(args[0]);
+    if (s.len == 0) return try string_collection.alloc(rt, "");
+
+    var iter = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
+    _ = iter.nextCodepoint();
+    const first_end = iter.i;
+
+    const upper_first = try charset.upperCaseAlloc(rt.gc.infra, s[0..first_end]);
+    defer rt.gc.infra.free(upper_first);
+    const lower_rest = try charset.lowerCaseAlloc(rt.gc.infra, s[first_end..]);
+    defer rt.gc.infra.free(lower_rest);
+
+    var combined = try rt.gc.infra.alloc(u8, upper_first.len + lower_rest.len);
+    defer rt.gc.infra.free(combined);
+    @memcpy(combined[0..upper_first.len], upper_first);
+    @memcpy(combined[upper_first.len..], lower_rest);
+
+    return try string_collection.alloc(rt, combined);
+}
+
+fn coerceRegex(rt: *Runtime, v: Value, loc: SourceLocation, fn_name: []const u8) anyerror!*const regex_value.Regex {
+    if (v.tag() == .regex) return regex_value.asRegex(v);
+    if (v.tag() == .string) {
+        const compiled = regex_value.alloc(rt, string_collection.asString(v), .{}) catch |err| switch (err) {
+            error.OutOfMemory => return err,
+            else => return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.string/split with invalid regex source" }),
+        };
+        return regex_value.asRegex(compiled);
+    }
+    return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = fn_name, .actual = @tagName(v.tag()) });
+}
+
+/// `(clojure.string/split s re)` — 2-arity, no-limit. Iterates
+/// `regex_match.findFrom` over `s`, producing a vector of byte
+/// substrings between matches. Zero-width matches advance by one
+/// codepoint to guarantee termination. Empty input yields `[""]`
+/// (matches JVM behaviour). Trailing-empty removal + the 3-arity
+/// `limit` form land in a later cycle (no debt row — both lift
+/// naturally when more `clojure.string` callers exercise them).
+pub fn split(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("split", args, 2, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "split", .actual = @tagName(args[0].tag()) });
+    const r = try coerceRegex(rt, args[1], loc, "split");
+    const s = string_collection.asString(args[0]);
+
+    var result = vector_collection.empty();
+    if (s.len == 0) {
+        const empty_s = try string_collection.alloc(rt, "");
+        return try vector_collection.conj(rt, result, empty_s);
+    }
+
+    var pos: u32 = 0;
+    while (true) {
+        const match = (try regex_match.findFrom(rt.gpa, r.program, s, pos)) orelse {
+            const tail_v = try string_collection.alloc(rt, s[pos..]);
+            result = try vector_collection.conj(rt, result, tail_v);
+            break;
+        };
+        const before_v = try string_collection.alloc(rt, s[pos..match.start]);
+        result = try vector_collection.conj(rt, result, before_v);
+        if (match.end == match.start) {
+            // Zero-width — advance by one byte to make progress.
+            // Strictly cycle 4 limitation; codepoint-aware advance
+            // for non-ASCII zero-width patterns is a future refinement.
+            if (match.end >= s.len) {
+                break;
+            }
+            pos = match.end + 1;
+        } else {
+            pos = match.end;
+        }
+        if (pos >= s.len) {
+            const tail_v = try string_collection.alloc(rt, s[pos..]);
+            result = try vector_collection.conj(rt, result, tail_v);
+            break;
+        }
+    }
+    return result;
+}
+
+/// `(clojure.string/split-lines s)` — split on `\r?\n`. Hand-rolled
+/// byte scan to skip the regex round-trip for this hot pattern.
+/// Matches the JVM contract: trailing empty terminator is dropped
+/// (so `"a\n"` → `["a"]`, not `["a" ""]`).
+pub fn splitLines(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("split-lines", args, 1, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "split-lines", .actual = @tagName(args[0].tag()) });
+    const s = string_collection.asString(args[0]);
+
+    var result = vector_collection.empty();
+    if (s.len == 0) {
+        const empty_s = try string_collection.alloc(rt, "");
+        return try vector_collection.conj(rt, result, empty_s);
+    }
+
+    var pos: usize = 0;
+    while (pos < s.len) {
+        const nl_off = std.mem.findScalarPos(u8, s, pos, '\n');
+        const line_end_excl = nl_off orelse s.len;
+        var line_strip_end = line_end_excl;
+        if (line_strip_end > pos and s[line_strip_end - 1] == '\r') line_strip_end -= 1;
+        const v = try string_collection.alloc(rt, s[pos..line_strip_end]);
+        result = try vector_collection.conj(rt, result, v);
+        if (nl_off) |i| pos = i + 1 else break;
+    }
+    // Drop trailing empty from a final \n (JVM convention).
+    // (No-op when split-lines was called on input without trailing \n.)
+    return result;
+}
+
+/// `(clojure.string/join coll)` / `(clojure.string/join sep coll)`.
+/// `coll` must be a `vector` (cycle 4 limitation — list / seq /
+/// nil arms land alongside the broader collection-iteration surface
+/// in a later cycle; raising `feature_not_supported` keeps the
+/// error explicit). Elements must be strings; non-string elements
+/// raise `feature_not_supported` pending the `str` coercion
+/// primitive landing.
+pub fn join(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArityRange("join", args, 1, 2, loc);
+    const sep: []const u8 = if (args.len == 2) blk: {
+        if (args[0].tag() != .string)
+            return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "join", .actual = @tagName(args[0].tag()) });
+        break :blk string_collection.asString(args[0]);
+    } else "";
+    const coll = if (args.len == 2) args[1] else args[0];
+
+    if (coll.tag() != .vector)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.string/join with non-vector coll" });
+
+    const n = vector_collection.count(coll);
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(rt.gc.infra);
+
+    var i: u32 = 0;
+    while (i < n) : (i += 1) {
+        const elt = vector_collection.nth(coll, i);
+        if (elt.tag() != .string)
+            return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.string/join with non-string element" });
+        if (i > 0 and sep.len > 0) try out.appendSlice(rt.gc.infra, sep);
+        try out.appendSlice(rt.gc.infra, string_collection.asString(elt));
+    }
+    return try string_collection.alloc(rt, out.items);
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -320,6 +482,10 @@ const ENTRIES = [_]Entry{
     .{ .name = "replace-first", .f = &replaceFirst },
     .{ .name = "reverse", .f = &reverse },
     .{ .name = "escape", .f = &escape },
+    .{ .name = "capitalize", .f = &capitalize },
+    .{ .name = "split", .f = &split },
+    .{ .name = "split-lines", .f = &splitLines },
+    .{ .name = "join", .f = &join },
 };
 
 /// Create the `clojure.string` namespace (idempotent — uses

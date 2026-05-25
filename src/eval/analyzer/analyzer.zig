@@ -229,9 +229,11 @@ pub fn analyze(
             const v = try string_collection.alloc(rt, s);
             return try makeConstant(arena, v, form);
         },
-        // Vector / map as expression values land in later Phase 3
-        // tasks once their heap shape ships. NotImplemented for now.
-        .vector => error_catalog.raise(.feature_not_supported, form.location, .{ .name = "Vector literal as expression value" }),
+        // Vector literal in expression position — analyze each child
+        // form, emit VectorLiteralNode (Phase 6.9 cycle 4).
+        .vector => |items| try analyzeVectorLiteral(arena, rt, env, scope, items, form, macro_table),
+        // Map literal still raises until the analyzer has somewhere to
+        // park the assoc-build sequence (D-059 tracks).
         .map => error_catalog.raise(.feature_not_supported, form.location, .{ .name = "Map literal as expression value" }),
     };
 }
@@ -466,6 +468,27 @@ fn analyzeCall(
     return n;
 }
 
+/// `[expr1 expr2 ...]` lift — analyze each element with the full
+/// special-form / call-form pipeline, package into VectorLiteralNode.
+fn analyzeVectorLiteral(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    items: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    const elt_nodes = try arena.alloc(Node, items.len);
+    for (items, 0..) |elt_form, i| {
+        const elt = try analyze(arena, rt, env, scope, elt_form, macro_table);
+        elt_nodes[i] = elt.*;
+    }
+    const n = try arena.create(Node);
+    n.* = .{ .vector_literal_node = .{ .elements = elt_nodes, .loc = form.location } };
+    return n;
+}
+
 // --- Special forms ---
 
 fn analyzeSpecial(
@@ -634,15 +657,14 @@ test "string-literal-as-expression lifts to a .string Value (Phase 3.5)" {
     try testing.expectEqualStrings("hello", string_collection.asString(n.constant.value));
 }
 
-test "vector-literal-as-expression remains NotImplemented (Phase 3.6+)" {
+test "vector-literal-as-expression analyzes into VectorLiteralNode (Phase 6.9 cycle 4)" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
 
-    error_mod.clearLastError();
-    try testing.expectError(AnalyzeError.NotImplemented, fix.analyzeStr("[1 2 3]"));
-    const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
-    try testing.expectEqual(error_mod.Kind.not_implemented, info.kind);
+    const n = try fix.analyzeStr("[1 2 3]");
+    try testing.expect(n.* == .vector_literal_node);
+    try testing.expectEqual(@as(usize, 3), n.vector_literal_node.elements.len);
 }
 
 test "resolved symbol → var_ref pointing at the right Var.root" {

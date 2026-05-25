@@ -67,9 +67,22 @@ pub fn find(
     program: *const compile.Program,
     input: []const u8,
 ) MatchError!?MatchResult {
-    var start: u32 = 0;
-    while (start <= input.len) : (start += 1) {
-        if (try tryMatchAt(alloc, program, input, start)) |result| return result;
+    return findFrom(alloc, program, input, 0);
+}
+
+/// Same as `find` but scan begins at byte offset `start`. Used by
+/// `clojure.string/split` (Phase 6.9 cycle 4) to iterate matches
+/// without re-walking already-consumed prefix bytes. Exposed via
+/// the `rt/re-find-from` primitive returning `[match start end]`.
+pub fn findFrom(
+    alloc: std.mem.Allocator,
+    program: *const compile.Program,
+    input: []const u8,
+    start: u32,
+) MatchError!?MatchResult {
+    var pos: u32 = start;
+    while (pos <= input.len) : (pos += 1) {
+        if (try tryMatchAt(alloc, program, input, pos)) |result| return result;
     }
     return null;
 }

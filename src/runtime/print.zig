@@ -39,6 +39,7 @@ const Value = value_mod.Value;
 const keyword = @import("keyword.zig");
 const string_collection = @import("collection/string.zig");
 const list_collection = @import("collection/list.zig");
+const vector_collection = @import("collection/vector.zig");
 const ex_info_collection = @import("collection/ex_info.zig");
 const big_int_mod = @import("numeric/big_int.zig");
 const ratio_mod = @import("numeric/ratio.zig");
@@ -75,6 +76,7 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
         },
         .string => try printString(w, string_collection.asString(v)),
         .list => try printList(w, v),
+        .vector => try printVector(w, v),
         .ex_info => try printExInfo(w, v),
         .big_int => try printBigInt(w, v),
         .ratio => try printRatio(w, v),
@@ -158,6 +160,21 @@ pub fn printList(w: *Writer, v: Value) Writer.Error!void {
         cur = list_collection.rest(cur);
     }
     try w.writeByte(')');
+}
+
+/// Render a heap Vector in `[a b c]` form (Phase 6.9 cycle 4 —
+/// previously fell through to the `#<vector>` placeholder branch).
+/// Indexes via `vector_collection.nth` so this stays decoupled from
+/// the HAMT internals.
+pub fn printVector(w: *Writer, v: Value) Writer.Error!void {
+    try w.writeByte('[');
+    const n = vector_collection.count(v);
+    var i: u32 = 0;
+    while (i < n) : (i += 1) {
+        if (i > 0) try w.writeByte(' ');
+        try printValue(w, vector_collection.nth(v, i));
+    }
+    try w.writeByte(']');
 }
 
 /// Render `s` in Clojure `pr-str` style: surrounding double quotes,

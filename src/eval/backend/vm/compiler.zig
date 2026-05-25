@@ -113,6 +113,12 @@ const Compiler = struct {
                 return error.NotImplemented;
             },
             .in_ns_node => |n| try self.compileInNs(n),
+            // Vector literal evaluation lands first in TreeWalk
+            // (Phase 6.9 cycle 4). VM bytecode shape — likely
+            // `op_vector_literal <n>` consuming N stack values into a
+            // fresh PersistentVector — lands when a VM-mode caller
+            // actually needs it. Tracked at D-060.
+            .vector_literal_node => return error.NotImplemented,
         }
     }
 
