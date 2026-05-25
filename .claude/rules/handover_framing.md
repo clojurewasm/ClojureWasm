@@ -181,25 +181,30 @@ When reviewing a handover.md commit:
       (Phase boundary / ADR status flip / new Forbidden);
       HEAD-pointer-only churn is rejected.
 
-## How `/continue` enforces this
+## How enforcement runs
 
-The resume procedure (Step 1) scans handover for length + forbidden
-phrases:
+Wave 16 (W16-3) lifts the resume-time grep into a PreToolUse:Edit
+hook so the gate fires at the moment the edit is written, not at the
+next resume's Step 1 scan.
 
-```sh
-wc -l .dev/handover.md   # warn if > 100
-grep -nE 'コンテキスト圧があるため|キリがいい|自然な区切り|natural break|good stopping point|この辺で一旦停止|region boundary stop|task boundary stop|Phase boundary reached AND|If above ~60%|context budget|/compact|user 確認待ち|awaiting user confirmation|awaiting approval|cannot be self-decided|human judgement|human judgment|needs human|user touchpoint|help wanted|awaiting human review|defer to user|ADR-level decision|ADR-phase mode|smell-cluster|smell cluster|patterned smell|goal drift trip|physically blocked|physical block|Stopped — physical block' .dev/handover.md
-grep -c '^## Just landed' .dev/handover.md   # warn if > 1
-grep -nE '^## Future .* shopping list|^## Notes for the next session' .dev/handover.md
-```
+- **Live gate** — `scripts/check_handover_framing.sh` wired into
+  `.claude/settings.json` PreToolUse Edit|Write chain. Every edit
+  to `.dev/handover.md` runs the script; a forbidden phrase / over-
+  cap length / `## Future ... shopping list` / `## Notes for the
+  next session` heading / >1 `## Just landed` sections blocks the
+  edit (exit 2) with the offending lines printed.
+- **Audit-time fallback** — `audit_scaffolding/CHECKS.md` A5b runs
+  the same script in `--check` mode at Phase boundary, catching
+  drift that may have slipped past the live gate (e.g. if a future
+  euphemism is not yet in the regex).
+- **Resume-time backstop** — `/continue` Step 1 reads handover; if
+  the file violates the rule, the FIRST task on resume is the
+  handover rewrite, not the prose-suggested next task.
 
-On any hit → the FIRST task of the resume is the handover rewrite
-itself, not the prose-suggested next task. Then the loop proceeds
-normally.
-
-This is by design: the framing fix is cheap (~5 minutes) and
-catastrophic to skip — a single forbidden section can cost a
-session of mis-anchored work.
+The canonical forbidden-phrase regex lives in
+`scripts/check_handover_framing.sh::FORBIDDEN_PHRASES_RE`. Update
+the rule's forbidden-phrase table and the script's regex together
+when a new euphemism is identified.
 
 ## Legitimate stop framing
 

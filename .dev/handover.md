@@ -82,20 +82,19 @@ or next-cycle commit body):
 
 ## Open questions / blockers
 
-None testable from inside the loop. Step 0.5 debt sweep walks
-debt.md including D-062..D-076 (16 active rows). D-062 cluster
-recall trigger anchored to placement.yaml.
+None testable from inside the loop. Step 0.5 sweep walks
+debt.md D-062..D-077; D-062 cluster anchored to placement.yaml.
 
 ## Guardrail refresh history (condensed)
 
 Waves 1-14 (2026-05-23..25): spirit + Bad Smell + F-NNN +
 ADR-0029..0034 + v5 plan + ROADMAP §9.8 + debt D-062..D-073.
-**Wave 15 (2026-05-26)**: provisional-marker mechanisation
-(rule + yaml SSOT + sync hook + Step 0.6 + audit E2 +
-bootstrap_essence + 16-marker retrofit + review-fix).
+**Wave 15-16 (2026-05-26)**: provisional-marker mechanisation
++ 16-marker retrofit + hook_lib.sh + watch_findings.md +
+framework_completion + 3 Bad Smell + audit E2 expansion.
 
 ## Stopped — user requested
 
-User instruction (2026-05-26): "配線監査修正まで済んだら、止めて
-おいてOK". Wave-15 work all landed. Resume at Phase 6.16.b-4
-per Resume contract above.
+User instruction (2026-05-26): "配線監査修正まで済んだら止めてOK"
++ "やり残し原理的予防のガードレールを既存体系に...見直しを" →
+Wave-15 + Wave-16 landed. Resume at Phase 6.16.b-4.
