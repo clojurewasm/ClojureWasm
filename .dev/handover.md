@@ -8,20 +8,24 @@
 
 - **HEAD**: see `git log` (v5 plan + wiring landed; HEAD line refreshes
   only on Active-task-identifier change).
-- **First commit on resume MUST be**: open **Phase 6.16.a-3.2** cycle
-  — Layer 2 eager leaves (`-map-eager`/`-filter-eager`/`-take-eager`/
-  `-drop-eager`/`-keep-eager`/`-remove-eager`) + Layer 3 `.clj` defn
-  in `src/lang/clj/clojure/core.clj` (`map`/`filter`/`take`/`drop`/
-  `keep`/`remove` with transducer 1-arg arity + multi-arity eager
-  + `partial`/`comp`/`complement`/`constantly`/`juxt` pure Clojure)
-  + `into` 3-arg xform-aware (`(into to xform from)`) Zig extension
-  + rf protocol formal registration. Per ADR-0033 D6 + D6a + v5 §7
-  transducer 先取り spec + survey 2-cycle split decision. e2e:
-  `transducer_unlock_a3.sh`. After cycle close: Phase 6.16.b
-  (clojure.set 12 vars `.clj` 化). Prior landings: ADR-0033 (2bf491b)
-  + ADR-0034 (2834511) + Phase 6.16.a-0 (b5d44f7) + 6.16.a-1
-  (d35dc3b) + 6.16.a-2 (a4bfca5) + 6.16.a-3.1 (f84a918, has_rest fix
-  + Reduced + apply/reduce/into/every?/some/some?).
+- **First commit on resume MUST be**: open **Phase 6.16.b** cycle —
+  `clojure.set` 12 vars `.clj` 化 (Group A+B+C 一括) per ADR-0033
+  D7 + ROADMAP §9.8 row 6.16.b + v5 §8.2 + §9. The 12 vars: union /
+  intersection / difference / subset? / superset? / rename-keys /
+  map-invert / select / project / index / rename / join. Pattern A
+  (pure Clojure composition over reduce/conj/disj/contains?/count/
+  every?/etc — all now landed). Group C (5 relational ops) requires
+  set-literal reader + map-literal analyzer (D-061 + D-059) — fold
+  these gap closes into 6.16.b cycle. Also: open **ADR-0035** (require
+  spec, D-063) at the same cycle since multi-file dependency order
+  becomes load-bearing once set.clj defns reference partial/comp/
+  juxt etc from core.clj. Step 0 survey via general-purpose subagent
+  first (output `private/notes/phase6-6.16.b-survey.md`). e2e:
+  `clojure_set_full.sh`. After 6.16.b: Phase 6.16.c (clojure.walk).
+  Prior landings: ADR-0033 (2bf491b) + ADR-0034 (2834511) + 6.16.a-0
+  (b5d44f7) + 6.16.a-1 (d35dc3b) + 6.16.a-2 (a4bfca5) + 6.16.a-3.1
+  (f84a918) + 6.16.a-3.2 (1d20ce3, includes D-060 close + D-070/
+  D-071/D-072/D-073 open).
 - **Forbidden this session**: (a) `__zig-` namespace prefix path (v5
   §3.1 rejected; `defn-` + `-name` + `^:private :zig-leaf` metadata is
   the confirmed scheme). (b) `clojure.X.impl/` sub-ns path (v5 §3 rejected
@@ -43,37 +47,37 @@ build + error 確定計画 SSOT)** →
 
 ## Current state
 
-- **Phase**: **Phase 6 IN-PROGRESS** — §9.8 13/24 `[x]` + 6.10 `[~]
+- **Phase**: **Phase 6 IN-PROGRESS** — §9.8 14/24 `[x]` + 6.10 `[~]
   (7/12)` + 6.11 `[~] (3/10)`. v5 plan + ADR-0033 (2bf491b) + ADR-0034
-  (2834511) + ROADMAP §9.8 rows 6.16.a-0..e + §9.14/16/18/19 v5
-  expansions + debt rows D-062..D-069 (757a0b5) + Phase 6.16.a-0
-  env.intern metadata (b5d44f7) + Phase 6.16.a-1 sequence.zig 6
-  primitives (d35dc3b) + Phase 6.16.a-2 collection.zig 9 primitives
-  (a4bfca5) + Phase 6.16.a-3.1 has_rest+Reduced+higher_order 6
-  primitives (f84a918). **Active task = Phase 6.16.a-3.2 cycle**
-  (eager leaves + Layer 3 .clj defn).
+  (2834511) + Phase 6.16.a-0 (b5d44f7) + a-1 (d35dc3b) + a-2 (a4bfca5)
+  + a-3.1 (f84a918) + a-3.2 (1d20ce3, +D-060 close + D-070/D-071/D-072/
+  D-073 open). **Active task = Phase 6.16.b cycle** (clojure.set 12
+  vars `.clj` 化 + ADR-0035 require spec).
 - **Branch**: `cw-from-scratch`. ADR-0032 issued (multi-file loader +
   in-ns). v5 plan = `private/notes/clj_vs_zig_split_proposal_v5.md`
   (1593 lines, self-contained, SSOT for ADR-0033/0034/0035).
-- **Gate**: Mac 28/28 + OrbStack Ubuntu x86_64 28/28 green at f84a918
-  (composition_unlock_a3_1.sh registered; bench_quick is optional
-  informational).
+- **Gate**: Mac 30/30 + OrbStack Ubuntu x86_64 29/29 green at 1d20ce3
+  (composition_unlock_a3_1.sh + transducer_unlock_a3.sh registered).
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## Active task — Phase 6.16.a-3.2 (eager leaves + Layer 3 .clj defn)
+## Active task — Phase 6.16.b (clojure.set 12 vars .clj 化)
 
-Open Phase 6.16.a-3.2 (cycle 2/2 of split): Layer 2 6 eager leaves
-(`-map-eager` etc.) + Layer 3 11 fns in `core.clj` (map/filter/
-take/drop/keep/remove with transducer 1-arg arity + multi-arity
-eager + partial/comp/complement/constantly/juxt as pure Clojure) +
-`into` 3-arg xform extension + rf protocol formal registration.
+Open Phase 6.16.b: 12 vars (union/intersection/difference/subset?/
+superset?/rename-keys/map-invert/select/project/index/rename/join)
+as pure Pattern A defns in `src/lang/clj/clojure/set.clj`. Group C
+relational ops (5 vars) require D-061 (set-literal reader) +
+D-059 (map-literal analyzer) gap closes — fold these into 6.16.b
+cycle. Concurrently: ADR-0035 (require spec, D-063) issuance —
+multi-file dependency order becomes load-bearing.
 
-After cycle close: Phase 6.16.b (clojure.set 12 vars `.clj` 化、
-Group A+B+C 一括 per ROADMAP §9.8 row 6.16.b).
+After 6.16.b: Phase 6.16.c (clojure.walk 10 vars .clj 化).
 
-v5 follow-up amendments queued (fold into a-3.2 or later cycle):
-- §5.2 DIVERGENCE D1 wording (contains? on vector, Phase 6.16.a-2)
-- §5.2 every?/some explicit Layer 2 designation (Phase 6.16.a-3.1)
+v5 follow-up amendments accumulating (fold into ADR-0033 amendment
+or next-cycle commit body):
+- §5.2 DIVERGENCE D1 wording (contains? on vector, 6.16.a-2)
+- §5.2 every?/some explicit Layer 2 designation (6.16.a-3.1)
+- §5.2 + §7 transducer arity cw v1 deviation + D-070 trigger spec (6.16.a-3.2)
+- ADR-0033 D6a amendment (partial 着地、 D-070 後 back-fill plan)
 
 ## Open questions / blockers
 
