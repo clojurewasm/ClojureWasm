@@ -147,21 +147,22 @@ entries:
   - name: clojure.core/merge
     kind: var
     defined_in: src/lang/clj/clojure/core.clj
-    status: provisional
+    status: landed
     requires:
       - clojure.core/reduce
       - clojure.core/assoc
       - clojure.core/keys
       - clojure.core/get
-    provisional_markers: []
     notes: |
       Variadic via `[& maps]` with internal arity discrimination
-      (`(if (= 0 (count maps)) ...)`). Sidesteps D-070 multi-arity
-      `fn*` for the "fold over N maps" body. The shape is
-      finished-form-compatible — multi-arity dispatch would not buy
-      anything here — so the only provisional axis is that `nil?`
-      handling within the reducer assumes `(get nil k)` returns nil
-      (true in cw v1; verified at 6.16.b-3).
+      (`(if (= 0 (count maps)) ...)`). The shape IS the finished
+      form for "fold over N maps" — multi-arity dispatch would not
+      improve clarity nor behaviour. Spike 2.3 (2026-05-26)
+      re-classified from `provisional` to `landed`: the original
+      framework-1.2 seed entry mis-marked this as provisional
+      because the body avoids multi-arity `fn*` (D-070), but
+      "avoids D-070 via finished-form-compatible alternative" is
+      precisely NOT what `provisional` means.
 
   - name: clojure.core/set
     kind: var
@@ -188,12 +189,88 @@ entries:
       - reader_feature/set_literal
       - reader_feature/map_literal_value
       - special_form/fn_multi_arity
-    provisional_markers: []
+      - D-070
+    provisional_markers:
+      - src/lang/clj/clojure/set.clj (join — 2-arity only)
     notes: |
       Ships 2-arity `[xrel yrel]` natural-join only. The 3-arity
       `[xrel yrel km]` key-map form requires multi-arity `fn*`
       dispatch (D-070). When D-070 closes, the 3-arity body lands
       and this entry's status flips to `landed`.
+
+  - name: clojure.set/map-invert
+    kind: var
+    defined_in: src/lang/clj/clojure/set.clj
+    status: provisional
+    requires:
+      - clojure.core/reduce
+      - clojure.core/assoc
+      - D-074
+    provisional_markers:
+      - src/lang/clj/clojure/set.clj (map-invert — persistent reduce)
+    notes: |
+      JVM uses `transient!` + `reduce-kv` + `persistent!` for O(n)
+      cost. cw v1 has no transient surface yet (D-074, Phase 8
+      target), so the body folds with persistent `assoc` — same
+      complexity asymptotically, just more allocator churn. When
+      D-074 lands the body switches to the transient form and this
+      entry flips to `landed`.
+
+  - name: clojure.set/project
+    kind: var
+    defined_in: src/lang/clj/clojure/set.clj
+    status: provisional
+    requires:
+      - clojure.core/set
+      - clojure.core/map
+      - clojure.core/select-keys
+      - D-075
+    provisional_markers:
+      - src/lang/clj/clojure/set.clj (project — drops with-meta wrap)
+    notes: |
+      JVM wraps the result in `(with-meta result (meta xrel))` to
+      preserve metadata across the projection. cw v1 has no value-
+      metadata system (D-075, Phase 7+ target), so the wrap is
+      omitted. Observable divergence: callers carrying metadata
+      on `xrel` lose it. When D-075 lands the wrap is added and
+      this entry flips to `landed`.
+
+  - name: clojure.set/rename
+    kind: var
+    defined_in: src/lang/clj/clojure/set.clj
+    status: provisional
+    requires:
+      - clojure.core/set
+      - clojure.core/map
+      - clojure.set/rename-keys
+      - D-075
+    provisional_markers:
+      - src/lang/clj/clojure/set.clj (rename — drops with-meta wrap)
+    notes: |
+      Same as `clojure.set/project`: drops `with-meta` because
+      D-075 (metadata system) is pending. Mirror divergence.
+
+  - name: clojure.set/rename-keys
+    kind: var
+    defined_in: src/lang/clj/clojure/set.clj
+    status: provisional
+    requires:
+      - clojure.core/reduce
+      - clojure.core/contains?
+      - clojure.core/assoc
+      - clojure.core/dissoc
+      - clojure.core/get
+      - clojure.core/nth
+      - D-076
+    provisional_markers:
+      - src/lang/clj/clojure/set.clj (rename-keys — nth destructure)
+    notes: |
+      JVM uses vector destructure inside `let`: `(fn [m [old new]]
+      ...)`. cw v1 `let*` does not yet support sequential
+      destructuring (D-076, Phase 7+ target), so the body uses
+      `(nth kv 0)` / `(nth kv 1)` against the map-entry vector.
+      When D-076 lands the body switches to destructure form and
+      this entry flips to `landed`.
 
   - name: special_form/fn_multi_arity
     kind: special_form

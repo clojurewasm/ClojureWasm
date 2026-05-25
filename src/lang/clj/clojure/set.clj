@@ -70,6 +70,7 @@
 (def rename-keys
   (fn* [m kmap]
     (reduce (fn* [acc kv]
+              ;; PROVISIONAL: nth-based destructure pending let* vector destructure [refs: D-076, feature_deps.yaml#clojure.set/rename-keys]
               (let* [old (nth kv 0)
                      new-k (nth kv 1)]
                 (if (contains? m old)
@@ -83,6 +84,7 @@
 ;; transients land at Phase 8 (DIVERGENCE D-α per per-task survey).
 (def map-invert
   (fn* [m]
+    ;; PROVISIONAL: persistent reduce pending transient! / persistent! [refs: D-074, feature_deps.yaml#clojure.set/map-invert]
     (reduce (fn* [acc kv]
               (assoc acc (nth kv 1) (nth kv 0)))
             (hash-map)
@@ -109,12 +111,14 @@
 ;; `ks` for each map in `xrel`.
 (def project
   (fn* [xrel ks]
+    ;; PROVISIONAL: drops with-meta wrap pending value metadata system [refs: D-075, feature_deps.yaml#clojure.set/project]
     (set (map (fn* [m] (select-keys m ks)) xrel))))
 
 ;; `(rename xrel kmap)` — return a rel with the keys in each map
 ;; renamed per kmap.
 (def rename
   (fn* [xrel kmap]
+    ;; PROVISIONAL: drops with-meta wrap pending value metadata system [refs: D-075, feature_deps.yaml#clojure.set/rename]
     (set (map (fn* [m] (rename-keys m kmap)) xrel))))
 
 ;; `(index xrel ks)` — return a map of (selected-keys → set-of-maps).
@@ -129,6 +133,7 @@
 ;; `(join xrel yrel)` — natural join on the common keys. 3-arity
 ;; key-map form `[xrel yrel km]` deferred to D-070 multi-arity
 ;; closure.
+;; PROVISIONAL: 2-arity only pending multi-arity fn* dispatch [refs: D-070, feature_deps.yaml#clojure.set/join]
 (def join
   (fn* [xrel yrel]
     (if (and (seq xrel) (seq yrel))
