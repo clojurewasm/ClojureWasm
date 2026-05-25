@@ -88,19 +88,14 @@ recall trigger anchored to placement.yaml.
 
 ## Guardrail refresh history (condensed)
 
-Waves 1-12: spirit + Bad Smell + F-NNN + stop-list + ADR-0029
-F-009 + ADR-0030 + 6.1 analyzer split + ADR-0031 Accepted +
-6.16 cluster + silent-test-skip surgery + clock API port. **Wave
-13-14 (2026-05-25)**: ADR-0032 + v5 placement plan + ROADMAP
-§9.8 cycle rows + debt.md D-062..D-073 + ADR-0033/0034 issued
-/ 0035 deferred. **Wave 15 (2026-05-26)**: provisional-marker
-mechanisation (rule + SSOT yaml + sync hook + Step 0.7 + audit
-E2 + bootstrap_essence + 11+5 marker retrofit + review-fix).
+Waves 1-14 (2026-05-23..25): spirit + Bad Smell + F-NNN +
+ADR-0029..0034 + v5 plan + ROADMAP §9.8 + debt D-062..D-073.
+**Wave 15 (2026-05-26)**: provisional-marker mechanisation
+(rule + yaml SSOT + sync hook + Step 0.7 + audit E2 +
+bootstrap_essence + 16-marker retrofit + review-fix).
 
 ## Stopped — user requested
 
 User instruction (2026-05-26): "配線監査修正まで済んだら、止めて
-おいてOK". The framework + spike + review-fix + cold-start
-wiring audit all landed (commits 1fdc342 / 0fed954 / 89b8fae /
-64c697c / ef4f683 / 025ea17). Resume at Phase 6.16.b-4 per
-Resume contract above.
+おいてOK". Wave-15 work all landed. Resume at Phase 6.16.b-4
+per Resume contract above.
