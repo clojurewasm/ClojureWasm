@@ -33,6 +33,7 @@ pub const Error = error{
     TooManyConstants,
     JumpTooFar,
     TooManyCallArgs,
+    VectorLiteralTooLarge,
     NotImplemented,
 } || std.mem.Allocator.Error;
 
@@ -113,13 +114,17 @@ const Compiler = struct {
                 return error.NotImplemented;
             },
             .in_ns_node => |n| try self.compileInNs(n),
-            // Vector literal evaluation lands first in TreeWalk
-            // (Phase 6.9 cycle 4). VM bytecode shape — likely
-            // `op_vector_literal <n>` consuming N stack values into a
-            // fresh PersistentVector — lands when a VM-mode caller
-            // actually needs it. Tracked at D-060.
-            .vector_literal_node => return error.NotImplemented,
+            // Closes D-060 (Phase 6.16.a-3.2): emit each element + the
+            // `op_vector_literal <n>` operand. VM dispatch pops N values
+            // and builds a PersistentVector.
+            .vector_literal_node => |n| try self.compileVectorLiteral(n),
         }
+    }
+
+    fn compileVectorLiteral(self: *Compiler, n: node_mod.VectorLiteralNode) Error!void {
+        for (n.elements) |*elt| try self.compileNode(elt);
+        if (n.elements.len > std.math.maxInt(u16)) return error.VectorLiteralTooLarge;
+        try self.emit(.op_vector_literal, @intCast(n.elements.len));
     }
 
     fn emitConst(self: *Compiler, v: Value) Error!void {

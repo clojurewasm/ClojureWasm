@@ -227,6 +227,136 @@ pub fn someQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return if (args[0].isNil()) .false_val else .true_val;
 }
 
+// --- eager leaves (Phase 6.16.a-3.2) ---
+//
+// The `-name` `defn-` `^:private :zig-leaf` pattern from ADR-0033 D4.
+// These are the eager backends for clojure.core's map/filter/take/
+// drop/keep/remove — the Layer 3 `.clj` shim calls them directly when
+// the multi-arity form is the eager one. The transducer 1-arg arity
+// (returning an xform) is **deferred** until cw v1's `fn*`/`defn`
+// analyzer grows multi-arity support (tracked at D-NEW-2 per
+// 6.16.a-3.2 commit body).
+
+/// `(-map-eager f coll)` — eager list of `(f x)` over coll.
+pub fn mapEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("-map-eager", args, 2, loc);
+    const f = args[0];
+    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
+    var collected: std.ArrayList(Value) = .empty;
+    defer collected.deinit(rt.gpa);
+    while (!cur.isNil()) {
+        const x = try sequence.firstFn(rt, env, &.{cur}, loc);
+        try collected.append(rt.gpa, try invokeCallable(rt, env, f, &.{x}, loc));
+        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+    }
+    return try buildListFromSlice(rt, collected.items);
+}
+
+/// `(-filter-eager pred coll)` — eager list of x where `(pred x)` truthy.
+pub fn filterEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("-filter-eager", args, 2, loc);
+    const pred = args[0];
+    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
+    var collected: std.ArrayList(Value) = .empty;
+    defer collected.deinit(rt.gpa);
+    while (!cur.isNil()) {
+        const x = try sequence.firstFn(rt, env, &.{cur}, loc);
+        const r = try invokeCallable(rt, env, pred, &.{x}, loc);
+        if (!isFalsy(r)) try collected.append(rt.gpa, x);
+        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+    }
+    return try buildListFromSlice(rt, collected.items);
+}
+
+/// `(-take-eager n coll)` — eager list of first n elements.
+pub fn takeEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("-take-eager", args, 2, loc);
+    const n_val = args[0];
+    if (n_val.tag() != .integer) {
+        return error_catalog.raise(.type_arg_not_integer, loc, .{
+            .fn_name = "-take-eager",
+            .actual = @tagName(n_val.tag()),
+        });
+    }
+    const n = n_val.asInteger();
+    if (n <= 0) return .nil_val;
+    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
+    var collected: std.ArrayList(Value) = .empty;
+    defer collected.deinit(rt.gpa);
+    var remaining: i64 = n;
+    while (!cur.isNil() and remaining > 0) : (remaining -= 1) {
+        try collected.append(rt.gpa, try sequence.firstFn(rt, env, &.{cur}, loc));
+        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+    }
+    return try buildListFromSlice(rt, collected.items);
+}
+
+/// `(-drop-eager n coll)` — eager list of elements after first n.
+pub fn dropEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("-drop-eager", args, 2, loc);
+    const n_val = args[0];
+    if (n_val.tag() != .integer) {
+        return error_catalog.raise(.type_arg_not_integer, loc, .{
+            .fn_name = "-drop-eager",
+            .actual = @tagName(n_val.tag()),
+        });
+    }
+    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
+    var remaining: i64 = n_val.asInteger();
+    while (!cur.isNil() and remaining > 0) : (remaining -= 1) {
+        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+    }
+    // The remaining seq is already a valid list/cons head; return as-is.
+    return cur;
+}
+
+/// `(-keep-eager f coll)` — eager list of non-nil `(f x)` results.
+pub fn keepEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("-keep-eager", args, 2, loc);
+    const f = args[0];
+    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
+    var collected: std.ArrayList(Value) = .empty;
+    defer collected.deinit(rt.gpa);
+    while (!cur.isNil()) {
+        const x = try sequence.firstFn(rt, env, &.{cur}, loc);
+        const r = try invokeCallable(rt, env, f, &.{x}, loc);
+        if (!r.isNil()) try collected.append(rt.gpa, r);
+        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+    }
+    return try buildListFromSlice(rt, collected.items);
+}
+
+/// `(-remove-eager pred coll)` — eager list of x where `(pred x)` falsy.
+pub fn removeEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("-remove-eager", args, 2, loc);
+    const pred = args[0];
+    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
+    var collected: std.ArrayList(Value) = .empty;
+    defer collected.deinit(rt.gpa);
+    while (!cur.isNil()) {
+        const x = try sequence.firstFn(rt, env, &.{cur}, loc);
+        const r = try invokeCallable(rt, env, pred, &.{x}, loc);
+        if (isFalsy(r)) try collected.append(rt.gpa, x);
+        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+    }
+    return try buildListFromSlice(rt, collected.items);
+}
+
+const list_mod = @import("../../runtime/collection/list.zig");
+
+/// Build a Clojure list (Cons chain) from a Zig slice. Empty slice
+/// yields nil (cw v1 deviation from JVM empty-PersistentList; same
+/// as restFn behaviour, will resolve at Phase 7 entry).
+fn buildListFromSlice(rt: *Runtime, items: []const Value) !Value {
+    var acc: Value = .nil_val;
+    var i: usize = items.len;
+    while (i > 0) {
+        i -= 1;
+        acc = try list_mod.consHeap(rt, items[i], acc);
+    }
+    return acc;
+}
+
 // --- helpers ---
 
 /// Clojure truthiness: only `nil` and `false` are falsy.
@@ -250,9 +380,36 @@ const ENTRIES = [_]Entry{
     .{ .name = "some?", .f = &someQFn },
 };
 
+/// `-name` eager leaves per ADR-0033 D4 — registered in `rt_ns`
+/// (same as other Layer 2 builtins) with `^:zig-leaf` metadata.
+///
+/// **NOTE on `^:private`**: per ADR-0033 D4 these should be private
+/// to clojure.core, callable only from same-ns defns. But Phase
+/// 6.16.a-3.2 does **not** yet land `(in-ns 'clojure.core)` at the
+/// top of `core.clj` (= core.clj defs still go into `user` ns), so
+/// flagging the leaves `^:private` would block their use from
+/// core.clj. The `:private = true` flag is therefore **deferred**
+/// until `(in-ns 'clojure.core)` lands in core.clj (tracked at
+/// D-NEW-4 per 6.16.a-3.2 commit body). For now the `-` prefix is a
+/// convention/marker without enforcement.
+const LEAF_ENTRIES = [_]Entry{
+    .{ .name = "-map-eager", .f = &mapEagerFn },
+    .{ .name = "-filter-eager", .f = &filterEagerFn },
+    .{ .name = "-take-eager", .f = &takeEagerFn },
+    .{ .name = "-drop-eager", .f = &dropEagerFn },
+    .{ .name = "-keep-eager", .f = &keepEagerFn },
+    .{ .name = "-remove-eager", .f = &removeEagerFn },
+};
+
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
     for (ENTRIES) |it| {
         _ = try env.intern(rt_ns, it.name, Value.initBuiltinFn(it.f), null);
+    }
+    for (LEAF_ENTRIES) |it| {
+        _ = try env.intern(rt_ns, it.name, Value.initBuiltinFn(it.f), .{
+            .private = false, // deferred per D-NEW-4 (see LEAF_ENTRIES note)
+            .zig_leaf = true,
+        });
     }
 }
 

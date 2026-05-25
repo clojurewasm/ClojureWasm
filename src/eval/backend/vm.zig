@@ -23,6 +23,7 @@ const value_mod = @import("../../runtime/value/value.zig");
 const env_mod = @import("../../runtime/env.zig");
 const runtime_mod = @import("../../runtime/runtime.zig");
 const string_mod = @import("../../runtime/collection/string.zig");
+const vector_mod = @import("../../runtime/collection/vector.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
@@ -319,6 +320,20 @@ fn stepOnce(
                 if (sp >= OPERAND_STACK_MAX)
                     return raiseInternal("vm: operand stack overflow");
                 stack[sp] = Value.nil_val;
+                sp += 1;
+            },
+            .op_vector_literal => {
+                // Closes D-060: pop N values from top of stack, build a
+                // PersistentVector via empty + conj, push result.
+                const n: u16 = instr.operand;
+                if (sp < n) return raiseInternal("vm: op_vector_literal underflows operand stack");
+                var v = vector_mod.empty();
+                var i: u16 = sp - n;
+                while (i < sp) : (i += 1) {
+                    v = try vector_mod.conj(rt, v, stack[i]);
+                }
+                sp -= n;
+                stack[sp] = v;
                 sp += 1;
             },
     }

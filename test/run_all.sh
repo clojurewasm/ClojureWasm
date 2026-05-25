@@ -172,6 +172,7 @@ run_step "e2e_phase6_16_a_0_metadata"      "bash test/e2e/phase6_16_a_0_metadata
 run_step "e2e_composition_unlock_a1"       "bash test/e2e/composition_unlock_a1.sh"
 run_step "e2e_composition_unlock_a2"       "bash test/e2e/composition_unlock_a2.sh"
 run_step "e2e_composition_unlock_a3_1"     "bash test/e2e/composition_unlock_a3_1.sh"
+run_step "e2e_transducer_unlock_a3"        "bash test/e2e/transducer_unlock_a3.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional

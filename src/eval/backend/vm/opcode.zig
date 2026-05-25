@@ -85,6 +85,11 @@ pub const Opcode = enum(u8) {
     /// string, calls `env.findOrCreateNs` + sets `current_ns`, and
     /// pushes nil (matches `tree_walk::evalInNs` per ADR-0032).
     op_in_ns = 0x12,
+    /// `[a b c]` vector literal — operand = element count N. VM
+    /// dispatch pops N stack values (top-most = last element), builds
+    /// a fresh PersistentVector via `vector.empty()` + `vector.conj`,
+    /// and pushes it. Closes D-060 (Phase 6.16.a-3.2).
+    op_vector_literal = 0x13,
 };
 
 /// `op_def` operand layout — see the Opcode docstring.
