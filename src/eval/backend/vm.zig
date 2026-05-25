@@ -312,18 +312,18 @@ fn stepOnce(
                 sp += 1;
             },
             .op_in_ns => {
-                // ADR-0032 in-ns — mirror of tree_walk::evalInNs (incl. the
-                // rt/ auto-refer that lets Pattern A `.clj` defns under any
-                // (in-ns 'X) resolve `reduce`/`conj`/etc. unqualified).
+                // ADR-0032 in-ns — mirror of tree_walk::evalInNs.
                 if (instr.operand >= chunk.constants.len)
                     return raiseInternal("vm: op_in_ns constant index out of range");
                 const name_val = chunk.constants[instr.operand];
                 if (!name_val.isString())
                     return raiseInternal("vm: op_in_ns constant is not a String");
                 env.current_ns = try env.findOrCreateNs(string_mod.asString(name_val));
+                // PROVISIONAL: in-ns auto-refers rt/ pending (ns ...) macro [refs: D-071, feature_deps.yaml#runtime/eval/in_ns_auto_refer]
                 if (env.findNs("rt")) |rt_ns| {
                     try env.referAll(rt_ns, env.current_ns.?);
                 }
+                // PROVISIONAL: in-ns auto-refers clojure.core pending (ns ...) macro [refs: D-071, feature_deps.yaml#runtime/eval/in_ns_auto_refer]
                 if (env.findNs("clojure.core")) |clojure_core_ns| {
                     try env.referAll(clojure_core_ns, env.current_ns.?);
                 }

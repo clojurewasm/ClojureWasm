@@ -71,7 +71,11 @@ entries:
       - special_form/ns_macro
       - D-063
       - D-071
-    provisional_markers: []
+    provisional_markers:
+      - src/eval/backend/tree_walk.zig (evalInNs — rt/ auto-refer)
+      - src/eval/backend/tree_walk.zig (evalInNs — clojure.core auto-refer)
+      - src/eval/backend/vm.zig (op_in_ns — rt/ auto-refer)
+      - src/eval/backend/vm.zig (op_in_ns — clojure.core auto-refer)
     notes: |
       evalInNs (tree_walk + VM) auto-refers `rt/` and (when present)
       `clojure.core` into the entered namespace. This is the
@@ -79,6 +83,44 @@ entries:
       explicitly calls `(clojure.core/refer 'clojure.core)`. Finished
       form lands at ADR-0035 (Phase 6.16.b-4) when `(ns ...)` is a
       real macro; evalInNs then reverts to bare ns-switch.
+
+  - name: runtime/bootstrap/refer_table
+    kind: runtime_layer
+    defined_in: src/lang/bootstrap.zig
+    status: provisional
+    requires:
+      - special_form/ns_macro
+      - D-063
+      - D-071
+    provisional_markers:
+      - src/lang/bootstrap.zig (loadCore — end-of-loop refer table)
+    notes: |
+      `loadCore` walks a hardcoded list of bootstrap namespaces
+      (user / clojure.set / clojure.string / clojure.walk) and
+      refers `clojure.core` into each at the end of multi-file load.
+      Static counterpart to the dynamic
+      `runtime/eval/in_ns_auto_refer`: namespaces created at
+      registerAll time (before any (in-ns) form ran) need
+      clojure.core too. The finished form replaces this hardcoded
+      table with per-file `:refer-clojure` directives emitted by
+      the `(ns ...)` macro at ADR-0035 / Phase 6.16.b-4.
+
+  - name: clojure.core/ns_declaration
+    kind: var
+    defined_in: src/lang/clj/clojure/core.clj
+    status: provisional
+    requires:
+      - special_form/ns_macro
+      - D-063
+      - D-071
+    provisional_markers:
+      - src/lang/clj/clojure/core.clj (head — bare in-ns declaration)
+    notes: |
+      core.clj opens with `(in-ns 'clojure.core)` as a bare
+      special-form call. The finished form is `(ns clojure.core
+      (:refer-clojure))` macro that handles in-ns + refer
+      atomically + carries metadata for the namespace. Lands at
+      ADR-0035 / Phase 6.16.b-4 when `(ns ...)` arrives.
 
   - name: special_form/ns_macro
     kind: special_form

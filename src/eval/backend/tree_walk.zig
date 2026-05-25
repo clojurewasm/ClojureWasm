@@ -265,15 +265,11 @@ pub fn eval(
 /// Idempotent via `referAll`'s existing-key skip.
 fn evalInNs(env: *Env, n: node_mod.InNsNode) !Value {
     env.current_ns = try env.findOrCreateNs(n.ns_name);
+    // PROVISIONAL: in-ns auto-refers rt/ pending (ns ...) macro [refs: D-071, feature_deps.yaml#runtime/eval/in_ns_auto_refer]
     if (env.findNs("rt")) |rt_ns| {
         try env.referAll(rt_ns, env.current_ns.?);
     }
-    // clojure.core may not exist yet during core.clj's own (in-ns
-    // 'clojure.core) — in that case the entered ns IS clojure.core
-    // and refer is a no-op self-cycle. For every later ns (set /
-    // walk / string / user dynamic in-ns), clojure.core has been
-    // populated by core.clj and is refer'd so unqualified names
-    // like `set` / `select-keys` / `merge` / `partial` resolve.
+    // PROVISIONAL: in-ns auto-refers clojure.core pending (ns ...) macro [refs: D-071, feature_deps.yaml#runtime/eval/in_ns_auto_refer]
     if (env.findNs("clojure.core")) |clojure_core_ns| {
         try env.referAll(clojure_core_ns, env.current_ns.?);
     }
