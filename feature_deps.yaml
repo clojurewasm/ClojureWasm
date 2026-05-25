@@ -8,8 +8,8 @@
 #     debt.md three-way sync on every source-bearing commit.
 #   - audit_scaffolding skill — counts PROVISIONAL markers per entry,
 #     flags entries that have been provisional for >14 days.
-#   - Cycle planning — topological sort of `requires:` graph to verify
-#     a cycle's prerequisites are in place before it opens.
+#   - Cycle planning — topological sort of `requires_features:` graph
+#     to verify a cycle's prerequisites are in place before it opens.
 #
 # Sister SSOTs:
 #   - compat_tiers.yaml — Tier A/B/C/D classification per Java class /
@@ -41,15 +41,27 @@
 #                                    is in .dev/debt.md.
 #                     planned      — not yet implemented; entry exists
 #                                    to record the upcoming dependency.
-#   - requires    : list of `name:` references that must land before
-#                   this entry's finished form is reachable. Each
-#                   reference can be a feature_deps entry name or
-#                   a debt row reference `D-NNN`.
+#   - requires_features : list of feature_deps entry `name:` references
+#                          that must land before this entry's finished
+#                          form is reachable (= upstream features in
+#                          the same yaml).
+#   - requires_debts    : list of `D-NNN` debt row references that
+#                          must close before this entry's finished
+#                          form is reachable (= upstream tasks not
+#                          yet represented as feature entries).
+#                          requires_features + requires_debts split
+#                          (Wave-15-follow-up, F9) so future
+#                          topological sort can resolve a closed
+#                          graph without mixing node kinds.
 #   - provisional_markers (optional, only when status: provisional):
-#                   list of `file:line` locations carrying a
-#                   `PROVISIONAL:` comment that refers to this entry.
-#                   audit_scaffolding cross-checks against
-#                   `rg 'feature_deps.yaml#<name>' src/`.
+#                          list of source-location labels carrying a
+#                          `PROVISIONAL:` comment that refers to this
+#                          entry. Format is free-text prose (typically
+#                          `<file> (<context label>)`) because line
+#                          numbers shift on edit; an `anchor:` field
+#                          may be added later if file:line linking is
+#                          needed. audit_scaffolding cross-checks
+#                          via grep count, not line lookup.
 #   - notes (optional): one-paragraph free-text explanation of the
 #                   provisional shape and what landing looks like.
 #                   Used by audit reports; not read by hooks.
@@ -67,8 +79,9 @@ entries:
     kind: runtime_layer
     defined_in: src/eval/backend/tree_walk.zig
     status: provisional
-    requires:
+    requires_features:
       - special_form/ns_macro
+    requires_debts:
       - D-063
       - D-071
     provisional_markers:
@@ -88,8 +101,9 @@ entries:
     kind: runtime_layer
     defined_in: src/lang/bootstrap.zig
     status: provisional
-    requires:
+    requires_features:
       - special_form/ns_macro
+    requires_debts:
       - D-063
       - D-071
     provisional_markers:
@@ -116,8 +130,9 @@ entries:
     kind: runtime_layer
     defined_in: src/lang/clj/clojure/core.clj
     status: provisional
-    requires:
+    requires_features:
       - special_form/ns_macro
+    requires_debts:
       - D-063
       - D-071
     provisional_markers:
@@ -142,7 +157,8 @@ entries:
     kind: special_form
     defined_in: src/eval/analyzer/special_forms.zig
     status: planned
-    requires:
+    requires_features: []
+    requires_debts:
       - D-063
     notes: |
       JVM Clojure's `(ns foo (:require [x] [y :as a]) (:refer-clojure))`
@@ -153,22 +169,24 @@ entries:
     kind: var
     defined_in: src/lang/clj/clojure/core.clj
     status: landed
-    requires:
+    requires_features:
       - clojure.core/reduce
       - clojure.core/contains?
       - clojure.core/assoc
       - clojure.core/get
       - reader_feature/map_literal_value
+    requires_debts: []
 
   - name: clojure.core/merge
     kind: var
     defined_in: src/lang/clj/clojure/core.clj
     status: landed
-    requires:
+    requires_features:
       - clojure.core/reduce
       - clojure.core/assoc
       - clojure.core/keys
       - clojure.core/get
+    requires_debts: []
     notes: |
       Variadic via `[& maps]` with internal arity discrimination
       (`(if (= 0 (count maps)) ...)`). The shape IS the finished
@@ -184,16 +202,17 @@ entries:
     kind: var
     defined_in: src/lang/clj/clojure/core.clj
     status: landed
-    requires:
+    requires_features:
       - clojure.core/reduce
       - clojure.core/conj
       - reader_feature/set_literal
+    requires_debts: []
 
   - name: clojure.set/join
     kind: var
     defined_in: src/lang/clj/clojure/set.clj
     status: provisional
-    requires:
+    requires_features:
       - clojure.core/intersection
       - clojure.core/set
       - clojure.core/keys
@@ -205,6 +224,7 @@ entries:
       - reader_feature/set_literal
       - reader_feature/map_literal_value
       - special_form/fn_multi_arity
+    requires_debts:
       - D-070
     provisional_markers:
       - src/lang/clj/clojure/set.clj (join — 2-arity only)
@@ -218,9 +238,10 @@ entries:
     kind: var
     defined_in: src/lang/clj/clojure/set.clj
     status: provisional
-    requires:
+    requires_features:
       - clojure.core/reduce
       - clojure.core/assoc
+    requires_debts:
       - D-074
     provisional_markers:
       - src/lang/clj/clojure/set.clj (map-invert — persistent reduce)
@@ -236,10 +257,11 @@ entries:
     kind: var
     defined_in: src/lang/clj/clojure/set.clj
     status: provisional
-    requires:
+    requires_features:
       - clojure.core/set
       - clojure.core/map
       - clojure.core/select-keys
+    requires_debts:
       - D-075
     provisional_markers:
       - src/lang/clj/clojure/set.clj (project — drops with-meta wrap)
@@ -255,10 +277,11 @@ entries:
     kind: var
     defined_in: src/lang/clj/clojure/set.clj
     status: provisional
-    requires:
+    requires_features:
       - clojure.core/set
       - clojure.core/map
       - clojure.set/rename-keys
+    requires_debts:
       - D-075
     provisional_markers:
       - src/lang/clj/clojure/set.clj (rename — drops with-meta wrap)
@@ -270,13 +293,14 @@ entries:
     kind: var
     defined_in: src/lang/clj/clojure/set.clj
     status: provisional
-    requires:
+    requires_features:
       - clojure.core/reduce
       - clojure.core/contains?
       - clojure.core/assoc
       - clojure.core/dissoc
       - clojure.core/get
       - clojure.core/nth
+    requires_debts:
       - D-076
     provisional_markers:
       - src/lang/clj/clojure/set.clj (rename-keys — nth destructure)
@@ -292,7 +316,8 @@ entries:
     kind: special_form
     defined_in: src/eval/analyzer/special_forms.zig
     status: planned
-    requires:
+    requires_features: []
+    requires_debts:
       - D-070
     notes: |
       `(fn* ([x] body1) ([x y] body2))` form + arity-dispatch table.
@@ -303,24 +328,28 @@ entries:
     kind: reader_feature
     defined_in: src/eval/reader.zig
     status: landed
-    requires:
+    requires_features:
       - reader_feature/tokenizer_dispatch_hash
+    requires_debts: []
 
   - name: reader_feature/map_literal_value
     kind: reader_feature
     defined_in: src/eval/analyzer/analyzer.zig
     status: landed
-    requires:
+    requires_features:
       - reader_feature/tokenizer_lbrace
+    requires_debts: []
 
   - name: reader_feature/tokenizer_dispatch_hash
     kind: reader_feature
     defined_in: src/eval/tokenizer.zig
     status: landed
-    requires: []
+    requires_features: []
+    requires_debts: []
 
   - name: reader_feature/tokenizer_lbrace
     kind: reader_feature
     defined_in: src/eval/tokenizer.zig
     status: landed
-    requires: []
+    requires_features: []
+    requires_debts: []

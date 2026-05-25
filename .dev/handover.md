@@ -91,7 +91,7 @@ recall trigger anchored to placement.yaml.
 Waves 1-14 (2026-05-23..25): spirit + Bad Smell + F-NNN +
 ADR-0029..0034 + v5 plan + ROADMAP §9.8 + debt D-062..D-073.
 **Wave 15 (2026-05-26)**: provisional-marker mechanisation
-(rule + yaml SSOT + sync hook + Step 0.7 + audit E2 +
+(rule + yaml SSOT + sync hook + Step 0.6 + audit E2 +
 bootstrap_essence + 16-marker retrofit + review-fix).
 
 ## Stopped — user requested

@@ -188,7 +188,7 @@ phase (`Phase N entry` / `Phase N target` / `Phase N+ ...`) — these
 are the structural-imagination outputs from earlier sessions that
 the current Phase owner is meant to resolve.
 
-**Step 0.7 — Re-laying against finished-form (main agent)**
+**Step 0.6 — Re-laying against finished-form (main agent)**
 The main agent (not a subagent) reads the survey output and
 spends up to 30 minutes:
   1. Walk the plan's required-feature chain mentally; confirm the
@@ -211,7 +211,7 @@ spends up to 30 minutes:
      row triad (per `.claude/rules/provisional_marker.md`) lands
      in the same commit as the provisional behaviour.
 
-Step 0.7 is the discipline answer to "Step 0 surveys are only
+Step 0.6 is the discipline answer to "Step 0 surveys are only
 ~80% accurate; the remaining 20% surfaces in implementation".
 Skip only when Step 0 itself was skipped (= the task is a
 refactor / rename / doc-only change).

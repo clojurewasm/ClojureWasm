@@ -94,14 +94,14 @@ shared file, **do not replicate**. Either write a Tier-promotion
 ADR (`.dev/decisions/NNNN_promote_X.md`) or implement as a Wasm
 Component pod. ROADMAP §6.4 is non-negotiable.
 
-## The survey is not immutable — Step 0.7 may amend it
+## The survey is not immutable — Step 0.6 may amend it
 
 Surveys are ~80% accurate at write time. The remaining ~20% surfaces
 only once implementation begins (the prerequisite was missed; the
 recommended shape is smallest-diff bias against the finished form;
 a provisional behaviour will need to be introduced).
 
-CLAUDE.md § Autonomous Workflow **Step 0.7 (Re-laying against
+CLAUDE.md § Autonomous Workflow **Step 0.6 (Re-laying against
 finished-form)** is the main-agent pass that catches this. After
 Step 0 hands back the survey note, before Step 1's plan is
 committed, the main agent:
@@ -120,7 +120,7 @@ committed, the main agent:
 
 This is the discipline answer to "Step 0 is by a subagent and only
 sees the snapshot; finished-form alignment is a main-agent
-responsibility". The survey is the input; Step 0.7 is the
+responsibility". The survey is the input; Step 0.6 is the
 re-orientation against the project's invariants.
 
 ## When to skip Step 0
