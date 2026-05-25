@@ -247,8 +247,23 @@ pub fn eval(
 /// creating it if absent. Returns `nil` (JVM Clojure returns the
 /// namespace value — documented divergence pending the `ns` heap
 /// Value landing per F-004 Group B slot 21).
+///
+/// Additionally refers `rt/` into the entered namespace so primitive
+/// vars (`reduce` / `conj` / `disj` / `count` / `every?` / ...) are
+/// reachable unqualified from within the ns body. This extends the
+/// `referAll(rt_ns, user_ns)` pattern that `primitive.zig::registerAll`
+/// establishes for the REPL's initial `user/` ns to every other ns the
+/// user opens via `in-ns`. Without this, `(in-ns 'clojure.set) (def
+/// union (fn* [s1 s2] (reduce conj s1 s2)))` would fail symbol
+/// resolution on `reduce` / `conj`. The full `(ns ...)` macro +
+/// explicit `(refer 'clojure.core)` semantics arrive at ADR-0035
+/// (Phase 6.16.b-4); until then in-ns carries the convenience refer.
+/// Idempotent via `referAll`'s existing-key skip.
 fn evalInNs(env: *Env, n: node_mod.InNsNode) !Value {
     env.current_ns = try env.findOrCreateNs(n.ns_name);
+    if (env.findNs("rt")) |rt_ns| {
+        try env.referAll(rt_ns, env.current_ns.?);
+    }
     return .nil_val;
 }
 
