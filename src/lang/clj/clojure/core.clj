@@ -1,15 +1,16 @@
 ;; ClojureWasm Stage-1 prologue.
 ;;
 ;; Loaded by `src/lang/bootstrap.zig::loadCore` after
-;; `primitive.registerAll` and `macro_transforms.registerInto`. At this
-;; point the analyser already understands `let` / `when` / `cond` / `->`
-;; / `->>` / `and` / `or` / `if-let` / `when-let` (registered as Zig-
-;; level Form transforms in `lang/macro_transforms.zig`).
-;;
-;; Stage 1 only uses today's special forms — `def`, `fn*`, `if` — plus
-;; the bootstrap macros above. User-defined `defn` / `defmacro` arrive
-;; in later Phase-3 tasks once the analyser routes user macros through
-;; the evaluator.
+;; `primitive.registerAll` and `macro_transforms.registerInto`. Phase
+;; 6.16.b-3 lands the `(in-ns 'clojure.core)` head (= D-071 part 1):
+;; defs in this file are interned into the `clojure.core` namespace,
+;; and `bootstrap.zig::loadCore` refers `clojure.core` into `user/`
+;; + every other bootstrap-time ns so unqualified resolution works
+;; from the REPL prompt and from `clojure.set` / `walk` / `string`
+;; `.clj` defns. The remaining D-071 work (^:private enforcement on
+;; the `-*-eager` leaves) lands at a future cycle.
+
+(in-ns 'clojure.core)
 
 (def not (fn* [x] (if x false true)))
 
@@ -69,3 +70,42 @@
 ;; alongside Phase 7+ work).
 (def juxt
   (fn* [f g] (fn* [x] (conj (conj [] (f x)) (g x)))))
+
+;; ----------------------------------------------------------------
+;; Phase 6.16.b-3 helpers — used by clojure.set Group C (project /
+;; rename / index / join). Pattern A composition; no Zig leaves.
+;; ----------------------------------------------------------------
+
+;; `(select-keys m ks)` — return a map containing only the keys in
+;; `ks` that are present in `m`. JVM uses `find` to distinguish
+;; "absent" from "nil-valued"; cw v1 uses `contains?` (same
+;; semantic when nil-values are absent — Phase 7+ value-meta layer
+;; adds `find`).
+(def select-keys
+  (fn* [m ks]
+    (reduce (fn* [acc k]
+              (if (contains? m k)
+                (assoc acc k (get m k))
+                acc))
+            {}
+            ks)))
+
+;; `(merge & maps)` — right-most key wins. nil args are skipped.
+;; Variadic via `[& maps]`; 0-arity returns nil (matches JVM).
+(def merge
+  (fn* [& maps]
+    (if (= 0 (count maps))
+      nil
+      (reduce (fn* [acc m]
+                (if (nil? m)
+                  acc
+                  (reduce (fn* [a k] (assoc a k (get m k)))
+                          acc
+                          (keys m))))
+              (first maps)
+              (rest maps)))))
+
+;; `(set coll)` — coerce a collection to a set. Duplicates collapse.
+(def set
+  (fn* [coll] (reduce conj #{} coll)))
+

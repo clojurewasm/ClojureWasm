@@ -87,3 +87,62 @@
               (assoc acc (nth kv 1) (nth kv 0)))
             (hash-map)
             m)))
+
+;; ----------------------------------------------------------------
+;; Group C — relational ops (Phase 6.16.b-3). Sits on top of D-061
+;; (#{} reader) + D-059 (map literal as Value) infra landed at
+;; 6.16.b-2. select-keys / merge / set helpers come from core.clj.
+;;
+;; DIVERGENCE D-β: project / rename drop the JVM `with-meta` /
+;; `meta` wrap because cw v1 has no value-metadata system yet
+;; (Phase 7+ scope). join 3-arity `[xrel yrel km]` deferred to
+;; D-070 closure; ships 2-arity natural join only.
+;; ----------------------------------------------------------------
+
+;; `(select pred xset)` — return the subset of `xset` whose
+;; elements satisfy `pred`.
+(def select
+  (fn* [pred xset]
+    (reduce (fn* [s k] (if (pred k) s (disj s k))) xset xset)))
+
+;; `(project xrel ks)` — return a rel containing only the keys in
+;; `ks` for each map in `xrel`.
+(def project
+  (fn* [xrel ks]
+    (set (map (fn* [m] (select-keys m ks)) xrel))))
+
+;; `(rename xrel kmap)` — return a rel with the keys in each map
+;; renamed per kmap.
+(def rename
+  (fn* [xrel kmap]
+    (set (map (fn* [m] (rename-keys m kmap)) xrel))))
+
+;; `(index xrel ks)` — return a map of (selected-keys → set-of-maps).
+(def index
+  (fn* [xrel ks]
+    (reduce (fn* [m x]
+              (let* [ik (select-keys x ks)]
+                (assoc m ik (conj (get m ik #{}) x))))
+            {}
+            xrel)))
+
+;; `(join xrel yrel)` — natural join on the common keys. 3-arity
+;; key-map form `[xrel yrel km]` deferred to D-070 multi-arity
+;; closure.
+(def join
+  (fn* [xrel yrel]
+    (if (and (seq xrel) (seq yrel))
+      (let* [ks (intersection (set (keys (first xrel)))
+                              (set (keys (first yrel))))
+             smaller? (<= (count xrel) (count yrel))
+             r (if smaller? xrel yrel)
+             s (if smaller? yrel xrel)
+             idx (index r ks)]
+        (reduce (fn* [ret x]
+                  (let* [found (get idx (select-keys x ks))]
+                    (if found
+                      (reduce (fn* [acc m] (conj acc (merge m x))) ret found)
+                      ret)))
+                #{}
+                s))
+      #{})))

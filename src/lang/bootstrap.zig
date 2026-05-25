@@ -87,6 +87,21 @@ pub fn loadCore(
         }
     }
 
+    // Phase 6.16.b-3: core.clj now declares (in-ns 'clojure.core) at
+    // top, so its defs (not / map / filter / partial / select-keys /
+    // merge / set / etc.) live in clojure.core. Refer that ns into
+    // user/ + every other multi-file ns so unqualified resolution
+    // works at the REPL prompt and from clojure.set / walk / string
+    // `.clj` defns. (D-071 part 1; the (ns ...) macro proper lands
+    // at ADR-0035 / Phase 6.16.b-4.)
+    if (env.findNs("clojure.core")) |clojure_core_ns| {
+        for ([_][]const u8{ "user", "clojure.set", "clojure.string", "clojure.walk" }) |ns_name| {
+            if (env.findNs(ns_name)) |target| {
+                try env.referAll(clojure_core_ns, target);
+            }
+        }
+    }
+
     if (env.findNs("user")) |user_ns| {
         env.current_ns = user_ns;
     }

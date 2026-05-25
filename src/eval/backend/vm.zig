@@ -324,6 +324,9 @@ fn stepOnce(
                 if (env.findNs("rt")) |rt_ns| {
                     try env.referAll(rt_ns, env.current_ns.?);
                 }
+                if (env.findNs("clojure.core")) |clojure_core_ns| {
+                    try env.referAll(clojure_core_ns, env.current_ns.?);
+                }
                 if (sp >= OPERAND_STACK_MAX)
                     return raiseInternal("vm: operand stack overflow");
                 stack[sp] = Value.nil_val;
