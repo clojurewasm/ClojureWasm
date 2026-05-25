@@ -383,10 +383,7 @@ fn matchExceptionClass(class_name: []const u8, thrown: Value) bool {
     if (std.mem.eql(u8, class_name, "ExceptionInfo")) {
         return thrown.tag() == .ex_info;
     }
-    // Phase 3.11 only recognises `ExceptionInfo`; other class symbols
-    // were accepted at analyse time so user code stays readable. They
-    // simply never match a thrown Value until later phases extend the
-    // type-name table — mirrors `tree_walk.catchMatches`.
+    // PROVISIONAL: ExceptionInfo-only catch-class match pending type-name table [refs: D-077, feature_deps.yaml#runtime/eval/catch_class_table]
     return false;
 }
 

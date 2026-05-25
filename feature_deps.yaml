@@ -353,3 +353,27 @@ entries:
     status: landed
     requires_features: []
     requires_debts: []
+
+  - name: runtime/eval/catch_class_table
+    kind: runtime_layer
+    defined_in: src/eval/backend/tree_walk.zig
+    status: provisional
+    requires_features: []
+    requires_debts:
+      - D-077
+    provisional_markers:
+      - src/eval/backend/tree_walk.zig (catchMatches — ExceptionInfo-only)
+      - src/eval/backend/vm.zig (matchExceptionClass — ExceptionInfo-only)
+    notes: |
+      `(try ... (catch ClassName e ...))` accepts arbitrary class
+      symbols at analyse time so user code stays readable, but at
+      eval time both backends only match `ExceptionInfo` (= the
+      `.ex_info` tag). Any other class name silently fails to
+      match — the catch clause is dead code from the runtime's
+      perspective. JVM Clojure dispatches via `instance?` against
+      a real class hierarchy. cw v1 will land a class-name → tag
+      table when host class wiring (Phase 6 entry, D-048 + the
+      runtime/java/lang/Throwable Class skeleton) stabilises;
+      until then catchMatches is a single-class predicate. Two
+      mirrored sites (tree_walk + VM) discharge together.
+
