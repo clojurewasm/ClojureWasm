@@ -41,6 +41,7 @@ const Var = env_mod.Var;
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const vector_collection = @import("../../runtime/collection/vector.zig");
+const list_mod = @import("../../runtime/collection/list.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const node_mod = @import("../node.zig");
@@ -540,12 +541,19 @@ pub fn callFunction(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value,
         locals[f.slot_base + i] = v;
     }
     if (f.has_rest) {
-        // Phase-2 stub: the rest parameter would normally be a list of
-        // the trailing arguments. Building a list needs `cons` from
-        // `runtime/collection/list.zig`, which lands at task 2.7 in
-        // the form of registered primitives. For now, leave nil — no
-        // Phase-2 test hits a `& rest` body that observes this.
-        locals[f.slot_base + f.arity] = .nil_val;
+        // Build a list of the trailing args (those past `f.arity`).
+        // JVM Clojure binds `& rest` to a seq view; cw v1 builds the
+        // simpler heap List (Cons chain). Empty trailing → nil per
+        // `(defn f [& xs] xs) → (f)` returning nil (matches v1 list.rest
+        // empty-list semantics; full empty-PersistentList singleton
+        // lands at Phase 7 entry per ADR-0033 follow-up).
+        var rest_list: Value = .nil_val;
+        var i: usize = args.len;
+        while (i > f.arity) {
+            i -= 1;
+            rest_list = try list_mod.consHeap(rt, args[i], rest_list);
+        }
+        locals[f.slot_base + f.arity] = rest_list;
     }
     // VM backend hook: when the Function carries compiled bytecode and
     // the vtable has the `evalChunk` slot wired (vm.installVTable), run
