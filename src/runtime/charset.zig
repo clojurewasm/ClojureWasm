@@ -162,6 +162,111 @@ pub fn trimNewlineRight(s: []const u8) []const u8 {
     return s[0..end];
 }
 
+/// Codepoint index of the first occurrence of `needle` in `haystack`,
+/// or `null` if absent. Both must be valid UTF-8. Per cw v1
+/// DIVERGENCE D1 the unit is codepoint, not byte / UTF-16 code unit
+/// (the JVM `String.indexOf` UTF-16 quirk does not apply here).
+/// Empty `needle` matches at codepoint 0.
+pub fn codepointIndexOf(haystack: []const u8, needle: []const u8) ?usize {
+    if (needle.len == 0) return 0;
+    var iter = std.unicode.Utf8Iterator{ .bytes = haystack, .i = 0 };
+    var cp_pos: usize = 0;
+    var byte_pos: usize = 0;
+    while (byte_pos + needle.len <= haystack.len) {
+        if (std.mem.eql(u8, haystack[byte_pos..][0..needle.len], needle))
+            return cp_pos;
+        if (iter.nextCodepoint() == null) return null;
+        byte_pos = iter.i;
+        cp_pos += 1;
+    }
+    return null;
+}
+
+/// Codepoint index of the LAST occurrence of `needle` in `haystack`.
+/// Implementation: forward scan tracking the most recent match
+/// position (O(n·m) worst case — fine at clojure.string scale).
+pub fn codepointLastIndexOf(haystack: []const u8, needle: []const u8) ?usize {
+    if (needle.len == 0) {
+        // JVM `lastIndexOf("")` returns the string length; in cw v1
+        // codepoint units that's `codepointCount(haystack)`.
+        return codepointCount(haystack) catch return null;
+    }
+    var last: ?usize = null;
+    var iter = std.unicode.Utf8Iterator{ .bytes = haystack, .i = 0 };
+    var cp_pos: usize = 0;
+    var byte_pos: usize = 0;
+    while (byte_pos < haystack.len) {
+        if (byte_pos + needle.len <= haystack.len and
+            std.mem.eql(u8, haystack[byte_pos..][0..needle.len], needle))
+        {
+            last = cp_pos;
+        }
+        if (iter.nextCodepoint() == null) return last;
+        byte_pos = iter.i;
+        cp_pos += 1;
+    }
+    return last;
+}
+
+/// Replace every non-overlapping `needle` with `replacement` (string ⇒
+/// string semantics). Allocates a fresh slice on `alloc`; on `needle`
+/// match the substitution does NOT recurse (a la JVM
+/// `String.replace` — replacement bytes are not re-scanned). Empty
+/// `needle` returns a copy of `haystack` (matches JVM behaviour of
+/// not infinite-looping on empty needle).
+pub fn replaceAllStringAlloc(alloc: std.mem.Allocator, haystack: []const u8, needle: []const u8, replacement: []const u8) ![]u8 {
+    if (needle.len == 0) return try alloc.dupe(u8, haystack);
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(alloc);
+    var i: usize = 0;
+    while (i < haystack.len) {
+        if (i + needle.len <= haystack.len and
+            std.mem.eql(u8, haystack[i..][0..needle.len], needle))
+        {
+            try out.appendSlice(alloc, replacement);
+            i += needle.len;
+        } else {
+            try out.append(alloc, haystack[i]);
+            i += 1;
+        }
+    }
+    return try out.toOwnedSlice(alloc);
+}
+
+/// Replace the FIRST occurrence of `needle` with `replacement`.
+/// Allocation rules match `replaceAllStringAlloc`.
+pub fn replaceFirstStringAlloc(alloc: std.mem.Allocator, haystack: []const u8, needle: []const u8, replacement: []const u8) ![]u8 {
+    if (needle.len == 0) return try alloc.dupe(u8, haystack);
+    const hit = std.mem.find(u8, haystack, needle) orelse return try alloc.dupe(u8, haystack);
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(alloc);
+    try out.appendSlice(alloc, haystack[0..hit]);
+    try out.appendSlice(alloc, replacement);
+    try out.appendSlice(alloc, haystack[hit + needle.len ..]);
+    return try out.toOwnedSlice(alloc);
+}
+
+/// Reverse the codepoint order of `s`, returning a fresh UTF-8 byte
+/// slice. Surrogate pairs do not exist in UTF-8, so single-codepoint
+/// reverse is the natural semantics (JVM `StringBuilder.reverse()`
+/// has UTF-16 surrogate-aware code; cw v1 sidesteps the issue).
+pub fn reverseCodepointsAlloc(alloc: std.mem.Allocator, s: []const u8) ![]u8 {
+    var out = try alloc.alloc(u8, s.len);
+    errdefer alloc.free(out);
+    // Walk forward, copy each codepoint's bytes into the tail of `out`
+    // such that earlier codepoints end up later. One forward pass.
+    var iter = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
+    var write_end: usize = s.len;
+    var prev_i: usize = 0;
+    while (iter.nextCodepoint()) |_| {
+        const cp_bytes = s[prev_i..iter.i];
+        write_end -= cp_bytes.len;
+        @memcpy(out[write_end..][0..cp_bytes.len], cp_bytes);
+        prev_i = iter.i;
+    }
+    return out;
+}
+
 // --- tests ---
 
 const testing = std.testing;
@@ -249,6 +354,51 @@ test "trim on all-whitespace returns empty" {
 test "trimNewlineRight strips only \\r and \\n" {
     try testing.expectEqualStrings("line", trimNewlineRight("line\r\n"));
     try testing.expectEqualStrings("  hi  ", trimNewlineRight("  hi  "));
+}
+
+test "codepointIndexOf finds ASCII substring" {
+    try testing.expectEqual(@as(?usize, 6), codepointIndexOf("hello world", "world"));
+    try testing.expectEqual(@as(?usize, null), codepointIndexOf("hello", "x"));
+    try testing.expectEqual(@as(?usize, 0), codepointIndexOf("hello", ""));
+}
+
+test "codepointIndexOf returns codepoint index for multi-byte (D1)" {
+    try testing.expectEqual(@as(?usize, 2), codepointIndexOf("あbいc", "い"));
+}
+
+test "codepointLastIndexOf finds last occurrence" {
+    try testing.expectEqual(@as(?usize, 6), codepointLastIndexOf("hello hello", "hello"));
+    try testing.expectEqual(@as(?usize, null), codepointLastIndexOf("hello", "x"));
+}
+
+test "replaceAllStringAlloc replaces every occurrence" {
+    const out = try replaceAllStringAlloc(testing.allocator, "hello world", "l", "L");
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("heLLo worLd", out);
+}
+
+test "replaceAllStringAlloc returns copy when needle empty" {
+    const out = try replaceAllStringAlloc(testing.allocator, "hi", "", "x");
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("hi", out);
+}
+
+test "replaceFirstStringAlloc replaces only first" {
+    const out = try replaceFirstStringAlloc(testing.allocator, "hello world", "l", "L");
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("heLlo world", out);
+}
+
+test "reverseCodepointsAlloc reverses ASCII" {
+    const out = try reverseCodepointsAlloc(testing.allocator, "hello");
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("olleh", out);
+}
+
+test "reverseCodepointsAlloc reverses by codepoint not byte" {
+    const out = try reverseCodepointsAlloc(testing.allocator, "あいう");
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("ういあ", out);
 }
 
 test "substring slices on codepoint boundaries" {

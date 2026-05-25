@@ -25,6 +25,7 @@ const error_catalog = @import("../../runtime/error/catalog.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
 const charset = @import("../../runtime/charset.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
+const map_collection = @import("../../runtime/collection/map.zig");
 
 /// `(clojure.string/upper-case s)` — ASCII upper-case fold per cycle
 /// 1. Non-ASCII codepoints pass through unchanged; full Unicode case
@@ -160,6 +161,141 @@ pub fn includes(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return prefixImpl("includes?", .contains, args, loc);
 }
 
+/// `(clojure.string/index-of s substr)` — codepoint index of first
+/// occurrence, or nil. Per DIVERGENCE D1 the index is in codepoint
+/// units (JVM is UTF-16 code-unit index). 2-arity (substr) only at
+/// cycle 3; the optional `from-index` arity lands later when integer
+/// arg validation absorbs negative offsets.
+pub fn indexOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("index-of", args, 2, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "index-of", .actual = @tagName(args[0].tag()) });
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "index-of", .actual = @tagName(args[1].tag()) });
+    const idx = charset.codepointIndexOf(string_collection.asString(args[0]), string_collection.asString(args[1])) orelse return .nil_val;
+    return Value.initInteger(@intCast(idx));
+}
+
+/// `(clojure.string/last-index-of s substr)` — codepoint index of
+/// LAST occurrence, or nil.
+pub fn lastIndexOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("last-index-of", args, 2, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "last-index-of", .actual = @tagName(args[0].tag()) });
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "last-index-of", .actual = @tagName(args[1].tag()) });
+    const idx = charset.codepointLastIndexOf(string_collection.asString(args[0]), string_collection.asString(args[1])) orelse return .nil_val;
+    return Value.initInteger(@intCast(idx));
+}
+
+const ReplaceKind = enum { all, first };
+
+fn replaceImpl(rt: *Runtime, fn_name: []const u8, kind: ReplaceKind, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(fn_name, args, 3, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = fn_name, .actual = @tagName(args[0].tag()) });
+    // Cycle 3 supports only string-string match-replacement. char-char
+    // and regex-string / regex-fn forms raise feature_not_supported
+    // pending D-051 cycle 3 (captures) + a dedicated char-char arm
+    // (cycle 4 or later — see survey §3 DIVERGENCE D3).
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.string/replace with non-string match" });
+    if (args[2].tag() != .string)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.string/replace with non-string replacement" });
+    const haystack = string_collection.asString(args[0]);
+    const needle = string_collection.asString(args[1]);
+    const replacement = string_collection.asString(args[2]);
+    const out = switch (kind) {
+        .all => try charset.replaceAllStringAlloc(rt.gc.infra, haystack, needle, replacement),
+        .first => try charset.replaceFirstStringAlloc(rt.gc.infra, haystack, needle, replacement),
+    };
+    defer rt.gc.infra.free(out);
+    return try string_collection.alloc(rt, out);
+}
+
+/// `(clojure.string/replace s match replacement)` — cycle 3
+/// supports string-string only. Regex `Pattern` + `$N` captures land
+/// at D-051 cycle 3.
+pub fn replace(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    return replaceImpl(rt, "replace", .all, args, loc);
+}
+
+/// `(clojure.string/replace-first s match replacement)`.
+pub fn replaceFirst(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    return replaceImpl(rt, "replace-first", .first, args, loc);
+}
+
+/// `(clojure.string/reverse s)` — codepoint-reversed copy. UTF-8
+/// surrogate pairs are nonexistent so single-codepoint reversal is
+/// the natural semantics.
+pub fn reverse(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("reverse", args, 1, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "reverse", .actual = @tagName(args[0].tag()) });
+    const s = string_collection.asString(args[0]);
+    const out = try charset.reverseCodepointsAlloc(rt.gc.infra, s);
+    defer rt.gc.infra.free(out);
+    return try string_collection.alloc(rt, out);
+}
+
+/// `(clojure.string/escape s cmap)` — replace each character of `s`
+/// with the result of `(cmap c)`. cmap may be a map (`array_map` or
+/// `hash_map`) or a fn (`fn_val` / `builtin_fn`). When `(cmap c)`
+/// returns nil, the original character is kept; otherwise the
+/// returned value must be a string (cycle 3 limitation — Clojure
+/// JVM also accepts char and `(str ...)`-coercible values; cw v1's
+/// `str` coercion graduates in a later cycle).
+pub fn escape(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("escape", args, 2, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "escape", .actual = @tagName(args[0].tag()) });
+    const s = string_collection.asString(args[0]);
+    const cmap = args[1];
+
+    const cmap_kind: enum { map, fn_callable, unsupported } = switch (cmap.tag()) {
+        .array_map, .hash_map => .map,
+        .fn_val, .builtin_fn => .fn_callable,
+        else => .unsupported,
+    };
+    if (cmap_kind == .unsupported)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.string/escape with non-map non-fn cmap" });
+
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(rt.gc.infra);
+
+    var iter = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
+    var prev_i: usize = 0;
+    while (iter.nextCodepoint()) |cp| {
+        const char_bytes = s[prev_i..iter.i];
+        prev_i = iter.i;
+        const replacement: Value = switch (cmap_kind) {
+            .map => try map_collection.get(cmap, Value.initChar(cp)),
+            .fn_callable => blk: {
+                const callee_args = [_]Value{Value.initChar(cp)};
+                const vt = rt.vtable orelse return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.string/escape (vtable not installed)" });
+                break :blk try vt.callFn(rt, env, cmap, &callee_args, loc);
+            },
+            .unsupported => unreachable,
+        };
+        if (replacement.tag() == .nil) {
+            try out.appendSlice(rt.gc.infra, char_bytes);
+        } else if (replacement.tag() == .string) {
+            try out.appendSlice(rt.gc.infra, string_collection.asString(replacement));
+        } else {
+            return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.string/escape cmap returned non-nil non-string" });
+        }
+    }
+
+    return try string_collection.alloc(rt, out.items);
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -178,6 +314,12 @@ const ENTRIES = [_]Entry{
     .{ .name = "starts-with?", .f = &startsWith },
     .{ .name = "ends-with?", .f = &endsWith },
     .{ .name = "includes?", .f = &includes },
+    .{ .name = "index-of", .f = &indexOf },
+    .{ .name = "last-index-of", .f = &lastIndexOf },
+    .{ .name = "replace", .f = &replace },
+    .{ .name = "replace-first", .f = &replaceFirst },
+    .{ .name = "reverse", .f = &reverse },
+    .{ .name = "escape", .f = &escape },
 };
 
 /// Create the `clojure.string` namespace (idempotent — uses
