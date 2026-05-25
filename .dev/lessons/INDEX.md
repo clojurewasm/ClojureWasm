@@ -10,7 +10,11 @@
 
 ### Cluster A: Implementation patterns
 
-(empty)
+- [`phase_deferred_scaffolds.md`](phase_deferred_scaffolds.md) —
+  Phase-deferred scaffolds lose their homing path; complementary
+  detection layers (check_test_reach / lazy decl ride-along /
+  debt review); the aspirational-rule sibling (cross-cluster, see
+  also Cluster E).
 
 ### Cluster B: Clojure semantics
 
@@ -26,7 +30,9 @@
 
 ### Cluster E: Debugging and tooling
 
-(empty)
+- See cross-cluster reference: `phase_deferred_scaffolds.md`
+  (Cluster A) covers the test-orphan + compile-error-orphan
+  diagnostic + the `check_test_reach.sh` gate that catches them.
 
 ## Lesson file format
 

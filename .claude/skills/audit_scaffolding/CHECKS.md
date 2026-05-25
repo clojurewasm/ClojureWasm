@@ -132,10 +132,19 @@ Severity: **block** if Active claim is unwired.
 ### C2. CLAUDE.md "Read-only reference clones" actually exist
 
 ```sh
+# Synced with .dev/reference_clones.md + .claude/settings.json
+# additionalDirectories. If a path drifts, fix one of those two and
+# refresh this list.
 for path in \
   ~/Documents/MyProducts/ClojureWasm \
   ~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref \
-  ~/Documents/OSS/clojure ~/Documents/OSS/babashka ~/Documents/OSS/zig; do
+  ~/Documents/OSS/clojure \
+  ~/Documents/OSS/babashka \
+  ~/Documents/OSS/zig \
+  ~/Documents/OSS/spec.alpha \
+  ~/Documents/OSS/wasmtime \
+  ~/Documents/OSS/malli \
+  ~/Documents/OSS/mattpocock_skills; do
     test -d "$path" || echo "MISSING REF: $path"
 done
 ```

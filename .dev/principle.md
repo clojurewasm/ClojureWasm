@@ -88,8 +88,8 @@ these — and on others that fit the same shape:
   commits did", **stop and ask**: "is this a policy change?
   Where is it recorded?" If nowhere, either (a) follow the past
   pattern, or (b) record the new policy explicitly (CLAUDE.md /
-  `.dev/conventions.md` / principle.md / debt.md) before
-  applying the new default. Same shape as Reservation-as-bias
+  principle.md / debt.md / a relevant `.claude/rules/*.md` rule)
+  before applying the new default. Same shape as Reservation-as-bias
   and Smallest-diff bias — invisible drift away from committed
   intent.
 - **Stale-phase-ref smell** — code / docs / scripts cite a Phase
