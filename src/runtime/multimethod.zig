@@ -33,6 +33,7 @@ const HeapHeader = value.HeapHeader;
 const HeapTag = value.HeapTag;
 const Runtime = @import("runtime.zig").Runtime;
 const map_mod = @import("collection/map.zig");
+const set_mod = @import("collection/set.zig");
 const error_catalog = @import("error/catalog.zig");
 const symbol = @import("symbol.zig");
 
@@ -92,14 +93,45 @@ pub const MultiFn = extern struct {
     cached_hierarchy_snapshot: Value,
 };
 
+/// cw v1 `isa?` check, cycle-2 scope: equality + hierarchy
+/// ancestors-map lookup. Mirrors `clojure.core/isa?` steps 1 + 3.
+/// Step 2 (`Class.isAssignableFrom`) and step 4 (`supers` walk)
+/// have no JVM-direct equivalent in cw v1 per ADR-0007 Option β +
+/// `.claude/rules/no_jvm_specific_assumption.md` — they will be
+/// replaced by the TypeDescriptor walk DIVERGENCE in a later
+/// cycle (cw-side replacement for JVM class hierarchy).
+///
+/// `hierarchy_ancestors` is the `:ancestors` sub-map of a
+/// hierarchy struct: `{child #{ancestor1 ancestor2 ...}, ...}`.
+/// `nil` means "no hierarchy" — falls back to equality only.
+/// cycle 4 introduces the full-hierarchy IRef deref + `:ancestors`
+/// extraction inside `getMethod`; until then the test fixture
+/// passes the ancestors-map directly via `hierarchy_ref`.
+pub fn isaCheck(hierarchy_ancestors: Value, child: Value, parent: Value) !bool {
+    if (@intFromEnum(child) == @intFromEnum(parent)) return true;
+
+    if (hierarchy_ancestors.tag() == .nil) return false;
+
+    const child_ancestors = try map_mod.get(hierarchy_ancestors, child);
+    if (child_ancestors.tag() != .hash_set) return false;
+    return try set_mod.contains(child_ancestors, parent);
+}
+
 /// Resolve `dispatch_val` to a method Value on `mf`.
 ///
-/// Phase 7.2 cycle 1 implements: exact match in `method_table` →
-/// return; otherwise fall through to `default_dispatch_val` →
-/// return; otherwise raise `multimethod_no_method`. The full
-/// algorithm (isa? walk + prefer resolution + ambiguity raise +
-/// cache fill + cache-invalidation on hierarchy drift) lands in
-/// cycles 2-5 of row 7.2.
+/// Resolution order:
+///   1. Exact match in `method_table` → return.
+///   2. Hierarchy walk via `isaCheck`. Zero matches → continue.
+///      One match → return. >1 matches → raise
+///      `multimethod_ambiguous_dispatch` (cycle 3 will use
+///      `prefer-method` to resolve before raising).
+///   3. Default fallback (`default_dispatch_val`) → return.
+///   4. No method anywhere → raise `multimethod_no_method`.
+///
+/// `mf.hierarchy_ref` carries the ancestors-map for cycle 2 (no
+/// IRef indirection yet — cycle 4 wires `deref()` and full
+/// `:ancestors` extraction). `mf.method_cache` is unused until
+/// cycle 4 lights it up.
 pub fn getMethod(
     rt: *Runtime,
     mf: *const MultiFn,
@@ -110,6 +142,31 @@ pub fn getMethod(
 
     const direct = try map_mod.get(mf.method_table, dispatch_val);
     if (direct.tag() != .nil) return direct;
+
+    var candidate: ?Value = null;
+    var ambiguous = false;
+    if (mf.method_table.tag() == .array_map) {
+        const am = mf.method_table.decodePtr(*const map_mod.ArrayMap);
+        var i: u32 = 0;
+        while (i < am.count) : (i += 1) {
+            const key = am.entries[2 * i];
+            if (@intFromEnum(key) == @intFromEnum(dispatch_val)) continue;
+            if (try isaCheck(mf.hierarchy_ref, dispatch_val, key)) {
+                if (candidate != null) {
+                    ambiguous = true;
+                } else {
+                    candidate = am.entries[2 * i + 1];
+                }
+            }
+        }
+    }
+    if (ambiguous) {
+        const name_sym = symbol.asSymbol(mf.name);
+        return error_catalog.raise(.multimethod_ambiguous_dispatch, loc, .{
+            .name = name_sym.name,
+        });
+    }
+    if (candidate) |c| return c;
 
     const fallback = try map_mod.get(mf.method_table, mf.default_dispatch_val);
     if (fallback.tag() != .nil) return fallback;
@@ -220,4 +277,140 @@ test "getMethod falls through to default when exact match misses" {
     const missing = try keyword.intern(&fix.rt, null, "missing");
     const got = try getMethod(&fix.rt, mf, missing, .{});
     try testing.expectEqual(@intFromEnum(default_method), @intFromEnum(got));
+}
+
+// --- cycle 2: isaCheck + hierarchy walk ---
+
+test "isaCheck: equality short-circuits regardless of hierarchy" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const kw = try keyword.intern(&fix.rt, null, "x");
+    try testing.expect(try isaCheck(Value.nil_val, kw, kw));
+}
+
+test "isaCheck: hierarchy ancestors lookup recognises (derive :dog :animal)" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const dog = try keyword.intern(&fix.rt, null, "dog");
+    const animal = try keyword.intern(&fix.rt, null, "animal");
+
+    // Hierarchy ancestors-map: {:dog #{:animal}}
+    const dog_ancestors_set = try set_mod.conj(&fix.rt, set_mod.empty(), animal);
+    const hierarchy_anc = try map_mod.assoc(&fix.rt, map_mod.empty(), dog, dog_ancestors_set);
+
+    try testing.expect(try isaCheck(hierarchy_anc, dog, animal));
+    try testing.expect(!(try isaCheck(hierarchy_anc, animal, dog)));
+}
+
+test "isaCheck: nil hierarchy falls back to equality only" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const a = try keyword.intern(&fix.rt, null, "a");
+    const b = try keyword.intern(&fix.rt, null, "b");
+    try testing.expect(!(try isaCheck(Value.nil_val, a, b)));
+}
+
+test "getMethod: hierarchy walk returns ancestor's method on isa? match" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const name_sym = try symbol.intern(&fix.rt, "test", "f");
+    const default_kw = try keyword.intern(&fix.rt, null, "default");
+    const dog = try keyword.intern(&fix.rt, null, "dog");
+    const animal = try keyword.intern(&fix.rt, null, "animal");
+    const animal_method = try keyword.intern(&fix.rt, null, "method-animal");
+
+    const dog_ancestors_set = try set_mod.conj(&fix.rt, set_mod.empty(), animal);
+    const hierarchy_anc = try map_mod.assoc(&fix.rt, map_mod.empty(), dog, dog_ancestors_set);
+    const mt = try map_mod.assoc(&fix.rt, map_mod.empty(), animal, animal_method);
+
+    const mf = try rt_gc_makeTestMultiFnWithHierarchy(&fix.rt, name_sym, mt, default_kw, hierarchy_anc);
+    const got = try getMethod(&fix.rt, mf, dog, .{});
+    try testing.expectEqual(@intFromEnum(animal_method), @intFromEnum(got));
+}
+
+test "getMethod: hierarchy walk raises multimethod_ambiguous_dispatch on multiple matches" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const name_sym = try symbol.intern(&fix.rt, "test", "f");
+    const default_kw = try keyword.intern(&fix.rt, null, "default");
+    const dog = try keyword.intern(&fix.rt, null, "dog");
+    const animal = try keyword.intern(&fix.rt, null, "animal");
+    const mammal = try keyword.intern(&fix.rt, null, "mammal");
+    const animal_method = try keyword.intern(&fix.rt, null, "method-animal");
+    const mammal_method = try keyword.intern(&fix.rt, null, "method-mammal");
+
+    // (derive :dog :animal) (derive :dog :mammal) — two ancestors,
+    // no prefer-method declared (cycle 3 adds resolution). cw v1
+    // raises ambiguity; matches JVM Clojure semantics.
+    var dog_ancestors = set_mod.empty();
+    dog_ancestors = try set_mod.conj(&fix.rt, dog_ancestors, animal);
+    dog_ancestors = try set_mod.conj(&fix.rt, dog_ancestors, mammal);
+    const hierarchy_anc = try map_mod.assoc(&fix.rt, map_mod.empty(), dog, dog_ancestors);
+
+    var mt = map_mod.empty();
+    mt = try map_mod.assoc(&fix.rt, mt, animal, animal_method);
+    mt = try map_mod.assoc(&fix.rt, mt, mammal, mammal_method);
+
+    const mf = try rt_gc_makeTestMultiFnWithHierarchy(&fix.rt, name_sym, mt, default_kw, hierarchy_anc);
+    try testing.expectError(
+        error.ValueError,
+        getMethod(&fix.rt, mf, dog, .{}),
+    );
+}
+
+test "getMethod: hierarchy walk falls through to default when no isa? match" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const name_sym = try symbol.intern(&fix.rt, "test", "f");
+    const default_kw = try keyword.intern(&fix.rt, null, "default");
+    const default_method = try keyword.intern(&fix.rt, null, "method-default");
+    const dog = try keyword.intern(&fix.rt, null, "dog");
+    const animal = try keyword.intern(&fix.rt, null, "animal");
+
+    // method_table = {:animal → method, :default → default-method}
+    // No hierarchy ancestors for :dog → no isa? match → default returned.
+    var mt = map_mod.empty();
+    mt = try map_mod.assoc(&fix.rt, mt, animal, try keyword.intern(&fix.rt, null, "ignored"));
+    mt = try map_mod.assoc(&fix.rt, mt, default_kw, default_method);
+
+    const mf = try rt_gc_makeTestMultiFnWithHierarchy(&fix.rt, name_sym, mt, default_kw, Value.nil_val);
+    const got = try getMethod(&fix.rt, mf, dog, .{});
+    try testing.expectEqual(@intFromEnum(default_method), @intFromEnum(got));
+}
+
+/// Like `makeTestMultiFn` but lets the caller supply a non-nil
+/// `hierarchy_ref`. cycle 2 test fixtures pass the ancestors-map
+/// directly via this arg (no IRef indirection yet).
+fn rt_gc_makeTestMultiFnWithHierarchy(
+    rt: *Runtime,
+    name_sym: Value,
+    method_table: Value,
+    default_kw: Value,
+    hierarchy_ref: Value,
+) !*MultiFn {
+    const mf = try rt.gc.alloc(MultiFn);
+    mf.* = .{
+        .header = HeapHeader.init(.multi_fn),
+        .name = name_sym,
+        .dispatch_fn = Value.nil_val,
+        .default_dispatch_val = default_kw,
+        .hierarchy_ref = hierarchy_ref,
+        .method_table = method_table,
+        .prefer_table = map_mod.empty(),
+        .method_cache = map_mod.empty(),
+        .cached_hierarchy_snapshot = Value.nil_val,
+    };
+    return mf;
 }

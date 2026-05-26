@@ -205,6 +205,15 @@ pub const Code = enum {
     /// Clojure's `IllegalArgumentException("No method in
     /// multimethod ...")`.
     multimethod_no_method,
+    /// args: `.{ .name = "user/area" }` — raised when the
+    /// hierarchy walk finds more than one matching method on
+    /// the multimethod's method table and `prefer-method` does
+    /// not resolve the conflict. Mirrors JVM Clojure's
+    /// `IllegalArgumentException("Multiple methods in
+    /// multimethod ... match dispatch value ... and neither is
+    /// preferred")`. cycle 3 of row 7.2 widens the template to
+    /// name the conflicting keys; cycle 2 only carries the name.
+    multimethod_ambiguous_dispatch,
 
     /// Tier D forms — permanently outside cw scope (ADR-0013). One
     /// Code per form, each with a hand-written multi-sentence
@@ -306,6 +315,10 @@ pub fn entry(comptime code: Code) Entry {
         .multimethod_no_method => .{
             .kind = .value_error, .phase = .eval,
             .template = "No method in multimethod '{[name]s}' for dispatch value",
+        },
+        .multimethod_ambiguous_dispatch => .{
+            .kind = .value_error, .phase = .eval,
+            .template = "Multiple methods in multimethod '{[name]s}' match dispatch value and neither is preferred",
         },
         .bindings_form_incomplete => .{
             .kind = .syntax_error, .phase = .analysis,
