@@ -17,6 +17,8 @@ const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
+const keyword_mod = @import("../../runtime/keyword.zig");
+const string_mod = @import("../../runtime/collection/string.zig");
 
 /// `(nil? x)` — true iff `x` is the singleton nil Value.
 pub fn nilQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -314,6 +316,47 @@ pub fn natIntQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return if (args[0].asInteger() >= 0) .true_val else .false_val;
 }
 
+/// `(keyword s)` / `(keyword ns s)` — intern a keyword Value.
+/// 1-arg: if `s` is already a keyword, return it (idempotent); if
+/// `s` is a string, intern `(nil, s)`. Other input types raise
+/// `feature_not_supported` for now (symbol → keyword conversion
+/// blocked on F-004 symbol Value).
+/// 2-arg: both must be strings; intern `(ns, name)`.
+pub fn keywordFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len == 1) {
+        const x = args[0];
+        if (x.tag() == .keyword) return x;
+        if (x.tag() == .string) {
+            return keyword_mod.intern(rt, null, string_mod.asString(x));
+        }
+        if (x.isNil()) return .nil_val;
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "keyword conversion from non-string/non-keyword" });
+    } else if (args.len == 2) {
+        if (args[0].tag() != .string or args[1].tag() != .string)
+            return error_catalog.raise(.feature_not_supported, loc, .{ .name = "keyword (2-arg) requires both ns and name to be strings" });
+        return keyword_mod.intern(rt, string_mod.asString(args[0]), string_mod.asString(args[1]));
+    }
+    return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "keyword", .got = args.len, .min = 1, .max = 2 });
+}
+
+/// `(name x)` — return the string name component of a keyword or
+/// string. For keywords, drops the `:` prefix and any `ns/` part.
+/// For strings, returns the string itself (idempotent). Other
+/// types raise `feature_not_supported` (symbol → name blocked on
+/// F-004 symbol Value).
+pub fn nameFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("name", args, 1, loc);
+    const x = args[0];
+    if (x.tag() == .string) return x;
+    if (x.tag() == .keyword) {
+        const kw = keyword_mod.asKeyword(x);
+        return string_mod.alloc(rt, kw.name);
+    }
+    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "name on non-string/non-keyword" });
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -352,6 +395,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "pos-int?", .f = &posIntQ },
     .{ .name = "neg-int?", .f = &negIntQ },
     .{ .name = "nat-int?", .f = &natIntQ },
+    .{ .name = "keyword", .f = &keywordFn },
+    .{ .name = "name", .f = &nameFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
