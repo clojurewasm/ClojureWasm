@@ -131,34 +131,49 @@ pub fn dispatch(
     args: []const Value,
     loc: SourceLocation,
 ) anyerror!Value {
-    // Resolve receiver's TypeDescriptor: typed_instance carries its
-    // own; native Tag receivers consult the per-Tag default registry
-    // (cycle 8.5 — Runtime.nativeDescriptor). The fallback raises
-    // protocol_no_satisfies when allocation fails OR when no method
-    // is registered for `(td, protocol, method)`.
-    const td: *const td_mod.TypeDescriptor = if (receiver.tag() == .typed_instance) blk: {
-        const inst = receiver.decodePtr(*const td_mod.TypedInstance);
-        break :blk inst.descriptor;
-    } else if (receiver.tag() == .reified_instance) blk: {
-        // Row 7.5 cycle 2 (ADR-0039): ReifiedInstance carries its
-        // anonymous descriptor at the same offset-8 position; the
-        // dispatch resolution is structurally identical to
-        // typed_instance.
-        const inst = receiver.decodePtr(*const td_mod.ReifiedInstance);
-        break :blk inst.descriptor;
-    } else try rt.nativeDescriptor(receiver.tag());
-    const me = cs.lookupWithCache(td, protocol_name, method_name, rt.protocol_generation) orelse {
-        return error_catalog.raise(.protocol_no_satisfies, loc, .{
-            .protocol = protocol_name,
-            .method = method_name,
-            .type_name = td.fqcn orelse "<anonymous>",
-        });
-    };
+    if (try dispatchOrNull(rt, env, cs, receiver, protocol_name, method_name, args, loc)) |v| return v;
+    const td = try resolveDescriptor(rt, receiver);
+    return error_catalog.raise(.protocol_no_satisfies, loc, .{
+        .protocol = protocol_name,
+        .method = method_name,
+        .type_name = td.fqcn orelse "<anonymous>",
+    });
+}
+
+/// Same resolution as `dispatch`, but returns `null` instead of raising
+/// `protocol_no_satisfies` when the receiver's descriptor chain carries
+/// no matching MethodEntry. Used by polymorphic-primitive `.typed_instance`
+/// arms (row 7.7 / ADR-0008 amendment 4): when the user installs a
+/// protocol-method override via `extend-type`, this returns the call
+/// result; otherwise the caller falls back to its fast-path default
+/// (e.g. `count` returns `field_count` for defrecord without an override).
+pub fn dispatchOrNull(
+    rt: *Runtime,
+    env: *Env,
+    cs: *CallSite,
+    receiver: Value,
+    protocol_name: []const u8,
+    method_name: []const u8,
+    args: []const Value,
+    loc: SourceLocation,
+) anyerror!?Value {
+    const td = try resolveDescriptor(rt, receiver);
+    const me = cs.lookupWithCache(td, protocol_name, method_name, rt.protocol_generation) orelse return null;
     if (me.method_val.tag() == .nil) return error_catalog.raise(.feature_not_supported, loc, .{
         .name = "protocol method with nil method_val (declare-only)",
     });
     const vt = rt.vtable orelse return error.NoVTable;
-    return vt.callFn(rt, env, me.method_val, args, loc);
+    return try vt.callFn(rt, env, me.method_val, args, loc);
+}
+
+fn resolveDescriptor(rt: *Runtime, receiver: Value) anyerror!*const td_mod.TypeDescriptor {
+    return if (receiver.tag() == .typed_instance) blk: {
+        const inst = receiver.decodePtr(*const td_mod.TypedInstance);
+        break :blk inst.descriptor;
+    } else if (receiver.tag() == .reified_instance) blk: {
+        const inst = receiver.decodePtr(*const td_mod.ReifiedInstance);
+        break :blk inst.descriptor;
+    } else try rt.nativeDescriptor(receiver.tag());
 }
 
 // --- threadlocal call-scoped state ---

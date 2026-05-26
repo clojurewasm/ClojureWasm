@@ -163,13 +163,24 @@ pub const TypeDescriptorRef = extern struct {
 
 /// Allocate a `TypeDescriptorRef` on `rt.gc.infra` that points at
 /// the given descriptor. Returns a `.type_descriptor`-tagged Value.
+/// The ref itself is process-lifetime (rt.gc.infra-allocated); rt
+/// tracks it via `trackHeap` so `rt.deinit` frees it without
+/// emitting a DebugAllocator leak diagnostic — row 7.7 cycle 1
+/// surfaced this latent gap when `(rt/__native-type :integer)` got
+/// exercised on every bootstrap-defprotocol-using path.
 pub fn makeTypeDescriptorRef(rt: *Runtime, td: *const TypeDescriptor) !Value {
     const ref = try rt.gc.infra.create(TypeDescriptorRef);
     ref.* = .{
         .header = HeapHeader.init(.type_descriptor),
         .td_ptr = td,
     };
+    try rt.trackHeap(.{ .ptr = ref, .free = freeTypeDescriptorRef });
     return Value.encodeHeapPtr(.type_descriptor, ref);
+}
+
+fn freeTypeDescriptorRef(gpa: std.mem.Allocator, ptr: *anyopaque) void {
+    const ref: *TypeDescriptorRef = @ptrCast(@alignCast(ptr));
+    gpa.destroy(ref);
 }
 
 /// Decode a `.type_descriptor`-tagged Value back to its
@@ -487,7 +498,8 @@ test "TypeDescriptorRef round-trips a TypeDescriptor pointer through .type_descr
     };
 
     const v = try makeTypeDescriptorRef(&fix.rt, td);
-    defer fix.rt.gc.infra.destroy(@constCast(v.decodePtr(*const TypeDescriptorRef)));
+    // makeTypeDescriptorRef registers the ref via rt.trackHeap (row 7.7
+    // cycle 1) — rt.deinit owns the destroy; no manual defer here.
     try testing.expect(v.tag() == .type_descriptor);
     try testing.expect(asTypeDescriptorRef(v) == td);
 }

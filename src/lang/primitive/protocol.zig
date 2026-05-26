@@ -101,7 +101,16 @@ pub fn makeProtocol(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     const fqcn = try allocFqcn(rt, args[0]);
     errdefer rt.gc.infra.free(fqcn);
     const methods = try allocMethods(rt, args[1], loc);
-    return protocol_mod.makeProtocol(rt, fqcn, methods);
+    errdefer if (methods.len > 0) rt.gc.infra.free(methods);
+    const v = try protocol_mod.makeProtocol(rt, fqcn, methods);
+    // Register the descriptor + its owned fqcn / methods slices for
+    // rt.deinit cleanup. Without this, every `(defprotocol …)` form
+    // — including the bootstrap row 7.7 `IPersistentCollection` — leaks
+    // DebugAllocator diagnostics at process exit. Test fixtures in
+    // `runtime/protocol.zig` keep the prior manual-destroy shape
+    // because their fqcn / methods are stack / rodata literals.
+    try rt.trackHeap(.{ .ptr = @constCast(@ptrCast(protocol_mod.asProtocol(v))), .free = protocol_mod.freeOwnedProtocol });
+    return v;
 }
 
 /// `(rt/__make-protocol-fn! proto method-name)` — allocate a
@@ -131,7 +140,10 @@ pub fn makeProtocolFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     // remain valid for the runtime's lifetime — dupe onto infra so
     // a future String GC sweep does not dangle the pointer.
     const name_dup = try rt.gc.infra.dupe(u8, string_mod.asString(args[1]));
-    return protocol_mod.makeProtocolFn(rt, proto, name_dup);
+    errdefer rt.gc.infra.free(name_dup);
+    const v = try protocol_mod.makeProtocolFn(rt, proto, name_dup);
+    try rt.trackHeap(.{ .ptr = @constCast(@ptrCast(protocol_mod.asProtocolFn(v))), .free = protocol_mod.freeOwnedProtocolFn });
+    return v;
 }
 
 /// `(rt/__extend-type! td-ref proto impls-vec)` — mutate the
@@ -480,23 +492,23 @@ const TestFixture = struct {
 };
 
 /// Test-only cleanup: release a `.protocol` Value's infra-owned
-/// fqcn slice + methods slice + the descriptor struct itself. Mirrors
-/// the cycle 1-5 policy — production runtime leaks these on purpose
-/// (descriptors are process-lifetime + live CallSite caches reference
-/// them), tests free explicitly so `testing.allocator` is satisfied.
+/// Row 7.7 cycle 1 retired the manual test-cleanup:
+/// `makeProtocol` / `makeProtocolFn` now register their owned
+/// allocations via `rt.trackHeap` so `rt.deinit` frees them. These
+/// helpers stay as no-op shims so existing `defer destroyProto…ForTest(...)`
+/// sites in the unit tests below keep their structural shape
+/// (one-line minimal-touch retirement — the tests are unchanged in
+/// intent, only the redundant cleanup goes away). The shims will
+/// disappear together with their `defer` sites in a follow-up
+/// commit once the row 7.7 close-cycle retro-audit lands.
 fn destroyProtoForTest(rt: *Runtime, val: Value) void {
-    const pd = protocol_mod.asProtocol(val);
-    rt.gc.infra.free(pd.fqcn());
-    rt.gc.infra.free(pd.methods());
-    rt.gc.infra.destroy(@constCast(pd));
+    _ = rt;
+    _ = val;
 }
 
-/// Test-only cleanup for a `.protocol_fn` Value — frees the
-/// infra-owned method-name dup + the struct itself.
 fn destroyProtoFnForTest(rt: *Runtime, val: Value) void {
-    const pfn = protocol_mod.asProtocolFn(val);
-    rt.gc.infra.free(pfn.methodName());
-    rt.gc.infra.destroy(@constCast(pfn));
+    _ = rt;
+    _ = val;
 }
 
 test "__make-protocol! returns a .protocol Value carrying the qualified symbol name" {
@@ -682,7 +694,8 @@ test "__extend-type! appends method_val rows + bumps protocol_generation" {
         .meta = Value.nil_val,
     };
     const td_ref = try td_mod.makeTypeDescriptorRef(&fix.rt, td);
-    defer fix.rt.gc.infra.destroy(@constCast(td_ref.decodePtr(*const td_mod.TypeDescriptorRef)));
+    // makeTypeDescriptorRef trackHeap-registers the ref (row 7.7 cycle 1);
+    // rt.deinit owns the destroy.
 
     const impl_fn = Value.initBuiltinFn(&extendTypeMockBuiltin);
     var impls = vector_mod.empty();
@@ -739,8 +752,8 @@ test "__defrecord! registers a TypeDescriptor with .kind = .defrecord" {
     // Row 7.4 cycle 5 changed the return value from nil_val to a
     // `TypeDescriptorRef` so the macro lowering can `(def Name ...)`.
     try testing.expect(result.tag() == .type_descriptor);
-    // Test-only cleanup: free the gc.infra-allocated ref struct.
-    defer fix.rt.gc.infra.destroy(@constCast(result.decodePtr(*const td_mod.TypeDescriptorRef)));
+    // makeTypeDescriptorRef trackHeap-registers the ref (row 7.7 cycle 1);
+    // rt.deinit owns the destroy.
 
     const td = fix.rt.types.get("Point") orelse return error.TestUnexpectedResult;
     try testing.expectEqual(td_mod.TypeKind.defrecord, td.kind);

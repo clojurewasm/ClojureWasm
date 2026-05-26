@@ -52,6 +52,12 @@ const lazy_seq = @import("../../runtime/lazy_seq.zig");
 const charset = @import("../../runtime/charset.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
 
+/// Protocol fqcn the hybrid slow-path matches against `MethodEntry.protocol_name`.
+/// Bootstrap declares the protocol in `lang/clj/clojure/core.clj` so the fqcn
+/// `allocFqcn` stores at extend-type time is the bare symbol name (see
+/// `lang/primitive/protocol.zig:41-51`). Per ADR-0008 amendment 4 (row 7.7).
+const IPC_FQCN: []const u8 = "IPersistentCollection";
+
 // --- count ---
 
 /// Implements clojure.core/count.
@@ -86,19 +92,21 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         .hash_set => Value.initInteger(@intCast(set.count(coll))),
         .chunked_cons => Value.initInteger(@intCast(chunked_cons.count(coll))),
         .typed_instance => blk: {
-            // Row 7.4 cycle 3: defrecord exposes its declared-field
-            // count via the IPersistentMap surface; deftype is not
-            // counted? per JVM precedent (Counted is implemented by
-            // IPersistentMap-bearing types only).
+            // Row 7.7 R3a (ADR-0008 amendment 4): consult the protocol
+            // method_table first; user `(extend-type X IPersistentCollection
+            // (-count [_] …))` overrides the defrecord field_count default.
+            // Falls back to field_count for defrecord without an override
+            // (preserves row 7.4 cycle 3 semantics) and to
+            // protocol_no_satisfies for deftype.
+            var cs: dispatch.CallSite = .{};
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPC_FQCN, "-count", args, loc)) |v| break :blk v;
             const inst = coll.decodePtr(*const td_mod.TypedInstance);
-            if (inst.descriptor.kind != .defrecord) {
-                return error_catalog.raise(.type_arg_invalid, loc, .{
-                    .fn_name = "count",
-                    .expected = "counted? collection",
-                    .actual = @tagName(coll.tag()),
-                });
-            }
-            break :blk Value.initInteger(@intCast(inst.field_count));
+            if (inst.descriptor.kind == .defrecord) break :blk Value.initInteger(@intCast(inst.field_count));
+            return error_catalog.raise(.protocol_no_satisfies, loc, .{
+                .protocol = IPC_FQCN,
+                .method = "-count",
+                .type_name = inst.descriptor.fqcn orelse "<anonymous>",
+            });
         },
         .lazy_seq => {
             // O(n) walk: realize and count via seq chain.
@@ -109,11 +117,17 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             }
             return Value.initInteger(n);
         },
-        else => return error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "count",
-            .expected = "counted? collection",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // Row 7.7 outer slow-path: route through dispatch against
+            // `clojure.core/IPersistentCollection -count`. Reaches
+            // `(extend-type LongTag IPersistentCollection -count …)` style
+            // native-Tag overrides via the row 7.3 per-Tag descriptor
+            // registry; raises protocol_no_satisfies when no MethodEntry
+            // is registered (cleaner JVM-parity diagnostic than the
+            // pre-7.7 type_arg_invalid).
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, IPC_FQCN, "-count", args, loc);
+        },
     };
 }
 

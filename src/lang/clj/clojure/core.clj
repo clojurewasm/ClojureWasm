@@ -107,3 +107,21 @@
 (def set
   (fn* [coll] (reduce conj #{} coll)))
 
+;; ----------------------------------------------------------------
+;; Phase 7 §9.9 row 7.7 — hybrid polymorphic primitives' protocol surface.
+;;
+;; The `count` / `seq` / `conj` / `reduce` primitives keep their
+;; Zig Tag-switch fast-path for native tags and route the slow-path
+;; (= extend-type targets) through these protocol declarations. The
+;; fqcn the slow-path matches in `MethodEntry.protocol_name` is the
+;; bare symbol name (no ns prefix, per `allocFqcn` at
+;; `lang/primitive/protocol.zig:41-51`), so `"IPersistentCollection"`
+;; is the string the dispatch path uses.
+;;
+;; Methods land one per cycle: cycle 1 adds `-count`; cycles 2-4 add
+;; `-seq` / `-cons` / `-reduce` as `seq` / `conj` / `reduce` are
+;; wired into their hybrid shape.
+;; ----------------------------------------------------------------
+
+(defprotocol IPersistentCollection (-count [c]))
+

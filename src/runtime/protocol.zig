@@ -81,6 +81,23 @@ pub fn makeProtocol(
     return Value.encodeHeapPtr(.protocol, pd);
 }
 
+/// Free a heap-allocated `ProtocolDescriptor` whose fqcn + methods
+/// slices were `gpa.dupe`d / `gpa.alloc`d at construction time (i.e.
+/// the user-facing `lang/primitive/protocol.zig::makeProtocol` path).
+/// `lang/primitive/protocol.zig::makeProtocol` registers this fn via
+/// `rt.trackHeap` so `rt.deinit` cleans up the bootstrap
+/// `(defprotocol IPersistentCollection …)` form (row 7.7 cycle 1) and
+/// any user `(defprotocol …)` form without leaking on every cljw
+/// invocation. Test fixtures (lines 215+) keep the prior manual
+/// `defer rt.gc.infra.destroy(...)` shape because their fqcn + methods
+/// are stack / rodata literals.
+pub fn freeOwnedProtocol(gpa: std.mem.Allocator, ptr: *anyopaque) void {
+    const pd: *ProtocolDescriptor = @ptrCast(@alignCast(ptr));
+    gpa.free(pd.fqcn());
+    if (pd.methods_len > 0) gpa.free(pd.methods());
+    gpa.destroy(pd);
+}
+
 /// Decode a `.protocol`-tagged Value back to its
 /// `*const ProtocolDescriptor`. Asserts the tag.
 pub fn asProtocol(val: Value) *const ProtocolDescriptor {
@@ -133,6 +150,15 @@ pub fn makeProtocolFn(
         .method_name_len = method_name.len,
     };
     return Value.encodeHeapPtr(.protocol_fn, pfn);
+}
+
+/// Companion to `freeOwnedProtocol`: frees a ProtocolFn whose
+/// method_name was `gpa.dupe`d at construction time
+/// (`lang/primitive/protocol.zig::makeProtocolFn` line 133).
+pub fn freeOwnedProtocolFn(gpa: std.mem.Allocator, ptr: *anyopaque) void {
+    const pfn: *ProtocolFn = @ptrCast(@alignCast(ptr));
+    gpa.free(pfn.methodName());
+    gpa.destroy(pfn);
 }
 
 /// Decode a `.protocol_fn`-tagged Value back to its `*ProtocolFn`.
