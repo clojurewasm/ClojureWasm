@@ -147,6 +147,13 @@ pub const Code = enum {
     defmulti_name_invalid,
     defmethod_form_incomplete,
     defmethod_params_not_vector,
+    defprotocol_form_incomplete,
+    defprotocol_name_invalid,
+    defprotocol_method_invalid,
+    extend_type_form_incomplete,
+    extend_type_method_invalid,
+    extend_protocol_form_incomplete,
+    extend_protocol_section_invalid,
     prefer_method_form_incomplete,
     when_let_form_incomplete,
     /// args: `.{ .name = "<macro-name>" }`
@@ -558,6 +565,34 @@ pub fn entry(comptime code: Code) Entry {
         .prefer_method_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "prefer-method requires multifn, x, y",
+        },
+        .defprotocol_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defprotocol requires a name and at least one method signature",
+        },
+        .defprotocol_name_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defprotocol name must be an unqualified symbol",
+        },
+        .defprotocol_method_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defprotocol method signature must be a list `(method-name [params...])`",
+        },
+        .extend_type_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "extend-type requires a target, a protocol, and at least one method implementation",
+        },
+        .extend_type_method_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "extend-type method implementation must be a list `(method-name [params...] body...)`",
+        },
+        .extend_protocol_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "extend-protocol requires a protocol and at least one (type method...) section",
+        },
+        .extend_protocol_section_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "extend-protocol section must lead with a type symbol followed by one or more method-impl lists",
         },
         .when_let_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,

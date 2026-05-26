@@ -90,11 +90,15 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "defmulti", .expand = expandDefmulti },
     .{ .name = "defmethod", .expand = expandDefmethod },
     .{ .name = "prefer-method", .expand = expandPreferMethod },
+    .{ .name = "defprotocol", .expand = expandDefprotocol },
+    .{ .name = "extend-type", .expand = expandExtendType },
+    .{ .name = "extend-protocol", .expand = expandExtendProtocol },
 };
 
 // --- Form-construction conveniences ---
 
 const list = macro_dispatch.makeList;
+const vec = macro_dispatch.makeVector;
 const sym = macro_dispatch.makeSymbol;
 const nilForm = macro_dispatch.makeNil;
 
@@ -551,6 +555,227 @@ fn expandPreferMethod(
     return list(arena, call_items, loc);
 }
 
+// --- defprotocol — declare a protocol name + its method dispatch fns ---
+//
+// `(defprotocol P (m1 [x]) (m2 [x y]))` lowers to:
+//   (do
+//     (def P (rt/__make-protocol! 'P ['m1 'm2]))
+//     (def m1 (rt/__make-protocol-fn! P "m1"))
+//     (def m2 (rt/__make-protocol-fn! P "m2")))
+//
+// Each method-sig is `(method-name [params...])` — arity defaults
+// to 1 inside cycle 6 `__make-protocol!` (row 7.4 `definterface`
+// will extend the surface for arity overload). The param vector
+// is consumed for shape-validation only.
+fn expandDefprotocol(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 2)
+        return error_catalog.raise(.defprotocol_form_incomplete, loc, .{});
+    if (args[0].data != .symbol or args[0].data.symbol.ns != null)
+        return error_catalog.raise(.defprotocol_name_invalid, args[0].location, .{});
+
+    const name_form = args[0];
+    const method_sigs = args[1..];
+
+    // Collect each method-name Symbol from `(method-name [params])`.
+    const method_names = try arena.alloc(Form, method_sigs.len);
+    for (method_sigs, 0..) |sig, i| {
+        if (sig.data != .list or sig.data.list.len < 1 or sig.data.list[0].data != .symbol)
+            return error_catalog.raise(.defprotocol_method_invalid, sig.location, .{});
+        method_names[i] = sig.data.list[0];
+    }
+
+    // Build the method-names vector `['m1 'm2 ...]` — each entry is
+    // (quote method-name) so it evaluates to a Symbol Value at
+    // runtime (the cycle 6 `__make-protocol!` primitive iterates a
+    // Vector of method-name Symbols).
+    const quoted_methods = try arena.alloc(Form, method_names.len);
+    for (method_names, 0..) |m, i| {
+        var q = try arena.alloc(Form, 2);
+        q[0] = sym("quote", loc);
+        q[1] = m;
+        quoted_methods[i] = try list(arena, q, loc);
+    }
+    const methods_vec = try vec(arena, quoted_methods, loc);
+
+    // (quote name)
+    var quoted_name_items = try arena.alloc(Form, 2);
+    quoted_name_items[0] = sym("quote", loc);
+    quoted_name_items[1] = name_form;
+    const quoted_name = try list(arena, quoted_name_items, loc);
+
+    // (rt/__make-protocol! 'name [method-quotes])
+    var make_proto_items = try arena.alloc(Form, 3);
+    make_proto_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "__make-protocol!" } }, .location = loc };
+    make_proto_items[1] = quoted_name;
+    make_proto_items[2] = methods_vec;
+    const make_proto_call = try list(arena, make_proto_items, loc);
+
+    // (def name (rt/__make-protocol! ...))
+    var def_proto_items = try arena.alloc(Form, 3);
+    def_proto_items[0] = sym("def", loc);
+    def_proto_items[1] = name_form;
+    def_proto_items[2] = make_proto_call;
+    const def_proto = try list(arena, def_proto_items, loc);
+
+    // For each method: (def m-name (rt/__make-protocol-fn! name "m-name"))
+    const method_defs = try arena.alloc(Form, method_names.len);
+    for (method_names, 0..) |m, i| {
+        var make_fn_items = try arena.alloc(Form, 3);
+        make_fn_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "__make-protocol-fn!" } }, .location = loc };
+        make_fn_items[1] = name_form;
+        make_fn_items[2] = .{ .data = .{ .string = m.data.symbol.name }, .location = loc };
+        const make_fn_call = try list(arena, make_fn_items, loc);
+
+        var def_fn_items = try arena.alloc(Form, 3);
+        def_fn_items[0] = sym("def", loc);
+        def_fn_items[1] = m;
+        def_fn_items[2] = make_fn_call;
+        method_defs[i] = try list(arena, def_fn_items, loc);
+    }
+
+    // (do def-proto def-method-1 def-method-2 ...)
+    var do_items = try arena.alloc(Form, 2 + method_defs.len);
+    do_items[0] = sym("do", loc);
+    do_items[1] = def_proto;
+    @memcpy(do_items[2..], method_defs);
+    return list(arena, do_items, loc);
+}
+
+// --- extend-type — install one or more method impls on a TypeDescriptor ---
+//
+// `(extend-type Foo P (m1 [x] body1) (m2 [x] body2))` lowers to:
+//   (rt/__extend-type! Foo P [["m1" (fn* [x] body1)] ["m2" (fn* [x] body2)]])
+//
+// Each method-impl is `(method-name [params...] body...)` — same
+// shape as defmethod's clauses.
+fn expandExtendType(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 3)
+        return error_catalog.raise(.extend_type_form_incomplete, loc, .{});
+
+    const target_form = args[0];
+    const protocol_form = args[1];
+    const method_impls = args[2..];
+
+    const impl_pairs = try arena.alloc(Form, method_impls.len);
+    for (method_impls, 0..) |impl, i| {
+        if (impl.data != .list or impl.data.list.len < 3 or
+            impl.data.list[0].data != .symbol or
+            impl.data.list[1].data != .vector)
+        {
+            return error_catalog.raise(.extend_type_method_invalid, impl.location, .{});
+        }
+        const method_name = impl.data.list[0].data.symbol.name;
+        const params_form = impl.data.list[1];
+        const body = impl.data.list[2..];
+
+        const body_form = if (body.len == 1) body[0] else blk: {
+            var do_items = try arena.alloc(Form, body.len + 1);
+            do_items[0] = sym("do", impl.location);
+            @memcpy(do_items[1..], body);
+            break :blk try list(arena, do_items, impl.location);
+        };
+
+        // (fn* params body)
+        var fn_items = try arena.alloc(Form, 3);
+        fn_items[0] = sym("fn*", impl.location);
+        fn_items[1] = params_form;
+        fn_items[2] = body_form;
+        const fn_form = try list(arena, fn_items, impl.location);
+
+        // ["method-name" fn-form]
+        var pair_items = try arena.alloc(Form, 2);
+        pair_items[0] = .{ .data = .{ .string = method_name }, .location = impl.location };
+        pair_items[1] = fn_form;
+        impl_pairs[i] = try vec(arena, pair_items, impl.location);
+    }
+    const impls_vec = try vec(arena, impl_pairs, loc);
+
+    // (rt/__extend-type! target protocol impls_vec)
+    var call_items = try arena.alloc(Form, 4);
+    call_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "__extend-type!" } }, .location = loc };
+    call_items[1] = target_form;
+    call_items[2] = protocol_form;
+    call_items[3] = impls_vec;
+    return list(arena, call_items, loc);
+}
+
+// --- extend-protocol — distribute one protocol over many types ---
+//
+// `(extend-protocol P
+//    Foo (m1 [x] ...) (m2 [x] ...)
+//    Bar (m1 [y] ...))`
+// lowers to:
+//   (do
+//     (extend-type Foo P (m1 [x] ...) (m2 [x] ...))
+//     (extend-type Bar P (m1 [y] ...)))
+//
+// Sections are grouped by leading type-symbol; method-impl lists
+// belong to the most-recent type-symbol section.
+fn expandExtendProtocol(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 3)
+        return error_catalog.raise(.extend_protocol_form_incomplete, loc, .{});
+
+    const protocol_form = args[0];
+
+    // Walk args[1..]; symbol forms open a new section, list forms
+    // append method-impls to the current section. First non-protocol
+    // arg must be a type symbol.
+    if (args[1].data != .symbol)
+        return error_catalog.raise(.extend_protocol_section_invalid, args[1].location, .{});
+
+    var sections: std.ArrayList(Form) = .empty;
+    defer sections.deinit(arena);
+
+    var i: usize = 1;
+    while (i < args.len) {
+        if (args[i].data != .symbol)
+            return error_catalog.raise(.extend_protocol_section_invalid, args[i].location, .{});
+        const type_form = args[i];
+        i += 1;
+        const impls_start = i;
+        while (i < args.len and args[i].data == .list) : (i += 1) {}
+        const impls = args[impls_start..i];
+        if (impls.len == 0)
+            return error_catalog.raise(.extend_protocol_section_invalid, type_form.location, .{});
+
+        // Build `(extend-type type-form protocol-form impls...)` —
+        // the analyzer re-expands this through expandExtendType on
+        // the next macro pass, so no need to duplicate the
+        // method-impl normalisation here.
+        var ext_items = try arena.alloc(Form, 3 + impls.len);
+        ext_items[0] = sym("extend-type", type_form.location);
+        ext_items[1] = type_form;
+        ext_items[2] = protocol_form;
+        @memcpy(ext_items[3..], impls);
+        try sections.append(arena, try list(arena, ext_items, type_form.location));
+    }
+
+    if (sections.items.len == 1) return sections.items[0];
+
+    var do_items = try arena.alloc(Form, sections.items.len + 1);
+    do_items[0] = sym("do", loc);
+    @memcpy(do_items[1..], sections.items);
+    return list(arena, do_items, loc);
+}
+
 fn expandWhenLet(
     arena: std.mem.Allocator,
     rt: *Runtime,
@@ -769,4 +994,145 @@ test "expandOr handles 10000 args without StackOverflow (4.3 regression)" {
     }
     const expanded = try expandOr(arena, &fix.rt, args.items, .{});
     try testing.expectEqualStrings("let*", expanded.data.list[0].data.symbol.name);
+}
+
+// --- row 7.3 cycle 7 macro tests ---
+
+fn expectSymbolEq(form: Form, expected: []const u8) !void {
+    try testing.expect(form.data == .symbol);
+    try testing.expectEqualStrings(expected, form.data.symbol.name);
+}
+
+test "expandDefprotocol lowers to (do (def P ...) (def m1 ...))" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const arena = fix.arena.allocator();
+    const p_sym = sym("P", .{});
+    const m1_sym = sym("m1", .{});
+    const this_sym = sym("this", .{});
+    const params_v = try arena.dupe(Form, &.{this_sym});
+    const params_form = Form{ .data = .{ .vector = params_v }, .location = .{} };
+    const sig_list = try arena.dupe(Form, &.{ m1_sym, params_form });
+    const sig_form = Form{ .data = .{ .list = sig_list }, .location = .{} };
+
+    const args = [_]Form{ p_sym, sig_form };
+    const out = try expandDefprotocol(arena, &fix.rt, &args, .{});
+    try testing.expect(out.data == .list);
+    try expectSymbolEq(out.data.list[0], "do");
+    try testing.expectEqual(@as(usize, 3), out.data.list.len); // (do def-proto def-m1)
+
+    const def_proto = out.data.list[1];
+    try testing.expect(def_proto.data == .list);
+    try expectSymbolEq(def_proto.data.list[0], "def");
+    try expectSymbolEq(def_proto.data.list[1], "P");
+
+    const make_proto_call = def_proto.data.list[2];
+    try testing.expect(make_proto_call.data == .list);
+    try testing.expectEqualStrings("__make-protocol!", make_proto_call.data.list[0].data.symbol.name);
+
+    const def_m1 = out.data.list[2];
+    try testing.expect(def_m1.data == .list);
+    try expectSymbolEq(def_m1.data.list[0], "def");
+    try expectSymbolEq(def_m1.data.list[1], "m1");
+}
+
+test "expandDefprotocol rejects 0-method form via defprotocol_form_incomplete" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const arena = fix.arena.allocator();
+    const args = [_]Form{sym("P", .{})};
+    try testing.expectError(error.SyntaxError, expandDefprotocol(arena, &fix.rt, &args, .{}));
+}
+
+test "expandExtendType lowers to (rt/__extend-type! target proto [[\"m\" (fn* ...)]])" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const arena = fix.arena.allocator();
+    const foo_sym = sym("Foo", .{});
+    const p_sym = sym("P", .{});
+    const m_sym = sym("m", .{});
+    const this_sym = sym("this", .{});
+    const params_v = try arena.dupe(Form, &.{this_sym});
+    const params_form = Form{ .data = .{ .vector = params_v }, .location = .{} };
+    const body = Form{ .data = .{ .integer = 99 }, .location = .{} };
+    const impl_list = try arena.dupe(Form, &.{ m_sym, params_form, body });
+    const impl_form = Form{ .data = .{ .list = impl_list }, .location = .{} };
+
+    const args = [_]Form{ foo_sym, p_sym, impl_form };
+    const out = try expandExtendType(arena, &fix.rt, &args, .{});
+    try testing.expect(out.data == .list);
+    try testing.expectEqualStrings("__extend-type!", out.data.list[0].data.symbol.name);
+    try expectSymbolEq(out.data.list[1], "Foo");
+    try expectSymbolEq(out.data.list[2], "P");
+
+    const impls_vec = out.data.list[3];
+    try testing.expect(impls_vec.data == .vector);
+    try testing.expectEqual(@as(usize, 1), impls_vec.data.vector.len);
+    const pair = impls_vec.data.vector[0];
+    try testing.expect(pair.data == .vector);
+    try testing.expect(pair.data.vector[0].data == .string);
+    try testing.expectEqualStrings("m", pair.data.vector[0].data.string);
+
+    const fn_form = pair.data.vector[1];
+    try testing.expect(fn_form.data == .list);
+    try expectSymbolEq(fn_form.data.list[0], "fn*");
+}
+
+test "expandExtendProtocol distributes one protocol over multiple types" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const arena = fix.arena.allocator();
+    const p_sym = sym("P", .{});
+    const long_sym = sym("Long", .{});
+    const string_sym = sym("String", .{});
+    const m_sym = sym("m", .{});
+    const this_sym = sym("this", .{});
+    const params_v = try arena.dupe(Form, &.{this_sym});
+    const params_form = Form{ .data = .{ .vector = params_v }, .location = .{} };
+    const body_long = Form{ .data = .{ .keyword = .{ .ns = null, .name = "long" } }, .location = .{} };
+    const body_str = Form{ .data = .{ .keyword = .{ .ns = null, .name = "str" } }, .location = .{} };
+    const long_impl_list = try arena.dupe(Form, &.{ m_sym, params_form, body_long });
+    const str_impl_list = try arena.dupe(Form, &.{ m_sym, params_form, body_str });
+    const long_impl = Form{ .data = .{ .list = long_impl_list }, .location = .{} };
+    const str_impl = Form{ .data = .{ .list = str_impl_list }, .location = .{} };
+
+    const args = [_]Form{ p_sym, long_sym, long_impl, string_sym, str_impl };
+    const out = try expandExtendProtocol(arena, &fix.rt, &args, .{});
+    try testing.expect(out.data == .list);
+    try expectSymbolEq(out.data.list[0], "do");
+    try testing.expectEqual(@as(usize, 3), out.data.list.len);
+    try expectSymbolEq(out.data.list[1].data.list[0], "extend-type");
+    try expectSymbolEq(out.data.list[1].data.list[1], "Long");
+    try expectSymbolEq(out.data.list[2].data.list[0], "extend-type");
+    try expectSymbolEq(out.data.list[2].data.list[1], "String");
+}
+
+test "expandExtendProtocol single section drops the (do ...) wrapper" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const arena = fix.arena.allocator();
+    const p_sym = sym("P", .{});
+    const long_sym = sym("Long", .{});
+    const m_sym = sym("m", .{});
+    const this_sym = sym("this", .{});
+    const params_v = try arena.dupe(Form, &.{this_sym});
+    const params_form = Form{ .data = .{ .vector = params_v }, .location = .{} };
+    const body = Form{ .data = .{ .keyword = .{ .ns = null, .name = "ok" } }, .location = .{} };
+    const impl_list = try arena.dupe(Form, &.{ m_sym, params_form, body });
+    const impl_form = Form{ .data = .{ .list = impl_list }, .location = .{} };
+
+    const args = [_]Form{ p_sym, long_sym, impl_form };
+    const out = try expandExtendProtocol(arena, &fix.rt, &args, .{});
+    try testing.expect(out.data == .list);
+    try expectSymbolEq(out.data.list[0], "extend-type");
 }
