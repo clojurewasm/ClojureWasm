@@ -60,15 +60,17 @@ pub const CallSite = struct {
     pub fn lookupWithCache(
         self: *CallSite,
         td: *const TypeDescriptor,
-        protocol_name: []const u8,
+        protocol_name: ?[]const u8,
         method_name: []const u8,
         current_generation: u32,
     ) ?*const TypeDescriptor.MethodEntry {
         if (self.last_type == td and self.cached_generation == current_generation) {
             if (self.last_method) |m| {
-                if (std.mem.eql(u8, m.protocol_name, protocol_name) and
-                    std.mem.eql(u8, m.method_name, method_name))
-                {
+                const proto_ok = if (protocol_name) |pn|
+                    std.mem.eql(u8, m.protocol_name, pn)
+                else
+                    true;
+                if (proto_ok and std.mem.eql(u8, m.method_name, method_name)) {
                     return m;
                 }
             }

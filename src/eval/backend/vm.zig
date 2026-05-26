@@ -31,6 +31,7 @@ const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const tree_walk = @import("tree_walk.zig");
 const ex_info_mod = @import("../../runtime/collection/ex_info.zig");
+const td_mod = @import("../../runtime/type_descriptor.zig");
 
 const Opcode = opcode_mod.Opcode;
 const Instruction = opcode_mod.Instruction;
@@ -421,6 +422,88 @@ fn stepOnce(
                 }
                 sp -= n;
                 stack[sp] = s;
+                sp += 1;
+            },
+            .op_deftype => {
+                // Row 7.6 cycle 4 (ADR-0040). Analyzer-time `registerType`
+                // already populated rt.types; the dispatch just pushes
+                // nil (matches TreeWalk's evalDeftype).
+                if (sp >= OPERAND_STACK_MAX)
+                    return raiseInternal("vm: operand stack overflow");
+                stack[sp] = Value.nil_val;
+                sp += 1;
+            },
+            .op_ctor_call => {
+                // operand = (name_idx << 8) | arg_count
+                const name_idx: u16 = instr.operand >> 8;
+                const arg_count: u16 = instr.operand & 0xFF;
+                if (name_idx >= chunk.constants.len)
+                    return raiseInternal("vm: op_ctor_call name index out of range");
+                const name_val = chunk.constants[name_idx];
+                if (!name_val.isString())
+                    return raiseInternal("vm: op_ctor_call name is not a String");
+                const type_name = string_mod.asString(name_val);
+                const td = rt.types.get(type_name) orelse
+                    return error_catalog.raise(.symbol_unresolved, .{}, .{ .sym = type_name });
+                if (sp < arg_count) return raiseInternal("vm: op_ctor_call underflow");
+                const args_slice = stack[sp - arg_count .. sp];
+                const new_val = try td_mod.allocInstance(rt, td, args_slice);
+                sp -= arg_count;
+                stack[sp] = new_val;
+                sp += 1;
+            },
+            .op_field_access => {
+                if (instr.operand >= chunk.constants.len)
+                    return raiseInternal("vm: op_field_access name index out of range");
+                const name_val = chunk.constants[instr.operand];
+                if (!name_val.isString())
+                    return raiseInternal("vm: op_field_access name is not a String");
+                const field_name = string_mod.asString(name_val);
+                if (sp == 0) return raiseInternal("vm: op_field_access empty stack");
+                const recv = stack[sp - 1];
+                if (recv.tag() != .typed_instance)
+                    return error_catalog.raise(.type_arg_not_number, .{}, .{ .fn_name = "field access", .actual = @tagName(recv.tag()) });
+                const inst = recv.decodePtr(*const td_mod.TypedInstance);
+                const layout = inst.descriptor.field_layout orelse
+                    return error_catalog.raise(.symbol_unresolved, .{}, .{ .sym = field_name });
+                var found_val: ?Value = null;
+                for (layout) |fe| {
+                    if (std.mem.eql(u8, fe.name, field_name)) {
+                        found_val = inst.fields()[fe.index];
+                        break;
+                    }
+                }
+                if (found_val == null)
+                    return error_catalog.raise(.symbol_unresolved, .{}, .{ .sym = field_name });
+                stack[sp - 1] = found_val.?;
+            },
+            .op_method_call => {
+                // operand = call_site_idx
+                if (instr.operand >= chunk.call_sites.len)
+                    return raiseInternal("vm: op_method_call call_site index out of range");
+                const cs_entry = &chunk.call_sites[instr.operand];
+                const arg_count: u16 = cs_entry.arg_count;
+                if (sp < arg_count) return raiseInternal("vm: op_method_call underflow");
+                const receiver = stack[sp - arg_count];
+                const td: *const td_mod.TypeDescriptor = if (receiver.tag() == .typed_instance) blk: {
+                    break :blk receiver.decodePtr(*const td_mod.TypedInstance).descriptor;
+                } else if (receiver.tag() == .reified_instance) blk: {
+                    break :blk receiver.decodePtr(*const td_mod.ReifiedInstance).descriptor;
+                } else try rt.nativeDescriptor(receiver.tag());
+                const me = cs_entry.cache.lookupWithCache(td, null, cs_entry.method_name, rt.protocol_generation) orelse {
+                    return error_catalog.raise(.protocol_no_satisfies, .{}, .{
+                        .protocol = "<.method>",
+                        .method = cs_entry.method_name,
+                        .type_name = td.fqcn orelse "<anonymous>",
+                    });
+                };
+                if (me.method_val.tag() == .nil)
+                    return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "method declared but not implemented" });
+                const args_slice = stack[sp - arg_count .. sp];
+                const vt = rt.vtable orelse return error.NoVTable;
+                const result = try vt.callFn(rt, env, me.method_val, args_slice, .{});
+                sp -= arg_count;
+                stack[sp] = result;
                 sp += 1;
             },
     }

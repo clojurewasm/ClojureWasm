@@ -58,11 +58,16 @@ pub fn compile(
     return try c.finalize();
 }
 
+const CallSiteEntry = opcode_mod.CallSiteEntry;
+
 const Compiler = struct {
     rt: *Runtime,
     arena: std.mem.Allocator,
     instructions: std.ArrayList(Instruction),
     constants: std.ArrayList(Value),
+    /// Row 7.6 cycle 4 (ADR-0040) — per-call-site cache side-table.
+    /// Each `op_method_call` instruction's operand indexes here.
+    call_sites: std.ArrayList(CallSiteEntry),
     /// Innermost enclosing `loop*` frame, or `null` outside a loop.
     /// `compileRecur` reads this to know the back-edge target IP and
     /// the slot list to rebind. Saved/restored across nested loops.
@@ -82,6 +87,7 @@ const Compiler = struct {
             .arena = arena,
             .instructions = .empty,
             .constants = .empty,
+            .call_sites = .empty,
             .current_loop = null,
         };
     }
@@ -89,6 +95,7 @@ const Compiler = struct {
     fn deinit(self: *Compiler) void {
         self.instructions.deinit(self.arena);
         self.constants.deinit(self.arena);
+        self.call_sites.deinit(self.arena);
     }
 
     fn compileNode(self: *Compiler, node: *const Node) Error!void {
@@ -107,14 +114,10 @@ const Compiler = struct {
             .try_node => |n| try self.compileTry(n),
             .loop_node => |n| try self.compileLoop(n),
             .recur_node => |n| try self.compileRecur(n),
-            // VM-DEFER: deftype VM bytecode shape pending row 7.6 MethodCallNode design [refs: D-073, feature_deps.yaml#runtime/vm/dispatch_family]
-            .deftype_node => return error.NotImplemented,
-            // VM-DEFER: ctor_call VM bytecode shape pending row 7.6 MethodCallNode design [refs: D-073, feature_deps.yaml#runtime/vm/dispatch_family]
-            .ctor_call_node => return error.NotImplemented,
-            // VM-DEFER: field_access VM bytecode shape pending row 7.6 MethodCallNode design [refs: D-073, feature_deps.yaml#runtime/vm/dispatch_family]
-            .field_access_node => return error.NotImplemented,
-            // VM-DEFER: method_call VM bytecode shape pending row 7.6 cycle 4 op decision [refs: D-073, feature_deps.yaml#runtime/vm/dispatch_family]
-            .method_call_node => return error.NotImplemented,
+            .deftype_node => |n| try self.compileDeftype(n),
+            .ctor_call_node => |n| try self.compileCtorCall(n),
+            .field_access_node => |n| try self.compileFieldAccess(n),
+            .method_call_node => |n| try self.compileMethodCall(n),
             .in_ns_node => |n| try self.compileInNs(n),
             .require_node => |n| try self.compileRequire(n),
             .ns_node => |n| try self.compileNs(n),
@@ -363,6 +366,57 @@ const Compiler = struct {
         try self.emit(.op_throw, 0);
     }
 
+    // --- Row 7.6 cycle 4 (ADR-0040) deftype-family + method-dispatch ---
+
+    /// `(deftype Name [fields])` — analyzer-time `registerType`
+    /// already populated `rt.types`. The VM op pushes nil to match
+    /// TreeWalk's `evalDeftype` return. Operand is unused for now
+    /// (reserved for future per-deftype side-table metadata).
+    fn compileDeftype(self: *Compiler, n: node_mod.DeftypeNode) Error!void {
+        _ = n;
+        try self.emit(.op_deftype, 0);
+    }
+
+    /// `(Name. args...)` — evaluate each arg, emit op_ctor_call with
+    /// the type-name constant index packed with arity. Operand layout
+    /// matches the row 7.6 cycle 4 ABI: `(name_idx << 8) | arg_count`.
+    fn compileCtorCall(self: *Compiler, n: node_mod.CtorCallNode) Error!void {
+        for (n.args) |*a| try self.compileNode(a);
+        const name_val = try string_mod.alloc(self.rt, n.type_name);
+        const name_idx = try self.addConstant(name_val);
+        if (n.args.len > 0xFF) return Error.TooManyCallArgs;
+        const operand: u16 = (@as(u16, name_idx) << 8) | @as(u16, @intCast(n.args.len));
+        try self.emit(.op_ctor_call, operand);
+    }
+
+    /// `(.field instance)` — compile the target onto the stack, then
+    /// emit op_field_access with the field-name constant index.
+    fn compileFieldAccess(self: *Compiler, n: node_mod.FieldAccessNode) Error!void {
+        try self.compileNode(n.target);
+        const name_val = try string_mod.alloc(self.rt, n.field_name);
+        const name_idx = try self.addConstant(name_val);
+        try self.emit(.op_field_access, name_idx);
+    }
+
+    /// `(.method instance args...)` — compile receiver + each arg onto
+    /// the stack, allocate a CallSiteEntry in the side-table, emit
+    /// op_method_call with the call-site index. Total `arg_count` (in
+    /// the CallSiteEntry) covers receiver + args so dispatch can pop
+    /// the right number of values.
+    fn compileMethodCall(self: *Compiler, n: node_mod.MethodCallNode) Error!void {
+        try self.compileNode(n.target);
+        for (n.args) |*a| try self.compileNode(a);
+        if (self.call_sites.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+        const cs_idx: u16 = @intCast(self.call_sites.items.len);
+        const method_name_dup = try self.arena.dupe(u8, n.method_name);
+        const total_args: u16 = @intCast(1 + n.args.len);
+        try self.call_sites.append(self.arena, .{
+            .method_name = method_name_dup,
+            .arg_count = total_args,
+        });
+        try self.emit(.op_method_call, cs_idx);
+    }
+
     fn compileInNs(self: *Compiler, n: node_mod.InNsNode) Error!void {
         // ADR-0032 in-ns VM path. Heap-allocate the ns name as a
         // String Value (the dispatcher decodes it via
@@ -461,7 +515,8 @@ const Compiler = struct {
     fn finalize(self: *Compiler) Error!BytecodeChunk {
         const instrs = try self.arena.dupe(Instruction, self.instructions.items);
         const consts = try self.arena.dupe(Value, self.constants.items);
-        return .{ .instructions = instrs, .constants = consts };
+        const sites = try self.arena.dupe(CallSiteEntry, self.call_sites.items);
+        return .{ .instructions = instrs, .constants = consts, .call_sites = sites };
     }
 };
 

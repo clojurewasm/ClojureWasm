@@ -19,6 +19,7 @@
 
 const std = @import("std");
 const Value = @import("../../../runtime/value/value.zig").Value;
+const method_table = @import("../../../runtime/dispatch/method_table.zig");
 
 /// Bytecode operations dispatched by the VM.
 ///
@@ -122,6 +123,28 @@ pub const Opcode = enum(u8) {
     /// amendment). Discharges D-073 cluster sub-site (e). Mirrors
     /// `tree_walk::evalNs` post-T3 gating.
     op_ns_with_refer_clojure = 0x17,
+    /// Row 7.6 cycle 4 (ADR-0040): deftype-family + method-dispatch
+    /// cluster opcodes. Replace the D-073 VM-DEFER stubs (sub-sites
+    /// a+b+c+f).
+    ///
+    /// `(deftype Name [fields])` — operand = constants index of a
+    /// pre-built `TypeDescriptorRef` Value. Analyzer-time
+    /// `registerType` already populated `rt.types`; the op pushes
+    /// `nil` (matches `evalDeftype` return).
+    op_deftype = 0x18,
+    /// `(Name. args)` — operand = `(name_const_idx << 8) |
+    /// arg_count`. Pops `arg_count` values, looks up descriptor via
+    /// `rt.types.get(name)`, allocates a TypedInstance via
+    /// `td_mod.allocInstance`.
+    op_ctor_call = 0x19,
+    /// `(.field instance)` — operand = constants index of field name
+    /// String. Pops receiver, walks `descriptor.field_layout`.
+    op_field_access = 0x1A,
+    /// `(.method instance args...)` — operand = `call_site_idx` into
+    /// `BytecodeChunk.call_sites`. Pops receiver + args, dispatches
+    /// via `cs.lookupWithCache(td, null, method_name, generation)`
+    /// then `vt.callFn(rt, env, method_val, args, loc)`.
+    op_method_call = 0x1B,
 };
 
 /// `op_def` operand layout — see the Opcode docstring.
@@ -142,14 +165,28 @@ pub const Instruction = struct {
     operand: u16 = 0,
 };
 
+/// Per-call-site cache entry — row 7.6 cycle 4 (ADR-0040 Shape 1.b).
+/// Each `op_method_call` instruction references one of these by
+/// index. The `cache` field is mutated at dispatch time; the rest
+/// is compile-time fixed. Analyzer-arena-owned (chunk lifetime).
+pub const CallSiteEntry = struct {
+    method_name: []const u8,
+    arg_count: u16,
+    cache: method_table.CallSite = .{},
+};
+
 /// Compiled bytecode for a single function or top-level form.
 ///
-/// The chunk is immutable after compile. The compiler (task 4.5)
-/// owns the slices through the analyzer arena; the VM borrows them
-/// for the duration of a call.
+/// The chunk is immutable after compile (except for `call_sites[i].cache`
+/// which mutates monomorphically at first dispatch). The compiler
+/// (task 4.5) owns the slices through the analyzer arena; the VM
+/// borrows them for the duration of a call.
 pub const BytecodeChunk = struct {
     instructions: []const Instruction,
     constants: []const Value,
+    /// Side-table indexed by `op_method_call` operand. Empty for
+    /// chunks that contain no method-call sites.
+    call_sites: []CallSiteEntry = &.{},
 };
 
 test "opcode enum tags are stable u8 values" {
