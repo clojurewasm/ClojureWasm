@@ -263,7 +263,7 @@ test "build_options exposes phase_at_least_N comptime bools (ADR-0023)" {
     try std.testing.expect(@TypeOf(build_options.phase_at_least_17) == bool);
     try std.testing.expect(build_options.phase_at_least_5 == true);
     try std.testing.expect(build_options.phase_at_least_6 == true);
-    try std.testing.expect(build_options.phase_at_least_7 == false);
+    try std.testing.expect(build_options.phase_at_least_7 == true);
     try std.testing.expect(build_options.phase_at_least_11 == false);
     try std.testing.expect(build_options.phase_at_least_14 == false);
     try std.testing.expect(build_options.phase_at_least_15 == false);

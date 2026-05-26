@@ -200,6 +200,7 @@ run_step "e2e_phase7_zip_cycle1"             "bash test/e2e/phase7_zip_cycle1.sh
 run_step "e2e_phase7_zip_cycle2"             "bash test/e2e/phase7_zip_cycle2.sh"
 run_step "e2e_phase7_zip_cycle3"             "bash test/e2e/phase7_zip_cycle3.sh"
 run_step "e2e_phase7_zip_cycle4"             "bash test/e2e/phase7_zip_cycle4.sh"
+run_step "e2e_phase7_exit_smoke"             "bash test/e2e/phase7_exit_smoke.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional
