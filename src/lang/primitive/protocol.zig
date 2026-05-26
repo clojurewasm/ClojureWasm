@@ -309,14 +309,104 @@ pub fn defrecordPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
 /// `(rt/__reify! [interfaces] [[method-name proto fn-val]...])` —
 /// allocate an anonymous TypeDescriptor + ReifiedInstance pair.
 ///
-/// Row 7.5 cycle 1 ships this as a transient stub raising
-/// `feature_not_supported`. Cycle 3 lands the happy path (descriptor
-/// + ReifiedInstance allocation + GC hook wiring + dispatch arm).
+/// `interfaces` is a Vector of `.protocol`-tagged Values (the
+/// `defprotocol`-bound symbols evaluate to these at call time).
+/// `method-rows` is a Vector of 3-element Vectors `[name proto fn]`
+/// — each row binds one (protocol, method-name) entry on the
+/// anonymous descriptor's `method_table` to a closure-bearing
+/// `.fn_val`. Closure capture is already discharged: each `fn-val`
+/// arrived as an `allocFunction`-snapshotted closure at the
+/// reify-form's call site (eval/backend/tree_walk.zig L177-L206).
+///
+/// The anonymous descriptor lives on `rt.gpa`, NOT registered in
+/// `rt.types` (per survey §5 — name lookup is never consulted; the
+/// dispatch ABI reads through `inst.descriptor` directly).
+///
+/// Row 7.5 cycle 3 — happy path lands; per-call descriptor allocation
+/// (cache by source location deferred to Phase 8+ per F-003).
 pub fn reifyPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
-    _ = args;
-    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "reify (impl pending row 7.5 cycle 3)" });
+    try error_catalog.checkArity("__reify!", args, 2, loc);
+    if (args[0].tag() != .vector) {
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "__reify!",
+            .expected = "vector of protocols",
+            .actual = @tagName(args[0].tag()),
+        });
+    }
+    if (args[1].tag() != .vector) {
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "__reify!",
+            .expected = "vector of [method-name proto fn] rows",
+            .actual = @tagName(args[1].tag()),
+        });
+    }
+
+    // Build protocol_impls — one entry per declared interface, dup'd
+    // onto rt.gpa so the slice outlives the call frame.
+    const proto_count = vector_mod.count(args[0]);
+    const protocol_impls = try rt.gpa.alloc([]const u8, proto_count);
+    errdefer rt.gpa.free(protocol_impls);
+    var pi: u32 = 0;
+    while (pi < proto_count) : (pi += 1) {
+        const p = vector_mod.nth(args[0], pi);
+        if (p.tag() != .protocol) {
+            return error_catalog.raise(.type_arg_invalid, loc, .{
+                .fn_name = "__reify!",
+                .expected = "protocol",
+                .actual = @tagName(p.tag()),
+            });
+        }
+        protocol_impls[pi] = try rt.gpa.dupe(u8, protocol_mod.asProtocol(p).fqcn());
+    }
+
+    // Build method_table — one MethodEntry per row.
+    const row_count = vector_mod.count(args[1]);
+    const method_table = try rt.gpa.alloc(td_mod.TypeDescriptor.MethodEntry, row_count);
+    errdefer rt.gpa.free(method_table);
+    var ri: u32 = 0;
+    while (ri < row_count) : (ri += 1) {
+        const row = vector_mod.nth(args[1], ri);
+        if (row.tag() != .vector or vector_mod.count(row) != 3) {
+            return error_catalog.raise(.type_arg_invalid, loc, .{
+                .fn_name = "__reify!",
+                .expected = "[method-name proto fn] row",
+                .actual = @tagName(row.tag()),
+            });
+        }
+        const name_val = vector_mod.nth(row, 0);
+        const proto_val = vector_mod.nth(row, 1);
+        const fn_val = vector_mod.nth(row, 2);
+        if (name_val.tag() != .string or proto_val.tag() != .protocol) {
+            return error_catalog.raise(.type_arg_invalid, loc, .{
+                .fn_name = "__reify!",
+                .expected = "[string proto fn]",
+                .actual = "row shape",
+            });
+        }
+        const proto = protocol_mod.asProtocol(proto_val);
+        method_table[ri] = .{
+            .protocol_name = try rt.gpa.dupe(u8, proto.fqcn()),
+            .method_name = try rt.gpa.dupe(u8, string_mod.asString(name_val)),
+            .method_val = fn_val,
+        };
+    }
+
+    // Allocate the anonymous TypeDescriptor on rt.gpa. Not registered
+    // in rt.types — dispatch consults `inst.descriptor` directly.
+    const td = try rt.gpa.create(td_mod.TypeDescriptor);
+    errdefer rt.gpa.destroy(td);
+    td.* = .{
+        .fqcn = null,
+        .kind = .reify_anon,
+        .field_layout = null,
+        .protocol_impls = protocol_impls,
+        .method_table = method_table,
+        .parent = null,
+        .meta = Value.nil_val,
+    };
+
+    return td_mod.allocReifiedInstance(rt, td);
 }
 
 /// `(rt/__satisfies? proto val)` — returns true iff `val`'s
@@ -337,6 +427,9 @@ pub fn satisfiesPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
     const proto = protocol_mod.asProtocol(args[0]);
     const td: *const td_mod.TypeDescriptor = if (args[1].tag() == .typed_instance) blk: {
         break :blk args[1].decodePtr(*const td_mod.TypedInstance).descriptor;
+    } else if (args[1].tag() == .reified_instance) blk: {
+        // Row 7.5 cycle 3 — anonymous descriptor lookup parallels typed_instance.
+        break :blk args[1].decodePtr(*const td_mod.ReifiedInstance).descriptor;
     } else try rt.nativeDescriptor(args[1].tag());
     return Value.initBoolean(protocol_mod.satisfies(proto, td));
 }

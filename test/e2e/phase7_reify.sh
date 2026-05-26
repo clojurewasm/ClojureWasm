@@ -24,16 +24,15 @@ fail() {
     exit 1
 }
 
-# --- Case 1: reify lowers to __reify! (stub raises pending-impl diagnostic) ---
-diag=$("$BIN" - <<'EOF' 2>&1 || true
+# --- Case 1 (cycle 3): basic reify returns a reified_instance Value ---
+# Just verify (reify P (m [this] 42)) parses + macro-expands + __reify!
+# runs without runtime error. Detailed dispatch in cases 5-7.
+got=$("$BIN" - <<'EOF' 2>/dev/null
 (defprotocol P (m [this]))
 (reify P (m [this] 42))
 EOF
-)
-if [[ "$diag" != *"row 7.5 cycle 3"* ]]; then
-    fail "case1: expected cycle-3-pending stub diagnostic, got '$diag'"
-fi
-echo "PASS reify_macro_lowers_to_stub_primitive"
+) || fail "case1: non-zero exit ($got)"
+echo "PASS reify_basic_construction"
 
 # --- Case 2: reify with empty form raises reify_form_incomplete ---
 diag=$("$BIN" -e '(reify)' 2>&1 || true)
@@ -64,4 +63,41 @@ if [[ "$diag" != *"reify method"* ]]; then
 fi
 echo "PASS reify_method_invalid_diagnostic"
 
-echo "OK — phase7_reify smoke (4 cases) green"
+# --- Case 5 (cycle 3): reify happy path — method body returns 42 ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol P (m [x]))
+(m (reify P (m [this] 42)))
+EOF
+) || fail "case5: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "42" ]]; then
+    fail "case5: got '$last', want '42'"
+fi
+echo "PASS reify_happy_path_dispatch -> 42"
+
+# --- Case 6 (cycle 3): closure capture across reify body ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol P (m [x]))
+(let* [outer 100]
+  (m (reify P (m [this] (+ outer 7)))))
+EOF
+) || fail "case6: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "107" ]]; then
+    fail "case6: got '$last', want '107'"
+fi
+echo "PASS reify_closure_capture -> 107"
+
+# --- Case 7 (cycle 3): satisfies? returns true on reified instance ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol P (m [x]))
+(rt/__satisfies? P (reify P (m [this] 42)))
+EOF
+) || fail "case7: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "true" ]]; then
+    fail "case7: got '$last', want 'true'"
+fi
+echo "PASS reify_satisfies_true"
+
+echo "OK — phase7_reify smoke (7 cases) green"
