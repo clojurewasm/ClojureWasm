@@ -174,25 +174,52 @@ pub fn asTypeDescriptorRef(val: Value) *const TypeDescriptor {
     return val.decodePtr(*const TypeDescriptorRef).td_ptr;
 }
 
-/// A `reify` runtime value. Closed-over locals from the surrounding
-/// lexical scope live here; the anonymous descriptor lives on
-/// `descriptor` and is never registered into a namespace.
+/// A `reify` runtime value. Two-cache-word extern struct carrying
+/// only a back-pointer to the anonymous TypeDescriptor (which lives
+/// on `rt.gpa`, process lifetime, never traced). Closed-over locals
+/// live where they are produced — on each method's `Function`
+/// `closure_bindings` slot, snapshotted at the reify-form's call
+/// site by `allocFunction` (eval/backend/tree_walk.zig). Per
+/// ADR-0039, the row 7.5 reservation table's `closure_count` +
+/// `_pad` + `closure_bindings_ptr` fields were deleted as a memo
+/// against a need that does not materialise.
 pub const ReifiedInstance = extern struct {
     header: HeapHeader,
-    closure_count: u32,
-    _pad: [4]u8 = .{ 0, 0, 0, 0 },
     descriptor: *const TypeDescriptor,
-    closure_bindings_ptr: [*]Value,
 
     comptime {
         std.debug.assert(@alignOf(ReifiedInstance) >= 8);
         std.debug.assert(@offsetOf(ReifiedInstance, "header") == 0);
-    }
-
-    pub fn closure(self: *const ReifiedInstance) []const Value {
-        return self.closure_bindings_ptr[0..self.closure_count];
+        std.debug.assert(@sizeOf(ReifiedInstance) == 16);
     }
 };
+
+/// Allocate a ReifiedInstance on the GC heap with the given anonymous
+/// descriptor. Returns a Value tagged `.reified_instance`. Row 7.5
+/// cycle 2 (ADR-0039) — minimal layout, no field-tail allocation.
+pub fn allocReifiedInstance(rt: *Runtime, descriptor: *const TypeDescriptor) !Value {
+    const inst = try rt.gc.alloc(ReifiedInstance);
+    inst.* = .{
+        .header = HeapHeader.init(.reified_instance),
+        .descriptor = descriptor,
+    };
+    return Value.encodeHeapPtr(.reified_instance, inst);
+}
+
+/// Trace fn for `.reified_instance`. No-op — the struct carries no
+/// Value fields; the descriptor lives on `rt.gpa` and is not GC-reachable.
+pub fn traceReifiedInstance(gc_ptr: *anyopaque, header: *HeapHeader) void {
+    _ = gc_ptr;
+    _ = header;
+}
+
+/// Finaliser for `.reified_instance`. No-op — no `gc.infra`-owned
+/// tail array to release (mirrors the empty-tail case of
+/// `TypedInstance` after the field-values slice is freed elsewhere).
+pub fn finaliseReifiedInstance(gc_ptr: *anyopaque, header: *HeapHeader) void {
+    _ = gc_ptr;
+    _ = header;
+}
 
 /// Allocate a TypeDescriptor on `rt.gpa` with the declared field
 /// layout and register it in `rt.types` under `name`. Re-registering
@@ -286,6 +313,8 @@ pub fn finaliseTypedInstance(gc_ptr: *anyopaque, header: *HeapHeader) void {
 pub fn registerGcHooks() void {
     tag_ops.registerTrace(.typed_instance, &traceTypedInstance);
     tag_ops.registerFinaliser(.typed_instance, &finaliseTypedInstance);
+    tag_ops.registerTrace(.reified_instance, &traceReifiedInstance);
+    tag_ops.registerFinaliser(.reified_instance, &finaliseReifiedInstance);
 }
 
 // --- tests ---
@@ -384,6 +413,30 @@ test "lookupMethod walks parent chain for defrecord inheritance" {
     const m = child_td.lookupMethod("IBase", "base_method");
     try testing.expect(m != null);
     try testing.expectEqualStrings("base_method", m.?.method_name);
+}
+
+test "allocReifiedInstance allocates ReifiedInstance with descriptor + tag .reified_instance (row 7.5 cycle 2)" {
+    var fix = TdFixture.init();
+    defer fix.deinit();
+
+    const td = try testing.allocator.create(TypeDescriptor);
+    defer testing.allocator.destroy(td);
+    td.* = .{
+        .fqcn = null,
+        .kind = .reify_anon,
+        .field_layout = null,
+        .protocol_impls = &.{},
+        .method_table = &.{},
+        .parent = null,
+        .meta = .nil_val,
+    };
+
+    const v = try allocReifiedInstance(&fix.rt, td);
+    try testing.expect(v.tag() == .reified_instance);
+    const inst = v.decodePtr(*const ReifiedInstance);
+    try testing.expect(inst.descriptor == td);
+    // ADR-0039: 16-byte two-cache-word struct.
+    try testing.expectEqual(@as(usize, 16), @sizeOf(ReifiedInstance));
 }
 
 test "allocInstance allocates TypedInstance with field copy + tag .typed_instance" {

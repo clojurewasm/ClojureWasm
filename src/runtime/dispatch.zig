@@ -139,6 +139,13 @@ pub fn dispatch(
     const td: *const td_mod.TypeDescriptor = if (receiver.tag() == .typed_instance) blk: {
         const inst = receiver.decodePtr(*const td_mod.TypedInstance);
         break :blk inst.descriptor;
+    } else if (receiver.tag() == .reified_instance) blk: {
+        // Row 7.5 cycle 2 (ADR-0039): ReifiedInstance carries its
+        // anonymous descriptor at the same offset-8 position; the
+        // dispatch resolution is structurally identical to
+        // typed_instance.
+        const inst = receiver.decodePtr(*const td_mod.ReifiedInstance);
+        break :blk inst.descriptor;
     } else try rt.nativeDescriptor(receiver.tag());
     const me = cs.lookupWithCache(td, protocol_name, method_name, rt.protocol_generation) orelse {
         return error_catalog.raise(.protocol_no_satisfies, loc, .{
