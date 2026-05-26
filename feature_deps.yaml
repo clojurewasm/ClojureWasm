@@ -237,21 +237,20 @@ entries:
   - name: clojure.set/map-invert
     kind: var
     defined_in: src/lang/clj/clojure/set.clj
-    status: provisional
+    status: landed
     requires_features:
       - clojure.core/reduce
-      - clojure.core/assoc
-    requires_debts:
-      - D-074
-    provisional_markers:
-      - src/lang/clj/clojure/set.clj (map-invert — persistent reduce)
+      - clojure.core/assoc!
+      - clojure.core/transient
+      - clojure.core/persistent!
+    requires_debts: []
+    provisional_markers: []
     notes: |
-      JVM uses `transient!` + `reduce-kv` + `persistent!` for O(n)
-      cost. cw v1 has no transient surface yet (D-074, Phase 8
-      target), so the body folds with persistent `assoc` — same
-      complexity asymptotically, just more allocator churn. When
-      D-074 lands the body switches to the transient form and this
-      entry flips to `landed`.
+      Discharged by §9.10 row 8.5 cycle 3 (2026-05-27, D-074 close
+      for the map/set arms). Body now matches the JVM transient
+      reduce-kv shape: `(persistent! (reduce ... (transient
+      (hash-map)) m))`. PROVISIONAL marker removed from
+      `src/lang/clj/clojure/set.clj` in the same commit.
 
   - name: clojure.set/project
     kind: var

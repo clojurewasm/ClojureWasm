@@ -26,6 +26,7 @@ const dispatch = @import("../../runtime/dispatch.zig");
 
 const transient_vector = @import("../../runtime/collection/transient/transient_vector.zig");
 const transient_array_map = @import("../../runtime/collection/transient/transient_array_map.zig");
+const transient_hash_set = @import("../../runtime/collection/transient/transient_hash_set.zig");
 
 /// Implements clojure.core/transient.
 /// Spec: `(transient coll)` returns an editable transient version of
@@ -43,6 +44,7 @@ pub fn transientFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
         // `.hash_map` source bubbles `error.HashMapNotImplemented` —
         // mirrors the persistent dispatch gap pending D-045 (HAMT body).
         .hash_map => try transient_array_map.fromMap(rt, coll),
+        .hash_set => try transient_hash_set.fromSet(rt, coll),
         .nil => try transient_vector.fromVector(rt, coll),
         else => error_catalog.raise(.transient_kind_mismatch, loc, .{
             .fn_name = "transient",
@@ -65,6 +67,7 @@ pub fn persistentBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: Sourc
     return switch (tcoll.tag()) {
         .transient_vector => try transient_vector.toPersistent(rt, tcoll, loc),
         .transient_map => try transient_array_map.toPersistent(rt, tcoll, loc),
+        .transient_set => try transient_hash_set.toPersistent(rt, tcoll, loc),
         else => error_catalog.raise(.transient_kind_mismatch, loc, .{
             .fn_name = "persistent!",
             .expected = "transient",
@@ -88,9 +91,29 @@ pub fn conjBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     return switch (tcoll.tag()) {
         .transient_vector => try transient_vector.conj(rt, tcoll, x, loc),
         .transient_map => try transient_array_map.conjEntry(rt, tcoll, x, loc),
+        .transient_set => try transient_hash_set.conj(rt, tcoll, x, loc),
         else => error_catalog.raise(.transient_kind_mismatch, loc, .{
             .fn_name = "conj!",
             .expected = "transient",
+            .actual = @tagName(tcoll.tag()),
+        }),
+    };
+}
+
+/// Implements clojure.core/disj!.
+/// Spec: `(disj! tset e)` removes e from tset in place; set-only.
+/// JVM reference: clojure.core/disj! → ITransientSet.disjoin
+/// cw v1 tier: A (Phase 8.5 cycle 3)
+pub fn disjBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("disj!", args, 2, loc);
+    const tcoll = args[0];
+    return switch (tcoll.tag()) {
+        .transient_set => try transient_hash_set.disj(tcoll, args[1], loc),
+        else => error_catalog.raise(.transient_kind_mismatch, loc, .{
+            .fn_name = "disj!",
+            .expected = "transient_set",
             .actual = @tagName(tcoll.tag()),
         }),
     };
@@ -169,6 +192,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "pop!", .f = &popBangFn },
     .{ .name = "assoc!", .f = &assocBangFn },
     .{ .name = "dissoc!", .f = &dissocBangFn },
+    .{ .name = "disj!", .f = &disjBangFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {

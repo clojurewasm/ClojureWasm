@@ -79,16 +79,15 @@
             m
             kmap)))
 
-;; `(map-invert m)` — swap keys and values. JVM uses a transient
-;; reduce-kv for O(n) cost; cw v1 uses persistent reduce since
-;; transients land at Phase 8 (DIVERGENCE D-α per per-task survey).
+;; `(map-invert m)` — swap keys and values. Matches JVM's transient
+;; reduce-kv shape (D-074 cycle 3 discharged the PROVISIONAL marker).
 (def map-invert
   (fn* [m]
-    ;; PROVISIONAL: persistent reduce pending transient! / persistent! [refs: D-074, feature_deps.yaml#clojure.set/map-invert]
-    (reduce (fn* [acc kv]
-              (assoc acc (nth kv 1) (nth kv 0)))
-            (hash-map)
-            m)))
+    (persistent!
+      (reduce (fn* [acc kv]
+                (assoc! acc (nth kv 1) (nth kv 0)))
+              (transient (hash-map))
+              m))))
 
 ;; ----------------------------------------------------------------
 ;; Group C — relational ops (Phase 6.16.b-3). Sits on top of D-061

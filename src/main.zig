@@ -85,6 +85,7 @@ test {
     _ = @import("runtime/collection/chunked_cons.zig");
     _ = @import("runtime/collection/transient/transient_vector.zig");
     _ = @import("runtime/collection/transient/transient_array_map.zig");
+    _ = @import("runtime/collection/transient/transient_hash_set.zig");
     _ = @import("runtime/hash.zig");
     _ = @import("runtime/keyword.zig");
     _ = @import("runtime/symbol.zig");
