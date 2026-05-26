@@ -177,4 +177,22 @@ EOF
 ) || fail "case11: non-zero exit ($got)"
 assert_eq 'deftype_get_no_map_routing_returns_nil' "$(last_line "$got")" 'nil'
 
-echo "OK — phase7_defrecord smoke (16 cases) green"
+# --- Case 17 (cycle 5): ->Name positional factory ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defrecord Point [x y])
+(get (->Point 7 8) :x)
+EOF
+) || fail "case17: non-zero exit ($got)"
+assert_eq 'defrecord_arrow_factory' "$(last_line "$got")" '7'
+
+# --- Case 18 (cycle 5): protocol-method body inline in defrecord ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol IPos (pos-sum [p]))
+(defrecord Point [x y]
+  IPos (pos-sum [this] (+ (get this :x) (get this :y))))
+(pos-sum (->Point 10 20))
+EOF
+) || fail "case18: non-zero exit ($got)"
+assert_eq 'defrecord_inline_protocol_body' "$(last_line "$got")" '30'
+
+echo "OK — phase7_defrecord smoke (18 cases) green"

@@ -210,7 +210,7 @@ pub fn registerType(
     name: []const u8,
     field_names: []const []const u8,
     kind: TypeKind,
-) !void {
+) !*const TypeDescriptor {
     const layout = try rt.gpa.alloc(TypeDescriptor.FieldEntry, field_names.len);
     errdefer rt.gpa.free(layout);
     for (field_names, 0..) |fname, i| {
@@ -243,6 +243,7 @@ pub fn registerType(
     const key = try rt.gpa.dupe(u8, name);
     errdefer rt.gpa.free(key);
     try rt.types.put(key, td);
+    return td;
 }
 
 /// Allocate a TypedInstance on the GC heap with `field_values` copied

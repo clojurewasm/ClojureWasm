@@ -851,7 +851,7 @@ fn expandDefrecord(
         q[1] = field_form;
         quoted_fields[i] = try list(arena, q, loc);
     }
-    const fields_vec = try vec(arena, quoted_fields, loc);
+    const fields_vec_form = try vec(arena, quoted_fields, loc);
 
     // (quote Name)
     var quoted_name_items = try arena.alloc(Form, 2);
@@ -863,13 +863,87 @@ fn expandDefrecord(
     var call_items = try arena.alloc(Form, 3);
     call_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "__defrecord!" } }, .location = loc };
     call_items[1] = quoted_name;
-    call_items[2] = fields_vec;
+    call_items[2] = fields_vec_form;
     const defrecord_call = try list(arena, call_items, loc);
 
-    // (do (rt/__defrecord! ...))
-    var do_items = try arena.alloc(Form, 2);
+    // (def Name (rt/__defrecord! ...)) — binds Name to a
+    // TypeDescriptorRef Value so downstream `extend-type Name P ...`
+    // forms (in this defrecord's body OR in user code following the
+    // form) resolve Name as a usable target.
+    var def_name_items = try arena.alloc(Form, 3);
+    def_name_items[0] = sym("def", loc);
+    def_name_items[1] = args[0];
+    def_name_items[2] = defrecord_call;
+    const def_name = try list(arena, def_name_items, loc);
+
+    // (def ->Name (fn* [f1 f2 ...] (Name. f1 f2 ...)))
+    const arrow_name = blk: {
+        const buf = try arena.alloc(u8, args[0].data.symbol.name.len + 2);
+        buf[0] = '-';
+        buf[1] = '>';
+        @memcpy(buf[2..], args[0].data.symbol.name);
+        break :blk sym(buf, loc);
+    };
+    const params_vec_form = blk: {
+        const params_copy = try arena.dupe(Form, fields_in);
+        break :blk Form{ .data = .{ .vector = params_copy }, .location = loc };
+    };
+    const ctor_sym = blk: {
+        const buf = try arena.alloc(u8, args[0].data.symbol.name.len + 1);
+        @memcpy(buf[0 .. buf.len - 1], args[0].data.symbol.name);
+        buf[buf.len - 1] = '.';
+        break :blk sym(buf, loc);
+    };
+    const ctor_args = try arena.alloc(Form, fields_in.len + 1);
+    ctor_args[0] = ctor_sym;
+    @memcpy(ctor_args[1..], fields_in);
+    const ctor_call = try list(arena, ctor_args, loc);
+
+    var fn_items = try arena.alloc(Form, 3);
+    fn_items[0] = sym("fn*", loc);
+    fn_items[1] = params_vec_form;
+    fn_items[2] = ctor_call;
+    const factory_fn = try list(arena, fn_items, loc);
+
+    var def_arrow_items = try arena.alloc(Form, 3);
+    def_arrow_items[0] = sym("def", loc);
+    def_arrow_items[1] = arrow_name;
+    def_arrow_items[2] = factory_fn;
+    const def_arrow = try list(arena, def_arrow_items, loc);
+
+    // Protocol-section parsing — mirror expandExtendProtocol's
+    // section walker. args[2..] alternates between a protocol-name
+    // Symbol and one-or-more method-impl lists belonging to it; each
+    // section lowers to `(extend-type Name Proto impl1 impl2 ...)`.
+    var sections: std.ArrayList(Form) = .empty;
+    defer sections.deinit(arena);
+
+    var i: usize = 2;
+    while (i < args.len) {
+        if (args[i].data != .symbol)
+            return error_catalog.raise(.extend_protocol_section_invalid, args[i].location, .{});
+        const proto_form = args[i];
+        i += 1;
+        const impls_start = i;
+        while (i < args.len and args[i].data == .list) : (i += 1) {}
+        const impls = args[impls_start..i];
+        if (impls.len == 0)
+            return error_catalog.raise(.extend_protocol_section_invalid, proto_form.location, .{});
+
+        var ext_items = try arena.alloc(Form, 3 + impls.len);
+        ext_items[0] = sym("extend-type", proto_form.location);
+        ext_items[1] = args[0];
+        ext_items[2] = proto_form;
+        @memcpy(ext_items[3..], impls);
+        try sections.append(arena, try list(arena, ext_items, proto_form.location));
+    }
+
+    // (do (def Name (rt/__defrecord! ...)) (def ->Name ...) extend-type-sections...)
+    var do_items = try arena.alloc(Form, 3 + sections.items.len);
     do_items[0] = sym("do", loc);
-    do_items[1] = defrecord_call;
+    do_items[1] = def_name;
+    do_items[2] = def_arrow;
+    @memcpy(do_items[3..], sections.items);
     return list(arena, do_items, loc);
 }
 
@@ -1214,7 +1288,7 @@ test "expandExtendProtocol single section drops the (do ...) wrapper" {
 
 // --- row 7.4 cycle 1 — `expandDefrecord` ---
 
-test "expandDefrecord lowers (defrecord Name [f1 f2]) to (do (rt/__defrecord! 'Name ['f1 'f2]))" {
+test "expandDefrecord lowers (defrecord Name [f1 f2]) to (do (def Name __defrecord!) (def ->Name fn*))" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
@@ -1230,27 +1304,55 @@ test "expandDefrecord lowers (defrecord Name [f1 f2]) to (do (rt/__defrecord! 'N
     const out = try expandDefrecord(arena, &fix.rt, &args, .{});
     try testing.expect(out.data == .list);
     try expectSymbolEq(out.data.list[0], "do");
-    try testing.expectEqual(@as(usize, 2), out.data.list.len);
+    // (do (def Foo (rt/__defrecord! ...)) (def ->Foo (fn* [x y] (Foo. x y))))
+    try testing.expectEqual(@as(usize, 3), out.data.list.len);
 
-    // (rt/__defrecord! (quote Foo) [(quote x) (quote y)])
-    const call_form = out.data.list[1];
+    const def_name = out.data.list[1];
+    try testing.expect(def_name.data == .list);
+    try expectSymbolEq(def_name.data.list[0], "def");
+    try expectSymbolEq(def_name.data.list[1], "Foo");
+    const call_form = def_name.data.list[2];
     try testing.expect(call_form.data == .list);
     try testing.expectEqualStrings("rt", call_form.data.list[0].data.symbol.ns.?);
     try testing.expectEqualStrings("__defrecord!", call_form.data.list[0].data.symbol.name);
 
-    const quoted_name = call_form.data.list[1];
-    try testing.expect(quoted_name.data == .list);
-    try expectSymbolEq(quoted_name.data.list[0], "quote");
-    try expectSymbolEq(quoted_name.data.list[1], "Foo");
+    const def_arrow = out.data.list[2];
+    try testing.expect(def_arrow.data == .list);
+    try expectSymbolEq(def_arrow.data.list[0], "def");
+    try expectSymbolEq(def_arrow.data.list[1], "->Foo");
+}
 
-    const fields_out = call_form.data.list[2];
-    try testing.expect(fields_out.data == .vector);
-    try testing.expectEqual(@as(usize, 2), fields_out.data.vector.len);
+test "expandDefrecord parses inline protocol-method sections into extend-type" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
 
-    const quoted_x = fields_out.data.vector[0];
-    try testing.expect(quoted_x.data == .list);
-    try expectSymbolEq(quoted_x.data.list[0], "quote");
-    try expectSymbolEq(quoted_x.data.list[1], "x");
+    const arena = fix.arena.allocator();
+    const name_sym = sym("Foo", .{});
+    const f1_sym = sym("x", .{});
+    const fields_v = try arena.dupe(Form, &.{f1_sym});
+    const fields_form = Form{ .data = .{ .vector = fields_v }, .location = .{} };
+
+    const proto_sym = sym("P", .{});
+    const m_sym = sym("m", .{});
+    const this_sym = sym("this", .{});
+    const params_v = try arena.dupe(Form, &.{this_sym});
+    const params_form = Form{ .data = .{ .vector = params_v }, .location = .{} };
+    const body = Form{ .data = .{ .integer = 42 }, .location = .{} };
+    const impl_list = try arena.dupe(Form, &.{ m_sym, params_form, body });
+    const impl_form = Form{ .data = .{ .list = impl_list }, .location = .{} };
+
+    const args = [_]Form{ name_sym, fields_form, proto_sym, impl_form };
+    const out = try expandDefrecord(arena, &fix.rt, &args, .{});
+    // (do __defrecord! def->Foo (extend-type Foo P impl))
+    try testing.expect(out.data == .list);
+    try testing.expectEqual(@as(usize, 4), out.data.list.len);
+
+    const ext = out.data.list[3];
+    try testing.expect(ext.data == .list);
+    try expectSymbolEq(ext.data.list[0], "extend-type");
+    try expectSymbolEq(ext.data.list[1], "Foo");
+    try expectSymbolEq(ext.data.list[2], "P");
 }
 
 test "expandDefrecord rejects missing field-vector via defrecord_form_incomplete" {

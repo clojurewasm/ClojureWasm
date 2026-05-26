@@ -299,8 +299,11 @@ pub fn defrecordPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
         field_names[i] = symbol_mod.asSymbol(elt).name;
     }
 
-    try td_mod.registerType(rt, name_sym.name, field_names, .defrecord);
-    return Value.nil_val;
+    const td = try td_mod.registerType(rt, name_sym.name, field_names, .defrecord);
+    // Wrap as a TypeDescriptorRef Value so the macro lowering can
+    // `(def Name (rt/__defrecord! ...))` and downstream `extend-type`
+    // forms resolve `Name` to a usable Value (cycle 5).
+    return td_mod.makeTypeDescriptorRef(rt, td);
 }
 
 /// `(rt/__satisfies? proto val)` — returns true iff `val`'s
@@ -626,7 +629,11 @@ test "__defrecord! registers a TypeDescriptor with .kind = .defrecord" {
     fields_vec = try vector_mod.conj(&fix.rt, fields_vec, try symbol_mod.intern(&fix.rt, null, "y"));
 
     const result = try defrecordPrim(&fix.rt, &fix.env, &[_]Value{ name_sym, fields_vec }, .{});
-    try testing.expectEqual(Value.nil_val, result);
+    // Row 7.4 cycle 5 changed the return value from nil_val to a
+    // `TypeDescriptorRef` so the macro lowering can `(def Name ...)`.
+    try testing.expect(result.tag() == .type_descriptor);
+    // Test-only cleanup: free the gc.infra-allocated ref struct.
+    defer fix.rt.gc.infra.destroy(@constCast(result.decodePtr(*const td_mod.TypeDescriptorRef)));
 
     const td = fix.rt.types.get("Point") orelse return error.TestUnexpectedResult;
     try testing.expectEqual(td_mod.TypeKind.defrecord, td.kind);

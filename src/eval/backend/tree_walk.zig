@@ -397,7 +397,7 @@ const type_descriptor_mod = @import("../../runtime/type_descriptor.zig");
 /// primitive can land `.kind = .defrecord` without duplicating the
 /// body.
 fn evalDeftype(rt: *Runtime, n: node_mod.DeftypeNode) !Value {
-    try type_descriptor_mod.registerType(rt, n.name, n.fields, .deftype);
+    _ = try type_descriptor_mod.registerType(rt, n.name, n.fields, .deftype);
     return .nil_val;
 }
 
