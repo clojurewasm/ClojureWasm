@@ -143,6 +143,24 @@ pub fn asProtocolFn(val: Value) *const ProtocolFn {
     return val.decodePtr(*const ProtocolFn);
 }
 
+/// Row 7.3 cycle 5: does `td` (or any descriptor up its `.parent`
+/// chain) carry at least one MethodEntry for `proto.fqcn`? Mirrors
+/// `clojure.core/satisfies?` semantics — the user-facing predicate
+/// only cares about presence, not which methods. The future
+/// `__satisfies?` primitive (cycle 6+) calls this on a
+/// typed_instance's descriptor.
+pub fn satisfies(proto: *const ProtocolDescriptor, td: *const TypeDescriptor) bool {
+    const target_name = proto.fqcn();
+    var cursor: ?*const TypeDescriptor = td;
+    while (cursor) |t| {
+        for (t.method_table) |entry| {
+            if (std.mem.eql(u8, entry.protocol_name, target_name)) return true;
+        }
+        cursor = t.parent;
+    }
+    return false;
+}
+
 /// Row 7.3 cycle 1: append `new_impls` to `td.method_table` and bump
 /// `rt.protocol_generation`. The TypeDescriptor's `method_table` is
 /// re-allocated on `rt.gc.infra` (process-lifetime) so the new slice
@@ -218,6 +236,42 @@ test "makeProtocolFn allocates a .protocol_fn Value carrying descriptor + method
     const pfn = asProtocolFn(v);
     try testing.expect(pfn.descriptor == proto);
     try testing.expectEqualStrings("first", pfn.methodName());
+}
+
+test "satisfies returns true when td.method_table carries any entry for proto.fqcn" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+
+    // Protocol "user/ISeq" with 1 method declared.
+    const ms = [_]MethodEntry{ .{ .name = "first", .arity = 1 } };
+    const proto_v = try makeProtocol(&rt, "user/ISeq", &ms);
+    defer rt.gc.infra.destroy(@constCast(asProtocol(proto_v)));
+    const proto = asProtocol(proto_v);
+
+    // TypeDescriptor with NO implementation of user/ISeq → satisfies = false.
+    const td_empty = try rt.gc.infra.create(TypeDescriptor);
+    defer rt.gc.infra.destroy(td_empty);
+    td_empty.* = .{
+        .fqcn = "user/Foo",
+        .kind = .deftype,
+        .field_layout = null,
+        .protocol_impls = &[_][]const u8{},
+        .method_table = &[_]TypeDescriptor.MethodEntry{},
+        .parent = null,
+        .meta = Value.nil_val,
+    };
+    try testing.expect(!satisfies(proto, td_empty));
+
+    // After extending with an ISeq.first impl → satisfies = true.
+    const new_impls = [_]TypeDescriptor.MethodEntry{
+        .{ .protocol_name = "user/ISeq", .method_name = "first", .fn_ptr = null },
+    };
+    try extendTypeWithImpls(&rt, td_empty, &new_impls);
+    defer rt.gc.infra.free(td_empty.method_table);
+
+    try testing.expect(satisfies(proto, td_empty));
 }
 
 test "extendTypeWithImpls bumps protocol_generation and grows method_table" {
