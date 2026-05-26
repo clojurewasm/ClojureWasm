@@ -15,3 +15,34 @@
 ;; per-task survey at private/notes/phase6-6.9-survey.md §6.
 
 (ns clojure.string (:refer-clojure))
+
+;; ----------------------------------------------------------------
+;; Phase 6.16.d Pattern B2 shim layer (v5 §8.1 + §9.2)
+;;
+;; 12 user-visible Vars below are 1-line shim defns over `-name`
+;; Pattern B2 leaves interned with `.private = true` in the same
+;; ns (see `src/lang/primitive/string.zig::LEAF_ENTRIES`). Surface
+;; semantics are unchanged from the previous Zig-direct registration;
+;; the migration adds Layer 3 visibility for future Pattern A
+;; rewrites (e.g., a future cycle could replace `(def upper-case ...)`
+;; with a Unicode-aware Pattern A body without touching every caller).
+;;
+;; The `-name` leaves are private to clojure.string per ADR-0033 D4:
+;; intra-ns shim resolution is same-ns (passes the analyzer's
+;; cross-ns private check); user-ns callers reaching for
+;; `clojure.string/-upper-case` trip the check with
+;; `private_access_error`.
+;; ----------------------------------------------------------------
+
+(def upper-case      (fn* [s] (-upper-case s)))
+(def lower-case      (fn* [s] (-lower-case s)))
+(def trim            (fn* [s] (-trim s)))
+(def triml           (fn* [s] (-triml s)))
+(def trimr           (fn* [s] (-trimr s)))
+(def trim-newline    (fn* [s] (-trim-newline s)))
+(def starts-with?    (fn* [s sub] (-starts-with? s sub)))
+(def ends-with?      (fn* [s sub] (-ends-with? s sub)))
+(def includes?       (fn* [s sub] (-includes? s sub)))
+(def index-of        (fn* [s sub] (-index-of s sub)))
+(def last-index-of   (fn* [s sub] (-last-index-of s sub)))
+(def reverse         (fn* [s] (-reverse s)))

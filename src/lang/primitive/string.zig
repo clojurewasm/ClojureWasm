@@ -465,22 +465,39 @@ const Entry = struct {
     f: dispatch.BuiltinFn,
 };
 
+/// Phase 6.16.d migration (v5 §8.1 + §9.2): 12 Pattern B2 leaves with
+/// the `-name` dash-prefix convention + `.private = true` ADR-0033 D4
+/// metadata. The user-visible names (`upper-case`, `lower-case`, ...)
+/// land via 1-line shim `(def ...)` defns in `lang/clj/clojure/string.clj`.
+/// User-ns callers reaching for `clojure.string/-upper-case` qualified
+/// trip the analyzer's cross-ns private check; intra-clojure.string
+/// shim resolution stays same-ns and passes.
+///
+/// 6.16.e (next) migrates the remaining 8 (`blank?`, `replace`,
+/// `replace-first`, `escape`, `capitalize`, `split`, `split-lines`,
+/// `join`) to Pattern A `.clj` defns when their compositions become
+/// tractable.
+const LEAF_ENTRIES = [_]Entry{
+    .{ .name = "-upper-case", .f = &upperCase },
+    .{ .name = "-lower-case", .f = &lowerCase },
+    .{ .name = "-trim", .f = &trimBoth },
+    .{ .name = "-triml", .f = &trimLeft },
+    .{ .name = "-trimr", .f = &trimRight },
+    .{ .name = "-trim-newline", .f = &trimNewline },
+    .{ .name = "-starts-with?", .f = &startsWith },
+    .{ .name = "-ends-with?", .f = &endsWith },
+    .{ .name = "-includes?", .f = &includes },
+    .{ .name = "-index-of", .f = &indexOf },
+    .{ .name = "-last-index-of", .f = &lastIndexOf },
+    .{ .name = "-reverse", .f = &reverse },
+};
+
+/// Vars that stay as Zig leaves at their public name for this cycle.
+/// 6.16.e migrates them to Pattern A `.clj` defns.
 const ENTRIES = [_]Entry{
-    .{ .name = "upper-case", .f = &upperCase },
-    .{ .name = "lower-case", .f = &lowerCase },
     .{ .name = "blank?", .f = &blank },
-    .{ .name = "trim", .f = &trimBoth },
-    .{ .name = "triml", .f = &trimLeft },
-    .{ .name = "trimr", .f = &trimRight },
-    .{ .name = "trim-newline", .f = &trimNewline },
-    .{ .name = "starts-with?", .f = &startsWith },
-    .{ .name = "ends-with?", .f = &endsWith },
-    .{ .name = "includes?", .f = &includes },
-    .{ .name = "index-of", .f = &indexOf },
-    .{ .name = "last-index-of", .f = &lastIndexOf },
     .{ .name = "replace", .f = &replace },
     .{ .name = "replace-first", .f = &replaceFirst },
-    .{ .name = "reverse", .f = &reverse },
     .{ .name = "escape", .f = &escape },
     .{ .name = "capitalize", .f = &capitalize },
     .{ .name = "split", .f = &split },
@@ -498,5 +515,11 @@ pub fn register(env: *Env) !void {
     const ns = try env.findOrCreateNs("clojure.string");
     for (ENTRIES) |it| {
         _ = try env.intern(ns, it.name, Value.initBuiltinFn(it.f), null);
+    }
+    for (LEAF_ENTRIES) |it| {
+        _ = try env.intern(ns, it.name, Value.initBuiltinFn(it.f), .{
+            .private = true,
+            .zig_leaf = true,
+        });
     }
 }
