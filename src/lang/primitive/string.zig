@@ -490,18 +490,24 @@ const LEAF_ENTRIES = [_]Entry{
     .{ .name = "-index-of", .f = &indexOf },
     .{ .name = "-last-index-of", .f = &lastIndexOf },
     .{ .name = "-reverse", .f = &reverse },
+    // Phase 6.16.e.1 (GREEN trio per survey): pure renames into
+    // the leaf table. Public surface stays unchanged via shim
+    // defns in `lang/clj/clojure/string.clj`.
+    .{ .name = "-blank?", .f = &blank },
+    .{ .name = "-split", .f = &split },
+    .{ .name = "-split-lines", .f = &splitLines },
 };
 
 /// Vars that stay as Zig leaves at their public name for this cycle.
-/// 6.16.e migrates them to Pattern A `.clj` defns.
+/// 6.16.e.2+ migrates the YELLOW subset (`capitalize` / `join`) once
+/// `str` + `subs` Tier-A primitives land; `replace` / `replace-first`
+/// / `escape` (RED) stay until `instance?` + regex sub-leaf split
+/// land in a later cycle (D-NNN, post-6.16.e).
 const ENTRIES = [_]Entry{
-    .{ .name = "blank?", .f = &blank },
     .{ .name = "replace", .f = &replace },
     .{ .name = "replace-first", .f = &replaceFirst },
     .{ .name = "escape", .f = &escape },
     .{ .name = "capitalize", .f = &capitalize },
-    .{ .name = "split", .f = &split },
-    .{ .name = "split-lines", .f = &splitLines },
     .{ .name = "join", .f = &join },
 };
 

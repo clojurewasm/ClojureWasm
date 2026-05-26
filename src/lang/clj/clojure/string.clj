@@ -46,3 +46,11 @@
 (def index-of        (fn* [s sub] (-index-of s sub)))
 (def last-index-of   (fn* [s sub] (-last-index-of s sub)))
 (def reverse         (fn* [s] (-reverse s)))
+
+;; Phase 6.16.e.1 — GREEN trio (v5 §9.2). Pure rename-and-shim
+;; matching the 6.16.d Pattern B2 shape (the survey classified
+;; these as "Pattern A" because the surface is pure Clojure
+;; composition; the underlying string scanning is still in Zig).
+(def blank?          (fn* [s] (-blank? s)))
+(def split           (fn* [s re] (-split s re)))
+(def split-lines     (fn* [s] (-split-lines s)))
