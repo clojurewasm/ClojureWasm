@@ -55,7 +55,6 @@ const keyword_mod = @import("../../runtime/keyword.zig");
 /// JVM reference: clojure.lang.RT.conj
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn conjFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("conj", args, 2, loc);
     const coll = args[0];
     const x = args[1];
@@ -65,11 +64,16 @@ pub fn conjFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         .list, .cons => try list.consHeap(rt, x, coll),
         .hash_set => try set.conj(rt, coll, x),
         .array_map, .hash_map => mapConj(rt, coll, x, loc),
-        else => error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "conj",
-            .expected = "collection",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // Row 7.7 cycle 3: outer-else routes through dispatch against
+            // `IPersistentCollection -cons` (JVM `RT.conj` dispatches via
+            // `IPersistentCollection.cons`). Reaches `(extend-type X
+            // IPersistentCollection (-cons [c x] …))` on defrecord /
+            // reified_instance / native-Tag receivers via the row 7.3
+            // per-Tag descriptor registry.
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, "IPersistentCollection", "-cons", args, loc);
+        },
     };
 }
 

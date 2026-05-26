@@ -119,3 +119,22 @@ if [[ "$diag" != *"satisfy"* ]] && [[ "$diag" != *"Seqable"* ]] && [[ "$diag" !=
     fail "case7: expected protocol_no_satisfies diagnostic, got '$diag'"
 fi
 echo "PASS long_seq_no_extend_raises_diagnostic"
+
+# --- Case 8 (cycle 3): defrecord reaches conj via IPersistentCollection -cons ---
+# conj's outer else => raise becomes a route through dispatch against
+# `IPersistentCollection -cons`. User (extend-type X IPersistentCollection
+# (-cons [c x] ...)) installs the method; conj on the user receiver reaches it.
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defrecord Bag [contents])
+(extend-type Bag IPersistentCollection (-cons [_ x] x))
+(conj (->Bag '()) 99)
+EOF
+) || fail "case8: non-zero exit ($got)"
+assert_eq 'defrecord_conj_via_extend_type' "$(last_line "$got")" '99'
+
+# --- Case 9 (cycle 3): Long without extend-type IPersistentCollection raises ---
+diag=$("$BIN" -e '(conj 42 1)' 2>&1 || true)
+if [[ "$diag" != *"satisfy"* ]] && [[ "$diag" != *"IPersistentCollection"* ]] && [[ "$diag" != *"no method"* ]]; then
+    fail "case9: expected protocol_no_satisfies diagnostic, got '$diag'"
+fi
+echo "PASS long_conj_no_extend_raises_diagnostic"
