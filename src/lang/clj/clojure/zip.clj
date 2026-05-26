@@ -312,3 +312,88 @@
     (if (nil? l)
       (up loc)
       (rightmost-descendant l))))
+
+;; ----------------------------------------------------------------
+;; Row 7.13 cycle 4 — mutation (7 vars)
+;; ----------------------------------------------------------------
+
+;; `(replace loc nd)` — return a loc with `node` swapped to `nd`.
+;; All other fields (path / lefts / rights / end? / fns / kind)
+;; carry over via `with-loc-internal`.
+(defn replace [loc nd]
+  (with-loc-internal loc nd (.path loc) (.lefts loc) (.rights loc) false))
+
+;; `(edit loc f & args)` — apply `f` to the current node + args,
+;; replace node with the result. Variadic ride on ADR-0041
+;; multi-arity fn* + ADR-0042 apply variadic peel-and-pass.
+(defn edit [loc f & args]
+  (replace loc (apply f (.node loc) args)))
+
+;; `(insert-child loc nd)` — prepend `nd` to the current node's
+;; children. Requires the current node to be a branch (otherwise
+;; rebuilding via `make-node` would produce nonsense). Returns a
+;; new loc at the SAME position (= still on the parent), with the
+;; node value replaced by the rebuilt parent.
+(defn insert-child [loc nd]
+  (let* [cs (children loc)
+         new-children (cons nd (if (nil? cs) nil cs))
+         new-node ((.make-node-fn loc) (.node loc) new-children)]
+    (with-loc-internal loc new-node (.path loc) (.lefts loc) (.rights loc) false)))
+
+;; `(append-child loc nd)` — append `nd` to the current node's
+;; children. Symmetric to insert-child.
+(defn append-child [loc nd]
+  (let* [cs (children loc)
+         current (if (nil? cs) nil cs)
+         new-children (into (into [] current) [nd])
+         new-node ((.make-node-fn loc) (.node loc) new-children)]
+    (with-loc-internal loc new-node (.path loc) (.lefts loc) (.rights loc) false)))
+
+;; `(insert-right loc nd)` — insert a sibling immediately to the
+;; right of the current node. The current node stays at its
+;; position; the parent's child sequence grows. Raises at root
+;; (no parent to splice into).
+(defn insert-right [loc nd]
+  (if (nil? (.path loc))
+    (throw (ex-info "insert-right at root has no parent" {:fn "insert-right"}))
+    (with-loc-internal loc (.node loc) (.path loc)
+                       (.lefts loc)
+                       (into [nd] (.rights loc))
+                       false)))
+
+;; `(insert-left loc nd)` — symmetric to insert-right.
+(defn insert-left [loc nd]
+  (if (nil? (.path loc))
+    (throw (ex-info "insert-left at root has no parent" {:fn "insert-left"}))
+    (with-loc-internal loc (.node loc) (.path loc)
+                       (into (.lefts loc) [nd])
+                       (.rights loc)
+                       false)))
+
+;; `(remove loc)` — delete the current node and return the loc on
+;; the previous position per JVM semantics (rightmost-descendant of
+;; the left sibling, or the parent if no left). Raises at root.
+;; Empty `lefts` + empty `rights` collapses the parent's child
+;; list and steps up to the parent (which may then need rebuild).
+(defn remove [loc]
+  (if (nil? (.path loc))
+    (throw (ex-info "remove at root has no node to remove" {:fn "remove"}))
+    (let* [ls (.lefts loc)
+           rs (.rights loc)
+           p  (.path loc)]
+      (if (nil? (seq ls))
+        ;; No left sibling — collapse parent's children to `rs` and
+        ;; step up. Caller may immediately notice the parent's node
+        ;; has shrunk; JVM clojure.zip returns the parent loc with
+        ;; the rebuilt node + the parent's original siblings.
+        (let* [new-children (into [] rs)
+               new-parent-node ((.make-node-fn loc) (.node p) new-children)]
+          (with-loc-internal p new-parent-node (.path p) (.lefts p) (.rights p) false))
+        ;; Left sibling exists — current loc becomes the rightmost
+        ;; descendant of the left sibling (mirrors prev's semantics
+        ;; sans the up-step).
+        (let* [n (count ls)
+               new-current (nth ls (- n 1))
+               new-lefts (into [] (take (- n 1) ls))
+               new-loc (with-loc-internal loc new-current (.path loc) new-lefts rs false)]
+          (rightmost-descendant new-loc))))))
