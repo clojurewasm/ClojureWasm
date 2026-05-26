@@ -288,19 +288,39 @@ test "diff: ctor_call_node second field" {
     try f.check("(do (deftype DiffPair [a b]) (.b (DiffPair. 1 33)))", 33);
 }
 
-// Method-call diff coverage (op_method_call via defrecord/reify +
-// protocol) is intentionally deferred — the TestFixture's
-// Runtime.deinit does not yet clean up `rt.gc.infra`-owned protocol
-// descriptors + extended `method_table` slices that defprotocol +
-// extend-type allocate; surfacing them here trips the DebugAllocator
-// leak detector even though the production runtime intentionally
-// leaks these process-lifetime entries (row 7.3 cycles 1+4+6
-// policy). Phase7 e2e (test/e2e/phase7_method_dispatch.sh +
-// phase7_reify.sh + phase7_defrecord.sh) exercises the full
-// dispatch surface against both backends via vt.callFn (VM reuses
-// tree_walk.treeWalkCall), giving functional parity coverage. The
-// missing diff_test cases for op_method_call ride D-073 cluster's
-// future Runtime.deinit cleanup work.
+
+// Row 7.10 cycle 2 (D-073 diff_test descriptor cleanup): the 2
+// previously-deferred ADR-0040 op_method_call diff cases now land.
+// Root cause of the prior DebugAllocator trip was specifically the
+// anonymous reify TypeDescriptor's protocol_impls + method_table
+// allocations on `rt.gpa` having no lifecycle owner (reify_anon is
+// not registered in `rt.types`, so Pass 3 of `Runtime.deinit` never
+// sees it). Discharge: `reifyPrim` now `rt.trackHeap`'s the descriptor
+// via `freeReifyDescriptor` (`src/lang/primitive/protocol.zig`).
+// Defrecord + extend-type paths route through `rt.types` registry +
+// Pass 3 cleanup respectively, and never tripped the detector
+// (verified empirically before the fix landed).
+
+test "diff: row 7.10 op_method_call on defrecord (inline protocol body)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    try f.check(
+        \\(do
+        \\  (defprotocol IShift (shift-by [this n]))
+        \\  (defrecord MCBox [v] IShift (shift-by [this n] (+ n 100)))
+        \\  (.shift-by (->MCBox 1) 7))
+    , 107);
+}
+
+test "diff: row 7.10 op_method_call on reify (anonymous descriptor)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    try f.check(
+        \\(do
+        \\  (defprotocol IShiftR (shift-by-r [this n]))
+        \\  (.shift-by-r (reify IShiftR (shift-by-r [_ n] (* n 3))) 7))
+    , 21);
+}
 
 // ADR-0042 row 7.9: `apply` variadic-callee bind-direct gate. Both
 // backends share `tree_walk.callFunction` (vm.zig:573 wires

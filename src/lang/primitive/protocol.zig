@@ -405,7 +405,13 @@ pub fn reifyPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     }
 
     // Allocate the anonymous TypeDescriptor on rt.gpa. Not registered
-    // in rt.types — dispatch consults `inst.descriptor` directly.
+    // in rt.types (= dispatch consults `inst.descriptor` directly), so
+    // `Runtime.deinit` Pass 3 won't see it. Register via `rt.trackHeap`
+    // so `freeReifyDescriptor` walks `protocol_impls` + `method_table`
+    // and destroys the descriptor at process exit. Mirrors the cycle 1
+    // (row 7.7) trackHeap discipline for ProtocolDescriptor / ProtocolFn
+    // / TypeDescriptorRef — anonymous reify descriptors get the same
+    // lifecycle hook so DebugAllocator stays quiet across diff_test runs.
     const td = try rt.gpa.create(td_mod.TypeDescriptor);
     errdefer rt.gpa.destroy(td);
     td.* = .{
@@ -417,8 +423,24 @@ pub fn reifyPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
         .parent = null,
         .meta = Value.nil_val,
     };
+    try rt.trackHeap(.{ .ptr = td, .free = freeReifyDescriptor });
 
     return td_mod.allocReifiedInstance(rt, td);
+}
+
+/// trackHeap freer for the anonymous reify TypeDescriptor. Walks the
+/// dup'd protocol_impls + method_table entries (allocated on `rt.gpa`
+/// by `reifyPrim`) before destroying the descriptor itself.
+pub fn freeReifyDescriptor(gpa: std.mem.Allocator, ptr: *anyopaque) void {
+    const td: *td_mod.TypeDescriptor = @ptrCast(@alignCast(ptr));
+    for (td.protocol_impls) |name| gpa.free(name);
+    gpa.free(td.protocol_impls);
+    for (td.method_table) |entry| {
+        gpa.free(entry.protocol_name);
+        gpa.free(entry.method_name);
+    }
+    gpa.free(td.method_table);
+    gpa.destroy(td);
 }
 
 /// `(rt/__satisfies? proto val)` — returns true iff `val`'s
