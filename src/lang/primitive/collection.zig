@@ -42,6 +42,7 @@ const ILOOKUP_FQCN: []const u8 = "ILookup";
 const INDEXED_FQCN: []const u8 = "Indexed";
 const ASSOCIATIVE_FQCN: []const u8 = "Associative";
 const IPM_FQCN: []const u8 = "IPersistentMap";
+const IPS_FQCN: []const u8 = "IPersistentSet";
 
 const vector = @import("../../runtime/collection/vector.zig");
 const list = @import("../../runtime/collection/list.zig");
@@ -110,17 +111,17 @@ fn mapConj(rt: *Runtime, m: Value, entry: Value, loc: SourceLocation) anyerror!V
 /// JVM reference: clojure.core/disj → IPersistentSet.disjoin
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn disjFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("disj", args, 2, loc);
     const coll = args[0];
     if (coll.isNil()) return .nil_val;
     return switch (coll.tag()) {
         .hash_set => try set.disj(rt, coll, args[1]),
-        else => error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "disj",
-            .expected = "set",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 4: IPersistentSet -disjoin slow-path
+            // (close cycle for the retro-audit cluster).
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, IPS_FQCN, "-disjoin", args, loc);
+        },
     };
 }
 

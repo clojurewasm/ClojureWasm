@@ -131,4 +131,5 @@
 (defprotocol Indexed (-nth [c i]))
 (defprotocol Associative (-assoc [c k v]) (-contains-key? [c k]))
 (defprotocol IPersistentMap (-without [m k]) (-keys [m]) (-vals [m]))
+(defprotocol IPersistentSet (-disjoin [s k]))
 
