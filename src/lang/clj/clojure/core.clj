@@ -123,7 +123,8 @@
 ;; wired into their hybrid shape.
 ;; ----------------------------------------------------------------
 
-(defprotocol IPersistentCollection (-count [c]) (-cons [c x]))
+(defprotocol IPersistentCollection (-count [c]) (-cons [c x]) (-empty [c]))
 (defprotocol Seqable (-seq [c]))
 (defprotocol IReduce (-reduce [c f]))
+(defprotocol ISeq (-first [s]) (-rest [s]) (-next [s]))
 

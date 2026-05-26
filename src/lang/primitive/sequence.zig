@@ -58,6 +58,7 @@ const td_mod = @import("../../runtime/type_descriptor.zig");
 /// `lang/primitive/protocol.zig:41-51`). Per ADR-0008 amendment 4 (row 7.7).
 const IPC_FQCN: []const u8 = "IPersistentCollection";
 const SEQABLE_FQCN: []const u8 = "Seqable";
+const ISEQ_FQCN: []const u8 = "ISeq";
 
 // --- count ---
 
@@ -196,11 +197,12 @@ pub fn firstFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             if (sv.isNil()) break :blk .nil_val;
             break :blk try firstOfSeq(rt, env, sv, loc);
         },
-        else => return error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "first",
-            .expected = "seqable? collection",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 1: route unknown receivers through
+            // (extend-type X ISeq (-first [c] ...)) before raising.
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, ISEQ_FQCN, "-first", args, loc);
+        },
     };
 }
 
@@ -235,11 +237,57 @@ pub fn restFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             if (sv.isNil()) break :blk .nil_val;
             break :blk try restOfSeq(rt, env, sv, loc);
         },
-        else => return error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "rest",
-            .expected = "seqable? collection",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 1: ISeq -rest slow-path.
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, ISEQ_FQCN, "-rest", args, loc);
+        },
+    };
+}
+
+// --- next ---
+
+/// Implements clojure.core/next.
+/// Spec: `(next coll)` returns the seq of items after the first, or
+///   nil if there are no more items. Distinct from `rest` only in
+///   that JVM returns nil instead of an empty seq.
+/// JVM reference: clojure.lang.RT.next → seq().next()
+/// cw v1 tier: A (Phase 8 row 8.6 cycle 1)
+pub fn nextFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("next", args, 1, loc);
+    const coll = args[0];
+    if (coll.isNil()) return .nil_val;
+    return switch (coll.tag()) {
+        .list, .cons => blk: {
+            const r = list.rest(coll);
+            // For cw v1, list rest already returns nil for the
+            // singleton case, matching JVM's next-returns-nil contract.
+            break :blk r;
+        },
+        .vector => if (vector.count(coll) > 1) try vectorTailAsList(rt, coll, 1) else .nil_val,
+        .chunked_cons => blk: {
+            const r = try chunked_cons.rest(rt, coll);
+            // Match JVM next: nil for empty rest.
+            if (r.isNil()) break :blk .nil_val;
+            // If rest yields an empty chunked sequence, normalize to nil.
+            break :blk r;
+        },
+        .lazy_seq => blk: {
+            const r = try lazy_seq.rest(rt, env, coll);
+            if (r.isNil()) break :blk .nil_val;
+            break :blk r;
+        },
+        .string => restStringCodepoint(rt, coll),
+        .array_map, .hash_map, .hash_set => blk: {
+            const sv = try seqFn(rt, env, args, loc);
+            if (sv.isNil()) break :blk .nil_val;
+            break :blk try restOfSeq(rt, env, sv, loc);
+        },
+        else => blk: {
+            // D-089 row 8.6 cycle 1: ISeq -next slow-path.
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, ISEQ_FQCN, "-next", args, loc);
+        },
     };
 }
 
@@ -279,8 +327,6 @@ pub fn consFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 /// JVM reference: clojure.core/empty
 /// cw v1 tier: A (Phase 6.16.a-1)
 pub fn emptyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
-    _ = env;
     try error_catalog.checkArity("empty", args, 1, loc);
     const coll = args[0];
     if (coll.isNil()) return .nil_val;
@@ -294,11 +340,11 @@ pub fn emptyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         // follows the same semantic; a 0-length string is not what
         // empty returns for a string arg.
         .string => .nil_val,
-        else => return error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "empty",
-            .expected = "collection",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 1: IPC -empty slow-path.
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, IPC_FQCN, "-empty", args, loc);
+        },
     };
 }
 
@@ -416,6 +462,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "seq", .f = &seqFn },
     .{ .name = "first", .f = &firstFn },
     .{ .name = "rest", .f = &restFn },
+    .{ .name = "next", .f = &nextFn },
     .{ .name = "cons", .f = &consFn },
     .{ .name = "empty", .f = &emptyFn },
 };
