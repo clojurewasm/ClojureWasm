@@ -196,6 +196,7 @@ run_step "e2e_phase7_apply_variadic"         "bash test/e2e/phase7_apply_variadi
 run_step "e2e_phase7_catch_hierarchy"        "bash test/e2e/phase7_catch_hierarchy.sh"
 run_step "e2e_phase7_instance_q"             "bash test/e2e/phase7_instance_q.sh"
 run_step "e2e_phase7_replace_pattern_a"      "bash test/e2e/phase7_replace_pattern_a.sh"
+run_step "e2e_phase7_zip_cycle1"             "bash test/e2e/phase7_zip_cycle1.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional

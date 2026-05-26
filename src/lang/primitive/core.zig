@@ -37,7 +37,6 @@ const class_name = @import("../../runtime/class_name.zig");
 /// covers native tags + interface-shaped multi-tag sets + Throwable
 /// hierarchy + user TypeDescriptor parent walk.
 pub fn instanceQPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("instance?", args, 2, loc);
     if (args[0].tag() != .symbol) {
@@ -48,7 +47,11 @@ pub fn instanceQPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
         });
     }
     const class_sym = symbol_mod.asSymbol(args[0]).name;
-    if (!class_name.isKnown(class_sym))
+    // class_name.isKnown covers native + interface + Throwable; user-
+    // defined defrecord / deftype names live in `rt.types` and need
+    // a separate check (row 7.13 cycle 1 — was the row 7.12 cycle 1
+    // gap surfaced by `(instance? ZipLoc loc)` from clojure.zip).
+    if (!class_name.isKnown(class_sym) and !rt.types.contains(class_sym))
         return error_catalog.raise(.class_name_unknown, loc, .{ .name = class_sym });
     return if (class_name.isInstance(args[1], class_sym)) .true_val else .false_val;
 }
