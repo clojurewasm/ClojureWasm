@@ -303,6 +303,7 @@ test {
     _ = @import("runtime/io/interface.zig");
     _ = @import("runtime/type_descriptor.zig");
     _ = @import("runtime/protocol.zig");
+    _ = @import("runtime/multimethod.zig");
     _ = @import("runtime/dispatch/method_table.zig");
     _ = @import("runtime/java/_host_api.zig");
     _ = @import("runtime/numeric/big_int.zig");

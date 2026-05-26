@@ -198,6 +198,14 @@ pub const Code = enum {
     /// on the receiver's `TypeDescriptor` chain.
     protocol_no_satisfies,
 
+    // --- Multimethod dispatch (ADR-0008 amendment 2, Phase 7.2) ---
+    /// args: `.{ .name = "clojure.core/print-method" }` — raised
+    /// when `getMethod` finds no exact match and no `:default`
+    /// method on the multimethod's method table. Mirrors JVM
+    /// Clojure's `IllegalArgumentException("No method in
+    /// multimethod ...")`.
+    multimethod_no_method,
+
     /// Tier D forms — permanently outside cw scope (ADR-0013). One
     /// Code per form, each with a hand-written multi-sentence
     /// template that explains the reason and suggests the
@@ -294,6 +302,10 @@ pub fn entry(comptime code: Code) Entry {
         .protocol_no_satisfies => .{
             .kind = .type_error, .phase = .eval,
             .template = "No implementation of method '{[method]s}' on protocol '{[protocol]s}' for type '{[type_name]s}'",
+        },
+        .multimethod_no_method => .{
+            .kind = .value_error, .phase = .eval,
+            .template = "No method in multimethod '{[name]s}' for dispatch value",
         },
         .bindings_form_incomplete => .{
             .kind = .syntax_error, .phase = .analysis,
