@@ -36,6 +36,11 @@ const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 
+/// Bare protocol-name constants for the D-089 hybrid slow-path family
+/// (mirrors `sequence.zig` row 7.7's IPC_FQCN / SEQABLE_FQCN style).
+const ILOOKUP_FQCN: []const u8 = "ILookup";
+const INDEXED_FQCN: []const u8 = "Indexed";
+
 const vector = @import("../../runtime/collection/vector.zig");
 const list = @import("../../runtime/collection/list.zig");
 const map = @import("../../runtime/collection/map.zig");
@@ -158,8 +163,6 @@ pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 /// JVM reference: clojure.lang.RT.get
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn getFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
-    _ = env;
     if (args.len < 2 or args.len > 3) {
         return error_catalog.raise(.arity_not_expected, loc, .{
             .fn_name = "get",
@@ -187,30 +190,50 @@ pub fn getFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             if (idx >= n) break :blk default;
             break :blk vector.nth(coll, @intCast(idx));
         },
-        .typed_instance => recordGet(coll, k, default),
-        else => default,
+        .typed_instance => blk: {
+            // Row 7.4 cycle 3 fast-path: declared defrecord field
+            // wins (returns the field value if present).
+            if (recordGetOptional(coll, k)) |v| break :blk v;
+            // D-089 row 8.6 cycle 2: non-declared key → consult
+            // ILookup -lookup before silent default fall-through.
+            var cs: dispatch.CallSite = .{};
+            const slow_args = [_]Value{ coll, k };
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ILOOKUP_FQCN, "-lookup", &slow_args, loc)) |v| break :blk v;
+            break :blk default;
+        },
+        else => blk: {
+            // D-089 row 8.6 cycle 2: consult ILookup -lookup before
+            // silent default fall-through. dispatchOrNull returns null
+            // when no extension exists → preserve historic `default`
+            // semantic.
+            var cs: dispatch.CallSite = .{};
+            const slow_args = [_]Value{ coll, k };
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ILOOKUP_FQCN, "-lookup", &slow_args, loc)) |v| break :blk v;
+            break :blk default;
+        },
     };
 }
 
 /// Implicit IPersistentMap read for a `defrecord` TypedInstance.
 /// `(get rec :k)` walks `descriptor.field_layout` and returns the
-/// matching field value; non-keyword keys and non-matching keys fall
-/// through to `default`. `deftype` instances (`.kind = .deftype`)
-/// do not route through the map surface — they return `default`.
-/// Row 7.4 cycle 3 — minimum declared-key shape; non-declared key
-/// `__extmap` overflow lands at the cycle-4 PROVISIONAL discharge.
-fn recordGet(rec: Value, k: Value, default: Value) Value {
+/// matching field value, or null when the key is not a declared
+/// field (caller routes the null result through ILookup `-lookup`
+/// slow-path then default per D-089 row 8.6 cycle 2). `deftype`
+/// instances (`.kind = .deftype`) do not route through the map
+/// surface — they return null. `__extmap` overflow tracked at
+/// D-086.
+fn recordGetOptional(rec: Value, k: Value) ?Value {
     const inst = rec.decodePtr(*const td_mod.TypedInstance);
-    if (inst.descriptor.kind != .defrecord) return default;
-    if (k.tag() != .keyword) return default;
-    const layout = inst.descriptor.field_layout orelse return default;
+    if (inst.descriptor.kind != .defrecord) return null;
+    if (k.tag() != .keyword) return null;
+    const layout = inst.descriptor.field_layout orelse return null;
     const key_name = keyword_mod.asKeyword(k).name;
     for (layout) |fe| {
         if (std.mem.eql(u8, fe.name, key_name)) {
             return inst.fields()[fe.index];
         }
     }
-    return default;
+    return null;
 }
 
 // --- nth ---
@@ -221,8 +244,6 @@ fn recordGet(rec: Value, k: Value, default: Value) Value {
 /// JVM reference: clojure.lang.RT.nth
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
-    _ = env;
     if (args.len < 2 or args.len > 3) {
         return error_catalog.raise(.arity_not_expected, loc, .{
             .fn_name = "nth",
@@ -296,11 +317,16 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             }
             break :blk list.first(cur);
         },
-        else => error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "nth",
-            .expected = "indexed collection (vector, list)",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 2: Indexed -nth slow-path. The
+            // 3-arity not-found arm is the impl's choice; cw native
+            // arms handle it above. For user extensions, the protocol
+            // method is single-arity (k, i) — (extend-type X Indexed
+            // (-nth [c i] …)) is the user contract.
+            var cs: dispatch.CallSite = .{};
+            const slow_args = [_]Value{ coll, i_val };
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, INDEXED_FQCN, "-nth", &slow_args, loc);
+        },
     };
 }
 

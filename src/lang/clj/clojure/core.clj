@@ -127,4 +127,6 @@
 (defprotocol Seqable (-seq [c]))
 (defprotocol IReduce (-reduce [c f]))
 (defprotocol ISeq (-first [s]) (-rest [s]) (-next [s]))
+(defprotocol ILookup (-lookup [c k]))
+(defprotocol Indexed (-nth [c i]))
 
