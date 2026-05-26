@@ -83,3 +83,13 @@
             (keys x))
           x))
       m)))
+
+;; prewalk-demo / postwalk-demo: walk `form` printing each visited
+;; subform via println; return the (unmodified) form. JVM also calls
+;; print + println for the "Walked: " prefix; cw v1 ships the
+;; bare println form for minimal prereq surface.
+(def prewalk-demo
+  (fn* [form] (prewalk (fn* [x] (println x) x) form)))
+
+(def postwalk-demo
+  (fn* [form] (postwalk (fn* [x] (println x) x) form)))

@@ -19,6 +19,7 @@ const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
 const string_mod = @import("../../runtime/collection/string.zig");
+const print_mod = @import("../../runtime/print.zig");
 
 /// `(nil? x)` — true iff `x` is the singleton nil Value.
 pub fn nilQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -357,6 +358,35 @@ pub fn nameFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     return error_catalog.raise(.feature_not_supported, loc, .{ .name = "name on non-string/non-keyword" });
 }
 
+/// `(println & args)` — render each arg human-readable to stdout
+/// space-separated, then a trailing newline. Returns nil. JVM
+/// distinguishes println (no quotes around strings/chars) from
+/// `prn` (pr-str-style with quotes). cw v1's println special-cases
+/// top-level strings to raw bytes; nested strings inside a printed
+/// collection still go through `printValue` and get quoted —
+/// acceptable divergence for the prewalk-demo / postwalk-demo
+/// surface that drives this primitive's first user. A full
+/// `print-str` / `pr` / `prn` split lands when broader IO surface
+/// is wired.
+pub fn printlnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    _ = loc;
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
+    const stdout = &stdout_writer.interface;
+    for (args, 0..) |arg, i| {
+        if (i > 0) try stdout.writeByte(' ');
+        if (arg.tag() == .string) {
+            try stdout.writeAll(string_mod.asString(arg));
+        } else {
+            try print_mod.printValue(stdout, arg);
+        }
+    }
+    try stdout.writeByte('\n');
+    try stdout.flush();
+    return .nil_val;
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -397,6 +427,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "nat-int?", .f = &natIntQ },
     .{ .name = "keyword", .f = &keywordFn },
     .{ .name = "name", .f = &nameFn },
+    .{ .name = "println", .f = &printlnFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {

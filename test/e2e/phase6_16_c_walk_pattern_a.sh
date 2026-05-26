@@ -91,5 +91,40 @@ esac
 got="$("$BIN" -e '(clojure.walk/keywordize-keys (clojure.walk/stringify-keys {:a 1}))')"
 assert_eq 'roundtrip_keyword_string_keyword' "$got" '{:a 1}'
 
+# --- Group D: prewalk-demo + postwalk-demo + println prereq ---
+
+# --- (13) println basic ---
+got="$("$BIN" -e '(println "hi")')"
+# println prints "hi\n" + REPL prints return value nil → "hi\nnil"
+assert_eq 'println_basic' "$got" 'hi
+nil'
+
+# --- (14) println multi-arg space-separated ---
+got="$("$BIN" -e '(println 1 2 3)')"
+assert_eq 'println_multi' "$got" '1 2 3
+nil'
+
+# --- (15) prewalk-demo returns the form (printed lines + final REPL line) ---
+# We assert the final REPL-printed line is the unmodified input.
+got="$("$BIN" -e '(clojure.walk/prewalk-demo [1 2])' | tail -n 1)"
+assert_eq 'prewalk_demo_returns_form' "$got" '[1 2]'
+
+# --- (16) prewalk-demo pre-order prints parent before children ---
+# Expect lines (in order): [1 2], 1, 2, [1 2] (last is REPL print of return).
+got="$("$BIN" -e '(clojure.walk/prewalk-demo [1 2])')"
+expected='[1 2]
+1
+2
+[1 2]'
+assert_eq 'prewalk_demo_traversal_order' "$got" "$expected"
+
+# --- (17) postwalk-demo post-order: children first ---
+got="$("$BIN" -e '(clojure.walk/postwalk-demo [1 2])')"
+expected='1
+2
+[1 2]
+[1 2]'
+assert_eq 'postwalk_demo_traversal_order' "$got" "$expected"
+
 echo ""
 echo "=== phase6_16_c_walk_pattern_a: all assertions passed ==="
