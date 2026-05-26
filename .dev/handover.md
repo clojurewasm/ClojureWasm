@@ -8,16 +8,13 @@
 
 - **HEAD**: see `git log` (HEAD refreshes only on Active-task-
   identifier change).
-- **First commit on resume MUST be**: open **Phase 6.16.d** —
-  clojure.string Pattern B2 14 vars shim 化 per v5 §8.1 + §9.2.
-  Existing 14 vars (upper-case / lower-case / trim / triml /
-  trimr / trim-newline / starts-with? / ends-with? / includes? /
-  index-of / last-index-of / reverse / re-quote-replacement)
-  rename to `-name` leaf in `lang/primitive/string.zig`, then
-  add Layer 3 1-line shim `(def name (fn* [...] (-name-leaf ...)))`
-  defns in `lang/clj/clojure/string.clj`. e2e
-  `clojure_string_shim.sh`. Survey via general-purpose subagent
-  first (output `private/notes/phase6-6.16.d-survey.md`).
+- **First commit on resume MUST be**: open **Phase 7.0** — boundary
+  review chain (audit_scaffolding + bench sweep + Phase tracker
+  refresh). Then proceed to **Phase 7.1** (ADR-0008 amendment 1 —
+  full protocol dispatch + CallSite cache; rewire Phase 5's
+  `TypeDescriptor.lookupMethod` direct calls through
+  `dispatch(rt, cs, receiver, protocol, method, args)`). Survey via
+  general-purpose subagent first (output `private/notes/phase7-7.1-survey.md`).
 - **Forbidden this session**: (a) `__zig-` namespace prefix path.
   (b) `clojure.X.impl/` sub-ns path. (c) `cljw build --source/
   --debug/--aot` flag path. (d) mixing human + EDN in single
@@ -34,51 +31,56 @@ Workflow + § The only stop) → `.dev/project_facts.md` (F-001..F-009)
 **`private/notes/clj_vs_zig_split_proposal_v5.md` (placement /
 build / error 確定計画 SSOT)** → `.claude/rules/provisional_marker.md`
 (marker lifecycle + SSOT triad) → `feature_deps.yaml` (5 provisional
-entries / 5 marker sites — post-ADR-0035 discharge) →
-`.dev/structure_plan.md` → `.dev/ROADMAP.md` §9.8.
+entries / 5 marker sites) → `.dev/structure_plan.md` →
+`.dev/ROADMAP.md` §9.9 (Phase 7 task table opened 2026-05-26).
 
 ## Current state
 
-- **Phase**: **Phase 6 IN-PROGRESS** — §9.8. 6.16.b cluster
-  + 6.16.c (clojure.walk Pattern A 10/10 vars) landed.
-  **Active task = Phase 6.16.d** (clojure.string Pattern B2
-  shim 化).
+- **Phase**: **Phase 6 DONE** (closed 2026-05-26) — §9.8 all rows
+  resolved (6.0..6.16.* [x]; 6.12 deferred to D-080).
+  **Phase 7 IN-PROGRESS** — §9.9 task table opened with 16 rows.
+  **Active task = Phase 7.0** (boundary review chain) → **7.1**
+  (protocol dispatch + CallSite cache).
 - **Branch**: `cw-from-scratch`. v5 plan =
   `private/notes/clj_vs_zig_split_proposal_v5.md` (1593 lines).
-- **Gate**: Mac 39/39 + OrbStack Ubuntu x86_64 38/38 green at
-  8d1957f.
+- **Gate**: Mac 41/41 + OrbStack Ubuntu x86_64 40/40 green at
+  2aca7b4 (current HEAD = ROADMAP bookkeeping commits past that).
 - **Provisional markers**: 5 markers / 5 entries remaining in
   `feature_deps.yaml` (D-070 join, D-074 map-invert, D-075
   project + rename, D-076 rename-keys, D-077 catch_class_table).
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
-- **New primitives this session** (6.16.c byproducts): `keyword`,
-  `name`, `println` in rt's core.zig — generally useful beyond
-  walk.
 
-## Active task — Phase 6.16.d (clojure.string Pattern B2 shim)
+## Active task — Phase 7.0/7.1 (protocol dispatch + CallSite cache)
 
-Existing 14 `clojure.string` Zig vars (upper-case / lower-case /
-trim / triml / trimr / trim-newline / starts-with? / ends-with? /
-includes? / index-of / last-index-of / reverse /
-re-quote-replacement; D-062 cluster) rename their Zig fn to
-`-name` (Pattern B2 leaf) + ship a 1-line shim `(def name (fn*
-[args] (-name-leaf args)))` in `string.clj`. Surface API stays
-identical from the user's side; placement migrates from
-Pattern transient_zig → Pattern B2.
+ADR-0008 amendment 1 implements the full protocol dispatch path
+that Phase 5 left at `TypeDescriptor.lookupMethod` direct calls.
+Per-call-site monomorphic cache + `dispatch(rt, cs, receiver,
+protocol, method, args)` ABI. CallSite shape landed at Phase 4
+task 4.25 skeleton; Phase 7.1 wires real dispatch through it.
+`runtime/protocol/stub.zig` → real impl. Devil's-advocate fork
+mandatory at depth ≥ 2 if ADR amendment is required (likely).
+
+Phase 7 §9.9 carries 15 task rows total (7.0..7.15) covering
+protocol/defprotocol/multimethod/defrecord/reify + the deferred
+items from Phase 6 (D-069 hybrid polymorphism, D-070 multi-arity
+fn*, D-072 apply-on-lazy-seq, D-073 VM parity, D-077 catch
+table, D-078 string RED set, D-080 clojure.zip).
 
 ## Open questions / blockers
 
 None testable from inside the loop. Step 0.5 sweep walks
-remaining debt rows; ADR-0035 cluster closed.
+remaining open debt rows; Phase 7 work resolves D-069..D-080
+cluster.
 
 ## Guardrail refresh history (condensed)
 
-Waves 1-14 (2026-05-23..25): spirit + Bad Smell + F-NNN +
-ADR-0029..0034 + v5 plan + ROADMAP §9.8 + debt D-062..D-073.
-Wave 15-16 (2026-05-26): provisional-marker mechanisation +
-hook_lib.sh + watch_findings.md + framework_completion + audit
-E2 expansion. Phase 6.16.b-4 (10 commits 9dc3a8e..a762ca9):
-ADR-0035 issuance + D-058/D-063/D-071 closure + 11 PROVISIONAL
-marker discharge. Phase 6.16.c (6 commits 1e5404d..8d1957f):
-clojure.walk Pattern A 10 vars + 3 prereq primitives (keyword /
-name / println).
+Waves 1-16 (2026-05-23..26): spirit + Bad Smell + F-NNN +
+ADR-0029..0034 + v5 plan + ROADMAP §9.8 + debt D-062..D-073 +
+provisional-marker mechanisation + hook_lib.sh +
+watch_findings.md + framework_completion + audit E2 expansion.
+Phase 6 close (2026-05-26): ADR-0035 + 6.16.b-4 (10 commits) +
+6.16.c (6 commits) + 6.16.d (1 commit) + 6.16.e.{1,2,3}
+(3 commits) + Phase 6 exit smoke + phase_at_least_6 flip +
+ROADMAP §9.8 bookkeeping. 11 PROVISIONAL marker discharge at
+sub-cycle d of 6.16.b-4. New rt primitives: keyword / name /
+println / str / subs.
