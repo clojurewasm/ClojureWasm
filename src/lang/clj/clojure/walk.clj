@@ -34,3 +34,17 @@
     (walk (fn* [child] (postwalk f child))
           f
           form)))
+
+;; prewalk-replace / postwalk-replace: walk form replacing every
+;; sub-form that is a key in `smap` with the corresponding value.
+;; JVM: (defn postwalk-replace [smap form]
+;;        (postwalk (fn [x] (if (contains? smap x) (smap x) x)) form))
+;; cw v1 spells the map lookup as `(get smap x)` rather than `(smap x)`
+;; — same semantic, no dependence on the map-as-function invoke path.
+(def prewalk-replace
+  (fn* [smap form]
+    (prewalk (fn* [x] (if (contains? smap x) (get smap x) x)) form)))
+
+(def postwalk-replace
+  (fn* [smap form]
+    (postwalk (fn* [x] (if (contains? smap x) (get smap x) x)) form)))

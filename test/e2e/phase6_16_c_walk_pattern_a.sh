@@ -47,5 +47,23 @@ assert_eq 'prewalk_inc_nested' "$got" '[11 [21 31]]'
 got="$("$BIN" -e "(clojure.walk/postwalk (fn* [x] x) '(1 2 3))")"
 assert_eq 'postwalk_identity_list' "$got" '(1 2 3)'
 
+# --- Group B: prewalk-replace + postwalk-replace ---
+
+# --- (5) postwalk-replace single-key swap on a vector ---
+got="$("$BIN" -e "(clojure.walk/postwalk-replace {:a 1 :b 2} [:a :b :c])")"
+assert_eq 'postwalk_replace_basic' "$got" '[1 2 :c]'
+
+# --- (6) postwalk-replace recurses into nested forms ---
+got="$("$BIN" -e "(clojure.walk/postwalk-replace {:x 10} [:x [:x :y]])")"
+assert_eq 'postwalk_replace_nested' "$got" '[10 [10 :y]]'
+
+# --- (7) prewalk-replace on nested vector ---
+got="$("$BIN" -e "(clojure.walk/prewalk-replace {:x 99} [:x :y [:x]])")"
+assert_eq 'prewalk_replace_nested' "$got" '[99 :y [99]]'
+
+# --- (8) empty smap returns input unchanged ---
+got="$("$BIN" -e "(clojure.walk/postwalk-replace {} [:a :b])")"
+assert_eq 'postwalk_replace_empty_smap' "$got" '[:a :b]'
+
 echo ""
 echo "=== phase6_16_c_walk_pattern_a: all assertions passed ==="
