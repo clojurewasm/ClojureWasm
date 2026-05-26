@@ -125,6 +125,14 @@ pub fn analyzeDef(
     const name_sym = items[1].data.symbol;
     if (name_sym.ns != null)
         return error_catalog.raise(.def_name_namespace_qualified, items[1].location, .{ .ns = name_sym.ns.?, .name = name_sym.name });
+    // ADR-0038: pre-register the Var at analyze time so recursive
+    // defns + forward references inside `(do ...)` resolve. Var lands
+    // with placeholder nil; `evalDef` (tree_walk.zig:466) and the VM
+    // op_def arm re-intern with the actual value at runtime. env.intern
+    // is idempotent (env.zig:353-357 updates root in place).
+    const ns = env.current_ns orelse
+        return error_catalog.raiseInternal(form.location, "def: no current namespace");
+    _ = try env.intern(ns, name_sym.name, .nil_val, null);
     const value_node = if (items.len == 3)
         try analyzer_mod.analyze(arena, rt, env, scope, items[2], macro_table)
     else

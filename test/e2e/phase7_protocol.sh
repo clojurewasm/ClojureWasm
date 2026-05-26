@@ -68,4 +68,27 @@ if [[ "$diag" != *"defprotocol requires"* ]]; then
 fi
 echo "PASS defprotocol_zero_methods_diagnostic"
 
-echo "OK — phase7_protocol smoke (3 cases) green"
+# --- Case 4 (ADR-0038): defprotocol binds per-method-Var ---
+# Post-cycle 8.1 defprotocol emits `(do (def P ...) (def m P ...))`;
+# the second def relies on analyzer pre-register (ADR-0038). Verify
+# that the method-fn Var lands as a .protocol_fn-tagged Value.
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol IPing (ping [this]))
+ping
+EOF
+) || fail "case4: non-zero exit ($got)"
+last=$(last_line "$got")
+if [[ "$last" != *"protocol_fn"* ]]; then
+    fail "case4: expected protocol_fn-tagged value, got '$last'"
+fi
+echo "PASS defprotocol_per_method_var_binding -> protocol_fn"
+
+# --- Case 5 (ADR-0038): recursive defn works ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defn fact [n] (if (= n 0) 1 (* n (fact (- n 1)))))
+(fact 5)
+EOF
+) || fail "case5: non-zero exit ($got)"
+assert_eq 'recursive_defn_factorial' "$(last_line "$got")" '120'
+
+echo "OK — phase7_protocol smoke (5 cases) green"

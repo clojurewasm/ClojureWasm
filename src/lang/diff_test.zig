@@ -104,11 +104,28 @@ test "diff: nested if branches" {
 test "diff: def_node" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
-    // `(do (def x ...) x)` cannot be a single source string in cw v1
-    // because the single-pass analyzer resolves the second `x` before
-    // `def` fires at eval time. Exercise def_node via the do-tail
-    // returning a literal; both backends still execute the def.
-    try f.check("(do (def diff-x 42) 99)", 99);
+    // Post-ADR-0038, `(do (def x ...) x)` resolves cleanly because
+    // analyzeDef pre-registers the Var in env before the body's
+    // forward references are analyzed.
+    try f.check("(do (def diff-x 42) diff-x)", 42);
+}
+
+test "diff: def_node forward ref inside (do)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // ADR-0038: forward references between def forms inside a single
+    // top-level (do ...) work because analyzeDef pre-registers the
+    // first def's name before the second def's value form is analyzed.
+    try f.check("(do (def diff-fwd-a 10) (def diff-fwd-b diff-fwd-a) diff-fwd-b)", 10);
+}
+
+test "diff: def_node recursive defn" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // ADR-0038: recursive `defn` works because analyzeDef pre-registers
+    // the function name before the body (which references itself) is
+    // analyzed. Previously required `loop`/`recur` exclusively.
+    try f.check("(do (defn diff-rec [n] (if (= n 0) 0 (diff-rec (- n 1)))) (diff-rec 7))", 0);
 }
 
 test "diff: do_node sequence" {
