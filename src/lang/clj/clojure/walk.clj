@@ -48,3 +48,38 @@
 (def postwalk-replace
   (fn* [smap form]
     (postwalk (fn* [x] (if (contains? smap x) (get smap x) x)) form)))
+
+;; keywordize-keys: recursively convert string keys to keywords.
+;; JVM uses vector destructure `[[k v]]` inside the helper fn;
+;; cw v1's let* has no destructure (D-076), so we fold over (keys m)
+;; with explicit (get m k). Same complexity, more verbose.
+(def keywordize-keys
+  (fn* [m]
+    (postwalk
+      (fn* [x]
+        (if (map? x)
+          (reduce
+            (fn* [acc k]
+              (if (string? k)
+                (assoc acc (keyword k) (get x k))
+                (assoc acc k (get x k))))
+            {}
+            (keys x))
+          x))
+      m)))
+
+;; stringify-keys: inverse of keywordize-keys — keyword keys → strings.
+(def stringify-keys
+  (fn* [m]
+    (postwalk
+      (fn* [x]
+        (if (map? x)
+          (reduce
+            (fn* [acc k]
+              (if (keyword? k)
+                (assoc acc (name k) (get x k))
+                (assoc acc k (get x k))))
+            {}
+            (keys x))
+          x))
+      m)))

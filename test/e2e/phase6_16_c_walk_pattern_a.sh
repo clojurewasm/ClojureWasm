@@ -65,5 +65,31 @@ assert_eq 'prewalk_replace_nested' "$got" '[99 :y [99]]'
 got="$("$BIN" -e "(clojure.walk/postwalk-replace {} [:a :b])")"
 assert_eq 'postwalk_replace_empty_smap' "$got" '[:a :b]'
 
+# --- Group C: keywordize-keys + stringify-keys ---
+
+# --- (9) keywordize-keys on flat string-key map ---
+got="$("$BIN" -e '(clojure.walk/keywordize-keys {"a" 1 "b" 2})' | tail -n 1)"
+# Map iteration order is insertion-stable for array_map; assert both
+# orderings to be safe.
+case "$got" in
+    "{:a 1, :b 2}"|"{:b 2, :a 1}") echo "PASS keywordize_keys_flat -> $got" ;;
+    *) fail "keywordize_keys_flat: unexpected '$got'" ;;
+esac
+
+# --- (10) keywordize-keys preserves non-string keys ---
+got="$("$BIN" -e '(clojure.walk/keywordize-keys {:already 1})')"
+assert_eq 'keywordize_keys_preserves_keyword' "$got" '{:already 1}'
+
+# --- (11) stringify-keys on flat keyword-key map ---
+got="$("$BIN" -e '(clojure.walk/stringify-keys {:x 1 :y 2})')"
+case "$got" in
+    '{"x" 1, "y" 2}'|'{"y" 2, "x" 1}') echo "PASS stringify_keys_flat -> $got" ;;
+    *) fail "stringify_keys_flat: unexpected '$got'" ;;
+esac
+
+# --- (12) round-trip ---
+got="$("$BIN" -e '(clojure.walk/keywordize-keys (clojure.walk/stringify-keys {:a 1}))')"
+assert_eq 'roundtrip_keyword_string_keyword' "$got" '{:a 1}'
+
 echo ""
 echo "=== phase6_16_c_walk_pattern_a: all assertions passed ==="
