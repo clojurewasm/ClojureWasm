@@ -40,6 +40,8 @@ const dispatch = @import("../../runtime/dispatch.zig");
 /// (mirrors `sequence.zig` row 7.7's IPC_FQCN / SEQABLE_FQCN style).
 const ILOOKUP_FQCN: []const u8 = "ILookup";
 const INDEXED_FQCN: []const u8 = "Indexed";
+const ASSOCIATIVE_FQCN: []const u8 = "Associative";
+const IPM_FQCN: []const u8 = "IPersistentMap";
 
 const vector = @import("../../runtime/collection/vector.zig");
 const list = @import("../../runtime/collection/list.zig");
@@ -138,8 +140,6 @@ pub fn disjFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 /// JVM reference: clojure.lang.RT.contains
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
-    _ = env;
     try error_catalog.checkArity("contains?", args, 2, loc);
     const coll = args[0];
     if (coll.isNil()) return .false_val;
@@ -147,11 +147,15 @@ pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     return switch (coll.tag()) {
         .hash_set => if (try set.contains(coll, k)) .true_val else .false_val,
         .array_map, .hash_map => if (try map.contains(coll, k)) .true_val else .false_val,
-        else => error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "contains?",
-            .expected = "set or map",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 3: Associative -contains-key? slow-path.
+            // DIVERGENCE D2 (survey §6): unifies JVM's
+            // `Associative.containsKey` + `IPersistentSet.contains` under
+            // one protocol surface; user-extended sets respond on the
+            // same protocol as user-extended maps.
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, ASSOCIATIVE_FQCN, "-contains-key?", args, loc);
+        },
     };
 }
 
@@ -339,7 +343,6 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 /// JVM reference: clojure.lang.RT.assoc
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn assocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     if (args.len < 3 or (args.len - 1) % 2 != 0) {
         return error_catalog.raise(.arity_not_expected, loc, .{
             .fn_name = "assoc",
@@ -447,11 +450,21 @@ pub fn assocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             new_fields[slot_idx.?] = v;
             break :blk try td_mod.allocInstance(rt, inst.descriptor, new_fields);
         },
-        else => error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "assoc",
-            .expected = "map, vector, or nil",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 3: Associative -assoc slow-path. The
+            // multi-pair fast-path above is the cw native shape; user
+            // extension uses single-pair (extend-type X Associative
+            // (-assoc [c k v] …)) so the outer-else routes only the
+            // 3-arity form. Multi-pair extension would require the
+            // caller to fold via reduce themselves.
+            if (args.len != 3) {
+                break :blk error_catalog.raise(.feature_not_supported, loc, .{
+                    .name = "multi-pair assoc on extend-type Associative receiver",
+                });
+            }
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, ASSOCIATIVE_FQCN, "-assoc", args, loc);
+        },
     };
 }
 
@@ -462,7 +475,6 @@ pub fn assocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 /// JVM reference: clojure.core/dissoc
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn dissocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     if (args.len < 2) {
         return error_catalog.raise(.arity_not_expected, loc, .{
             .fn_name = "dissoc",
@@ -481,11 +493,18 @@ pub fn dissocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             }
             break :blk acc;
         },
-        else => error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "dissoc",
-            .expected = "map",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 3: IPersistentMap -without slow-path.
+            // Single-key only; multi-key extension folds via reduce in
+            // user code (same shape as the assoc outer-else).
+            if (args.len != 2) {
+                break :blk error_catalog.raise(.feature_not_supported, loc, .{
+                    .name = "multi-key dissoc on extend-type IPersistentMap receiver",
+                });
+            }
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, IPM_FQCN, "-without", args, loc);
+        },
     };
 }
 
@@ -496,7 +515,6 @@ pub fn dissocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 /// JVM reference: clojure.core/keys
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn keysFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("keys", args, 1, loc);
     const coll = args[0];
     if (coll.isNil()) return .nil_val;
@@ -526,11 +544,14 @@ pub fn keysFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             }
             break :blk result;
         },
-        else => error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "keys",
-            .expected = "map",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 3: IPersistentMap -keys slow-path.
+            // DIVERGENCE D1 (survey §6): JVM has no -keys protocol
+            // method (keys = seq over keyset); cw v1 surfaces it
+            // direct to keep user-extension parsimonious.
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, IPM_FQCN, "-keys", args, loc);
+        },
     };
 }
 
@@ -541,7 +562,6 @@ pub fn keysFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 /// JVM reference: clojure.core/vals
 /// cw v1 tier: A (Phase 6.16.a-2)
 pub fn valsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("vals", args, 1, loc);
     const coll = args[0];
     if (coll.isNil()) return .nil_val;
@@ -569,11 +589,12 @@ pub fn valsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             }
             break :blk result;
         },
-        else => error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "vals",
-            .expected = "map",
-            .actual = @tagName(coll.tag()),
-        }),
+        else => blk: {
+            // D-089 row 8.6 cycle 3: IPersistentMap -vals slow-path
+            // (DIVERGENCE D1 mirror of -keys above).
+            var cs: dispatch.CallSite = .{};
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, IPM_FQCN, "-vals", args, loc);
+        },
     };
 }
 
