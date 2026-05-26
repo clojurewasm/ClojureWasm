@@ -268,19 +268,75 @@ pub const Env = struct {
         return self.namespaces.get(name);
     }
 
-    /// Copy every mapping in `from` into `to.refers`. Idempotent —
-    /// duplicate names are silently skipped. Phase-2 boot calls this
-    /// against (rt → user) so primitives like `+` resolve unqualified
-    /// at the user prompt. The real `(refer 'rt)` semantics arrive in
-    /// Phase 4 alongside `(require ...)`.
+    /// Copy every **non-private** mapping in `from` into `to.refers`.
+    /// Idempotent — duplicate names are silently skipped. ADR-0035 D4:
+    /// `^:private` Vars are silently filtered (JVM `:refer :all`
+    /// semantics). Use `referOne` for explicit `:refer [name ...]`
+    /// where a private name should be a fail-fast error.
     pub fn referAll(self: *Env, from: *Namespace, to: *Namespace) !void {
         var it = from.mappings.iterator();
         while (it.next()) |entry| {
+            if (entry.value_ptr.*.flags.private) continue;
             if (to.refers.contains(entry.key_ptr.*)) continue;
             const owned_key = try self.alloc.dupe(u8, entry.key_ptr.*);
             errdefer self.alloc.free(owned_key);
             try to.refers.put(self.alloc, owned_key, entry.value_ptr.*);
         }
+    }
+
+    /// Outcome of a `referOne` call. The caller (typically the
+    /// `require` fn handling `(:refer [a b c])`) maps each outcome to
+    /// the appropriate `error_catalog` raise with its own source
+    /// location — `env.zig` deliberately stays free of catalog
+    /// dependencies. ADR-0035 D4.
+    pub const ReferOneOutcome = enum {
+        /// Refer installed (or already present — both treated as success).
+        installed,
+        /// Source Var exists but carries `^:private` — caller should
+        /// raise `private_access_error`.
+        private_blocked,
+        /// `from.mappings` has no entry for `name` — caller should
+        /// raise `symbol_unresolved`.
+        not_found,
+    };
+
+    /// Install a single `from/name → to.refers/name` edge. Idempotent
+    /// against re-installation. Returns `.private_blocked` /
+    /// `.not_found` rather than raising so the caller can attach
+    /// source location to the catalog raise. ADR-0035 D4.
+    pub fn referOne(
+        self: *Env,
+        from: *Namespace,
+        to: *Namespace,
+        name: []const u8,
+    ) !ReferOneOutcome {
+        const src = from.mappings.get(name) orelse return .not_found;
+        if (src.flags.private) return .private_blocked;
+        if (to.refers.contains(name)) return .installed;
+        const owned_key = try self.alloc.dupe(u8, name);
+        errdefer self.alloc.free(owned_key);
+        try to.refers.put(self.alloc, owned_key, src);
+        return .installed;
+    }
+
+    /// Register `alias → target` in `ns.aliases`. ADR-0035 D3.
+    /// REPL-time re-aliasing is supported: if `alias` already maps to
+    /// some namespace, the target is silently overwritten (JVM
+    /// `(alias ...)` semantics). The key string is duplicated on first
+    /// insertion; re-aliasing reuses the existing key.
+    pub fn setAlias(
+        self: *Env,
+        ns: *Namespace,
+        alias_name: []const u8,
+        target: *Namespace,
+    ) !void {
+        if (ns.aliases.getEntry(alias_name)) |existing| {
+            existing.value_ptr.* = target;
+            return;
+        }
+        const owned_key = try self.alloc.dupe(u8, alias_name);
+        errdefer self.alloc.free(owned_key);
+        try ns.aliases.put(self.alloc, owned_key, target);
     }
 
     /// `(def name root)` equivalent. Creates a new Var in `ns`, or
@@ -614,4 +670,81 @@ test "Env.intern with ^:unsupported marker stores flag" {
     });
     try testing.expect(v.flags.unsupported);
     try testing.expect(!v.flags.private);
+}
+
+test "Env.init creates clojure.core namespace (ADR-0035 prereq)" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    var env = try Env.init(&fix.rt);
+    defer env.deinit();
+
+    try testing.expect(env.findNs("clojure.core") != null);
+}
+
+test "referAll skips ^:private Vars (ADR-0035 D4)" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    var env = try Env.init(&fix.rt);
+    defer env.deinit();
+
+    const src = try env.findOrCreateNs("src.ns");
+    const dst = try env.findOrCreateNs("dst.ns");
+    _ = try env.intern(src, "public", Value.initInteger(1), null);
+    _ = try env.intern(src, "private", Value.initInteger(2), .{ .private = true });
+
+    try env.referAll(src, dst);
+
+    try testing.expect(dst.refers.contains("public"));
+    try testing.expect(!dst.refers.contains("private"));
+}
+
+test "referOne returns .installed for public, .private_blocked for private, .not_found otherwise" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    var env = try Env.init(&fix.rt);
+    defer env.deinit();
+
+    const src = try env.findOrCreateNs("src.ns");
+    const dst = try env.findOrCreateNs("dst.ns");
+    _ = try env.intern(src, "public", Value.initInteger(1), null);
+    _ = try env.intern(src, "private", Value.initInteger(2), .{ .private = true });
+
+    try testing.expectEqual(Env.ReferOneOutcome.installed, try env.referOne(src, dst, "public"));
+    try testing.expect(dst.refers.contains("public"));
+
+    try testing.expectEqual(Env.ReferOneOutcome.private_blocked, try env.referOne(src, dst, "private"));
+    try testing.expect(!dst.refers.contains("private"));
+
+    try testing.expectEqual(Env.ReferOneOutcome.not_found, try env.referOne(src, dst, "missing"));
+
+    // Re-installing an already-referred name is idempotent.
+    try testing.expectEqual(Env.ReferOneOutcome.installed, try env.referOne(src, dst, "public"));
+}
+
+test "setAlias registers an alias and supports REPL-time re-aliasing" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    var env = try Env.init(&fix.rt);
+    defer env.deinit();
+
+    const here = try env.findOrCreateNs("here.ns");
+    const first = try env.findOrCreateNs("first.target");
+    const second = try env.findOrCreateNs("second.target");
+
+    try env.setAlias(here, "t", first);
+    try testing.expectEqual(first, here.aliases.get("t").?);
+
+    // Re-aliasing the same name overwrites the target without
+    // leaking the previous key (key is reused; value is overwritten).
+    try env.setAlias(here, "t", second);
+    try testing.expectEqual(second, here.aliases.get("t").?);
+    try testing.expectEqual(@as(u32, 1), here.aliases.count());
 }
