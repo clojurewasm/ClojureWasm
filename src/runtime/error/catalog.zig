@@ -143,6 +143,11 @@ pub const Code = enum {
     defn_form_incomplete,
     defn_name_invalid,
     defn_params_not_vector,
+    defmulti_form_incomplete,
+    defmulti_name_invalid,
+    defmethod_form_incomplete,
+    defmethod_params_not_vector,
+    prefer_method_form_incomplete,
     when_let_form_incomplete,
     /// args: `.{ .name = "<macro-name>" }`
     user_macro_not_supported,
@@ -533,6 +538,26 @@ pub fn entry(comptime code: Code) Entry {
         .defn_params_not_vector => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "defn parameter list must be a vector",
+        },
+        .defmulti_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defmulti requires a name and a dispatch function",
+        },
+        .defmulti_name_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defmulti name must be an unqualified symbol",
+        },
+        .defmethod_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defmethod requires multifn, dispatch-val, params vector, and body",
+        },
+        .defmethod_params_not_vector => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "defmethod parameter list must be a vector",
+        },
+        .prefer_method_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "prefer-method requires multifn, x, y",
         },
         .when_let_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,

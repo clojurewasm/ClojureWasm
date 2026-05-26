@@ -185,6 +185,7 @@ run_step "e2e_phase6_16_c_keyword_name"      "bash test/e2e/phase6_16_c_keyword_
 run_step "e2e_phase6_16_d_clojure_string_shim" "bash test/e2e/phase6_16_d_clojure_string_shim.sh"
 run_step "e2e_phase6_exit_smoke"             "bash test/e2e/phase6_exit_smoke.sh"
 run_step "e2e_phase7_symbol_value"           "bash test/e2e/phase7_symbol_value.sh"
+run_step "e2e_phase7_multimethod"            "bash test/e2e/phase7_multimethod.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional

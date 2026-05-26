@@ -87,6 +87,9 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "if-let", .expand = expandIfLet },
     .{ .name = "when-let", .expand = expandWhenLet },
     .{ .name = "defn", .expand = expandDefn },
+    .{ .name = "defmulti", .expand = expandDefmulti },
+    .{ .name = "defmethod", .expand = expandDefmethod },
+    .{ .name = "prefer-method", .expand = expandPreferMethod },
 };
 
 // --- Form-construction conveniences ---
@@ -432,6 +435,120 @@ fn expandDefn(
     def_items[1] = name_form;
     def_items[2] = fn_form;
     return list(arena, def_items, loc);
+}
+
+// --- defmulti — multimethod definition (ADR-0008 Phase 7.2 amendment, Alt 1) ---
+//
+// `(defmulti name dispatch-fn)` →
+//   `(def name (rt/__make-multifn (quote name) dispatch-fn :default))`
+//
+// JVM Clojure's `defmulti` macro has additional re-eval-no-op
+// semantics (preserves method_table across REPL reloads). cw v1
+// cycle 5c omits this; re-eval clobbers. Restoring the no-op
+// requires `resolved?` + `multi-fn?` predicates that arrive at a
+// later cycle (D-NEW candidate).
+fn expandDefmulti(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len != 2)
+        return error_catalog.raise(.defmulti_form_incomplete, loc, .{});
+    if (args[0].data != .symbol or args[0].data.symbol.ns != null)
+        return error_catalog.raise(.defmulti_name_invalid, args[0].location, .{});
+
+    const name_form = args[0];
+    const dispatch_fn_form = args[1];
+
+    // (quote name)
+    var quote_items = try arena.alloc(Form, 2);
+    quote_items[0] = sym("quote", loc);
+    quote_items[1] = name_form;
+    const quoted_name = try list(arena, quote_items, loc);
+
+    // (rt/__make-multifn (quote name) dispatch-fn :default)
+    var call_items = try arena.alloc(Form, 4);
+    call_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "__make-multifn" } }, .location = loc };
+    call_items[1] = quoted_name;
+    call_items[2] = dispatch_fn_form;
+    call_items[3] = .{ .data = .{ .keyword = .{ .ns = null, .name = "default" } }, .location = loc };
+    const call_form = try list(arena, call_items, loc);
+
+    // (def name call_form)
+    var def_items = try arena.alloc(Form, 3);
+    def_items[0] = sym("def", loc);
+    def_items[1] = name_form;
+    def_items[2] = call_form;
+    return list(arena, def_items, loc);
+}
+
+// --- defmethod — register a method on a multimethod ---
+//
+// `(defmethod multifn dispatch-val [params...] body...)` →
+//   `(rt/__add-method! multifn dispatch-val (fn* [params...] body...))`
+//
+// Multi-form body wraps in `(do ...)` per the defn pattern.
+fn expandDefmethod(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 4)
+        return error_catalog.raise(.defmethod_form_incomplete, loc, .{});
+    if (args[2].data != .vector)
+        return error_catalog.raise(.defmethod_params_not_vector, args[2].location, .{});
+
+    const multi_form = args[0];
+    const dispatch_val_form = args[1];
+    const params_form = args[2];
+    const body = args[3..];
+
+    const body_form = if (body.len == 1) body[0] else blk: {
+        var do_items = try arena.alloc(Form, body.len + 1);
+        do_items[0] = sym("do", loc);
+        @memcpy(do_items[1..], body);
+        break :blk try list(arena, do_items, loc);
+    };
+
+    // (fn* params_form body_form)
+    var fn_items = try arena.alloc(Form, 3);
+    fn_items[0] = sym("fn*", loc);
+    fn_items[1] = params_form;
+    fn_items[2] = body_form;
+    const fn_form = try list(arena, fn_items, loc);
+
+    // (rt/__add-method! multi dispatch-val fn_form)
+    var call_items = try arena.alloc(Form, 4);
+    call_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "__add-method!" } }, .location = loc };
+    call_items[1] = multi_form;
+    call_items[2] = dispatch_val_form;
+    call_items[3] = fn_form;
+    return list(arena, call_items, loc);
+}
+
+// --- prefer-method — record preference on a multimethod ---
+//
+// `(prefer-method multifn x y)` → `(rt/__prefer-method! multifn x y)`
+fn expandPreferMethod(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len != 3)
+        return error_catalog.raise(.prefer_method_form_incomplete, loc, .{});
+
+    var call_items = try arena.alloc(Form, 4);
+    call_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "__prefer-method!" } }, .location = loc };
+    call_items[1] = args[0];
+    call_items[2] = args[1];
+    call_items[3] = args[2];
+    return list(arena, call_items, loc);
 }
 
 fn expandWhenLet(
