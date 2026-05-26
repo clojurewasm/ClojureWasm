@@ -427,11 +427,15 @@ fn analyzeList(
                 return try special_forms.analyzeCtorCall(arena, rt, env, scope, head.name[0 .. head.name.len - 1], items[1..], form, macro_table);
             }
             // 5.12.a: `.field` (leading dot, single arg) -> field access.
-            // Phase 5.12.a only handles arity 2 (`.field instance`) as
-            // a struct field read. Multi-arg (`.method instance args...`)
-            // protocol method dispatch lands at 5.12.d.
+            // Arity 2 stays a struct field read per row 7.6 survey §4
+            // Option A (finished-form decision).
             if (head.name.len >= 2 and head.name[0] == '.' and items.len == 2) {
                 return try special_forms.analyzeFieldAccess(arena, rt, env, scope, head.name[1..], items[1], form, macro_table);
+            }
+            // Row 7.6 cycle 1: `.method` (leading dot, arity > 2) ->
+            // method call dispatched via the row 7.3 dispatch ABI.
+            if (head.name.len >= 2 and head.name[0] == '.' and items.len >= 3) {
+                return try special_forms.analyzeMethodCall(arena, rt, env, scope, head.name[1..], items[1], items[2..], form, macro_table);
             }
             if (STAGED_UNSUPPORTED_FORMS.has(head.name)) {
                 return error_catalog.raise(.feature_not_supported, form.location, .{ .name = head.name });

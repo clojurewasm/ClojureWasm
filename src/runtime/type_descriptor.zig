@@ -88,17 +88,22 @@ pub const TypeDescriptor = struct {
     /// descriptor. Linear search — method tables are small (Clojure
     /// typically ≤ 8 methods per protocol). Phase 7's CallSite cache
     /// memoises hot paths so the linear scan is amortised.
+    ///
+    /// `protocol_name = null` is the row 7.6 cycle 1 (`.method`
+    /// syntactic form) shape — match by `method_name` only, returning
+    /// the first matching entry across the descriptor's method_table
+    /// + parent chain. Survey §3 Path A2.
     pub fn lookupMethod(
         self: *const TypeDescriptor,
-        protocol_name: []const u8,
+        protocol_name: ?[]const u8,
         method_name: []const u8,
     ) ?*const MethodEntry {
         for (self.method_table) |*entry| {
-            if (std.mem.eql(u8, entry.protocol_name, protocol_name) and
-                std.mem.eql(u8, entry.method_name, method_name))
-            {
-                return entry;
+            if (!std.mem.eql(u8, entry.method_name, method_name)) continue;
+            if (protocol_name) |pn| {
+                if (!std.mem.eql(u8, entry.protocol_name, pn)) continue;
             }
+            return entry;
         }
         if (self.parent) |p| return p.lookupMethod(protocol_name, method_name);
         return null;

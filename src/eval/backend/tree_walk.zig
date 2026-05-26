@@ -243,6 +243,7 @@ pub fn eval(
         .deftype_node => |n| try evalDeftype(rt, n),
         .ctor_call_node => |n| try evalCtorCall(rt, env, locals, n),
         .field_access_node => |n| try evalFieldAccess(rt, env, locals, n),
+        .method_call_node => |n| try evalMethodCall(rt, env, locals, n),
         .in_ns_node => |n| try evalInNs(env, n),
         .require_node => |n| try evalRequire(rt, env, n),
         .ns_node => |n| try evalNs(env, n),
@@ -414,6 +415,42 @@ fn evalCtorCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.CtorCallNo
         buf[i] = try eval(rt, env, locals, &arg_node);
     }
     return try type_descriptor_mod.allocInstance(rt, td, buf);
+}
+
+/// Row 7.6 cycle 1: `(.method instance args...)` general-arity
+/// dispatch. Resolves the receiver's TypeDescriptor (typed_instance
+/// / reified_instance / native-tag) and looks up the method by name
+/// only (Path A2 — `lookupMethod(null, method_name)`), then calls
+/// it via `vt.callFn` with the full arg list (receiver + remaining
+/// args). CallSite cache integration deferred to cycle 4 alongside
+/// the bytecode shape decision.
+fn evalMethodCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.MethodCallNode) !Value {
+    const receiver = try eval(rt, env, locals, n.target);
+    const td: *const type_descriptor_mod.TypeDescriptor = if (receiver.tag() == .typed_instance) blk: {
+        break :blk receiver.decodePtr(*const type_descriptor_mod.TypedInstance).descriptor;
+    } else if (receiver.tag() == .reified_instance) blk: {
+        break :blk receiver.decodePtr(*const type_descriptor_mod.ReifiedInstance).descriptor;
+    } else try rt.nativeDescriptor(receiver.tag());
+    const me = td.lookupMethod(null, n.method_name) orelse {
+        return error_catalog.raise(.protocol_no_satisfies, n.loc, .{
+            .protocol = "<.method>",
+            .method = n.method_name,
+            .type_name = td.fqcn orelse "<anonymous>",
+        });
+    };
+    if (me.method_val.tag() == .nil) return error_catalog.raise(.feature_not_supported, n.loc, .{
+        .name = "method declared but not implemented",
+    });
+    // Build the args buffer: receiver + analysed args.
+    const total = 1 + n.args.len;
+    const args_buf = try rt.gpa.alloc(Value, total);
+    defer rt.gpa.free(args_buf);
+    args_buf[0] = receiver;
+    for (n.args, 0..) |*a, i| {
+        args_buf[1 + i] = try eval(rt, env, locals, a);
+    }
+    const vt = rt.vtable orelse return error.NoVTable;
+    return vt.callFn(rt, env, me.method_val, args_buf, n.loc);
 }
 
 fn evalFieldAccess(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.FieldAccessNode) !Value {

@@ -113,6 +113,8 @@ const Compiler = struct {
             .ctor_call_node => return error.NotImplemented,
             // VM-DEFER: field_access VM bytecode shape pending row 7.6 MethodCallNode design [refs: D-073, feature_deps.yaml#runtime/vm/dispatch_family]
             .field_access_node => return error.NotImplemented,
+            // VM-DEFER: method_call VM bytecode shape pending row 7.6 cycle 4 op decision [refs: D-073, feature_deps.yaml#runtime/vm/dispatch_family]
+            .method_call_node => return error.NotImplemented,
             .in_ns_node => |n| try self.compileInNs(n),
             .require_node => |n| try self.compileRequire(n),
             .ns_node => |n| try self.compileNs(n),

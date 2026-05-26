@@ -109,6 +109,40 @@ pub fn analyzeFieldAccess(
     return n;
 }
 
+/// Row 7.6 cycle 1: `(.method instance args...)` — general-arity
+/// protocol method dispatch. Mirrors `analyzeCtorCall`'s arg
+/// recursive analysis. Eval routes through the row 7.3 `dispatch`
+/// ABI; `TypeDescriptor.lookupMethod(null, method_name)` matches
+/// the first method whose name aligns across the receiver's
+/// method_table chain (Path A2 — protocol-agnostic lookup since
+/// the `.method` form does not name a protocol).
+pub fn analyzeMethodCall(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    method_name: []const u8,
+    target_form: Form,
+    arg_forms: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    const target = try analyzer_mod.analyze(arena, rt, env, scope, target_form, macro_table);
+    const args = try arena.alloc(Node, arg_forms.len);
+    for (arg_forms, 0..) |af, i| {
+        const sub = try analyzer_mod.analyze(arena, rt, env, scope, af, macro_table);
+        args[i] = sub.*;
+    }
+    const n = try arena.create(Node);
+    n.* = .{ .method_call_node = .{
+        .method_name = method_name,
+        .target = target,
+        .args = args,
+        .loc = form.location,
+    } };
+    return n;
+}
+
 pub fn analyzeDef(
     arena: std.mem.Allocator,
     rt: *Runtime,

@@ -72,6 +72,7 @@ pub const Node = union(enum) {
     deftype_node: DeftypeNode,
     ctor_call_node: CtorCallNode,
     field_access_node: FieldAccessNode,
+    method_call_node: MethodCallNode,
     in_ns_node: InNsNode,
     require_node: RequireNode,
     ns_node: NsNode,
@@ -286,6 +287,22 @@ pub const FieldAccessNode = struct {
     /// Field name without the leading dot.
     field_name: []const u8,
     target: *const Node,
+    loc: SourceLocation = .{},
+};
+
+/// `(.method instance args...)` — general-arity protocol method
+/// dispatch. The analyzer routes leading-dot heads with arity > 2 to
+/// this Node (arity 2 stays a `field_access_node` per Phase 5.12.a
+/// finished-form decision recorded in row 7.6 survey §4 Option A).
+/// Eval resolves the method via the row 7.3 `dispatch` ABI;
+/// `TypeDescriptor.lookupMethod` Path A2 extension lets the
+/// `.method`-form's protocol-agnostic shape match the first method
+/// whose name aligns across the descriptor's `method_table`.
+pub const MethodCallNode = struct {
+    /// Method name without the leading dot.
+    method_name: []const u8,
+    target: *const Node,
+    args: []const Node,
     loc: SourceLocation = .{},
 };
 
