@@ -356,3 +356,88 @@ entries:
       until then catchMatches is a single-class predicate. Two
       mirrored sites (tree_walk + VM) discharge together.
 
+  - name: runtime/vm/dispatch_family
+    kind: runtime_layer
+    defined_in: src/eval/backend/vm/compiler.zig
+    status: provisional
+    requires_features: []
+    requires_debts:
+      - D-073
+    provisional_markers:
+      - src/eval/backend/vm/compiler.zig (compileNode deftype_node arm — VM-DEFER pending row 7.6)
+      - src/eval/backend/vm/compiler.zig (compileNode ctor_call_node arm — VM-DEFER pending row 7.6)
+      - src/eval/backend/vm/compiler.zig (compileNode field_access_node arm — VM-DEFER pending row 7.6)
+    notes: |
+      VM compiler arms for the deftype-family Nodes (`deftype_node`
+      / `ctor_call_node` / `field_access_node`) ship as
+      `return error.NotImplemented` with VM-DEFER markers per
+      ADR-0036. Tree_walk handles these Nodes today; VM mode raises
+      `error.NotImplemented` (transient stub, not silent fake).
+      The bytecode shape for the entire dispatch family (deftype +
+      ctor + field-access + future method-call) is owned by
+      ROADMAP §9.9 row 7.6 (MethodCallNode landing). Row 7.6 will
+      decide the operand encoding (e.g., `op_ctor_call <type_idx>
+      <arg_count>` + `op_field_access <field_idx>` vs a generic
+      `op_invoke_protocol_method` sequence over the Phase 7.1
+      `CallSite` cache) and discharge all 3 markers in the same
+      commit. Landing throwaway VM lowering now would be the
+      Smallest-diff bias smell since the chosen shape is not yet
+      finished-form.
+
+  - name: runtime/vm/ns_filter
+    kind: runtime_layer
+    defined_in: src/eval/backend/vm/compiler.zig
+    status: provisional
+    requires_features: []
+    requires_debts:
+      - D-073
+    provisional_markers:
+      - src/eval/backend/vm/compiler.zig (compileNs — _ = n.refer_clojure field drop)
+    notes: |
+      `vm/compiler.zig::compileNs` discards `n.refer_clojure` and
+      lowers identically to `op_in_ns`. At HEAD this is dormant —
+      the analyzer always sets `refer_clojure = true` (the only
+      `(ns ...)` directive supported today is bare + `(:refer-clojure)`
+      without filters), and `op_in_ns` already auto-refers
+      clojure.core via the evalInNs auto-refer block, so observable
+      behaviour matches the tree_walk path by accident. The moment
+      the analyzer extends `NsNode` with `:exclude` / `:only`
+      filter fields (Phase 6.16.b-4 c.8+ owner decision per
+      `special_forms.zig:341-343` `feature_not_supported` raise),
+      the silent field-drop becomes a real divergence between
+      tree_walk and VM. The VM-DEFER marker per ADR-0036 makes the
+      gap grep-discoverable; discharge happens in the same commit
+      that extends `NsNode` with the filter encoding (VM emits a
+      new opcode pair, e.g. `op_ns_with_filter` + filter-list
+      constant, or sequenced `op_refer_exclude` ops).
+
+  - name: runtime/vm/require_libspec
+    kind: runtime_layer
+    defined_in: src/eval/backend/vm/compiler.zig
+    status: provisional
+    requires_features: []
+    requires_debts:
+      - D-073
+    provisional_markers:
+      - src/eval/backend/vm/compiler.zig (compileRequire libspec branch — VM-DEFER)
+    notes: |
+      `vm/compiler.zig::compileRequire` raises
+      `error.NotImplemented` when `n.alias != null or
+      n.refers.len > 0`. The bare-symbol shape works via the
+      single-operand `op_require`. Libspec lowering needs a new
+      opcode (e.g. `op_require_with_libspec` with operand =
+      constants index of a heap Vector<String> packaging
+      `[ns_name, alias_or_empty, refer_name, ...]`) — see survey
+      `private/notes/phase7-T1-survey.md` §3.1 options A/B/C.
+      ADR-0036 Devil's-advocate (Alt 2 refined) carved this impl
+      out of T1 because the opcode encoding choice is a depth-3
+      decision deserving its own Devil's-advocate fork — T1
+      lands as pure discipline + markers + diff cases for
+      fully-working arms only. The follow-up cycle that picks the
+      encoding becomes ADR-0036's first real-feature exercise:
+      one new opcode + 2 diff cases (bare + libspec) + discharge
+      this entry. Discharging this entry also unlocks ADR-0035 D2
+      second amendment (`require` runtime fn migration possible
+      once VM parity for libspec is real, gated on T2 Symbol
+      Value).
+

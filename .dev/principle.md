@@ -120,6 +120,20 @@ these — and on others that fit the same shape:
   them as the Wave-15-follow-up cycle. The fix is to write the
   `watch_findings.md` row in the same edit as the defer
   decision.
+- **Dual-backend drift smell** — landing a new analyzer Node
+  variant with a real TreeWalk arm + a VM compile arm that
+  silently raises `error.NotImplemented` (or silently drops a
+  significant field via `_ = n.some_field;`) without a
+  `// VM-DEFER:` marker + tracked debt row. ADR-0005 + F-002
+  make dual backend the finished form per ADR-0036; an unmarked
+  VM gap is a deferred-amnesia variant specific to the backend-
+  parity contract. cw v0's late-Phase catch-up of accumulated VM
+  gaps consumed weeks of cycle time; cw v1's
+  `scripts/check_dual_backend_parity.sh` PreToolUse hook (per
+  ADR-0036 + `.claude/rules/dual_backend_parity.md`) mechanises
+  the gate, but the smell sensor remains the first line of
+  detection — if you're about to leave a VM arm as
+  `error.NotImplemented` without a marker, that is this smell.
 
 The catalogue is not exhaustive. Any felt smell counts.
 
