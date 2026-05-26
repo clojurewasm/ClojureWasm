@@ -555,18 +555,24 @@ fn expandPreferMethod(
     return list(arena, call_items, loc);
 }
 
-// --- defprotocol — declare a protocol name + its method dispatch fns ---
+// --- defprotocol — declare a protocol name + its method signatures ---
 //
 // `(defprotocol P (m1 [x]) (m2 [x y]))` lowers to:
-//   (do
-//     (def P (rt/__make-protocol! 'P ['m1 'm2]))
-//     (def m1 (rt/__make-protocol-fn! P "m1"))
-//     (def m2 (rt/__make-protocol-fn! P "m2")))
+//   (def P (rt/__make-protocol! 'P ['m1 'm2]))
 //
-// Each method-sig is `(method-name [params...])` — arity defaults
-// to 1 inside cycle 6 `__make-protocol!` (row 7.4 `definterface`
-// will extend the surface for arity overload). The param vector
-// is consumed for shape-validation only.
+// cycle 7.1 minimum: only the protocol Var is bound. Per-method-Var
+// emission (`(def m1 (rt/__make-protocol-fn! P "m1"))` etc.) needs
+// forward-ref support in `analyzeDef` — `(do (def P ...) (def m P
+// ...))` currently fails at analyze time because cw v1's `def` does
+// not pre-register names in env before analyzing the value form
+// (single source: `src/eval/analyzer/special_forms.zig::analyzeDef`).
+// Tracked as D-082b; lands when analyzeDef pre-registers (the
+// recursive-defn enabler too).
+//
+// Until then, users wanting a method-fn Var write the per-method
+// def manually after defprotocol:
+//   (defprotocol IPing (ping [this]))
+//   (def ping (rt/__make-protocol-fn! IPing "ping"))
 fn expandDefprotocol(
     arena: std.mem.Allocator,
     rt: *Runtime,
@@ -590,10 +596,10 @@ fn expandDefprotocol(
         method_names[i] = sig.data.list[0];
     }
 
-    // Build the method-names vector `['m1 'm2 ...]` — each entry is
-    // (quote method-name) so it evaluates to a Symbol Value at
-    // runtime (the cycle 6 `__make-protocol!` primitive iterates a
-    // Vector of method-name Symbols).
+    // Build `['m1 'm2 ...]` — each entry is (quote method-name) so
+    // it evaluates to a Symbol Value at runtime (the cycle 6
+    // `__make-protocol!` primitive iterates a Vector of method-name
+    // Symbols).
     const quoted_methods = try arena.alloc(Form, method_names.len);
     for (method_names, 0..) |m, i| {
         var q = try arena.alloc(Form, 2);
@@ -617,34 +623,11 @@ fn expandDefprotocol(
     const make_proto_call = try list(arena, make_proto_items, loc);
 
     // (def name (rt/__make-protocol! ...))
-    var def_proto_items = try arena.alloc(Form, 3);
-    def_proto_items[0] = sym("def", loc);
-    def_proto_items[1] = name_form;
-    def_proto_items[2] = make_proto_call;
-    const def_proto = try list(arena, def_proto_items, loc);
-
-    // For each method: (def m-name (rt/__make-protocol-fn! name "m-name"))
-    const method_defs = try arena.alloc(Form, method_names.len);
-    for (method_names, 0..) |m, i| {
-        var make_fn_items = try arena.alloc(Form, 3);
-        make_fn_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "__make-protocol-fn!" } }, .location = loc };
-        make_fn_items[1] = name_form;
-        make_fn_items[2] = .{ .data = .{ .string = m.data.symbol.name }, .location = loc };
-        const make_fn_call = try list(arena, make_fn_items, loc);
-
-        var def_fn_items = try arena.alloc(Form, 3);
-        def_fn_items[0] = sym("def", loc);
-        def_fn_items[1] = m;
-        def_fn_items[2] = make_fn_call;
-        method_defs[i] = try list(arena, def_fn_items, loc);
-    }
-
-    // (do def-proto def-method-1 def-method-2 ...)
-    var do_items = try arena.alloc(Form, 2 + method_defs.len);
-    do_items[0] = sym("do", loc);
-    do_items[1] = def_proto;
-    @memcpy(do_items[2..], method_defs);
-    return list(arena, do_items, loc);
+    var def_items = try arena.alloc(Form, 3);
+    def_items[0] = sym("def", loc);
+    def_items[1] = name_form;
+    def_items[2] = make_proto_call;
+    return list(arena, def_items, loc);
 }
 
 // --- extend-type — install one or more method impls on a TypeDescriptor ---
@@ -1003,7 +986,7 @@ fn expectSymbolEq(form: Form, expected: []const u8) !void {
     try testing.expectEqualStrings(expected, form.data.symbol.name);
 }
 
-test "expandDefprotocol lowers to (do (def P ...) (def m1 ...))" {
+test "expandDefprotocol lowers to (def P (rt/__make-protocol! 'P ['m1]))" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
@@ -1020,22 +1003,22 @@ test "expandDefprotocol lowers to (do (def P ...) (def m1 ...))" {
     const args = [_]Form{ p_sym, sig_form };
     const out = try expandDefprotocol(arena, &fix.rt, &args, .{});
     try testing.expect(out.data == .list);
-    try expectSymbolEq(out.data.list[0], "do");
-    try testing.expectEqual(@as(usize, 3), out.data.list.len); // (do def-proto def-m1)
+    try expectSymbolEq(out.data.list[0], "def");
+    try expectSymbolEq(out.data.list[1], "P");
 
-    const def_proto = out.data.list[1];
-    try testing.expect(def_proto.data == .list);
-    try expectSymbolEq(def_proto.data.list[0], "def");
-    try expectSymbolEq(def_proto.data.list[1], "P");
-
-    const make_proto_call = def_proto.data.list[2];
+    const make_proto_call = out.data.list[2];
     try testing.expect(make_proto_call.data == .list);
     try testing.expectEqualStrings("__make-protocol!", make_proto_call.data.list[0].data.symbol.name);
 
-    const def_m1 = out.data.list[2];
-    try testing.expect(def_m1.data == .list);
-    try expectSymbolEq(def_m1.data.list[0], "def");
-    try expectSymbolEq(def_m1.data.list[1], "m1");
+    // Second arg to __make-protocol! is the methods vector with one
+    // quoted symbol.
+    const methods_vec = make_proto_call.data.list[2];
+    try testing.expect(methods_vec.data == .vector);
+    try testing.expectEqual(@as(usize, 1), methods_vec.data.vector.len);
+    const quoted_m1 = methods_vec.data.vector[0];
+    try testing.expect(quoted_m1.data == .list);
+    try expectSymbolEq(quoted_m1.data.list[0], "quote");
+    try expectSymbolEq(quoted_m1.data.list[1], "m1");
 }
 
 test "expandDefprotocol rejects 0-method form via defprotocol_form_incomplete" {
