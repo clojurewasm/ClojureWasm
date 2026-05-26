@@ -6,15 +6,17 @@
 ## Resume contract
 
 - **HEAD**: see `git log`.
-- **First commit on resume MUST be**: §9.9 row 7.5 first red —
-  `reify` analyzer + eval surface. ROADMAP row 7.5 description:
-  "5.12.c carry-forward — reify analyzer + eval. Anonymous
-  TypeDescriptor + closure capture + protocol-method bodies."
-  Row 7.4 (defrecord) closed cycles 1-6 across the prior session
-  (commit chain 202c794 → cycle 6). Row 7.4 left user-typed_instance
-  receivers live; row 7.5 builds on them with anonymous descriptors.
-  Survey first via Step 0 (Clojure JVM `core_deftype.clj` `reify*`
-  + cw v0 prior art + cw v1 5.12 skeleton).
+- **First commit on resume MUST be**: §9.9 row 7.6 first red —
+  `(.method instance args)` general-arity protocol method dispatch
+  via CallSite cache. ROADMAP row 7.6 description: "5.12.d
+  carry-forward — `(.method instance args)` general-arity
+  protocol method dispatch via CallSite cache." Rows 7.4
+  (defrecord) and 7.5 (reify) closed in the prior session.
+  Row 7.6 lights up the `.method` form for arity > 0 (currently
+  only arity-2 `.field instance` works at Phase 5.12.a).
+  D-073 cluster's 3 deftype-family VM-DEFER sites discharge at
+  row 7.6 alongside the bytecode shape decision. Step 0 survey
+  required.
 - **Forbidden this session**: (a) re-deriving Phase 7 entry triad
   (T1 ADR-0036 + T2 ADR-0037 + T3 ADR-0035 D9 second amendment).
   (b) commits adding VM compile arm bodies of the form
@@ -41,12 +43,16 @@ end-state → `feature_deps.yaml` → `.dev/debt.md` Step 0.5 sweep.
 ## Current state
 
 - **Phase**: Phase 7 IN-PROGRESS — §9.9 rows 7.0 / 7.1 / 7.2 / 7.3
-  / 7.4 all [x]. Row 7.4 closed across 6 cycles (commit chain
-  202c794 → cycle 6): macro skeleton + `__defrecord!` primitive +
-  collection arms (get/assoc/keys/vals/count) + `->Name` factory +
-  inline protocol-method bodies + `record?` predicate.
-  D-085 (keyword-as-fn callable) and D-086 (defrecord `__extmap`
-  overflow) opened opportunistically. Active = row 7.5 (reify).
+  / 7.4 / 7.5 all [x]. Row 7.4 (defrecord) closed across 6 cycles
+  (commit chain 202c794 → cycle 6). Row 7.5 (reify) closed across
+  4 cycles (10b06cc + d87e72b + 975cd3a + this commit): macro
+  skeleton → ADR-0039 ReifiedInstance minimal layout + dispatch
+  arm + GC hooks → `__reify!` happy path → D-082 discharge
+  (isaCheck typed_instance/reified_instance descriptor walk).
+  ADR-0039 + Devil's-advocate fork landed.
+  D-082 DISCHARGED. D-085 (keyword-as-fn) and D-086 (defrecord
+  `__extmap`) remain opportunistic. Active = row 7.6
+  (`.method instance args` dispatch + D-073 cluster discharge).
 - **Branch**: `cw-from-scratch`. v5 plan =
   `private/notes/clj_vs_zig_split_proposal_v5.md`.
 - **Gate**: Mac 44/44 + OrbStack Ubuntu x86_64 44/44 green at HEAD
@@ -58,21 +64,23 @@ end-state → `feature_deps.yaml` → `.dev/debt.md` Step 0.5 sweep.
   defrecord __extmap (2 markers in assocFn).
 - **Chapter cadence**: dormant per ADR-0025 + F-007.
 
-## Active task — §9.9 row 7.5 (reify)
+## Active task — §9.9 row 7.6 (`.method` dispatch + D-073 cluster)
 
-`reify` analyzer + eval. Anonymous TypeDescriptor + closure capture
-+ protocol-method bodies. Builds on row 7.4's user-typed_instance
-machinery — reify's anonymous descriptor is the deftype/defrecord
-flow without a registered name (or with a gensym'd name).
+`(.method instance args)` general-arity protocol method dispatch
+via CallSite cache. Phase 5.12.a only ships arity-2 `.field instance`
+as a struct field read; row 7.6 extends to multi-arg form via the
+row 7.3 dispatch ABI. D-073 cluster's 3 deftype-family VM-DEFER
+sites (deftype_node / ctor_call_node / field_access_node in
+vm/compiler.zig) discharge at this row alongside the bytecode shape
+decision (op_method_call or extend op_call with method-resolution
+operand). ADR-0036 dual_backend_parity contract applies.
 
 ## Open questions / blockers
 
 None testable from inside the loop. D-081 (multimethod ergonomic
-surface) blocked-by D-012 (Atom + swap!, Phase 15 target). D-082
-(typed_instance walk in isaCheck) now testable — row 7.4 lands user
-typed_instances; opportunistic discharge in any row 7.5+ cycle that
-touches isaCheck. D-083 (multimethod diff_test parity) opportunistic.
-D-085 (keyword-as-fn callable) opportunistic — needs Layer-0 lookup
+surface) blocked-by D-012 (Atom + swap!, Phase 15 target).
+D-083 (multimethod diff_test parity) opportunistic. D-085
+(keyword-as-fn callable) opportunistic — needs Layer-0 lookup
 helper. D-086 (defrecord __extmap overflow) dedicated cycle later.
 
 ## Guardrail refresh history

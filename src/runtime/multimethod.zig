@@ -37,7 +37,9 @@ const map_mod = @import("collection/map.zig");
 const set_mod = @import("collection/set.zig");
 const error_catalog = @import("error/catalog.zig");
 const symbol = @import("symbol.zig");
+const keyword = @import("keyword.zig");
 const dispatch_mod = @import("dispatch.zig");
+const td_mod = @import("type_descriptor.zig");
 
 const SourceLocation = error_catalog.SourceLocation;
 
@@ -144,11 +146,50 @@ pub fn isPreferred(prefer_table: Value, x: Value, y: Value) !bool {
 pub fn isaCheck(hierarchy_ancestors: Value, child: Value, parent: Value) !bool {
     if (@intFromEnum(child) == @intFromEnum(parent)) return true;
 
+    // Row 7.5 cycle 6 — D-082 discharge: typed_instance + reified_instance
+    // children walk their descriptor chain. JVM `clojure.core/isa?` step 2
+    // (`Class.isAssignableFrom`) + step 4 (`supers` walk) map onto:
+    //   - `descriptor.fqcn` ≡ JVM Class.name
+    //   - `descriptor.protocol_impls` ≡ JVM implementedInterfaces walk
+    //   - `descriptor.parent` ≡ JVM superclass chain
+    // Parent symbol/keyword name is matched against each. Triggered only
+    // when child is a TypedInstance / ReifiedInstance and parent is
+    // a Named (symbol or keyword) — the JVM analogue's input shape.
+    if ((child.tag() == .typed_instance or child.tag() == .reified_instance) and
+        (parent.tag() == .symbol or parent.tag() == .keyword))
+    {
+        const parent_name: []const u8 = if (parent.tag() == .symbol)
+            symbol.asSymbol(parent).name
+        else
+            keyword.asKeyword(parent).name;
+        const child_desc: *const td_mod.TypeDescriptor = if (child.tag() == .typed_instance)
+            child.decodePtr(*const td_mod.TypedInstance).descriptor
+        else
+            child.decodePtr(*const td_mod.ReifiedInstance).descriptor;
+        if (typeDescriptorIsa(child_desc, parent_name)) return true;
+    }
+
     if (hierarchy_ancestors.tag() == .nil) return false;
 
     const child_ancestors = try map_mod.get(hierarchy_ancestors, child);
     if (child_ancestors.tag() != .hash_set) return false;
     return try set_mod.contains(child_ancestors, parent);
+}
+
+/// Walk a descriptor's `fqcn` + `protocol_impls` + `parent` chain
+/// looking for a match against `parent_name`. Row 7.5 cycle 6 D-082
+/// discharge — replaces JVM `Class.isAssignableFrom` + `supers` walk
+/// per `.claude/rules/no_jvm_specific_assumption.md` (cw-side
+/// equivalent of class hierarchy via TypeDescriptor).
+fn typeDescriptorIsa(td: *const td_mod.TypeDescriptor, parent_name: []const u8) bool {
+    if (td.fqcn) |fqcn| {
+        if (std.mem.eql(u8, fqcn, parent_name)) return true;
+    }
+    for (td.protocol_impls) |impl| {
+        if (std.mem.eql(u8, impl, parent_name)) return true;
+    }
+    if (td.parent) |p| return typeDescriptorIsa(p, parent_name);
+    return false;
 }
 
 /// Cycle 4b stub: dereference an IRef-shape hierarchy reference
@@ -284,7 +325,6 @@ pub fn callMultiFn(
 // --- tests ---
 
 const testing = std.testing;
-const keyword = @import("keyword.zig");
 
 const TestFixture = struct {
     threaded: std.Io.Threaded,
@@ -418,6 +458,76 @@ test "isaCheck: nil hierarchy falls back to equality only" {
     const a = try keyword.intern(&fix.rt, null, "a");
     const b = try keyword.intern(&fix.rt, null, "b");
     try testing.expect(!(try isaCheck(Value.nil_val, a, b)));
+}
+
+test "isaCheck: typed_instance child matches descriptor.fqcn against Symbol parent (D-082)" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    // Synthetic descriptor with fqcn "Foo".
+    const td = try testing.allocator.create(td_mod.TypeDescriptor);
+    defer testing.allocator.destroy(td);
+    td.* = .{
+        .fqcn = "Foo",
+        .kind = .defrecord,
+        .field_layout = null,
+        .protocol_impls = &.{},
+        .method_table = &.{},
+        .parent = null,
+        .meta = Value.nil_val,
+    };
+    const inst_val = try td_mod.allocInstance(&fix.rt, td, &.{});
+    const foo_sym = try symbol.intern(&fix.rt, null, "Foo");
+    const bar_sym = try symbol.intern(&fix.rt, null, "Bar");
+    try testing.expect(try isaCheck(Value.nil_val, inst_val, foo_sym));
+    try testing.expect(!(try isaCheck(Value.nil_val, inst_val, bar_sym)));
+}
+
+test "isaCheck: typed_instance child walks protocol_impls list (D-082)" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const impls = [_][]const u8{ "Drawable", "Serializable" };
+    const td = try testing.allocator.create(td_mod.TypeDescriptor);
+    defer testing.allocator.destroy(td);
+    td.* = .{
+        .fqcn = "Shape",
+        .kind = .defrecord,
+        .field_layout = null,
+        .protocol_impls = &impls,
+        .method_table = &.{},
+        .parent = null,
+        .meta = Value.nil_val,
+    };
+    const inst_val = try td_mod.allocInstance(&fix.rt, td, &.{});
+    const drawable_sym = try symbol.intern(&fix.rt, null, "Drawable");
+    const unknown_sym = try symbol.intern(&fix.rt, null, "Unknown");
+    try testing.expect(try isaCheck(Value.nil_val, inst_val, drawable_sym));
+    try testing.expect(!(try isaCheck(Value.nil_val, inst_val, unknown_sym)));
+}
+
+test "isaCheck: reified_instance child walks descriptor like typed_instance (D-082)" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const impls = [_][]const u8{"IProto"};
+    const td = try testing.allocator.create(td_mod.TypeDescriptor);
+    defer testing.allocator.destroy(td);
+    td.* = .{
+        .fqcn = null,
+        .kind = .reify_anon,
+        .field_layout = null,
+        .protocol_impls = &impls,
+        .method_table = &.{},
+        .parent = null,
+        .meta = Value.nil_val,
+    };
+    const inst_val = try td_mod.allocReifiedInstance(&fix.rt, td);
+    const iproto_sym = try symbol.intern(&fix.rt, null, "IProto");
+    try testing.expect(try isaCheck(Value.nil_val, inst_val, iproto_sym));
 }
 
 test "getMethod: hierarchy walk returns ancestor's method on isa? match" {
