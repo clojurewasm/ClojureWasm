@@ -6,13 +6,16 @@
 ## Resume contract
 
 - **HEAD**: see `git log`.
-- **First commit on resume MUST be**: §9.9 row 7.3 Step 0 —
-  general-purpose survey of `defprotocol satisfy` + `extend-type`
-  + `extend-protocol` + CallSite cache full activation (D-014d).
-  Survey targets: JVM `core.clj::defprotocol` /
-  `extend-type` / `clojure.lang.IPersistentProtocol`; cw v0 Phase
-  7 protocol layer + cw v1 dispatch.zig 7.1 ABI; ADR-0008. Output:
-  `private/notes/phase7-7.3-survey.md`.
+- **First commit on resume MUST be**: §9.9 row 7.3 cycle 1 first
+  red — `test "extendType bumps protocol_generation and adds
+  method_table entry"` in `src/runtime/protocol.zig`. Forces:
+  (a) `Runtime.protocol_generation: u32` field, (b) `extendTypeWithImpls`
+  helper that re-allocates `TypeDescriptor.method_table` with new
+  entries appended (re-alloc + swap per survey §5.2), and (c)
+  the generation bump on extension. Step 0 survey is COMPLETE at
+  `private/notes/phase7-7.3-survey.md` (647 lines; mirrors row
+  7.2's Alt 1 pattern — macros over primitives, no analyzer
+  Nodes, no VM-DEFER markers).
 - **Forbidden this session**: (a) re-deriving Phase 7 entry triad
   (T1 ADR-0036 + T2 ADR-0037 + T3 ADR-0035 D9 second amendment).
   (b) commits adding VM compile arm bodies of the form
