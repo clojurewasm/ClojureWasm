@@ -18,6 +18,7 @@
 
 const std = @import("std");
 const TypeDescriptor = @import("../type_descriptor.zig").TypeDescriptor;
+const Value = @import("../value/value.zig").Value;
 
 /// Per-call-site monomorphic cache slot.
 ///
@@ -92,7 +93,7 @@ test "CallSite default-initialises with both cache slots null" {
 
 test "lookupWithCache fills the cache on miss and short-circuits on hit" {
     const entries = [_]TypeDescriptor.MethodEntry{
-        .{ .protocol_name = "ISeq", .method_name = "first", .fn_ptr = null },
+        .{ .protocol_name = "ISeq", .method_name = "first", .method_val = Value.nil_val },
     };
     const td: TypeDescriptor = .{
         .fqcn = "user.Foo",
@@ -115,8 +116,8 @@ test "lookupWithCache fills the cache on miss and short-circuits on hit" {
 
 test "lookupWithCache cache miss when (protocol, method) differs from cache" {
     const entries = [_]TypeDescriptor.MethodEntry{
-        .{ .protocol_name = "ISeq", .method_name = "first", .fn_ptr = null },
-        .{ .protocol_name = "ISeq", .method_name = "rest", .fn_ptr = null },
+        .{ .protocol_name = "ISeq", .method_name = "first", .method_val = Value.nil_val },
+        .{ .protocol_name = "ISeq", .method_name = "rest", .method_val = Value.nil_val },
     };
     const td: TypeDescriptor = .{
         .fqcn = "user.Foo",
@@ -153,7 +154,7 @@ test "lookupWithCache returns null when method is not on the descriptor" {
 
 test "lookupWithCache misses when current_generation differs from cached_generation" {
     const entries = [_]TypeDescriptor.MethodEntry{
-        .{ .protocol_name = "ISeq", .method_name = "first", .fn_ptr = null },
+        .{ .protocol_name = "ISeq", .method_name = "first", .method_val = Value.nil_val },
     };
     const td: TypeDescriptor = .{
         .fqcn = "user.Foo",
@@ -190,7 +191,7 @@ test "CallSite cache slots accept TypeDescriptor + MethodEntry pointers" {
     const me: TypeDescriptor.MethodEntry = .{
         .protocol_name = "ISeq",
         .method_name = "first",
-        .fn_ptr = null,
+        .method_val = Value.nil_val,
     };
     const cs: CallSite = .{ .last_type = &td, .last_method = &me };
     try testing.expect(cs.last_type.? == &td);

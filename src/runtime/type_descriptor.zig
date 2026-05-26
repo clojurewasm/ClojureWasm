@@ -67,12 +67,21 @@ pub const TypeDescriptor = struct {
     pub const MethodEntry = struct {
         protocol_name: []const u8,
         method_name: []const u8,
-        /// Function pointer. Populated by the deftype / defrecord
-        /// analyzer at registration time; `null` is the "method
-        /// declared but not yet implemented" state (used by
-        /// `definterface`-style protocol declarations until an
-        /// implementer registers a body).
-        fn_ptr: ?*const anyopaque,
+        /// Method body as a callable Value. Tag determines dispatch
+        /// path inside `vtable.callFn`:
+        ///   - `.builtin_fn` — native Zig BuiltinFn (deftype-inline,
+        ///     host extension); wrap via `Value.initBuiltinFn(&zigFn)`.
+        ///   - `.fn_val` — user `(fn* [x] body)` from `extend-type`.
+        ///   - `.multi_fn` / `.keyword` / `.fn_val` closures — also
+        ///     reachable through `vtable.callFn`'s dispatch arms.
+        ///   - `.nil_val` — declared-but-not-implemented (definterface-
+        ///     style protocol declarations; `dispatch` raises
+        ///     `feature_not_supported`).
+        /// Per ADR-0008 amendment 3 (cycle 6.6): the prior
+        /// `fn_ptr: ?*const anyopaque` shape is retired; one storage
+        /// shape per logical concept matches row 7.2's `vtable.callFn`
+        /// convergence.
+        method_val: Value = Value.nil_val,
     };
 
     /// Find the method record for `(protocol, method)` on this
@@ -280,8 +289,8 @@ test "TypeDescriptor: reify_anon variant carries no fqcn" {
 
 test "lookupMethod finds matching protocol + method, returns null when missing" {
     const entries = [_]TypeDescriptor.MethodEntry{
-        .{ .protocol_name = "ISeq", .method_name = "first", .fn_ptr = null },
-        .{ .protocol_name = "ISeq", .method_name = "rest", .fn_ptr = null },
+        .{ .protocol_name = "ISeq", .method_name = "first", .method_val = Value.nil_val },
+        .{ .protocol_name = "ISeq", .method_name = "rest", .method_val = Value.nil_val },
     };
     const td: TypeDescriptor = .{
         .fqcn = "user.Foo",
@@ -300,7 +309,7 @@ test "lookupMethod finds matching protocol + method, returns null when missing" 
 
 test "lookupMethod walks parent chain for defrecord inheritance" {
     const parent_entries = [_]TypeDescriptor.MethodEntry{
-        .{ .protocol_name = "IBase", .method_name = "base_method", .fn_ptr = null },
+        .{ .protocol_name = "IBase", .method_name = "base_method", .method_val = Value.nil_val },
     };
     const parent_td: TypeDescriptor = .{
         .fqcn = "user.BaseRecord",

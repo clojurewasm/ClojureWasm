@@ -133,6 +133,83 @@ pub fn makeProtocolFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     return protocol_mod.makeProtocolFn(rt, proto, name_dup);
 }
 
+/// `(rt/__extend-type! td-ref proto impls-vec)` — mutate the
+/// target TypeDescriptor (decoded from a `.type_descriptor` Value)
+/// by appending `(protocol_name, method_name, method_val)` rows for
+/// each impl pair in `impls-vec`. Each impls vec element is a
+/// 2-element Vector `[method-name-string fn-val]` whose first
+/// element names the method and whose second element is the
+/// callable Value (an `.fn_val` user closure, an `.builtin_fn`
+/// native impl, etc.). Bumps `rt.protocol_generation` via
+/// `extendTypeWithImpls` so live CallSite caches invalidate on
+/// next dispatch. Returns the target Value (args[0]) unchanged so
+/// macros can chain.
+pub fn extendType(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("__extend-type!", args, 3, loc);
+    if (args[0].tag() != .type_descriptor) {
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "__extend-type!",
+            .expected = "type_descriptor",
+            .actual = @tagName(args[0].tag()),
+        });
+    }
+    if (args[1].tag() != .protocol) {
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "__extend-type!",
+            .expected = "protocol",
+            .actual = @tagName(args[1].tag()),
+        });
+    }
+    if (args[2].tag() != .vector) {
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "__extend-type!",
+            .expected = "vector",
+            .actual = @tagName(args[2].tag()),
+        });
+    }
+    const td = @constCast(td_mod.asTypeDescriptorRef(args[0]));
+    const proto = protocol_mod.asProtocol(args[1]);
+    const len = vector_mod.count(args[2]);
+    const new_impls = try rt.gc.infra.alloc(td_mod.TypeDescriptor.MethodEntry, len);
+    errdefer rt.gc.infra.free(new_impls);
+    var i: u32 = 0;
+    while (i < len) : (i += 1) {
+        const pair = vector_mod.nth(args[2], i);
+        if (pair.tag() != .vector or vector_mod.count(pair) != 2) {
+            return error_catalog.raise(.type_arg_invalid, loc, .{
+                .fn_name = "__extend-type!",
+                .expected = "[method-name fn-val] pair",
+                .actual = @tagName(pair.tag()),
+            });
+        }
+        const name_val = vector_mod.nth(pair, 0);
+        const fn_val = vector_mod.nth(pair, 1);
+        if (name_val.tag() != .string) {
+            return error_catalog.raise(.type_arg_invalid, loc, .{
+                .fn_name = "__extend-type!",
+                .expected = "string method name",
+                .actual = @tagName(name_val.tag()),
+            });
+        }
+        // Method name slice must outlive the descriptor. Dupe onto
+        // infra so a future String GC sweep does not dangle the
+        // pointer (same shape as `__make-protocol-fn!`).
+        const name_dup = try rt.gc.infra.dupe(u8, string_mod.asString(name_val));
+        new_impls[i] = .{
+            .protocol_name = proto.fqcn(),
+            .method_name = name_dup,
+            .method_val = fn_val,
+        };
+    }
+    try protocol_mod.extendTypeWithImpls(rt, td, new_impls);
+    // extendTypeWithImpls @memcpy's into a fresh combined slice on
+    // `rt.gc.infra` and swaps it onto `td.method_table`; the input
+    // `new_impls` slice is no longer referenced, so free it back.
+    rt.gc.infra.free(new_impls);
+    return args[0];
+}
+
 /// `(rt/__satisfies? proto val)` — returns true iff `val`'s
 /// TypeDescriptor (or any ancestor on its `.parent` chain) carries
 /// a method entry for the protocol. cycle 6 only resolves
@@ -166,6 +243,7 @@ const Entry = struct {
 const ENTRIES = [_]Entry{
     .{ .name = "__make-protocol!", .f = &makeProtocol },
     .{ .name = "__make-protocol-fn!", .f = &makeProtocolFn },
+    .{ .name = "__extend-type!", .f = &extendType },
     .{ .name = "__satisfies?", .f = &satisfiesPrim },
 };
 
@@ -328,7 +406,7 @@ test "__satisfies? returns true when typed_instance's descriptor implements the 
     defer fix.rt.gc.infra.destroy(td);
     const impl_entries = try fix.rt.gc.infra.alloc(td_mod.TypeDescriptor.MethodEntry, 1);
     defer fix.rt.gc.infra.free(impl_entries);
-    impl_entries[0] = .{ .protocol_name = "P", .method_name = "m", .fn_ptr = null };
+    impl_entries[0] = .{ .protocol_name = "P", .method_name = "m", .method_val = Value.nil_val };
     td.* = .{
         .fqcn = "user/Foo",
         .kind = .deftype,
@@ -344,7 +422,7 @@ test "__satisfies? returns true when typed_instance's descriptor implements the 
     try testing.expectEqual(Value.true_val, result);
 }
 
-test "register installs __make-protocol! / __make-protocol-fn! / __satisfies? in rt/" {
+test "register installs the 4 protocol primitives in rt/" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
@@ -353,5 +431,90 @@ test "register installs __make-protocol! / __make-protocol-fn! / __satisfies? in
     try register(&fix.env, rt_ns);
     try testing.expect(rt_ns.resolve("__make-protocol!") != null);
     try testing.expect(rt_ns.resolve("__make-protocol-fn!") != null);
+    try testing.expect(rt_ns.resolve("__extend-type!") != null);
     try testing.expect(rt_ns.resolve("__satisfies?") != null);
+}
+
+/// Test helper: build an `impls-vec` cell `[method-name fn-val]`
+/// for `__extend-type!`'s input vector. Allocates two GC-heap String
+/// + Vector Values.
+fn buildImplPair(rt: *Runtime, method_name: []const u8, fn_val: Value) !Value {
+    const name_str = try string_mod.alloc(rt, method_name);
+    var pair = vector_mod.empty();
+    pair = try vector_mod.conj(rt, pair, name_str);
+    pair = try vector_mod.conj(rt, pair, fn_val);
+    return pair;
+}
+
+fn extendTypeMockBuiltin(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    _ = loc;
+    return Value.initInteger(@intCast(args.len + 100));
+}
+
+test "__extend-type! appends method_val rows + bumps protocol_generation" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    // Protocol "P" carrying one method "m".
+    const proto_name = try symbol_mod.intern(&fix.rt, null, "P");
+    var methods_vec = vector_mod.empty();
+    methods_vec = try vector_mod.conj(&fix.rt, methods_vec, try symbol_mod.intern(&fix.rt, null, "m"));
+    const proto_val = try makeProtocol(&fix.rt, &fix.env, &[_]Value{ proto_name, methods_vec }, .{});
+    defer destroyProtoForTest(&fix.rt, proto_val);
+
+    // Empty TypeDescriptor on infra.
+    const td = try fix.rt.gc.infra.create(td_mod.TypeDescriptor);
+    defer fix.rt.gc.infra.destroy(td);
+    td.* = .{
+        .fqcn = "user/Foo",
+        .kind = .deftype,
+        .field_layout = null,
+        .protocol_impls = &.{},
+        .method_table = &.{},
+        .parent = null,
+        .meta = Value.nil_val,
+    };
+    const td_ref = try td_mod.makeTypeDescriptorRef(&fix.rt, td);
+    defer fix.rt.gc.infra.destroy(@constCast(td_ref.decodePtr(*const td_mod.TypeDescriptorRef)));
+
+    const impl_fn = Value.initBuiltinFn(&extendTypeMockBuiltin);
+    var impls = vector_mod.empty();
+    impls = try vector_mod.conj(&fix.rt, impls, try buildImplPair(&fix.rt, "m", impl_fn));
+
+    const gen_before = fix.rt.protocol_generation;
+    const result = try extendType(&fix.rt, &fix.env, &[_]Value{ td_ref, proto_val, impls }, .{});
+    // Per the per-task note's test-only cleanup policy, the infra-
+    // allocated method_table slice + each method-name dup must be
+    // freed when the test exits (production leaks them on purpose).
+    defer {
+        for (td.method_table) |entry| fix.rt.gc.infra.free(entry.method_name);
+        fix.rt.gc.infra.free(td.method_table);
+    }
+
+    try testing.expectEqual(@intFromEnum(td_ref), @intFromEnum(result));
+    try testing.expectEqual(gen_before +% 1, fix.rt.protocol_generation);
+    try testing.expectEqual(@as(usize, 1), td.method_table.len);
+    try testing.expectEqualStrings("P", td.method_table[0].protocol_name);
+    try testing.expectEqualStrings("m", td.method_table[0].method_name);
+    try testing.expectEqual(@intFromEnum(impl_fn), @intFromEnum(td.method_table[0].method_val));
+}
+
+test "__extend-type! rejects a non-type_descriptor target" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const proto_name = try symbol_mod.intern(&fix.rt, null, "P");
+    const empty_methods = vector_mod.empty();
+    const proto_val = try makeProtocol(&fix.rt, &fix.env, &[_]Value{ proto_name, empty_methods }, .{});
+    defer destroyProtoForTest(&fix.rt, proto_val);
+
+    const impls = vector_mod.empty();
+    try testing.expectError(
+        error.TypeError,
+        extendType(&fix.rt, &fix.env, &[_]Value{ Value.initInteger(7), proto_val, impls }, .{}),
+    );
 }

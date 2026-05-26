@@ -266,7 +266,7 @@ test "satisfies returns true when td.method_table carries any entry for proto.fq
 
     // After extending with an ISeq.first impl → satisfies = true.
     const new_impls = [_]TypeDescriptor.MethodEntry{
-        .{ .protocol_name = "user/ISeq", .method_name = "first", .fn_ptr = null },
+        .{ .protocol_name = "user/ISeq", .method_name = "first", .method_val = Value.nil_val },
     };
     try extendTypeWithImpls(&rt, td_empty, &new_impls);
     defer rt.gc.infra.free(td_empty.method_table);
@@ -301,7 +301,7 @@ test "extendTypeWithImpls bumps protocol_generation and grows method_table" {
     try testing.expectEqual(@as(usize, 0), td.method_table.len);
 
     const new_impls = [_]TypeDescriptor.MethodEntry{
-        .{ .protocol_name = "user/IFoo", .method_name = "bar", .fn_ptr = null },
+        .{ .protocol_name = "user/IFoo", .method_name = "bar", .method_val = Value.nil_val },
     };
     try extendTypeWithImpls(&rt, td, &new_impls);
     // Per the "re-alloc + swap, never free old" policy, the heap-

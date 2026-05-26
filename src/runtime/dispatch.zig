@@ -100,13 +100,13 @@ pub const VTable = struct {
     evalChunk: ?EvalChunkFn = null,
 };
 
-/// ADR-0008 amendment 1 (Phase 7.1) — full protocol dispatch ABI.
-/// Wraps `CallSite.lookupWithCache` + the cast from
-/// `TypeDescriptor.MethodEntry.fn_ptr` (`?*const anyopaque`) back to
-/// `BuiltinFn`. Raises `protocol_no_satisfies` when no MethodEntry
-/// exists on the receiver's descriptor chain, or when the receiver
-/// is not a `typed_instance` (per-Tag default descriptor table is a
-/// Phase 7+ extension).
+/// ADR-0008 protocol dispatch ABI (amendment 1 + amendment 3).
+/// Wraps `CallSite.lookupWithCache` + the `protocol_generation`
+/// invalidation guard, then routes through `vtable.callFn` on the
+/// installed method body Value. Raises `protocol_no_satisfies` when
+/// no MethodEntry exists on the receiver's descriptor chain, or
+/// when the receiver is not a `typed_instance` (per-Tag default
+/// descriptor table is a Phase 7+ extension).
 ///
 /// `cs` is the per-call-site cache slot (analyzer-arena owned via
 /// MethodCallNode in row 7.6+; tests inject directly). `protocol` /
@@ -115,11 +115,12 @@ pub const VTable = struct {
 /// include receiver; impls extract it via the analyzer-time bound
 /// receiver-slot if needed).
 ///
-/// Per the depth-2 Devil's-advocate review (2026-05-26), the
-/// `generation: u32` invalidation field is deferred to row 7.7
-/// (when `extend-type` introduces the invalidation consumer);
-/// shipping it here without a caller is the Reservation-as-bias
-/// smell `.dev/principle.md` calls out.
+/// Per ADR-0008 amendment 3 (cycle 6.6), the body now reads
+/// `MethodEntry.method_val: Value` and dispatches via
+/// `rt.vtable.callFn`. The prior `?*const anyopaque` raw cast path
+/// is retired — convergence with row 7.2 multimethod's
+/// `vtable.callFn` routing closes the protocol-vs-multimethod
+/// dispatch divergence that amendment 1 left open.
 pub fn dispatch(
     rt: *Runtime,
     env: *Env,
@@ -146,11 +147,11 @@ pub fn dispatch(
             .type_name = td.fqcn orelse "<anonymous>",
         });
     };
-    const fn_ptr = me.fn_ptr orelse return error_catalog.raise(.feature_not_supported, loc, .{
-        .name = "protocol method with null fn_ptr (Phase 7.1 declare-only)",
+    if (me.method_val.tag() == .nil) return error_catalog.raise(.feature_not_supported, loc, .{
+        .name = "protocol method with nil method_val (declare-only)",
     });
-    const builtin: BuiltinFn = @ptrCast(@alignCast(fn_ptr));
-    return builtin(rt, env, args, loc);
+    const vt = rt.vtable orelse return error.NoVTable;
+    return vt.callFn(rt, env, me.method_val, args, loc);
 }
 
 // --- threadlocal call-scoped state ---
@@ -256,7 +257,7 @@ test "BuiltinFn signature compiles and is invocable" {
     try testing.expect(result.isNil());
 }
 
-// --- ADR-0008 amendment 1 dispatch fn tests ---
+// --- ADR-0008 amendment 1 + amendment 3 dispatch fn tests ---
 
 fn protocolMethodMock(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
@@ -267,17 +268,43 @@ fn protocolMethodMock(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     return Value.initInteger(@intCast(args.len));
 }
 
+/// Mock vtable.callFn that handles the `.builtin_fn` arm — mirrors
+/// the canonical pattern at `multimethod.zig:662-674` (cycle 5a test).
+/// Cycle 6.6 dispatch routes every protocol-method call through
+/// `rt.vtable.callFn`, so the BuiltinFn-Value-wrapped mock used by
+/// the test below needs a vtable to land on.
+fn dispatchMockCallFn(
+    rt: *Runtime,
+    env: *Env,
+    callee: Value,
+    args: []const Value,
+    loc: SourceLocation,
+) anyerror!Value {
+    if (callee.tag() == .builtin_fn) {
+        const fn_ptr = callee.asBuiltinFn(BuiltinFn);
+        return fn_ptr(rt, env, args, loc);
+    }
+    return callee;
+}
+
+fn dispatchMockTypeKey(val: Value) []const u8 {
+    return @tagName(val.tag());
+}
+
 test "dispatch routes through CallSite cache on monomorphic typed_instance receivers" {
     var fix: TestFixture = undefined;
     fix.init(testing.allocator);
     defer fix.deinit();
 
+    fix.rt.vtable = .{ .callFn = dispatchMockCallFn, .valueTypeKey = dispatchMockTypeKey };
+
     var env = try Env.init(&fix.rt);
     defer env.deinit();
 
-    // Synthetic descriptor with one MethodEntry pointing at our mock.
+    // Synthetic descriptor with one MethodEntry whose method_val
+    // wraps our BuiltinFn mock via the .builtin_fn immediate tag.
     const methods = [_]td_mod.TypeDescriptor.MethodEntry{
-        .{ .protocol_name = "P", .method_name = "m", .fn_ptr = @ptrCast(&protocolMethodMock) },
+        .{ .protocol_name = "P", .method_name = "m", .method_val = Value.initBuiltinFn(&protocolMethodMock) },
     };
     const td = try testing.allocator.create(td_mod.TypeDescriptor);
     defer testing.allocator.destroy(td);
