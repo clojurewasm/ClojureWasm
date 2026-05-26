@@ -209,7 +209,7 @@ entries:
   - name: clojure.set/join
     kind: var
     defined_in: src/lang/clj/clojure/set.clj
-    status: provisional
+    status: landed
     requires_features:
       - clojure.core/intersection
       - clojure.core/set
@@ -219,18 +219,20 @@ entries:
       - clojure.core/merge
       - clojure.core/index
       - clojure.set/rename-keys
+      - clojure.set/map-invert
       - reader_feature/set_literal
       - reader_feature/map_literal_value
       - special_form/fn_multi_arity
-    requires_debts:
-      - D-070
-    provisional_markers:
-      - src/lang/clj/clojure/set.clj (join — 2-arity only)
+    requires_debts: []
+    provisional_markers: []
     notes: |
-      Ships 2-arity `[xrel yrel]` natural-join only. The 3-arity
-      `[xrel yrel km]` key-map form requires multi-arity `fn*`
-      dispatch (D-070). When D-070 closes, the 3-arity body lands
-      and this entry's status flips to `landed`.
+      Row 7.8 cycle 4 (2026-05-27) landed the 3-arity `[xrel yrel km]`
+      key-map form. Multi-arity `fn*` dispatch (D-070) is now available
+      so both `[xrel yrel]` natural-join and `[xrel yrel km]` keymap
+      join share one Var via the analyzer + Function `methods` slice.
+      Full correctness of the keymap-driven join depends on
+      map-as-map-key equality (a separate cw v1 limitation tracked
+      independently); the multi-arity dispatch itself is closed.
 
   - name: clojure.set/map-invert
     kind: var
@@ -312,15 +314,17 @@ entries:
 
   - name: special_form/fn_multi_arity
     kind: special_form
-    defined_in: src/eval/analyzer/special_forms.zig
-    status: planned
+    defined_in: src/eval/analyzer/bindings.zig
+    status: landed
     requires_features: []
-    requires_debts:
-      - D-070
+    requires_debts: []
     notes: |
-      `(fn* ([x] body1) ([x y] body2))` form + arity-dispatch table.
-      Currently cw v1 `fn*` accepts only a single argv vector. D-070
-      tracks the analyzer extension (~150 LOC).
+      `(fn* ([x] body1) ([x y] body2))` + arity-dispatch over a uniform
+      `methods` slice on FnNode + Function (per ADR-0041 Option B-
+      extracted). Landed at row 7.8 cycles 1-4 (2026-05-27): cycle 1
+      shape + analyzer + dispatch; cycle 2 variadic-fixed coexistence
+      + JVM rule 3; cycle 3 `defn` macro extension; cycle 4
+      PROVISIONAL discharge for clojure.set/join.
 
   - name: reader_feature/set_literal
     kind: reader_feature

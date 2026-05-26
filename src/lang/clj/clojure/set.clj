@@ -130,24 +130,38 @@
             {}
             xrel)))
 
-;; `(join xrel yrel)` — natural join on the common keys. 3-arity
-;; key-map form `[xrel yrel km]` deferred to D-070 multi-arity
-;; closure.
-;; PROVISIONAL: 2-arity only pending multi-arity fn* dispatch [refs: D-070, feature_deps.yaml#clojure.set/join]
+;; `(join xrel yrel)` — natural join on the common keys.
+;; `(join xrel yrel km)` — arbitrary key mapping; `km` maps keys of
+;; `xrel` to the corresponding keys of `yrel`. Multi-arity landed at
+;; row 7.8 cycle 4 per ADR-0041 (D-070 discharge).
 (def join
-  (fn* [xrel yrel]
-    (if (and (seq xrel) (seq yrel))
-      (let* [ks (intersection (set (keys (first xrel)))
-                              (set (keys (first yrel))))
-             smaller? (<= (count xrel) (count yrel))
-             r (if smaller? xrel yrel)
-             s (if smaller? yrel xrel)
-             idx (index r ks)]
-        (reduce (fn* [ret x]
-                  (let* [found (get idx (select-keys x ks))]
-                    (if found
-                      (reduce (fn* [acc m] (conj acc (merge m x))) ret found)
-                      ret)))
-                #{}
-                s))
-      #{})))
+  (fn*
+    ([xrel yrel]
+     (if (and (seq xrel) (seq yrel))
+       (let* [ks (intersection (set (keys (first xrel)))
+                               (set (keys (first yrel))))
+              smaller? (<= (count xrel) (count yrel))
+              r (if smaller? xrel yrel)
+              s (if smaller? yrel xrel)
+              idx (index r ks)]
+         (reduce (fn* [ret x]
+                   (let* [found (get idx (select-keys x ks))]
+                     (if found
+                       (reduce (fn* [acc m] (conj acc (merge m x))) ret found)
+                       ret)))
+                 #{}
+                 s))
+       #{}))
+    ([xrel yrel km]
+     (let* [smaller? (<= (count xrel) (count yrel))
+            r (if smaller? xrel yrel)
+            s (if smaller? yrel xrel)
+            k (if smaller? (map-invert km) km)
+            idx (index r (vals k))]
+       (reduce (fn* [ret x]
+                 (let* [found (get idx (rename-keys (select-keys x (keys k)) k))]
+                   (if found
+                     (reduce (fn* [acc m] (conj acc (merge m x))) ret found)
+                     ret)))
+               #{}
+               s)))))

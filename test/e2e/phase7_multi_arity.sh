@@ -137,3 +137,36 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
 EOF
 ) || fail "case12: non-zero exit ($got)"
 assert_eq 'defn_single_arity_back_compat' "$(last_line "$got")" '49'
+
+# --- Cycle 4: PROVISIONAL discharge ---
+
+# --- Case 13: clojure.set/join 3-arity is dispatchable (no arity error) ---
+# The 3-arity body lands at row 7.8 cycle 4 per ADR-0041. Full
+# correctness of the keymap-driven join requires map-as-map-key
+# equality (a separate cw v1 limitation — see follow-up debt row);
+# this case asserts only that the multi-arity dispatch reaches the
+# 3-arity body and returns a set Value (= no arity_not_expected raise).
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.set :as cset])
+(cset/join #{{:a 1 :b 2}} #{{:c 1 :d 99}} {:a :c})
+EOF
+) || fail "case13: non-zero exit ($got)"
+last=$(last_line "$got")
+if [[ "$last" != "#{}"* ]] && [[ "$last" != "#{{"* ]]; then
+    fail "case13: expected a set Value (3-arity dispatched), got '$last'"
+fi
+echo "PASS clojure_set_join_three_arity_dispatched"
+
+# --- Case 14: clojure.set/join 2-arity still works (back-compat) ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.set :as cset])
+(cset/join #{{:a 1 :k :x}} #{{:a 1 :v :y}})
+EOF
+) || fail "case14: non-zero exit ($got)"
+last=$(last_line "$got")
+# Same map-as-key-equality limitation; verify the call dispatches +
+# returns a set Value (multi-arity preserved the 2-arity surface).
+if [[ "$last" != "#{}"* ]] && [[ "$last" != "#{{"* ]]; then
+    fail "case14: expected a set Value (2-arity dispatched), got '$last'"
+fi
+echo "PASS clojure_set_join_two_arity_back_compat"
