@@ -30,15 +30,63 @@ pub const MethodEntry = struct {
 /// Implementations are registered on the implementing type's
 /// `TypeDescriptor` (4.17), so a protocol descriptor itself carries
 /// no `*const fn` pointers.
-pub const ProtocolDescriptor = struct {
-    /// Fully-qualified name, e.g. `"user/ISeq"`. Interned bytes
-    /// owned by the runtime's symbol pool.
-    fqcn: []const u8,
-    /// The declared methods. Insertion order matches the order of
-    /// `defprotocol` clauses; dispatch (Phase 7) uses linear scan
-    /// over this slice plus the per-call-site cache.
-    methods: []const MethodEntry,
+///
+/// Row 7.3 cycle 4: migrated to `extern struct` with HeapHeader at
+/// field 0 so cycle 5's `__make-protocol!` primitive can return a
+/// `.protocol`-tagged Value (Group B slot 18). The `fqcn` and
+/// `methods` fields decompose to ptr+len pairs (extern struct
+/// forbids fat pointers — same workaround `MultiFn.name = Symbol
+/// Value` used at row 7.2 + `ProtocolFn.method_name_ptr/_len` from
+/// cycle 3).
+pub const ProtocolDescriptor = extern struct {
+    header: HeapHeader,
+    _pad: [6]u8 = .{ 0, 0, 0, 0, 0, 0 },
+    /// Fully-qualified name backing bytes (interned, runtime-owned).
+    fqcn_ptr: [*]const u8,
+    fqcn_len: usize,
+    /// Declared methods array — pointer + length; the array's
+    /// `MethodEntry` elements stay plain struct (slice fields in
+    /// MethodEntry are fine because the array itself is referenced
+    /// by raw pointer, ABI-clean).
+    methods_ptr: [*]const MethodEntry,
+    methods_len: usize,
+
+    /// Return the fqcn as a `[]const u8` slice.
+    pub fn fqcn(self: *const ProtocolDescriptor) []const u8 {
+        return self.fqcn_ptr[0..self.fqcn_len];
+    }
+
+    /// Return the methods array as a `[]const MethodEntry` slice.
+    pub fn methods(self: *const ProtocolDescriptor) []const MethodEntry {
+        return self.methods_ptr[0..self.methods_len];
+    }
 };
+
+/// Allocate a `ProtocolDescriptor` Value on `rt.gc.infra`. Caller
+/// supplies the interned fqcn slice + the methods array. Returns a
+/// `.protocol`-tagged Value.
+pub fn makeProtocol(
+    rt: *Runtime,
+    fqcn_slice: []const u8,
+    methods_slice: []const MethodEntry,
+) !Value {
+    const pd = try rt.gc.infra.create(ProtocolDescriptor);
+    pd.* = .{
+        .header = HeapHeader.init(.protocol),
+        .fqcn_ptr = fqcn_slice.ptr,
+        .fqcn_len = fqcn_slice.len,
+        .methods_ptr = methods_slice.ptr,
+        .methods_len = methods_slice.len,
+    };
+    return Value.encodeHeapPtr(.protocol, pd);
+}
+
+/// Decode a `.protocol`-tagged Value back to its
+/// `*const ProtocolDescriptor`. Asserts the tag.
+pub fn asProtocol(val: Value) *const ProtocolDescriptor {
+    std.debug.assert(val.tag() == .protocol);
+    return val.decodePtr(*const ProtocolDescriptor);
+}
 
 /// Per-method dispatch handle, allocated when `(defprotocol P (m
 /// [this]) ...)` evaluates. Carries the (descriptor, method-name)
@@ -130,14 +178,24 @@ test "MethodEntry shape" {
 }
 
 test "ProtocolDescriptor: fqcn + method list shape" {
-    const methods = [_]MethodEntry{
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+
+    const ms = [_]MethodEntry{
         .{ .name = "first", .arity = 1 },
         .{ .name = "rest", .arity = 1 },
         .{ .name = "cons", .arity = 2 },
     };
-    const pd: ProtocolDescriptor = .{ .fqcn = "user/ISeq", .methods = &methods };
-    try testing.expectEqualStrings("user/ISeq", pd.fqcn);
-    try testing.expectEqual(@as(usize, 3), pd.methods.len);
+    const v = try makeProtocol(&rt, "user/ISeq", &ms);
+    defer rt.gc.infra.destroy(@constCast(asProtocol(v)));
+
+    try testing.expect(v.tag() == .protocol);
+    const pd = asProtocol(v);
+    try testing.expectEqualStrings("user/ISeq", pd.fqcn());
+    try testing.expectEqual(@as(usize, 3), pd.methods().len);
+    try testing.expectEqualStrings("first", pd.methods()[0].name);
 }
 
 test "makeProtocolFn allocates a .protocol_fn Value carrying descriptor + method name" {
@@ -146,12 +204,12 @@ test "makeProtocolFn allocates a .protocol_fn Value carrying descriptor + method
     var rt = Runtime.init(th.io(), testing.allocator);
     defer rt.deinit();
 
-    const methods = [_]MethodEntry{
+    const ms = [_]MethodEntry{
         .{ .name = "first", .arity = 1 },
     };
-    const proto = try rt.gc.infra.create(ProtocolDescriptor);
-    defer rt.gc.infra.destroy(proto);
-    proto.* = .{ .fqcn = "user/ISeq", .methods = &methods };
+    const proto_val = try makeProtocol(&rt, "user/ISeq", &ms);
+    defer rt.gc.infra.destroy(@constCast(asProtocol(proto_val)));
+    const proto = asProtocol(proto_val);
 
     const v = try makeProtocolFn(&rt, proto, "first");
     defer rt.gc.infra.destroy(@constCast(asProtocolFn(v)));
