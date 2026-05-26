@@ -191,6 +191,13 @@ pub const Code = enum {
     /// namespace name.
     lib_not_found,
 
+    // --- Protocol dispatch (ADR-0008 amendment 1, Phase 7.1) ---
+    /// args: `.{ .protocol = "ISeq", .method = "first",
+    ///          .type_name = "user.Foo" | "<tag>" }` — raised when
+    /// `dispatch` finds no `MethodEntry` for `(protocol, method)`
+    /// on the receiver's `TypeDescriptor` chain.
+    protocol_no_satisfies,
+
     /// Tier D forms — permanently outside cw scope (ADR-0013). One
     /// Code per form, each with a hand-written multi-sentence
     /// template that explains the reason and suggests the
@@ -283,6 +290,10 @@ pub fn entry(comptime code: Code) Entry {
         .lib_not_found => .{
             .kind = .name_error, .phase = .analysis,
             .template = "Could not locate '{[ns]s}' on the require resolver",
+        },
+        .protocol_no_satisfies => .{
+            .kind = .type_error, .phase = .eval,
+            .template = "No implementation of method '{[method]s}' on protocol '{[protocol]s}' for type '{[type_name]s}'",
         },
         .bindings_form_incomplete => .{
             .kind = .syntax_error, .phase = .analysis,

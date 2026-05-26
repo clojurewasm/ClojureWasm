@@ -39,6 +39,11 @@ const Value = @import("value/value.zig").Value;
 const Runtime = @import("runtime.zig").Runtime;
 const Env = @import("env.zig").Env;
 const SourceLocation = @import("error/info.zig").SourceLocation;
+const td_mod = @import("type_descriptor.zig");
+const method_table = @import("dispatch/method_table.zig");
+const error_catalog = @import("error/catalog.zig");
+
+pub const CallSite = method_table.CallSite;
 
 /// Phase-2 built-in signature. All `lang/primitive/*.zig` functions
 /// have this shape.
@@ -94,6 +99,59 @@ pub const VTable = struct {
     valueTypeKey: ValueTypeKeyFn,
     evalChunk: ?EvalChunkFn = null,
 };
+
+/// ADR-0008 amendment 1 (Phase 7.1) — full protocol dispatch ABI.
+/// Wraps `CallSite.lookupWithCache` + the cast from
+/// `TypeDescriptor.MethodEntry.fn_ptr` (`?*const anyopaque`) back to
+/// `BuiltinFn`. Raises `protocol_no_satisfies` when no MethodEntry
+/// exists on the receiver's descriptor chain, or when the receiver
+/// is not a `typed_instance` (per-Tag default descriptor table is a
+/// Phase 7+ extension).
+///
+/// `cs` is the per-call-site cache slot (analyzer-arena owned via
+/// MethodCallNode in row 7.6+; tests inject directly). `protocol` /
+/// `method` are arena/static strings used by `lookupWithCache`'s
+/// re-validation. `args` is the method's argument list (does NOT
+/// include receiver; impls extract it via the analyzer-time bound
+/// receiver-slot if needed).
+///
+/// Per the depth-2 Devil's-advocate review (2026-05-26), the
+/// `generation: u32` invalidation field is deferred to row 7.7
+/// (when `extend-type` introduces the invalidation consumer);
+/// shipping it here without a caller is the Reservation-as-bias
+/// smell `.dev/principle.md` calls out.
+pub fn dispatch(
+    rt: *Runtime,
+    env: *Env,
+    cs: *CallSite,
+    receiver: Value,
+    protocol_name: []const u8,
+    method_name: []const u8,
+    args: []const Value,
+    loc: SourceLocation,
+) anyerror!Value {
+    if (receiver.tag() != .typed_instance) {
+        return error_catalog.raise(.protocol_no_satisfies, loc, .{
+            .protocol = protocol_name,
+            .method = method_name,
+            .type_name = @tagName(receiver.tag()),
+        });
+    }
+    const inst = receiver.decodePtr(*const td_mod.TypedInstance);
+    const td = inst.descriptor;
+    const me = cs.lookupWithCache(td, protocol_name, method_name) orelse {
+        return error_catalog.raise(.protocol_no_satisfies, loc, .{
+            .protocol = protocol_name,
+            .method = method_name,
+            .type_name = td.fqcn orelse "<anonymous>",
+        });
+    };
+    const fn_ptr = me.fn_ptr orelse return error_catalog.raise(.feature_not_supported, loc, .{
+        .name = "protocol method with null fn_ptr (Phase 7.1 declare-only)",
+    });
+    const builtin: BuiltinFn = @ptrCast(@alignCast(fn_ptr));
+    return builtin(rt, env, args, loc);
+}
 
 // --- threadlocal call-scoped state ---
 
@@ -196,6 +254,105 @@ test "BuiltinFn signature compiles and is invocable" {
     const f: BuiltinFn = &dummyBuiltin;
     const result = try f(&fix.rt, &env, &.{}, .{});
     try testing.expect(result.isNil());
+}
+
+// --- ADR-0008 amendment 1 dispatch fn tests ---
+
+fn protocolMethodMock(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    _ = loc;
+    // Echo arg count as an integer so the test can verify the right
+    // builtin ran with the right arguments.
+    return Value.initInteger(@intCast(args.len));
+}
+
+test "dispatch routes through CallSite cache on monomorphic typed_instance receivers" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    var env = try Env.init(&fix.rt);
+    defer env.deinit();
+
+    // Synthetic descriptor with one MethodEntry pointing at our mock.
+    const methods = [_]td_mod.TypeDescriptor.MethodEntry{
+        .{ .protocol_name = "P", .method_name = "m", .fn_ptr = @ptrCast(&protocolMethodMock) },
+    };
+    const td = try testing.allocator.create(td_mod.TypeDescriptor);
+    defer testing.allocator.destroy(td);
+    td.* = .{
+        .fqcn = "test.Foo",
+        .kind = .deftype,
+        .field_layout = null,
+        .protocol_impls = &.{"P"},
+        .method_table = &methods,
+        .parent = null,
+        .meta = .nil_val,
+    };
+
+    const inst = try td_mod.allocInstance(&fix.rt, td, &.{});
+
+    var cs: CallSite = .{};
+    const args = [_]Value{ .nil_val, .true_val };
+
+    // Miss: fills the cache.
+    const r1 = try dispatch(&fix.rt, &env, &cs, inst, "P", "m", &args, .{});
+    try testing.expectEqual(@as(i64, 2), r1.asInteger());
+    try testing.expect(cs.last_type.? == td);
+    try testing.expect(cs.last_method != null);
+
+    // Hit: same cache slot used (CallSite state unchanged).
+    const last_method_ptr = cs.last_method.?;
+    const r2 = try dispatch(&fix.rt, &env, &cs, inst, "P", "m", &args, .{});
+    try testing.expectEqual(@as(i64, 2), r2.asInteger());
+    try testing.expect(cs.last_method.? == last_method_ptr);
+}
+
+test "dispatch raises protocol_no_satisfies when method missing from descriptor" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    var env = try Env.init(&fix.rt);
+    defer env.deinit();
+
+    const td = try testing.allocator.create(td_mod.TypeDescriptor);
+    defer testing.allocator.destroy(td);
+    td.* = .{
+        .fqcn = "test.Bare",
+        .kind = .deftype,
+        .field_layout = null,
+        .protocol_impls = &.{},
+        .method_table = &.{},
+        .parent = null,
+        .meta = .nil_val,
+    };
+    const inst = try td_mod.allocInstance(&fix.rt, td, &.{});
+
+    var cs: CallSite = .{};
+    try testing.expectError(
+        error.TypeError,
+        dispatch(&fix.rt, &env, &cs, inst, "P", "missing", &.{}, .{}),
+    );
+}
+
+test "dispatch raises protocol_no_satisfies on non-typed_instance receiver" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    var env = try Env.init(&fix.rt);
+    defer env.deinit();
+
+    var cs: CallSite = .{};
+    // Receiver is an integer Value, not a typed_instance — the per-Tag
+    // default descriptor table is a Phase 7+ extension; for now this
+    // path raises immediately.
+    try testing.expectError(
+        error.TypeError,
+        dispatch(&fix.rt, &env, &cs, Value.initInteger(42), "P", "m", &.{}, .{}),
+    );
 }
 
 test "threadlocal current_env starts null and is settable" {

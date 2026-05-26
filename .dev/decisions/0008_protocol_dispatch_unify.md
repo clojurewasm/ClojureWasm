@@ -112,3 +112,92 @@ this ADR.
 - 2026-05-23 (amendment 1): Added "Phase 7+ migration note" section
   to narrate the rewrite of the Phase 5 dispatch path when task 4.18
   / 4.25 skeletons activate in Phase 7 (per ROADMAP §A25).
+
+- 2026-05-26 (amendment 1 — Phase 7.1 implementation): Land
+  `dispatch(rt, env, cs, receiver, protocol, method, args, loc)` in
+  `src/runtime/dispatch.zig`. Signature differs from the original
+  ADR sketch by including `env` + `loc` — `env` is required because
+  `BuiltinFn` (= the protocol method impl signature) takes `env`,
+  and `loc` is needed for catalog raise at the dispatch site.
+  ROADMAP §9.9 row 7.1's shorter signature `(rt, cs, receiver,
+  protocol, method, args)` is a sketch; this amendment finalises
+  the full surface.
+
+  Body wraps `CallSite.lookupWithCache` from
+  `src/runtime/dispatch/method_table.zig:53-72` (which already
+  caches the `last_type → last_method` slot with protocol+method
+  name re-validation) + casts `TypeDescriptor.MethodEntry.fn_ptr`
+  (`?*const anyopaque`) back to `BuiltinFn` + invokes. Raises
+  new catalog Code `protocol_no_satisfies` (kind = `type_error`,
+  phase = `eval`) when the receiver is not a `typed_instance`
+  (per-Tag default descriptor table is a Phase 7+ extension) or
+  when `lookupWithCache` returns null.
+
+  **Devil's-advocate fork (depth-2, fresh context) verbatim
+  embedding** — produced 3 alternatives within F-002 / F-007 /
+  F-009 envelope:
+
+  > **Alt 1 — smallest-diff**: ship dispatch ABI with
+  > `lookupWithCache` as-is; defer `generation`. The existing
+  > cache short-circuit re-validates protocol + method names on
+  > every hit, so the only correctness gap is `extend-type`
+  > *changing the impl* for a `(td, protocol, method)` triple a
+  > CallSite already cached. In Phase 7.1, `extend-type` doesn't
+  > exist yet (it's 7.7's burden). Until 7.7 lands, `generation`
+  > invalidates nothing — it's a Phase 7.7 prerequisite shipped
+  > 6 tasks early. Better: ships less surface in 7.1; the
+  > cache-invalidation contract gets designed alongside its
+  > consumer.
+  >
+  > **Alt 2 — finished-form-clean**: adopt the proposal's
+  > invalidation semantics but **move the dispatch fn body to
+  > `TypeDescriptor.dispatchMethod(rt, cs, receiver, protocol,
+  > method, args)`** rather than a free function in
+  > `runtime/dispatch.zig`. Co-locate with data; TypeDescriptor
+  > becomes the dispatch authority.
+  >
+  > **Alt 3 — wildcard**: cw v0 textbook adoption — per-
+  > ProtocolFn cache on the method-Var, not per-CallSite. Trades
+  > per-Node arena allocation for cache slots living in heap-
+  > Value Var bodies. Cache survives across same-method-different-
+  > call-site re-evaluation. Breaks F-002 finished form: per-Var
+  > caches share state across unrelated call sites — a polymorphic
+  > call site at one location pessimises the monomorphic cache
+  > that a tight loop elsewhere depends on. Per-CallSite is the
+  > C2/V8 inline-cache convergence point; per-Var is one generation
+  > behind.
+  >
+  > **Recommendation**: Alt 1 (ship dispatch ABI; defer
+  > `generation` to 7.7 when `extend-type` lands). The existing
+  > cache is already correct for same-type repeat-method calls
+  > (the only call pattern 7.1 can test). Shipping `generation`
+  > in 7.1 means designing the invalidation contract without
+  > seeing its consumer — exactly the smell `principle.md` calls
+  > Reservation-as-bias.
+
+  **Selected**: Alt 1 verbatim (skip `generation` field in this
+  amendment; ship with current `CallSite { last_type, last_method }`
+  shape). Alt 2's co-location (`td.dispatchMethod`) considered
+  but rejected — `runtime/dispatch.zig` is the natural home for
+  the dispatch ABI (the file already contains `VTable.callFn` +
+  threadlocal call-scoped state), and TypeDescriptor stays
+  focused on data-side helpers (`lookupMethod` etc.). Alt 3
+  rejected per the advocate's own F-002 finding (per-Var cache
+  locality regression).
+
+  Phase 7.7 amendment will add `generation: u32` to CallSite +
+  `Runtime.protocol_generation: u32` + bump-on-extend-type
+  semantics. Phase 7.7 also lands `extend-type` analyzer
+  recognition (cw v1 has no `extend-type` / `extend-protocol` /
+  `defprotocol` SPECIAL_FORMS today — `analyzer.zig:168` shows
+  the table doesn't include them).
+
+  3 new unit tests in `dispatch.zig` cover: cache miss + hit on
+  typed_instance receiver; missing method → `protocol_no_satisfies`;
+  non-typed_instance receiver → `protocol_no_satisfies` (raised
+  as `error.TypeError` per catalog Code mapping). No e2e —
+  `defprotocol` / `extend-type` analyzer surface lands at 7.3 /
+  7.7; 7.1's dispatch ABI is validated via synthetic fn-pointer
+  injection per the survey's recommended scope.
+
+  ROADMAP §9.9 row 7.1 flips to `[x]`.
