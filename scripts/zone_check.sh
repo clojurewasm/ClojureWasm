@@ -98,6 +98,21 @@ for file in $files; do
                     ;;
             esac
 
+            # §9.11 row 9.1: modules/ MUST NOT import lang/ or app/
+            # (zone_deps.md rule + ROADMAP §A1). Layer-number arithmetic
+            # alone treats modules and lang as peers at layer 2; the
+            # explicit forbid lives here.
+            case "$file" in
+                modules/*)
+                    case "$rel" in
+                        src/lang/*|src/app/*|src/main.zig)
+                            echo "$file:$lineno: zone_deps.md: modules/ imports forbidden zone ($import_path)" \
+                                >> "$violations_file"
+                            ;;
+                    esac
+                    ;;
+            esac
+
             # G1 (ADR-0029 D2): cross-surface horizontal calls
             case "$file" in
                 src/runtime/java/*)
