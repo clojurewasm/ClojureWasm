@@ -1423,26 +1423,53 @@ deliberately set looser with a rationale comment); dual-backend
 landed; `src/app/` split done with `main.zig` reduced to a thin
 dispatcher. 🔒 OrbStack x86_64 gate passes.
 
-### 9.11 Phase 9 — task list (PENDING, expand at Phase 9 entry)
+### 9.11 Phase 9 — task list (IN-PROGRESS; opened 2026-05-27)
 
-**Entry ADRs**: 0007 (TypeDescriptor) · 0008 (Protocol dispatch) ·
-0011 (Host extension — deep interop).
+**Entry ADRs**: 0029 (Java + cljw surface layout — modules layer
+sits parallel to `src/` per `.dev/structure_plan.md`).
 **Entry debts**: **D-034** (`modules/` top-level structure
 decision when json / csv / edn first land — verify the "modules/
 → runtime/ + eval/ only" dependency rule, decide whether a
 `runtime/` subset needs to be promoted for string ops etc.; see
 `.dev/structure_plan.md` for the anticipated `modules/` layout).
-**Note (Phase 9 entry owner)**: the Deliverables line below
-currently reads "protocol / host complete behaviours" which
-overlaps the Phase 7 (§9.9) protocol dispatch + Phase 6 (§9.8)
-host stdlib first-wave content. Reconcile the Phase 9 scope to
-match its actual focus (external Clojure modules — json / csv /
-edn) before opening the task table; the current text is a
-historical artefact from the pre-amendment ROADMAP.
-**Deliverables**: defprotocol / defmulti / deftype / defrecord /
-reify complete behaviours, host interop "single deep module"
-delivers (`(.method obj args)` + `(ClassName. ...)` + `import` /
-`doto` / `..` all route through method_table).
+· **D-007** (self-host viability — re-scheduled here from Phase 8
+target since Phase 8 closed without touching it; opportunistic
+landing alongside the module wave).
+**Scope reconciliation** (per the placeholder note absorbed at
+Phase 9 entry): protocol / multimethod / deftype / defrecord /
+reify behaviours all landed in Phase 7; host interop first wave
+landed in Phase 6. Phase 9 actually targets **external Clojure
+modules** — `clojure.data.json` / `clojure.data.csv` /
+`clojure.edn` / `clojure.tools.cli` — landing under the new
+top-level `modules/` directory tracked by D-034. The historic
+"protocol / host complete behaviours" Deliverables line is
+retired.
+**Deliverables**: D-034 discharged with the `modules/` directory
+choice (peer to `src/`, dependency-gated to `runtime/` + `eval/`
+only); 4 modules land (`modules/{json,csv,edn,cli}/`) with
+minimal Tier A surface (read + write for json/csv/edn; arg-parse
+for cli); each module ships a `*.clj` + a Layer-2 hook (Pattern
+B1 direct intern or Pattern A pure-Clojure defn per ADR-0033);
+e2e + diff_test parity holds across all 4.
+**Final activation step**: no `build_options.phase_at_least_9`
+flag exists. Phase 9 close = exit smoke + Phase tracker flip.
+
+| #   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                      | Status |
+|-----|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 9.0 | Phase 8 → 9 boundary review chain follow-ups: ADR-0027 collision repaired (renumbered to ADR-0044) at 3017e8b. audit_scaffolding medium findings (stale Phase-ref cleanup, D-007 reschedule, §11.6 gate Active flip) deferred to opportunistic cycles. simplify + security-review reports surfaced 0 critical, 2 + 4 medium debt candidates respectively (slowPathDispatch helper, TransientCommon prefix, non-atomic consumed-flip OOM, etc.) | [x]    |
+| 9.1 | D-034 — `modules/` top-level directory choice (peer to `src/` per `.dev/structure_plan.md`; dependency-gated to `runtime/` + `eval/` only per ROADMAP §A1). Land empty `modules/` + `modules/_README.md` describing the dependency rule + scripts/zone_check.sh extension to enforce "modules/ MUST NOT import lang/ or app/". First commit opens the directory; per-module landings follow in 9.2-9.5                                         | [ ]    |
+| 9.2 | `modules/edn/` — `clojure.edn` reader. cw v1's reader already parses EDN syntax (it IS the Clojure reader); the module adds `(read-string)` / `(read)` / `(parse)` top-level vars matching JVM `clojure.edn` API. Pattern A `.clj` defns + Layer-2 hook for `*data-readers*` if reader-conditional cycle 2's tagged-literal slot is wanted                                                                                                      | [ ]    |
+| 9.3 | `modules/json/` — `clojure.data.json` minimum surface. `read-str` / `write-str` over the 6 JSON types (null/bool/number/string/array/object). Implementation strategy: Pattern B1 Layer-2 primitives (Zig-side `read-json-string` + `write-json-string`) since the cw v1 reader does not natively parse JSON quote rules + escape handling                                                                                                      | [ ]    |
+| 9.4 | `modules/csv/` — `clojure.data.csv`. `read-csv` (reader → seq of vectors) + `write-csv`. RFC 4180 dialect; future Excel-dialect ride a separate debt row. Layer-2 primitives mirror json/                                                                                                                                                                                                                                                      | [ ]    |
+| 9.5 | `modules/cli/` — `clojure.tools.cli`. `parse-opts` over a vector of option-spec maps; minimum surface (no validators / coerce-fns in the first landing). Pure-Clojure Pattern A defn over `lang/primitive/*` strings + collection ops                                                                                                                                                                                                           | [ ]    |
+| 9.6 | Phase 9 exit smoke — `(require '[clojure.edn :as edn]) (edn/read-string "[1 2]")` + json round-trip + csv round-trip + cli parse-opts smoke; zone_check.sh `--gate` confirms modules/ dependency direction; D-007 self-host viability check (cw can bootstrap from .clj sources without crashing). 🔒 OrbStack gate                                                                                                                              | [ ]    |
+
+**Exit criterion**: `modules/{edn,json,csv,cli}/` all populated;
+each module's primary `read-*` / `write-*` / `parse-*` smoke
+green; `zone_check.sh --gate` confirms `modules/` only imports
+from `runtime/` + `eval/`; D-007 self-host viability check
+verifies cw can run its own bootstrap; D-034 discharged.
+🔒 OrbStack x86_64 gate passes.
 
 ### 9.12 Phase 10 — task list (PENDING, expand at Phase 10 entry)
 
