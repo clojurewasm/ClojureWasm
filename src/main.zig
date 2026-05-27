@@ -122,6 +122,7 @@ test {
     _ = @import("lang/primitive/json.zig");
     _ = @import("lang/primitive/csv.zig");
     _ = @import("lang/primitive/cli.zig");
+    _ = @import("lang/primitive/test_assert.zig");
     _ = @import("lang/primitive/multimethod.zig");
     _ = @import("lang/primitive/protocol.zig");
     _ = @import("lang/primitive.zig");

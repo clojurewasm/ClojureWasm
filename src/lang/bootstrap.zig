@@ -58,6 +58,7 @@ pub const FILES: []const FileEntry = &.{
     .{ .label = "<clojure.data.csv>", .source = @embedFile("clj/clojure/data/csv.clj") },
     .{ .label = "<clojure.tools.cli>", .source = @embedFile("clj/clojure/tools/cli.clj") },
     .{ .label = "<clojure.pprint>", .source = @embedFile("clj/clojure/pprint.clj") },
+    .{ .label = "<clojure.test>", .source = @embedFile("clj/clojure/test.clj") },
 };
 
 /// First file's source — exposed so `main.zig`'s renderer can fall
@@ -88,6 +89,7 @@ fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
     if (std.mem.eql(u8, ns_name, "clojure.data.csv")) return FILES[7];
     if (std.mem.eql(u8, ns_name, "clojure.tools.cli")) return FILES[8];
     if (std.mem.eql(u8, ns_name, "clojure.pprint")) return FILES[9];
+    if (std.mem.eql(u8, ns_name, "clojure.test")) return FILES[10];
     return null;
 }
 
