@@ -1,4 +1,13 @@
-# 0027 — `bench/history.yaml` schema (per-commit aggregate with machine + distribution)
+# 0044 — `bench/history.yaml` schema (per-commit aggregate with machine + distribution)
+
+> **ADR-number history note**: this ADR was originally drafted at
+> slot `0027` (commit `8678052`, 2026-05-27 row 8.2) but collided
+> with `0027_nan_box_second_generation.md` (issued 2026-05-24 row
+> 5.2.b). The Phase 8 → 9 boundary audit caught the collision; ADR
+> numbers are time-ordered `max+1` at issue per CLAUDE.md §
+> Project spirit. Renumbered to `0044` at the Phase 8 → 9 audit
+> absorption commit. Callers (`.dev/handover.md`, `.dev/ROADMAP.md`,
+> `bench/history.yaml`, debt rows) were updated in the same commit.
 
 - **Status**: Accepted (Devil's-advocate fork landed 2026-05-27)
 - **Date**: 2026-05-27

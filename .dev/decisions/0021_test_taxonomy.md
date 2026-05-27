@@ -68,7 +68,7 @@ tests".
 | Fuzz            | Phase 6+                                    | (no ADR; `fuzz/` directory; cadence weekly)     |
 | Memory leak     | Phase 5+ (GC activation)                    | (no ADR; ReleaseSafe + `--gc-stress`)           |
 | Concurrency     | Phase 15+ (STM / atom / lock activation)    | (no ADR; runs in Layer 1 with `--test-iter`)    |
-| Bench full      | Phase 8 (lock baseline)                     | ADR-0027 (future)                               |
+| Bench full      | Phase 8 (lock baseline; landed at row 8.2)  | ADR-0044 (was 0027 pre-audit; renumbered)       |
 | Wasm component  | Phase 14+                                   | (no ADR; runs in Layer 2 with Wasm Pod fixture) |
 
 ### Layer 3 (Differential) wiring
@@ -126,7 +126,7 @@ entry. ADR-0025 (future, Phase 11 entry) finalises that schema.
 
 - ADR-0005 (Dual-backend differential — Layer 3 owner)
 - ADR-0022 (Differential test wiring — Layer 3 implementation)
-- ADR-0025, ADR-0026, ADR-0027 (future, deferred per the table)
+- ADR-0025, ADR-0026, ADR-0044 (bench schema; was ADR-0027 pre-audit)
 - `private/research-2026-05-23/TEST_STRATEGY.md` (working notes)
 - `private/research-2026-05-23/REVIEW_TEST_STRATEGY.md` (review
   that triggered the 13 → 5 reduction)

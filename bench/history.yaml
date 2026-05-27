@@ -1,6 +1,9 @@
 # bench/history.yaml — cw v1 curated bench lock-points.
 #
-# Schema lives at .dev/decisions/0027_bench_history_schema.md.
+# Schema lives at .dev/decisions/0044_bench_history_schema.md
+# (originally drafted at slot 0027 at row 8.2; renumbered to 0044
+# at the Phase 8 → 9 audit to resolve a collision with the NaN-box
+# ADR).
 # Row 8.3's 1.2x regression gate consumes only `lock: true` entries
 # matching (machine.id, backend); CI's `bench/quick.sh` appends raw
 # samples to `quick_baseline.txt`, NOT here.
@@ -17,7 +20,7 @@ env:
 entries:
   - id: "8A.0"
     date: "2026-05-27"
-    reason: "Phase 8 row 8.2 — initial lock-point landing the ADR-0027 schema. Mac aarch64 ReleaseFast tree_walk baseline at the end of Phase 7. Linux x86_64 + VM-backend variants land in row 8.3 cycle 1 when bench/record.sh ships."
+    reason: "Phase 8 row 8.2 — initial lock-point landing the ADR-0044 schema (was ADR-0027 pre-audit). Mac aarch64 ReleaseFast tree_walk baseline at the end of Phase 7. Linux x86_64 + VM-backend variants land in row 8.3 cycle 1 when bench/record.sh ships."
     commit: "d810322" # row 8.1 close (D-031 main.zig split)
     build: ReleaseFast
     backend: tree_walk

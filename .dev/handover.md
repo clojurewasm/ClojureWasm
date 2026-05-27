@@ -61,8 +61,10 @@ Phase 9 open; no user-requested stop is in flight.
 
 ## Guardrail refresh history
 
-Phase 8 landmarks (closed 2026-05-27): ADR-0027 (bench/history.yaml
-schema) + row 8.1 `src/app/` split + row 8.3 1.2x regression gate
+Phase 8 landmarks (closed 2026-05-27): ADR-0044 (bench/history.yaml
+schema; minted as ADR-0027 at row 8.2 then renumbered at the Phase
+8 → 9 audit, slot-0027 was already held by the NaN-box ADR) +
+row 8.1 `src/app/` split + row 8.3 1.2x regression gate
 + row 8.4 `--compare` CLI + row 8.5 transient surface + row 8.6
 D-089 retro-audit (6 new protocols: ISeq / ILookup / Indexed /
 Associative / IPersistentMap / IPersistentSet) + row 8.7 exit

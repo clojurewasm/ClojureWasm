@@ -2,7 +2,8 @@
 # test/e2e/phase8_compare_cli.sh
 #
 # Phase 8 §9.10 row 8.4 — `cljw --compare` CLI flag end-to-end.
-# Per ADR-0005 + ADR-0027 full-bench remit: runs source through
+# Per ADR-0005 + ADR-0044 full-bench remit (ADR-0044 = bench schema,
+# was ADR-0027 pre-audit; renumbered Phase 8 → 9): runs source through
 # BOTH backends via `eval/evaluator.compare` + prints `OK <value>`
 # on parity, `MISMATCH` (exit 1) on divergence.
 
