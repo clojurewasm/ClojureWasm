@@ -1518,22 +1518,45 @@ top-3 host stdlib second-wave classes ship; namespace
 ergonomics polish lands; D-007 self-host viability re-verified
 post-Phase-10 surface additions. 🔒 OrbStack x86_64 gate passes.
 
-### 9.13 Phase 11 — task list (PENDING, expand at Phase 11 entry)
+### 9.13 Phase 11 — task list (IN-PROGRESS; opened 2026-05-27)
 
 **Entry ADRs**: 0021 (Test layer taxonomy — Layer 5 Conformance
 opens) · 0013 (Tier D permanent).
-**ADRs to issue at this entry**: **ADR-0025 (Upstream skip
-taxonomy)** — `test/clj/skip_taxonomy.yaml` schema, Tier A 100%
-PASS gate semantics.
+**ADRs to issue at this entry**: **ADR-0046 (Upstream skip
+taxonomy)** — `test/clj/skip_taxonomy.yaml` schema + Tier A
+100% PASS gate semantics. Slot 0046 chosen because the
+§9.13 placeholder's "ADR-0025" reference collides with the
+already-existing ADR-0025 (chapter archive boundary) — corrected
+at Phase 11 entry per §17 amendment policy.
+**Entry debts**: D-079 (host_extension aggregator — opportunistic
+follow-up if a ported test requires a second-wave host class) ·
+D-096 (println output reach — opportunistic if a ported test
+needs side-effect stdout verification beyond return-value form).
 **Reference**: `~/Documents/OSS/clojure/test/` (Upstream test
 corpus), ADR-0021 Future-layers table.
-**Deliverables**: `clojure.test` (deftest / is / are) implementation,
-10+ upstream tests ported with `;; CLJW:` tier markers, Tier A 100%
-PASS gate active.
-**Final activation step**: flip `build_options.phase_at_least_11 = true`
-(per ADR-0023) — swaps any test-corpus stubs to the real upstream
-test harness, rewrites `test/run_all.sh` to enforce the Tier A
-100% PASS gate.
+**Deliverables**: `clojure.test` minimum surface (`deftest` /
+`is` / `are` / `run-tests` macros + assertion reporting) + 10+
+upstream tests ported under `test/clj/` with `;; CLJW:` tier
+markers + Tier A 100% PASS gate active.
+**Final activation step**: flip
+`build_options.phase_at_least_11 = true` (per ADR-0023) — swaps
+any test-corpus stubs to the real upstream test harness +
+rewrites `test/run_all.sh` to enforce the Tier A 100% PASS gate.
+
+| #    | Description                                                                                                                                                                                                                                                                                                                                                                      | Status |
+|------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 11.0 | Phase 10 → 11 boundary review chain follow-ups: Phase 10 was largely enumeration-only (rows 10.3 / 10.4 closed via D-097 + D-098), so the boundary diff is minimal. Phase 11 ADR reservation slot fixed (placeholder named "ADR-0025" which is taken — uses ADR-0046)                                                                                                          | [x]    |
+| 11.1 | ADR-0046 — Upstream skip taxonomy + Tier A 100% PASS gate semantics. Defines `test/clj/skip_taxonomy.yaml` schema (per-fixture skip tags + cw-deviation tiers + recall triggers) so the Tier A gate has a clean way to say "this test is intentionally skipped because <reason>" without false-positive gate failures                                                           | [ ]    |
+| 11.2 | `clojure.test` minimum surface — `deftest` macro + `is` macro + `run-tests` + basic assertion reporting (PASS / FAIL count + failing-test names). Pattern A `.clj` defn under `src/lang/clj/clojure/test.clj`. Skip `are` / `testing` / fixtures (`use-fixtures`) for cycle 1; track absence as debt rows                                                                       | [ ]    |
+| 11.3 | Port 10+ upstream Clojure tests to `test/clj/` from `~/Documents/OSS/clojure/test/`. Pick tests that exercise the Phase-1-to-10 surface: arithmetic, collections, strings, sequences, defn / defrecord, multimethod / protocol, clojure.set / .string / .edn round-trips. Each ported test carries a `;; CLJW:` tier marker comment + `skip_taxonomy.yaml` entry when applicable | [ ]    |
+| 11.4 | Tier A 100% PASS gate wiring — `test/run_all.sh` gains a `test_clj` step that runs the ported corpus under `cljw` and asserts 100% PASS over the Tier A subset (`skip_taxonomy.yaml`-filtered). Phase 11 close = the gate is active                                                                                                                                             | [ ]    |
+| 11.5 | Phase 11 exit smoke + final activation — flip `build_options.phase_at_least_11 = true`; verify ported tests still pass with the flipped flag; flip Phase tracker DONE                                                                                                                                                                                                           | [ ]    |
+
+**Exit criterion**: ADR-0046 minted; clojure.test minimum
+surface green; ≥ 10 upstream tests ported with tier markers;
+`test_clj` Tier A 100% PASS gate active in `test/run_all.sh`;
+`build_options.phase_at_least_11 = true`. 🔒 OrbStack x86_64
+gate passes.
 
 ### 9.14 Phase 12 — task list (PENDING, expand at Phase 12 entry)
 
