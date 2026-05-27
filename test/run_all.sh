@@ -210,6 +210,7 @@ run_step "e2e_phase8_exit_smoke"             "bash test/e2e/phase8_exit_smoke.sh
 run_step "e2e_phase9_edn_read_string"        "bash test/e2e/phase9_edn_read_string.sh"
 run_step "e2e_phase9_json"                   "bash test/e2e/phase9_json.sh"
 run_step "e2e_phase9_csv"                    "bash test/e2e/phase9_csv.sh"
+run_step "e2e_phase9_cli"                    "bash test/e2e/phase9_cli.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional

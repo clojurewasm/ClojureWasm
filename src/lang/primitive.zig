@@ -32,6 +32,7 @@ const transient_prim = @import("primitive/transient.zig");
 const edn_prim = @import("primitive/edn.zig");
 const json_prim = @import("primitive/json.zig");
 const csv_prim = @import("primitive/csv.zig");
+const cli_prim = @import("primitive/cli.zig");
 const higher_order = @import("primitive/higher_order.zig");
 const error_prim = @import("primitive/error.zig");
 const uuid = @import("primitive/uuid.zig");
@@ -65,6 +66,7 @@ pub fn registerAll(env: *Env) !void {
     try edn_prim.register(env);
     try json_prim.register(env);
     try csv_prim.register(env);
+    try cli_prim.register(env);
     try higher_order.register(env, rt_ns, clojure_core_ns);
     try error_prim.register(env, rt_ns);
     try uuid.register(env, rt_ns);
