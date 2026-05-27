@@ -120,6 +120,7 @@ test {
     _ = @import("lang/primitive/transient.zig");
     _ = @import("lang/primitive/edn.zig");
     _ = @import("lang/primitive/json.zig");
+    _ = @import("lang/primitive/csv.zig");
     _ = @import("lang/primitive/multimethod.zig");
     _ = @import("lang/primitive/protocol.zig");
     _ = @import("lang/primitive.zig");
