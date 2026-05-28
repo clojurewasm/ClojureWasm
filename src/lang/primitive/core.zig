@@ -444,33 +444,70 @@ pub fn nameFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     return error_catalog.raise(.feature_not_supported, loc, .{ .name = "name on non-string/non-keyword/non-symbol" });
 }
 
-/// `(println & args)` — render each arg human-readable to stdout
-/// space-separated, then a trailing newline. Returns nil. JVM
-/// distinguishes println (no quotes around strings/chars) from
-/// `prn` (pr-str-style with quotes). cw v1's println special-cases
-/// top-level strings to raw bytes; nested strings inside a printed
-/// collection still go through `printValue` and get quoted —
-/// acceptable divergence for the prewalk-demo / postwalk-demo
-/// surface that drives this primitive's first user. A full
-/// `print-str` / `pr` / `prn` split lands when broader IO surface
-/// is wired.
+/// Render `args` to `w`, space-separated. `readable` = `pr`-style
+/// (every arg quoted via `printValue`, so top-level strings/chars get
+/// their `"` / `\` escapes); `!readable` = `print`-style human form
+/// (top-level strings emitted as raw bytes; nested strings inside a
+/// printed collection still go through `printValue` and get quoted).
+fn writeArgsSpaced(w: *std.Io.Writer, args: []const Value, readable: bool) std.Io.Writer.Error!void {
+    for (args, 0..) |arg, i| {
+        if (i > 0) try w.writeByte(' ');
+        if (!readable and arg.tag() == .string) {
+            try w.writeAll(string_mod.asString(arg));
+        } else {
+            try print_mod.printValue(w, arg);
+        }
+    }
+}
+
+/// `(println & args)` — human form, space-separated, trailing newline.
 pub fn printlnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     _ = loc;
     var stdout_buf: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
     const stdout = &stdout_writer.interface;
-    for (args, 0..) |arg, i| {
-        if (i > 0) try stdout.writeByte(' ');
-        if (arg.tag() == .string) {
-            try stdout.writeAll(string_mod.asString(arg));
-        } else {
-            try print_mod.printValue(stdout, arg);
-        }
-    }
+    try writeArgsSpaced(stdout, args, false);
     try stdout.writeByte('\n');
     try stdout.flush();
     return .nil_val;
+}
+
+/// `(print & args)` — like `println` but WITHOUT the trailing newline.
+pub fn printFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    _ = loc;
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
+    const stdout = &stdout_writer.interface;
+    try writeArgsSpaced(stdout, args, false);
+    try stdout.flush();
+    return .nil_val;
+}
+
+/// `(prn & args)` — readable (`pr`) form, space-separated, trailing
+/// newline. Strings/chars are quoted (unlike `println`).
+pub fn prnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    _ = loc;
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
+    const stdout = &stdout_writer.interface;
+    try writeArgsSpaced(stdout, args, true);
+    try stdout.writeByte('\n');
+    try stdout.flush();
+    return .nil_val;
+}
+
+/// `(pr-str & args)` — render args in readable (`pr`) form,
+/// space-separated, and return the result as a string (no stdout).
+pub fn prStrFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    _ = loc;
+    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+    defer aw.deinit();
+    try writeArgsSpaced(&aw.writer, args, true);
+    return try string_mod.alloc(rt, aw.writer.buffered());
 }
 
 /// `(str & args)` — variadic string concatenation. Each arg is
@@ -568,6 +605,9 @@ const ENTRIES = [_]Entry{
     .{ .name = "symbol", .f = &symbolFn },
     .{ .name = "name", .f = &nameFn },
     .{ .name = "println", .f = &printlnFn },
+    .{ .name = "print", .f = &printFn },
+    .{ .name = "prn", .f = &prnFn },
+    .{ .name = "pr-str", .f = &prStrFn },
     .{ .name = "str", .f = &strFn },
     .{ .name = "subs", .f = &subsFn },
 };
