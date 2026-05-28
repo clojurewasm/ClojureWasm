@@ -5,80 +5,97 @@
 
 ## Resume contract
 
-- **HEAD**: ≈ `3d8f9326` (Phase 14 rows 14.0-14.10 closed;
-  ADR-0048 minted + nREPL chart filled; ADR-0015 a3 narrowed F142;
-  D-098/D-099/D-014b Discharged this session; D-111..D-118 minted
-  Active. See `git log` for exact HEAD).
+- **HEAD**: ≈ ADR-0049 commit (Phase 14 rows 14.0-14.10 closed +
+  row 14.11 partial: D-100(c)+(d) Discharged + D-066 Discharged
+  + ADR-0048 + ADR-0049 minted; D-014b/D-098/D-099 Discharged
+  this session; D-111..D-120 minted Active. See `git log` for
+  exact HEAD).
 - **First commit on resume MUST be**: a focused **row 14.11
-  (D-100 cluster — Phase-12 substantive deliverables, multi-cycle)**
-  sub-deliverable. The cluster has 5 sub-pieces (a-e); each is
-  itself a single-cycle landing. Recommended starting point:
-  (c) `cljw render-error` post-mortem decoder (~200 LOC standalone;
-  no bytecode-cache dependency). Alternative starts: (a) full
-  BytecodeChunk constants-pool serializer (~400 LOC; foundation
-  for b+e), (d) cold-start bench < 12 ms verification (mostly
-  measurement work), (e) `cljw-formats/0.1.0.edn` archive lock
-  (needs (a) first). Pivot if next owner prefers: row 14.13
-  polish bundle sub-piece (D-066 env var spec + man page ~120 LOC,
-  or `cljw.error/with-context` macro ~80 LOC).
-- **Forbidden this session**: pulling the v0.1.0 release tag (row
-  14.14) forward without 14.11/14.12/14.13 substantively closed.
-  Re-opening rows 14.5-14.10 — fully Discharged this session.
+  D-100 cluster** sub-deliverable from the still-outstanding set
+  **(a)/(b)/(e)** (sub-deliverables (c) + (d) closed this
+  session and are NOT to be re-opened). Recommended starting
+  point: (a) full `BytecodeChunk` constants-pool serializer with
+  NaN-box Value round-trip (~400 LOC; foundation for (b) + (e)).
+  Alternative starts: (b) `cljw build app.clj -o app` CLI
+  (~300 LOC; depends on (a) being at least partially landed for
+  binary trailer write); (e) `cljw-formats/0.1.0.edn` archive
+  initial commit (~80 LOC + JSON-ish opcode table; depends on
+  (a) being settled). Pivot if next owner prefers: row 14.13
+  remainder (compat_tiers Tier A/B review or
+  `cljw.error/with-context` macro). See `.dev/debt.md` D-100
+  for the multi-cycle splits + current status text.
+- **Forbidden this session**: pulling the v0.1.0 release tag
+  (row 14.14) forward without 14.11 fully + 14.12 + 14.13
+  substantively closed. Re-opening any of rows 14.5-14.10 or
+  the (c)/(d) D-100 sub-deliverables — all Discharged this
+  session.
 
 ## Cold-start reading order
 
 handover → CLAUDE.md (§ Project spirit + § Autonomous Workflow +
 § The only stop) → `.dev/project_facts.md` (F-001..F-009) →
-`.dev/principle.md` → `.dev/ROADMAP.md` §9.16 (rows 14.0-14.10
-[x], 14.11+ [ ]) → `.dev/debt.md` Phase-14 debts (refined
-barriers: D-100 [cluster] / D-102 / D-104 / D-105 / D-106 / D-066
-+ session-minted D-111..D-118).
+`.dev/principle.md` → ADR-0049 (gate migration) →
+`.dev/ROADMAP.md` §9.16 (rows 14.0-14.10 [x], 14.11 partial,
+14.12+ [ ]) → `.dev/debt.md` Phase-14 debts (D-100 [partial] /
+D-102 / D-104 / D-105 / D-106 / session-minted D-111..D-120).
 
 ## Current state
 
-Phase 14 (v0.1.0 milestone) IN-PROGRESS on `cw-from-scratch`. Phase
-13 closed DONE at `797cb1a`. Gate green at HEAD: Mac 82/82 +
-OrbStack Ubuntu x86_64 81/81.
+Phase 14 (v0.1.0 milestone) IN-PROGRESS on `cw-from-scratch`.
+Phase 13 closed DONE at `797cb1a`. Mac gate green at HEAD: 85/85.
+ubuntunote gate verified green at row 14.11 close: 84/84 (zlinter
+diff per ADR-0003). Linux per-commit gate retired per ADR-0049;
+manual via `bash scripts/run_remote_ubuntu.sh`.
 
-This session: rows 14.5 → 14.10 landed (6 substantive rows in one
-session). ADRs touched: ADR-0048 minted (state machine domain;
-REPL + nREPL charts filled), ADR-0015 a3 (F142 path table
-narrowed). Debts minted this session (D-111..D-118):
-- D-111: `&form`/`&env` injection follow-up (defmacro Phase 11+).
-- D-112: `:rename` arm for ns / refer (opportunistic).
-- D-113: promise undelivered blocking semantics (Phase 15.1).
-- D-114: future `std.Thread.spawn` swap (Phase 15.1).
-- D-115: future thunk-error Value channel (Phase 15.1).
-- D-116: REPL line editor (arrow-key / multi-line; opportunistic).
-- D-117: nREPL multi-session / interrupt / CIDER ops / auto-port
-  (Phase 15+).
-- D-118: nREPL stdout/stderr capture (needs `*out*` binding).
-
-Rows landed:
+This session landed (8 substantive rows + 2 ADRs + 3 partial
+closures):
 - 14.5 D-014b catch-by-keyword (`:type` arm)
 - 14.6 D-099 user `defmacro` (analyzer arm + user-fn fallback)
 - 14.7 D-098 `(ns ...)` `:exclude/:only` + `:require` libspecs
 - 14.8 future/promise/delay Tier A primitives
 - 14.9 ADR-0048 + `cljw repl` (line-buffered)
 - 14.10 `cljw nrepl` + bencode codec + ADR-0048 chart fill
+- 14.11 partial: D-100(c) `cljw render-error` + D-100(d) cold-
+  start < 12 ms threshold
+- 14.13 partial: D-066 (CLJW_ERROR_FORMAT + CLJW_ERROR_LOG +
+  spec doc) Discharged
+- ADR-0049 OrbStack retire + ubuntunote bring-up + verified
 
-## Active task — §9.16 row 14.11 (D-100 cluster start: `cljw render-error`)
+## Active task — §9.16 row 14.11 D-100 (a)/(b)/(e)
 
-D-100 is the Phase-12 substantive deliverables cluster: (a)
-BytecodeChunk full coverage / (b) `cljw build` CLI / (c) `cljw
-render-error` decoder / (d) cold-start bench < 12 ms / (e)
-`cljw-formats/0.1.0.edn` archive lock. Each is multi-cycle.
-Recommended next: (c) — standalone decoder + EDN error event
-format (`runtime/error/event.zig` + `src/app/render_error.zig`
-+ TTY-aware split). ~200 LOC. Independent of (a)/(b)/(d)/(e).
+D-100 cluster remaining work:
+- (a) full BytecodeChunk coverage — constants-pool serializer
+  with NaN-box Value round-trip + call_sites + libspecs side-
+  tables. Foundation for (b) + (e). ~400 LOC, dedicated cycle.
+- (b) `cljw build app.clj -o app` CLI — Deno-style binary
+  trailer + bootstrap cache build.zig integration. Depends on
+  (a). ~300 LOC.
+- (e) `cljw-formats/0.1.0.edn` archive v0.1.0 lock — opcode
+  table snapshot for cross-version cljw render-error decoding.
+  Depends on (a) opcode set being settled. ~80 LOC + the
+  archive doc itself.
+
+After D-100 closes, row 14.12 (`cljw component build`, zwasm v2
+gated) + row 14.13 polish bundle remainder + row 14.14 release
+tag complete Phase 14.
+
+## Stopped — user requested
+
+User instruction (2026-05-28, paraphrased): "render-error を
+commit + push してから停止 (autonomous loop 再開は次 session)".
+Resume at §9.16 row 14.11 D-100(a) when `/continue` next fires.
+The OrbStack → ubuntunote migration (ADR-0049) landed in the
+same final commit cycle as a user-directed sideline; per-commit
+gate is now Mac-only with manual `bash scripts/run_remote_ubuntu.sh`
+at boundaries.
 
 ## Guardrail refresh history
 
-This session (2026-05-28): rows 14.5-14.10 closed; ADR-0048 issued
-+ REPL/nREPL charts filled; ADR-0015 a3 narrows F142 file layout;
-D-111..D-118 minted (8 new follow-up rows for Phase 11+/15.1+
-work); D-014b/D-098/D-099 Discharged (TreeWalk paths fully
-landed; VM-DEFER for 14.5/14.7 per feature_deps yaml). Phase 13→14
-boundary (earlier 2026-05-28): §9.16 expanded inline (15 rows);
-D-082 / D-008 / D-017 / D-026 / D-030 / D-069 / D-070 Discharged.
-Phase 13 landmarks: ADR-0010 a3 + ADR-0047 minted.
+This session (2026-05-28): rows 14.5-14.10 closed + row 14.11
+(c)+(d) closed + row 14.13 D-066 Discharged; ADR-0048 issued
++ REPL/nREPL charts filled; ADR-0015 a3 narrowed F142;
+**ADR-0049 OrbStack retire + ubuntunote migration verified**;
+D-111..D-120 minted (10 follow-up rows incl. CI Linux gate
+D-120, REPL line editor D-116, nREPL polish D-117, *out*/
+*err* capture D-118, mdoc man page D-119); D-014b/D-098/
+D-099/D-066 Discharged.

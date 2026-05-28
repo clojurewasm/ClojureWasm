@@ -122,13 +122,19 @@ turn 1 must be Japanese.
   principles before adopting an idiom; always note one DIVERGENCE).
 - After each task, write a 5-minute per-task note from hot context
   (`private/notes/<phase>-<task>.md`, gitignored).
-- `bash test/run_all.sh` must be green **on both Mac (host) and
-  OrbStack Ubuntu x86_64** before every commit. The Linux run is
-  `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'` (Bash
-  timeout ≥ 600s for cold builds). Setup: [`.dev/orbstack_setup.md`](.dev/orbstack_setup.md).
-  Don't bypass hooks. The runner includes the zlinter `no_deprecated`
-  gate on Mac only (ADR-0003) — Linux skips it because OrbStack
-  runs are network-free.
+- `bash test/run_all.sh` must be green **on Mac (host)** before
+  every commit. **Linux x86_64 gate is no longer per-commit** as
+  of ADR-0049 (2026-05-28): the OrbStack `my-ubuntu-amd64` path
+  is retired (orphan / fan hazard). Linux now runs via
+  `bash scripts/run_remote_ubuntu.sh` against the `ubuntunote`
+  SSH host at Phase-boundary review chains, before the v0.1.0
+  release tag, and on demand for feature-branch verification.
+  Setup: [`.dev/ubuntunote_setup.md`](.dev/ubuntunote_setup.md);
+  OrbStack convenience host remains in
+  [`.dev/orbstack_setup.md`](.dev/orbstack_setup.md) (deprecated
+  for gate use). Don't bypass hooks. The Mac runner includes the
+  zlinter `no_deprecated` gate (ADR-0003); ubuntunote skips it,
+  so a 1-PASS-count diff between hosts is expected.
 - Commit at the natural granularity of code changes. The per-concept
   chapter cadence (`docs/ja/learn_clojurewasm/NNNN_*.md`) is **dormant**
   per ADR-0025 until a resumption ADR fires; only the per-task notes
@@ -256,16 +262,30 @@ Structural improvements only, while green. Then **re-read
 Green → Refactor diff**. If a smell surfaced, choose depth 1-4
 per principle.md and act before commit.
 
-**Step 5 — Test gate** (Mac + Ubuntu x86_64 in parallel)
+**Step 5 — Test gate** (Mac per-commit; ubuntunote at boundaries)
 
-Run both in a single message with two parallel Bash tool calls:
+Run the Mac gate every commit:
 
 - `bash test/run_all.sh` (Mac host, `aarch64-darwin`)
-- `orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'`
-  (Linux `x86_64`, Bash timeout ≥ 600000 ms for cold builds)
 
-Both must be green. If either output exceeds ~200 lines, delegate
-to a Bash subagent and ask for "pass/fail + first failure only".
+If the output exceeds ~200 lines, delegate to a Bash subagent
+and ask for "pass/fail + first failure only".
+
+The Ubuntu x86_64 gate is **no longer per-commit** as of
+ADR-0049 (orphan / fan hazard). Run it at Phase-boundary review
+chains, before v0.1.0 tag, and on demand for feature branches:
+
+- `bash scripts/run_remote_ubuntu.sh` (drives `ubuntunote` SSH
+  host via `git fetch + reset --hard origin/cw-from-scratch` +
+  `nix develop --command bash test/run_all.sh`). Setup at
+  `.dev/ubuntunote_setup.md`.
+
+**Orphan-prevention discipline**: any long-running pipeline
+launched via `Bash(run_in_background: true)` (REPL pipes /
+remote SSH gate / bench loops) MUST be wrapped in
+`timeout 600 …` so a session-interrupt kill leaves no
+PID-1-inherited spinners. The 2026-05-28 incident report
+(ADR-0049 § Context) is the cautionary precedent.
 
 **Step 6 — Source commit + push (atomic, smell-audited)**
 

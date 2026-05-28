@@ -1,14 +1,25 @@
 # OrbStack x86_64 setup
 
-The project's testing baseline (CLAUDE.md "Working agreement") is
-`bash test/run_all.sh` green on **both** Mac (host) **and** OrbStack
-Ubuntu x86_64. NaN boxing, HAMT, GC, VM dispatch, and packed-struct
-alignment are arch-sensitive — Apple-Silicon-only verification is
-not enough.
+> **DEPRECATED for the gate (2026-05-28, ADR-0049)**: OrbStack
+> `my-ubuntu-amd64` is no longer in the per-commit Linux gate.
+> The cross-arch verification host is the `ubuntunote` SSH box
+> (native x86_64 hardware); see
+> [`.dev/ubuntunote_setup.md`](ubuntunote_setup.md) and
+> [`.dev/decisions/0049_orbstack_linux_gate_retired.md`](decisions/0049_orbstack_linux_gate_retired.md).
+>
+> This file is retained because OrbStack remains a useful
+> dev-convenience host for interactive scratch (REPL probes,
+> quick cross-arch sanity checks). The body below documents the
+> one-time bring-up; treat any per-commit gate language as
+> historical.
 
-This file documents the one-time VM setup. Day-to-day invocation
-lives in `test/run_all.sh`'s header and the `continue` skill's
-Step 5 (Test gate).
+The project's gate baseline (CLAUDE.md "Working agreement") used
+to be `bash test/run_all.sh` green on **both** Mac (host) **and**
+OrbStack Ubuntu x86_64; ADR-0049 retired the OrbStack half.
+NaN boxing, HAMT, GC, VM dispatch, and packed-struct alignment
+are still arch-sensitive — the cross-arch validation moved to
+`ubuntunote` (manual / Phase boundary) + future GitHub Actions
+CI (D-120).
 
 ## One-time setup (Apple Silicon Mac)
 

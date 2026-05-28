@@ -108,9 +108,12 @@ zig fmt src/                  # format
 zig build lint -- --max-warnings 0  # zlinter (Mac-only, ADR-0003)
 ```
 
-Cross-platform gate: OrbStack Ubuntu x86_64. Setup in
-`.dev/orbstack_setup.md`. Run with
-`orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'`.
+Cross-platform gate (manual / Phase boundary as of ADR-0049):
+the `ubuntunote` SSH host (native x86_64 Linux). Setup in
+[`.dev/ubuntunote_setup.md`](.dev/ubuntunote_setup.md). Run with
+`bash scripts/run_remote_ubuntu.sh`. OrbStack
+(`.dev/orbstack_setup.md`) is retained as a dev convenience host
+but is no longer in the per-commit gate.
 
 ## Contributing
 

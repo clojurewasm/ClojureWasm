@@ -5,13 +5,15 @@
 #
 # Per ADR-0024: run_step dispatcher with --list / --skip / --only / summary.
 #
-# Run on **both** the Mac host and Ubuntu x86_64 before every commit
-# (CLAUDE.md "Working agreement"):
+# Per-commit gate: Mac host only as of ADR-0049 (2026-05-28).
+# Linux x86_64 gate moved to manual / Phase-boundary via the
+# `ubuntunote` SSH host:
 #
-#   bash test/run_all.sh                                              # Mac
-#   orb run -m my-ubuntu-amd64 bash -c 'bash test/run_all.sh'         # Linux x86_64
+#   bash test/run_all.sh                  # Mac per-commit
+#   bash scripts/run_remote_ubuntu.sh     # Linux at Phase boundary
 #
-# Setup for the Linux side: .dev/orbstack_setup.md.
+# Setup: .dev/ubuntunote_setup.md (Linux SSH host) +
+# .dev/orbstack_setup.md (retained dev-convenience host).
 #
 # Flags (per ADR-0024):
 #   --list                  List step names without running.
