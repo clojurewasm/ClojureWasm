@@ -98,6 +98,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "instance?", .expand = expandInstanceQ },
     .{ .name = "delay", .expand = expandDelay },
     .{ .name = "future", .expand = expandFuture },
+    .{ .name = "lazy-seq", .expand = expandLazySeq },
 };
 
 // --- Form-construction conveniences ---
@@ -1033,6 +1034,23 @@ fn expandFuture(
 ) macro_dispatch.ExpandError!Form {
     _ = rt;
     return expandThunkWrapper(arena, "__future-call", args, loc);
+}
+
+// --- lazy-seq — `(lazy-seq body...)` → `(__lazy-seq-create (fn* [] body...))` ---
+//
+// ADR-0054 cycle 1. Wraps the body in a zero-arity thunk that the
+// `__lazy-seq-create` primitive (lang/primitive/sequence.zig) stashes
+// in a LazySeq heap struct; the thunk is forced on first access via
+// the seq protocol (`first`/`rest`/`seq` route `.lazy_seq` through
+// `runtime/lazy_seq.zig::force`). Same triad shape as delay/future.
+fn expandLazySeq(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    return expandThunkWrapper(arena, "__lazy-seq-create", args, loc);
 }
 
 /// Shared shape: `(MACRO body...)` → `(PRIMITIVE (fn* [] body...))`.

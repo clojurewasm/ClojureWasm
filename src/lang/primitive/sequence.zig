@@ -308,13 +308,25 @@ pub fn consFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         return try list.consHeap(rt, head, .nil_val);
     }
     return switch (tail.tag()) {
-        .list, .cons => try list.consHeap(rt, head, tail),
+        // `.lazy_seq` tail is kept UNFORCED — `(cons x (lazy-seq …))`
+        // must not realize the tail, else lazy producers (e.g. iterate)
+        // recurse infinitely at cons time (ADR-0054 cycle 1).
+        .list, .cons, .lazy_seq => try list.consHeap(rt, head, tail),
         else => blk: {
             // Cons over a seq view of the tail (JVM's RT.cons fallback).
             const sv = try seqFn(rt, env, args[1..2], loc);
             break :blk try list.consHeap(rt, head, sv);
         },
     };
+}
+
+/// `__lazy-seq-create` — internal primitive called by the `lazy-seq`
+/// Zig macro transform. Receives a zero-arity thunk fn and constructs
+/// a LazySeq whose body is forced on first seq access. ADR-0054.
+pub fn lazySeqCreateFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("__lazy-seq-create", args, 1, loc);
+    return try lazy_seq.alloc(rt, args[0]);
 }
 
 // --- empty ---
@@ -462,6 +474,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "rest", .f = &restFn },
     .{ .name = "next", .f = &nextFn },
     .{ .name = "cons", .f = &consFn },
+    .{ .name = "__lazy-seq-create", .f = &lazySeqCreateFn },
     .{ .name = "empty", .f = &emptyFn },
 };
 

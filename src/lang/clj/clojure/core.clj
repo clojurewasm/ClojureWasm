@@ -382,6 +382,17 @@
   (fn* ([n] (-range-acc 0 n []))
        ([start end] (-range-acc start end []))))
 
+;; ----------------------------------------------------------------
+;; D-134 lazy cluster (ADR-0054 cycle 1). The lazy-seq PRODUCER is now
+;; wired (`lazy-seq` macro + `__lazy-seq-create`), so genuinely infinite
+;; seqs work: `take` realizes only what it needs (it walks first/rest,
+;; which force `.lazy_seq` lazily).
+;; ----------------------------------------------------------------
+
+;; `(iterate f x)` — infinite lazy seq: x, (f x), (f (f x)), …
+(def iterate
+  (fn* [f x] (lazy-seq (cons x (iterate f (f x))))))
+
 ;; `(map-indexed f coll)` — eager map passing (index, item) to f.
 (def map-indexed
   (fn* [f coll]
