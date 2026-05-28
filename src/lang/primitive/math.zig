@@ -22,6 +22,7 @@ const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const promote = @import("../../runtime/numeric/promote.zig");
+const equal = @import("../../runtime/equal.zig");
 
 // --- numeric helpers ---
 
@@ -227,12 +228,27 @@ fn pEQ(a: f64, b: f64) bool {
     return a == b;
 }
 
-/// `(= ...)` — Phase-2: numeric equality only. The general `=`
-/// (compare-by-value across types) lands once heap collections do.
+/// `(= ...)` — universal value equality (= `clojure.lang.Util.equiv`).
+/// All args must equal the first (transitive). Never raises on type
+/// mismatch — see `runtime/equal.zig` + ADR-0052.
 pub fn equals(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    _ = loc;
+    if (args.len < 2) return Value.true_val; // (=) and (= x) are true
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        if (!try equal.valueEqual(rt, args[0], args[i])) return Value.false_val;
+    }
+    return Value.true_val;
+}
+
+/// `(== ...)` — numeric-tower equivalence (= `clojure.lang.Numbers.equiv`).
+/// Numeric-only (raises on non-numbers); widens across categories, so
+/// `(== 1 1.0)` → true (where `(= 1 1.0)` → false). ADR-0052.
+pub fn equiv(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    return pairwise("=", args, loc, pEQ);
+    return pairwise("==", args, loc, pEQ);
 }
 
 pub fn lt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -527,6 +543,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "-'", .f = &minusStrict },
     .{ .name = "*'", .f = &starStrict },
     .{ .name = "=", .f = &equals },
+    .{ .name = "==", .f = &equiv },
     .{ .name = "<", .f = &lt },
     .{ .name = ">", .f = &gt },
     .{ .name = "<=", .f = &le },
