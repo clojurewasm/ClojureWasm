@@ -16,6 +16,8 @@
 
 const std = @import("std");
 const type_descriptor = @import("../type_descriptor.zig");
+const env_mod = @import("../env.zig");
+const Env = env_mod.Env;
 
 /// Marker symbol every Java- and cljw-surface file exports under
 /// this exact name. See the module docstring for the aggregator
@@ -44,6 +46,59 @@ pub const Extension = struct {
     init: ?*const fn () anyerror!void = null,
 };
 
+/// All Java-surface modules whose `___HOST_EXTENSION` declarations
+/// `installAll` walks. **Hand-maintained**: a new
+/// `runtime/java/<pkg>/<Class>.zig` lands on this list in the same
+/// commit that creates the file (ADR-0029 D5 schema + F-009). Zig
+/// 0.16 has no directory `@import`; this list is the explicit
+/// alternative to a generated build.zig codegen step.
+const java_surfaces = [_]type{
+    @import("io/File.zig"),
+    @import("lang/System.zig"),
+    @import("time/Instant.zig"),
+    @import("util/Date.zig"),
+    @import("util/Random.zig"),
+    @import("util/UUID.zig"),
+    @import("util/regex/Pattern.zig"),
+};
+
+/// Walk every enumerated surface's `___HOST_EXTENSION` declaration,
+/// create its `cljw_ns` namespace, register its `TypeDescriptor` into
+/// `rt.types`, and run any `init` callback. Idempotent — re-running
+/// against the same Env is a no-op (existing ns / descriptor entries
+/// are reused; `init` runs once per call but surfaces that need
+/// single-shot setup carry their own latch).
+///
+/// Phase 14 row 14.1 (D-079) wires this from `lang/primitive.zig::
+/// registerAll`; the second-wave surfaces (D-097 row 14.2 — Matcher /
+/// LocalDateTime / Duration / ZonedDateTime / BigDecimal Java wrapper)
+/// land by appending entries to `java_surfaces` above.
+pub fn installAll(env: *Env) !void {
+    const rt = env.rt;
+    inline for (java_surfaces) |S| {
+        const ext: Extension = S.___HOST_EXTENSION;
+        _ = try env.findOrCreateNs(ext.cljw_ns);
+        if (ext.descriptor.fqcn) |fqcn_lit| {
+            const gop = try rt.types.getOrPut(fqcn_lit);
+            if (!gop.found_existing) {
+                // `rt.deinit` (runtime.zig:290-312) frees every
+                // `types` entry — key, fqcn, and the TypeDescriptor
+                // itself — via `rt.gpa`. Surface descriptors are
+                // module-scoped statics (string literals + empty
+                // slices), so heap-copy them on install so the
+                // ownership uniformity holds at deinit. The cost is
+                // ~1 KB total across the entire surface set.
+                const td = try rt.gpa.create(type_descriptor.TypeDescriptor);
+                td.* = ext.descriptor.*;
+                td.fqcn = try rt.gpa.dupe(u8, fqcn_lit);
+                gop.key_ptr.* = try rt.gpa.dupe(u8, fqcn_lit);
+                gop.value_ptr.* = td;
+            }
+        }
+        if (ext.init) |f| try f();
+    }
+}
+
 const testing = std.testing;
 
 test "Extension struct shape" {
@@ -66,4 +121,41 @@ test "Extension struct shape" {
 
 test "MARKER_NAME constant matches the ADR-0029 contract" {
     try testing.expectEqualStrings("___HOST_EXTENSION", MARKER_NAME);
+}
+
+const Runtime = @import("../runtime.zig").Runtime;
+
+test "installAll registers every Java surface's cljw_ns + TypeDescriptor" {
+    var threaded = std.Io.Threaded.init(testing.allocator, .{});
+    defer threaded.deinit();
+    var rt = Runtime.init(threaded.io(), testing.allocator);
+    defer rt.deinit();
+    var env = try Env.init(&rt);
+    defer env.deinit();
+
+    try installAll(&env);
+
+    // Every enumerated surface lands its cljw_ns + descriptor.
+    inline for (java_surfaces) |S| {
+        const ext: Extension = S.___HOST_EXTENSION;
+        try testing.expect(env.findNs(ext.cljw_ns) != null);
+        if (ext.descriptor.fqcn) |fqcn| {
+            try testing.expect(rt.types.get(fqcn) != null);
+        }
+    }
+}
+
+test "installAll is idempotent" {
+    var threaded = std.Io.Threaded.init(testing.allocator, .{});
+    defer threaded.deinit();
+    var rt = Runtime.init(threaded.io(), testing.allocator);
+    defer rt.deinit();
+    var env = try Env.init(&rt);
+    defer env.deinit();
+
+    try installAll(&env);
+    const types_after_first = rt.types.count();
+    try installAll(&env);
+    const types_after_second = rt.types.count();
+    try testing.expectEqual(types_after_first, types_after_second);
 }

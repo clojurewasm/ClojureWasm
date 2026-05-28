@@ -20,16 +20,25 @@
 //! "skeleton-then-rewrite" boundary applies.
 
 const host_api = @import("../../_host_api.zig");
+const type_descriptor = @import("../../../type_descriptor.zig");
 
 /// `___HOST_EXTENSION` declaration scanned by the host aggregator
-/// (`runtime/java/_host_api.zig`). `init` is null because there
-/// is no per-Runtime setup beyond descriptor registration; the
-/// pattern compile cache lives in `runtime/regex/compile.zig`
-/// (or a future `runtime/regex/cache.zig` per D-052 Alt-3
-/// promotion).
+/// (`runtime/java/_host_api.zig::installAll`, Phase 14 row 14.1).
+/// `init` is null because there is no per-Runtime setup beyond
+/// descriptor registration; the pattern compile cache lives in
+/// `runtime/regex/compile.zig` (or a future `runtime/regex/cache.zig`
+/// per D-052 Alt-3 promotion).
 pub const ___HOST_EXTENSION: host_api.Extension = .{
-    .fqn = "java.util.regex.Pattern",
-    .cljw_ns = "cljw.host.java.util.regex.Pattern",
-    .descriptor = null,
-    .init = null,
+    .cljw_ns = "cljw.java.util.regex.Pattern",
+    .descriptor = &descriptor,
+};
+
+var descriptor: type_descriptor.TypeDescriptor = .{
+    .fqcn = "cljw.java.util.regex.Pattern",
+    .kind = .native,
+    .field_layout = null,
+    .protocol_impls = &.{},
+    .method_table = &.{},
+    .parent = null,
+    .meta = .nil_val,
 };

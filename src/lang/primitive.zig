@@ -87,6 +87,12 @@ pub fn registerAll(env: *Env) !void {
     try protocol_prim.register(env, rt_ns);
     try stm_prim.register(env, rt_ns);
 
+    // Phase 14 row 14.1 (D-079 discharge): walk every
+    // `runtime/java/<pkg>/<Class>.zig`'s `___HOST_EXTENSION`
+    // declaration, create its cljw_ns, register its TypeDescriptor.
+    // ADR-0029 D5 aggregator; F-009 thin-wrapper invariant.
+    try @import("../runtime/java/_host_api.zig").installAll(env);
+
     // ADR-0035 D9 (sub-cycle d): boot-time rt → user refer makes
     // primitives (`+`, `=`, `count`, ...) reachable unqualified at
     // the REPL prompt. The `(ns foo (:refer-clojure))` macro does NOT
