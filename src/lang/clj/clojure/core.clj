@@ -62,12 +62,9 @@
 
 ;; `(juxt f g)` returns a fn that yields a vector `[(f x) (g x)]`.
 ;; Two-fn form only at this cycle (multi-fn juxt + multi-arg deferred
-;; per D-NEW-2). The vector is built via `conj` rather than a vector
-;; literal because the VM backend's compiler does not yet handle
-;; `vector_literal_node` (D-060 — VM-side `op_vector_literal` lands
-;; alongside Phase 7+ work).
+;; per D-NEW-2).
 (def juxt
-  (fn* [f g] (fn* [x] (conj (conj [] (f x)) (g x)))))
+  (fn* [f g] (fn* [x] [(f x) (g x)])))
 
 ;; ----------------------------------------------------------------
 ;; Phase 6.16.b-3 helpers — used by clojure.set Group C (project /
@@ -106,6 +103,53 @@
 ;; `(set coll)` — coerce a collection to a set. Duplicates collapse.
 (def set
   (fn* [coll] (reduce conj #{} coll)))
+
+;; ----------------------------------------------------------------
+;; Phase 14 §9.16 row 14.13 — D-126 clojure.core daily-driver cluster.
+;; Pattern A composition over reduce / get / assoc / first / next /
+;; conj / into / apply. get-in/assoc-in/update-in walk a key path;
+;; concat/mapcat are EAGER (DIVERGENCE: return a vector, not a lazy
+;; seq — consistent with this file's eager map/filter surface; true
+;; lazy lands with the lazy-seq Layer-2 wiring).
+;; ----------------------------------------------------------------
+
+;; `(get-in m ks)` — walk the key path `ks` through nested associatives.
+;; Returns nil when any step is absent (get on nil is nil). The
+;; 3-arity `[m ks not-found]` is deferred until multi-arity fn* lands.
+(def get-in
+  (fn* [m ks] (reduce get m ks)))
+
+;; `(assoc-in m ks v)` — assoc `v` at the nested path `ks`, creating
+;; intermediate maps as needed. `next` yields nil at the final key.
+(def assoc-in
+  (fn* [m ks v]
+    (let [k (first ks) nks (next ks)]
+      (if nks
+        (assoc m k (assoc-in (get m k) nks v))
+        (assoc m k v)))))
+
+;; `(update-in m ks f & args)` — apply `f` (with trailing `args`) to
+;; the value at the nested path `ks`. Recursive descent like assoc-in;
+;; the leaf calls `(apply f old args)`.
+(def update-in
+  (fn* [m ks f & args]
+    (let [k (first ks) nks (next ks)]
+      (if nks
+        (assoc m k (apply update-in (into [(get m k) nks f] args)))
+        (assoc m k (apply f (into [(get m k)] args)))))))
+
+;; `(concat & colls)` — eager left-to-right catenation into a vector.
+;; DIVERGENCE from JVM (lazy seq); see cluster header.
+(def concat
+  (fn* [& colls]
+    (reduce (fn* [acc c] (reduce conj acc c)) [] colls)))
+
+;; `(mapcat f coll)` — map `f` over `coll`, eager-catenating the
+;; per-element collections. Single-coll form (multi-coll deferred,
+;; like `map`). DIVERGENCE from JVM (lazy seq); see cluster header.
+(def mapcat
+  (fn* [f coll]
+    (reduce (fn* [acc x] (reduce conj acc (f x))) [] coll)))
 
 ;; ----------------------------------------------------------------
 ;; Phase 7 §9.9 row 7.7 — hybrid polymorphic primitives' protocol surface.
