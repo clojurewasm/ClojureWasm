@@ -61,5 +61,24 @@ line_count=$(echo "$out" | grep -c '^{:cljw/error' || true)
 [[ "$line_count" -eq 1 ]] || fail "error_format_edn_single_line: expected 1 EDN line, got $line_count"
 echo "PASS error_format_edn_single_line -> one EDN map per error"
 
+# --- Case 6: CLJW_ERROR_LOG appends EDN event to the file path ---
+log_file=$(mktemp -t cljw_errlog.XXXXXX)
+trap 'rm -f "$log_file"' EXIT
+CLJW_ERROR_LOG="$log_file" "$BIN" -e '(undefined-symbol)' 2>/dev/null || true
+[[ -s "$log_file" ]] || fail "error_log_writes_file: log file is empty"
+contents=$(cat "$log_file")
+case "$contents" in
+    *"{:cljw/error true"*":kind :name_error"*)
+        echo "PASS error_log_writes_edn_event -> file contains EDN" ;;
+    *)
+        fail "error_log_writes_edn_event: expected EDN in '$contents'" ;;
+esac
+
+# --- Case 7: CLJW_ERROR_LOG appends (does not truncate) on repeat ---
+CLJW_ERROR_LOG="$log_file" "$BIN" -e '(another-undefined)' 2>/dev/null || true
+line_count=$(grep -c '^{:cljw/error' "$log_file" || true)
+[[ "$line_count" -eq 2 ]] || fail "error_log_appends_does_not_truncate: expected 2 EDN lines, got $line_count"
+echo "PASS error_log_appends_on_repeat -> 2 events in file"
+
 echo
 echo "Phase 14 row 14.13 (D-066 partial) error format e2e: all green."

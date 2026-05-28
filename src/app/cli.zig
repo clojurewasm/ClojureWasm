@@ -40,11 +40,16 @@ pub fn dispatch(init: std.process.Init) !void {
     var stderr_writer = std.Io.File.stderr().writer(io, &stderr_buf);
     const stderr = &stderr_writer.interface;
 
-    // Row 14.13 (D-066): pick up CLJW_ERROR_FORMAT once at startup.
-    // Process-wide (per error_render.currentFormat) so every catch
-    // site renders consistently without a parameter ripple.
+    // Row 14.13 (D-066): pick up CLJW_ERROR_FORMAT + CLJW_ERROR_LOG
+    // once at startup. Process-wide (per error_render.currentFormat
+    // / .logFilePath / .logIo) so every catch site renders + appends
+    // consistently without a parameter ripple.
     if (init.environ_map.get("CLJW_ERROR_FORMAT")) |fmt|
         error_render.currentFormat = error_render.parseFormat(fmt);
+    if (init.environ_map.get("CLJW_ERROR_LOG")) |path| {
+        error_render.logFilePath = path;
+        error_render.logIo = io;
+    }
 
     var args = init.minimal.args.iterate();
     _ = args.skip(); // argv[0]

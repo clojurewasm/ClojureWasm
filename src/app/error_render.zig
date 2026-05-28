@@ -38,6 +38,7 @@ pub fn renderError(stderr: *Writer, ctx: error_print.SourceContext, err: anyerro
             .text => try error_print.formatErrorWithContext(info, ctx, stderr, .{}),
             .edn => try formatErrorEdn(info, ctx, stderr),
         }
+        appendToLogFile(info, ctx);
     } else {
         switch (currentFormat) {
             .text => try stderr.print("{s}: error: {s}\n", .{ ctx.file, @errorName(err) }),
@@ -57,11 +58,42 @@ pub const ErrorFormat = enum { text, edn };
 
 pub var currentFormat: ErrorFormat = .text;
 
+/// Append-only EDN log file path (from `CLJW_ERROR_LOG`). When non-
+/// null, `renderError` writes the EDN event to this path IN ADDITION
+/// to stderr — the structured render is always written even when
+/// `CLJW_ERROR_FORMAT=text` (the file is unconditionally machine-
+/// parseable). nil = stderr-only.
+pub var logFilePath: ?[]const u8 = null;
+
+/// Cached `Io` handle for log-file writes. Set by the CLI dispatcher
+/// alongside `currentFormat` + `logFilePath` so the renderer can open
+/// the file on demand. nil = log-file write disabled.
+pub var logIo: ?std.Io = null;
+
 /// Parse a CLJW_ERROR_FORMAT value into the enum; `text` on any
 /// unrecognised value so a typo doesn't break the user's output.
 pub fn parseFormat(value: []const u8) ErrorFormat {
     if (std.mem.eql(u8, value, "edn")) return .edn;
     return .text;
+}
+
+/// Append the EDN-rendered error event to `CLJW_ERROR_LOG` if set.
+/// Best-effort: a failed log write is logged to stderr but does NOT
+/// propagate (the primary stderr render must always succeed).
+fn appendToLogFile(info: error_mod.Info, ctx: error_print.SourceContext) void {
+    const path = logFilePath orelse return;
+    const io = logIo orelse return;
+    const file = std.Io.Dir.cwd().createFile(io, path, .{ .read = false, .truncate = false, .lock = .exclusive }) catch return;
+    defer file.close(io);
+    // Render EDN into an arena-backed allocating writer, then
+    // `writePositional` at the file's current length (= append).
+    // Zig 0.16's `Io.File` has no `seekFromEnd`; `length(io)` +
+    // positional write covers append without truncating older content.
+    const offset = file.length(io) catch return;
+    var aw: std.Io.Writer.Allocating = .init(std.heap.page_allocator);
+    defer aw.deinit();
+    formatErrorEdn(info, ctx, &aw.writer) catch return;
+    file.writePositionalAll(io, aw.written(), offset) catch return;
 }
 
 /// EDN structured error event. Mirrors the JVM Clojure
