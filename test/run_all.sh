@@ -236,6 +236,7 @@ run_step "e2e_phase14_coll_helpers"          "bash test/e2e/phase14_coll_helpers
 run_step "e2e_phase14_map_helpers"           "bash test/e2e/phase14_map_helpers.sh"
 run_step "e2e_phase14_equality"              "bash test/e2e/phase14_equality.sh"
 run_step "e2e_phase14_dedup_group"           "bash test/e2e/phase14_dedup_group.sh"
+run_step "e2e_phase14_seq_helpers2"          "bash test/e2e/phase14_seq_helpers2.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional

@@ -238,6 +238,43 @@
             {}
             coll)))
 
+;; ----------------------------------------------------------------
+;; D-134 cluster 4 — eager seq helpers (Pattern A; recursion for
+;; zipmap/interleave).
+;; ----------------------------------------------------------------
+
+;; `(empty? coll)` — true when coll has no items (nil counts as empty).
+(def empty?
+  (fn* [coll] (= 0 (count coll))))
+
+;; `(fnil f x)` — f with its first arg defaulted to x when nil.
+;; 1-arg patched form (multi-arg fnil awaits multi-arity follow-up).
+(def fnil
+  (fn* [f x] (fn* [a] (f (if (nil? a) x a)))))
+
+;; `(interpose sep coll)` — sep between consecutive items (eager).
+;; Prepend sep before each, then drop the leading sep with `rest`.
+(def interpose
+  (fn* [sep coll]
+    (rest (reduce (fn* [acc x] (conj (conj acc sep) x)) [] coll))))
+
+;; `(zipmap ks vs)` — map pairing keys with values, stopping at the
+;; shorter. Recursive parallel walk.
+(def zipmap
+  (fn* [ks vs]
+    (if (or (empty? ks) (empty? vs))
+      {}
+      (assoc (zipmap (rest ks) (rest vs)) (first ks) (first vs)))))
+
+;; `(interleave c1 c2)` — alternate items from two colls, stopping at
+;; the shorter (eager vector). Two-coll form.
+(def interleave
+  (fn* [c1 c2]
+    (if (or (empty? c1) (empty? c2))
+      []
+      (into (conj (conj [] (first c1)) (first c2))
+            (interleave (rest c1) (rest c2))))))
+
 ;; `(butlast coll)` — all but the final element (eager list via reverse).
 (def butlast
   (fn* [coll] (reverse (rest (reverse coll)))))
