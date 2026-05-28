@@ -221,11 +221,115 @@ zig_tips, a stale-memo problem, not an F-NNN conflict; no halt.
   cleaner *reached from* a deferred-and-documented scalar than
   *anticipated by* a half-built ring." Main loop adopted Alt 3.
 
+## Phase 14 ring activation — doubly-linked self-loop + atomic.Mutex (amendment 4)
+
+Phase 14 row 14.11.5 (D-122 row-assignment + D-102 implementation,
+2026-05-28) lands the TVal history ring per the JVM `Ref.java`
+shape, refined by a Devil's-advocate fork. The chosen shape:
+
+```zig
+pub const TVal = extern struct {
+    header: HeapHeader,   // GC contract; tag = .tval (Group D slot 63)
+    _pad: [6]u8,
+    val: Value,
+    point: i64,
+    msecs: i64,
+    prior: *TVal,         // initial = self (ring of 1)
+    next: *TVal,          // initial = self (ring of 1)
+};
+
+pub const Ref = extern struct {
+    header: HeapHeader,   // GC contract; tag = .ref
+    lock: std.atomic.Mutex,   // 1 byte; tryLock + unlock only
+    _pad: [5]u8,
+    tvals: *TVal,         // ring head (always non-null after alloc)
+    min_history: u32 = 0,
+    max_history: u32 = 10,
+};
+```
+
+Decisions recorded:
+
+1. **Doubly-linked self-loop ring (JVM-faithful)**. The initial
+   TVal sets `prior = self, next = self`; subsequent commits splice
+   between `head` and `head.next` exactly per `Ref.java:64-69`.
+   `histCount` walks `tvals.next ... tvals`; `trimHistory` resets
+   `next/prior` to self. The reader can hold `Ref.java` open
+   side-by-side; field names + splice semantics line up 1:1.
+
+2. **`std.atomic.Mutex` field at Ref level, not placeholder**.
+   `std.atomic.Mutex` is `enum(u8)` (verified in stdlib at this
+   ADR's land time), extern-compatible, lock-free `tryLock` +
+   `unlock`. Lands at D-102 so Phase 15.1 transaction control
+   flow extends Ref's API surface without re-laying the struct.
+   **Spin-vs-block F-009 wrinkle** (recorded explicitly per the
+   DA fork): `std.atomic.Mutex` has no blocking `lock()`. Phase
+   15.1's `commit` path must spin (`while (!ref.lock.tryLock())
+   { suspend / yield / contention-strategy }`) where JVM blocks.
+   This is a real semantic divergence from JVM and is acceptable
+   for a Wasm-target single-threaded-first runtime; if Phase 15.4
+   bench shows pathological spin, a Phase 15.5 ADR can upgrade
+   to `std.Io.Mutex` at the LockingTransaction layer above Ref
+   (not at Ref itself, since `std.Io.Mutex` is not extern-
+   compatible and would force a `RefObj`/`RefInner` split à la
+   v0). F-009 neutrality preserved: Java + cljw + Clojure-peer
+   surfaces all share the same Zig impl + the same spin semantics.
+
+3. **TVal is internal-only, but consumes Group D slot 63
+   (`reserved_d15` → `tval`)**. The DA fork's decision-point (ii)
+   ranked "TVal-not-NaN-boxed-as-Value" as the consensus
+   finished-form (= TVal does NOT show up in `tag()` checks,
+   `decodePtr` paths, or any user-visible Value surface). It IS
+   tagged in the `HeapTag` enum because GC heap allocation +
+   per-tag `traceGc` dispatch requires it. The last open Group D
+   slot is named, closing the F-002 / D-043 "name the reserve or
+   shrink the layout" Phase 7+ predicate for slot 63.
+
+4. **`min_history = 0 / max_history = 10` declared at D-102**.
+   The ring-growth machinery (Phase 15.1's `commit` reading both)
+   is the first reader; declaring them now matches "Added by the
+   owner that first reads them" (amendment 3 § Negative finding
+   #3) since D-102 IS the first cycle whose code paths reference
+   them (the ring init logic). Not Reservation-as-bias.
+
+5. **GC trace walks the ring via existing mark-bitmap cycle
+   detection**. Each TVal traces its `val` + `prior` + `next`;
+   the mark-and-recurse in `mark_sweep.zig` checks "already
+   marked? return", terminating the self-loop in one pass. Ref's
+   trace marks `tvals` + lets the recursion handle the rest. A
+   D-102 unit test asserts that a freshly-allocated 1-node ring +
+   a manually-constructed 3-node ring both terminate marking
+   (count = N, not infinite).
+
+The decision rejected three alternatives — Alt 1 (smallest-diff:
+singly-linked + lock absent), Alt 2-as-modified (this amendment;
+chosen), Alt 3 (wildcard: array-ring inline in Ref). The full DA
+output landed at `private/notes/phase14-d102-da-fork.md` (verbatim);
+the relevant rejection rationale per F-NNN:
+
+- **Alt 1 (singly-linked + lock absent)** rejected per F-002 §3
+  shrink-not-enlarge: Phase 15.1's `doGet` walks `prior` whether
+  singly- or doubly-linked, but `histCount` / `trimHistory` /
+  ring-splice all need `next`. Omitting `next` here means Phase
+  15.1 re-touches TVal shape — the exact pattern F-002 forbids.
+- **Alt 3 (array-ring)** rejected per F-009 + bench risk: the
+  hard `max_history ≤ 16` cap and 384-byte fixed Ref cost regress
+  the `(ref 42)` for-counter use case ~8×, and `clojure.core/ref-max-history`
+  would silently cap or raise — a Java/cljw/Clojure-peer
+  neutrality break. A follow-up `private/notes/d102-arena-ring-exploration.md`
+  records the bench-validatable hypothesis for Phase 16 review.
+
+Discharges D-122 (row scheduling) + D-102 (implementation). Opens
+no new STM debt rows. Phase 15.1's D-114 (transaction control
+flow) inherits the unchanged Ref/TVal shape; that cycle's
+`LockingTransaction` lands as pure code-add per the DA fork's
+"Phase 15.1 saves ~50 LOC" projection.
+
 ## References
 
 - ROADMAP §9.6 task 4.7 (try/throw/loop/recur — STM error message
-  path), §9.15 (Phase 13 entry), §9.16 (Phase 14 entry), §9.17
-  (Phase 15.1-15.4)
+  path), §9.15 (Phase 13 entry), §9.16 (Phase 14 entry, esp. row
+  14.11.5 — D-102 ring rewrite), §9.17 (Phase 15.1-15.4)
 - ROADMAP §A25 (Existing code is mutable)
 - Related ADRs: 0009, 0017, 0018
 - JVM source: `clojure.lang.LockingTransaction`
@@ -247,3 +351,12 @@ zig_tips, a stale-memo problem, not an F-NNN conflict; no halt.
   deferred to Phase 15.1 as `std.Io.Mutex`; `TVal` ring +
   `min/max_history` / `watches` deferred to Phase 14 (tracked by
   D-102). File `src/runtime/stm/ref.zig`.
+- 2026-05-28 (amendment 4): Phase 14 row 14.11.5 lands the TVal
+  history ring (D-122 + D-102) per JVM `Ref.java` doubly-linked
+  self-loop shape. `std.atomic.Mutex` (enum(u8), extern-compatible)
+  lands as a real Ref field — Phase 15.1 commit/retry spins on
+  `tryLock` since `std.atomic.Mutex` lacks blocking `lock()`. TVal
+  consumes Group D slot 63 (`reserved_d15` → `tval`), naming the
+  last anonymous reserve. Files `src/runtime/stm/tval.zig` (new),
+  `src/runtime/stm/ref.zig` (rewritten), `src/runtime/value/heap_tag.zig`
+  (slot 63 named).
