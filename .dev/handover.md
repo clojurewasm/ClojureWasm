@@ -18,6 +18,12 @@
   cycle/take-while/drop-while/partition.
   **Cycle 1 (producer) + cycle 2 (lazy map/filter/keep/remove + print
   realize + 2 seq-protocol root-cause fixes) are DONE** (gate 100/100).
+- **Resume disambiguation** (this `## Resume contract` overrides the
+  ROADMAP §9.16 first-`[ ]` scan, per `handover_framing.md` "MUST be"):
+  §9.16's numerically-first unchecked row is **14.11 (D-100 `cljw
+  build`)** — that is NOT the immediate next task. The chosen next is
+  **ADR-0054 cycle 3 (row 14.13.5)**. D-100(b)/(e), 14.12, 14.13 remain
+  pending v0.1.0 work but are not the resume target; do cycle 3 first.
 - **Forbidden this session**: re-opening D-126/D-127/D-134/D-136/D-137
   or lazy-seq cycle 1 (all discharged). Pulling the v0.1.0 tag (row
   14.14) before lazy-seq (row 14.13.5) + the rest of the 14.13 bundle
