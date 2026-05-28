@@ -275,6 +275,37 @@
       (into (conj (conj [] (first c1)) (first c2))
             (interleave (rest c1) (rest c2))))))
 
+;; ----------------------------------------------------------------
+;; D-134 cluster 5 — reduce-shaped helpers (Pattern A).
+;; sort / sort-by deferred (need a compare op + sort algorithm).
+;; ----------------------------------------------------------------
+
+;; `(max-key f & xs)` — the x with the greatest (f x); ties keep the
+;; earlier-seen. `(min-key …)` is the mirror. reduce uses (first xs)
+;; as the seed (≥1 arg required, matching JVM).
+(def max-key
+  (fn* [f & xs]
+    (reduce (fn* [a b] (if (>= (f a) (f b)) a b)) xs)))
+
+(def min-key
+  (fn* [f & xs]
+    (reduce (fn* [a b] (if (<= (f a) (f b)) a b)) xs)))
+
+;; `(flatten coll)` — recursively splice nested sequentials into one
+;; flat eager vector. Non-sequential leaves are kept.
+(def flatten
+  (fn* [coll]
+    (reduce (fn* [acc x] (if (sequential? x) (into acc (flatten x)) (conj acc x)))
+            []
+            coll)))
+
+;; `(reductions f init coll)` — like reduce but collects every
+;; intermediate, starting with init (eager vector). 3-arg form;
+;; the 2-arg `(reductions f coll)` awaits multi-arity.
+(def reductions
+  (fn* [f init coll]
+    (reduce (fn* [acc x] (conj acc (f (last acc) x))) [init] coll)))
+
 ;; `(butlast coll)` — all but the final element (eager list via reverse).
 (def butlast
   (fn* [coll] (reverse (rest (reverse coll)))))
