@@ -306,6 +306,29 @@
   (fn* [f init coll]
     (reduce (fn* [acc x] (conj acc (f (last acc) x))) [init] coll)))
 
+;; ----------------------------------------------------------------
+;; D-134 cluster 6 — trivial accessors (no compare dependency).
+;; sort / sort-by await D-137 (compare is numeric-only).
+;; ----------------------------------------------------------------
+
+;; `(second coll)` — the second item (nil if absent).
+(def second (fn* [coll] (first (rest coll))))
+
+;; `(ffirst coll)` — `(first (first coll))`.
+(def ffirst (fn* [coll] (first (first coll))))
+
+;; `(not-empty coll)` — coll if it has items, else nil.
+(def not-empty (fn* [coll] (if (empty? coll) nil coll)))
+
+;; `(take-last n coll)` — the last n items (eager).
+(def take-last
+  (fn* [n coll] (reverse (take n (reverse coll)))))
+
+;; `(drop-last coll)` — all but the last item. 1-arg form (same body as
+;; butlast, inlined to avoid a forward reference); the n-arity
+;; `(drop-last n coll)` awaits multi-arity.
+(def drop-last (fn* [coll] (reverse (rest (reverse coll)))))
+
 ;; `(butlast coll)` — all but the final element (eager list via reverse).
 (def butlast
   (fn* [coll] (reverse (rest (reverse coll)))))
