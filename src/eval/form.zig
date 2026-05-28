@@ -28,6 +28,9 @@ pub const FormData = union(enum) {
     /// `1.5M`. The string slice is the decimal representation without
     /// the trailing `M`. Analyzer parses it into unscaled + scale.
     big_decimal_literal: []const u8,
+    /// `1/3`. The string slice is the full `num/den` digit pair; the
+    /// analyzer splits on `/` before parsing each side.
+    ratio_literal: []const u8,
     /// `#"\d+"`. The string slice is the raw pattern source between
     /// `#"` and the closing `"` — no escape decoding (per JVM
     /// Clojure: `#"\\d"` matches a digit, the body is handed
@@ -64,6 +67,7 @@ pub const Form = struct {
             .float => "float",
             .big_int_literal => "big_int_literal",
             .big_decimal_literal => "big_decimal_literal",
+            .ratio_literal => "ratio_literal",
             .regex_literal => "regex_literal",
             .string => "string",
             .symbol => "symbol",
@@ -93,6 +97,7 @@ pub const Form = struct {
             .float => |f| try formatFloat(w, f),
             .big_int_literal => |s| try w.print("{s}N", .{s}),
             .big_decimal_literal => |s| try w.print("{s}M", .{s}),
+            .ratio_literal => |s| try w.print("{s}", .{s}),
             .regex_literal => |s| try w.print("#\"{s}\"", .{s}),
             .string => |s| try formatString(w, s),
             .symbol => |sym| {

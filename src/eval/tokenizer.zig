@@ -30,6 +30,9 @@ pub const TokenKind = enum(u8) {
     /// `1.5M` — arbitrary-precision decimal literal. Token text includes
     /// the trailing `M`; the reader strips it before parsing.
     big_decimal_literal,
+    /// `1/3` — rational literal. Token text holds the full `num/den`
+    /// digit pair; the reader splits on `/` before parsing each side.
+    ratio_literal,
     string,
     symbol,
     keyword,
@@ -210,6 +213,18 @@ pub const Tokenizer = struct {
                 self.advance();
             }
             while (self.pos < self.source.len and isDigit(self.source[self.pos])) self.advance();
+        }
+
+        // Phase 14 row 14.4 gap (b): Ratio literal `1/3`. Only valid
+        // when the numerator was a plain integer (no dot / exp) and
+        // the `/` is followed by at least one digit. Anything else
+        // (`1/foo`) falls through to the integer/symbol split.
+        if (!is_float and self.pos + 1 < self.source.len and
+            self.source[self.pos] == '/' and isDigit(self.source[self.pos + 1]))
+        {
+            self.advance(); // consume '/'
+            while (self.pos < self.source.len and isDigit(self.source[self.pos])) self.advance();
+            return self.makeToken(.ratio_literal, start, start_line, start_col);
         }
 
         // Phase 5.10.d: BigInt `N` and BigDecimal `M` suffixes get

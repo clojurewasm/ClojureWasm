@@ -52,6 +52,7 @@ const map_collection = @import("../../runtime/collection/map.zig");
 const set_collection = @import("../../runtime/collection/set.zig");
 const big_int = @import("../../runtime/numeric/big_int.zig");
 const big_decimal = @import("../../runtime/numeric/big_decimal.zig");
+const ratio_mod = @import("../../runtime/numeric/ratio.zig");
 const regex_value = @import("../../runtime/regex/value.zig");
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
@@ -228,6 +229,7 @@ pub fn analyze(
         .float => |f| try makeConstant(arena, Value.initFloat(f), form),
         .big_int_literal => |s| try makeConstant(arena, try parseBigIntLiteral(rt, s, form.location), form),
         .big_decimal_literal => |s| try makeConstant(arena, try parseBigDecimalLiteral(rt, s, form.location), form),
+        .ratio_literal => |s| try makeConstant(arena, try parseRatioLiteral(rt, s, form.location), form),
         .regex_literal => |s| try makeConstant(arena, try parseRegexLiteral(rt, s, form.location), form),
         .keyword => |sym| {
             const v = try keyword.intern(rt, sym.ns, sym.name);
@@ -305,6 +307,26 @@ pub fn parseBigDecimalLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.S
         return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
 
     return try big_decimal.allocFromManagedScale(rt, &unscaled, scale);
+}
+
+/// Parse `1/3`-shape Ratio literal into a Value. Reads numerator and
+/// denominator as i64 (Phase 14 row 14.4 gap (b) — wider numerators
+/// fall to the same overflow path as gap (a) D-014a tracks). Collapse
+/// to integer when the reduced denominator is 1 (the orelse branch
+/// covers e.g. `6/2` → 3).
+pub fn parseRatioLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
+    const slash = std.mem.findScalar(u8, digits, '/') orelse
+        return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+    const num = std.fmt.parseInt(i64, digits[0..slash], 10) catch
+        return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+    const den = std.fmt.parseInt(i64, digits[slash + 1 ..], 10) catch
+        return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+    const r = ratio_mod.allocFromI64Pair(rt, num, den) catch |err| switch (err) {
+        error.DivideByZero => return error_catalog.raise(.divide_by_zero, loc, .{}),
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    // Reduced denom == 1: the ratio collapses to a plain integer.
+    return r orelse Value.initInteger(@divTrunc(num, den));
 }
 
 /// Compile a `#"..."` reader-literal body into a regex Value via
@@ -634,6 +656,7 @@ pub fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
         .float => |f| Value.initFloat(f),
         .big_int_literal => |s| try parseBigIntLiteral(rt, s, form.location),
         .big_decimal_literal => |s| try parseBigDecimalLiteral(rt, s, form.location),
+        .ratio_literal => |s| try parseRatioLiteral(rt, s, form.location),
         .regex_literal => |s| try parseRegexLiteral(rt, s, form.location),
         .keyword => |sym| try keyword.intern(rt, sym.ns, sym.name),
         .string => |s| try string_collection.alloc(rt, s),

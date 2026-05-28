@@ -82,6 +82,7 @@ pub const Reader = struct {
             .float => self.readFloat(tok),
             .big_int_literal => self.readBigIntLiteral(tok),
             .big_decimal_literal => self.readBigDecimalLiteral(tok),
+            .ratio_literal => self.readRatioLiteral(tok),
             .string => self.readString(tok),
             .regex_literal => self.readRegexLiteral(tok),
             .keyword => self.readKeyword(tok),
@@ -137,6 +138,12 @@ pub const Reader = struct {
         const txt = tok.text(self.source);
         const digits = txt[0 .. txt.len - 1];
         return Form{ .data = .{ .big_decimal_literal = digits }, .location = self.locOf(tok) };
+    }
+
+    /// `1/3` — keep the full `num/den` digit pair; analyzer splits.
+    fn readRatioLiteral(self: *Reader, tok: Token) ReadError!Form {
+        const txt = tok.text(self.source);
+        return Form{ .data = .{ .ratio_literal = txt }, .location = self.locOf(tok) };
     }
 
     fn readString(self: *Reader, tok: Token) ReadError!Form {
