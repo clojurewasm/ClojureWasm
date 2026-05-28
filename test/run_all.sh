@@ -217,6 +217,7 @@ run_step "e2e_phase10_exit_smoke"            "bash test/e2e/phase10_exit_smoke.s
 run_step "e2e_phase11_clojure_test"          "bash test/e2e/phase11_clojure_test.sh"
 run_step "test_clj_tier_a"                   "bash test/clj/run_tier_a.sh"
 run_step "e2e_phase11_exit_smoke"            "bash test/e2e/phase11_exit_smoke.sh"
+run_step "e2e_phase13_exit_smoke"            "bash test/e2e/phase13_exit_smoke.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional
