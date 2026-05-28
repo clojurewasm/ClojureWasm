@@ -486,3 +486,20 @@ test "diff: row 7.9 apply variadic with vector tail (spread still works)" {
     // (and need an explicit ADR amendment).
     try f.check("(apply (fn* [& xs] (count xs)) [1 2 3 4 5])", 5);
 }
+
+// Phase 13 row 13.1: STM `ref` / `deref` (read-only path, ADR-0010
+// amendment 3). Both backends must agree on the heap Ref construct +
+// the deref read. The second case exercises a Ref holding a heap
+// Value (vector) so the GC trace path is crossed on both backends.
+
+test "diff: ref deref round-trip" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    try f.check("(deref (ref 5))", 5);
+}
+
+test "diff: ref holds heap value, deref then count" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    try f.check("(count (deref (ref [1 2 3])))", 3);
+}

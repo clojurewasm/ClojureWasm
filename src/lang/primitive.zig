@@ -44,6 +44,7 @@ const set_prim = @import("primitive/set.zig");
 const walk_prim = @import("primitive/walk.zig");
 const multimethod_prim = @import("primitive/multimethod.zig");
 const protocol_prim = @import("primitive/protocol.zig");
+const stm_prim = @import("primitive/stm.zig");
 
 pub const RegisterError = error{
     RtNamespaceMissing,
@@ -84,6 +85,7 @@ pub fn registerAll(env: *Env) !void {
     try walk_prim.register(env);
     try multimethod_prim.register(env, rt_ns);
     try protocol_prim.register(env, rt_ns);
+    try stm_prim.register(env, rt_ns);
 
     // ADR-0035 D9 (sub-cycle d): boot-time rt → user refer makes
     // primitives (`+`, `=`, `count`, ...) reachable unqualified at
