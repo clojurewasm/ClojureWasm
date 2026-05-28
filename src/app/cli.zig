@@ -21,6 +21,7 @@ const std = @import("std");
 const runner = @import("runner.zig");
 const repl = @import("repl.zig");
 const nrepl = @import("nrepl.zig");
+const error_render = @import("error_render.zig");
 
 /// Top-level CLI dispatcher. Called from `src/main.zig::main` with
 /// the Juicy-Main `std.process.Init` bundle. Parses argv, decides
@@ -38,6 +39,12 @@ pub fn dispatch(init: std.process.Init) !void {
     var stderr_buf: [1024]u8 = undefined;
     var stderr_writer = std.Io.File.stderr().writer(io, &stderr_buf);
     const stderr = &stderr_writer.interface;
+
+    // Row 14.13 (D-066): pick up CLJW_ERROR_FORMAT once at startup.
+    // Process-wide (per error_render.currentFormat) so every catch
+    // site renders consistently without a parameter ripple.
+    if (init.environ_map.get("CLJW_ERROR_FORMAT")) |fmt|
+        error_render.currentFormat = error_render.parseFormat(fmt);
 
     var args = init.minimal.args.iterate();
     _ = args.skip(); // argv[0]

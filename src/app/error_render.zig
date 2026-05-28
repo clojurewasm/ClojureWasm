@@ -23,13 +23,76 @@ const Runtime = @import("../runtime/runtime.zig").Runtime;
 /// `Info` (when populated by `setErrorFmt`); falls back to bare
 /// `@errorName(err)` so an unwired call site still produces *some*
 /// output instead of swallowing the failure.
+///
+/// Row 14.13 (D-066): respects the `CLJW_ERROR_FORMAT` env var via
+/// `currentFormat` which the CLI dispatcher sets from
+/// `init.environ_map` at startup. Two formats:
+/// - `text` (default): human-readable carat-pointer format.
+/// - `edn`: structured EDN map for `cljw render-error` post-mortem
+///   decoding + machine-driven tooling (CIDER / editors / log
+///   aggregators). `CLJW_ERROR_LOG` file-append rides the same
+///   D-066 follow-up; not in this cycle.
 pub fn renderError(stderr: *Writer, ctx: error_print.SourceContext, err: anyerror) Writer.Error!void {
     if (error_mod.getLastError()) |info| {
-        try error_print.formatErrorWithContext(info, ctx, stderr, .{});
+        switch (currentFormat) {
+            .text => try error_print.formatErrorWithContext(info, ctx, stderr, .{}),
+            .edn => try formatErrorEdn(info, ctx, stderr),
+        }
     } else {
-        try stderr.print("{s}: error: {s}\n", .{ ctx.file, @errorName(err) });
+        switch (currentFormat) {
+            .text => try stderr.print("{s}: error: {s}\n", .{ ctx.file, @errorName(err) }),
+            .edn => try stderr.print("{{:cljw/error true :file \"{s}\" :kind :unknown :message \"{s}\"}}\n", .{ ctx.file, @errorName(err) }),
+        }
     }
     try stderr.flush();
+}
+
+/// Output format selector. The CLI dispatcher sets this from the
+/// `CLJW_ERROR_FORMAT` env var at startup (via `init.environ_map`
+/// since `std.posix.getenv` is gone in Zig 0.16). Process-wide
+/// because error_render is reachable from every layer; a per-call
+/// override would require threading a parameter through every
+/// `catch |err| renderAndExit(...)` site.
+pub const ErrorFormat = enum { text, edn };
+
+pub var currentFormat: ErrorFormat = .text;
+
+/// Parse a CLJW_ERROR_FORMAT value into the enum; `text` on any
+/// unrecognised value so a typo doesn't break the user's output.
+pub fn parseFormat(value: []const u8) ErrorFormat {
+    if (std.mem.eql(u8, value, "edn")) return .edn;
+    return .text;
+}
+
+/// EDN structured error event. Mirrors the JVM Clojure
+/// ExceptionInfo pattern: a single map carrying `:kind` /
+/// `:phase` / `:file` / `:line` / `:column` / `:message` + the
+/// `:cljw/error true` discriminator that lets `cljw render-error`
+/// recognise the event in mixed log output.
+fn formatErrorEdn(info: error_mod.Info, ctx: error_print.SourceContext, w: *Writer) Writer.Error!void {
+    _ = ctx;
+    try w.print(
+        "{{:cljw/error true :kind :{s} :phase :{s} :file \"{s}\" :line {d} :column {d} :message \"",
+        .{
+            @tagName(info.kind),
+            @tagName(info.phase),
+            info.location.file,
+            info.location.line,
+            info.location.column,
+        },
+    );
+    // EDN string escape — quotes and backslashes only at this fidelity.
+    for (info.message) |c| {
+        switch (c) {
+            '"', '\\' => {
+                try w.writeByte('\\');
+                try w.writeByte(c);
+            },
+            '\n' => try w.writeAll("\\n"),
+            else => try w.writeByte(c),
+        }
+    }
+    try w.writeAll("\"}\n");
 }
 
 /// Map a `Kind` to the process exit code per ADR-0019. The catalog
