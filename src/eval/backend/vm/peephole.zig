@@ -25,18 +25,18 @@ const opcode_mod = @import("opcode.zig");
 const Opcode = opcode_mod.Opcode;
 const Instruction = opcode_mod.Instruction;
 
-/// The three opcodes whose operand is a signed-i16 instruction-position
-/// offset relative to the instruction after themselves.
-fn isBranch(op: Opcode) bool {
-    return switch (op) {
-        .op_jump, .op_jump_if_false, .op_push_handler => true,
-        else => false,
-    };
-}
-
-/// Absolute target index of a branch instruction at `index`.
-/// `applyJump` (`vm.zig`) adds the offset AFTER advancing ip past
-/// the branch, so the target = `index + 1 + offset`.
+/// Absolute target index of a position-relative instruction at `index`.
+/// `applyJump` (`vm.zig`) adds the offset AFTER advancing ip past the
+/// op, so the target = `index + 1 + offset`. Caller guarantees the op
+/// at `index` is `Opcode.isPositionRelative()` true.
+///
+/// Codegen invariant: every emitted offset (forward or `op_recur`'s
+/// negative back-edge) targets a real instruction in `[0, instrs.len]`
+/// — the patchJump arithmetic (`compiler.zig:525-529`) never produces a
+/// pre-chunk target. The `@intCast(usize)` therefore never underflows
+/// on a well-formed chunk; if a future codegen change broke this
+/// invariant, the trap surfaces in safe builds rather than corrupting
+/// the IP-remap silently.
 fn branchTarget(instrs: []const Instruction, index: usize) usize {
     const off = @as(i16, @bitCast(instrs[index].operand));
     const t = @as(i64, @intCast(index)) + 1 + off;
@@ -57,7 +57,7 @@ pub fn optimize(arena: std.mem.Allocator, instrs: []const Instruction) ![]const 
     const targets = try arena.alloc(bool, instrs.len + 1);
     @memset(targets, false);
     for (instrs, 0..) |ins, i| {
-        if (isBranch(ins.opcode)) {
+        if (ins.opcode.isPositionRelative()) {
             const t = branchTarget(instrs, i);
             if (t <= instrs.len) targets[t] = true;
         }
@@ -113,9 +113,14 @@ fn applyPlan(arena: std.mem.Allocator, instrs: []const Instruction, keep: []cons
     for (instrs, 0..) |ins, old| {
         if (!keep[old]) continue;
         var copy = ins;
-        if (isBranch(ins.opcode)) {
+        if (ins.opcode.isPositionRelative()) {
             const old_t = branchTarget(instrs, old);
             const new_t = new_index[old_t];
+            // Compaction only ever shrinks distances (kept ≤ old) and
+            // preserves the sign of (target - origin), so |new_off| ≤
+            // |old_off|. The original offset fit in i16 (compiler's
+            // patchJump enforces it), therefore new_off fits too — the
+            // @intCast(i16) cannot overflow on a well-formed chunk.
             const new_off = @as(i64, @intCast(new_t)) - @as(i64, @intCast(j)) - 1;
             copy.operand = @as(u16, @bitCast(@as(i16, @intCast(new_off))));
         }

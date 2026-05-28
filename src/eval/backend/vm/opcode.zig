@@ -159,6 +159,47 @@ pub const Opcode = enum(u8) {
     /// alias) + F-008 zwasm-component-import shape alignment.
     op_require_with_libspec = 0x1C,
 
+    /// True when this opcode carries a **signed-i16 instruction-position
+    /// offset** in `operand`, relative to the instruction after itself
+    /// (vm.zig:188-201 + :317 `applyJump`). Peephole's IP-remap pass
+    /// (ADR-0047) re-resolves these on instruction removal; mis-classifying
+    /// a future position-relative op as non-relative would let the pass
+    /// silently corrupt control flow. Exhaustive by design: adding a new
+    /// opcode forces a position-relative decision here at compile time.
+    /// Safe default for any new op is `false`.
+    pub fn isPositionRelative(self: Opcode) bool {
+        return switch (self) {
+            .op_jump, .op_jump_if_false, .op_push_handler => true,
+            .op_const,
+            .op_load_local,
+            .op_store_local,
+            .op_def,
+            .op_get_var,
+            .op_call,
+            .op_ret,
+            .op_pop,
+            .op_dup,
+            .op_throw,
+            .op_make_fn,
+            .op_recur,
+            .op_invoke_builtin,
+            .op_pop_handler,
+            .op_match_class,
+            .op_in_ns,
+            .op_vector_literal,
+            .op_map_literal,
+            .op_set_literal,
+            .op_require,
+            .op_ns_with_refer_clojure,
+            .op_deftype,
+            .op_ctor_call,
+            .op_field_access,
+            .op_method_call,
+            .op_require_with_libspec,
+            => false,
+        };
+    }
+
     /// True when this opcode pushes exactly one value with no side
     /// effect and no other stack effect — so a pure push immediately
     /// followed by `op_pop` is a removable no-op (peephole, ADR-0047).
