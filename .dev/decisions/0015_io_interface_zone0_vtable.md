@@ -164,5 +164,5 @@ coincides with the Phase 14 landing.
   the 1000-LOC §A6 cap so the 3-file split is reservation-as-bias
   until growth forces it). ADR-0015 a2's specific path table was
   a memo per CLAUDE.md spirit; the finished form amends in place.
-  v0 disabled-feature F142 reactivation closed at commit XXXXXX
+  v0 disabled-feature F142 reactivation closed at commit 76e0c64c
   (row 14.10).
