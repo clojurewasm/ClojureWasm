@@ -3,72 +3,54 @@
 > ≤ 100 lines. Driving doc; framing per
 > [`.claude/rules/handover_framing.md`](../.claude/rules/handover_framing.md).
 
-## Stopped — user requested
-
-User instruction (2026-05-27): 「きりがよくなったら、止めてください」
-(= "stop when you reach a good break point"). Phase 12 just
-closed (DONE-PARTIAL) at commit `e99cdbd`; Phase 13 not yet
-opened. Resume at §9.15.
-
 ## Resume contract
 
-- **HEAD**: `e99cdbd` (Phase 12 partial close — rows 12.3-12.5
-  enumeration-only per D-100).
-- **First commit on resume MUST be**: §9.15 Phase 13 task list
-  open commit. Run the Phase 12 → 13 boundary review chain
-  (`audit_scaffolding` + simplify-on-Phase-12-diff +
-  security-review-on-unpushed — parallel fan-out), then expand
-  the §9.15 Phase 13 placeholder inline (mirror §9.14 structure)
-  and commit alone with
-  `git commit -m "roadmap: open Phase 13 task list"`.
-- **Forbidden this session**: re-opening Phase 12 D-100 sub-
-  deliverables (cljw build CLI / render-error decoder / cold-
-  start bench) inside Phase 13 — Phase 13 is STM (`Ref` / `TVal`
-  data structures) + VM optimisation peephole.zig + 5-bench
-  parity per cw v0 24C.10. D-100 cycles ride dedicated sessions.
+- **HEAD**: ≈ `3fec496` (Phase 13 opened + Step 0.5 sweep; see
+  `git log` for exact HEAD).
+- **First commit on resume MUST be**: §9.15 row 13.1 — STM `Ref` /
+  `TVal` data structures land fresh in `src/runtime/stm/ref.zig`
+  (no Phase-4 skeleton exists; F-004 Group C `ref` NaN-box slot +
+  GC trace + `(ref init)` constructor). Entry ADR 0010 §"Phases"
+  (Phase 13 = data structures only; removes no STM staged Codes).
+- **Forbidden this session**: pulling STM commit-loop behaviour
+  (`dosync` / `alter` / `commute` / `ensure` / `ref-set` commit +
+  retry + barge — D-009 / D-010 / D-012 / D-013 / D-020 / D-046)
+  forward; that is Phase 14-15. D-100 Phase 12 substantive
+  deliverables (cljw build CLI / render-error decoder / cold-start
+  bench) ride dedicated sessions.
 
 ## Cold-start reading order
 
 handover → CLAUDE.md (§ Project spirit + § Autonomous Workflow +
 § The only stop) → `.dev/project_facts.md` (F-001..F-009) →
-`.dev/principle.md` → `.dev/ROADMAP.md` §9.15 placeholder →
-`.dev/debt.md` Step 0.5 sweep (D-045 HAMT; D-080 `=` over
-non-numbers; D-096 println output reach; D-097 second-wave host
-stdlib; D-098 ns directive surface; D-099 user defmacro;
-**D-100** Phase 12 substantive deliverables (a)..(e)) →
-per-task note at `private/notes/phase12-partial-close.md`
-(extended-challenge entries for the resume's first cycle).
+`.dev/principle.md` → `.dev/ROADMAP.md` §9.15 Phase 13 task list →
+`.dev/debt.md` Step 0.5 sweep (D-045 HAMT; D-096 println output
+reach; D-097 second-wave host stdlib; D-098 ns directive surface;
+D-099 user defmacro; D-100 Phase 12 deliverables; D-101 empty-list
+deviation) → ADR-0010 (STM phase split).
 
 ## Current state
 
-This session ran Phase 7 close through Phase 12 partial-close on
-branch `cw-from-scratch`. ~30 commits across the boundary chain.
-Gate green at HEAD: Mac 75/75 + OrbStack Ubuntu x86_64 74/74.
+Phase 13 (VM optimisation peephole.zig + STM Ref/TVal) IN-PROGRESS
+on `cw-from-scratch`. Phase 12 closed DONE-PARTIAL. Gate green:
+Mac 75/75 + OrbStack Ubuntu x86_64 74/74.
 
-Highlights (Phase 8 → 12):
-- Phase 8 (transients + bench gate + --compare + D-089 retro-audit)
-- Phase 9 (modules layer + edn/json/csv/cli + ADR-0044 collision repair)
-- Phase 10 (pprint + host stdlib enumeration + D-095/D-096/D-097/D-098)
-- Phase 11 (clojure.test + 13 ported upstream tests + Tier A gate active)
-- Phase 12 partial (ADR-0034 rediscovery + bytecode serializer skeleton + D-100)
+Row 13.0 boundary work landed: Phase 12→13 review chain (simplify
+nice-only, security clean, audit 0-block); Step 0.5 debt sweep
+(D-014c / D-014d / D-027 / D-029 / D-040 Discharged; D-041 / D-043
+re-targeted; D-101 minted); 3 stale-phase-ref docstrings refreshed;
+master-table row 13 STM clause reconciled.
 
-## Active task — §9.15 Phase 13 entry
+## Active task — §9.15 row 13.1
 
-Phase 13 placeholder per §9 master table: "VM optimisation:
-peephole.zig + STM Ref/TVal data structures + five canonical
-benchmarks within 110% of cw v0 24C.10". Entry ADRs: 0010 (STM
-— Ref / TVal data structures). Reference `private/JVM_TO_ZIG.md`
-§5 (STM Zig API). Phase 13 entry owner expands inline.
-
-## Extended challenge (per `.claude/rules/extended_challenge.md`)
-
-Recorded in `private/notes/phase12-partial-close.md` per the rule
-(alt hypothesis / next experiment / explicit blocker).
+STM `Ref` / `TVal` data structures + read-only `deref` path (rows
+13.1-13.2), then `peephole.zig` optimizer + 5-bench parity (rows
+13.3-13.4), exit smoke (13.5). Entry ADR 0010; reference
+`private/JVM_TO_ZIG.md` §5 (STM Zig API).
 
 ## Guardrail refresh history
 
-Phase 8-12 landmarks (closed 2026-05-27): ADR-0044 (bench schema
-renumbered from ADR-0027 collision), ADR-0045 (§9 row 9
-reconciliation), ADR-0046 (skip taxonomy), ADR-0034 rediscovery;
-D-074 / D-007 / D-034 / D-089 Discharged; D-095 / D-096 / D-097
-/ D-098 / D-099 / D-100 minted Active.
+Phase 12→13 boundary (2026-05-28): §9.15 expanded inline (6 rows);
+debt Step 0.5 sweep cleared 5 closed-phase rows; D-101 minted
+(empty-PersistentList deviation). Phase 8-12 landmarks (2026-05-27):
+ADR-0044 / 0045 / 0046 + ADR-0034 rediscovery.
