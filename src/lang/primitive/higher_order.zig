@@ -92,7 +92,7 @@ pub fn applyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     }
     while (!cur.isNil()) {
         try collected.append(rt.gpa, try sequence.firstFn(rt, env, &.{cur}, loc));
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+        cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     return try invokeCallable(rt, env, f, collected.items, loc);
 }
@@ -185,7 +185,7 @@ pub fn reduceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             return try invokeCallable(rt, env, f, &.{}, loc);
         }
         acc = try sequence.firstFn(rt, env, &.{cur}, loc);
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+        cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     while (!cur.isNil()) {
         const elt = try sequence.firstFn(rt, env, &.{cur}, loc);
@@ -194,7 +194,7 @@ pub fn reduceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             return reduced.unreduce(step);
         }
         acc = step;
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+        cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     return acc;
 }
@@ -216,7 +216,7 @@ pub fn intoFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     while (!cur.isNil()) {
         const elt = try sequence.firstFn(rt, env, &.{cur}, loc);
         acc = try collection.conjFn(rt, env, &.{ acc, elt }, loc);
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+        cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     return acc;
 }
@@ -236,7 +236,7 @@ pub fn everyQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         const elt = try sequence.firstFn(rt, env, &.{cur}, loc);
         const r = try invokeCallable(rt, env, pred, &.{elt}, loc);
         if (isFalsy(r)) return .false_val;
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+        cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     return .true_val;
 }
@@ -256,7 +256,7 @@ pub fn someFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         const elt = try sequence.firstFn(rt, env, &.{cur}, loc);
         const r = try invokeCallable(rt, env, pred, &.{elt}, loc);
         if (!isFalsy(r)) return r;
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+        cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     return .nil_val;
 }
@@ -284,36 +284,9 @@ pub fn someQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 // analyzer grows multi-arity support (tracked at D-NEW-2 per
 // 6.16.a-3.2 commit body).
 
-/// `(-map-eager f coll)` — eager list of `(f x)` over coll.
-pub fn mapEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("-map-eager", args, 2, loc);
-    const f = args[0];
-    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
-    var collected: std.ArrayList(Value) = .empty;
-    defer collected.deinit(rt.gpa);
-    while (!cur.isNil()) {
-        const x = try sequence.firstFn(rt, env, &.{cur}, loc);
-        try collected.append(rt.gpa, try invokeCallable(rt, env, f, &.{x}, loc));
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
-    }
-    return try buildListFromSlice(rt, collected.items);
-}
-
-/// `(-filter-eager pred coll)` — eager list of x where `(pred x)` truthy.
-pub fn filterEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("-filter-eager", args, 2, loc);
-    const pred = args[0];
-    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
-    var collected: std.ArrayList(Value) = .empty;
-    defer collected.deinit(rt.gpa);
-    while (!cur.isNil()) {
-        const x = try sequence.firstFn(rt, env, &.{cur}, loc);
-        const r = try invokeCallable(rt, env, pred, &.{x}, loc);
-        if (!isFalsy(r)) try collected.append(rt.gpa, x);
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
-    }
-    return try buildListFromSlice(rt, collected.items);
-}
+// `-map-eager` / `-filter-eager` deleted — map/filter are lazy `.clj`
+// now (ADR-0054 cycle 2). `-take-eager` / `-drop-eager` remain (take is
+// bounded-eager; drop's lazy form is cycle 3).
 
 /// `(-take-eager n coll)` — eager list of first n elements.
 pub fn takeEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -333,7 +306,7 @@ pub fn takeEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     var remaining: i64 = n;
     while (!cur.isNil() and remaining > 0) : (remaining -= 1) {
         try collected.append(rt.gpa, try sequence.firstFn(rt, env, &.{cur}, loc));
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+        cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     return try buildListFromSlice(rt, collected.items);
 }
@@ -351,43 +324,14 @@ pub fn dropEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
     var remaining: i64 = n_val.asInteger();
     while (!cur.isNil() and remaining > 0) : (remaining -= 1) {
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
+        cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     // The remaining seq is already a valid list/cons head; return as-is.
     return cur;
 }
 
-/// `(-keep-eager f coll)` — eager list of non-nil `(f x)` results.
-pub fn keepEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("-keep-eager", args, 2, loc);
-    const f = args[0];
-    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
-    var collected: std.ArrayList(Value) = .empty;
-    defer collected.deinit(rt.gpa);
-    while (!cur.isNil()) {
-        const x = try sequence.firstFn(rt, env, &.{cur}, loc);
-        const r = try invokeCallable(rt, env, f, &.{x}, loc);
-        if (!r.isNil()) try collected.append(rt.gpa, r);
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
-    }
-    return try buildListFromSlice(rt, collected.items);
-}
-
-/// `(-remove-eager pred coll)` — eager list of x where `(pred x)` falsy.
-pub fn removeEagerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("-remove-eager", args, 2, loc);
-    const pred = args[0];
-    var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
-    var collected: std.ArrayList(Value) = .empty;
-    defer collected.deinit(rt.gpa);
-    while (!cur.isNil()) {
-        const x = try sequence.firstFn(rt, env, &.{cur}, loc);
-        const r = try invokeCallable(rt, env, pred, &.{x}, loc);
-        if (isFalsy(r)) try collected.append(rt.gpa, x);
-        cur = try sequence.restFn(rt, env, &.{cur}, loc);
-    }
-    return try buildListFromSlice(rt, collected.items);
-}
+// `-keep-eager` / `-remove-eager` deleted — keep/remove are lazy `.clj`
+// now (ADR-0054 cycle 2; remove = filter-complement).
 
 const list_mod = @import("../../runtime/collection/list.zig");
 
@@ -444,12 +388,8 @@ const ENTRIES = [_]Entry{
 /// then trip the cross-ns private check and get
 /// `private_access_error` — the intended ADR-0033 D4 contract.
 const LEAF_ENTRIES = [_]Entry{
-    .{ .name = "-map-eager", .f = &mapEagerFn },
-    .{ .name = "-filter-eager", .f = &filterEagerFn },
     .{ .name = "-take-eager", .f = &takeEagerFn },
     .{ .name = "-drop-eager", .f = &dropEagerFn },
-    .{ .name = "-keep-eager", .f = &keepEagerFn },
-    .{ .name = "-remove-eager", .f = &removeEagerFn },
 };
 
 pub fn register(

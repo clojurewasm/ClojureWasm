@@ -25,12 +25,37 @@
 ;; 2 wiring and multi-arity `fn*` both land.
 ;; ----------------------------------------------------------------
 
-(def map (fn* [f coll] (-map-eager f coll)))
-(def filter (fn* [pred coll] (-filter-eager pred coll)))
+;; map / filter / keep / remove are LAZY (ADR-0054 cycle 2): each wraps
+;; its step in `lazy-seq` so it composes with infinite producers
+;; (`(first (map inc (iterate inc 0)))` → 1, no hang). `take`/`drop`
+;; stay eager-bounded for now (take realizes only N; drop's lazy form
+;; is cycle 3). The `-*-eager` map/filter/keep/remove leaves are deleted.
+(def map
+  (fn* [f coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s (cons (f (first s)) (map f (rest s))) nil)))))
+(def filter
+  (fn* [pred coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s
+          (if (pred (first s))
+            (cons (first s) (filter pred (rest s)))
+            (filter pred (rest s)))
+          nil)))))
 (def take (fn* [n coll] (-take-eager n coll)))
 (def drop (fn* [n coll] (-drop-eager n coll)))
-(def keep (fn* [f coll] (-keep-eager f coll)))
-(def remove (fn* [pred coll] (-remove-eager pred coll)))
+(def keep
+  (fn* [f coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s
+          (let [r (f (first s))]
+            (if (nil? r) (keep f (rest s)) (cons r (keep f (rest s)))))
+          nil)))))
+(def remove
+  (fn* [pred coll] (filter (fn* [x] (not (pred x))) coll)))
 
 ;; ----------------------------------------------------------------
 ;; Pure Clojure HOF (no Zig leaf) — pattern A per ADR-0033 D3.

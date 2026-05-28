@@ -48,6 +48,37 @@ const big_int_mod = @import("numeric/big_int.zig");
 const ratio_mod = @import("numeric/ratio.zig");
 const big_decimal_mod = @import("numeric/big_decimal.zig");
 const td_mod = @import("type_descriptor.zig");
+const lazy_seq_mod = @import("lazy_seq.zig");
+const env_mod = @import("env.zig");
+
+/// Realize a (possibly lazy) seq into a concrete list for printing, then
+/// render it. `printValue` is a pure `(w, v)` renderer with no `rt`/`env`,
+/// so it cannot force a `.lazy_seq`; the user-facing print entry points
+/// (REPL / `-e` result, nREPL, `prn`/`print`/`str`) — which DO have
+/// `rt`/`env` — call this instead so a lazy result renders as `(…)`
+/// rather than `#<lazy_seq>`. ADR-0054 cycle 2. Top-level only for now;
+/// nested lazy (a lazy seq inside a vector/map) realization rides a
+/// follow-up (rare in REPL output).
+pub fn printResult(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anyerror!void {
+    if (v.tag() != .lazy_seq) return printValue(w, v);
+    // Walk first/rest to full realization, collecting into a list.
+    var items: std.ArrayList(Value) = .empty;
+    defer items.deinit(rt.gpa);
+    var cur = v;
+    while (true) {
+        const s = try lazy_seq_mod.seq(rt, env, cur);
+        if (s.tag() == .nil) break;
+        try items.append(rt.gpa, try lazy_seq_mod.first(rt, env, s));
+        cur = try lazy_seq_mod.rest(rt, env, s);
+    }
+    var realized = Value.nil_val;
+    var i = items.items.len;
+    while (i > 0) {
+        i -= 1;
+        realized = try list_collection.consHeap(rt, items.items[i], realized);
+    }
+    try printValue(w, realized);
+}
 
 /// Render `v` to `w` in `pr-str` style. Phase-3 surface covers nil /
 /// boolean / integer / float / char / keyword / builtin_fn / string /

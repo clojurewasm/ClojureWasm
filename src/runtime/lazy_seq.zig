@@ -109,8 +109,17 @@ pub fn force(rt: *Runtime, env: *env_mod.Env, v: Value) !Value {
 /// returns the input unchanged (caller is expected to know the
 /// tag — `runtime/collection/list.zig::seq` for Cons handling).
 pub fn seq(rt: *Runtime, env: *env_mod.Env, v: Value) !Value {
-    if (v.tag() != .lazy_seq) return v;
-    return try force(rt, env, v);
+    // Force ALL lazy layers, not just one: a thunk may realize to
+    // another LazySeq (e.g. `filter`'s no-match branch returns
+    // `(filter pred (rest s))` directly), and `seq` must resolve down
+    // to a concrete Cons / nil so an empty lazy chain collapses to nil
+    // (else a seq-walk advancing via `next` sees a non-nil LazySeq and
+    // appends a spurious trailing nil).
+    var current = v;
+    while (current.tag() == .lazy_seq) {
+        current = try force(rt, env, current);
+    }
+    return current;
 }
 
 /// `(first v)` — head of the (possibly lazy) sequence. Force as

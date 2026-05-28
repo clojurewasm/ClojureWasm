@@ -292,7 +292,7 @@ fn replyEval(
         // pr-str the value into an allocating writer.
         var aw: std.Io.Writer.Allocating = .init(arena);
         defer aw.deinit();
-        try print.printValue(&aw.writer, result);
+        try print.printResult(rt, env, &aw.writer, result);
         const value_str = aw.written();
 
         const base = try baseDict(arena, session_id, id_val);

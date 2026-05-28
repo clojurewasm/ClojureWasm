@@ -98,7 +98,7 @@ pub fn runSource(
             error_render.renderAndExit(stderr, ctx, err);
         };
 
-        try print.printValue(stdout, result);
+        try print.printResult(&rt, &env, stdout, result);
         try stdout.writeByte('\n');
     }
     try stdout.flush();

@@ -449,25 +449,26 @@ pub fn nameFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 /// their `"` / `\` escapes); `!readable` = `print`-style human form
 /// (top-level strings emitted as raw bytes; nested strings inside a
 /// printed collection still go through `printValue` and get quoted).
-fn writeArgsSpaced(w: *std.Io.Writer, args: []const Value, readable: bool) std.Io.Writer.Error!void {
+fn writeArgsSpaced(rt: *Runtime, env: *Env, w: *std.Io.Writer, args: []const Value, readable: bool) anyerror!void {
     for (args, 0..) |arg, i| {
         if (i > 0) try w.writeByte(' ');
         if (!readable and arg.tag() == .string) {
             try w.writeAll(string_mod.asString(arg));
         } else {
-            try print_mod.printValue(w, arg);
+            // printResult realizes a lazy seq (else delegates to printValue),
+            // so (str/prn/println (map …)) renders the seq, not #<lazy_seq>.
+            try print_mod.printResult(rt, env, w, arg);
         }
     }
 }
 
 /// `(println & args)` — human form, space-separated, trailing newline.
 pub fn printlnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     _ = loc;
     var stdout_buf: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
     const stdout = &stdout_writer.interface;
-    try writeArgsSpaced(stdout, args, false);
+    try writeArgsSpaced(rt, env, stdout, args, false);
     try stdout.writeByte('\n');
     try stdout.flush();
     return .nil_val;
@@ -475,12 +476,11 @@ pub fn printlnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
 
 /// `(print & args)` — like `println` but WITHOUT the trailing newline.
 pub fn printFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     _ = loc;
     var stdout_buf: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
     const stdout = &stdout_writer.interface;
-    try writeArgsSpaced(stdout, args, false);
+    try writeArgsSpaced(rt, env, stdout, args, false);
     try stdout.flush();
     return .nil_val;
 }
@@ -488,12 +488,11 @@ pub fn printFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 /// `(prn & args)` — readable (`pr`) form, space-separated, trailing
 /// newline. Strings/chars are quoted (unlike `println`).
 pub fn prnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     _ = loc;
     var stdout_buf: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
     const stdout = &stdout_writer.interface;
-    try writeArgsSpaced(stdout, args, true);
+    try writeArgsSpaced(rt, env, stdout, args, true);
     try stdout.writeByte('\n');
     try stdout.flush();
     return .nil_val;
@@ -502,11 +501,10 @@ pub fn prnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 /// `(pr-str & args)` — render args in readable (`pr`) form,
 /// space-separated, and return the result as a string (no stdout).
 pub fn prStrFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     _ = loc;
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     defer aw.deinit();
-    try writeArgsSpaced(&aw.writer, args, true);
+    try writeArgsSpaced(rt, env, &aw.writer, args, true);
     return try string_mod.alloc(rt, aw.writer.buffered());
 }
 
@@ -515,7 +513,6 @@ pub fn prStrFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 /// renders as ""; everything else goes through `print.printValue`).
 /// 0-arg form returns the empty string.
 pub fn strFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     _ = loc;
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     defer aw.deinit();
@@ -523,7 +520,7 @@ pub fn strFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         switch (arg.tag()) {
             .nil => {},
             .string => try aw.writer.writeAll(string_mod.asString(arg)),
-            else => try print_mod.printValue(&aw.writer, arg),
+            else => try print_mod.printResult(rt, env, &aw.writer, arg),
         }
     }
     return try string_mod.alloc(rt, aw.writer.buffered());

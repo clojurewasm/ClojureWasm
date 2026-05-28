@@ -258,9 +258,12 @@ pub fn nextFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     return switch (coll.tag()) {
         .list, .cons => blk: {
             const r = list.rest(coll);
-            // For cw v1, list rest already returns nil for the
-            // singleton case, matching JVM's next-returns-nil contract.
-            break :blk r;
+            // The tail may be a `.lazy_seq` (a lazy producer like `map`
+            // cons'd a lazy tail onto a head); `next` must seq it so an
+            // empty lazy tail collapses to nil (else a seq-walk that
+            // advances via `next` appends a spurious trailing nil).
+            // For an explicit-nil tail, seqFn(nil) is nil — unchanged.
+            break :blk try seqFn(rt, env, &.{r}, loc);
         },
         .vector => if (vector.count(coll) > 1) try vectorTailAsList(rt, coll, 1) else .nil_val,
         .chunked_cons => blk: {
@@ -446,7 +449,11 @@ fn restOfSeq(rt: *Runtime, env: *Env, sv: Value, loc: SourceLocation) anyerror!V
 /// Helper: walk seq one step (used in count for lazy_seq).
 fn seqNext(rt: *Runtime, env: *Env, cur: Value) anyerror!Value {
     return switch (cur.tag()) {
-        .list, .cons => list.rest(cur),
+        // seq the rest so a lazy tail (e.g. `(cons x (lazy-seq …))` from
+        // a lazy producer) is forced to nil when empty — else a count /
+        // walk over a lazy seq over-counts by one (the unforced lazy
+        // tail reads as non-nil). Mirrors the `next` fix in `nextFn`.
+        .list, .cons => try lazy_seq.seq(rt, env, list.rest(cur)),
         .chunked_cons => try chunked_cons.rest(rt, cur),
         .lazy_seq => try lazy_seq.next(rt, env, cur),
         else => .nil_val,

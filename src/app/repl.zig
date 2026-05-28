@@ -146,7 +146,7 @@ fn evalOneLine(
         const node = try analyzeForm(arena, rt, env, null, form, macro_table);
         var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
         const result = try driver.evalForm(rt, env, &locals, arena, node);
-        try print.printValue(stdout, result);
+        try print.printResult(rt, env, stdout, result);
         try stdout.writeByte('\n');
         try stdout.flush();
     }

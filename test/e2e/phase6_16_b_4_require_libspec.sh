@@ -70,8 +70,10 @@ case "$got" in
 esac
 
 # --- (4) :refer with a private Var raises private_access_error ---
-# clojure.core/-map-eager is private (D-071 Part 3 landed at sub-cycle a).
-got="$("$BIN" -e "(require '[clojure.core :refer [-map-eager]])" 2>&1 || true)"
+# clojure.core/-take-eager is private (D-071 Part 3). `-map-eager` was
+# deleted when map went lazy (ADR-0054); `-take-eager` is the surviving
+# private seq leaf used for this privacy check.
+got="$("$BIN" -e "(require '[clojure.core :refer [-take-eager]])" 2>&1 || true)"
 if ! grep -q 'name_error' <<<"$got"; then
     fail "refer_private_kind: missing [name_error] tag (got '$got')"
 fi
