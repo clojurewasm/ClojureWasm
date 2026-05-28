@@ -226,6 +226,7 @@ run_step "e2e_phase14_repl"                  "bash test/e2e/phase14_repl.sh"
 run_step "e2e_phase14_nrepl"                 "bash test/e2e/phase14_nrepl.sh"
 run_step "e2e_phase14_error_format"          "bash test/e2e/phase14_error_format.sh"
 run_step "e2e_phase14_cold_start_threshold"  "bash test/e2e/phase14_cold_start_threshold.sh"
+run_step "e2e_phase14_render_error"          "bash test/e2e/phase14_render_error.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional

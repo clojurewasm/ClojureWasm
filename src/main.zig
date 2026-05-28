@@ -61,6 +61,7 @@ test {
     _ = @import("app/cli.zig");
     _ = @import("app/runner.zig");
     _ = @import("app/error_render.zig");
+    _ = @import("app/render_error.zig");
     _ = @import("runtime/value/value.zig");
     _ = @import("runtime/error/info.zig");
     _ = @import("runtime/error/catalog.zig");

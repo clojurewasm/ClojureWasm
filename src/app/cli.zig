@@ -21,6 +21,7 @@ const std = @import("std");
 const runner = @import("runner.zig");
 const repl = @import("repl.zig");
 const nrepl = @import("nrepl.zig");
+const render_error_mod = @import("render_error.zig");
 const error_render = @import("error_render.zig");
 
 /// Top-level CLI dispatcher. Called from `src/main.zig::main` with
@@ -61,6 +62,11 @@ pub fn dispatch(init: std.process.Init) !void {
     if (args.next()) |first| {
         if (std.mem.eql(u8, first, "repl")) {
             return repl.run(io, gpa, arena, stdout, stderr);
+        }
+        if (std.mem.eql(u8, first, "render-error")) {
+            // Row 14.11 D-100(c): decode CLJW_ERROR_LOG EDN events.
+            try render_error_mod.run(io, arena, stdout, stderr, &args);
+            return;
         }
         if (std.mem.eql(u8, first, "nrepl")) {
             // Row 14.10 (ADR-0048 nREPL chart). Optional `--port N`
