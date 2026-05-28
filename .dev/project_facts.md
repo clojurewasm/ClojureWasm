@@ -592,3 +592,104 @@ neutral impl directly.
   surface families wrap it from above" shape. Sets up the
   Devil's-advocate subagent to reject Phase-12+ smallest-diff bias
   alternatives that would inline impl into a surface file.
+
+---
+
+## F-010 — Interim provisional goal = (Phase 15 完遂 + cw-v0-level JIT), then a quality-elevation loop prioritised over widening wasm FFI
+
+**Status**: `confirmed` — direction of travel is law. Amendable only
+by user direction + Revision history entry.
+
+**Declared**: 2026-05-29 (user chat, interim-goal re-cut session).
+**Verbatim**: 「あ、 ちょっとしっかりと「一旦の暫定ゴール」を切りなおし
+たいです。 つまり、 Phase 15 完遂 + cw v0 程度の JIT までは組み込み。
+wasm ffi は、 zwasm v2 やそれ以外のものを広げるより、 そこまで達したら、
+cw v0 程度のカバー率、 fuzzing, clojuredocs のコードを clone してきて、
+投稿されたコードをひたすら動かしてエラーがあれば根本的対処 (ついでに
+読みやすい walkthrough ドキュメントを作り上げる、 ここまでは動作する
+んですよ、 ということがコード主体でわかるドキュメント、 分量はどんどん
+増えていってよい)、 リアルワールドライブラリをひたすらロードして動作
+させてみる、 などを繰り返し品質を上げていくのを繰り返す。 ただし、 もち
+ろん直すがあまりコードベース設計がどんどん workaround だらけや設計破壊、
+汚いコードベースにならないように、 リファクタもしっかり挟む。 という想定
+をしています」
+
+**Decision answers captured same session**: (1) F-001 relationship =
+**F-010 new + re-sequence** (F-001's "eventual unavoidability" stays
+true and is NOT superseded; this entry schedules it AFTER the quality
+loop). (2) walkthrough doc home = **`docs/works/`, explicitly outside
+F-007** (a living capability ledger, distinct from the dormant
+`docs/ja/learn_clojurewasm/` narrative chapters — user opts into this
+new doc kind here).
+
+### The interim milestone (M)
+
+**M = Phase 15 完遂 + a cw-v0-程度 JIT landed.**
+
+- **Phase 15 完遂** = the 7 concurrency buckets: atom+watch, STM
+  transaction engine (doGet/doSet/commit-retry + commute + barge),
+  agent+pools, future/promise/delay multi-thread swap, locking +
+  volatile, pmap + deref-timeout, concurrent test layer + flag flip.
+- **cw-v0-程度 JIT** = a narrow ARM64 integer-loop JIT matching cw v0's
+  `jit.zig` scope (~700–1000 LOC, counter trigger, leaf C-ABI fn,
+  deopt-on-non-int). Prerequisite chain: superinstruction/fusion pass →
+  JIT go/no-go → narrow JIT. NOT a broad/optimising JIT.
+
+Reaching M does **not** require finishing the quality loop; M is the
+entry gate INTO the quality loop.
+
+### After M — the quality-elevation loop (the standing work mode)
+
+Once M is reached, the loop's standing task is **quality consolidation
+through real Clojure code**, in preference to widening wasm FFI breadth:
+
+1. **Coverage** toward cw-v0 parity-PLUS (cw v1's native deftype gives
+   a higher ceiling than cw v0's Tier-D class drop).
+2. **clojuredocs differential** — run posted `:examples` through cljw
+   (and JVM Clojure where feasible), root-cause every divergence.
+3. **Real-world library loading** — `clojure-corpus` libraries through
+   cljw, exercise their suites, root-cause failures.
+4. **Fuzzing** — differential vs JVM Clojure + generative properties.
+5. **`docs/works/` walkthrough docs** — code-主体 "this works" ledger,
+   volume grows freely.
+
+### The non-negotiable discipline (the user's "ただし")
+
+**Fixes must not rot the codebase.** Every fix is held to F-002
+(finished-form wins): a fix that would require a workaround / design
+break triggers a depth-2+ surgery instead, and a **refactor gate**
+runs periodically (built-in `simplify` + smell audit) so the bug-fix
+stream does not accrete into a dirty codebase. "直すが workaround
+だらけ・設計破壊・汚いコードベース" is the explicit failure mode this
+invariant forbids.
+
+### What this changes for the loop
+
+1. **wasm FFI breadth is de-prioritised, NOT cancelled.** F-001 stays
+   law (zwasm v2 integration is eventually unavoidable); F-010 schedules
+   it AFTER the quality loop. The loop must not widen wasm FFI surface
+   (zwasm v2 or other wasm targets) before M + a quality-loop pass,
+   unless the user re-directs.
+2. The ROADMAP Phase 16+ is re-aimed: JIT chain moves earlier (into the
+   M window); the quality loop becomes the post-M standing phases; zwasm
+   v2 slides right. Exact numbering in the strategy ADR + §9 re-wiring.
+3. The quality loop is **repeatable**, not a one-shot phase — each pass
+   carries a refactor gate.
+4. v0.1.0 (Phase 14) still completes first — M is sequenced after it.
+
+**Cross-references**: F-001 (wasm FFI unavoidable — re-sequenced, not
+superseded) · F-002 (finished-form discipline the refactor gate
+enforces) · F-007 (chapter cadence dormant — `docs/works/` is a
+distinct, opted-in doc kind) · the strategy ADR + ROADMAP §9 re-wiring
+landed alongside this entry · `.dev/reference_clones.md` Quality-
+elevation corpora (`clojure-corpus` + `clojuredocs-export-edn`) ·
+planning note `private/notes/recut-goal-synthesis.md` + the 3 surveys
+it digests.
+
+### Revision history
+
+- 2026-05-29 added: interim-goal re-cut. Milestone M = Phase 15 +
+  cw-v0-level JIT; post-M quality-elevation loop prioritised over wasm
+  FFI breadth; refactor-gate discipline mandatory. F-001 re-sequenced
+  (not superseded) per user decision; `docs/works/` opted in outside
+  F-007 per user decision.

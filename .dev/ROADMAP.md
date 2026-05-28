@@ -880,9 +880,71 @@ Phase 14 = first publishable v0.1.0. **Minimum line for a Conj talk.**
 
 ### 9.2 v0.2.0 onward
 
+> **Re-sequenced by F-010 (2026-05-29) — see §9.2.R.** The mapping
+> below is the pre-re-cut plan, kept for history. The live post-v0.1.0
+> order is in §9.2.R.
+
 - Phase 15-16 (Concurrency + CLJS): v0.2.0
 - Phase 17-19 (super_instruction + module + advanced Wasm): v0.3.0
 - Phase 20 (JIT): v0.4.0 or skipped
+
+### 9.2.R Interim-goal re-cut (F-010 / ADR-0051, 2026-05-29)
+
+User-directed re-cut. Records the post-Phase-14 **execution order +
+direction**; granularity (exact renumber, sub-phase structure,
+floor-vs-superinstruction ordering) is **deferred to each owning
+Phase entry per F-003** — this section seizes nothing, it records
+direction + foresight.
+
+**Milestone M = Phase 15 完遂 + a cw-v0-level narrow ARM64 JIT.**
+
+```
+Phase 14 (v0.1.0)
+  → Phase 15  concurrency (atom/STM/agent/future/promise/locking/pmap)
+  → JIT chain  superinstruction/fusion → go/no-go → cw-v0-level narrow
+               ARM64 JIT          ───────────────────────── completes M
+  → quality-elevation loop (repeatable standing mode, refactor-gated):
+       coverage→cw-v0-parity-PLUS · clojuredocs-example differential vs
+       JVM · clojure-corpus real-lib load · differential fuzzing ·
+       docs/works/ walkthrough ledger
+  → wasm FFI breadth: ClojureScript (old Phase 16), zwasm v2 import
+       (old Phase 19), broad JIT if chosen (old Phase 20)
+```
+
+What this changes vs the §9.2 mapping:
+
+- The **JIT is pulled into the M window** (immediately after Phase 15),
+  drawing on the existing §9.19 Phase 17 (`super_instruction.zig` +
+  JIT go/no-go) + §9.22 Phase 20 (narrow ARM64 JIT) content. cw-v0-level
+  = narrow, ARM64, integer-loop (NOT broad/optimising).
+- The **quality-elevation loop** is a new, repeatable standing mode
+  inserted after M and **before** wasm FFI breadth. Its sub-phase
+  structure is open (**D-132**, decide at the M-exit entry).
+- **wasm FFI breadth is de-prioritised, not cancelled.** F-001 stays
+  law (eventually unavoidable); the §9.18 Phase 16 (CLJS) + §9.19 wasm
+  content + §9.22 zwasm import + their D-036..D-039 entry-debt cluster
+  **relocate intact** to after the quality loop at their owning entry
+  (header/pointer move only — no body renumber here, per F-003).
+
+**Recorded foresight (debt, NOT decided here)**:
+
+- **D-132** — quality-loop phase structure (count / numbering /
+  ownership): open, decide at M-exit entry.
+- **D-133** — JIT coverage-floor prerequisite: the daily-driver
+  coverage floor (interop syntax `.`/`new`/`set!`; `get-in`/`assoc-in`/
+  `concat`/`mapcat` D-126/127; true lazy-seq) must be green so the JIT
+  lands on a runtime that runs real code (avoids cw v0's
+  1.0x-on-`fib_recursive` trap). The *ordering* of this floor vs the
+  superinstruction pass is the JIT-phase entry owner's call.
+- The D-035 JIT-vtable extraction + superinstruction module boundary
+  remain §9.19's Entry debts — deferred to that owner.
+
+**Resources wired** for the quality loop (`.dev/reference_clones.md`):
+`~/Documents/OSS/clojure-corpus/` (200+ libs) +
+`~/Documents/OSS/clojuredocs-export-edn/` (~1528 vars with `:examples`).
+**Walkthrough docs** land under `docs/works/` (code-主体 capability
+ledger, explicitly **outside** F-007's dormant `learn_clojurewasm`
+chapter cadence). Full grounding: `private/notes/recut-goal-synthesis.md`.
 
 ### 9.3 Phase 1 — task list (expanded; this is the active phase)
 
@@ -2116,6 +2178,12 @@ If `.claude/CLAUDE.md` and this file conflict, this file wins.
 Each row carries a per-row predicate (no aggregate count gates).
 
 ### 14.1 End of Phase 17: do we implement JIT (Phase 20)?
+
+> **Re-sequenced by F-010 / ADR-0051 (§9.2.R)**: the JIT go/no-go is
+> now **M-internal** (the JIT chain completes milestone M right after
+> Phase 15), not gated behind a later Phase 17. The trigger predicate
+> below still applies; "Phase 17" reads as "the JIT-chain sub-phase of
+> the M window". cw-v0-level = narrow ARM64 integer-loop JIT.
 
 - **Trigger event**: Phase 17 end with `bench/jit.yaml` showing
   >2x speedup over VM on `bench/fixtures/arith_loop.clj` AND σ < 5%.

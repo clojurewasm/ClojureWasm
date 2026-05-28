@@ -28,6 +28,31 @@ Never edit or commit from them. Code reading only.
 - `~/Documents/OSS/wasmtime/` — **wasmtime (Rust)**
   - Use: WebAssembly runtime reference (Phase 16+ Pod boundary design)
 
+## Quality-elevation corpora (interim-goal re-cut, 2026-05-29)
+
+These feed the post-milestone quality loop (run real-world / posted
+Clojure code through cljw, root-cause every divergence, refactor
+rather than workaround). Wired for future Phase use; not yet
+consumed. See the planning note `private/notes/recut-goal-synthesis.md`
++ the strategy ADR/F-NNN landed alongside it.
+
+- `~/Documents/OSS/clojure-corpus/` — **200+ real-world Clojure
+  libraries**, 22 categories (`01_clojure_official` … `22_debug_profile`),
+  ~8.5K `.clj`/`.cljc` files, shallow-cloned 2026-05-22 (`MANIFEST.md`
+  + `clone_all.sh`). Use: load real libraries through cljw, extract
+  JVM-feature usage patterns, drive coverage gap closure. Pure-Clojure
+  subsets first (data.json, tools.reader, core.match, math.*),
+  Java-interop-heavy ones (jdbc, jackson-backed json) later/never.
+  Note: `02_clojurescript_core` is empty (clone incomplete) — re-run
+  `clone_all.sh` for missing categories when the loop reaches them.
+- `~/Documents/OSS/clojuredocs-export-edn/` — **ClojureDocs posted
+  code-example corpus** as EDN (`exports/export.compact.min.edn`,
+  ~1.9 MB; ~1528 vars carry non-nil `:examples`). Each entry:
+  `{:ns :name :arglists :doc :see-alsos :examples [<code strings>]}`.
+  Use: differential-vs-JVM test fuel — run each example through cljw
+  and (where available) JVM Clojure, compare, root-cause every
+  mismatch. Refresh by `git pull` (upstream re-exports daily).
+
 ## Pattern libraries (optional learning)
 
 - `~/Documents/OSS/zig/` — **Zig stdlib source**
