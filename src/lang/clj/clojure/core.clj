@@ -209,9 +209,34 @@
 (def not-any?
   (fn* [pred coll] (not (some pred coll))))
 
-;; NOTE: `dedupe` / `distinct` / `frequencies` / `group-by` need a
-;; working universal `=` (cw v1 `=` is numeric-only — D-136); they land
-;; in the D-134 cluster that follows the `=` fix.
+;; D-134 cluster 3 — unblocked by D-136 (universal `=`).
+
+;; `(dedupe coll)` — drop consecutive duplicates (eager vector).
+(def dedupe
+  (fn* [coll]
+    (reduce (fn* [acc x] (if (= x (last acc)) acc (conj acc x))) [] coll)))
+
+;; `(distinct coll)` — drop all duplicates, first occurrence wins.
+;; Linear `=` scan (structural, so strings/collections dedupe); O(n^2).
+(def distinct
+  (fn* [coll]
+    (reduce (fn* [acc x]
+              (if (some (fn* [y] (= y x)) acc) acc (conj acc x)))
+            []
+            coll)))
+
+;; `(frequencies coll)` — map of item -> occurrence count. Keys via map
+;; assoc (bit-pattern keyEq → number/keyword keys; structural keys D-092).
+(def frequencies
+  (fn* [coll]
+    (reduce (fn* [acc x] (assoc acc x (inc (get acc x 0)))) {} coll)))
+
+;; `(group-by f coll)` — map of (f x) -> vector of items. Same key caveat.
+(def group-by
+  (fn* [f coll]
+    (reduce (fn* [acc x] (let [k (f x)] (assoc acc k (conj (get acc k []) x))))
+            {}
+            coll)))
 
 ;; `(butlast coll)` — all but the final element (eager list via reverse).
 (def butlast
