@@ -366,6 +366,35 @@
   (fn* [f coll]
     (-msort (fn* [a b] (compare (f a) (f b))) (vec coll))))
 
+;; ----------------------------------------------------------------
+;; D-134 eager-finite range + index fns. Eager vectors (DIVERGENCE:
+;; JVM returns lazy seqs; the infinite 0-arg `(range)` awaits the
+;; lazy-seq Layer-2 gap and is intentionally absent).
+;; ----------------------------------------------------------------
+
+;; Accumulate [start..end-1] into a vector (the eager range body).
+(def -range-acc
+  (fn* [i n acc] (if (>= i n) acc (-range-acc (inc i) n (conj acc i)))))
+
+;; `(range n)` → [0..n-1]; `(range start end)` → [start..end-1]. Step
+;; arity + infinite 0-arity await lazy-seq / multi-arity follow-ups.
+(def range
+  (fn* ([n] (-range-acc 0 n []))
+       ([start end] (-range-acc start end []))))
+
+;; `(map-indexed f coll)` — eager map passing (index, item) to f.
+(def map-indexed
+  (fn* [f coll]
+    (mapv (fn* [i] (f i (nth coll i))) (range (count coll)))))
+
+;; `(keep-indexed f coll)` — like map-indexed but drops nil results.
+(def keep-indexed
+  (fn* [f coll]
+    (reduce (fn* [acc i]
+              (let [r (f i (nth coll i))] (if (nil? r) acc (conj acc r))))
+            []
+            (range (count coll)))))
+
 ;; `(butlast coll)` — all but the final element (eager list via reverse).
 (def butlast
   (fn* [coll] (reverse (rest (reverse coll)))))

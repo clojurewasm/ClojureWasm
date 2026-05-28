@@ -241,6 +241,7 @@ run_step "e2e_phase14_reduce_helpers"        "bash test/e2e/phase14_reduce_helpe
 run_step "e2e_phase14_accessors"             "bash test/e2e/phase14_accessors.sh"
 run_step "e2e_phase14_compare"               "bash test/e2e/phase14_compare.sh"
 run_step "e2e_phase14_sort"                  "bash test/e2e/phase14_sort.sh"
+run_step "e2e_phase14_range_indexed"         "bash test/e2e/phase14_range_indexed.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional
