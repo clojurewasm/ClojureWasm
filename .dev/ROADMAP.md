@@ -1652,39 +1652,76 @@ Codes (ADR-0010 amendment 2 Phase-13 row = "none yet").
 green) + five canonical benchmarks within 110% of cw v0 24C.10 (or
 measured + debt row). 🔒 OrbStack x86_64 gate passes.
 
-### 9.16 Phase 14 — task list (PENDING, expand at Phase 14 entry, **v0.1.0 milestone**)
+### 9.16 Phase 14 — task list (IN-PROGRESS; opened 2026-05-28, **v0.1.0 milestone**)
+
+> **Phase 14 entry note**: this is cljw's **v0.1.0 milestone** —
+> the largest Phase by deliverable count. Rows 14.0-14.14 below
+> are the entry-time first cut; row-internal cycles may subdivide
+> as each deliverable's depth surfaces. The Phase closes only with
+> the v0.1.0 release commit + tag (row 14.14). Phase 13 D-100
+> sub-deliverables that closed enumeration-only at Phase 12 fold
+> back into this Phase as concrete rows (14.11 cluster).
 
 **Entry ADRs**: 0015 (io_interface — REPL / nREPL wiring) ·
-0021 (Test taxonomy — Conformance gate matures).
-**ADRs to issue at this entry**: **ADR-0028 (State machine
+0021 (Test taxonomy — Conformance gate matures) · 0034 (cljw
+build single-mode + Tier 0 metadata + EDN + decode — D-100
+substantive cycles land here).
+**ADRs to issue at this entry**: **ADR-0048 (State machine
 domain)** — nREPL session / REPL prompt / build-pipeline state
-charts.
-**Reference**: `private/JVM_TO_ZIG.md` §7 (future / promise / delay).
-**Deliverables**: CLI `cljw repl` / `cljw nrepl` /
-`cljw component build` all work, future / promise / delay,
-`compat_tiers.yaml` Tier A/B declarations done, Wasm Component
-output supported (minimal), bench/history.yaml locked baseline,
-host stdlib third wave (`java.net.Socket` / `java.security.MessageDigest`
-/ remaining Tier B host classes per `compat_tiers.yaml`),
-F140-F144 re-introduction per ADR-0015 amendment 2 (`http_server`
-/ `http_client` / `nrepl` / `repl` line editor / `cljw component
-build` self-bundle), **v0.1.0 release**. 🔒 OrbStack gate.
-**v5 §11-§14 + §20.4 拡張 (CLI surface 公開)**:
-- `cljw build app.clj -o app` CLI surface 公開 (single mode、 flag ゼロ
-  per v5 §11.1)
-- `cljw render-error err.edn` CLI surface 公開 (post-mortem decode per
-  v5 §14.1)
-- v0.1.0 release 時に `cljw-formats/0.1.0.edn` archive lock (以降 add only、
-  削除不可、 per v5 §14.3 decoder 永久互換性)
-- `CLJW_ERROR_FORMAT` / `CLJW_ERROR_LOG` env var 公式 spec 化 + man page
-  (per v5 §13.2 + §24.2 D-066)
-- `cljw.error/with-context` macro 公開 (user runtime error injection API
-  per v5 §13.6)
-**Final activation step**: flip `build_options.phase_at_least_14 = true`
-(per ADR-0023) — swaps `runtime/io/stub.zig` and any REPL / nREPL
-stubs to the real implementations, rewrites `src/app/main.zig`
-subcommand dispatch rows per ADR-0015 amendment 2 table (F140-F144
-landing).
+charts. (Number minted at row 14.9 issuance per the time-ordered
+allocation rule; the §9.17 placeholder's "ADR-0028" was a stale
+reservation discarded per F-002 / Reservation-as-bias.)
+**Entry debts**: **D-014a** numeric tower (BigDecimal Tier B,
+JVM auto-promotion per F-005) · **D-014b** ex-info `:type` +
+catch `:type` dispatch · **D-066** `CLJW_ERROR_FORMAT` / `_LOG`
+spec + man page (v5 §13.2 + §24.2) · **D-079** `___HOST_EXTENSION`
+aggregator (prerequisite for D-097) · **D-097** host stdlib
+second wave · **D-098** `(ns …)` directive surface · **D-099**
+user-defined `defmacro` dispatch · **D-100** Phase-12 substantive
+deliverables (a)..(e) — bytecode/build/render-error/cold-start/
+archive · **D-102** Ref → TVal ring rewrite (Phase 14 doSet) ·
+**D-104** 5-canonical workload-matched bench parity · **D-036** /
+**D-037** / **D-038** zwasm v2 integration (gates 14.12) ·
+**F-008** zwasm v2 spec review (project_facts invariant).
+**Reference**: `private/JVM_TO_ZIG.md` §7 (future / promise /
+delay) · v5 §11-§14 + §20.4 (CLI surface) · ADR-0015 amendment 2
+(F140-F144 table).
+**Deliverables**: CLI `cljw repl` + `cljw nrepl` + `cljw build` +
+`cljw render-error` + `cljw component build` all work; future /
+promise / delay; `compat_tiers.yaml` Tier A/B declarations done;
+Wasm Component output (minimal); `bench/history.yaml` v0.1.0
+locked baseline; host stdlib second + third waves; F140-F144
+re-introduction per ADR-0015 a2; `cljw-formats/0.1.0.edn` archive
+lock; `CLJW_ERROR_FORMAT` / `CLJW_ERROR_LOG` env var spec + man
+page; `cljw.error/with-context` macro; **v0.1.0 release**. 🔒
+OrbStack gate.
+**Final activation step**: flip
+`build_options.phase_at_least_14 = true` (per ADR-0023) at row
+14.14 — swaps `runtime/io/stub.zig` and REPL / nREPL stubs to
+real implementations; rewrites `src/app/main.zig` subcommand
+dispatch rows per ADR-0015 a2 table (F140-F144 landing).
+
+| #     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Status |
+|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 14.0  | Phase 13 → 14 boundary review chain follow-ups: handover refreshed (in this open commit); Step 0.5 debt sweep of stale-Phase Active rows (audit listed ~14 — D-008 / D-014a / D-014b / D-017 / D-022 / D-023 / D-024 / D-025 / D-026 / D-030 / D-033 / D-045 / D-048 / D-069 / D-070 / D-079); `Opcode.isPositionRelative()` extraction (parallel to `isPurePush`, simplify-arm [should]); peephole.zig defensive negative-offset + i16 overflow comments                                                                                                                      | [ ]    |
+| 14.1  | **D-079** discharge — `___HOST_EXTENSION` aggregator wired in `src/runtime/java/_host_api.zig::installAll(env)` + `inline for` over each `@import(...).___HOST_EXTENSION`. Prerequisite for 14.2/14.3 host-class surface emission. ADR-0029 D5 schema completion                                                                                                                                                                                                                                                                                                                | [ ]    |
+| 14.2  | **D-097** discharge — host stdlib second wave: `java.util.regex.Matcher`, `java.time.LocalDateTime`, `java.time.Duration`, `java.time.ZonedDateTime`, `java.math.BigDecimal` (thin `runtime/java/math/BigDecimal.zig` wrapper over existing `runtime/numeric/big_decimal.zig`). Per ADR-0029 D5                                                                                                                                                                                                                                                                                 | [ ]    |
+| 14.3  | Host stdlib third wave — `java.net.Socket` / `java.security.MessageDigest` + remaining Tier B host classes per `compat_tiers.yaml`. Network + crypto surface via cw-native impl per F-009                                                                                                                                                                                                                                                                                                                                                                                       | [ ]    |
+| 14.4  | **D-014a** discharge — numeric tower completion: BigDecimal Tier B observable surface; JVM-shape auto-promotion (`(* Long/MAX_VALUE 2)` → BigInt; `(/ 1 3)` → Ratio; `1.5M` → BigDecimal). F-005 internal = `std.math.big.int.Managed` + Ratio (BigInt × BigInt) simplified + BigDecimal (unscaled BigInt, i32 scale)                                                                                                                                                                                                                                                       | [ ]    |
+| 14.5  | **D-014b** discharge — `ex-info` `:type` keyword + catch dispatch via `:type` (ADR-0007 / 0018). Tier A throw/catch completeness                                                                                                                                                                                                                                                                                                                                                                                                                                                | [ ]    |
+| 14.6  | **D-099** discharge — user-defined `defmacro` dispatch via `rt.vtable.callFn` (`macro_dispatch.zig:107` referenced site). Unblocks `clojure.test/deftest` / `clojure.test/are` / `clojure.test/testing` / `clojure.core/declare`. Tier A test corpus matures                                                                                                                                                                                                                                                                                                                    | [ ]    |
+| 14.7  | **D-098** discharge — `(ns …)` directive surface: `:refer-clojure :exclude / :only`, `(:require [ns :as alias :refer […]])`, `(:rename {old new})`. Extends `analyzeNs` (`special_forms.zig:350-395`) + `env.referAll`-with-filter. JVM-idiom `.clj` corpora become buildable                                                                                                                                                                                                                                                                                                 | [ ]    |
+| 14.8  | `future` / `promise` / `delay` — Phase 14 Tier A concurrent primitives. JVM idiom on a single-thread runtime: `(deref (future …))` blocks synchronously; promise: `(deliver p v)` + `(deref p)`; delay: lazy memoization. Per `private/JVM_TO_ZIG.md` §7. Concurrency activation rides Phase 15                                                                                                                                                                                                                                                                               | [ ]    |
+| 14.9  | **ADR-0048 issuance** + `cljw repl` — REPL line editor (F144 re-introduction) + state-machine ADR for REPL prompt / nREPL session / build-pipeline (next ADR id = 0048 per time-ordered allocation; the prior placeholder "ADR-0028" reservation discarded per Reservation-as-bias)                                                                                                                                                                                                                                                                                             | [ ]    |
+| 14.10 | `cljw nrepl` — F142 nREPL server re-introduction per ADR-0015 a2. State machine per ADR-0048 (14.9 issuance)                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [ ]    |
+| 14.11 | **D-100 cluster discharge** — Phase-12 substantive deliverables land in dedicated cycles here: (a) full `BytecodeChunk` coverage (constants pool serializer with NaN-box Value round-trip; `call_sites` + `libspecs` side-tables); (b) `cljw build app.clj -o app` CLI (`src/app/builder.zig`; Deno-style binary trailer; bootstrap cache build.zig integration); (c) `cljw render-error` decoder (`src/app/render_error.zig` + `runtime/error/event.zig` + render.zig TTY/pipe split); (d) cold-start bench < 12 ms verified; (e) `cljw-formats/0.1.0.edn` archive v0.1.0 lock | [ ]    |
+| 14.12 | `cljw component build` — Wasm Component output (minimal). **Gated on zwasm v2 readiness** (D-036 / D-037 / D-038 / F-008). May ship as PROVISIONAL via wasm-c-api veneer if zwasm v2 rewrite (ADR-0109) is incomplete at landing time                                                                                                                                                                                                                                                                                                                                           | [ ]    |
+| 14.13 | v0.1.0 polish bundle — `compat_tiers.yaml` Tier A/B declarations comprehensive review/finish; `bench/history.yaml` v0.1.0 lock-point entry per ADR-0044 schema; **D-066** discharge (`CLJW_ERROR_FORMAT` / `CLJW_ERROR_LOG` env var spec + man page); `cljw.error/with-context` macro (v5 §13.6 user runtime error injection API)                                                                                                                                                                                                                                              | [ ]    |
+| 14.14 | Phase 14 exit smoke + v0.1.0 release + final activation — exit-smoke 5+ cases covering repl/nrepl/build/render-error/component-build/future-promise-delay/host-stdlib-third-wave; flip `build_options.phase_at_least_14 = true` (swaps `runtime/io/stub.zig` + REPL/nREPL stubs to real impls; rewrites `src/app/main.zig` subcommand dispatch per ADR-0015 a2 F140-F144 table); tag v0.1.0; flip §9.16 header DONE. 🔒 OrbStack gate                                                                                                                                           | [ ]    |
+
+**Exit criterion**: all v0.1.0 deliverables shipped + v0.1.0
+tagged + `phase_at_least_14 = true` + F140-F144 active. 🔒
+OrbStack x86_64 gate passes.
 
 ### 9.17 Phase 15 — task list (PENDING, expand at Phase 15 entry)
 
