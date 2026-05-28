@@ -329,6 +329,43 @@
 ;; `(drop-last n coll)` awaits multi-arity.
 (def drop-last (fn* [coll] (reverse (rest (reverse coll)))))
 
+;; ----------------------------------------------------------------
+;; D-134 sort cluster — unblocked by D-137 (general compare).
+;; STABLE merge sort (ADR-0053 D3: Clojure sort is stable). Eager
+;; vector result (DIVERGENCE: JVM returns a seq). cmp returns -1/0/1.
+;; ----------------------------------------------------------------
+
+;; Stable merge of two cmp-sorted vectors; on a tie the left item wins
+;; (`<=` keeps `a` first), preserving input order.
+(def -merge-sorted
+  (fn* [cmp a b]
+    (if (empty? a)
+      b
+      (if (empty? b)
+        a
+        (if (<= (cmp (first a) (first b)) 0)
+          (into (conj [] (first a)) (-merge-sorted cmp (rest a) b))
+          (into (conj [] (first b)) (-merge-sorted cmp a (rest b))))))))
+
+;; Merge sort over a vector with comparator `cmp`.
+(def -msort
+  (fn* [cmp v]
+    (if (<= (count v) 1)
+      v
+      (let [mid (quot (count v) 2)]
+        (-merge-sorted cmp
+                       (-msort cmp (vec (take mid v)))
+                       (-msort cmp (vec (drop mid v))))))))
+
+;; `(sort coll)` — natural order via the general `compare` (stable).
+(def sort
+  (fn* [coll] (-msort compare (vec coll))))
+
+;; `(sort-by f coll)` — order by `(compare (f a) (f b))` (stable).
+(def sort-by
+  (fn* [f coll]
+    (-msort (fn* [a b] (compare (f a) (f b))) (vec coll))))
+
 ;; `(butlast coll)` — all but the final element (eager list via reverse).
 (def butlast
   (fn* [coll] (reverse (rest (reverse coll)))))
