@@ -157,6 +157,7 @@ pub const Scope = struct {
 
 const SpecialFormKind = enum {
     def,
+    defmacro_form,
     if_form,
     do_form,
     quote_form,
@@ -174,6 +175,14 @@ const SpecialFormKind = enum {
 
 const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
     .{ "def", .def },
+    // Row 14.6 (D-099): `(defmacro NAME [args...] body...)` lands as
+    // a special form rather than a `.clj` lowering. Shape (a) of the
+    // survey: analyzeDefmacro mirrors analyzeDef but wraps body in
+    // `(fn* [args] body)` and emits DefNode.is_macro = true. Shape
+    // (b) — lower via reader-recognised `^:macro` metadata — waits
+    // on D-075 reader metadata path; arm stays after D-075 lands as
+    // the canonical bootstrap entry per cw v0 precedent.
+    .{ "defmacro", .defmacro_form },
     .{ "if", .if_form },
     .{ "do", .do_form },
     .{ "quote", .quote_form },
@@ -633,6 +642,7 @@ fn analyzeSpecial(
 ) AnalyzeError!*const Node {
     return switch (kind) {
         .def => special_forms.analyzeDef(arena, rt, env, scope, items, form, macro_table),
+        .defmacro_form => special_forms.analyzeDefmacro(arena, rt, env, scope, items, form, macro_table),
         .if_form => special_forms.analyzeIf(arena, rt, env, scope, items, form, macro_table),
         .do_form => special_forms.analyzeDo(arena, rt, env, scope, items, form, macro_table),
         .quote_form => special_forms.analyzeQuote(arena, rt, items, form),
@@ -749,6 +759,95 @@ fn listFormToValue(rt: *Runtime, items: []const Form) AnalyzeError!Value {
         acc = try list_collection.consHeap(rt, head, acc);
     }
     return acc;
+}
+
+/// Row 14.6 (D-099): inverse of `formToValue`. Converts a runtime
+/// Value back into an analyzer Form so user-fn macro return values
+/// can be re-fed into the analyzer. Allocations happen in `arena`
+/// (the per-analysis arena, freed in bulk). The constructed Form's
+/// `location` inherits `call_loc` — the macro call site — which
+/// matches JVM Clojure's "macroexpand1 returns a form whose meta
+/// inherits the call site" convention.
+///
+/// Fn / multimethod / Var / heap-mutable Values cannot round-trip
+/// (no Form encoding exists), so the conversion raises
+/// `macro_return_not_data` for those tags.
+pub fn valueToForm(
+    arena: std.mem.Allocator,
+    v: Value,
+    call_loc: SourceLocation,
+) AnalyzeError!Form {
+    return switch (v.tag()) {
+        .nil => .{ .data = .nil, .location = call_loc },
+        .boolean => .{ .data = .{ .boolean = v == .true_val }, .location = call_loc },
+        .integer => .{ .data = .{ .integer = @as(i64, v.asInteger()) }, .location = call_loc },
+        .float => .{ .data = .{ .float = v.asFloat() }, .location = call_loc },
+        .symbol => blk: {
+            const sym = symbol_mod.asSymbol(v);
+            break :blk .{ .data = .{ .symbol = .{ .ns = sym.ns, .name = sym.name } }, .location = call_loc };
+        },
+        .keyword => blk: {
+            const kw = keyword.asKeyword(v);
+            break :blk .{ .data = .{ .keyword = .{ .ns = kw.ns, .name = kw.name } }, .location = call_loc };
+        },
+        .string => .{ .data = .{ .string = string_collection.asString(v) }, .location = call_loc },
+        .list => try valueListToForm(arena, v, call_loc),
+        .vector => try valueVectorToForm(arena, v, call_loc),
+        .array_map => try valueMapToForm(arena, v, call_loc),
+        .hash_set => try valueSetToForm(arena, v, call_loc),
+        else => error_catalog.raise(.macro_return_not_data, call_loc, .{ .tag = @tagName(v.tag()) }),
+    };
+}
+
+fn valueListToForm(arena: std.mem.Allocator, list_val: Value, call_loc: SourceLocation) AnalyzeError!Form {
+    var items: std.ArrayList(Form) = .empty;
+    defer items.deinit(arena);
+    var cur = list_val;
+    while (!cur.isNil()) {
+        const head = list_collection.first(cur);
+        const rest = list_collection.rest(cur);
+        try items.append(arena, try valueToForm(arena, head, call_loc));
+        cur = rest;
+    }
+    const owned = try arena.dupe(Form, items.items);
+    return .{ .data = .{ .list = owned }, .location = call_loc };
+}
+
+fn valueVectorToForm(arena: std.mem.Allocator, vec_val: Value, call_loc: SourceLocation) AnalyzeError!Form {
+    const n = vector_collection.count(vec_val);
+    var items = try arena.alloc(Form, n);
+    var i: u32 = 0;
+    while (i < n) : (i += 1) {
+        items[i] = try valueToForm(arena, vector_collection.nth(vec_val, i), call_loc);
+    }
+    return .{ .data = .{ .vector = items }, .location = call_loc };
+}
+
+fn valueMapToForm(arena: std.mem.Allocator, map_val: Value, call_loc: SourceLocation) AnalyzeError!Form {
+    // ArrayMap-only iteration today (D-045 still gates HamtMap path).
+    // The decode is direct because `.array_map` tag was already
+    // matched in `valueToForm`.
+    const am = map_val.decodePtr(*const map_collection.ArrayMap);
+    var entries = try arena.alloc(Form, @as(usize, am.count) * 2);
+    var i: u32 = 0;
+    while (i < am.count) : (i += 1) {
+        entries[2 * i] = try valueToForm(arena, am.entries[2 * i], call_loc);
+        entries[2 * i + 1] = try valueToForm(arena, am.entries[2 * i + 1], call_loc);
+    }
+    return .{ .data = .{ .map = entries }, .location = call_loc };
+}
+
+fn valueSetToForm(arena: std.mem.Allocator, set_val: Value, call_loc: SourceLocation) AnalyzeError!Form {
+    // PersistentHashSet wraps an ArrayMap-backed Value at its `map`
+    // field; iterate the map's keys, ignore the sentinel values.
+    const ps = set_val.decodePtr(*const set_collection.PersistentHashSet);
+    const am = ps.map.decodePtr(*const map_collection.ArrayMap);
+    var items = try arena.alloc(Form, am.count);
+    var i: u32 = 0;
+    while (i < am.count) : (i += 1) {
+        items[i] = try valueToForm(arena, am.entries[2 * i], call_loc);
+    }
+    return .{ .data = .{ .set = items }, .location = call_loc };
 }
 
 // --- tests ---

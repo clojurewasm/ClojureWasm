@@ -113,6 +113,11 @@ pub const Code = enum {
     try_clause_after_finally,
     catch_form_incomplete,
     catch_head_invalid,
+    macro_return_not_data,
+    defmacro_name_not_symbol,
+    defmacro_params_not_vector,
+    defmacro_arity_invalid,
+    macro_var_not_callable,
     catch_class_unknown,
     class_name_unknown,
     catch_binding_not_symbol,
@@ -178,8 +183,6 @@ pub const Code = enum {
     extend_protocol_section_invalid,
     prefer_method_form_incomplete,
     when_let_form_incomplete,
-    /// args: `.{ .name = "<macro-name>" }`
-    user_macro_not_supported,
 
     // --- Eval (type) ---
     type_arg_not_number,
@@ -477,6 +480,26 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .syntax_error, .phase = .analysis,
             .template = "catch head must be a symbol (class name) or a keyword (ex-info :type)",
         },
+        .macro_return_not_data => .{
+            .kind = .type_error, .phase = .macroexpand,
+            .template = "macro return value of tag '{[tag]s}' cannot be re-analysed as a form",
+        },
+        .defmacro_name_not_symbol => .{
+            .kind = .syntax_error, .phase = .analysis,
+            .template = "defmacro: first argument must be a symbol",
+        },
+        .defmacro_params_not_vector => .{
+            .kind = .syntax_error, .phase = .analysis,
+            .template = "defmacro: parameter list must be a vector",
+        },
+        .defmacro_arity_invalid => .{
+            .kind = .syntax_error, .phase = .analysis,
+            .template = "defmacro requires (defmacro <name> [<params>...] <body>...)",
+        },
+        .macro_var_not_callable => .{
+            .kind = .type_error, .phase = .macroexpand,
+            .template = "macro Var '{[name]s}' root binding is not callable",
+        },
         .catch_class_unknown => .{
             .kind = .name_error, .phase = .analysis,
             .template = "catch class '{[name]s}' is not a known exception type",
@@ -690,10 +713,6 @@ pub fn entry(comptime code: Code) Entry {
         .when_let_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "when-let requires [name expr] and at least one body form",
-        },
-        .user_macro_not_supported => .{
-            .kind = .not_implemented, .phase = .macroexpand,
-            .template = "User-defined macro '{[name]s}' is not supported in ClojureWasm",
         },
 
         // --- Eval (type) ---

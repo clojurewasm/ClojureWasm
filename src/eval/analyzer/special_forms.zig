@@ -143,6 +143,65 @@ pub fn analyzeMethodCall(
     return n;
 }
 
+/// Row 14.6 (D-099): user-defined `(defmacro NAME [PARAMS] BODY...)`.
+/// Lowers to a `DefNode { is_macro = true, value_expr = (fn* [PARAMS]
+/// BODY...) }`. The Var's `flags.macro_` bit lands at eval-time when
+/// `evalDef` / VM `op_def` (DEF_FLAG_MACRO) sees `DefNode.is_macro`.
+/// Cf. JVM Clojure's `clojure.core/defmacro` (clojure/core.clj L446)
+/// which expands to `(do (defn NAME [&form &env PARAMS] BODY...) (.
+/// (var NAME) (setMacro)) (var NAME))`. cw v1 diverges by omitting
+/// implicit `&form` / `&env` — none of the Tier-A test corpora
+/// (clojure.test/deftest / are / testing / clojure.core/declare)
+/// introspect them; threading both is filed as D-099-followup.
+pub fn analyzeDefmacro(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    items: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    if (items.len < 3)
+        return error_catalog.raise(.defmacro_arity_invalid, form.location, .{});
+    if (items[1].data != .symbol)
+        return error_catalog.raise(.defmacro_name_not_symbol, items[1].location, .{});
+    if (items[2].data != .vector)
+        return error_catalog.raise(.defmacro_params_not_vector, items[2].location, .{});
+    const name_sym = items[1].data.symbol;
+    if (name_sym.ns != null)
+        return error_catalog.raise(.def_name_namespace_qualified, items[1].location, .{ .ns = name_sym.ns.?, .name = name_sym.name });
+
+    // Pre-register the macro Var with `flags.macro_ = true` so the
+    // analyzer's `expandIfMacro` can see the macro flag before the
+    // user-fn body actually evaluates. evalDef + VM op_def will
+    // overwrite root + re-assert flags at runtime per the existing
+    // analyzeDef pattern (ADR-0038).
+    const ns = env.current_ns orelse
+        return error_catalog.raiseInternal(form.location, "defmacro: no current namespace");
+    const placeholder_var = try env.intern(ns, name_sym.name, .nil_val, null);
+    placeholder_var.flags.macro_ = true;
+
+    // Build the synthetic `(fn* [PARAMS] BODY...)` Form, then analyse
+    // it through the regular path so multi-arity / closure / arg
+    // checks all ride existing FnNode infrastructure.
+    var fn_items = try arena.alloc(Form, 2 + (items.len - 3));
+    fn_items[0] = macro_dispatch.makeSymbol("fn*", form.location);
+    fn_items[1] = items[2]; // params vector
+    @memcpy(fn_items[2..], items[3..]);
+    const fn_form: Form = .{ .data = .{ .list = fn_items }, .location = form.location };
+    const value_node = try analyzer_mod.analyze(arena, rt, env, scope, fn_form, macro_table);
+
+    const n = try arena.create(Node);
+    n.* = .{ .def_node = .{
+        .name = name_sym.name,
+        .value_expr = value_node,
+        .is_macro = true,
+        .loc = form.location,
+    } };
+    return n;
+}
+
 pub fn analyzeDef(
     arena: std.mem.Allocator,
     rt: *Runtime,

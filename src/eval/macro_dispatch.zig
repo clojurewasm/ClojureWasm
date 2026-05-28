@@ -24,6 +24,7 @@
 
 const std = @import("std");
 const Form = @import("form.zig").Form;
+const Value = @import("../runtime/value/value.zig").Value;
 const Runtime = @import("../runtime/runtime.zig").Runtime;
 const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
@@ -99,12 +100,65 @@ pub fn expandIfMacro(
     args: []const Form,
     loc: SourceLocation,
 ) ExpandError!?Form {
-    _ = env; // unused until the user-fn macro path lands
     if (!head_var.flags.macro_) return null;
     if (table.lookup(head_name)) |f| {
         return try f(arena, rt, args, loc);
     }
-    return error_catalog.raise(.user_macro_not_supported, loc, .{ .name = head_name });
+    // Row 14.6 (D-099): user-defined `defmacro` fallback. The macro
+    // Var's root must be a callable (`fn_val` / `builtin_fn`); we run
+    // the args through `formToValue` → callFn → `valueToForm` to round-
+    // trip the call through the runtime's evaluator. Implicit `&form`
+    // / `&env` are NOT prepended (cf. JVM Clojure) — Tier-A test
+    // corpora do not introspect them; threading both is D-099-followup.
+    const analyzer_mod = @import("analyzer/analyzer.zig");
+    const macro_fn = head_var.deref();
+    if (!isCallable(macro_fn))
+        return error_catalog.raise(.macro_var_not_callable, loc, .{ .name = head_name });
+    // Convert Form args → Value args. The analyzer's per-call arena
+    // owns the resulting Value graph; macro args are simple (no
+    // closure capture) so passing rt's GC heap is correct.
+    var value_args = try arena.alloc(Value, args.len);
+    for (args, 0..) |arg, i| {
+        value_args[i] = try analyzer_mod.formToValue(rt, arg);
+    }
+    const vtable = rt.vtable orelse
+        return error_catalog.raiseInternal(loc, "expandIfMacro: rt.vtable not installed");
+    // vtable.callFn returns `anyerror!Value`; narrow to our analyzer-
+    // facing ClojureWasmError envelope. The side-channel error info
+    // is already populated by the callee, so re-raising preserves
+    // attribution.
+    const result_val = vtable.callFn(rt, env, macro_fn, value_args, loc) catch |e|
+        return narrowCallFnError(e, loc);
+    return try analyzer_mod.valueToForm(arena, result_val, loc);
+}
+
+fn narrowCallFnError(e: anyerror, loc: SourceLocation) ExpandError {
+    return switch (e) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.SyntaxError => error.SyntaxError,
+        error.NumberError => error.NumberError,
+        error.StringError => error.StringError,
+        error.NameError => error.NameError,
+        error.ArityError => error.ArityError,
+        error.ValueError => error.ValueError,
+        error.NotImplemented => error.NotImplemented,
+        error.TypeError => error.TypeError,
+        error.ArithmeticError => error.ArithmeticError,
+        error.IndexError => error.IndexError,
+        error.IoError => error.IoError,
+        error.InternalError => error.InternalError,
+        // Anything outside the ClojureWasmError envelope (e.g. a Zig-
+        // level error tag the runtime synthesised) lands as
+        // InternalError so the AnalyzeError surface stays narrow.
+        else => error_catalog.raiseInternal(loc, "macro callFn raised foreign error"),
+    };
+}
+
+fn isCallable(v: Value) bool {
+    return switch (v.tag()) {
+        .fn_val, .builtin_fn, .protocol_fn, .multi_fn => true,
+        else => false,
+    };
 }
 
 // --- Form construction helpers (for macro impls) ---
@@ -228,7 +282,7 @@ test "expandIfMacro dispatches a registered Zig transform" {
     try testing.expect(expanded.?.data.boolean == true);
 }
 
-test "expandIfMacro errors cleanly for macro Var with no Zig impl" {
+test "expandIfMacro raises macro_var_not_callable when root is not a fn" {
     var th = std.Io.Threaded.init(testing.allocator, .{});
     defer th.deinit();
     var rt = Runtime.init(th.io(), testing.allocator);
@@ -242,6 +296,10 @@ test "expandIfMacro errors cleanly for macro Var with no Zig impl" {
     var table = Table.init(testing.allocator);
     defer table.deinit();
 
+    // Row 14.6 (D-099): a macro Var with no callable root falls through
+    // the user-fn fallback's isCallable check and surfaces a clean
+    // type_error. Earlier (pre-D-099) this raised
+    // `user_macro_not_supported` regardless of root shape.
     var v: Var = .{ .ns = env.current_ns.?, .name = "user-defined", .flags = .{ .macro_ = true } };
 
     const got = expandIfMacro(
@@ -254,8 +312,8 @@ test "expandIfMacro errors cleanly for macro Var with no Zig impl" {
         &.{},
         .{ .file = "<t>", .line = 1, .column = 0 },
     );
-    try testing.expectError(error.NotImplemented, got);
+    try testing.expectError(error.TypeError, got);
     const info = error_mod.peekLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Phase.macroexpand, info.phase);
-    try testing.expectEqual(error_mod.Kind.not_implemented, info.kind);
+    try testing.expectEqual(error_mod.Kind.type_error, info.kind);
 }
