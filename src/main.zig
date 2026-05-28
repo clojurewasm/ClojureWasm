@@ -140,4 +140,5 @@ test {
     _ = @import("runtime/random.zig");
     _ = @import("runtime/regex/value.zig");
     _ = @import("runtime/time/instant.zig");
+    _ = @import("runtime/bencode/bencode.zig");
 }

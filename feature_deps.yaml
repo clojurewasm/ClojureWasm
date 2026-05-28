@@ -403,6 +403,25 @@ entries:
       isThrowableTag` adds `.host_instance` to the throwable carrier
       set; both markers discharge in the same commit.
 
+  - name: runtime/nrepl/auto_port
+    kind: runtime_layer
+    defined_in: src/app/nrepl.zig
+    status: provisional
+    requires_features: []
+    requires_debts:
+      - D-117
+    provisional_markers:
+      - src/app/nrepl.zig (run — --port 0 auto-assign records the requested port not the bound port; getsockname surface needed)
+    notes: |
+      Row 14.10 (2026-05-28) landed `cljw nrepl --port <N>` (default
+      7888). When the user requests `--port 0` for OS-auto-assign,
+      cw v1 writes the requested 0 to `.nrepl-port` instead of the
+      bound port, breaking CIDER auto-discovery for that case.
+      Zig 0.16 `std.Io.net.Server` doesn't expose the bound address
+      after `listen()`; the discharge needs a `getsockname` surface
+      on the Stream / Server type. Lands at D-117 (Phase 15+ nREPL
+      polish).
+
   - name: runtime/future/error_value_channel
     kind: runtime_layer
     defined_in: src/runtime/future.zig

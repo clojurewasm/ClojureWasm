@@ -72,12 +72,48 @@ Transitions:
 no-throw path. Any `error` in `evaluating` is caught by the loop
 wrapper and converted to a `result(error)` transition.
 
-### nREPL chart (row 14.10 — implementation pending)
+### nREPL chart (row 14.10 — landed at 2026-05-28)
 
-[To be filled at row 14.10 entry.] States expected: `accept`,
-`session_init`, `op_dispatch` (`eval` / `complete` / `interrupt` /
-`describe`), `response_send`, `session_close`. Per-session state
-chart; multiple sessions multiplex via accept-loop.
+```
+   ┌──────────┐  client connect   ┌───────────────┐  clone op   ┌─────────────┐
+   │  accept  │ ────────────────▶ │ session_init  │ ──────────▶ │op_dispatch  │
+   └──────────┘                   └───────────────┘             └─────────────┘
+        ▲                                                              │
+        │ session_close                                                 │ each op
+        │                                                               ▼
+   ┌──────────┐                                                  ┌─────────────┐
+   │ closing  │ ◀── close op / disconnect ────────────────────── │ response    │
+   └──────────┘                                                  │   _send     │
+                                                                 └─────────────┘
+```
+
+States:
+- `accept` — blocking accept on TCP socket; one client at a time
+  per the Phase-14 single-thread runtime.
+- `session_init` — session id minted on `clone`; the connection
+  state machine begins.
+- `op_dispatch` — read one bencode dict, look at `op` key, route
+  to the per-op handler. Currently 4 ops: `clone` / `describe` /
+  `eval` / `close`.
+- `response_send` — encode the response dict(s) via bencode +
+  write to the stream. `eval` sends one response per top-level
+  form + a final `status: ["done"]`; other ops send one response.
+- `closing` — `close` op received OR client disconnected; clean
+  up session state; loop back to `accept`.
+
+Recovery discipline: any per-op error renders as a
+`status: ["error" "<reason>" "done"]` response and the session
+continues (unknown-op, parse error, eval error all recover). Only
+TCP-level errors (client RST / system EBADF) break out of the
+session loop; the accept loop then accepts the next client.
+
+Implementation deltas vs draft chart shape:
+- `interrupt` op NOT yet supported — single-thread eval cannot
+  interrupt itself (Phase 15+ thread spawn unlocks this; D-117).
+- `complete` / `load-file` / `info` ops NOT yet supported —
+  CIDER-specific extensions filed under D-117.
+- stdout/stderr capture is empty (no `*out*` / `*err*` binding
+  yet; D-118).
 
 ### Build pipeline chart (row 14.11 — implementation pending)
 

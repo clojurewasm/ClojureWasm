@@ -20,6 +20,7 @@ const std = @import("std");
 
 const runner = @import("runner.zig");
 const repl = @import("repl.zig");
+const nrepl = @import("nrepl.zig");
 
 /// Top-level CLI dispatcher. Called from `src/main.zig::main` with
 /// the Juicy-Main `std.process.Init` bundle. Parses argv, decides
@@ -48,6 +49,30 @@ pub fn dispatch(init: std.process.Init) !void {
     if (args.next()) |first| {
         if (std.mem.eql(u8, first, "repl")) {
             return repl.run(io, gpa, arena, stdout, stderr);
+        }
+        if (std.mem.eql(u8, first, "nrepl")) {
+            // Row 14.10 (ADR-0048 nREPL chart). Optional `--port N`
+            // (default 7888 per JVM nREPL convention).
+            var port: u16 = 7888;
+            while (args.next()) |a| {
+                if (std.mem.eql(u8, a, "--port")) {
+                    const p_str = args.next() orelse {
+                        try stderr.print("nrepl: --port requires a value\n", .{});
+                        try stderr.flush();
+                        std.process.exit(1);
+                    };
+                    port = std.fmt.parseInt(u16, p_str, 10) catch {
+                        try stderr.print("nrepl: invalid --port value '{s}'\n", .{p_str});
+                        try stderr.flush();
+                        std.process.exit(1);
+                    };
+                } else {
+                    try stderr.print("nrepl: unknown argument '{s}'\n", .{a});
+                    try stderr.flush();
+                    std.process.exit(1);
+                }
+            }
+            return nrepl.run(io, gpa, arena, stdout, stderr, port);
         }
         // Not a recognised subcommand — fall through to legacy flag
         // parsing by re-routing `first` through the existing arm.

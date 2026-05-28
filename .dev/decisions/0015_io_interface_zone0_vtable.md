@@ -116,13 +116,13 @@ appropriate zone, **and** rewrites a small number of Phase 4-13
 src/ sites where today the dispatch row is a `feature_not_supported`
 catalog raise:
 
-| F    | Phase 14 landing path                                  | Phase 4-13 placeholder rewritten                                 |
-|------|--------------------------------------------------------|------------------------------------------------------------------|
-| F140 | `src/host/io/http_server.zig` (new)                    | `cljw.host.java.net` namespace dispatch row                      |
-| F141 | `src/host/io/http_client.zig` (new)                    | `cljw.host.java.net` namespace dispatch row                      |
-| F142 | `src/app/nrepl/{server,session,bencode,ops}.zig` (new) | `src/app/main.zig` subcommand dispatch row for `nrepl`           |
-| F143 | `src/app/repl/line_editor.zig` (new)                   | `src/app/main.zig` subcommand dispatch row for `repl`            |
-| F144 | `src/app/build/self_bundle.zig` (new)                  | `src/app/main.zig` subcommand dispatch row for `component build` |
+| F    | Phase 14 landing path                                                           | Phase 4-13 placeholder rewritten                                 |
+|------|---------------------------------------------------------------------------------|------------------------------------------------------------------|
+| F140 | `src/host/io/http_server.zig` (new)                                             | `cljw.host.java.net` namespace dispatch row                      |
+| F141 | `src/host/io/http_client.zig` (new)                                             | `cljw.host.java.net` namespace dispatch row                      |
+| F142 | `src/app/nrepl.zig` (new; bencode under `src/runtime/bencode/` per amendment 3) | `src/app/main.zig` subcommand dispatch row for `nrepl`           |
+| F143 | `src/app/repl/line_editor.zig` (new)                                            | `src/app/main.zig` subcommand dispatch row for `repl`            |
+| F144 | `src/app/build/self_bundle.zig` (new)                                           | `src/app/main.zig` subcommand dispatch row for `component build` |
 
 Tier 2 isolation (per amendment 1) means that if Zig 0.17 / 0.18
 reshapes `std.Io` again before Phase 14, only `io_default.zig` is
@@ -155,3 +155,14 @@ coincides with the Phase 14 landing.
   section to narrate F140-F144 re-introduction landing paths and
   the corresponding Phase 4-13 placeholder dispatch rewrites (per
   ROADMAP §A25).
+- 2026-05-28 (amendment 3): F142 row narrowed. Devil's-advocate
+  for row 14.10 (cljw nrepl landing) recommended moving the
+  bencode codec out of `src/app/nrepl/` into `src/runtime/bencode/`
+  per F-009 strict (namespace-neutral wire codec; matches
+  `runtime/regex/`, `runtime/io/` precedent). server / session /
+  ops folded into a single `src/app/nrepl.zig` (~370 LOC; under
+  the 1000-LOC §A6 cap so the 3-file split is reservation-as-bias
+  until growth forces it). ADR-0015 a2's specific path table was
+  a memo per CLAUDE.md spirit; the finished form amends in place.
+  v0 disabled-feature F142 reactivation closed at commit XXXXXX
+  (row 14.10).
