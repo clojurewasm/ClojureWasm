@@ -280,12 +280,13 @@ chains, before v0.1.0 tag, and on demand for feature branches:
   `nix develop --command bash test/run_all.sh`). Setup at
   `.dev/ubuntunote_setup.md`.
 
-**Orphan-prevention discipline**: any long-running pipeline
-launched via `Bash(run_in_background: true)` (REPL pipes /
-remote SSH gate / bench loops) MUST be wrapped in
-`timeout 600 …` so a session-interrupt kill leaves no
-PID-1-inherited spinners. The 2026-05-28 incident report
-(ADR-0049 § Context) is the cautionary precedent.
+**Orphan-prevention discipline**: every
+`Bash(run_in_background: true)` driving a long-running child
+process MUST wrap with `timeout 600 …`. REPL-pipe-specific
+hazard, `timeout`-not-propagating caveat for SSH / VM
+boundaries, and counter-examples live in
+[`.claude/rules/orphan_prevention.md`](.claude/rules/orphan_prevention.md)
+(ADR-0049 § Context is the precedent; D-128 discharged).
 
 **Step 6 — Source commit + push (atomic, smell-audited)**
 
