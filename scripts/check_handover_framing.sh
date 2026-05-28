@@ -84,10 +84,28 @@ FAIL=0
 
 LINES=$(wc -l < "$TARGET_FILE" | tr -d ' ')
 if (( LINES > MAX_LINES )); then
-  echo "" >&2
-  echo "✗ handover.md exceeds the $MAX_LINES-line cap (= $LINES lines)" >&2
-  echo "  Trim per handover_framing.md before commit." >&2
-  FAIL=1
+  # Trim-Edit exemption (D-129): in hook mode, when the post-edit
+  # state is still over cap but strictly smaller than the pre-edit
+  # state recorded at git HEAD, allow the edit so a trim chain can
+  # land in multiple steps. `--check` mode (audit-time) never grants
+  # the exemption — any over-cap snapshot fails the audit.
+  EXEMPT=0
+  if [[ "$MODE" == "hook" ]]; then
+    PREV_LINES=$(git show "HEAD:$TARGET_FILE" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
+    if [[ -n "$PREV_LINES" ]] && (( PREV_LINES > MAX_LINES )) && (( LINES < PREV_LINES )); then
+      EXEMPT=1
+      echo "" >&2
+      echo "⚠ handover.md still over the $MAX_LINES-line cap ($LINES lines)" >&2
+      echo "  but reduced from $PREV_LINES → $LINES; trim-Edit exemption granted." >&2
+      echo "  Keep trimming until ≤ $MAX_LINES lines (handover_framing.md)." >&2
+    fi
+  fi
+  if (( EXEMPT == 0 )); then
+    echo "" >&2
+    echo "✗ handover.md exceeds the $MAX_LINES-line cap (= $LINES lines)" >&2
+    echo "  Trim per handover_framing.md before commit." >&2
+    FAIL=1
+  fi
 fi
 
 PHRASE_HITS=$(grep -nE "$FORBIDDEN_PHRASES_RE" "$TARGET_FILE" 2>/dev/null || true)

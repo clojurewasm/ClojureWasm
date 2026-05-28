@@ -71,6 +71,21 @@ Above 100 lines, the framing has drifted into log / deliberation /
 forecast. Trim before commit. `git log` and `.dev/ROADMAP.md`
 already carry the history and the forecast.
 
+### Trim-Edit exemption (D-129)
+
+When the current `.dev/handover.md` is already over the cap (the
+previous session left it bloated), the PreToolUse:Edit hook
+grants a **trim-Edit exemption**: an Edit whose post-edit state
+is still over cap but strictly *smaller* than the pre-edit state
+(read from `git HEAD:.dev/handover.md`) is allowed through with a
+warning, so a multi-step trim chain can land. A bloating Edit (=
+post-edit ≥ pre-edit) or a fresh Edit that newly exceeds the cap
+is still blocked.
+
+The exemption applies only in hook mode. `audit_scaffolding` A5b
+runs `--check` mode and fails any over-cap snapshot — that gate
+ensures the trim chain eventually reaches ≤ 100.
+
 ## Update frequency cap (≤ 2 / session)
 
 Per session: at most 2 handover updates, except at Phase
