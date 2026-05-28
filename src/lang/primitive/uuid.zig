@@ -16,10 +16,12 @@ const uuid = @import("../../runtime/uuid.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 
 /// `(random-uuid)` — generate a UUID v4 and return it as a 36-char
-/// canonical string. Phase 6 returns a String (Clojure.core's
-/// `random-uuid` returns a `java.util.UUID` instance on the JVM —
-/// cw v1 returns the canonical String until Phase 7 wires
-/// `host_instance` values through the Clojure surface).
+/// canonical string. cw v1's surface returns the canonical String;
+/// JVM `clojure.core/random-uuid` returns a `java.util.UUID` instance.
+/// Promoting this to a `host_instance` UUID value would ride the
+/// host-class surface (D-079 aggregator / D-097 second-wave
+/// `java.util.*`); the String form is the current cw v1 surface, not
+/// a phase-gated stub.
 pub fn randomUuid(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("random-uuid", args, 0, loc);

@@ -215,13 +215,11 @@ pub fn firstFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 /// JVM reference: clojure.lang.RT.more
 /// cw v1 tier: A (Phase 6.16.a-1)
 ///
-/// cw v1 deviation: an empty rest currently renders as `nil` because
-/// cw v1 list.zig does not yet expose an empty-PersistentList
-/// singleton (Phase 7 entry will land it per R3 mitigation; until
-/// then, `(rest '(1))` → `nil` matches v1_ref behaviour and the
-/// JVM `(seq (rest '(1)))` round-trip; user code that distinguishes
-/// `()` from `nil` is rare and explicitly noted at Phase 7 ADR
-/// amendment time).
+/// cw v1 deviation: an empty rest renders as `nil` because cw v1
+/// list.zig does not expose an empty-PersistentList singleton
+/// (tracked as D-101). `(rest '(1))` → `nil` matches v1_ref behaviour
+/// and the JVM `(seq (rest '(1)))` round-trip; user code that
+/// distinguishes `()` from `nil` is rare. Discharge route in D-101.
 pub fn restFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("rest", args, 1, loc);
     const coll = args[0];

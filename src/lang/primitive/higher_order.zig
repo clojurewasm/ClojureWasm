@@ -393,7 +393,7 @@ const list_mod = @import("../../runtime/collection/list.zig");
 
 /// Build a Clojure list (Cons chain) from a Zig slice. Empty slice
 /// yields nil (cw v1 deviation from JVM empty-PersistentList; same
-/// as restFn behaviour, will resolve at Phase 7 entry).
+/// as restFn behaviour — tracked as D-101).
 fn buildListFromSlice(rt: *Runtime, items: []const Value) !Value {
     var acc: Value = .nil_val;
     var i: usize = items.len;
