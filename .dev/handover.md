@@ -52,14 +52,13 @@ row 14.13.5 `[x]`:
 
 ## Active task
 
-**Row 14.11 — D-100 (b) step 2: `src/app/builder.zig`.** Step 1 (payload
-envelope `serializeEnvelope`/`deserializeEnvelope` in `serialize.zig`)
-landed (serialize.zig), gate 102. Step 2 = the `cljw build app.clj -o app`
-CLI: extract `runner.zig`'s per-form compile-then-eval loop (`runSource`
-@runner.zig:64-) into a neutral helper, have the builder compile each
-form to a BytecodeChunk → `serializeEnvelope`, append the `"CLJC"`
-trailer (Deno-style), wire `build` into `cli.zig` dispatch, add an e2e
-test. Then (e) `cljw-formats/0.1.0.edn` archive lock. F-009: the
+**Row 14.11 — D-100 (b) step 3: `cljw build` CLI dispatch + trailer.**
+Done: (b) step 1 payload envelope + step 2 compile-core
+(`builder.zig::buildEnvelope`, unit-tested @b2d33f4f, gate 103). Step 3 =
+wire `build` into `cli.zig` dispatch, read file → `buildEnvelope` →
+Deno-style `"CLJC"` trailer → write binary; F-009-extract the shared
+bootstrap setup (runner + builder); e2e test. Then (e)
+`cljw-formats/0.1.0.edn` archive lock. F-009: the
 per-form helper is shared by runner + builder, not duplicated.
 
 ## Open debts (named; full rows in `.dev/debt.md`)
