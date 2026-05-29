@@ -277,3 +277,28 @@ From the survey's design space (rejected before the DA pass):
   fidelity) deferred to Cycle 2, where AOT core becomes the runtime
   default and error frames would otherwise regress (Cycle 1 is the
   in-process proof; `loadCore` remains the production path).
+- **2026-05-30 (Cycle 2 landed — AOT core LIVE everywhere)**: 2a — a
+  `cache_gen` host tool (build.zig) VM-compiles core.clj → a bytecode
+  envelope embedded as `bootstrap_cache.data` (23829 B). 2b — `runner.
+  runSource` restores core via `setupCoreAot` → `driver.runEnvelope`
+  instead of `loadCore`; all ~110 e2e flow through it, gate 125/125 ⇒
+  AOT core is **production-faithful**. 2c — extracted `loadCoreAot` and
+  routed repl / nrepl / `tryRunEmbedded` (built apps) to it, so **all
+  four startup paths** now restore core from bytecode (advancing D-131).
+  `loadCore` (source, all 12) stays for the build tool + `setupCore`.
+  cold_start 6260µs (native is OS-spawn-bound; the edge/Wasm per-instance
+  win — no spawn — is the point).
+  **D-139 (param-name fidelity) DEFERRED, for memory-ownership care, not
+  cycle budget**: normal fns borrow `params` from the analyzer arena;
+  deserialized fns would need owned param strings; `freeFunction` cannot
+  distinguish them, so freeing deserialized params risks corrupting
+  arena-borrowed ones (and not-freeing leaks under the unit-test
+  allocator). A clean discharge needs a params-ownership marker (or an
+  always-arena-borrow + arena-based tests) — a focused-context design,
+  not a session-tail rush (F-002: don't introduce a memory bug). The
+  AOT-core error-frame regression is param LABELS only (gate green; no
+  test depends on them). Tracked: D-139.
+  **Cycle 3 (D3 lazy non-core files) remaining**: the 11 non-core `.clj`
+  files still load eagerly from source in `loadCoreAot`; lazy-`require`
+  needs a per-file eager-vs-lazy dependency analysis (survey §3.D3
+  "hidden inter-namespace eager deps").
