@@ -8410,3 +8410,5 @@
 2026-05-28T23:42:06Z	phase4	let_chain_us	3380	mac-arm-m4pro
 2026-05-29T00:09:15Z	phase14_cs	cold_start_us	11260	mac-arm-m4pro
 2026-05-29T00:09:37Z	phase4	cold_start_us	6360	mac-arm-m4pro
+2026-05-29T00:14:32Z	phase14_cs	cold_start_us	11880	mac-arm-m4pro
+2026-05-29T00:14:40Z	phase4	cold_start_us	6160	mac-arm-m4pro
