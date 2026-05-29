@@ -99,14 +99,27 @@
 
 ;; `(comp f g)` returns a fn that computes `(f (g x))`. Multi-fn
 ;; comp `(comp f g h)` deferred to D-NEW-2 multi-arity follow-up.
+;; `comp` — variadic right-to-left function composition (D-134). `(comp)`
+;; is identity; the N-ary case folds the 2-ary `comp` over the rest (comp
+;; is associative). Composed fns take any arity via `& args` + `apply`.
 (def comp
-  (fn* [f g] (fn* [x] (f (g x)))))
+  (fn* ([] (fn* [x] x))
+       ([f] f)
+       ([f g] (fn* [& args] (f (apply g args))))
+       ([f g & fs] (reduce comp (comp f g) fs))))
 
-;; `(juxt f g)` returns a fn that yields a vector `[(f x) (g x)]`.
-;; Two-fn form only at this cycle (multi-fn juxt + multi-arg deferred
-;; per D-NEW-2).
+;; `juxt` — `((juxt f g …) & args)` yields `[(apply f args) (apply g args) …]`
+;; (D-134: multi-fn + multi-arg; previously 2-fn / single-arg only).
 (def juxt
-  (fn* [f g] (fn* [x] [(f x) (g x)])))
+  (fn* ([f] (fn* [& args] [(apply f args)]))
+       ([f g] (fn* [& args] [(apply f args) (apply g args)]))
+       ;; N-ary: build the result vector with reduce+conj (primitives —
+       ;; `mapv` is a later core.clj defn, unresolvable at this def site).
+       ([f g & fs]
+        (fn* [& args]
+          (reduce (fn* [acc h] (conj acc (apply h args)))
+                  []
+                  (cons f (cons g fs)))))))
 
 ;; ----------------------------------------------------------------
 ;; Phase 6.16.b-3 helpers — used by clojure.set Group C (project /
@@ -546,6 +559,18 @@
                 (if (= (count p) n)
                   (cons p (partition n step (drop step s)))
                   nil))
+              nil))))
+       ;; 4-arg pad (D-134): the final short partition is padded with
+       ;; `pad` up to length n (JVM `(take n (concat p pad))` — if pad is
+       ;; too short the last partition stays < n).
+       ([n step pad coll]
+        (lazy-seq
+          (let [s (seq coll)]
+            (if s
+              (let [p (take n s)]
+                (if (= (count p) n)
+                  (cons p (partition n step pad (drop step s)))
+                  (list (take n (concat p pad)))))
               nil))))))
 
 ;; ----------------------------------------------------------------

@@ -421,6 +421,15 @@ test "diff: map string-key lookup both backends" {
     try f.check("(get {\"a\" 1 \"b\" 2} \"b\")", 2);
 }
 
+// NOTE: comp/juxt/partition (D-134) are .clj defns over existing Nodes
+// (not new analyzer Node variants), so ADR-0036 requires no differential
+// case. A `((comp …) …)` diff case was tried and removed: `compare`
+// bootstraps core.clj under ONE backend then swaps the vtable per run, so
+// calling a BOOTSTRAP .clj closure (comp) cross-backend diverges in the
+// harness (D-152) — though both backends compute it correctly in real
+// whole-program runs (verified: tree-walk e2e + a VM-direct run both → 3).
+// e2e phase14_comp_juxt_partition is the coverage.
+
 
 // Row 7.10 cycle 2 (D-073 diff_test descriptor cleanup): the 2
 // previously-deferred ADR-0040 op_method_call diff cases now land.
