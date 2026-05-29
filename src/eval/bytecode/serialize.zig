@@ -473,9 +473,94 @@ pub fn freeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) void {
     allocator.free(chunk.libspecs);
 }
 
+// === Multi-chunk payload envelope (D-100(b), `cljw build`) ===
+//
+// A built artifact's payload is a *sequence* of BytecodeChunks (one per
+// top-level form / compilation unit, ADR-0034 amendment 1 Alt B). The
+// envelope frames them so the loader can walk chunk boundaries without
+// parsing each chunk's interior: `[u32 n_chunks]` then, per chunk,
+// `[u32 byte_len][chunk bytes]` where the bytes are exactly what
+// `serializeChunk` produces. Length-prefixing lets the loader sub-slice
+// and hand each chunk to `deserializeChunk` unchanged (no codec dup).
+
+pub fn serializeEnvelope(allocator: std.mem.Allocator, chunks: []const BytecodeChunk) ![]u8 {
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    errdefer aw.deinit();
+    const w = &aw.writer;
+    try writeU32(w, @intCast(chunks.len));
+    for (chunks) |chunk| {
+        const chunk_bytes = try serializeChunk(allocator, chunk);
+        defer allocator.free(chunk_bytes);
+        try writeU32(w, @intCast(chunk_bytes.len));
+        try w.writeAll(chunk_bytes);
+    }
+    return try aw.toOwnedSlice();
+}
+
+/// Deserialize an envelope into owned chunks (free via `freeEnvelope`).
+/// Each chunk's heap Values are reconstructed through `rt`'s GC.
+pub fn deserializeEnvelope(
+    allocator: std.mem.Allocator,
+    rt: *Runtime,
+    env: *@import("../../runtime/env.zig").Env,
+    bytes: []const u8,
+) ![]BytecodeChunk {
+    var r: ByteReader = .{ .bytes = bytes, .pos = 0 };
+    const n = try r.readU32();
+    var chunks: std.ArrayList(BytecodeChunk) = .empty;
+    errdefer {
+        for (chunks.items) |c| freeChunk(allocator, c);
+        chunks.deinit(allocator);
+    }
+    var i: u32 = 0;
+    while (i < n) : (i += 1) {
+        const len = try r.readU32();
+        try r.need(len);
+        const chunk = try deserializeChunk(allocator, rt, env, bytes[r.pos .. r.pos + len]);
+        try chunks.append(allocator, chunk);
+        r.pos += len;
+    }
+    return chunks.toOwnedSlice(allocator);
+}
+
+/// Free an envelope's chunk array + each chunk's owned slices.
+pub fn freeEnvelope(allocator: std.mem.Allocator, chunks: []BytecodeChunk) void {
+    for (chunks) |c| freeChunk(allocator, c);
+    allocator.free(chunks);
+}
+
 // --- tests ---
 
 const testing = std.testing;
+
+test "payload envelope round-trips two chunks in order" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+    var env = try @import("../../runtime/env.zig").Env.init(&rt);
+    defer env.deinit();
+
+    const k = try keyword_mod.intern(&rt, null, "alpha");
+    const consts_a = [_]Value{ Value.initInteger(7), k };
+    const chunk_a: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts_a };
+    const consts_b = [_]Value{Value.initInteger(99)};
+    const chunk_b: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts_b };
+
+    const bytes = try serializeEnvelope(testing.allocator, &.{ chunk_a, chunk_b });
+    defer testing.allocator.free(bytes);
+
+    const out = try deserializeEnvelope(testing.allocator, &rt, &env, bytes);
+    defer freeEnvelope(testing.allocator, out);
+
+    // Order preserved: chunk_a (int 7 + :alpha), then chunk_b (int 99).
+    try testing.expectEqual(@as(usize, 2), out.len);
+    try testing.expectEqual(@as(usize, 2), out[0].constants.len);
+    try testing.expectEqual(@as(i64, 7), out[0].constants[0].asInteger());
+    try testing.expect(out[0].constants[1].tag() == .keyword);
+    try testing.expectEqual(@as(usize, 1), out[1].constants.len);
+    try testing.expectEqual(@as(i64, 99), out[1].constants[0].asInteger());
+}
 
 test "header magic + version round-trips on empty chunk" {
     var th = std.Io.Threaded.init(testing.allocator, .{});
