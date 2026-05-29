@@ -78,6 +78,7 @@ const Entry = struct {
 
 const BOOTSTRAP = [_]Entry{
     .{ .name = "let", .expand = expandLet },
+    .{ .name = "loop", .expand = expandLoop },
     .{ .name = "when", .expand = expandWhen },
     .{ .name = "cond", .expand = expandCond },
     .{ .name = "->", .expand = expandThreadFirst },
@@ -339,6 +340,76 @@ fn makeCall(
     var items = try arena.alloc(Form, 1 + call_args.len);
     items[0] = sym(fn_name, loc);
     @memcpy(items[1..], call_args);
+    return list(arena, items, loc);
+}
+
+// --- loop — `loop*` rename + destructuring (D-076 cycle 4) ---
+//
+// `(loop [bindings] body...)` → `(loop* [slots] (let [patterns] body))`.
+// Each binding pair becomes exactly ONE loop* slot, so `recur` arity =
+// binding-pair count (JVM-faithful): a plain-symbol binding stays a
+// loop* slot directly; a destructuring pattern becomes a gensym slot
+// with the pattern bound in a body-wrapping `let`. `recur` rebinds the
+// gensym slots; the inner `let` re-destructures each iteration (`let*`
+// is not a recur target). Until this macro, bare `(loop …)` was
+// unresolved — `loop*` had to be written directly.
+fn expandLoop(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    if (args.len < 1)
+        return error_catalog.raise(.let_form_incomplete, loc, .{});
+    if (args[0].data != .vector)
+        return error_catalog.raise(.bindings_not_vector, args[0].location, .{ .form = "loop" });
+
+    const binds = args[0].data.vector;
+    const body = args[1..];
+
+    const has_pattern = blk: {
+        if (binds.len % 2 != 0) break :blk false;
+        var k: usize = 0;
+        while (k < binds.len) : (k += 2) {
+            if (binds[k].data != .symbol) break :blk true;
+        }
+        break :blk false;
+    };
+    if (!has_pattern) {
+        var items = try arena.alloc(Form, args.len + 1);
+        items[0] = sym("loop*", loc);
+        @memcpy(items[1..], args);
+        return list(arena, items, loc);
+    }
+
+    var slots: std.ArrayList(Form) = .empty;
+    var lets: std.ArrayList(Form) = .empty;
+    var k: usize = 0;
+    while (k < binds.len) : (k += 2) {
+        const pat = binds[k];
+        const init = binds[k + 1];
+        if (pat.data == .symbol) {
+            try slots.append(arena, pat);
+            try slots.append(arena, init);
+        } else {
+            const g = sym(try rt.gensym(arena, "loop"), loc);
+            try slots.append(arena, g);
+            try slots.append(arena, init);
+            try lets.append(arena, pat);
+            try lets.append(arena, g);
+        }
+    }
+
+    var let_items = try arena.alloc(Form, 2 + body.len);
+    let_items[0] = sym("let", loc);
+    let_items[1] = try vec(arena, lets.items, loc);
+    @memcpy(let_items[2..], body);
+    const wrapped = try list(arena, let_items, loc);
+
+    var items = try arena.alloc(Form, 3);
+    items[0] = sym("loop*", loc);
+    items[1] = try vec(arena, slots.items, loc);
+    items[2] = wrapped;
     return list(arena, items, loc);
 }
 

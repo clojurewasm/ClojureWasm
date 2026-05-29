@@ -407,6 +407,13 @@ test "diff: fn param destructure both backends" {
     try f.check("((fn [[a b] {:keys [c]}] (+ a b c)) [1 2] {:c 3})", 6);
 }
 
+test "diff: loop destructure both backends" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // D-076 cycle 4: loop macro + destructure; recur rebinds the gensym slot.
+    try f.check("(loop [[a b] [1 2]] (if (< a 3) (recur [(inc a) b]) (+ a b)))", 5);
+}
+
 
 // Row 7.10 cycle 2 (D-073 diff_test descriptor cleanup): the 2
 // previously-deferred ADR-0040 op_method_call diff cases now land.

@@ -64,4 +64,12 @@ CLJ
 )
 assert_eq 'defn_multi_destructure' "$(awk 'END{print}' <<< "$defn_multi")" '[9 6]'
 
-echo "OK — phase14_destructure smoke (22 cases) green"
+# --- cycle 4: loop macro (loop* rename) + loop destructuring ---
+# Plain `(loop …)` was previously unresolved — `loop*` had to be written.
+assert_eq 'loop_plain'  "$("$BIN" -e '(loop [x 0] (if (< x 3) (recur (inc x)) x))')"               '3'
+assert_eq 'loop_seq'    "$("$BIN" -e '(loop [[a b] [1 2]] (if (< a 3) (recur [(inc a) b]) (+ a b)))')" '5'
+assert_eq 'loop_rest'   "$("$BIN" -e '(loop [sum 0 [x & xs] [1 2 3]] (if x (recur (+ sum x) xs) sum))')" '6'
+assert_eq 'loop_map'    "$("$BIN" -e '(loop [{:keys [n]} {:n 5}] (if (> n 0) (recur {:n (dec n)}) :done))')" ':done'
+assert_eq 'loop_star'   "$("$BIN" -e '(loop* [x 0] (if (< x 2) (recur (inc x)) x))')"              '2'
+
+echo "OK — phase14_destructure smoke (27 cases) green"
