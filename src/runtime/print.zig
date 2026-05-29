@@ -105,6 +105,29 @@ fn printFloat(w: *Writer, f: f64) Writer.Error!void {
 }
 
 /// Render `v` to `w` in `pr-str` style. Phase-3 surface covers nil /
+/// Render a char in readable (`pr`) form, JVM-faithful (D-154): named
+/// forms for the standard whitespace chars, `\<ch>` for printable ASCII,
+/// `\uXXXX` otherwise. (The raw `str`/`print` form emits the bare char —
+/// see `lang/primitive/core.zig::writeArgsSpaced`.)
+pub fn printCharReadable(w: *Writer, cp: u21) Writer.Error!void {
+    switch (cp) {
+        '\n' => try w.writeAll("\\newline"),
+        '\t' => try w.writeAll("\\tab"),
+        '\r' => try w.writeAll("\\return"),
+        ' ' => try w.writeAll("\\space"),
+        8 => try w.writeAll("\\backspace"),
+        12 => try w.writeAll("\\formfeed"),
+        else => {
+            if (cp > 32 and cp < 127) {
+                try w.writeByte('\\');
+                try w.writeByte(@intCast(cp));
+            } else {
+                try w.print("\\u{x:0>4}", .{cp});
+            }
+        },
+    }
+}
+
 /// boolean / integer / float / char / keyword / builtin_fn / string /
 /// list. Other heap kinds render as `#<tag>` placeholders so the user
 /// always sees *something* instead of an undecipherable address —
@@ -115,7 +138,7 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
         .boolean => try w.writeAll(if (v.asBoolean()) "true" else "false"),
         .integer => try w.print("{d}", .{v.asInteger()}),
         .float => try printFloat(w, v.asFloat()),
-        .char => try w.print("\\u{x:0>4}", .{v.asChar()}),
+        .char => try printCharReadable(w, v.asChar()),
         .builtin_fn => try w.writeAll("#builtin"),
         .keyword => {
             const k = keyword.asKeyword(v);

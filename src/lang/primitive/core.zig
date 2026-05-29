@@ -454,6 +454,12 @@ fn writeArgsSpaced(rt: *Runtime, env: *Env, w: *std.Io.Writer, args: []const Val
         if (i > 0) try w.writeByte(' ');
         if (!readable and arg.tag() == .string) {
             try w.writeAll(string_mod.asString(arg));
+        } else if (!readable and arg.tag() == .char) {
+            // Raw (`print`/`println`/`str`) form of a char is the bare
+            // character, not the readable `\X` literal (D-154).
+            var buf: [4]u8 = undefined;
+            const n = std.unicode.utf8Encode(arg.asChar(), &buf) catch 0;
+            try w.writeAll(buf[0..n]);
         } else {
             // printResult realizes a lazy seq (else delegates to printValue),
             // so (str/prn/println (map …)) renders the seq, not #<lazy_seq>.
@@ -525,6 +531,13 @@ pub fn strFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         switch (arg.tag()) {
             .nil => {},
             .string => try aw.writer.writeAll(string_mod.asString(arg)),
+            .char => {
+                // `(str \A)` → "A": the bare char, not the readable `\A`
+                // literal (D-154).
+                var buf: [4]u8 = undefined;
+                const n = std.unicode.utf8Encode(arg.asChar(), &buf) catch 0;
+                try aw.writer.writeAll(buf[0..n]);
+            },
             else => try print_mod.printResult(rt, env, &aw.writer, arg),
         }
     }

@@ -2,7 +2,7 @@
 # test/e2e/phase14_int_char.sh — D-134 int/char coercion primitives.
 # int: float truncates toward zero, char -> codepoint, integer passthrough.
 # char: codepoint -> char (0..0x10FFFF). Tested via codepoint round-trips
-# to avoid shell-escaping char literals (\A). NOTE: cljw prints a char as
+# to avoid shell-escaping char literals (\A). NOTE: chars now print JVM-faithful (D-154 fixed); raw str gives the bare char,
 # \uXXXX (pre-existing printer; JVM uses readable \A — tracked as D-154),
 # so char results are checked by round-tripping back to int.
 set -euo pipefail
