@@ -27,6 +27,18 @@ test "smoke: main module loads" {
     try std.testing.expect(true);
 }
 
+// ADR-0056 Cycle 2 Step 2a: the build-time cache_gen tool AOT-compiled
+// clojure.core to a bytecode envelope and build.zig embedded it. This
+// verifies the whole generate→embed pipeline produced a non-empty blob,
+// WITHOUT yet changing the production startup (setupCore still uses
+// loadCore; the restore swap is Step 2b).
+test "aot: embedded bootstrap_cache blob is present and non-empty" {
+    const blob = @import("bootstrap_cache").data;
+    try std.testing.expect(blob.len > 0);
+    // The envelope carries the "CLJW" chunk magic somewhere in its bytes.
+    try std.testing.expect(std.mem.find(u8, blob, "CLJW") != null);
+}
+
 test "kindToExitCode maps internal_error → 70 and others → 1 (ADR-0019)" {
     try std.testing.expectEqual(@as(u8, 70), error_render.kindToExitCode(.internal_error));
     try std.testing.expectEqual(@as(u8, 1), error_render.kindToExitCode(.type_error));
