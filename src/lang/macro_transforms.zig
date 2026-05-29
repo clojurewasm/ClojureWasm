@@ -86,6 +86,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "or", .expand = expandOr },
     .{ .name = "if-let", .expand = expandIfLet },
     .{ .name = "when-let", .expand = expandWhenLet },
+    .{ .name = "fn", .expand = expandFn },
     .{ .name = "defn", .expand = expandDefn },
     .{ .name = "defmulti", .expand = expandDefmulti },
     .{ .name = "defmethod", .expand = expandDefmethod },
@@ -462,6 +463,29 @@ fn expandDefn(
     def_items[1] = name_form;
     def_items[2] = fn_form;
     return list(arena, def_items, loc);
+}
+
+/// `fn` macro. The no-name forms are shape-identical to `fn*`, so the
+/// transform just rewrites the head `fn` → `fn*` verbatim: `(fn [p]
+/// body...)` → `(fn* [p] body...)`, `(fn ([p] b) ...)` → `(fn* ([p] b)
+/// ...)`. Multi-arity / `& rest` / closures all ride fn* (ADR-0041).
+/// A self-name `(fn name [p] body)` needs an fn* self-name slot (a
+/// dual-backend extension, D-147) — raised as a clear transient error,
+/// NOT silently dropped (provisional_marker.md). Destructured params
+/// forward to fn*, which raises its existing not-supported path (D-076).
+fn expandFn(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len >= 1 and args[0].data == .symbol)
+        return error_catalog.raise(.fn_named_not_supported, args[0].location, .{});
+    const fn_items = try arena.alloc(Form, args.len + 1);
+    fn_items[0] = sym("fn*", loc);
+    for (args, 0..) |a, i| fn_items[i + 1] = a;
+    return list(arena, fn_items, loc);
 }
 
 fn wrapBodyInDo(arena: std.mem.Allocator, body: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {

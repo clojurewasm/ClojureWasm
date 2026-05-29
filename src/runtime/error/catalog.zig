@@ -97,6 +97,10 @@ pub const Code = enum {
     fn_star_param_namespace_qualified,
     fn_star_rest_missing,
     fn_star_rest_not_symbol,
+    /// `(fn name [params] body)` self-name. The `fn` macro forwards
+    /// no-name forms to `fn*`, but a self-reference name needs an fn*
+    /// self-name slot (a dual-backend extension, D-147). Transient.
+    fn_named_not_supported,
     /// Two fixed-arity methods share the same required-arg count. JVM
     /// Clojure rule 2 per ADR-0041 / row 7.8 cycle 1. args:
     /// `.{ .arity = N }`.
@@ -450,6 +454,10 @@ pub fn entry(comptime code: Code) Entry {
         .fn_star_rest_not_symbol => .{
             .kind = .syntax_error, .phase = .analysis,
             .template = "fn* rest-parameter must be a symbol",
+        },
+        .fn_named_not_supported => .{
+            .kind = .not_implemented, .phase = .macroexpand,
+            .template = "fn with a name (self-reference) is not yet supported; use defn for a named function",
         },
         .fn_star_arity_duplicate => .{
             .kind = .syntax_error, .phase = .analysis,
