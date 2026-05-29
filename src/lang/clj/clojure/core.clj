@@ -171,6 +171,14 @@
       (reduce (fn* [acc x] (conj acc (if (contains? smap x) (get smap x) x))) [] coll)
       (map (fn* [x] (if (contains? smap x) (get smap x) x)) coll))))
 
+;; `(not= x …)` — logical complement of `=`. `(fnext x)` = `(first (next x))`,
+;; `(nnext x)` = `(next (next x))` — the first/next combinators. `(run! f
+;; coll)` applies f to each element for side effects, returns nil (D-134).
+(def not= (fn* [& args] (not (apply = args))))
+(def fnext (fn* [x] (first (next x))))
+(def nnext (fn* [x] (next (next x))))
+(def run! (fn* [f coll] (reduce (fn* [_ x] (f x)) nil coll) nil))
+
 ;; ----------------------------------------------------------------
 ;; Phase 6.16.b-3 helpers — used by clojure.set Group C (project /
 ;; rename / index / join). Pattern A composition; no Zig leaves.
