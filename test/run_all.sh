@@ -249,6 +249,7 @@ run_step "e2e_phase14_some_doto"             "bash test/e2e/phase14_some_doto.sh
 run_step "e2e_phase14_iteration_macros"      "bash test/e2e/phase14_iteration_macros.sh"
 run_step "e2e_phase14_case"                  "bash test/e2e/phase14_case.sh"
 run_step "e2e_phase14_condp"                 "bash test/e2e/phase14_condp.sh"
+run_step "e2e_phase14_println_stdout"        "bash test/e2e/phase14_println_stdout.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
 run_step "e2e_phase14_core_cluster"          "bash test/e2e/phase14_core_cluster.sh"
 run_step "e2e_phase14_print_family"          "bash test/e2e/phase14_print_family.sh"

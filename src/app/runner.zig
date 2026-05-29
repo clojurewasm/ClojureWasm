@@ -49,6 +49,9 @@ pub fn runSource(
     // --- Runtime + Env + backend setup ---
     var rt = Runtime.init(io, gpa);
     defer rt.deinit();
+    // Route println/print/prn through the SAME writer as the result-print
+    // below — one offset-tracking stdout writer per process (D-096).
+    rt.stdout = stdout;
 
     var env = try Env.init(&rt);
     defer env.deinit();
@@ -121,6 +124,7 @@ pub fn runSourceCompare(
 
     var rt = Runtime.init(io, gpa);
     defer rt.deinit();
+    rt.stdout = stdout;
 
     var env = try Env.init(&rt);
     defer env.deinit();

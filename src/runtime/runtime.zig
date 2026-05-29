@@ -58,6 +58,18 @@ pub const Runtime = struct {
     /// interner tables. Phase 5+ adds a separate GC allocator.
     gpa: std.mem.Allocator,
 
+    /// Process-shared stdout writer. Set by the app entry points
+    /// (runSource / repl / nrepl) to the SINGLE writer that owns the
+    /// process's stdout buffer, so println / print / prn write through
+    /// the same offset-tracking writer as the runner's result-print.
+    /// Two independent `std.Io.File.stdout().writer(...)` instances each
+    /// flush from offset 0 and clobber each other (D-096); routing all
+    /// stdout through one writer fixes it. `null` only for test-init
+    /// Runtimes with no real terminal — those fall back to a private
+    /// writer (correct in isolation, where nothing competes). Superseded
+    /// by the `*out*` dynamic var when that lands (Phase 15).
+    stdout: ?*std.Io.Writer = null,
+
     /// Keyword interner. Tied to this Runtime, not a global, so
     /// independent Runtimes (parallel tests / future multi-tenant
     /// nREPL) coexist without sharing a table.

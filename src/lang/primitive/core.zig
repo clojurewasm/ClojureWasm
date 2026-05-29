@@ -462,40 +462,45 @@ fn writeArgsSpaced(rt: *Runtime, env: *Env, w: *std.Io.Writer, args: []const Val
     }
 }
 
+/// Emit `args` to the process stdout, space-separated. `readable` picks
+/// `pr` (quoted) vs `print` (raw) form; `newline` appends a trailing `\n`.
+/// Writes through the shared `rt.stdout` so println/print/prn interleave
+/// with the runner's result-print on ONE offset-tracking writer (D-096);
+/// a test-init Runtime with no shared writer falls back to a private one
+/// (correct in isolation — nothing else competes for the fd).
+fn emitToStdout(rt: *Runtime, env: *Env, args: []const Value, readable: bool, newline: bool) anyerror!Value {
+    if (rt.stdout) |w| {
+        try writeArgsSpaced(rt, env, w, args, readable);
+        if (newline) try w.writeByte('\n');
+        try w.flush();
+    } else {
+        var stdout_buf: [4096]u8 = undefined;
+        var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
+        const w = &stdout_writer.interface;
+        try writeArgsSpaced(rt, env, w, args, readable);
+        if (newline) try w.writeByte('\n');
+        try w.flush();
+    }
+    return .nil_val;
+}
+
 /// `(println & args)` — human form, space-separated, trailing newline.
 pub fn printlnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = loc;
-    var stdout_buf: [4096]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
-    const stdout = &stdout_writer.interface;
-    try writeArgsSpaced(rt, env, stdout, args, false);
-    try stdout.writeByte('\n');
-    try stdout.flush();
-    return .nil_val;
+    return emitToStdout(rt, env, args, false, true);
 }
 
 /// `(print & args)` — like `println` but WITHOUT the trailing newline.
 pub fn printFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = loc;
-    var stdout_buf: [4096]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
-    const stdout = &stdout_writer.interface;
-    try writeArgsSpaced(rt, env, stdout, args, false);
-    try stdout.flush();
-    return .nil_val;
+    return emitToStdout(rt, env, args, false, false);
 }
 
 /// `(prn & args)` — readable (`pr`) form, space-separated, trailing
 /// newline. Strings/chars are quoted (unlike `println`).
 pub fn prnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = loc;
-    var stdout_buf: [4096]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writer(rt.io, &stdout_buf);
-    const stdout = &stdout_writer.interface;
-    try writeArgsSpaced(rt, env, stdout, args, true);
-    try stdout.writeByte('\n');
-    try stdout.flush();
-    return .nil_val;
+    return emitToStdout(rt, env, args, true, true);
 }
 
 /// `(pr-str & args)` — render args in readable (`pr`) form,

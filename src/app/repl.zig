@@ -56,6 +56,7 @@ pub fn run(
 ) !void {
     var rt = Runtime.init(io, gpa);
     defer rt.deinit();
+    rt.stdout = stdout; // println/print/prn share the REPL's stdout writer (D-096)
 
     var env = try Env.init(&rt);
     defer env.deinit();

@@ -86,6 +86,9 @@ pub fn run(
     // thread means no race). Multi-session = Phase 15+ (D-117).
     var rt = Runtime.init(io, gpa);
     defer rt.deinit();
+    // println/print/prn route to the server's process stdout (matches the
+    // current D-118 "no per-session capture" state) on one writer (D-096).
+    rt.stdout = stdout;
 
     var env = try Env.init(&rt);
     defer env.deinit();
