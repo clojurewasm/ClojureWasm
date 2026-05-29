@@ -207,6 +207,8 @@ pub const Code = enum {
     when_first_bindings_invalid,
     case_form_incomplete,
     condp_form_incomplete,
+    if_not_form_incomplete,
+    when_not_form_incomplete,
 
     // --- Eval (type) ---
     type_arg_not_number,
@@ -709,6 +711,14 @@ pub fn entry(comptime code: Code) Entry {
         .condp_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "condp requires a predicate and an expression",
+        },
+        .if_not_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "if-not requires a test and a then form (else optional)",
+        },
+        .when_not_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "when-not requires a test and at least one body form",
         },
         .defn_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,

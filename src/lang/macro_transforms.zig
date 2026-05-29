@@ -80,7 +80,10 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "let", .expand = expandLet },
     .{ .name = "loop", .expand = expandLoop },
     .{ .name = "when", .expand = expandWhen },
+    .{ .name = "when-not", .expand = expandWhenNot },
     .{ .name = "cond", .expand = expandCond },
+    .{ .name = "if-not", .expand = expandIfNot },
+    .{ .name = "comment", .expand = expandComment },
     .{ .name = "->", .expand = expandThreadFirst },
     .{ .name = "->>", .expand = expandThreadLast },
     .{ .name = "as->", .expand = expandAsThread },
@@ -932,6 +935,36 @@ fn expandCondp(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: 
     binds[2] = gexpr;
     binds[3] = args[1];
     return buildLetStarBody(arena, binds, body, loc);
+}
+
+// --- when-not / if-not / comment (D-134 trivial control macros) ---
+
+/// `(if-not test then else?)` → `(if test else then)` (branches swapped;
+/// avoids a `not` call). `else` defaults to nil.
+fn expandIfNot(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 2 or args.len > 3)
+        return error_catalog.raise(.if_not_form_incomplete, loc, .{});
+    const else_form: Form = if (args.len == 3) args[2] else nilForm(loc);
+    return makeIf(arena, args[0], else_form, args[1], loc);
+}
+
+/// `(when-not test body…)` → `(if test nil (do body…))`.
+fn expandWhenNot(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 2)
+        return error_catalog.raise(.when_not_form_incomplete, loc, .{});
+    const body = try foldBody(arena, args[1..], loc);
+    return makeIf(arena, args[0], nilForm(loc), body, loc);
+}
+
+/// `(comment …)` → nil. The body is read (must be well-formed s-exprs) but
+/// never analyzed or evaluated, so it may reference undefined symbols.
+fn expandComment(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    _ = arena;
+    _ = rt;
+    _ = args;
+    return nilForm(loc);
 }
 
 const ThreadDir = enum { first, last };
