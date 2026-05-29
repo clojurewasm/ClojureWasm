@@ -171,6 +171,21 @@
                           (keys m))))
               (first maps)
               (rest maps)))))
+;; `(merge-with f & maps)` — like merge, but a key present in more than
+;; one map combines values via `(f existing new)` (D-134). nil maps skip.
+(def merge-with
+  (fn* [f & maps]
+    (reduce (fn* [acc m]
+              (if (nil? m)
+                acc
+                (reduce (fn* [a k]
+                          (if (contains? a k)
+                            (assoc a k (f (get a k) (get m k)))
+                            (assoc a k (get m k))))
+                        acc
+                        (keys m))))
+            {}
+            maps)))
 
 ;; `(set coll)` — coerce a collection to a set. Duplicates collapse.
 (def set
@@ -583,6 +598,20 @@
        ([a args] (cons a args))
        ([a b args] (cons a (cons b args)))
        ([a b c args] (cons a (cons b (cons c args))))))
+;; `(partition-by f coll)` — lazy seq of runs where `(f x)` is constant
+;; (a new run starts each time `(f x)` changes) (D-134). `run` is a
+;; `take-while` lazy_seq (NOT `(cons fst (take-while …))`): a raw cons
+;; onto a lazy_seq caches a wrong `count` (D-153), but a lazy_seq counts
+;; by realizing — and `(f (first s)) = fv` so the first element is in run.
+(def partition-by
+  (fn* [f coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s
+          (let [fv (f (first s))
+                run (take-while (fn* [x] (= (f x) fv)) s)]
+            (cons run (partition-by f (drop (count run) s))))
+          nil)))))
 
 ;; `(partition n coll)` / `(partition n step coll)` — lazy seq of n-item
 ;; groups stepping by `step` (default n); the final incomplete group is
