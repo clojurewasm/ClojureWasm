@@ -92,6 +92,9 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "or", .expand = expandOr },
     .{ .name = "if-let", .expand = expandIfLet },
     .{ .name = "when-let", .expand = expandWhenLet },
+    .{ .name = "if-some", .expand = expandIfSome },
+    .{ .name = "when-some", .expand = expandWhenSome },
+    .{ .name = "doto", .expand = expandDoto },
     .{ .name = "fn", .expand = expandFn },
     .{ .name = "defn", .expand = expandDefn },
     .{ .name = "defmulti", .expand = expandDefmulti },
@@ -602,6 +605,94 @@ fn expandSomeThreadFirst(arena: std.mem.Allocator, rt: *Runtime, args: []const F
 }
 fn expandSomeThreadLast(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
     return someThread(arena, rt, args, loc, .last);
+}
+
+// --- if-some / when-some / doto (D-134 conditional family) ---
+
+/// `(do body…)` from a body slice, folded to the single form when len == 1.
+fn foldBody(arena: std.mem.Allocator, body: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    if (body.len == 1) return body[0];
+    const do_items = try arena.alloc(Form, body.len + 1);
+    do_items[0] = sym("do", loc);
+    @memcpy(do_items[1..], body);
+    return list(arena, do_items, loc);
+}
+
+/// `(if-some [name expr] then else?)` →
+/// `(let* [g expr] (if (nil? g) else (let* [name g] then)))`.
+fn expandIfSome(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    if (args.len < 2 or args.len > 3)
+        return error_catalog.raise(.if_some_form_incomplete, loc, .{});
+    if (args[0].data != .vector or args[0].data.vector.len != 2)
+        return error_catalog.raise(.if_some_bindings_invalid, args[0].location, .{});
+    const binding_v = args[0].data.vector;
+    if (binding_v[0].data != .symbol or binding_v[0].data.symbol.ns != null)
+        return error_catalog.raise(.if_some_binding_name_invalid, binding_v[0].location, .{});
+
+    const name_form = binding_v[0];
+    const expr_form = binding_v[1];
+    const then_form = args[1];
+    const else_form: Form = if (args.len == 3) args[2] else nilForm(loc);
+    const gname = try rt.gensym(arena, "if_some");
+
+    // inner: (let* [name g] then)
+    const inner_binding = try arena.alloc(Form, 2);
+    inner_binding[0] = name_form;
+    inner_binding[1] = sym(gname, loc);
+    const inner_let = try buildLetStarBody(arena, inner_binding, then_form, loc);
+
+    // (nil? g)
+    const nilq_items = try arena.alloc(Form, 2);
+    nilq_items[0] = sym("nil?", loc);
+    nilq_items[1] = sym(gname, loc);
+
+    // (if (nil? g) else (let* [name g] then))
+    const if_items = try arena.alloc(Form, 4);
+    if_items[0] = sym("if", loc);
+    if_items[1] = try list(arena, nilq_items, loc);
+    if_items[2] = else_form;
+    if_items[3] = inner_let;
+
+    // (let* [g expr] (if …))
+    const outer_binding = try arena.alloc(Form, 2);
+    outer_binding[0] = sym(gname, loc);
+    outer_binding[1] = expr_form;
+    return buildLetStarBody(arena, outer_binding, try list(arena, if_items, loc), loc);
+}
+
+/// `(when-some [name expr] body…)` → `(if-some [name expr] (do body…) nil)`
+/// (re-expands through expandIfSome for the gensym).
+fn expandWhenSome(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 2)
+        return error_catalog.raise(.when_some_form_incomplete, loc, .{});
+    const body_form = try foldBody(arena, args[1..], loc);
+    const items = try arena.alloc(Form, 4);
+    items[0] = sym("if-some", loc);
+    items[1] = args[0];
+    items[2] = body_form;
+    items[3] = nilForm(loc);
+    return list(arena, items, loc);
+}
+
+/// `(doto x form…)` → `(let* [g x] (do (-> g form1) … g))`. Threads g into
+/// each form (first position) for side effects, evaluates to g.
+fn expandDoto(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    if (args.len == 0)
+        return error_catalog.raise(.doto_form_incomplete, loc, .{});
+    const g = sym(try rt.gensym(arena, "doto"), loc);
+    const forms = args[1..];
+    // body: (do <threaded forms…> g)
+    const do_items = try arena.alloc(Form, forms.len + 2);
+    do_items[0] = sym("do", loc);
+    for (forms, 0..) |form, i| {
+        do_items[1 + i] = try threadStep(arena, g, form, .first);
+    }
+    do_items[forms.len + 1] = g;
+    const binding = try arena.alloc(Form, 2);
+    binding[0] = g;
+    binding[1] = args[0];
+    return buildLetStarBody(arena, binding, try list(arena, do_items, loc), loc);
 }
 
 const ThreadDir = enum { first, last };

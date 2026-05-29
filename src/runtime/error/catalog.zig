@@ -195,6 +195,11 @@ pub const Code = enum {
     extend_protocol_section_invalid,
     prefer_method_form_incomplete,
     when_let_form_incomplete,
+    if_some_form_incomplete,
+    if_some_bindings_invalid,
+    if_some_binding_name_invalid,
+    when_some_form_incomplete,
+    doto_form_incomplete,
 
     // --- Eval (type) ---
     type_arg_not_number,
@@ -649,6 +654,26 @@ pub fn entry(comptime code: Code) Entry {
         .if_let_binding_name_invalid => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "if-let binding name must be an unqualified symbol",
+        },
+        .if_some_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "if-some requires [name expr] and a then form (else optional)",
+        },
+        .if_some_bindings_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "if-some bindings must be a vector of [name expr]",
+        },
+        .if_some_binding_name_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "if-some binding name must be an unqualified symbol",
+        },
+        .when_some_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "when-some requires [name expr] and at least one body form",
+        },
+        .doto_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "doto requires an expression to thread through the forms",
         },
         .defn_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,
