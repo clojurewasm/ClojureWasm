@@ -200,6 +200,11 @@ pub const Code = enum {
     if_some_binding_name_invalid,
     when_some_form_incomplete,
     doto_form_incomplete,
+    dotimes_form_incomplete,
+    dotimes_bindings_invalid,
+    while_form_incomplete,
+    when_first_form_incomplete,
+    when_first_bindings_invalid,
 
     // --- Eval (type) ---
     type_arg_not_number,
@@ -674,6 +679,26 @@ pub fn entry(comptime code: Code) Entry {
         .doto_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "doto requires an expression to thread through the forms",
+        },
+        .dotimes_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "dotimes requires a [name count] binding form",
+        },
+        .dotimes_bindings_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "dotimes bindings must be a vector of [name count] with an unqualified symbol name",
+        },
+        .while_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "while requires a test expression",
+        },
+        .when_first_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "when-first requires [name coll] and at least one body form",
+        },
+        .when_first_bindings_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "when-first bindings must be a vector of [name coll] with an unqualified symbol name",
         },
         .defn_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,

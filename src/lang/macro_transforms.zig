@@ -95,6 +95,9 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "if-some", .expand = expandIfSome },
     .{ .name = "when-some", .expand = expandWhenSome },
     .{ .name = "doto", .expand = expandDoto },
+    .{ .name = "dotimes", .expand = expandDotimes },
+    .{ .name = "while", .expand = expandWhile },
+    .{ .name = "when-first", .expand = expandWhenFirst },
     .{ .name = "fn", .expand = expandFn },
     .{ .name = "defn", .expand = expandDefn },
     .{ .name = "defmulti", .expand = expandDefmulti },
@@ -693,6 +696,106 @@ fn expandDoto(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: S
     binding[0] = g;
     binding[1] = args[0];
     return buildLetStarBody(arena, binding, try list(arena, do_items, loc), loc);
+}
+
+// --- dotimes / while / when-first (D-134 iteration/binding family) ---
+
+/// `(dotimes [i n] body…)` →
+/// `(let* [ng n] (loop [i 0] (when (< i ng) body… (recur (inc i)))))`.
+/// Evaluates to nil; `ng` is hoisted so `n` is evaluated once.
+fn expandDotimes(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    if (args.len < 1)
+        return error_catalog.raise(.dotimes_form_incomplete, loc, .{});
+    if (args[0].data != .vector or args[0].data.vector.len != 2)
+        return error_catalog.raise(.dotimes_bindings_invalid, args[0].location, .{});
+    const bv = args[0].data.vector;
+    if (bv[0].data != .symbol or bv[0].data.symbol.ns != null)
+        return error_catalog.raise(.dotimes_bindings_invalid, bv[0].location, .{});
+    const i_sym = bv[0];
+    const n_expr = bv[1];
+    const body = args[1..];
+    const ng = sym(try rt.gensym(arena, "dotimes_n"), loc);
+
+    const recur_form = try makeCall(arena, "recur", &.{try makeCall(arena, "inc", &.{i_sym}, loc)}, loc);
+    const lt_form = try makeCall(arena, "<", &.{ i_sym, ng }, loc);
+
+    // (when (< i ng) body… (recur (inc i)))
+    const when_items = try arena.alloc(Form, 3 + body.len);
+    when_items[0] = sym("when", loc);
+    when_items[1] = lt_form;
+    @memcpy(when_items[2 .. 2 + body.len], body);
+    when_items[2 + body.len] = recur_form;
+
+    // (loop [i 0] (when …))
+    const loop_binding = try arena.alloc(Form, 2);
+    loop_binding[0] = i_sym;
+    loop_binding[1] = intForm(0, loc);
+    const loop_items = try arena.alloc(Form, 3);
+    loop_items[0] = sym("loop", loc);
+    loop_items[1] = .{ .data = .{ .vector = loop_binding }, .location = loc };
+    loop_items[2] = try list(arena, when_items, loc);
+
+    // (let* [ng n] (loop …))
+    const outer_binding = try arena.alloc(Form, 2);
+    outer_binding[0] = ng;
+    outer_binding[1] = n_expr;
+    return buildLetStarBody(arena, outer_binding, try list(arena, loop_items, loc), loc);
+}
+
+/// `(while test body…)` → `(loop [] (when test body… (recur)))`.
+/// Evaluates to nil.
+fn expandWhile(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 1)
+        return error_catalog.raise(.while_form_incomplete, loc, .{});
+    const test_form = args[0];
+    const body = args[1..];
+    const recur_form = try makeCall(arena, "recur", &.{}, loc);
+
+    // (when test body… (recur))
+    const when_items = try arena.alloc(Form, 3 + body.len);
+    when_items[0] = sym("when", loc);
+    when_items[1] = test_form;
+    @memcpy(when_items[2 .. 2 + body.len], body);
+    when_items[2 + body.len] = recur_form;
+
+    // (loop [] (when …))
+    const loop_items = try arena.alloc(Form, 3);
+    loop_items[0] = sym("loop", loc);
+    loop_items[1] = .{ .data = .{ .vector = try arena.alloc(Form, 0) }, .location = loc };
+    loop_items[2] = try list(arena, when_items, loc);
+    return list(arena, loop_items, loc);
+}
+
+/// `(when-first [x coll] body…)` →
+/// `(when-let [g (seq coll)] (let* [x (first g)] (do body…)))`.
+fn expandWhenFirst(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    if (args.len < 2)
+        return error_catalog.raise(.when_first_form_incomplete, loc, .{});
+    if (args[0].data != .vector or args[0].data.vector.len != 2)
+        return error_catalog.raise(.when_first_bindings_invalid, args[0].location, .{});
+    const bv = args[0].data.vector;
+    if (bv[0].data != .symbol or bv[0].data.symbol.ns != null)
+        return error_catalog.raise(.when_first_bindings_invalid, bv[0].location, .{});
+    const x_sym = bv[0];
+    const coll_expr = bv[1];
+    const g = sym(try rt.gensym(arena, "when_first"), loc);
+
+    // inner: (let* [x (first g)] (do body…))
+    const inner_binding = try arena.alloc(Form, 2);
+    inner_binding[0] = x_sym;
+    inner_binding[1] = try makeCall(arena, "first", &.{g}, loc);
+    const inner_let = try buildLetStarBody(arena, inner_binding, try foldBody(arena, args[1..], loc), loc);
+
+    // (when-let [g (seq coll)] inner_let)
+    const wl_binding = try arena.alloc(Form, 2);
+    wl_binding[0] = g;
+    wl_binding[1] = try makeCall(arena, "seq", &.{coll_expr}, loc);
+    const wl_items = try arena.alloc(Form, 3);
+    wl_items[0] = sym("when-let", loc);
+    wl_items[1] = .{ .data = .{ .vector = wl_binding }, .location = loc };
+    wl_items[2] = inner_let;
+    return list(arena, wl_items, loc);
 }
 
 const ThreadDir = enum { first, last };
