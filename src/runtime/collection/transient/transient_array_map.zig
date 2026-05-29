@@ -43,6 +43,7 @@ const gc_heap_mod = @import("../../gc/gc_heap.zig");
 const mark_sweep = @import("../../gc/mark_sweep.zig");
 const map_mod = @import("../map.zig");
 const vector_mod = @import("../vector.zig");
+const equal = @import("../../equal.zig");
 
 const ARRAY_MAP_THRESHOLD = map_mod.ARRAY_MAP_THRESHOLD;
 
@@ -61,7 +62,7 @@ pub const TransientArrayMap = extern struct {
 };
 
 fn keyEq(a: Value, b: Value) bool {
-    return @intFromEnum(a) == @intFromEnum(b);
+    return equal.keyEqValue(a, b); // D-151: value-eq for String keys
 }
 
 /// Build a TransientArrayMap from a persistent map source. Cycle 2

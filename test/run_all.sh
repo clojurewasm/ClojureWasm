@@ -238,6 +238,7 @@ run_step "e2e_phase14_java_static_dispatch"  "bash test/e2e/phase14_java_static_
 run_step "e2e_phase14_instance_member"       "bash test/e2e/phase14_instance_member.sh"
 run_step "e2e_phase14_math"                  "bash test/e2e/phase14_math.sh"
 run_step "e2e_phase14_destructure"           "bash test/e2e/phase14_destructure.sh"
+run_step "e2e_phase14_map_string_keys"       "bash test/e2e/phase14_map_string_keys.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
 run_step "e2e_phase14_core_cluster"          "bash test/e2e/phase14_core_cluster.sh"
 run_step "e2e_phase14_print_family"          "bash test/e2e/phase14_print_family.sh"

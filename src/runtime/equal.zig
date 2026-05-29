@@ -165,6 +165,29 @@ fn setEqual(rt: *Runtime, a: Value, b: Value) anyerror!bool {
     return true;
 }
 
+/// Value equality for MAP KEYS (D-151). Deliberately takes NO `rt`/`env`:
+/// `map.get`/`contains`/`assoc` have ~68 call sites, many without a
+/// Runtime/Env (VM dispatch, multimethod), so threading `valueEqual`'s
+/// signature down would ripple everywhere. This covers the
+/// non-recursive key types by value:
+///   - identity fast path — nil / bool / int / float / char /
+///     builtin_fn / interned keyword·symbol / pointer-identical heap
+///     (immediates + interns are already by-value under identity, and
+///     cross-category like `{1 :a}` vs `1.0` stays unequal, matching
+///     JVM's category-based `=` for keys);
+///   - `.string` — byte-equality (the D-151 target: non-interned String
+///     Values with equal bytes but distinct heap pointers).
+/// Collection keys (vector/map/set) and ratio/big_decimal/big_int keys
+/// need the recursive / category-aware `valueEqual` (which needs `rt`)
+/// and stay identity-compared — a pre-existing, rare residual tracked on
+/// D-151, NOT a regression (they were identity-compared before too).
+pub fn keyEqValue(a: Value, b: Value) bool {
+    if (@intFromEnum(a) == @intFromEnum(b)) return true;
+    if (a.tag() == .string and b.tag() == .string)
+        return std.mem.eql(u8, string_mod.asString(a), string_mod.asString(b));
+    return false;
+}
+
 /// `(= a b)` semantics. See module docstring + ADR-0052.
 pub fn valueEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     // 1. Identity fast path: nil / bool / int / char / builtin_fn /

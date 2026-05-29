@@ -45,6 +45,7 @@ const gc_heap_mod = @import("../gc/gc_heap.zig");
 const mark_sweep = @import("../gc/mark_sweep.zig");
 const list_mod = @import("list.zig");
 const vector_mod = @import("vector.zig");
+const equal = @import("../equal.zig");
 
 /// ArrayMap threshold: at most 8 K/V pairs before promotion to
 /// HamtMap. Per ROADMAP row 5.5 wording + survey recommendation.
@@ -122,14 +123,14 @@ pub fn count(v: Value) u32 {
     };
 }
 
-/// Key equality for the linear-scan ArrayMap path. **5.5.a uses
-/// bit-pattern equality** which handles nil / boolean / integer /
-/// char / builtin_fn / interned-keyword / interned-symbol cleanly
-/// (interning makes these by-identity = by-value). 5.5.b will widen
-/// to deep `=` semantics for string / list / vector keys via the
-/// existing `runtime/hash.zig` machinery.
+/// Key equality for the linear-scan ArrayMap path. Delegates to
+/// `equal.keyEqValue` (D-151): identity fast path for immediates +
+/// interned keyword·symbol, plus byte-equality for non-interned String
+/// keys (the D-151 fix — `(get {"x" 5} "x")`). Collection / ratio /
+/// big_int keys stay identity-compared (rare residual; the recursive
+/// `=` over them needs `rt`, which the ~68 map call sites lack).
 fn keyEq(a: Value, b: Value) bool {
-    return @intFromEnum(a) == @intFromEnum(b);
+    return equal.keyEqValue(a, b);
 }
 
 /// `(assoc m k v)` — returns a new map with `k → v` per Clojure

@@ -414,6 +414,13 @@ test "diff: loop destructure both backends" {
     try f.check("(loop [[a b] [1 2]] (if (< a 3) (recur [(inc a) b]) (+ a b)))", 5);
 }
 
+test "diff: map string-key lookup both backends" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // D-151: string keys match by value (byte-eq) on both backends.
+    try f.check("(get {\"a\" 1 \"b\" 2} \"b\")", 2);
+}
+
 
 // Row 7.10 cycle 2 (D-073 diff_test descriptor cleanup): the 2
 // previously-deferred ADR-0040 op_method_call diff cases now land.
