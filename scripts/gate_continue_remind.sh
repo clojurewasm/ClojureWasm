@@ -46,9 +46,12 @@ REMINDER=$(cat <<'EOF'
 A test gate just launched. The loop's only stop is the user's
 explicit directive (CLAUDE.md § The only stop) — an "awaiting the
 gate" turn-end with nothing pending is the de-facto stall to avoid.
-While the gate runs, start the NEXT task's Step 0 (read-only; the
-working tree is untouched until the gate is green and the prior
-commit lands); on completion, commit and roll into the next unit.
+While the gate runs, prep the NEXT task with READS + notes (working
+tree untouched until the gate is green and the prior commit lands);
+on completion, commit and roll into the next unit. CAUTION: do NOT
+dispatch a CPU-heavy subagent (a Step-0 survey) concurrently with the
+gate — it contends with the perf-threshold steps (e.g. cold_start)
+and causes FALSE failures; dispatch surveys AFTER the gate completes.
 End a turn only with a still-running harness task OR a
 ScheduleWakeup(prompt:"continue") long backstop — never a bare
 recap. Auto-compaction is transparent; size is never a reason to stop.
