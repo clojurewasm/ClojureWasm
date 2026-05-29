@@ -7,14 +7,24 @@
 
 - **HEAD**: ≈ `e5a58552` (row 14.11 closed; see `git log` for exact HEAD —
   it advances each commit).
-- **First commit on resume MUST be**: **row 14.13 — v0.1.0 polish bundle.**
-  Remaining sub-deliverables (ROADMAP §9.16 row 14.13; **D-066 env var
-  spec is already Discharged** — `docs/spec/error_format.md`; its man page
-  is D-119, opportunistic): (1) `compat_tiers.yaml` Tier A/B declarations
-  comprehensive review/finish; (2) `bench/history.yaml` v0.1.0 lock-point
-  entry per ADR-0044 schema; (3) `cljw.error/with-context` macro (v5
-  §13.6 user runtime error-injection API). Start with (1) compat_tiers
-  review or (2) bench/history lock-point; Step 0 survey first.
+- **First commit on resume MUST be**: **row 14.13 — `compat_tiers.yaml`
+  honesty-reconciliation.** Step 0 survey DONE + VERIFIED
+  (`private/notes/phase14-14.13-compat-tiers-survey.md`): the SSOT lies
+  about what ships. Concrete fixes (do Step 0.6 then implement; the sync
+  gate `check_compat_tiers_sync.sh` is informational so nothing enforces
+  truth — hand-fix): (1) **down-tier the over-claimed Tier A**:
+  `clojure.math` / `clojure.spec.alpha` / `clojure.spec.gen.alpha`
+  (compat_tiers.yaml ~L66-70 + target_phase L37) are declared Tier A
+  "full" but have ZERO impl (no `math.clj`, no `spec/` — verified) — they
+  are quality-loop work, not v0.1.0 (F-010); (2) **promote the
+  under-claimed**: `clojure.edn`/`pprint`/`tools.cli` are `status:planned`
+  but have working `.clj`; `clojure.data.json`/`data.csv` implemented but
+  unlisted; `clojure.zip` (Tier A) is really Tier B; (3) fix stale
+  metadata (`version 0.1.1-draft`, `last_updated 2026-05-24`) + the 36
+  retired `cljw.host.*` prefixes. Then sub-deliverables (2)
+  `bench/history.yaml` v0.1.0 lock-point (ADR-0044) + (3)
+  `cljw.error/with-context` macro (v5 §13.6). D-066 already Discharged;
+  man page = D-119 (opportunistic).
 - **Forbidden this session**: re-opening D-100 (a-e ALL discharged —
   `cljw build` ships end-to-end) or the lazy-seq cluster (ADR-0054
   complete). Widening wasm FFI / row 14.12 (zwasm-v2-gated, F-010
