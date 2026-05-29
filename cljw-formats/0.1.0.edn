@@ -1,0 +1,98 @@
+;; ClojureWasm on-disk format archive — v0.1.0
+;;
+;; Decoder-permanence record (ADR-0034 D11). This file is the SSOT for the
+;; byte layout of every serialized ClojureWasm artifact format as of the
+;; v0.1.0 release. Policy: ADD-ONLY. A format entry, once committed here,
+;; is NEVER removed or edited — a newer cljw that changes a format adds a
+;; new versioned entry (and bumps the format's :version), so a future
+;; decoder can always read an older artifact. Implementation:
+;; src/eval/bytecode/serialize.zig. All integers are little-endian.
+;;
+;; This is pure EDN (data only — no function calls, decimal byte tags), so
+;; any EDN reader can load it. Three layered formats compose a built
+;; artifact: chunk-format (one compiled top-level form), payload-envelope
+;; (a sequence of chunks), artifact-trailer (runtime binary + payload +
+;; "CLJC" footer). A `cljw build app.clj -o app` output is
+;; [cljw binary][payload-envelope][u64 payload-len]["CLJC"].
+
+{:cljw-formats-version "0.1.0"
+
+ ;; BytecodeChunk wire format. :version 2 covers BOTH the opcode layout AND
+ ;; the peephole rule set (D-103): a peephole change that alters emitted
+ ;; bytecode requires a version bump, else a cached artifact would replay
+ ;; stale-optimized bytecode silently.
+ :chunk-format
+ {:version 2
+  :magic "CLJW"
+  :layout
+  [["magic" "4 bytes = CLJW"]
+   ["version" "u16 = 2"]
+   ["instr-count" "u32"]
+   ["instructions" "instr-count entries of (opcode:u8, operand:u16)"]
+   ["constants-count" "u32"]
+   ["constants" "constants-count values (each per :value-tags)"]
+   ["call-sites-count" "u32"]
+   ["call-sites" "each: method-name (u32 len + UTF-8 bytes), arg-count:u16"]
+   ["libspecs-count" "u32"]
+   ["libspecs" "each: ns-name (u32 len + bytes), has-alias:u8, optional alias (u32 len + bytes), refers-count:u32, refers entries (u32 len + bytes)"]]
+  :notes
+  ["CallSiteEntry.cache is NOT serialized — it is a runtime inline cache rebuilt on first dispatch."
+   "Out of scope (raise an explicit error, never a silent partial archive): hash_map (HAMT iteration, D-045); atom / multi_fn / big_int / wasm_* / transient_* tags."]}
+
+ ;; Constant ValueTag wire bytes — a STABLE enum decoupled from the NaN-box
+ ;; Value.Tag (which evolves with F-004). Each constant starts with a
+ ;; 1-byte tag (the :byte field), then a per-tag :body. Heap values
+ ;; serialize their CONTENTS, never a pointer (F-004); on load they are
+ ;; reconstructed through the runtime GC. A vector (not a 16-entry map) so
+ ;; cljw can read its own archive without hash-map promotion (D-045).
+ :value-tags
+ [{:byte 0 :hex "0x00" :name :nil :body "(none)"}
+  {:byte 1 :hex "0x01" :name :true :body "(none)"}
+  {:byte 2 :hex "0x02" :name :false :body "(none)"}
+  {:byte 3 :hex "0x03" :name :integer :body "i64"}
+  {:byte 4 :hex "0x04" :name :float :body "u64 (bitcast of f64)"}
+  {:byte 5 :hex "0x05" :name :char :body "u32 codepoint"}
+  {:byte 6 :hex "0x06" :name :string :body "u32 len + UTF-8 bytes"}
+  {:byte 7 :hex "0x07" :name :symbol :body "ns (u32 len + bytes, empty = none) + name (u32 len + bytes)"}
+  {:byte 8 :hex "0x08" :name :keyword :body "ns (u32 len + bytes, empty = none) + name (u32 len + bytes)"}
+  {:byte 9 :hex "0x09" :name :list :body "u32 count + count values"}
+  {:byte 10 :hex "0x0A" :name :vector :body "u32 count + count values"}
+  {:byte 11 :hex "0x0B" :name :array-map :body "u32 count + count (key-value, val-value) pairs"}
+  {:byte 12 :hex "0x0C" :name :hash-set :body "u32 count + count values (array-backed only)"}
+  {:byte 13 :hex "0x0D" :name :var-ref :body "ns.name (u32 len + bytes) + var-name (u32 len + bytes); re-resolved via env on load"}
+  {:byte 14 :hex "0x0E" :name :regex :body "u32 len + source UTF-8 bytes; re-compiled with default flags"}
+  ;; ADR-0034 amendment 2: function constants. A method body IS a nested
+  ;; BytecodeChunk (recursive :chunk-format). A constant fn_val always has
+  ;; null closure bindings (a runtime closure is never a compile-time
+  ;; constant); slot-base may be 0 (top-level fn) or positive (a template
+  ;; whose closure is filled at runtime by op_make_fn). Param-name strings
+  ;; are not serialized at v0.1.0 (D-139).
+  {:byte 15 :hex "0x0F" :name :fn-val
+   :body "slot-base:u16, methods-count:u32, methods each (arity:u16, has-rest:u8, has-bytecode:u8, optional chunk (u32 len + :chunk-format bytes)), has-variadic:u8, optional variadic method (same shape)"}]
+
+ ;; Payload envelope — a SEQUENCE of chunks (one per top-level form,
+ ;; ADR-0034 am1 Alt B). Archived SEPARATELY from :chunk-format so envelope
+ ;; framing and chunk semantics pin independently. The loader walks chunk
+ ;; boundaries via the per-chunk length prefix (the v2 chunk has no end
+ ;; marker) and deserializes + runs each chunk INTERLEAVED (a later chunk's
+ ;; var-ref to an earlier chunk's def needs that def to have run).
+ :payload-envelope
+ {:version 1
+  :layout
+  [["n-chunks" "u32"]
+   ["chunks" "n-chunks entries of (chunk-len:u32, :chunk-format bytes)"]]}
+
+ ;; Self-contained artifact trailer — Deno-style: the payload envelope is
+ ;; appended to a copy of the cljw runtime binary, then a 12-byte footer.
+ ;; At startup cljw reads its own tail; a CLJC footer means "run the
+ ;; embedded payload". v0.1.0 ships the MINIMAL trailer only — the
+ ;; bootstrap-cache / Tier-0-metadata / build-id blocks (ADR-0034 D4) are
+ ;; deferred to D-131.
+ :artifact-trailer
+ {:version 1
+  :magic "CLJC"
+  :layout
+  [["runtime-binary" "the cljw executable bytes, verbatim"]
+   ["payload" ":payload-envelope bytes"]
+   ["payload-len" "u64 = byte length of payload"]
+   ["magic" "4 bytes = CLJC"]]}}
