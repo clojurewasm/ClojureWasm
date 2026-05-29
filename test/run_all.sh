@@ -33,6 +33,12 @@ cd "$(dirname "$0")/.."
 LIST_ONLY=0
 SKIP_STEPS=""
 ONLY_STEPS=""
+# Functional e2e steps run concurrently (they are independent cljw spawns);
+# they make up ~60% of the gate wall-time and are embarrassingly parallel.
+# Perf-sensitive steps stay serial — see PERF_SERIAL below. --serial-e2e
+# forces the old sequential path (used to validate parity).
+PARALLEL_E2E=1
+E2E_JOBS="${E2E_JOBS:-8}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -48,12 +54,36 @@ while [[ $# -gt 0 ]]; do
             ONLY_STEPS="$2"
             shift 2
             ;;
+        --serial-e2e)
+            PARALLEL_E2E=0
+            shift
+            ;;
+        --jobs)
+            E2E_JOBS="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown flag: $1" >&2
             exit 2
             ;;
     esac
 done
+
+# Steps that must NOT run in the parallel e2e pool. Three reasons:
+#   1. Perf workloads whose timing inflates under CPU contention:
+#      cold_start_threshold and phase8_exit_smoke both run bench/quick.sh
+#      (n=50 cold-start spawns + timing loops) — under 8-way contention
+#      phase8_exit_smoke ballooned 3s → 142s and gated the whole pool.
+#   2. Shared-binary mutators: the 3 backend-forcing phase4_* e2e run
+#      `zig build -Dbackend=…`, rewriting the shared zig-out/bin/cljw (and
+#      contending the zig cache) mid-run; concurrent pool jobs that exec the
+#      binary then hit a half-written file. They restore the default binary
+#      at their end, so running them serially in the registration pass —
+#      before the flush — leaves the pool a correct, stable binary.
+# These run serially BEFORE the parallel flush, on a quiet machine.
+# bench_quick / bench_regression are not e2e_-prefixed, so already serial.
+SERIAL_STEPS="e2e_phase14_cold_start_threshold,e2e_phase8_exit_smoke,e2e_phase4_cli,e2e_phase4_exit,e2e_phase4_exit_codes"
+declare -a E2E_QUEUE=()
 
 # --- run_step framework (per ADR-0024) ---
 
@@ -93,6 +123,14 @@ run_step() {
         return 0
     fi
 
+    # Defer functional e2e into the parallel pool (flushed at the end).
+    # Optional steps and perf-sensitive steps stay on the serial path.
+    if (( PARALLEL_E2E )) && [[ "$name" == e2e_* ]] && [[ -z "$optional" ]] \
+        && ! step_in_csv "$name" "$SERIAL_STEPS"; then
+        E2E_QUEUE+=("${name}|${cmd}")
+        return 0
+    fi
+
     echo "==> $name"
     local start
     start=$(date +%s)
@@ -110,6 +148,54 @@ run_step() {
             STEPS_FAILED+=("$name")
         fi
     fi
+}
+
+# Run the deferred functional e2e steps concurrently (sliding pool of
+# E2E_JOBS workers via `wait -n`). Each job writes pass/fail + captured
+# output to its own temp file; results are aggregated in queue order so
+# the report reads the same as the serial path. Called once, after every
+# serial step has run, so the perf-sensitive steps already measured on a
+# quiet machine.
+flush_e2e_queue() {
+    (( ${#E2E_QUEUE[@]} == 0 )) && return 0
+    echo "==> e2e (parallel, ${#E2E_QUEUE[@]} steps, -P${E2E_JOBS})"
+    local tmpdir; tmpdir=$(mktemp -d)
+    local idx=0
+    declare -a qnames=()
+    local entry name cmd jid
+    for entry in "${E2E_QUEUE[@]}"; do
+        name="${entry%%|*}"
+        cmd="${entry#*|}"
+        qnames+=("$name")
+        # Throttle to E2E_JOBS in flight. `wait -n` returns a failed job's
+        # status; guard with `|| true` so `set -e` does not abort the pool.
+        while (( $(jobs -rp | wc -l) >= E2E_JOBS )); do wait -n || true; done
+        jid=$idx
+        (
+            local s; s=$(date +%s)
+            if eval "$cmd" >"$tmpdir/$jid.out" 2>&1; then
+                printf 'pass %s' "$(( $(date +%s) - s ))" >"$tmpdir/$jid.res"
+            else
+                printf 'fail %s' "$?" >"$tmpdir/$jid.res"
+            fi
+        ) &
+        idx=$((idx + 1))
+    done
+    wait || true
+    local j res
+    for (( j = 0; j < idx; j++ )); do
+        name="${qnames[$j]}"
+        res=$(cat "$tmpdir/$j.res" 2>/dev/null || echo "fail ?")
+        if [[ "$res" == pass* ]]; then
+            echo "    [pass] ${name} (${res#pass }s)"
+            STEPS_PASSED+=("$name")
+        else
+            echo "    [fail] ${name} (exit ${res#fail })"
+            sed 's/^/        /' "$tmpdir/$j.out" 2>/dev/null | tail -25
+            STEPS_FAILED+=("$name")
+        fi
+    done
+    rm -rf "$tmpdir"
 }
 
 print_summary() {
@@ -329,5 +415,9 @@ run_step "bench_regression"    "bash scripts/check_bench_regression.sh --check" 
 if (( LIST_ONLY )); then
     exit 0
 fi
+
+# Drain the deferred functional-e2e pool (no-op under --serial-e2e, where
+# they already ran inline).
+flush_e2e_queue
 
 print_summary
