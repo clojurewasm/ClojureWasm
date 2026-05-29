@@ -249,6 +249,7 @@ run_step "e2e_phase14_lazy_seq"              "bash test/e2e/phase14_lazy_seq.sh"
 run_step "e2e_phase14_lazy_map"              "bash test/e2e/phase14_lazy_map.sh"
 run_step "e2e_phase14_lazy_seq_cycle3"       "bash test/e2e/phase14_lazy_seq_cycle3.sh"
 run_step "e2e_phase14_lazy_seq_cycle4"       "bash test/e2e/phase14_lazy_seq_cycle4.sh"
+run_step "e2e_phase14_exit_smoke"            "bash test/e2e/phase14_exit_smoke.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional
