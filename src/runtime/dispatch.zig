@@ -188,6 +188,16 @@ pub threadlocal var current_env: ?*Env = null;
 /// error flow. Wired actively from Phase 3 (`(throw)` / `(catch)`).
 pub threadlocal var last_thrown_exception: ?Value = null;
 
+/// `cljw.error/*error-context*` snapshotted at throw time, sibling to
+/// `last_thrown_exception` (ADR-0055 amendment 2 / D-144). The renderer
+/// cannot deref the dynamic var itself — the `binding` frame is popped
+/// during the error unwind (`defer popFrame`) before render — so the
+/// backend captures it at the throw site while the frame is live, the
+/// same constraint the catalog path solves inside `setErrorFmt`. Set
+/// **together** with `last_thrown_exception`; cleared **together** on
+/// catch. Valid iff `last_thrown_exception != null`.
+pub threadlocal var last_thrown_context: ?Value = null;
+
 // --- tests ---
 
 const testing = std.testing;

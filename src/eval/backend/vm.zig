@@ -89,6 +89,7 @@ pub fn eval(
                 const thrown = dispatch.last_thrown_exception orelse
                     return raiseInternal("vm: ThrownValue without payload");
                 dispatch.last_thrown_exception = null;
+                dispatch.last_thrown_context = null;
                 if (sp >= OPERAND_STACK_MAX)
                     return raiseInternal("vm: handler unwind overflow");
                 stack[sp] = thrown;
@@ -235,6 +236,10 @@ fn stepOnce(
                 if (sp == 0) return raiseInternal("vm: op_throw on empty stack");
                 sp -= 1;
                 dispatch.last_thrown_exception = stack[sp];
+                // Snapshot *error-context* while the binding frame is
+                // live (ADR-0055 am2 / D-144) — symmetric with TreeWalk's
+                // evalThrow so the two backends agree at the throw edge.
+                dispatch.last_thrown_context = error_mod.snapshotContext();
                 return error.ThrownValue;
             },
             .op_make_fn => {

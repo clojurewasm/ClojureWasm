@@ -786,6 +786,10 @@ fn evalRecur(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.RecurNode) an
 fn evalThrow(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.ThrowNode) anyerror!Value {
     const v = try eval(rt, env, locals, n.expr);
     dispatch.last_thrown_exception = v;
+    // Snapshot *error-context* now — the `binding` frame is still live
+    // here, but is popped by `defer popFrame` as this error unwinds, so
+    // the renderer cannot deref it later (ADR-0055 am2 / D-144).
+    dispatch.last_thrown_context = error_mod.snapshotContext();
     return error.ThrownValue;
 }
 
@@ -806,6 +810,7 @@ fn evalTry(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.TryNode) anyerr
             for (n.catch_clauses) |cc| {
                 if (try catchMatches(rt, cc.target, thrown)) {
                     dispatch.last_thrown_exception = null;
+                    dispatch.last_thrown_context = null;
                     if (cc.binding_index >= locals.len)
                         return error_catalog.raise(.slot_out_of_range, cc.loc, .{ .form = "catch", .index = cc.binding_index, .max = locals.len });
                     locals[cc.binding_index] = thrown;

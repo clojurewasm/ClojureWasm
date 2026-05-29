@@ -52,17 +52,17 @@ EOF
 assert_eq 'replace_regex_string_literal_dollar' "$got" '"abc$0"'
 
 # --- Case 6: unsupported match type raises (cond :else clause) ---
-# Cw v1's top-level renders `(throw (ex-info ...))` as the generic
-# "error: ThrownValue" today (the ex-info message is carried in the
-# Value but not surfaced at the CLI tail). The :else clause being
+# The top-level renders the thrown ex-info's message + the `exception`
+# label (ADR-0055 am2 / D-144) — surfacing the ex-info message at the
+# CLI tail, not the old generic "ThrownValue". The :else clause being
 # reached at all is what this case verifies — that the cond did not
 # silently fall through.
 diag=$("$BIN" -e '(clojure.string/replace "abc" 42 "X")' 2>&1 || true)
 case "$diag" in
-    *"ThrownValue"*)
-        echo "PASS replace_unsupported_match_raises -> ThrownValue" ;;
+    *"exception"*"replace: unsupported match type"*)
+        echo "PASS replace_unsupported_match_raises -> ex-info message surfaced" ;;
     *)
-        fail "replace_unsupported_match_raises: missing ThrownValue ($diag)" ;;
+        fail "replace_unsupported_match_raises: missing ex-info message ($diag)" ;;
 esac
 
 # --- Case 7: unsupported match round-trips through (try ... (catch

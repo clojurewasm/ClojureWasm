@@ -6,7 +6,10 @@
 //!     because Zig's error unions carry no payload,
 //!   - a 64-frame threadlocal call stack,
 //!   - 1:1 mapping between `Kind` (semantic categories) and Zig error
-//!     tags (`ClojureWasmError.SyntaxError`, …),
+//!     tags (`ClojureWasmError.SyntaxError`, …); a user `(throw v)`
+//!     raises `error.ThrownValue` (not a `ClojureWasmError`) and is
+//!     modelled as `Info.origin == .thrown` rather than a fake `Kind`,
+//!     keeping this mapping honest (ADR-0055 amendment 2),
 //!   - `expect*` / `checkArity*` helpers that centralise the type-check
 //!     and arity-check call sites,
 //!   - a `BuiltinFn` signature for Phase-1 primitive function pointers.
@@ -66,9 +69,23 @@ pub const Phase = enum {
     eval,
 };
 
+/// Where an `Info` originated. `kind` is a meaningful catalog category
+/// only for `.catalog`; a user `(throw v)` raises `error.ThrownValue`
+/// (not a `ClojureWasmError`), so it has no honest `Kind` — modelling it
+/// as a distinct origin keeps the `Kind` ⇄ `ClojureWasmError` 1:1
+/// invariant intact rather than minting a `Kind` with no error tag
+/// (ADR-0055 amendment 2). `kindLabel` is the single source the text +
+/// EDN renderers consult so both formats stay in lockstep.
+pub const Origin = enum { catalog, thrown };
+
 /// Structured error information stored in threadlocal state.
 pub const Info = struct {
     kind: Kind,
+    /// `.catalog` (default) when raised via the catalog; `.thrown` for a
+    /// synthetic Info built from a user `(throw v)` at render time. When
+    /// `.thrown`, `kind` is unread (use `.value_error` as the inert
+    /// placeholder) and `kindLabel` returns `"exception"`.
+    origin: Origin = .catalog,
     phase: Phase,
     message: []const u8,
     location: SourceLocation = .{},
@@ -79,6 +96,21 @@ pub const Info = struct {
     /// because the `binding` frame is popped during unwind, before the
     /// renderer runs.
     context: ?Value = null,
+    /// ex-data of a thrown `ex-info` Value, emitted as the `:data` EDN
+    /// field (ADR-0055 amendment 2). null for catalog errors and for
+    /// non-ex-info throws. Distinct from `context` (the ambient
+    /// `*error-context*`); this is the data attached to *this* exception.
+    data: ?Value = null,
+
+    /// The user-visible category label: the catalog `Kind` name, or
+    /// `"exception"` for a user throw. Both renderers (text header +
+    /// EDN `:kind`) route through this so the two formats never drift.
+    pub fn kindLabel(self: Info) []const u8 {
+        return switch (self.origin) {
+            .catalog => @tagName(self.kind),
+            .thrown => "exception",
+        };
+    }
 };
 
 /// Installed by `runtime/error/context.zig` at bootstrap so `setErrorFmt`
@@ -88,6 +120,18 @@ var context_provider: ?*const fn () ?Value = null;
 
 pub fn setContextProvider(p: *const fn () ?Value) void {
     context_provider = p;
+}
+
+/// Snapshot the live `cljw.error/*error-context*` value via the
+/// registered provider. The catalog path snapshots inline in
+/// `setErrorFmt`; the throw path calls this from `evalThrow` / `op_throw`
+/// so the dynamic-var value is captured **while the `binding` frame is
+/// still pushed** — by render time the frame is popped (`defer popFrame`
+/// runs during unwind), so a render-time deref would miss it (ADR-0055
+/// amendment 2 / D-144). null when no provider is installed or the var
+/// is unbound.
+pub fn snapshotContext() ?Value {
+    return if (context_provider) |p| p() else null;
 }
 
 /// Zig error tags. 1:1 with `Kind`.
@@ -227,7 +271,7 @@ pub fn formatError(info: Info, buf: []u8) []const u8 {
         \\{s} [{s}] at {s}:{d}:{d}
         \\  {s}
     , .{
-        @tagName(info.kind),
+        info.kindLabel(),
         @tagName(info.phase),
         info.location.file,
         info.location.line,
@@ -319,6 +363,16 @@ test "kindToError maps every Kind" {
     try testing.expectEqual(ClojureWasmError.TypeError, kindToError(.type_error));
     try testing.expectEqual(ClojureWasmError.ArityError, kindToError(.arity_error));
     try testing.expectEqual(ClojureWasmError.OutOfMemory, kindToError(.out_of_memory));
+}
+
+test "kindLabel: catalog origin yields the Kind tag, thrown yields exception" {
+    const cat = Info{ .kind = .type_error, .phase = .eval, .message = "x" };
+    try testing.expectEqualStrings("type_error", cat.kindLabel());
+
+    // A thrown Info's `kind` is the inert placeholder and must NOT leak
+    // into the label — `origin == .thrown` always renders "exception".
+    const thrown = Info{ .kind = .value_error, .origin = .thrown, .phase = .eval, .message = "boom" };
+    try testing.expectEqualStrings("exception", thrown.kindLabel());
 }
 
 test "formatError contains location and message" {

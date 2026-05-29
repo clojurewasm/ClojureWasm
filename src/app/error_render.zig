@@ -20,6 +20,9 @@ const error_print = @import("../runtime/error/print.zig");
 const Runtime = @import("../runtime/runtime.zig").Runtime;
 const print_value = @import("../runtime/print.zig").printValue;
 const map_collection = @import("../runtime/collection/map.zig");
+const dispatch = @import("../runtime/dispatch.zig");
+const ex_info = @import("../runtime/collection/ex_info.zig");
+const Value = @import("../runtime/value/value.zig").Value;
 
 /// Render a caught error to stderr. Prefers the structured threadlocal
 /// `Info` (when populated by `setErrorFmt`); falls back to bare
@@ -41,6 +44,24 @@ pub fn renderError(stderr: *Writer, ctx: error_print.SourceContext, err: anyerro
             .edn => try formatErrorEdn(info, ctx, stderr),
         }
         appendToLogFile(info, ctx);
+    } else if (dispatch.last_thrown_exception) |thrown| {
+        // A user `(throw v)` raises `error.ThrownValue`, bypassing the
+        // catalog so the threadlocal `Info` is null. Synthesise one from
+        // the thrown Value + the throw-time `*error-context*` snapshot
+        // (ADR-0055 amendment 2 / D-144) so the event is structured, not
+        // the degraded `:kind :unknown :message "ThrownValue"` fallback.
+        const info = buildThrownInfo(thrown);
+        // Consume the thrown state (mirrors `getLastError` clearing
+        // `last_error`) so a later REPL form's bare-error path can't
+        // re-render this now-stale throw. `info` already captured the
+        // context Value, so clearing the threadlocals after is safe.
+        dispatch.last_thrown_exception = null;
+        dispatch.last_thrown_context = null;
+        switch (currentFormat) {
+            .text => try error_print.formatErrorWithContext(info, ctx, stderr, .{}),
+            .edn => try formatErrorEdn(info, ctx, stderr),
+        }
+        appendToLogFile(info, ctx);
     } else {
         switch (currentFormat) {
             .text => try stderr.print("{s}: error: {s}\n", .{ ctx.file, @errorName(err) }),
@@ -48,6 +69,40 @@ pub fn renderError(stderr: *Writer, ctx: error_print.SourceContext, err: anyerro
         }
     }
     try stderr.flush();
+}
+
+/// Threadlocal scratch for rendering a non-ex-info thrown Value
+/// (`(throw 42)`) into the synthetic `Info.message`. The slice points
+/// here, so it stays valid for the single render-then-exit at the CLI
+/// boundary. ex-info throws point `message` at the ExInfo's owned slice
+/// instead and never touch this buffer.
+threadlocal var thrown_msg_buf: [512]u8 = undefined;
+
+/// Build a synthetic `Info` for a user-thrown Value. `origin = .thrown`
+/// so `kindLabel` renders `:exception` and the catalog `Kind` enum stays
+/// honest (ADR-0055 amendment 2). ex-info throws carry their message +
+/// ex-data; any other thrown Value renders via `printValue` as the
+/// message. Context is the throw-time `*error-context*` snapshot.
+fn buildThrownInfo(thrown: Value) error_mod.Info {
+    var info = error_mod.Info{
+        // Unread when origin == .thrown; the inert placeholder keeps the
+        // non-optional field honest (exits 1 via the null-peek path, not
+        // this kind).
+        .kind = .value_error,
+        .origin = .thrown,
+        .phase = .eval,
+        .message = "",
+        .context = dispatch.last_thrown_context,
+    };
+    if (thrown.tag() == .ex_info) {
+        info.message = ex_info.message(thrown);
+        info.data = ex_info.data(thrown);
+        return info;
+    }
+    var w: Writer = .fixed(&thrown_msg_buf);
+    print_value(&w, thrown) catch {};
+    info.message = w.buffered();
+    return info;
 }
 
 /// Output format selector. The CLI dispatcher sets this from the
@@ -108,7 +163,7 @@ fn formatErrorEdn(info: error_mod.Info, ctx: error_print.SourceContext, w: *Writ
     try w.print(
         "{{:cljw/error true :kind :{s} :phase :{s} :file \"{s}\" :line {d} :column {d} :message \"",
         .{
-            @tagName(info.kind),
+            info.kindLabel(),
             @tagName(info.phase),
             info.location.file,
             info.location.line,
@@ -127,6 +182,12 @@ fn formatErrorEdn(info: error_mod.Info, ctx: error_print.SourceContext, w: *Writ
         }
     }
     try w.writeByte('"');
+    // ex-data of a thrown ex-info (ADR-0055 am2) — rendered via the
+    // canonical Value printer, same as the context entries below.
+    if (info.data) |d| {
+        try w.writeAll(" :data ");
+        try print_value(w, d);
+    }
     // Merge the snapshotted `cljw.error/*error-context*` entries as
     // top-level event fields (ADR-0055 D3). array_map only — context
     // maps are small (the >8-entry hash_map path mirrors printMap's

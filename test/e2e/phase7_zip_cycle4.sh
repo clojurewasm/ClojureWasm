@@ -44,10 +44,12 @@ got=$("$BIN" -e '(clojure.zip/root (clojure.zip/insert-left (clojure.zip/right (
 assert_eq 'insert_left' "$got" '[1 99 2 3]'
 
 # --- insert-right at root raises ---
+# Top-level surfaces the thrown ex-info's message + `exception` label
+# (ADR-0055 am2 / D-144), not the old generic "ThrownValue".
 diag=$("$BIN" -e '(clojure.zip/insert-right (clojure.zip/vector-zip [1 2 3]) 99)' 2>&1 || true)
 case "$diag" in
-    *"ThrownValue"*) echo "PASS insert_right_root_raises -> ThrownValue" ;;
-    *) fail "insert_right_root_raises: missing ThrownValue ($diag)" ;;
+    *"exception"*"insert-right at root has no parent"*) echo "PASS insert_right_root_raises -> ex-info message surfaced" ;;
+    *) fail "insert_right_root_raises: missing ex-info message ($diag)" ;;
 esac
 
 # --- remove ---

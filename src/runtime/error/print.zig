@@ -94,7 +94,7 @@ pub fn formatErrorWithContext(
         file_label,
         info.location.line,
         info.location.column,
-        @tagName(info.kind),
+        info.kindLabel(),
         @tagName(info.phase),
     });
 
