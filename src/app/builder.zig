@@ -208,11 +208,11 @@ test "deserialized fn_val executes through the VM (ADR-0034 am2)" {
     defer macro_table.deinit();
     try macro_transforms.registerInto(&env, &macro_table);
     try bootstrap.loadCore(arena, &rt, &env, &macro_table);
-    // Single-form IIFE: one chunk, the fn is a constant called in place.
-    // Isolates fn_val reconstruction+execution from cross-chunk var refs
-    // (a `(def f …) (f …)` pair needs the startup path to interleave
-    // deserialize+run per chunk — Cycle 2 startup work, not fn_val).
-    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "((fn* [x] (+ x 2)) 40)");
+    // Two forms: `def` a fn in chunk 1, CALL it in chunk 2. Proves both
+    // fn_val execution AND the interleaved startup model — chunk 2's
+    // `var_ref` to `add2` only resolves because chunk 1 has already RUN
+    // (op_def interned add2). Eager deserialize-all would fail here.
+    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "(def add2 (fn* [x] (+ x 2))) (add2 40)");
     defer testing.allocator.free(bytes);
 
     // --- Run side: a FRESH runtime simulating the built binary's startup
@@ -235,13 +235,21 @@ test "deserialized fn_val executes through the VM (ADR-0034 am2)" {
     try macro_transforms.registerInto(&env2, &macro_table2);
     try bootstrap.loadCore(arena2, &rt2, &env2, &macro_table2);
 
-    const chunks = try serialize.deserializeEnvelope(testing.allocator, &rt2, &env2, bytes);
-    defer serialize.freeEnvelope(testing.allocator, chunks);
-
+    // Interleave deserialize + run per chunk into a run-lifetime arena: the
+    // chunks (and add2's method sub-chunk) must outlive every chunk's eval
+    // (add2 is called in a later chunk), so bulk-free at the end — never
+    // per-chunk. The fn_val Function is gpa+trackHeap (freed at rt2.deinit).
+    var run_arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer run_arena_state.deinit();
+    const run_arena = run_arena_state.allocator();
+    var it = try serialize.EnvelopeIterator.init(bytes);
     var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
     var last: Value = .nil_val;
-    for (chunks) |*chunk| last = try vm.eval(&rt2, &env2, &locals, chunk);
+    while (try it.next()) |chunk_bytes| {
+        var chunk = try serialize.deserializeChunk(run_arena, &rt2, &env2, chunk_bytes);
+        last = try vm.eval(&rt2, &env2, &locals, &chunk);
+    }
 
-    // The reconstructed fn_val ran on the VM via its method bytecode → 42.
+    // `(add2 40)` ran the reconstructed function on the VM → 42.
     try testing.expectEqual(@as(i64, 42), last.asInteger());
 }

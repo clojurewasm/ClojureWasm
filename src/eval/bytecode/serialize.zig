@@ -539,9 +539,6 @@ pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@impor
     };
 }
 
-/// Free a chunk produced by `deserializeChunk`. Mirror of the
-/// allocator-owned slice set; does not touch the GC-allocated
-/// Values in `constants` (those are owned by `rt.gc`).
 /// Free the method bytecode sub-chunks a deserialized `fn_val` constant
 /// owns (ADR-0034 am2 A2-D3). Non-`fn_val` constants own nothing here.
 /// Recurses via `freeChunk` so nested `fn_val`s inside a method body are
@@ -564,6 +561,10 @@ fn freeValueOwnedChunks(allocator: std.mem.Allocator, v: Value) void {
     }
 }
 
+/// Free a chunk produced by `deserializeChunk`. Mirror of the
+/// allocator-owned slice set; does not touch the GC-allocated Values in
+/// `constants` (those are owned by `rt.gc`) except a deserialized
+/// `fn_val`'s method sub-chunks, which this allocator owns.
 pub fn freeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) void {
     allocator.free(chunk.instructions);
     // ADR-0034 am2: a deserialized `fn_val` constant owns its method
@@ -642,6 +643,35 @@ pub fn freeEnvelope(allocator: std.mem.Allocator, chunks: []BytecodeChunk) void 
     for (chunks) |c| freeChunk(allocator, c);
     allocator.free(chunks);
 }
+
+/// Walk an envelope's chunk byte-slices one at a time, for the
+/// **interleaved** deserialize-then-run startup path. A later chunk's
+/// `var_ref` to an earlier chunk's `def` only resolves once that def has
+/// RUN (`op_def` interns the Var at runtime), so the loader must
+/// deserialize + execute chunk N before deserializing chunk N+1; eager
+/// `deserializeEnvelope` fails on such cross-chunk references. Each
+/// `next()` returns a slice INTO the envelope bytes (no copy) for the
+/// caller to `deserializeChunk` — typically into a run-lifetime arena so
+/// all chunks (and their `fn_val` method sub-chunks) outlive every call,
+/// then bulk-free at the end (a fn def'd in chunk N is still callable in
+/// chunk N+M, so per-chunk freeing would use-after-free).
+pub const EnvelopeIterator = struct {
+    r: ByteReader,
+    remaining: u32,
+
+    pub fn init(bytes: []const u8) DeserializeError!EnvelopeIterator {
+        var r: ByteReader = .{ .bytes = bytes, .pos = 0 };
+        const n = try r.readU32();
+        return .{ .r = r, .remaining = n };
+    }
+
+    /// The next chunk's raw bytes, or null when the envelope is exhausted.
+    pub fn next(self: *EnvelopeIterator) DeserializeError!?[]const u8 {
+        if (self.remaining == 0) return null;
+        self.remaining -= 1;
+        return try self.r.readLenPrefixed();
+    }
+};
 
 // === Deno-style self-contained artifact trailer (D-100(b), ADR-0034) ===
 //
