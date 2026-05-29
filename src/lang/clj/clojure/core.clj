@@ -439,11 +439,23 @@
   (fn* [f x] (lazy-seq (cons x (iterate f (f x))))))
 
 ;; `(range)` → infinite lazy 0,1,2,…; `(range n)` → [0..n-1];
-;; `(range start end)` → [start..end-1]. Step arity awaits a follow-up.
+;; `(range start end)` → [start..end-1] (eager vectors). `(range start
+;; end step)` → lazy seq; inline lazy recursion (NOT take-while — that is
+;; def'd later in the file, and a fn body's free symbols resolve at
+;; analysis time). Continuation matches JVM: step>0 while x<end, step<0
+;; while x>end, step=0 while x≠end (so `(range 0 10 0)` is infinite 0s,
+;; `(range 5 5 0)` is empty).
 (def range
   (fn* ([] (iterate inc 0))
        ([n] (-range-acc 0 n []))
-       ([start end] (-range-acc start end []))))
+       ([start end] (-range-acc start end []))
+       ([start end step]
+        (lazy-seq
+          (if (if (> step 0)
+                (< start end)
+                (if (< step 0) (> start end) (not (= start end))))
+            (cons start (range (+ start step) end step))
+            nil)))))
 
 ;; ----------------------------------------------------------------
 ;; D-134 index/accessor cluster. `iterate` is defined above `range` (its
