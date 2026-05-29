@@ -247,6 +247,7 @@ run_step "e2e_phase14_merge_partition_by"    "bash test/e2e/phase14_merge_partit
 run_step "e2e_phase14_threading_macros"      "bash test/e2e/phase14_threading_macros.sh"
 run_step "e2e_phase14_some_doto"             "bash test/e2e/phase14_some_doto.sh"
 run_step "e2e_phase14_iteration_macros"      "bash test/e2e/phase14_iteration_macros.sh"
+run_step "e2e_phase14_case"                  "bash test/e2e/phase14_case.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
 run_step "e2e_phase14_core_cluster"          "bash test/e2e/phase14_core_cluster.sh"
 run_step "e2e_phase14_print_family"          "bash test/e2e/phase14_print_family.sh"

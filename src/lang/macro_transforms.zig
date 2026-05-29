@@ -98,6 +98,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "dotimes", .expand = expandDotimes },
     .{ .name = "while", .expand = expandWhile },
     .{ .name = "when-first", .expand = expandWhenFirst },
+    .{ .name = "case", .expand = expandCase },
     .{ .name = "fn", .expand = expandFn },
     .{ .name = "defn", .expand = expandDefn },
     .{ .name = "defmulti", .expand = expandDefmulti },
@@ -796,6 +797,69 @@ fn expandWhenFirst(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, l
     wl_items[1] = .{ .data = .{ .vector = wl_binding }, .location = loc };
     wl_items[2] = inner_let;
     return list(arena, wl_items, loc);
+}
+
+// --- case (D-134) ---
+
+/// `(= g (quote const))` — value-equality against an unevaluated constant.
+fn caseConstEq(arena: std.mem.Allocator, g: Form, const_form: Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    const quoted = try makeCall(arena, "quote", &.{const_form}, loc);
+    return makeCall(arena, "=", &.{ g, quoted }, loc);
+}
+
+/// Test for one clause's test-constant: a list `(c1 c2 …)` →
+/// `(or (= g 'c1) (= g 'c2) …)`; a single constant → `(= g 'const)`.
+fn caseTest(arena: std.mem.Allocator, g: Form, test_const: Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    if (test_const.data == .list) {
+        const elems = test_const.data.list;
+        const or_items = try arena.alloc(Form, 1 + elems.len);
+        or_items[0] = sym("or", loc);
+        for (elems, 0..) |el, i| or_items[1 + i] = try caseConstEq(arena, g, el, loc);
+        return list(arena, or_items, loc);
+    }
+    return caseConstEq(arena, g, test_const, loc);
+}
+
+/// `(throw (ex-info "No matching clause" {:value g}))` — the no-default fallback.
+fn caseNoMatchThrow(arena: std.mem.Allocator, g: Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    const map_items = try arena.alloc(Form, 2);
+    map_items[0] = .{ .data = .{ .keyword = .{ .name = "value" } }, .location = loc };
+    map_items[1] = g;
+    const map_form: Form = .{ .data = .{ .map = map_items }, .location = loc };
+    const msg: Form = .{ .data = .{ .string = "No matching clause" }, .location = loc };
+    const exinfo = try makeCall(arena, "ex-info", &.{ msg, map_form }, loc);
+    return makeCall(arena, "throw", &.{exinfo}, loc);
+}
+
+/// `(case e clause* default?)` →
+/// `(let* [g e] (if test1 r1 (if test2 r2 … fallback)))`.
+/// Constants are unevaluated (quoted); a list clause matches any element.
+/// An odd trailing form is the default; without one, no match throws.
+/// (Divergence from JVM case: dispatch is a linear `=` cascade, not a
+/// constant-time jump table, and duplicate constants are not rejected.)
+fn expandCase(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    if (args.len < 2)
+        return error_catalog.raise(.case_form_incomplete, loc, .{});
+    const clauses = args[1..];
+    const has_default = (clauses.len % 2 == 1);
+    const npairs = clauses.len / 2;
+    const g = sym(try rt.gensym(arena, "case"), loc);
+
+    var acc: Form = if (has_default) clauses[clauses.len - 1] else try caseNoMatchThrow(arena, g, loc);
+    var p: usize = npairs;
+    while (p > 0) {
+        p -= 1;
+        const if_items = try arena.alloc(Form, 4);
+        if_items[0] = sym("if", loc);
+        if_items[1] = try caseTest(arena, g, clauses[2 * p], loc);
+        if_items[2] = clauses[2 * p + 1];
+        if_items[3] = acc;
+        acc = try list(arena, if_items, loc);
+    }
+    const binding = try arena.alloc(Form, 2);
+    binding[0] = g;
+    binding[1] = args[0];
+    return buildLetStarBody(arena, binding, acc, loc);
 }
 
 const ThreadDir = enum { first, last };

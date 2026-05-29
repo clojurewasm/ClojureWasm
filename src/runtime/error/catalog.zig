@@ -205,6 +205,7 @@ pub const Code = enum {
     while_form_incomplete,
     when_first_form_incomplete,
     when_first_bindings_invalid,
+    case_form_incomplete,
 
     // --- Eval (type) ---
     type_arg_not_number,
@@ -699,6 +700,10 @@ pub fn entry(comptime code: Code) Entry {
         .when_first_bindings_invalid => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "when-first bindings must be a vector of [name coll] with an unqualified symbol name",
+        },
+        .case_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "case requires a test expression and at least one clause or default",
         },
         .defn_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,
