@@ -80,6 +80,30 @@ pub fn printResult(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anyerr
     try printValue(w, realized);
 }
 
+/// Render an f64 in Clojure surface form. A Clojure double ALWAYS
+/// prints with a decimal point or exponent so it reads back as a double,
+/// not a long — Zig's `{d}` drops the `.0` for whole values (`5.0` →
+/// "5"), so append `.0` when the formatted text carries no `.`/`e`/`E`
+/// (D-149). `(read-string (pr-str 5.0))` must yield a double. (Exact JVM
+/// `Double.toString` E-notation thresholds are a cosmetic follow-up; the
+/// `.0` here is the round-trip-fidelity fix.) NaN / ±Inf use the cljw
+/// reader's `##` syntax.
+fn printFloat(w: *Writer, f: f64) Writer.Error!void {
+    if (std.math.isNan(f)) return w.writeAll("##NaN");
+    if (std.math.isPositiveInf(f)) return w.writeAll("##Inf");
+    if (std.math.isNegativeInf(f)) return w.writeAll("##-Inf");
+    var buf: [512]u8 = undefined;
+    const s = std.fmt.bufPrint(&buf, "{d}", .{f}) catch
+        // Pathologically long decimal (near-f64-max) — write directly;
+        // it already carries enough digits to round-trip as a double.
+        return w.print("{d}", .{f});
+    try w.writeAll(s);
+    if (std.mem.findScalar(u8, s, '.') == null and
+        std.mem.findScalar(u8, s, 'e') == null and
+        std.mem.findScalar(u8, s, 'E') == null)
+        try w.writeAll(".0");
+}
+
 /// Render `v` to `w` in `pr-str` style. Phase-3 surface covers nil /
 /// boolean / integer / float / char / keyword / builtin_fn / string /
 /// list. Other heap kinds render as `#<tag>` placeholders so the user
@@ -90,13 +114,7 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
         .nil => try w.writeAll("nil"),
         .boolean => try w.writeAll(if (v.asBoolean()) "true" else "false"),
         .integer => try w.print("{d}", .{v.asInteger()}),
-        .float => {
-            const f = v.asFloat();
-            if (std.math.isNan(f)) try w.writeAll("##NaN") //
-            else if (std.math.isPositiveInf(f)) try w.writeAll("##Inf") //
-            else if (std.math.isNegativeInf(f)) try w.writeAll("##-Inf") //
-            else try w.print("{d}", .{f});
-        },
+        .float => try printFloat(w, v.asFloat()),
         .char => try w.print("\\u{x:0>4}", .{v.asChar()}),
         .builtin_fn => try w.writeAll("#builtin"),
         .keyword => {

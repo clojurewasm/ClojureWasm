@@ -141,7 +141,16 @@ fn formatFloat(w: *Writer, f: f64) Writer.Error!void {
     } else if (std.math.isNegativeInf(f)) {
         try w.writeAll("##-Inf");
     } else {
-        try w.print("{d}", .{f});
+        // D-149: a Clojure double always prints with a `.`/exponent so it
+        // reads back as a double, not a long — `{d}` drops `.0` for whole
+        // values, so append it. (Mirrors runtime/print.zig::printFloat.)
+        var buf: [512]u8 = undefined;
+        const s = std.fmt.bufPrint(&buf, "{d}", .{f}) catch return w.print("{d}", .{f});
+        try w.writeAll(s);
+        if (std.mem.findScalar(u8, s, '.') == null and
+            std.mem.findScalar(u8, s, 'e') == null and
+            std.mem.findScalar(u8, s, 'E') == null)
+            try w.writeAll(".0");
     }
 }
 
