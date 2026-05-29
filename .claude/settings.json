@@ -135,6 +135,10 @@
           {
             "type": "command",
             "command": "bash $CLAUDE_PROJECT_DIR/scripts/post_commit_remind.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/scripts/gate_continue_remind.sh"
           }
         ]
       }

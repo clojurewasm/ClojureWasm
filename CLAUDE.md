@@ -382,7 +382,11 @@ That is it. There are no other stop conditions. Specifically:
 A user "stop" directive applies to **the session in which it was
 issued**. It does not carry across to the next session — the next
 `/continue` (or any automated re-invocation) resumes the loop
-under this rule unchanged.
+under this rule unchanged. Mechanical backstops re-inject this at
+the two points momentum drifts toward an idle turn-end: after
+`git commit` (`scripts/post_commit_remind.sh`) and after a test
+gate launches (`scripts/gate_continue_remind.sh`) — see those
+hooks, not added prose here.
 
 ### Smell triggers are interrupts, not stops
 
