@@ -21,12 +21,17 @@
 #       clojure_peer: lang/primitive/<...>.zig  # optional; "null" if no peer
 #     methods: [list, of, instance, methods]
 #     clojure_peer_vars: [list, of, clojure, ns/vars]
+#     status: <free text>   # optional; marks a TypeDescriptor-only
+#                           # reservation whose backing impl is deferred (D-105/D-106)
 #
 # Entry migration to the extended schema is INCREMENTAL — each host class
 # landing in Phase 6+ ships its entry in the new schema in the same
-# commit. The legacy `{fqn, native_ns, phase}` shape (40 entries below)
+# commit. The legacy `{fqn, native_ns, phase}` shape (28 entries below)
 # remains readable during the transition and migrates as the
-# corresponding host class lands.
+# corresponding host class lands. Migrated 2026-05-29 (row 14.13):
+# every class with a shipped runtime/java/**/*.zig surface now carries
+# the D5 schema; the remaining legacy one-liners have no surface yet
+# (pure reservations).
 
 version: 0.1.1-draft
 last_updated: 2026-05-29
@@ -60,6 +65,12 @@ tiers:
       clojure.walk:
         var_count_target: 10
       clojure.zip:
+        # Comprehensively implemented (src/lang/clj/clojure/zip.clj, 37
+        # defs incl. private helpers; ~28 JVM-public-surface vars) +
+        # e2e-tested (test/e2e/phase7_zip_cycle1-4 + exit_smoke). Stays
+        # Tier A: cw v1's A/B split is comprehensive-impl (A) vs
+        # minimum-surface (B); zip is comprehensive, so down-tiering to B
+        # would mis-signal "minimum surface". Count is JVM-public-surface.
         var_count_target: 28
       clojure.test:
         var_count_target: 39
@@ -103,8 +114,10 @@ tiers:
       # All entries are Tier A. The legacy `native_ns: cljw.host.*`
       # field below is the pre-ADR-0029 schema; the ADR-0029 D5
       # replacement is `cljw_ns: cljw.java.*` (host. prefix retired)
-      # plus `keyword:` + `files:`. The 40 legacy entries migrate
-      # incrementally as each host class lands in Phase 6+.
+      # plus `keyword:` + `files:`. Migration is per-class as each surface
+      # lands (row 14.13, 2026-05-29): every class with a shipped
+      # runtime/java/**/*.zig surface is now D5; the remaining legacy
+      # one-liners have no surface yet (pure reservations).
       # java.lang
       - { fqn: "java.lang.Object",                       native_ns: "cljw.host.java.lang.Object",                       phase: 5 }
       - { fqn: "java.lang.String",                       native_ns: "cljw.host.java.lang.String",                       phase: 5 }
@@ -178,7 +191,29 @@ tiers:
         methods: [nextInt, nextLong, nextDouble, setSeed]
         clojure_peer_vars: []
       - { fqn: "java.util.Locale",                       native_ns: "cljw.host.java.util.Locale",                       phase: 6 }
-      - { fqn: "java.util.regex.Pattern",                native_ns: "cljw.host.java.util.regex.Pattern",                phase: 6 }
+      - fqn: java.util.regex.Pattern
+        cljw_ns: cljw.java.util.regex.Pattern
+        keyword: regex
+        tier: A
+        phase: 6
+        files:
+          surface: runtime/java/util/regex/Pattern.zig
+          impl: runtime/regex/compile.zig
+          impl_extras: [runtime/regex/match.zig]
+          clojure_peer: lang/primitive/regex.zig
+        methods: [compile, matcher, pattern, quote]
+        clojure_peer_vars: [clojure.core/re-pattern, clojure.core/re-find, clojure.core/re-matches, clojure.core/re-seq, clojure.core/re-groups, clojure.string/replace, clojure.string/split]
+      - fqn: java.util.regex.Matcher
+        cljw_ns: cljw.java.util.regex.Matcher
+        keyword: regex
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/util/regex/Matcher.zig
+          impl: runtime/regex/match.zig
+          clojure_peer: lang/primitive/regex.zig
+        methods: [find, matches, group, groupCount, start, end]
+        clojure_peer_vars: [clojure.core/re-find, clojure.core/re-matches, clojure.core/re-seq, clojure.core/re-groups]
       - { fqn: "java.util.concurrent.Future",            native_ns: "cljw.host.java.util.concurrent.Future",            phase: 14 }
       - { fqn: "java.util.concurrent.atomic.AtomicLong", native_ns: "cljw.host.java.util.concurrent.atomic.AtomicLong", phase: 15 }
       # java.time
@@ -193,22 +228,77 @@ tiers:
         methods: [now, toEpochMilli, getEpochSecond, getNano, parse]
         clojure_peer_vars: []
       - { fqn: "java.time.LocalDate",                    native_ns: "cljw.host.java.time.LocalDate",                    phase: 6 }
-      - { fqn: "java.time.LocalDateTime",                native_ns: "cljw.host.java.time.LocalDateTime",                phase: 6 }
-      - { fqn: "java.time.Duration",                     native_ns: "cljw.host.java.time.Duration",                     phase: 6 }
-      - { fqn: "java.time.ZonedDateTime",                native_ns: "cljw.host.java.time.ZonedDateTime",                phase: 6 }
+      - fqn: java.time.LocalDateTime
+        cljw_ns: cljw.java.time.LocalDateTime
+        keyword: time
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/time/LocalDateTime.zig
+        methods: [now, of, parse, plusDays, toLocalDate, toLocalTime]
+        clojure_peer_vars: []
+        status: "reservation - TypeDescriptor only; backing runtime/time/local_date_time.zig deferred (D-105)"
+      - fqn: java.time.Duration
+        cljw_ns: cljw.java.time.Duration
+        keyword: time
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/time/Duration.zig
+        methods: [between, ofMillis, ofSeconds, plus, minus, toMillis, toNanos]
+        clojure_peer_vars: []
+        status: "reservation - TypeDescriptor only; backing deferred (D-105)"
+      - fqn: java.time.ZonedDateTime
+        cljw_ns: cljw.java.time.ZonedDateTime
+        keyword: time
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/time/ZonedDateTime.zig
+        methods: [now, of, parse, withZoneSameInstant, toInstant]
+        clojure_peer_vars: []
+        status: "reservation - TypeDescriptor only; backing deferred (D-105)"
       - { fqn: "java.time.ZoneId",                       native_ns: "cljw.host.java.time.ZoneId",                       phase: 6 }
       # java.net
       - { fqn: "java.net.URL",                           native_ns: "cljw.host.java.net.URL",                           phase: 14 }
       - { fqn: "java.net.URI",                           native_ns: "cljw.host.java.net.URI",                           phase: 14 }
+      - fqn: java.net.Socket
+        cljw_ns: cljw.java.net.Socket
+        keyword: net
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/net/Socket.zig
+        methods: [connect, getInputStream, getOutputStream, close]
+        clojure_peer_vars: []
+        status: "reservation - TypeDescriptor only; backing runtime/net/socket.zig deferred (D-106)"
       # java.nio
       - { fqn: "java.nio.file.Path",                     native_ns: "cljw.host.java.nio.file.Path",                     phase: 6 }
       - { fqn: "java.nio.file.Files",                    native_ns: "cljw.host.java.nio.file.Files",                    phase: 6 }
       - { fqn: "java.nio.charset.Charset",               native_ns: "cljw.host.java.nio.charset.Charset",               phase: 6 }
       # java.math
       - { fqn: "java.math.BigInteger",                   native_ns: "cljw.host.java.math.BigInteger",                   phase: 5 }
-      - { fqn: "java.math.BigDecimal",                   native_ns: "cljw.host.java.math.BigDecimal",                   phase: 5 }
+      - fqn: java.math.BigDecimal
+        cljw_ns: cljw.java.math.BigDecimal
+        keyword: big_decimal
+        tier: A
+        phase: 5
+        files:
+          surface: runtime/java/math/BigDecimal.zig
+          impl: runtime/numeric/big_decimal.zig
+        methods: [valueOf, add, subtract, multiply, divide, toPlainString]
+        clojure_peer_vars: [clojure.core/bigdec]
       # java.security
-      - { fqn: "java.security.MessageDigest",            native_ns: "cljw.host.java.security.MessageDigest",            phase: 14 }
+      - fqn: java.security.MessageDigest
+        cljw_ns: cljw.java.security.MessageDigest
+        keyword: digest
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/security/MessageDigest.zig
+        methods: [getInstance, update, digest, reset]
+        clojure_peer_vars: []
+        status: "reservation - TypeDescriptor only; backing runtime/crypto/message_digest.zig deferred (D-106)"
   B:
     description: "Recommended compatibility, target Phase 8-14. Test gate: coverage report (no fail required)."
     namespaces:
