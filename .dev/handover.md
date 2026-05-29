@@ -5,28 +5,32 @@
 
 ## Resume contract
 
-- **HEAD**: `babe3efd` (v0.1.0 exit-smoke). Row 14.13 closed +
+- **HEAD**: `0a20028c` (clean tree, all pushed). Row 14.13 closed +
   row 14.14 (a)/ROADMAP-sync landed 2026-05-29 — see `git log`.
-- **v0.1.0 release is HELD by user decision (2026-05-29)**: row 14.14
-  parts (b) flip `phase_at_least_14` + (c) tag v0.1.0 are deferred —
-  the user chose "Hold v0.1.0; continue other work" when offered the
-  release. Do NOT flip the flag or tag v0.1.0 without a fresh user
-  go-ahead (outward publish + ubuntunote-gate prerequisite). Row
-  14.14 (a) exit-smoke is DONE (`test/e2e/phase14_exit_smoke.sh`);
-  ROADMAP §9.16 synced to ADR-0015 a5 (the flag flip is an inert
-  milestone marker — `io/stub.zig` never existed, F142/F143/F144
-  landed ungated).
-- **First commit on resume MUST be**: **D-144** — user `(throw
-  (ex-info …))` renders a degraded EDN event (`:kind :unknown`,
+- **First commit on resume MUST be**: **D-144** (authoritative next
+  task — use THIS, not a §9 first-`[ ]` scan; see Forbidden). User
+  `(throw (ex-info …))` renders a degraded EDN event (`:kind :unknown`,
   `:message "ThrownValue"`, NO `*error-context*`) because it bypasses
   `setErrorFmt`. Extend `renderError` (`src/app/error_render.zig`): when
   `Info` is null but `dispatch.last_thrown_exception` is set, build an
   Info from the ex-info (kind from `:type`, message from `ex-message`,
   data from `ex-data`) + snapshot `*error-context*` (frame is live at
   throw time, before `evalThrow` unwind). Completes the with-context
-  read-side for user throws (the area cw v1 already leads cw v0).
+  read-side for user throws (the area cw v1 already leads cw v0). Has a
+  design dimension (ex-info→Info mapping) — survey skippable (extends
+  this session's error subsystem), but pick the mapping deliberately.
+- **v0.1.0 release is HELD** (user decision 2026-05-29: "Hold v0.1.0;
+  continue other work"): row 14.14 (b) flip `phase_at_least_14` + (c)
+  tag v0.1.0 are deferred (outward publish + ubuntunote-gate
+  prerequisite). Row 14.14 (a) exit-smoke DONE
+  (`test/e2e/phase14_exit_smoke.sh`); ROADMAP §9.16 synced to ADR-0015
+  a5 (the flip is an inert milestone marker — `io/stub.zig` never
+  existed; F142/F143/F144 landed ungated).
 - **Forbidden this session**: re-opening row 14.13 (DONE). Flipping
-  `phase_at_least_14` / tagging v0.1.0 (HELD — needs user go-ahead).
+  `phase_at_least_14` / tagging v0.1.0 (release HELD by user). Treating
+  §9.16 `[ ]` rows **14.12** (deferred — zwasm-v2 gate, F-010) or
+  **14.14** (release, held) as the next task — the next task is D-144
+  (MUST-be above), NOT the §9 first-`[ ]` scan.
 
 ## Current state
 
