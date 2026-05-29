@@ -45,9 +45,12 @@ F-010), 14.14 release.
 
 ## Active task
 
-**Row 14.13 — v0.1.0 polish bundle.** See Resume contract for the four
-sub-deliverables. No code blocker; Step 0 survey then pick the first
-sub-task (D-066 env var spec is the smallest entry).
+**Row 14.13 — v0.1.0 polish bundle (in progress).** Landed this session:
+compat_tiers math/spec down-tier + edn/pprint/tools.cli/data.json/csv
+promote. Remaining (see Resume contract): compat_tiers `cljw.host.*`
+per-class migration + `clojure.zip` tier precision; `bench/history.yaml`
+v0.1.0 lock-point (ADR-0044); `cljw.error/with-context` macro. No code
+blocker.
 
 ## Open debts (named; full rows in `.dev/debt.md`)
 
