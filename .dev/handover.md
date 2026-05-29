@@ -7,19 +7,19 @@
 
 - **HEAD**: ≈ `8edcc217` (ADR-0054 lazy-seq Layer-2 COMPLETE + cycle-3/4
   repair; see `git log` for exact HEAD — it advances each commit).
-- **First commit on resume MUST be**: **row 14.11 — D-100 (b) `cljw
-  build`, step 1: the multi-chunk payload envelope.** D-100 (a) (full
-  BytecodeChunk serializer) is ALREADY DISCHARGED @194eefaf —
-  `src/eval/bytecode/serialize.zig` has serializeChunk/deserializeChunk
-  + constants pool + call_sites/libspecs (13 green tests). **Do NOT
-  re-implement (a).** Step 1 = add `serializeEnvelope([]const
-  BytecodeChunk)` / `deserializeEnvelope` (`[u32 n_chunks]` + per-chunk
-  `[u32 len][bytes]`, wrapping serializeChunk verbatim) with a Layer-1
-  round-trip unit test. Then `src/app/builder.zig` (new, Layer 3):
-  extract `runner.zig`'s per-form compile-then-eval loop into a neutral
-  helper shared with the builder (F-009), add the `"CLJC"` trailer + an
-  e2e test. (e) `cljw-formats/0.1.0.edn` archive lock follows. Design:
-  ADR-0034 am1 (Alt B) + ADR-0015 am5; survey
+- **First commit on resume MUST be**: **row 14.11 — D-100 (b) step 2,
+  `src/app/builder.zig`** (the `cljw build` CLI). Step 1 (payload
+  envelope `serializeEnvelope`/`deserializeEnvelope`/`freeEnvelope` in
+  `serialize.zig`, `[u32 n_chunks]` + per-chunk `[u32 len][bytes]`)
+  landed @4c8f1c20. D-100 (a) (full BytecodeChunk serializer) is ALREADY
+  DISCHARGED @194eefaf — **do NOT re-implement (a) or the envelope.**
+  Step 2 = new Layer-3 `builder.zig`: extract `runner.zig`'s `runSource`
+  per-form compile-then-eval loop (@runner.zig:64-) into a neutral
+  helper shared with the builder (F-009 mandatory), compile each form to
+  a BytecodeChunk → `serializeEnvelope`, append a `"CLJC"` trailer
+  (Deno-style), wire `build` into `cli.zig` dispatch, add an e2e test.
+  (e) `cljw-formats/0.1.0.edn` archive lock follows. Design: ADR-0034
+  am1 (Alt B) + ADR-0015 am5; survey
   `private/notes/phase14-14.11-survey.md`.
 - **Resume disambiguation**: §9.16's numerically-first `[ ]` row IS
   14.11 (`[ ] partial` — (a)/(c)/(d) done, (b)/(e) outstanding) and it
@@ -51,10 +51,15 @@ row 14.13.5 `[x]`:
 
 ## Active task
 
-**Row 14.11 — D-100 (b) + (e)** (`cljw build` CLI `src/app/builder.zig`
-→ cljw-formats archive lock) — see Resume contract. (a) BytecodeChunk
-serializer is done @194eefaf; start (b) at the payload envelope in
-`serialize.zig`.
+**Row 14.11 — D-100 (b) step 2: `src/app/builder.zig`.** Step 1 (payload
+envelope `serializeEnvelope`/`deserializeEnvelope` in `serialize.zig`)
+landed @4c8f1c20, gate 102. Step 2 = the `cljw build app.clj -o app`
+CLI: extract `runner.zig`'s per-form compile-then-eval loop (`runSource`
+@runner.zig:64-) into a neutral helper, have the builder compile each
+form to a BytecodeChunk → `serializeEnvelope`, append the `"CLJC"`
+trailer (Deno-style), wire `build` into `cli.zig` dispatch, add an e2e
+test. Then (e) `cljw-formats/0.1.0.edn` archive lock. F-009: the
+per-form helper is shared by runner + builder, not duplicated.
 
 ## Open debts (named; full rows in `.dev/debt.md`)
 
