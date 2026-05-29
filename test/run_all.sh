@@ -155,6 +155,16 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     run_step "zlinter"          "zig build lint -- --max-warnings 0"
 fi
 
+# Build the default (tree_walk) cljw binary ONCE here, then tell the e2e
+# scripts to skip their own `zig build` (each was a ~0.3s cache-hit ×
+# ~108 scripts ≈ 32s of redundant rebuilds + process spawns per gate).
+# The 3 backend-forcing e2e (phase4_*) keep their own `-Dbackend=…`
+# builds (unguarded) and restore tree_walk at their end, so the shared
+# binary is the default for every guarded e2e. Standalone e2e runs (env
+# unset) still build normally — the guard is a no-op outside the gate.
+run_step "build_cljw"           "zig build"
+export CLJW_SKIP_BUILD=1
+
 run_step "e2e_phase2_exit"     "bash test/e2e/phase2_exit.sh"
 run_step "e2e_phase3_cli"      "bash test/e2e/phase3_cli.sh"
 run_step "e2e_phase3_exit"     "bash test/e2e/phase3_exit.sh"

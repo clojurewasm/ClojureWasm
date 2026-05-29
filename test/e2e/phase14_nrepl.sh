@@ -17,7 +17,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 BIN="zig-out/bin/cljw"
-zig build >/dev/null
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build >/dev/null
 
 fail() { echo "FAIL $1" >&2; if [[ -n "${SERVER_PID:-}" ]]; then kill "$SERVER_PID" 2>/dev/null || true; fi; exit 1; }
 

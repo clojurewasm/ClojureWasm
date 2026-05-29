@@ -21,7 +21,7 @@ WORK="$(mktemp -d -t cljw_phase3_cli.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "==> Building (Debug)"
-zig build >/dev/null
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build >/dev/null
 
 if [[ ! -x "$BIN" ]]; then
     echo "✗ binary missing: $BIN" >&2
