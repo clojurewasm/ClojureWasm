@@ -147,12 +147,7 @@ pub fn tryRunEmbedded(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocat
     defer macro_table.deinit();
     try bootstrap.setupCore(arena, &rt, &env, &macro_table);
 
-    var it = try serialize.EnvelopeIterator.init(payload);
-    var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
-    while (try it.next()) |chunk_bytes| {
-        var chunk = try serialize.deserializeChunk(arena, &rt, &env, chunk_bytes);
-        _ = try vm.eval(&rt, &env, &locals, &chunk);
-    }
+    try driver.runEnvelope(&rt, &env, arena, payload);
     return true;
 }
 
