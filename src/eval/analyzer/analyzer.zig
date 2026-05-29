@@ -478,16 +478,18 @@ fn analyzeList(
             if (head.name.len >= 2 and head.name[head.name.len - 1] == '.') {
                 return try special_forms.analyzeCtorCall(arena, rt, env, scope, head.name[0 .. head.name.len - 1], items[1..], form, macro_table);
             }
-            // 5.12.a: `.field` (leading dot, single arg) -> field access.
-            // Arity 2 stays a struct field read per row 7.6 survey §4
-            // Option A (finished-form decision).
-            if (head.name.len >= 2 and head.name[0] == '.' and items.len == 2) {
-                return try special_forms.analyzeFieldAccess(arena, rt, env, scope, head.name[1..], items[1], form, macro_table);
+            // ADR-0050 am1: `(.-field recv)` -> field-only instance member
+            // read. Checked before the general `.member` arm because `.-x`
+            // also begins with `.`. Needs `.` + `-` + ≥1 name char.
+            if (head.name.len >= 3 and head.name[0] == '.' and head.name[1] == '-' and items.len == 2) {
+                return try special_forms.analyzeInstanceMember(arena, rt, env, scope, head.name[2..], items[1], items[2..], form, macro_table, true);
             }
-            // Row 7.6 cycle 1: `.method` (leading dot, arity > 2) ->
-            // method call dispatched via the row 7.3 dispatch ABI.
-            if (head.name.len >= 2 and head.name[0] == '.' and items.len >= 3) {
-                return try special_forms.analyzeMethodCall(arena, rt, env, scope, head.name[1..], items[1], items[2..], form, macro_table);
+            // ADR-0050 am1: `(.member recv args...)` -> instance member
+            // access (arity ≥ 1). Member-vs-field resolves at eval from the
+            // receiver's descriptor shape (field-first), collapsing the
+            // former arity-1-field / arity-≥2-method split into one kind.
+            if (head.name.len >= 2 and head.name[0] == '.' and items.len >= 2) {
+                return try special_forms.analyzeInstanceMember(arena, rt, env, scope, head.name[1..], items[1], items[2..], form, macro_table, false);
             }
             if (STAGED_UNSUPPORTED_FORMS.has(head.name)) {
                 return error_catalog.raise(.feature_not_supported, form.location, .{ .name = head.name });
@@ -1268,15 +1270,27 @@ test "ctor call (Foo. ...) analyses into interop_call_node .constructor" {
     try testing.expectEqual(@as(usize, 2), n.interop_call_node.args.len);
 }
 
-test "field access (.x inst) analyses into interop_call_node .instance_field" {
+test "member access (.x inst) analyses into interop_call_node .instance_member" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
     // The target needs to be analyzable. Use a constant integer here
-    // because field-access type-checking happens at eval, not analyse.
+    // because member-vs-field resolution happens at eval, not analyse.
     const n = try fix.analyzeStr("(.x 1)");
     try testing.expect(n.* == .interop_call_node);
-    try testing.expect(n.interop_call_node.kind == .instance_field);
+    try testing.expect(n.interop_call_node.kind == .instance_member);
+    try testing.expect(!n.interop_call_node.field_only);
+    try testing.expectEqualStrings("x", n.interop_call_node.name);
+}
+
+test "field-only access (.-x inst) sets field_only" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+    const n = try fix.analyzeStr("(.-x 1)");
+    try testing.expect(n.* == .interop_call_node);
+    try testing.expect(n.interop_call_node.kind == .instance_member);
+    try testing.expect(n.interop_call_node.field_only);
     try testing.expectEqualStrings("x", n.interop_call_node.name);
 }
 

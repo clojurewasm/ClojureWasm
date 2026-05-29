@@ -580,33 +580,13 @@ fn stepOnce(
                 stack[sp] = new_val;
                 sp += 1;
             },
-            .op_field_access => {
-                if (instr.operand >= chunk.constants.len)
-                    return raiseInternal("vm: op_field_access name index out of range");
-                const name_val = chunk.constants[instr.operand];
-                if (!name_val.isString())
-                    return raiseInternal("vm: op_field_access name is not a String");
-                const field_name = string_mod.asString(name_val);
-                if (sp == 0) return raiseInternal("vm: op_field_access empty stack");
-                const recv = stack[sp - 1];
-                if (recv.tag() != .typed_instance)
-                    return error_catalog.raise(.type_arg_not_number, .{}, .{ .fn_name = "field access", .actual = @tagName(recv.tag()) });
-                const inst = recv.decodePtr(*const td_mod.TypedInstance);
-                const layout = inst.descriptor.field_layout orelse
-                    return error_catalog.raise(.symbol_unresolved, .{}, .{ .sym = field_name });
-                var found_val: ?Value = null;
-                for (layout) |fe| {
-                    if (std.mem.eql(u8, fe.name, field_name)) {
-                        found_val = inst.fields()[fe.index];
-                        break;
-                    }
-                }
-                if (found_val == null)
-                    return error_catalog.raise(.symbol_unresolved, .{}, .{ .sym = field_name });
-                stack[sp - 1] = found_val.?;
-            },
             .op_method_call => {
-                // operand = call_site_idx
+                // operand = call_site_idx. ADR-0050 am1: the unified
+                // instance-member resolver runs field-first (deftype/record
+                // field_layout), then method_table; `field_only` (the
+                // `.-name` form) stops after the field attempt. This folds
+                // the retired op_field_access in, and lets native receivers
+                // (field_layout == null) reach method_table for `(.m str)`.
                 if (instr.operand >= chunk.call_sites.len)
                     return raiseInternal("vm: op_method_call call_site index out of range");
                 const cs_entry = &chunk.call_sites[instr.operand];
@@ -618,21 +598,41 @@ fn stepOnce(
                 } else if (receiver.tag() == .reified_instance) blk: {
                     break :blk receiver.decodePtr(*const td_mod.ReifiedInstance).descriptor;
                 } else try rt.nativeDescriptor(receiver.tag());
-                const me = cs_entry.cache.lookupWithCache(td, null, cs_entry.method_name, rt.protocol_generation) orelse {
-                    return error_catalog.raise(.protocol_no_satisfies, .{}, .{
-                        .protocol = "<.method>",
-                        .method = cs_entry.method_name,
-                        .type_name = td.fqcn orelse "<anonymous>",
-                    });
-                };
-                if (me.method_val.tag() == .nil)
-                    return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "method declared but not implemented" });
-                const args_slice = stack[sp - arg_count .. sp];
-                const vt = rt.vtable orelse return error.NoVTable;
-                const result = try vt.callFn(rt, env, me.method_val, args_slice, .{});
-                sp -= arg_count;
-                stack[sp] = result;
-                sp += 1;
+
+                // FIELD-FIRST: a non-null field_layout implies the receiver
+                // is a .typed_instance (reify + native carry null), so the
+                // decode below is safe.
+                const field_val: ?Value = if (td.field_layout) |layout| fblk: {
+                    for (layout) |fe| {
+                        if (std.mem.eql(u8, fe.name, cs_entry.method_name))
+                            break :fblk receiver.decodePtr(*const td_mod.TypedInstance).fields()[fe.index];
+                    }
+                    break :fblk null;
+                } else null;
+
+                if (field_val) |fv| {
+                    sp -= arg_count;
+                    stack[sp] = fv;
+                    sp += 1;
+                } else if (cs_entry.field_only) {
+                    return error_catalog.raise(.symbol_unresolved, .{}, .{ .sym = cs_entry.method_name });
+                } else {
+                    const me = cs_entry.cache.lookupWithCache(td, null, cs_entry.method_name, rt.protocol_generation) orelse {
+                        return error_catalog.raise(.protocol_no_satisfies, .{}, .{
+                            .protocol = "<.member>",
+                            .method = cs_entry.method_name,
+                            .type_name = td.fqcn orelse "<anonymous>",
+                        });
+                    };
+                    if (me.method_val.tag() == .nil)
+                        return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "method declared but not implemented" });
+                    const args_slice = stack[sp - arg_count .. sp];
+                    const vt = rt.vtable orelse return error.NoVTable;
+                    const result = try vt.callFn(rt, env, me.method_val, args_slice, .{});
+                    sp -= arg_count;
+                    stack[sp] = result;
+                    sp += 1;
+                }
             },
     }
     return null;

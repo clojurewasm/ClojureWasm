@@ -323,10 +323,11 @@ test "diff: ns refer-clojure widening (post-T3 path)" {
 // ADR-0040 row 7.6 cycle 4: discharge the deftype-family +
 // method-dispatch cluster. 4 diff cases (one per new opcode).
 
-test "diff: deftype_node + interop_call_node .constructor + .instance_field" {
+test "diff: deftype_node + interop_call_node .constructor + .instance_member field" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
-    // Combined exercise of op_deftype + op_ctor_call + op_field_access.
+    // Combined exercise of op_deftype + op_ctor_call + op_method_call's
+    // field-first resolver (ADR-0050 am1 — op_field_access retired).
     try f.check("(do (deftype DiffPoint [x y]) (.x (DiffPoint. 7 9)))", 7);
 }
 
@@ -334,6 +335,29 @@ test "diff: interop_call_node .constructor second field" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
     try f.check("(do (deftype DiffPair [a b]) (.b (DiffPair. 1 33)))", 33);
+}
+
+// ADR-0050 am1 parity: both backends must agree on the unified
+// instance-member resolver across (a) a native-type method, (b) a
+// deftype field via the `.-name` field-only form.
+
+test "diff: instance_member native String method (.toUpperCase)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // Native receiver: field_layout == null → straight to method_table.
+    // The result is a heap String, which the Phase-4 differential harness
+    // compares by NaN-box bit pattern (separately allocated per backend →
+    // never bit-equal). Wrap in `(= "HI" …)` so the compared Value is an
+    // immediate boolean → `if` → integer; this still exercises the native
+    // dispatch on both backends and additionally asserts the uppercasing.
+    try f.check("(if (= \"HI\" (.toUpperCase \"hi\")) 1 0)", 1);
+}
+
+test "diff: instance_member field-only (.-name) on deftype" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // `.-b` reads the declared field directly via the field_only path.
+    try f.check("(do (deftype DiffDash [a b]) (.-b (DiffDash. 1 33)))", 33);
 }
 
 

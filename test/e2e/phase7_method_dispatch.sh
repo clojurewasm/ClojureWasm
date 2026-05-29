@@ -5,13 +5,14 @@
 # dispatch via the row 7.3 dispatch ABI.
 #
 # Validates:
-#   - (.method rec arg) routes through MethodCallNode + dispatch
+#   - (.method rec arg) routes through InteropCallNode .instance_member
 #   - Works on .typed_instance (defrecord) receivers
 #   - Works on .reified_instance (reify) receivers
-#   - Arity-2 .field stays a field read per row 7.6 §4 Option A
+#   - (.field rec) field-reads via the field-first resolver (ADR-0050 am1
+#     unified the former arity-1-field / arity-≥2-method split)
 #   - Method not found raises protocol_no_satisfies
 #
-# VM dispatch deferred to cycle 4 (D-073 cluster discharge).
+# Both backends land this dispatch (VM op_method_call; ADR-0036 parity).
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."

@@ -118,47 +118,25 @@ pub fn analyzeCtorCall(
     return n;
 }
 
-/// `(.field obj)` instance-field analyzer arm. Per ADR-0050, builds an
-/// `InteropCallNode { .kind = .instance_field }`.
-pub fn analyzeFieldAccess(
+/// `(.member recv args...)` / `(.-field recv)` instance member analyzer arm
+/// (ADR-0050 am1). Builds an `InteropCallNode { .kind = .instance_member }`,
+/// consolidating the former `.instance_field` (arity 1) and
+/// `.instance_method` (arity ≥ 2) arms into one. Member-vs-field is decided
+/// at eval from the receiver's descriptor shape (field-first, keyed on
+/// `field_layout` presence), so the analyzer no longer branches on arity.
+/// `field_only` is set by the `.-name` reader form and restricts eval-time
+/// resolution to a field read (never a method call).
+pub fn analyzeInstanceMember(
     arena: std.mem.Allocator,
     rt: *Runtime,
     env: *Env,
     scope: ?*const Scope,
-    field_name: []const u8,
-    target_form: Form,
-    form: Form,
-    macro_table: *const macro_dispatch.Table,
-) AnalyzeError!*const Node {
-    const target = try analyzer_mod.analyze(arena, rt, env, scope, target_form, macro_table);
-    const n = try arena.create(Node);
-    n.* = .{ .interop_call_node = .{
-        .kind = .instance_field,
-        .target = target,
-        .name = field_name,
-        .loc = form.location,
-    } };
-    return n;
-}
-
-/// Row 7.6 cycle 1: `(.method instance args...)` — general-arity
-/// protocol method dispatch, now consolidated as an
-/// `InteropCallNode { .kind = .instance_method }` per ADR-0050. Eval
-/// routes through the row 7.3 `dispatch` ABI;
-/// `TypeDescriptor.lookupMethod(null, method_name)` matches the first
-/// method whose name aligns across the receiver's method_table chain
-/// (Path A2 — protocol-agnostic lookup since the `.method` form does
-/// not name a protocol).
-pub fn analyzeMethodCall(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    env: *Env,
-    scope: ?*const Scope,
-    method_name: []const u8,
+    member_name: []const u8,
     target_form: Form,
     arg_forms: []const Form,
     form: Form,
     macro_table: *const macro_dispatch.Table,
+    field_only: bool,
 ) AnalyzeError!*const Node {
     const target = try analyzer_mod.analyze(arena, rt, env, scope, target_form, macro_table);
     const args = try arena.alloc(Node, arg_forms.len);
@@ -168,10 +146,11 @@ pub fn analyzeMethodCall(
     }
     const n = try arena.create(Node);
     n.* = .{ .interop_call_node = .{
-        .kind = .instance_method,
+        .kind = .instance_member,
         .target = target,
-        .name = method_name,
+        .name = member_name,
         .args = args,
+        .field_only = field_only,
         .loc = form.location,
     } };
     return n;

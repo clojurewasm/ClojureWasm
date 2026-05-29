@@ -436,15 +436,16 @@ const Compiler = struct {
         try self.emit(.op_deftype, 0);
     }
 
-    /// ADR-0050 unified InteropCallNode VM compile arm. Dispatches on
-    /// `n.kind`; three kinds (.constructor / .instance_field /
-    /// .instance_method) re-use the pre-existing op_ctor_call /
-    /// op_field_access / op_method_call opcodes per ADR-0040 row 7.10
-    /// (their VM lowering already landed and ships green). The fourth
-    /// kind (.static_method) is D-121's new dispatch shape; its
-    /// bytecode form (single op_interop_call with kind operand, or a
-    /// sibling op_static_method_call) lands at D-130 (row 7.6.b
-    /// successor). Until then static_method rides VM-DEFER.
+    /// ADR-0050 (am1) unified InteropCallNode VM compile arm. Two kinds
+    /// ship real bytecode: `.constructor` (op_ctor_call) and
+    /// `.instance_member` (op_method_call — am1 folded the retired
+    /// op_field_access into op_method_call's receiver-keyed resolver, so a
+    /// field read and a method call share one call-site + opcode; the
+    /// `field_only` flag carries the `.-name` form's field-only intent).
+    /// `.static_method` is D-121's new dispatch shape; its bytecode form
+    /// (single op_interop_call with kind operand, or a sibling
+    /// op_static_method_call) lands at D-130 (row 7.6.b successor). Until
+    /// then static_method rides VM-DEFER.
     fn compileInteropCall(self: *Compiler, n: node_mod.InteropCallNode) Error!void {
         switch (n.kind) {
             .constructor => {
@@ -455,15 +456,8 @@ const Compiler = struct {
                 const operand: u16 = (@as(u16, name_idx) << 8) | @as(u16, @intCast(n.args.len));
                 try self.emit(.op_ctor_call, operand);
             },
-            .instance_field => {
-                const target = n.target orelse @panic("compileInteropCall: target null for non-static kind (analyzer bug)");
-                try self.compileNode(target);
-                const name_val = try string_mod.alloc(self.rt, n.name);
-                const name_idx = try self.addConstant(name_val);
-                try self.emit(.op_field_access, name_idx);
-            },
-            .instance_method => {
-                const target = n.target orelse @panic("compileInteropCall: target null for non-static kind (analyzer bug)");
+            .instance_member => {
+                const target = n.target orelse @panic("compileInteropCall: target null for .instance_member (analyzer bug)");
                 try self.compileNode(target);
                 for (n.args) |*a| try self.compileNode(a);
                 if (self.call_sites.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
@@ -473,6 +467,7 @@ const Compiler = struct {
                 try self.call_sites.append(self.arena, .{
                     .method_name = method_name_dup,
                     .arg_count = total_args,
+                    .field_only = n.field_only,
                 });
                 try self.emit(.op_method_call, cs_idx);
             },

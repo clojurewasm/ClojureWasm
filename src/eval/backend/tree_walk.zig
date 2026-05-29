@@ -543,15 +543,12 @@ fn evalDeftype(rt: *Runtime, n: node_mod.DeftypeNode) !Value {
     return .nil_val;
 }
 
-/// Unified Java/host interop dispatch arm (ADR-0050). Routes on
-/// `n.kind` to the four kind-specific helpers below. The split keeps
-/// each arm small enough that the body-discipline + 4-arm scan reads
-/// linearly; combining into one body would dwarf the call-site code.
+/// Unified Java/host interop dispatch arm (ADR-0050, am1). Routes on
+/// `n.kind` to the three kind-specific helpers below.
 fn evalInteropCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.InteropCallNode) !Value {
     return switch (n.kind) {
         .constructor => evalConstructorCall(rt, env, locals, n),
-        .instance_field => evalInstanceFieldRead(rt, env, locals, n),
-        .instance_method => evalInstanceMethodCall(rt, env, locals, n),
+        .instance_member => evalInstanceMember(rt, env, locals, n),
         .static_method => evalStaticMethodCall(rt, env, locals, n),
     };
 }
@@ -596,24 +593,38 @@ fn evalConstructorCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.Int
     return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.type_name });
 }
 
-/// Row 7.6 cycle 1: `(.method instance args...)` general-arity
-/// dispatch. Resolves the receiver's TypeDescriptor (typed_instance
-/// / reified_instance / native-tag) and looks up the method by name
-/// only (Path A2 — `lookupMethod(null, method_name)`), then calls
-/// it via `vt.callFn` with the full arg list (receiver + remaining
-/// args). CallSite cache integration deferred to cycle 4 alongside
-/// the bytecode shape decision.
-fn evalInstanceMethodCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.InteropCallNode) !Value {
+/// `(.member recv args...)` / `(.-field recv)` unified instance member
+/// dispatch (ADR-0050 am1). Resolves the receiver's TypeDescriptor and
+/// applies the field-first resolver: deftype/record receivers carry a
+/// `field_layout`, so a name matching a declared field reads that field;
+/// native types (`field_layout == null`) skip straight to `method_table`.
+/// `field_only` (the `.-name` form) stops after the field attempt — it
+/// never falls back to a method. A non-field name otherwise looks up the
+/// `method_table` (Path A2 — `lookupMethod(null, name)`) and calls via
+/// `vt.callFn` with `[receiver, ...args]`. Field-first keying eliminates
+/// the field/method name-collision silent-shadow (am1 caveat 1).
+fn evalInstanceMember(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.InteropCallNode) !Value {
     const target = n.target orelse return error.InternalError;
     const receiver = try eval(rt, env, locals, target);
-    const td: *const type_descriptor_mod.TypeDescriptor = if (receiver.tag() == .typed_instance) blk: {
-        break :blk receiver.decodePtr(*const type_descriptor_mod.TypedInstance).descriptor;
-    } else if (receiver.tag() == .reified_instance) blk: {
-        break :blk receiver.decodePtr(*const type_descriptor_mod.ReifiedInstance).descriptor;
-    } else try rt.nativeDescriptor(receiver.tag());
+    const td = try receiverDescriptor(rt, receiver);
+
+    // FIELD-FIRST: `field_layout` is non-null only for deftype/record, so a
+    // hit here implies the receiver is a `.typed_instance` (reify + native
+    // both carry `field_layout == null`), making the decode below safe.
+    if (td.field_layout) |layout| {
+        for (layout) |fe| {
+            if (std.mem.eql(u8, fe.name, n.name)) {
+                return receiver.decodePtr(*const type_descriptor_mod.TypedInstance).fields()[fe.index];
+            }
+        }
+    }
+    if (n.field_only) {
+        return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.name });
+    }
+
     const me = td.lookupMethod(null, n.name) orelse {
         return error_catalog.raise(.protocol_no_satisfies, n.loc, .{
-            .protocol = "<.method>",
+            .protocol = "<.member>",
             .method = n.name,
             .type_name = td.fqcn orelse "<anonymous>",
         });
@@ -633,28 +644,24 @@ fn evalInstanceMethodCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.
     return vt.callFn(rt, env, me.method_val, args_buf, n.loc);
 }
 
-fn evalInstanceFieldRead(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.InteropCallNode) !Value {
-    const target = n.target orelse return error.InternalError;
-    const target_val = try eval(rt, env, locals, target);
-    if (target_val.tag() != .typed_instance) {
-        return error_catalog.raise(.type_arg_not_number, n.loc, .{ .fn_name = "field access", .actual = @tagName(target_val.tag()) });
-    }
-    const inst = target_val.decodePtr(*const type_descriptor_mod.TypedInstance);
-    const layout = inst.descriptor.field_layout orelse
-        return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.name });
-    for (layout) |fe| {
-        if (std.mem.eql(u8, fe.name, n.name)) {
-            return inst.fields()[fe.index];
-        }
-    }
-    return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.name });
+/// Resolve the dispatch descriptor for an instance-member receiver.
+/// `.typed_instance` / `.reified_instance` carry their descriptor inline;
+/// every other tag uses the per-Runtime native descriptor (lazily
+/// allocated, `method_table` populated by `String.installNativeMethods`
+/// at runtime init). Mirrors the VM's `op_method_call` resolution.
+fn receiverDescriptor(rt: *Runtime, receiver: Value) !*const type_descriptor_mod.TypeDescriptor {
+    return switch (receiver.tag()) {
+        .typed_instance => receiver.decodePtr(*const type_descriptor_mod.TypedInstance).descriptor,
+        .reified_instance => receiver.decodePtr(*const type_descriptor_mod.ReifiedInstance).descriptor,
+        else => try rt.nativeDescriptor(receiver.tag()),
+    };
 }
 
 /// `(Class/method args...)` static method dispatch (D-121 + ADR-0050).
 /// Descriptor pointer was resolved at analyze time; only the
 /// method-table linear lookup runs here. Eval is symmetric to
-/// `evalInstanceMethodCall` minus the receiver — no `args[0]` insert,
-/// just user args.
+/// `evalInstanceMember`'s method branch minus the receiver — no
+/// `args[0]` insert, just user args.
 fn evalStaticMethodCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.InteropCallNode) !Value {
     const td = n.descriptor orelse return error.InternalError;
     const me = td.lookupMethod(null, n.name) orelse {

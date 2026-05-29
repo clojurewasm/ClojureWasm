@@ -320,51 +320,55 @@ pub const DeftypeNode = struct {
     loc: SourceLocation = .{},
 };
 
-/// `(Class/method args...)` / `(.method recv args...)` / `(.field obj)` /
-/// `(Name. args...)` — unified Java/host interop dispatch (ADR-0050).
-/// Replaces the previously-separate `CtorCallNode` / `FieldAccessNode` /
-/// `MethodCallNode`. One Node carries every kind of interop call; the
-/// kind tag picks the args layout at eval/compile time.
+/// `(Class/method args...)` / `(.member recv args...)` / `(.-field recv)` /
+/// `(Name. args...)` — unified Java/host interop dispatch (ADR-0050, am1).
+/// One Node carries every kind of interop call; the kind tag picks the
+/// args layout at eval/compile time.
 ///
 /// Field usage per kind:
 ///   - `.static_method`   : `descriptor` non-null (analyze-time resolved);
 ///                          `name` = method; `args` = user args (no
 ///                          receiver); `target` / `type_name` unused.
-///   - `.instance_method` : `target` non-null (eval-time receiver);
-///                          `name` = method; `args` = remaining args;
-///                          `descriptor` / `type_name` unused.
-///   - `.instance_field`  : `target` non-null; `name` = field;
-///                          `args` empty; `descriptor` / `type_name`
-///                          unused.
+///   - `.instance_member` : `target` non-null (eval-time receiver);
+///                          `name` = member; `args` = remaining args (empty
+///                          for a bare `(.x recv)` read). Member-vs-field is
+///                          resolved at eval from the receiver's descriptor
+///                          shape (field-first, keyed on `field_layout`
+///                          presence — am1 caveat 1), so the analyzer no
+///                          longer splits on arity. `descriptor` /
+///                          `type_name` unused.
 ///   - `.constructor`     : `type_name` non-null (eval-time lookup via
 ///                          `resolveJavaSurface`, allows forward refs to
 ///                          deftypes not yet registered at analyze time);
 ///                          `args` = ctor args; `name` / `target` /
 ///                          `descriptor` unused.
 ///
-/// VM lowering: 3 kinds (.instance_method / .instance_field /
-/// .constructor) compile via the pre-existing `op_method_call` /
-/// `op_field_access` / `op_ctor_call` opcodes per row 7.10 ADR-0040.
-/// `.static_method` rides VM-DEFER pending the row 7.6.b decision on
-/// whether to unify into one `op_interop_call` or add a sibling
-/// `op_static_method_call` (D-130).
+/// VM lowering: `.instance_member` + `.constructor` compile via the
+/// `op_method_call` / `op_ctor_call` opcodes. am1 retired the separate
+/// `op_field_access`; a field read folds into `op_method_call`'s
+/// receiver-keyed resolver. `.static_method` rides VM-DEFER pending the
+/// row 7.6.b decision on whether to unify into one `op_interop_call` or
+/// add a sibling `op_static_method_call` (D-130).
 pub const InteropCallNode = struct {
-    pub const Kind = enum { static_method, instance_method, instance_field, constructor };
+    pub const Kind = enum { static_method, instance_member, constructor };
 
     kind: Kind,
     /// `.static_method`: analyze-time resolved descriptor pointer.
     /// Other kinds: null.
     descriptor: ?*const TypeDescriptor = null,
-    /// `.instance_method` / `.instance_field`: receiver expression.
-    /// Other kinds: null.
+    /// `.instance_member`: receiver expression. Other kinds: null.
     target: ?*const Node = null,
     /// `.constructor`: type name string for eval-time `resolveJavaSurface`
     /// lookup. Other kinds: empty string.
     type_name: []const u8 = "",
-    /// `.static_method` / `.instance_method` / `.instance_field`:
-    /// method or field name. `.constructor`: ignored.
+    /// `.static_method` / `.instance_member`: method or field name.
+    /// `.constructor`: ignored.
     name: []const u8 = "",
-    /// Argument expressions. Empty for `.instance_field`.
+    /// `.instance_member`: when true (the `(.-name recv)` reader form), the
+    /// resolver reads a field only and never falls back to a method call.
+    /// Default false. Other kinds: ignored.
+    field_only: bool = false,
+    /// Argument expressions. Empty for a field read.
     args: []const Node = &.{},
     loc: SourceLocation = .{},
 };

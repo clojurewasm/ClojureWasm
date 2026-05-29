@@ -137,14 +137,14 @@ pub const Opcode = enum(u8) {
     /// `rt.types.get(name)`, allocates a TypedInstance via
     /// `td_mod.allocInstance`.
     op_ctor_call = 0x19,
-    /// `(.field instance)` — operand = constants index of field name
-    /// String. Pops receiver, walks `descriptor.field_layout`.
-    op_field_access = 0x1A,
-    /// `(.method instance args...)` — operand = `call_site_idx` into
-    /// `BytecodeChunk.call_sites`. Pops receiver + args, dispatches
-    /// via `cs.lookupWithCache(td, null, method_name, generation)`
-    /// then `vt.callFn(rt, env, method_val, args, loc)`.
-    op_method_call = 0x1B,
+    /// `(.member instance args...)` / `(.-field instance)` — operand =
+    /// `call_site_idx` into `BytecodeChunk.call_sites`. Pops receiver +
+    /// args, runs the unified instance-member resolver: field-first
+    /// (`descriptor.field_layout`), then `cs.lookupWithCache(td, null,
+    /// method_name, generation)` + `vt.callFn`. The `field_only` flag on
+    /// the call-site (the `.-name` form) stops after the field attempt.
+    /// ADR-0050 am1 folded the retired `op_field_access` into this arm.
+    op_method_call = 0x1A,
     /// `(require '[ns :as alias :refer [v1 v2]])` — operand =
     /// `libspec_idx` into `BytecodeChunk.libspecs`. Looks up the
     /// LibspecEntry (`ns_name` + `?alias` + `[]refers`), runs the
@@ -157,7 +157,7 @@ pub const Opcode = enum(u8) {
     /// `call_sites`) selected over Vector-in-constant-pool (Option A)
     /// for native field types (no empty-string sentinel for absent
     /// alias) + F-008 zwasm-component-import shape alignment.
-    op_require_with_libspec = 0x1C,
+    op_require_with_libspec = 0x1B,
 
     /// `(binding [*v* e ...])` — operand = pair count N. Pops 2N stack
     /// entries `[encVar0, val0, encVar1, val1, …]` (each `encVar` a
@@ -167,9 +167,9 @@ pub const Opcode = enum(u8) {
     /// threadlocal. Paired with `op_pop_binding_frame`; the compiler
     /// wraps the body in a cleanup handler so a thrown exception pops
     /// the frame before escaping (= JVM `finally`).
-    op_push_binding_frame = 0x1D,
+    op_push_binding_frame = 0x1C,
     /// Pop + free the innermost binding frame. Operand unused.
-    op_pop_binding_frame = 0x1E,
+    op_pop_binding_frame = 0x1D,
 
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
@@ -205,7 +205,6 @@ pub const Opcode = enum(u8) {
             .op_ns_with_refer_clojure,
             .op_deftype,
             .op_ctor_call,
-            .op_field_access,
             .op_method_call,
             .op_require_with_libspec,
             .op_push_binding_frame,
@@ -249,7 +248,6 @@ pub const Opcode = enum(u8) {
             .op_ns_with_refer_clojure,
             .op_deftype,
             .op_ctor_call,
-            .op_field_access,
             .op_method_call,
             .op_require_with_libspec,
             .op_push_binding_frame,
@@ -284,6 +282,9 @@ pub const Instruction = struct {
 pub const CallSiteEntry = struct {
     method_name: []const u8,
     arg_count: u16,
+    /// ADR-0050 am1: set for the `(.-name recv)` reader form. When true the
+    /// resolver reads a field only and never falls back to a method call.
+    field_only: bool = false,
     cache: method_table.CallSite = .{},
 };
 
@@ -343,9 +344,8 @@ test "opcode enum tags are stable u8 values" {
     try std.testing.expectEqual(@as(u8, 0x17), @intFromEnum(Opcode.op_ns_with_refer_clojure));
     try std.testing.expectEqual(@as(u8, 0x18), @intFromEnum(Opcode.op_deftype));
     try std.testing.expectEqual(@as(u8, 0x19), @intFromEnum(Opcode.op_ctor_call));
-    try std.testing.expectEqual(@as(u8, 0x1A), @intFromEnum(Opcode.op_field_access));
-    try std.testing.expectEqual(@as(u8, 0x1B), @intFromEnum(Opcode.op_method_call));
-    try std.testing.expectEqual(@as(u8, 0x1C), @intFromEnum(Opcode.op_require_with_libspec));
+    try std.testing.expectEqual(@as(u8, 0x1A), @intFromEnum(Opcode.op_method_call));
+    try std.testing.expectEqual(@as(u8, 0x1B), @intFromEnum(Opcode.op_require_with_libspec));
 }
 
 test "Instruction carries opcode and u16 operand" {

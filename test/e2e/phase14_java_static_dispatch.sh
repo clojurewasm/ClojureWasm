@@ -6,7 +6,8 @@
 #   - .static_method    : (java.util.UUID/randomUUID),
 #                         (java.lang.System/currentTimeMillis)
 #   - .constructor      : (java.io.File. "/tmp/x.txt")
-#   - .instance_field   : (.path file)
+#   - .instance_member  : (.path file)  [field-first via op_method_call;
+#                         op_field_access retired in ADR-0050 am1]
 #   - error path        : unresolved class + unknown method on resolved class
 #
 # Confirms `resolveJavaSurface` closes the cljw-prefix gap that

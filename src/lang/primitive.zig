@@ -93,6 +93,12 @@ pub fn registerAll(env: *Env) !void {
     // ADR-0029 D5 aggregator; F-009 thin-wrapper invariant.
     try @import("../runtime/java/_host_api.zig").installAll(env);
 
+    // ADR-0050 am1: populate native-type instance method tables (String, …)
+    // on the per-Runtime native descriptors. Distinct from installAll's
+    // static `rt.types` descriptors — `(.toUpperCase s)` dispatches on the
+    // receiver's runtime tag via `rt.nativeDescriptor(.string)`.
+    try @import("../runtime/java/lang/String.zig").installNativeMethods(env.rt);
+
     // ADR-0035 D9 (sub-cycle d): boot-time rt → user refer makes
     // primitives (`+`, `=`, `count`, ...) reachable unqualified at
     // the REPL prompt. The `(ns foo (:refer-clojure))` macro does NOT
