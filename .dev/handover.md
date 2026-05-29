@@ -5,35 +5,36 @@
 
 ## Resume contract
 
-- **HEAD**: ≈ `96d75c98` (ADR-0054 cycle 3 landed; see `git log` for
-  exact HEAD — it advances each commit).
-- **First commit on resume MUST be**: **ADR-0054 cycle 4** — convert
-  the remaining lazy cluster to lazy `.clj`: `repeat` / `repeatedly` /
-  `cycle` / `take-while` / `drop-while` / `partition`. `repeat`/`cycle`
-  carry infinite forms (`(take 5 (repeat 1))`, `(take 7 (cycle [1 2 3]))`);
-  `take-while`/`drop-while` are lazy predicate filters; `partition`
-  chunks into lazy sub-seqs. Mirror the cycle-2/3 lazy-cons shape
-  (`lazy-seq` + `cons` + `seq`/`first`/`rest`). Cycle 4 is the LAST
-  lazy-cluster cycle; when it lands, flip row 14.13.5 `[ ]` → `[x]`.
-  **Cycles 1-3 DONE** (producer + iterate; lazy map/filter/keep/remove
-  + print realize; lazy concat/mapcat/drop + infinite 0-arg range +
-  lazy `=` force-walk in equal.zig), gate 101/101.
+- **HEAD**: ≈ `28c54e26` (ADR-0054 cycle 4 landed → lazy-seq Layer-2
+  COMPLETE, row 14.13.5 closed; see `git log` for exact HEAD).
+- **First commit on resume MUST be**: **row 14.11 — D-100 (a)
+  BytecodeChunk serializer**, the foundation the `cljw build` CLI (b)
+  consumes. (a) = constants-pool serializer with NaN-box Value
+  round-trip + `call_sites`/`libspecs` side-tables; design in ADR-0034
+  am1 + ADR-0015 am5. Then (b) `cljw build app.clj -o app`
+  (`src/app/builder.zig`, Deno-style binary trailer) and (e)
+  `cljw-formats/0.1.0.edn` archive lock. Start with a failing
+  round-trip test (serialize → deserialize a BytecodeChunk with a mix
+  of int/string/keyword/collection constants). **ADR-0054 lazy-seq
+  Layer-2 is DONE** (all 4 cycles), gate 102/102.
 - **Resume disambiguation** (this `## Resume contract` overrides the
   ROADMAP §9.16 first-`[ ]` scan, per `handover_framing.md` "MUST be"):
   §9.16's numerically-first unchecked row is **14.11 (D-100 `cljw
-  build`)** — that is NOT the immediate next task. The chosen next is
-  **ADR-0054 cycle 4 (row 14.13.5)**. D-100(b)/(e), 14.12, 14.13 remain
-  pending v0.1.0 work but are not the resume target; do cycle 4 first.
+  build`)** — and that IS now the resume target (the lazy-seq row
+  14.13.5 closed). 14.11 is `[ ] partial`: (c)/(d) done, (a)/(b)/(e)
+  outstanding. 14.12 is zwasm-v2-gated (defer per F-010). 14.13 polish
+  + 14.14 release follow 14.11.
 - **Forbidden this session**: re-opening D-126/D-127/D-134/D-136/D-137
-  or lazy-seq cycles 1-3 (all discharged). Making finite `(range n)`
-  lazy (deferred — needs count/nth on lazy_seq; tracked DIVERGENCE in
-  core.clj). Pulling the v0.1.0 tag (row 14.14) before lazy-seq (row
-  14.13.5) + the rest of the 14.13 bundle land. Chunking (defer per
-  ADR-0054 D5). Exact cross-category `==` / `compare` (D-014a ladder).
+  or lazy-seq cycles 1-4 (all discharged — the whole cluster is done).
+  Making finite `(range n)` lazy (deferred — needs count/nth on
+  lazy_seq; tracked DIVERGENCE in core.clj). Pulling the v0.1.0 tag
+  (row 14.14) before 14.11 + 14.13 land. Chunking (defer per ADR-0054
+  D5). Widening wasm FFI / 14.12 (F-010 de-prioritizes it). Exact
+  cross-category `==` / `compare` (D-014a ladder).
 
 ## Current state
 
-Phase 14 v0.1.0 IN-PROGRESS. Mac gate **101/101**; ubuntunote re-verify
+Phase 14 v0.1.0 IN-PROGRESS. Mac gate **102/102**; ubuntunote re-verify
 at the next Phase boundary (ADR-0049). This session re-cut the interim
 goal + drove a large clojure.core coverage + correctness pass:
 
@@ -56,9 +57,9 @@ goal + drove a large clojure.core coverage + correctness pass:
 
 ## Active task
 
-**ADR-0054 cycle 4** (row 14.13.5) — see Resume contract. Last
-lazy-cluster cycle (repeat/repeatedly/cycle/take-while/drop-while/
-partition); flip row 14.13.5 `[ ]` → `[x]` when it lands.
+**Row 14.11 — D-100 (a)/(b)/(e)** (BytecodeChunk serializer → `cljw
+build` CLI → cljw-formats archive lock) — see Resume contract. The
+lazy-seq Layer-2 row (14.13.5) is closed.
 
 ## Open debts (named; full rows in `.dev/debt.md`)
 
