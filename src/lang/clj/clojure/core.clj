@@ -12,6 +12,11 @@
 
 (def not (fn* [x] (if x false true)))
 
+;; `(list & items)` — construct a list of the args. cw v1's variadic
+;; rest-binding already yields a `.list`, so the thin `[& xs] xs` body is
+;; the finished form (no Zig leaf needed).
+(def list (fn* [& xs] xs))
+
 ;; ----------------------------------------------------------------
 ;; Phase 6.16.a-3.2 — eager higher-order surface (ADR-0033 D6 + v5 §5.2).
 ;;
@@ -441,15 +446,10 @@
        ([start end] (-range-acc start end []))))
 
 ;; ----------------------------------------------------------------
-;; D-134 lazy cluster (ADR-0054 cycle 1). The lazy-seq PRODUCER is now
-;; wired (`lazy-seq` macro + `__lazy-seq-create`), so genuinely infinite
-;; seqs work: `take` realizes only what it needs (it walks first/rest,
-;; which force `.lazy_seq` lazily).
+;; D-134 index/accessor cluster. `iterate` is defined above `range` (its
+;; 0-arg body resolves it at analysis time); map-indexed / keep-indexed
+;; are eager index walks; butlast drops the final element.
 ;; ----------------------------------------------------------------
-
-;; `(iterate f x)` — infinite lazy seq: x, (f x), (f (f x)), …
-(def iterate
-  (fn* [f x] (lazy-seq (cons x (iterate f (f x))))))
 
 ;; `(map-indexed f coll)` — eager map passing (index, item) to f.
 (def map-indexed
@@ -467,6 +467,69 @@
 ;; `(butlast coll)` — all but the final element (eager list via reverse).
 (def butlast
   (fn* [coll] (reverse (rest (reverse coll)))))
+
+;; ----------------------------------------------------------------
+;; ADR-0054 cycle 4 — the last lazy-cluster cycle. repeat / repeatedly /
+;; cycle / take-while / drop-while / partition are lazy `.clj`, mirroring
+;; the cycle-2/3 lazy-cons shape so they compose with infinite producers
+;; (`(take 3 (take-while #(< % 100) (range)))`, `(first (cycle [5 6]))`).
+;; ----------------------------------------------------------------
+
+;; `(repeat x)` → infinite lazy x,x,x,…; `(repeat n x)` → n copies (lazy).
+(def repeat
+  (fn* ([x] (lazy-seq (cons x (repeat x))))
+       ([n x] (lazy-seq (if (> n 0) (cons x (repeat (dec n) x)) nil)))))
+
+;; `(repeatedly f)` → infinite lazy (f),(f),…; `(repeatedly n f)` → n calls.
+(def repeatedly
+  (fn* ([f] (lazy-seq (cons (f) (repeatedly f))))
+       ([n f] (take n (repeatedly f)))))
+
+;; `(cycle coll)` → infinite repetition of coll's items; empty → empty.
+;; Lazy-catenates one pass of `coll` ahead of the next cycle layer; the
+;; trailing `(cycle coll)` is a thunk, so no eager infinite recursion.
+(def cycle
+  (fn* [coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s
+          (-concat2 s (cycle coll))
+          nil)))))
+
+;; `(take-while pred coll)` — leading run for which pred is truthy (lazy).
+(def take-while
+  (fn* [pred coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s
+          (if (pred (first s))
+            (cons (first s) (take-while pred (rest s)))
+            nil)
+          nil)))))
+
+;; `(drop-while pred coll)` — drop the leading pred-truthy run, lazy tail.
+(def drop-while
+  (fn* [pred coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if (and s (pred (first s)))
+          (drop-while pred (rest s))
+          s)))))
+
+;; `(partition n coll)` / `(partition n step coll)` — lazy seq of n-item
+;; groups stepping by `step` (default n); the final incomplete group is
+;; dropped (matches JVM). Each group is an eager `take` list.
+(def partition
+  (fn* ([n coll] (partition n n coll))
+       ([n step coll]
+        (lazy-seq
+          (let [s (seq coll)]
+            (if s
+              (let [p (take n s)]
+                (if (= (count p) n)
+                  (cons p (partition n step (drop step s)))
+                  nil))
+              nil))))))
 
 ;; ----------------------------------------------------------------
 ;; Phase 7 §9.9 row 7.7 — hybrid polymorphic primitives' protocol surface.

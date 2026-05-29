@@ -48,8 +48,9 @@ assert_eq 'public_wrapper_filter' "$got" '(1 2)'
 # `(clojure.core/-take-eager ...)` resolves the Var across namespaces
 # (env.current_ns = user, v_ptr.ns = clojure.core). The analyzer's
 # private check at analyzer.zig:374-381 raises private_access_error.
-# (`-take-eager` is the surviving private seq leaf — `-map-eager` /
-# `-filter-eager` were deleted when map/filter went lazy, ADR-0054.)
+# (`-take-eager` is the SOLE surviving private seq leaf — `-map-eager` /
+# `-filter-eager` / `-keep-eager` / `-remove-eager` / `-drop-eager` were
+# all deleted as map/filter/keep/remove/drop went lazy, ADR-0054.)
 got="$("$BIN" -e '(clojure.core/-take-eager 2 [1 2 3])' 2>&1 || true)"
 if ! grep -q 'name_error' <<<"$got"; then
     fail "private_leaf_qualified_kind: missing [name_error] tag (got '$got')"
@@ -62,17 +63,7 @@ if ! grep -q "clojure.core/-take-eager" <<<"$got"; then
 fi
 echo "PASS private_leaf_qualified_user_denied"
 
-# --- (3) Other leaves equally private ---
-got="$("$BIN" -e '(clojure.core/-drop-eager 1 [1 2 3])' 2>&1 || true)"
-if ! grep -q 'name_error' <<<"$got"; then
-    fail "private_leaf_filter: missing [name_error] tag (got '$got')"
-fi
-if ! grep -q 'private' <<<"$got"; then
-    fail "private_leaf_filter: missing 'private' wording (got '$got')"
-fi
-echo "PASS private_leaf_filter_denied"
-
-# --- (4) Same-ns access inside clojure.core works ---
+# --- (3) Same-ns access inside clojure.core works ---
 # Switching into clojure.core and calling unqualified -take-eager
 # resolves same-ns (env.current_ns == v_ptr.ns == clojure.core), so
 # the private check passes. (in-ns prints its return value 'nil'
