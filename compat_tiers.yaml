@@ -29,12 +29,12 @@
 # corresponding host class lands.
 
 version: 0.1.1-draft
-last_updated: 2026-05-24
+last_updated: 2026-05-29
 
 tiers:
   A:
     description: "Full JVM Clojure semantic equivalence. Test gate: 100% PASS."
-    target_phase: "5-7 (clojure.core core), 6 (spec.alpha), 8 (clojure.test full)"
+    target_phase: "5-7 (clojure.core core), 8 (clojure.test full); spec.alpha/math deferred post-v0.1.0 (F-010)"
     namespaces:
       clojure.core:
         # Counted from JVM clojure source (task 4.15):
@@ -63,12 +63,6 @@ tiers:
         var_count_target: 28
       clojure.test:
         var_count_target: 39
-      clojure.spec.alpha:
-        var_count_target: 87
-      clojure.spec.gen.alpha:
-        var_count_target: 54
-      clojure.math:
-        var_count_target: 45
     special_forms:
       # Phase 1-3 existing (14 slots):
       #   if, do, let*, fn*, def, quote, var, the, loop*, recur, try*,
@@ -224,6 +218,14 @@ tiers:
       clojure.java.io:     { status: "planned (cw-native rewrite)" }
       clojure.java.shell:  { status: "planned" }
       clojure.tools.cli:   { status: "planned" }
+      # Down-tiered from A 2026-05-29: these were declared Tier A
+      # ("100% PASS gate") but are UNIMPLEMENTED at v0.1.0 — no math.clj,
+      # no spec/ directory (verified). Their math/spec surfaces are
+      # post-v0.1.0 quality-loop work (F-010), not a v0.1.0 Tier A peer of
+      # JVM Clojure. cw v1 math fns currently live in clojure.core.
+      clojure.math:           { status: "deferred (post-v0.1.0 quality loop, F-010; unimplemented)" }
+      clojure.spec.alpha:     { status: "deferred (post-v0.1.0 quality loop, F-010; unimplemented)" }
+      clojure.spec.gen.alpha: { status: "deferred (post-v0.1.0 quality loop, F-010; unimplemented)" }
   C:
     description: "Thin reflective implementation via TypeDescriptor walk."
     special_forms:
