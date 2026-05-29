@@ -8,14 +8,13 @@
 - **HEAD**: ≈ `e5a58552` (row 14.11 closed; see `git log` for exact HEAD —
   it advances each commit).
 - **First commit on resume MUST be**: **row 14.13 — v0.1.0 polish bundle.**
-  Four sub-deliverables (ROADMAP §9.16 row 14.13): (1) **D-066** —
-  `CLJW_ERROR_FORMAT` / `CLJW_ERROR_LOG` env var spec + man page (the env
-  vars are already wired at `cli.zig:48-53` + `error_render`; this
-  documents + locks them); (2) `compat_tiers.yaml` Tier A/B declarations
-  comprehensive review/finish; (3) `bench/history.yaml` v0.1.0 lock-point
-  entry per ADR-0044 schema; (4) `cljw.error/with-context` macro (v5
-  §13.6 user runtime error-injection API). Start with (1) D-066 (smallest,
-  well-scoped) or (2) compat_tiers review; Step 0 survey first.
+  Remaining sub-deliverables (ROADMAP §9.16 row 14.13; **D-066 env var
+  spec is already Discharged** — `docs/spec/error_format.md`; its man page
+  is D-119, opportunistic): (1) `compat_tiers.yaml` Tier A/B declarations
+  comprehensive review/finish; (2) `bench/history.yaml` v0.1.0 lock-point
+  entry per ADR-0044 schema; (3) `cljw.error/with-context` macro (v5
+  §13.6 user runtime error-injection API). Start with (1) compat_tiers
+  review or (2) bench/history lock-point; Step 0 survey first.
 - **Forbidden this session**: re-opening D-100 (a-e ALL discharged —
   `cljw build` ships end-to-end) or the lazy-seq cluster (ADR-0054
   complete). Widening wasm FFI / row 14.12 (zwasm-v2-gated, F-010
@@ -45,7 +44,8 @@ sub-task (D-066 env var spec is the smallest entry).
 
 ## Open debts (named; full rows in `.dev/debt.md`)
 
-- **D-066** v0.1.0 env var spec + man page (row 14.13 owns it).
+- **D-119** `cljw` man-page rendering (deferred from D-066; opportunistic,
+  no Clojure surface depends on it — row 14.13 may pick it up).
 - **D-139** AOT-built fns drop param-name labels in error frames
   (ADR-0034 am2 A2-D3; opportunistic). **D-140** `cljw` startup reads the
   whole self-exe to check the trailer (footer-seek perf pass).
