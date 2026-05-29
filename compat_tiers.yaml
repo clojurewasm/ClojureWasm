@@ -212,12 +212,18 @@ tiers:
   B:
     description: "Recommended compatibility, target Phase 8-14. Test gate: coverage report (no fail required)."
     namespaces:
-      clojure.data:        { status: "planned" }
-      clojure.edn:         { status: "planned" }
-      clojure.pprint:      { status: "planned" }
+      # Implemented + bootstrap-loaded `.clj` (verified 2026-05-29 — each
+      # was wrongly marked "planned"). Minimum surfaces; promote to fuller
+      # coverage in the quality loop.
+      clojure.edn:         { status: "implemented (read-string / read minimum surface)" }
+      clojure.pprint:      { status: "implemented (pprint minimum surface)" }
+      clojure.tools.cli:   { status: "implemented (parse-opts minimum surface)" }
+      clojure.data.json:   { status: "implemented (read-str / write-str minimum surface)" }
+      clojure.data.csv:    { status: "implemented (read-csv / write-csv; DIVERGENCE — write-csv cells must be strings)" }
+      # Still planned (not yet implemented / verified):
+      clojure.data:        { status: "planned (clojure.data/diff)" }
       clojure.java.io:     { status: "planned (cw-native rewrite)" }
       clojure.java.shell:  { status: "planned" }
-      clojure.tools.cli:   { status: "planned" }
       # Down-tiered from A 2026-05-29: these were declared Tier A
       # ("100% PASS gate") but are UNIMPLEMENTED at v0.1.0 — no math.clj,
       # no spec/ directory (verified). Their math/spec surfaces are
