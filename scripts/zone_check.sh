@@ -27,16 +27,41 @@ MODE="${1:-info}"
 
 cd "$(dirname "$0")/.."
 
+# Sets ZONE to the layer number (0-3), or "x" for out-of-tree paths.
+# Returns via a global (not stdout) so callers avoid a subshell fork
+# per import — the inner loop runs ~hundreds of times.
 zone_of() {
-    local path="$1"
-    case "$path" in
-        src/runtime/*)            echo 0 ;;
-        src/eval/*)               echo 1 ;;
-        src/lang/*)               echo 2 ;;
-        src/app/*|src/main.zig)   echo 3 ;;
-        modules/*)                echo 2 ;;
-        *)                        echo "x" ;;
+    case "$1" in
+        src/runtime/*)            ZONE=0 ;;
+        src/eval/*)               ZONE=1 ;;
+        src/lang/*)               ZONE=2 ;;
+        src/app/*|src/main.zig)   ZONE=3 ;;
+        modules/*)                ZONE=2 ;;
+        *)                        ZONE="x" ;;
     esac
+}
+
+# Collapses '.' / '..' segments in "$1"; result (repo-root-relative,
+# equivalent to the former `cd … && pwd | realpath --relative-to`
+# dance) in the global NORM. Pure bash — no subshell forks. The old
+# form forked echo/sed/dirname/cd/pwd/realpath PER import (~hundreds),
+# which cost ~15s over the tree; this brings the scan under ~1s.
+# (Relies on bash word-splitting on IFS=/, so this script is bash-only.)
+normalize_path() {
+    local seg oldIFS="$IFS"
+    local -a out=()
+    IFS='/'
+    for seg in $1; do
+        case "$seg" in
+            ''|.) ;;
+            ..) [ "${#out[@]}" -gt 0 ] && unset 'out[${#out[@]}-1]' ;;
+            *)  out+=("$seg") ;;
+        esac
+    done
+    IFS="$oldIFS"
+    NORM=""
+    for seg in "${out[@]}"; do NORM="$NORM/$seg"; done
+    NORM="${NORM#/}"
 }
 
 violations_file=$(mktemp)
@@ -46,31 +71,33 @@ trap "rm -f $violations_file" EXIT
 files="$(find src modules -name '*.zig' 2>/dev/null || true)"
 
 for file in $files; do
-    src_zone=$(zone_of "$file")
+    zone_of "$file"; src_zone="$ZONE"
     [ "$src_zone" = "x" ] && continue
+    file_dir="${file%/*}"
 
-    # grep exits 1 when no @import matches; that is not a failure here.
-    awk '/^test "/{exit} {print NR ":" $0}' "$file" \
-        | { grep -E '@import\("[^"]+\.zig"\)' || true; } \
-        | while IFS=: read -r lineno content; do
-            import_path=$(echo "$content" | sed -nE 's/.*@import\("([^"]+)"\).*/\1/p')
-            [ -z "$import_path" ] && continue
-            case "$import_path" in
-                std|builtin) continue ;;
-            esac
+    # One awk pass per file: stop at the first `test "…"` line (test
+    # code may legitimately cross zones), emit only `.zig` @import lines
+    # as `NR:content`. Path resolution + zone math is pure bash below.
+    while IFS= read -r entry; do
+        lineno="${entry%%:*}"
+        content="${entry#*:}"
+        [[ "$content" =~ @import\(\"([^\"]+)\"\) ]] || continue
+        import_path="${BASH_REMATCH[1]}"
+        case "$import_path" in
+            std|builtin) continue ;;
+        esac
 
-            # Resolve the imported file relative to the importing file.
-            file_dir=$(dirname "$file")
-            resolved=$(cd "$file_dir" 2>/dev/null && cd "$(dirname "$import_path")" 2>/dev/null && pwd)/$(basename "$import_path")
-            rel=$(realpath --relative-to="$(pwd)" "$resolved" 2>/dev/null || echo "$resolved")
+        # Resolve the imported file relative to the importing file.
+        normalize_path "$file_dir/$import_path"
+        rel="$NORM"
 
-            tgt_zone=$(zone_of "$rel")
-            [ "$tgt_zone" = "x" ] && continue
+        zone_of "$rel"; tgt_zone="$ZONE"
+        [ "$tgt_zone" = "x" ] && continue
 
-            if [ "$src_zone" -lt "$tgt_zone" ]; then
-                echo "$file:$lineno: zone $src_zone imports zone $tgt_zone ($import_path)" \
-                    >> "$violations_file"
-            fi
+        if [ "$src_zone" -lt "$tgt_zone" ]; then
+            echo "$file:$lineno: zone $src_zone imports zone $tgt_zone ($import_path)" \
+                >> "$violations_file"
+        fi
 
             # G1 (ADR-0029 D2): runtime/ non-surface importing surface
             case "$file" in
@@ -132,7 +159,7 @@ for file in $files; do
                     esac
                     ;;
             esac
-        done
+    done < <(awk '/^test "/{exit} /@import\("[^"]+\.zig"\)/{print NR ":" $0}' "$file")
 done
 
 count=$(wc -l < "$violations_file" | tr -d ' ')
