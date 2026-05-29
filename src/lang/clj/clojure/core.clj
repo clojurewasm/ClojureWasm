@@ -679,6 +679,21 @@
                   (list (take n (concat p pad)))))
               nil))))))
 
+;; `(partition-all n [step] coll)` — like `partition` but KEEPS the final
+;; short partition (no length check, no pad). Lazy (D-134).
+(def partition-all
+  (fn* ([n coll] (partition-all n n coll))
+       ([n step coll]
+        (lazy-seq
+          (let [s (seq coll)]
+            (when s
+              (cons (take n s) (partition-all n step (drop step s)))))))))
+
+;; `(splitv-at n coll)` — `[(vec (take n coll)) (vec (drop n coll))]`
+;; (the vector-returning sibling of split-with; D-134).
+(def splitv-at
+  (fn* [n coll] [(vec (take n coll)) (vec (drop n coll))]))
+
 ;; ----------------------------------------------------------------
 ;; Phase 7 §9.9 row 7.7 — hybrid polymorphic primitives' protocol surface.
 ;;

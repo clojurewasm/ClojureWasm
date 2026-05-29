@@ -271,6 +271,7 @@ run_step "e2e_phase14_println_stdout"        "bash test/e2e/phase14_println_stdo
 run_step "e2e_phase14_fn_combinators"        "bash test/e2e/phase14_fn_combinators.sh"
 run_step "e2e_phase14_when_if_not"          "bash test/e2e/phase14_when_if_not.sh"
 run_step "e2e_phase14_assert_distinct"      "bash test/e2e/phase14_assert_distinct.sh"
+run_step "e2e_phase14_partition_all"       "bash test/e2e/phase14_partition_all.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
 run_step "e2e_phase14_core_cluster"          "bash test/e2e/phase14_core_cluster.sh"
 run_step "e2e_phase14_print_family"          "bash test/e2e/phase14_print_family.sh"
