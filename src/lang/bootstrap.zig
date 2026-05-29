@@ -130,11 +130,24 @@ pub fn loadCore(
     env: *Env,
     macro_table: *const macro_dispatch.Table,
 ) !void {
-    for (FILES) |file| {
+    try loadCoreFiles(arena, rt, env, macro_table, FILES);
+    try finalizeUserNs(env);
+}
+
+/// Read+analyze+eval each `.clj` file in `files` (a sub-slice of `FILES`).
+/// Extracted from `loadCore` so the AOT path (`setupCoreAot`) can restore
+/// core.clj from bytecode and run only the remaining files from source.
+fn loadCoreFiles(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    macro_table: *const macro_dispatch.Table,
+    files: []const FileEntry,
+) !void {
+    for (files) |file| {
         // ADR-0035 D7: register the file's bytes so the renderer's
         // per-file SourceContext lookup hits during bootstrap-time
-        // errors. Idempotent — re-running loadCore (rare) reuses
-        // the first-writer entry.
+        // errors. Idempotent — re-running reuses the first-writer entry.
         try rt.registerSource(file.label, file.source);
         var reader = Reader.init(arena, file.source);
         while (true) {
@@ -147,18 +160,19 @@ pub fn loadCore(
             _ = try driver.evalForm(rt, env, &locals, arena, node);
         }
     }
+}
 
-    // ADR-0035 D9 (sub-cycle d): bootstrap fan-out reduces to just
-    // `user/`. Each `.clj` head now uses `(ns foo (:refer-clojure))`
-    // which installs the clojure.core refer per file via evalNs; the
-    // remaining `user/` entry is the REPL-prompt ns, not a `.clj`
-    // file, so it needs an explicit refer here.
+/// ADR-0035 D9: each `.clj` head's `(ns foo (:refer-clojure))` installs the
+/// clojure.core refer per file via evalNs; the `user/` REPL-prompt ns is
+/// not a `.clj` file, so it gets the explicit refer + becomes current here.
+/// Shared by the source (`loadCore`) and AOT (`setupCoreAot`) paths so both
+/// leave the env in the identical final state.
+fn finalizeUserNs(env: *Env) !void {
     if (env.findNs("clojure.core")) |clojure_core_ns| {
         if (env.findNs("user")) |target| {
             try env.referAll(clojure_core_ns, target);
         }
     }
-
     if (env.findNs("user")) |user_ns| {
         env.current_ns = user_ns;
     }
@@ -191,6 +205,29 @@ pub fn setupCorePrefix(rt: *Runtime, env: *Env, macro_table: *macro_dispatch.Tab
     installEmbeddedResolver(rt);
     try primitive.registerAll(env);
     try macro_transforms.registerInto(env, macro_table);
+}
+
+/// AOT bootstrap (ADR-0056 Cycle 2b): restore `clojure.core` from the
+/// embedded bytecode envelope `core_blob` (no parse/analyze/eval of
+/// core.clj — the edge cold-start win), then load the remaining `.clj`
+/// files from source and finalize identically to `loadCore`. The caller
+/// (a runtime startup path in exe_mod) passes `@import("bootstrap_cache").data`.
+/// The build path keeps `setupCore` (source) — it can't use the blob to
+/// build the blob. `core.clj` source is still registered so AOT-core error
+/// frames keep their SourceContext.
+pub fn setupCoreAot(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    macro_table: *macro_dispatch.Table,
+    core_blob: []const u8,
+) !void {
+    try setupCorePrefix(rt, env, macro_table);
+    try rt.registerSource(FILES[0].label, FILES[0].source);
+    try driver.runEnvelope(rt, env, arena, core_blob);
+    try loadCoreFiles(arena, rt, env, macro_table, FILES[1..]);
+    try finalizeUserNs(env);
+    try error_context.register(env);
 }
 
 // --- tests ---

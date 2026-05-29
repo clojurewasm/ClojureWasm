@@ -76,7 +76,11 @@ pub fn runSource(
     // file. `bootstrap_ctx` remains the fallback for the first-file
     // case where the registry has not yet been populated.
     const bootstrap_ctx = error_print.SourceContext{ .file = bootstrap.SOURCE_LABEL, .text = bootstrap.CORE_SOURCE };
-    bootstrap.setupCore(arena, &rt, &env, &macro_table) catch |err| {
+    // ADR-0056 Cycle 2b: restore clojure.core from the embedded AOT bytecode
+    // envelope instead of parsing+analyzing+evaluating core.clj. The edge
+    // cold-start win; the source path stays in `setupCore` for the build
+    // tool. All `cljw -e` / file / stdin runs flow through here.
+    bootstrap.setupCoreAot(arena, &rt, &env, &macro_table, @import("bootstrap_cache").data) catch |err| {
         error_render.renderAndExitRegistry(stderr, &rt, bootstrap_ctx, err);
     };
 
