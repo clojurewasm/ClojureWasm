@@ -179,6 +179,24 @@
 (def nnext (fn* [x] (next (next x))))
 (def run! (fn* [f coll] (reduce (fn* [_ x] (f x)) nil coll) nil))
 
+;; `(peek coll)` / `(pop coll)` — stack ops. Vector: peek = last element,
+;; pop = drop the last (returns a vector). List/seq: peek = first, pop =
+;; rest. peek of empty is nil; pop of empty throws (JVM parity). D-134.
+(def peek
+  (fn* [coll]
+    (if (vector? coll)
+      (if (pos? (count coll)) (nth coll (dec (count coll))) nil)
+      (first coll))))
+(def pop
+  (fn* [coll]
+    (if (vector? coll)
+      (if (pos? (count coll))
+        (into [] (take (dec (count coll)) coll))
+        (throw (ex-info "Can't pop empty vector" {})))
+      (if (seq coll)
+        (rest coll)
+        (throw (ex-info "Can't pop empty list" {}))))))
+
 ;; ----------------------------------------------------------------
 ;; Phase 6.16.b-3 helpers — used by clojure.set Group C (project /
 ;; rename / index / join). Pattern A composition; no Zig leaves.
