@@ -83,6 +83,11 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "cond", .expand = expandCond },
     .{ .name = "->", .expand = expandThreadFirst },
     .{ .name = "->>", .expand = expandThreadLast },
+    .{ .name = "as->", .expand = expandAsThread },
+    .{ .name = "cond->", .expand = expandCondThreadFirst },
+    .{ .name = "cond->>", .expand = expandCondThreadLast },
+    .{ .name = "some->", .expand = expandSomeThreadFirst },
+    .{ .name = "some->>", .expand = expandSomeThreadLast },
     .{ .name = "and", .expand = expandAnd },
     .{ .name = "or", .expand = expandOr },
     .{ .name = "if-let", .expand = expandIfLet },
@@ -500,6 +505,103 @@ fn expandThreadLast(
     loc: SourceLocation,
 ) macro_dispatch.ExpandError!Form {
     return threadInto(arena, rt, args, loc, .last);
+}
+
+// --- as-> / cond-> / cond->> / some-> / some->> (D-134 threading family) ---
+
+/// `(let* [binds…] body)` from a flat binding slice + a body form.
+fn buildLetStarBody(arena: std.mem.Allocator, binds: []const Form, body: Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    const items = try arena.alloc(Form, 3);
+    items[0] = sym("let*", loc);
+    items[1] = .{ .data = .{ .vector = binds }, .location = loc };
+    items[2] = body;
+    return list(arena, items, loc);
+}
+
+/// `(as-> expr name form*)` → `(let* [name expr, name form1, …] name)`.
+/// The forms place `name` explicitly (not threaded).
+fn expandAsThread(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 2)
+        return error_catalog.raise(.thread_macro_arity_invalid, loc, .{ .op = "as->" });
+    const name = args[1];
+    if (name.data != .symbol or name.data.symbol.ns != null)
+        return error_catalog.raise(.thread_macro_arity_invalid, args[1].location, .{ .op = "as->" });
+    const forms = args[2..];
+    const binds = try arena.alloc(Form, 2 * (1 + forms.len));
+    binds[0] = name;
+    binds[1] = args[0];
+    for (forms, 0..) |f, i| {
+        binds[2 + 2 * i] = name;
+        binds[2 + 2 * i + 1] = f;
+    }
+    return buildLetStarBody(arena, binds, name, loc);
+}
+
+/// `(cond-> expr test form …)` → `(let* [g expr, g (if test1 (-> g f1) g) …] g)`
+/// (`.last` ⇒ `(->> g f1)`). Each clause conditionally threads g through form.
+fn condThread(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation, dir: ThreadDir) macro_dispatch.ExpandError!Form {
+    const op = if (dir == .first) "cond->" else "cond->>";
+    if (args.len == 0)
+        return error_catalog.raise(.thread_macro_arity_invalid, loc, .{ .op = op });
+    const clauses = args[1..];
+    if (clauses.len % 2 != 0)
+        return error_catalog.raise(.thread_macro_arity_invalid, loc, .{ .op = op });
+    const g = sym(try rt.gensym(arena, "cond_thread"), loc);
+    const binds = try arena.alloc(Form, 2 + clauses.len);
+    binds[0] = g;
+    binds[1] = args[0];
+    var i: usize = 0;
+    while (i < clauses.len) : (i += 2) {
+        const threaded = try threadStep(arena, g, clauses[i + 1], dir);
+        const if_items = try arena.alloc(Form, 4);
+        if_items[0] = sym("if", loc);
+        if_items[1] = clauses[i];
+        if_items[2] = threaded;
+        if_items[3] = g;
+        binds[2 + i] = g;
+        binds[2 + i + 1] = try list(arena, if_items, loc);
+    }
+    return buildLetStarBody(arena, binds, g, loc);
+}
+fn expandCondThreadFirst(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    return condThread(arena, rt, args, loc, .first);
+}
+fn expandCondThreadLast(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    return condThread(arena, rt, args, loc, .last);
+}
+
+/// `(some-> expr form …)` → `(let* [g expr, g (if (nil? g) nil (-> g f1)) …] g)`
+/// (`.last` ⇒ `(->> g f1)`). Short-circuits to nil the moment a step yields nil.
+fn someThread(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation, dir: ThreadDir) macro_dispatch.ExpandError!Form {
+    const op = if (dir == .first) "some->" else "some->>";
+    if (args.len == 0)
+        return error_catalog.raise(.thread_macro_arity_invalid, loc, .{ .op = op });
+    const forms = args[1..];
+    const g = sym(try rt.gensym(arena, "some_thread"), loc);
+    const binds = try arena.alloc(Form, 2 + 2 * forms.len);
+    binds[0] = g;
+    binds[1] = args[0];
+    for (forms, 0..) |form, i| {
+        const threaded = try threadStep(arena, g, form, dir);
+        const nilq_items = try arena.alloc(Form, 2);
+        nilq_items[0] = sym("nil?", loc);
+        nilq_items[1] = g;
+        const if_items = try arena.alloc(Form, 4);
+        if_items[0] = sym("if", loc);
+        if_items[1] = try list(arena, nilq_items, loc);
+        if_items[2] = nilForm(loc);
+        if_items[3] = threaded;
+        binds[2 + 2 * i] = g;
+        binds[2 + 2 * i + 1] = try list(arena, if_items, loc);
+    }
+    return buildLetStarBody(arena, binds, g, loc);
+}
+fn expandSomeThreadFirst(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    return someThread(arena, rt, args, loc, .first);
+}
+fn expandSomeThreadLast(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    return someThread(arena, rt, args, loc, .last);
 }
 
 const ThreadDir = enum { first, last };
