@@ -498,3 +498,192 @@ deftype `(.field rec)` regression (gate + targeted deftype field e2e).
   answer).
 - ADR-0007 / ADR-0008 (TypeDescriptor + method_table + CallSite cache);
   ADR-0036 (dual-backend parity); ROADMAP §13 (no JVM class hierarchy).
+
+## Amendment 2 (2026-05-29) — `.static_method` VM bytecode lowering (D-130)
+
+> Status: **Accepted** (inline per CLAUDE.md § ADR-level designs are
+> handled inline; Step 0 survey + Step 0.6 + mandatory Devil's-advocate
+> fork landed 2026-05-29). Resolves the bytecode-shape question the base
+> ADR's "VM compile arm" section + the D-130 debt row deferred to
+> "row 7.6.b". The source implementation is the next commit (this is the
+> depth-2 doc commit that precedes it per Step 6).
+
+### Context (amendment 2)
+
+After am1, `InteropCallNode.Kind` is `{ static_method, instance_member,
+constructor }`. `.instance_member` (op_method_call, field-first) and
+`.constructor` (op_ctor_call) lower to VM bytecode; `.static_method`
+(`(Math/abs -5)`, `(java.util.UUID/randomUUID)`) is still a VM-DEFER stub
+(`compiler.zig compileInteropCall .static_method => return
+error.NotImplemented`, D-130), so static dispatch works ONLY in TreeWalk
+and static interop has **no dual-backend differential-oracle coverage**.
+am1 Q1 (commit c1ebe0c5) registered `java.lang.Math` static methods —
+the first deterministic integer/bool-returning statics — which is the
+hard prerequisite that makes the required ≥1 differential case possible
+(UUID/randomUUID is heap-String + non-deterministic; System time is a
+wall clock — neither survives the Phase-4 NaN-box-bit-pattern comparator).
+
+### Decision (amendment 2) — sibling `op_static_method_call`, reusing `CallSiteEntry`, no static cache
+
+1. **Bytecode shape: a sibling opcode `op_static_method_call` (0x1E)**,
+   NOT a unified `op_interop_call` that would collapse op_ctor_call +
+   op_method_call + op_static_method_call under a kind-tag operand.
+2. **Descriptor carriage: REUSE the existing `CallSiteEntry`** side-table
+   (the one op_method_call already indexes), adding one optional field
+   `descriptor: ?*const TypeDescriptor = null`. `null` ⇒ instance
+   dispatch (descriptor derived from the receiver's runtime tag, existing
+   behaviour); non-null ⇒ static dispatch (use this analyze-time
+   descriptor; `arg_count` is the user-arg count with NO receiver). This
+   mirrors how am1 added `field_only` to the same struct — the in-repo
+   precedent is **a mode flag on the shared entry, not a new struct per
+   mode**. No new `StaticCallEntry` type.
+3. **No CallSite cache for static** (DA Finding A): TreeWalk's
+   `evalStaticMethodCall` uses the raw `td.lookupMethod(null, name)` with
+   **no** cache (the Node carries no cache slot). The VM static arm does
+   the same — `entry.descriptor.?.lookupMethod(null, entry.method_name)`
+   — so the two backends share one lookup mechanism and cannot diverge
+   under `extend-type` generation churn. `CallSiteEntry.cache` stays
+   (instance dispatch uses it via `lookupWithCache`); the static arm
+   ignores it. (Java surfaces are not `extend-type`'d, so a cache would
+   be dead weight as well as a divergence risk.)
+4. Remove the VM-DEFER marker; flip
+   `feature_deps.yaml#runtime/vm/interop_call_static_method` to `landed`;
+   close D-130. Add ≥1 differential case now that integer/bool statics
+   exist (`(integer? (Math/abs -5))` → true; `(Math/max 3 7)` → 7).
+
+**Confronting the D-130 row's recorded lean (DA Finding B).** The D-130
+row recorded "candidate (a) [unified `op_interop_call`] preferred per
+F-002 (finished-form: 1 opcode for 1 Node variant)". This amendment
+**reverses that lean**, and must rebut it rather than ignore it
+(reservations are memos, not contracts — Reservation-as-bias). The
+rebuttal: ADR-0050 unified the **Node** because the analyzer wants one
+dispatch abstraction, but the three interop kinds have genuinely
+different **stack disciplines** (ctor = allocate; instance = pop receiver
++ field-first; static = no receiver). A unified `op_interop_call` does
+not erase that 3-way split — it relocates it from the (free) top-level
+`switch (opcode)` jump table into a nested `switch (entry.kind)` in the
+hot dispatch loop, re-introducing a discriminant the opcode already
+encodes. "1 opcode for 1 Node variant" is an aesthetic mapping, not a
+finished-form gain; the finished bytecode form is **one opcode per
+dispatch discipline**. The unification's only concrete payoff (a cheap
+4th interop kind) is speculative — no 4th kind is on the roadmap
+(`Math/PI` static-field reads, D-148, are a *field read*, not a method
+call, and their shape is undecided). Sibling + shared-`CallSiteEntry`
+is the finished form here, and it happens to also be the smaller diff
+(F-002 and smaller-diff coincide — no Cycle-budget-defer tension).
+
+### Alternatives considered (amendment 2)
+
+Devil's-advocate subagent, fresh context, F-NNN envelope — reflected
+faithfully. The DA's ranking was **Alt 1 > Alt 2 > original draft > Alt
+3**; this amendment adopts Alt 1, which the DA rated finished-form-clean
+AND smaller-diff. The DA's two leading findings (A: the original draft's
+"mirrors TreeWalk exactly" claim was false because TreeWalk's static
+path has no cache; B: the draft silently overrode the D-130 row's
+unification lean) are folded into the Decision above.
+
+> **Original draft — sibling `op_static_method_call` + a NEW
+> `StaticCallEntry` side-table {descriptor, method_name, arg_count,
+> cache}.** *Rejected by the DA as "the uncanny valley"*: it neither
+> unifies (Alt 2) nor minimally reuses (Alt 1) — it adds a sibling
+> opcode AND a near-clone struct (`CallSiteEntry` minus `field_only`
+> plus `descriptor`), and carries a `cache` the TreeWalk static path
+> lacks (Finding A).
+>
+> **Alt 1 — sibling `op_static_method_call`, REUSE `CallSiteEntry` via an
+> optional `descriptor` field (ADOPTED).** *Better:* one fewer type /
+> chunk slice / compiler ArrayList / finalize-dupe; the op_method_call
+> and op_static_method_call arms read as obvious siblings differing only
+> in descriptor source; consistent with the am1 `field_only` mode-flag
+> precedent (the codebase already overloads `CallSiteEntry` with a mode
+> flag). *Costs:* a `CallSiteEntry` now has two mutually-exclusive modes
+> (instance call-sites carry an unused null `descriptor`; the static arm
+> ignores `cache`) — a mild fat-struct, but the precedent makes it the
+> consistent shape. *F-NNN:* clears F-002 (no near-duplicate type; the
+> finished form is mode-flags on the shared entry), F-009 (N/A — VM
+> internal), ADR-0036 (one opcode + one arm + one diff case), §13
+> (descriptor-keyed, no JVM assumption).
+>
+> **Alt 2 — unified `op_interop_call <site_idx>` with a kind tag in one
+> `InteropSiteEntry`, retiring op_ctor_call + op_method_call.** *Better:*
+> bytecode topology mirrors the Node 1:1 and the entry's `kind` reuses
+> the analyzer `InteropCallNode.Kind` enum (no second enum to drift); a
+> future 4th interop kind is one enum arm + one nested-switch case
+> instead of a whole new opcode + exhaustive-switch arms
+> (`isPositionRelative` / `isPurePush`). The DA judged the survey's
+> anti-B2 hot-path argument "thin" (a nested `switch (entry.kind)` and a
+> top-level `switch (opcode)` compile to the same jump-table class; one
+> extra L1-resident byte-compare is noise in a tree-walk-class runtime).
+> *Costs:* the real objection is **migration risk, not cycle budget** —
+> rewriting two landed, tested dispatch arms (vm.zig op_ctor_call +
+> op_method_call) + re-encoding their diff cases in one parity-hook-forced
+> commit, where a regression in ctor/method dispatch would be a
+> v0.1.0-relevant blocker introduced by an additive feature; and the
+> `cache`/`type_name` fields apply to only some kinds (fat union).
+> *F-NNN:* clears F-002 on the "1 opcode for 1 Node, cheap 4th kind"
+> axis — the strongest unification story — but the 4th-kind payoff is
+> speculative (none planned). No F-NNN violation. The DA: "finished-form-
+> plausible-but-not-clearly-cleaner"; take it only if the loop reads the
+> unification as the true finished form — **but never the original draft
+> over this.**
+>
+> **Alt 3 — wildcard: no new opcode; lower `.static_method` to
+> `op_const <resolved method_val> … op_call`** (resolve the static method
+> to its callable Value at analyze time, since statics have no receiver
+> polymorphism). *Better:* zero new bytecode surface; rides the
+> most-tested `op_call` path; the descriptor-carrying problem evaporates.
+> This is essentially what cw v0 did (rewrite statics to a callable at
+> analyze time). *Breaks:* baking `method_val` at analyze time means a
+> later `extend-type` / re-`deftype` does NOT invalidate the baked
+> constant (the constant pool has no generation check) — the **same
+> defect am1 Alt 3 was rejected for**, at the bytecode layer; and it
+> moves method resolution to compile-time in the VM while TreeWalk
+> resolves at eval-time, breaking the "descriptor resolved at analyze,
+> method looked up at dispatch" symmetry am1 committed both backends to
+> (incl. error-timing for "no such static"). *F-NNN:* mismatches §13 /
+> the ADR-0008 CallSite-cache finished form (live descriptor + generation,
+> not a frozen callable). Does not cleanly violate an F-NNN today (Java
+> statics are immutable), but the least finished-form-aligned. Rejected;
+> its rejection rationale is *why* the descriptor is carried into
+> dispatch at all rather than pre-resolved.
+
+### Affected files (amendment 2)
+
+- `src/eval/backend/vm/opcode.zig` (`op_static_method_call = 0x1E` +
+  `CallSiteEntry.descriptor: ?*const TypeDescriptor`; the two exhaustive
+  metadata switches `isPositionRelative`/`isPurePush`; opcode-value test)
+- `src/eval/backend/vm/compiler.zig` (`compileInteropCall .static_method`
+  arm: emit a `CallSiteEntry { descriptor = n.descriptor, method_name,
+  arg_count = n.args.len }` + `op_static_method_call`; remove VM-DEFER)
+- `src/eval/backend/vm.zig` (`op_static_method_call` dispatch arm: raw
+  `descriptor.lookupMethod(null, name)` + `callFn`, no receiver)
+- `src/lang/diff_test.zig` (≥1 deterministic static diff case)
+- `feature_deps.yaml` (`runtime/vm/interop_call_static_method` →
+  `landed`; notes corrected — am1 retired op_field_access / the
+  `.instance_field`+`.instance_method` kinds the stale notes still name)
+- `.dev/debt.md` (D-130 → Discharged; D-150 opened — see below)
+
+### Consequences (amendment 2)
+
+- Static dispatch works in BOTH backends; static interop regains
+  differential-oracle coverage (the v0.1.0 VM-parity gap closes).
+- One sibling opcode + one shared side-table mode flag; no new struct,
+  no kind-tag-in-operand. A future 4th interop kind pays the new-opcode
+  tax (accepted — none is planned; if one lands, revisit unification).
+- D-150 opened: the VM `op_ctor_call` arm resolves via bare
+  `rt.types.get(type_name)` while TreeWalk's `evalConstructorCall` uses
+  `resolveJavaSurface` (literal + `cljw.` + `cljw.java.lang.` attempts).
+  So a VM-mode Java-class ctor like `(java.io.File. "x")` would miss the
+  cljw-prefix that TreeWalk resolves — a latent dual-backend parity gap
+  (ADR-0036), unexercised today (no diff/e2e case runs a Java-class ctor
+  on VM; deftype ctors use literal `rt.types` keys). Separate focused fix.
+
+### References (amendment 2)
+
+- `private/notes/phaseA26-d130-static-vm-survey.md` (Step 0 output).
+- `.dev/debt.md` D-130 (discharged here) + D-150 (opened here).
+- `feature_deps.yaml#runtime/vm/interop_call_static_method`.
+- ADR-0008 (CallSite cache — why static skips it: Finding A) + ADR-0036
+  (parity) + `.dev/principle.md` (Reservation-as-bias — the D-130 row
+  lean this amendment reverses; Cycle-budget defer — absent here since
+  finished-form and smaller-diff coincide).
