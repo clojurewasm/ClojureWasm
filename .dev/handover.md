@@ -5,68 +5,70 @@
 
 ## Resume contract
 
-- **HEAD**: ≈ `e5a58552` (row 14.11 closed; see `git log` for exact HEAD —
-  it advances each commit).
-- **First commit on resume MUST be**: **row 14.13 — finish `compat_tiers`
-  reconciliation, then bench/history + with-context.** Survey
-  `private/notes/phase14-14.13-compat-tiers-survey.md`. DONE this session:
-  math/spec down-tier from Tier A @57d4e3f9; edn/pprint/tools.cli/data.json/
-  data.csv promoted from "planned" to verified-implemented @22624c40;
-  metadata refresh. REMAINING compat_tiers: (a) the ~40 `native_ns:
-  "cljw.host.java.*"` host_classes entries — **NOT a blanket sed**: the
-  L103-107 comment says they migrate to `cljw_ns: "cljw.java.*"` (ADR-0029)
-  **per-class as each host class lands**, so migrate only entries whose
-  class is actually implemented; no tooling reads `native_ns` (doc-metadata
-  only — G3 reads `keyword:`/`files:`); (b) `clojure.zip` Tier A→B
-  precision (it's implemented, so a tier-label call, not a lie). Then row
-  14.13 (2) `bench/history.yaml` v0.1.0 lock-point (ADR-0044) + (3)
-  `cljw.error/with-context` macro (v5 §13.6). D-066 already Discharged; man
-  page = D-119 (opportunistic).
-- **Forbidden this session**: re-opening D-100 (a-e ALL discharged —
-  `cljw build` ships end-to-end) or the lazy-seq cluster (ADR-0054
-  complete). Widening wasm FFI / row 14.12 (zwasm-v2-gated, F-010
-  de-prioritises it). Pulling the v0.1.0 tag (row 14.14) before 14.13
-  lands. Making finite `(range n)` lazy (deferred — needs count/nth on
-  lazy_seq; tracked DIVERGENCE). Chunking (ADR-0054 D5). Exact
-  cross-category `==` / `compare` (D-014a ladder).
+- **HEAD**: ≈ `7b104659`+ (row 14.13 compat_tiers done; a bench-
+  accumulation commit may sit on top — see `git log` for exact HEAD).
+- **First commit on resume MUST be**: **row 14.13 deliverable (2) —
+  `bench/history.yaml` v0.1.0 lock-point.** Run `PHASE_NAME=v0.1.0
+  bash bench/quick.sh` (ReleaseFast; appends medians to
+  `quick_baseline.txt`), then `bash bench/record.sh --id=14A.0
+  --reason="Phase 14 row 14.13 — v0.1.0 lock-point baseline (Mac
+  aarch64 ReleaseFast tree_walk)"` (reads the latest quick_baseline
+  block, appends an ADR-0044 `lock: true` entry to `history.yaml`).
+  Commit history.yaml. THEN deliverable (3) `cljw.error/with-context`.
+- **Forbidden this session**: re-opening row 14.13 slice (a)/(b)
+  compat_tiers (DONE @7b104659 — D5 migration of 6 shipped host_classes
+  + Matcher/Socket added + zip kept Tier A; gate green 103/103). Re-doing
+  D-100 / lazy-seq (ADR-0054 complete). Widening wasm FFI / row 14.12
+  (F-010 de-prioritised). Pulling the v0.1.0 tag (row 14.14) before
+  14.13 (2)+(3) land. Down-tiering zip to B (decided: stays A).
 
 ## Current state
 
-Phase 14 v0.1.0 IN-PROGRESS. Mac gate **103/103** (read from the on-disk
-log; ubuntunote re-verify at the next Phase boundary per ADR-0049).
-**`cljw build` ships end-to-end** (D-100 (a)-(e) all discharged @e5a58552):
-`cljw build app.clj -o app` compiles to a self-contained binary with a
-`"CLJC"` trailer that re-runs its embedded bytecode at startup — including
-user functions (fn_val serialization, ADR-0034 am2) and cross-chunk defs
-(interleaved per-chunk startup run). The bootstrap setup is one shared
-`bootstrap.setupCore` chain (F-009). ADR-0054 lazy-seq Layer-2 also
-COMPLETE (row 14.13.5). Phase 14 remaining: 14.13 polish, 14.12 (deferred,
-F-010), 14.14 release.
+Phase 14 v0.1.0 IN-PROGRESS. Mac gate **103/103** green (on-disk log
+@7b104659). Row 14.13 progress: slice (a)/(b) **compat_tiers
+reconciliation DONE @7b104659** — shipped host_classes migrated to
+ADR-0029 D5 (Pattern/BigDecimal full; LocalDateTime/Duration/
+ZonedDateTime/MessageDigest/Socket reservation w/ `status:` field;
+Matcher added), `clojure.zip` stays Tier A (comprehensive impl,
+e2e-tested), G3 --gate passes (14 D5 keyword entries). `cljw build`
+ships end-to-end (D-100 discharged). ADR-0054 lazy-seq Layer-2 complete.
 
 ## Active task
 
-**Row 14.13 — v0.1.0 polish bundle (in progress).** Landed this session:
-compat_tiers math/spec down-tier + edn/pprint/tools.cli/data.json/csv
-promote. Remaining (see Resume contract): compat_tiers `cljw.host.*`
-per-class migration + `clojure.zip` tier precision; `bench/history.yaml`
-v0.1.0 lock-point (ADR-0044); `cljw.error/with-context` macro. No code
-blocker.
+**Row 14.13 — v0.1.0 polish bundle (2 deliverables remain).**
+
+- **(2) `bench/history.yaml` v0.1.0 lock-point** (ADR-0044). Infra
+  verified present: `bench/quick.sh` (ReleaseFast build, appends
+  `quick_baseline.txt`), `bench/record.sh --id=… --reason=… [--backend=]`
+  (reads latest quick_baseline block → appends `lock: true` entry to
+  `history.yaml`; needs `yq`). Machine id auto = `mac-arm-m4pro`.
+- **(3) `cljw.error/with-context` macro** (v5 §13.6 + ADR-0034 L172/
+  L516). Spec: `(cljw.error/with-context {:request-id … :trace-id …}
+  body)` — a dynamic var stacks context, merged as top-level fields when
+  an error event is emitted (`src/app/error_render.zig`). **Verify
+  prerequisite first**: the dynamic-binding runtime EXISTS in
+  `src/runtime/env.zig` (`BindingFrame` threadlocal stack +
+  `VarFlags.dynamic` + `Var.deref` walk), but `binding` is NOT yet a
+  wired special form (analyzer `bindings.zig` handles only `let*`/
+  `loop*`; no `(binding …)` / `^:dynamic` in the `.clj` corpus). So (3)
+  likely needs a prerequisite: wire the `binding` special form +
+  `^:dynamic` def-meta → frame push/pop (may be ADR-level — DA fork).
+  New ns lives at `src/lang/clj/cljw/error.clj` + a `@embedFile` row in
+  `src/lang/bootstrap.zig` (no `src/lang/clj/cljw/` dir exists yet).
 
 ## Open debts (named; full rows in `.dev/debt.md`)
 
-- **D-119** `cljw` man-page rendering (deferred from D-066; opportunistic,
-  no Clojure surface depends on it — row 14.13 may pick it up).
-- **D-139** AOT-built fns drop param-name labels in error frames
-  (ADR-0034 am2 A2-D3; opportunistic). **D-140** `cljw` startup reads the
-  whole self-exe to check the trailer (footer-seek perf pass).
-- **D-131** ADR-0034 deferred trailer blocks (bootstrap-cache / Tier-0 /
-  build-id; post-v0.1.0). **D-103** bytecode-cache version scope includes
-  the peephole rule set (now latent — D-100(b) shipped). **D-092**
-  keyEq→valueEqual + structural valueHash. **D-135** bare `()`. **D-138**
-  `e2e_phase14_error_format` flaky-once watch.
+- **D-119** `cljw` man-page rendering (opportunistic; no Clojure surface
+  depends on it). **D-139** AOT fns drop param-name labels in error
+  frames. **D-140** `cljw` startup reads whole self-exe for trailer.
+- **D-105** time backing impls (LocalDateTime/Duration/ZonedDateTime).
+  **D-106** net+crypto backing (Socket/MessageDigest). These are the
+  reservations the compat_tiers D5 `status:` fields point at.
 
 ## Cold-start reading order
 
 handover → CLAUDE.md (§ Project spirit + § Autonomous Workflow + § The
 only stop) → `.dev/project_facts.md` (esp. F-010) → `.dev/principle.md`
-→ ROADMAP §9.16 row 14.13 → `compat_tiers.yaml` + `.dev/debt.md` (D-066).
+→ ROADMAP §9.16 row 14.13 → `bench/{quick,record}.sh` + ADR-0044 →
+v5 §13.6 (`private/notes/clj_vs_zig_split_proposal_v5.md`) +
+`src/runtime/env.zig` (dynamic var runtime).
