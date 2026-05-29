@@ -85,6 +85,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "if-not", .expand = expandIfNot },
     .{ .name = "comment", .expand = expandComment },
     .{ .name = "assert", .expand = expandAssert },
+    .{ .name = "lazy-cat", .expand = expandLazyCat },
     .{ .name = "->", .expand = expandThreadFirst },
     .{ .name = "->>", .expand = expandThreadLast },
     .{ .name = "as->", .expand = expandAsThread },
@@ -985,6 +986,17 @@ fn expandAssert(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc:
     const exinfo = try makeCall(arena, "ex-info", &.{ msg, data_map }, loc);
     const throw_form = try makeCall(arena, "throw", &.{exinfo}, loc);
     return makeIf(arena, expr, nilForm(loc), throw_form, loc);
+}
+
+/// `(lazy-cat c0 c1 …)` → `(concat (lazy-seq c0) (lazy-seq c1) …)`. Each
+/// coll expr is wrapped in `lazy-seq` so it isn't realized until consumed
+/// (a fn would force all args eagerly — hence a macro). `(lazy-cat)` → `()`.
+fn expandLazyCat(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    const items = try arena.alloc(Form, 1 + args.len);
+    items[0] = sym("concat", loc);
+    for (args, 0..) |a, i| items[1 + i] = try makeCall(arena, "lazy-seq", &.{a}, loc);
+    return list(arena, items, loc);
 }
 
 const ThreadDir = enum { first, last };
