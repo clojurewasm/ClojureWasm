@@ -219,6 +219,11 @@
     (loop [c 0 s (seq coll)]
       (if (if s (< c n) false) (recur (inc c) (next s)) c))))
 
+;; `(rand-nth coll)` — a uniformly random element of coll (which must be
+;; indexed / counted). Empty coll → an out-of-bounds error (JVM parity).
+(def rand-nth
+  (fn* [coll] (nth coll (rand-int (count coll)))))
+
 ;; ----------------------------------------------------------------
 ;; Phase 6.16.b-3 helpers — used by clojure.set Group C (project /
 ;; rename / index / join). Pattern A composition; no Zig leaves.

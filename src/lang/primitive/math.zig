@@ -24,6 +24,7 @@ const dispatch = @import("../../runtime/dispatch.zig");
 const promote = @import("../../runtime/numeric/promote.zig");
 const equal = @import("../../runtime/equal.zig");
 const compare_mod = @import("../../runtime/compare.zig");
+const random_mod = @import("../../runtime/random.zig");
 
 // --- numeric helpers ---
 
@@ -565,6 +566,35 @@ pub fn charCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     };
 }
 
+/// `(rand-int n)` — a uniform random integer in [0, n). `n <= 0` → 0
+/// (matches `(int (rand n))` for the degenerate cases). Uses the lazily-
+/// seeded process PRNG (`runtime/random.zig`); non-deterministic by design.
+pub fn randInt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("rand-int", args, 1, loc);
+    const n = try error_catalog.expectInteger(args[0], "rand-int", loc);
+    if (n <= 0) return Value.initInteger(0);
+    const bound: i32 = if (n > std.math.maxInt(i32)) std.math.maxInt(i32) else @intCast(n);
+    return Value.initInteger(random_mod.nextIntBound(rt.io, bound));
+}
+
+/// `(rand)` — a uniform random double in [0, 1). `(rand n)` — in [0, n).
+pub fn randFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len > 1)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "rand", .got = args.len, .min = 0, .max = 1 });
+    const d = random_mod.nextDouble(rt.io);
+    if (args.len == 1) {
+        const scale: f64 = switch (args[0].tag()) {
+            .float => args[0].asFloat(),
+            .integer => @floatFromInt(args[0].asInteger()),
+            else => |t| return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "rand", .actual = @tagName(t) }),
+        };
+        return Value.initFloat(d * scale);
+    }
+    return Value.initFloat(d);
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -611,6 +641,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "max", .f = &max },
     .{ .name = "int", .f = &intCoerce },
     .{ .name = "char", .f = &charCoerce },
+    .{ .name = "rand-int", .f = &randInt },
+    .{ .name = "rand", .f = &randFn },
 };
 
 /// Register the math primitives into `rt_ns`.
