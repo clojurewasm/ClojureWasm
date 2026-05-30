@@ -152,13 +152,11 @@ pub fn registerGcHooks() void {
     tag_ops.registerTrace(.ratio, &traceGc);
 }
 
-// --- same-type arithmetic (5.9.d) ---
+// --- same-type comparison ---
 //
-// Cross-multiply approach mirroring JVM Clojure RatioOps. Result is
-// always reduced via `allocFromManagedPair` (which may return null on
-// integer-collapse — the caller is responsible for wrapping the
-// numerator as a BigInt in that case; the 5.10 promotion dispatcher
-// is the canonical caller).
+// Cross-multiply approach mirroring JVM Clojure RatioOps. Both inputs
+// have denom > 0 (the post-reduce invariant), so the cross-product sign
+// gives the order directly.
 
 /// Three-way compare two Ratio Values via cross-multiplication.
 /// Both inputs MUST have denom > 0 (the post-reduce invariant), so
@@ -178,86 +176,10 @@ pub fn compareValue(rt: *Runtime, a: Value, b: Value) !std.math.Order {
     return lhs.order(rhs);
 }
 
-/// `a + b` for two Ratios. Returns `null` if the reduced result
-/// collapses to an integer (caller wraps numerator as BigInt).
-pub fn allocAdd(rt: *Runtime, a: Value, b: Value) !?Value {
-    std.debug.assert(a.tag() == .ratio and b.tag() == .ratio);
-    const ar = a.decodePtr(*const Ratio);
-    const br = b.decodePtr(*const Ratio);
-    return try crossCombine(rt, ar, br, .add);
-}
-
-/// `a - b` for two Ratios. Returns `null` on integer collapse.
-pub fn allocSub(rt: *Runtime, a: Value, b: Value) !?Value {
-    std.debug.assert(a.tag() == .ratio and b.tag() == .ratio);
-    const ar = a.decodePtr(*const Ratio);
-    const br = b.decodePtr(*const Ratio);
-    return try crossCombine(rt, ar, br, .sub);
-}
-
-/// `a * b` for two Ratios. Returns `null` on integer collapse.
-pub fn allocMul(rt: *Runtime, a: Value, b: Value) !?Value {
-    std.debug.assert(a.tag() == .ratio and b.tag() == .ratio);
-    const ar = a.decodePtr(*const Ratio);
-    const br = b.decodePtr(*const Ratio);
-
-    var n = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer n.deinit();
-    var d = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer d.deinit();
-    try n.mul(ar.numer.m, br.numer.m);
-    try d.mul(ar.denom.m, br.denom.m);
-    return try allocFromManagedPair(rt, &n, &d);
-}
-
-/// `a / b` for two Ratios. Returns `null` on integer collapse;
-/// raises `error.DivideByZero` if b is the Ratio 0/x (impossible
-/// after reduce since 0 collapses to BigInt, but kept as a guard).
-pub fn allocDiv(rt: *Runtime, a: Value, b: Value) RatioError!?Value {
-    std.debug.assert(a.tag() == .ratio and b.tag() == .ratio);
-    const ar = a.decodePtr(*const Ratio);
-    const br = b.decodePtr(*const Ratio);
-
-    if (br.numer.m.eqlZero()) return error.DivideByZero;
-
-    var n = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer n.deinit();
-    var d = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer d.deinit();
-    try n.mul(ar.numer.m, br.denom.m);
-    try d.mul(ar.denom.m, br.numer.m);
-    return try allocFromManagedPair(rt, &n, &d);
-}
-
-const AddOrSub = enum { add, sub };
-
-fn crossCombine(
-    rt: *Runtime,
-    ar: *const Ratio,
-    br: *const Ratio,
-    op: AddOrSub,
-) !?Value {
-    // (a.n * b.d ± b.n * a.d) / (a.d * b.d)
-    var lhs = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer lhs.deinit();
-    var rhs = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer rhs.deinit();
-    try lhs.mul(ar.numer.m, br.denom.m);
-    try rhs.mul(br.numer.m, ar.denom.m);
-
-    var n = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer n.deinit();
-    switch (op) {
-        .add => try n.add(&lhs, &rhs),
-        .sub => try n.sub(&lhs, &rhs),
-    }
-
-    var d = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer d.deinit();
-    try d.mul(ar.denom.m, br.denom.m);
-
-    return try allocFromManagedPair(rt, &n, &d);
-}
+// Ratio arithmetic (+ - * /) over ratio / mixed operands lives in the
+// numeric dispatcher `promote.ratioArith`, which extracts each operand's
+// numerator/denominator (this module's job is construction + reduction
+// via `allocFromManagedPair`, comparison via `compareValue`, and GC).
 
 // --- tests ---
 
@@ -370,63 +292,6 @@ test "compareValue (1/2 vs 2/3): 1/2 < 2/3" {
     try testing.expectEqual(std.math.Order.lt, try compareValue(&fix.rt, a, b));
     try testing.expectEqual(std.math.Order.gt, try compareValue(&fix.rt, b, a));
     try testing.expectEqual(std.math.Order.eq, try compareValue(&fix.rt, a, a));
-}
-
-test "allocAdd (1/2 + 1/3) = 5/6" {
-    var fix = RatioFixture.init();
-    defer fix.deinit();
-
-    const a = (try allocFromI64Pair(&fix.rt, 1, 2)).?;
-    const b = (try allocFromI64Pair(&fix.rt, 1, 3)).?;
-    const sum = (try allocAdd(&fix.rt, a, b)).?;
-    try testing.expectEqual(@as(i64, 5), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, asNumer(sum))).toInt(i64));
-    try testing.expectEqual(@as(i64, 6), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, asDenom(sum))).toInt(i64));
-}
-
-test "allocSub (3/4 - 1/2) = 1/4" {
-    var fix = RatioFixture.init();
-    defer fix.deinit();
-
-    const a = (try allocFromI64Pair(&fix.rt, 3, 4)).?;
-    const b = (try allocFromI64Pair(&fix.rt, 1, 2)).?;
-    const diff = (try allocSub(&fix.rt, a, b)).?;
-    try testing.expectEqual(@as(i64, 1), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, asNumer(diff))).toInt(i64));
-    try testing.expectEqual(@as(i64, 4), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, asDenom(diff))).toInt(i64));
-}
-
-test "allocMul (2/3 * 3/4) = 1/2" {
-    var fix = RatioFixture.init();
-    defer fix.deinit();
-
-    const a = (try allocFromI64Pair(&fix.rt, 2, 3)).?;
-    const b = (try allocFromI64Pair(&fix.rt, 3, 4)).?;
-    const prod = (try allocMul(&fix.rt, a, b)).?;
-    try testing.expectEqual(@as(i64, 1), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, asNumer(prod))).toInt(i64));
-    try testing.expectEqual(@as(i64, 2), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, asDenom(prod))).toInt(i64));
-}
-
-test "allocDiv (1/2 / 1/3) = 3/2" {
-    var fix = RatioFixture.init();
-    defer fix.deinit();
-
-    const a = (try allocFromI64Pair(&fix.rt, 1, 2)).?;
-    const b = (try allocFromI64Pair(&fix.rt, 1, 3)).?;
-    const q = (try allocDiv(&fix.rt, a, b)).?;
-    try testing.expectEqual(@as(i64, 3), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, asNumer(q))).toInt(i64));
-    try testing.expectEqual(@as(i64, 2), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, asDenom(q))).toInt(i64));
-}
-
-test "allocMul (1/2 * 2/1) collapses to null (= 1)" {
-    var fix = RatioFixture.init();
-    defer fix.deinit();
-
-    // 2/1 inputs to allocFromI64Pair collapse at construction, so
-    // build the multiplicand directly via the path that produces a
-    // Ratio (2/1 cannot exist after reduce; use 4/3 * 3/4 = 1).
-    const a = (try allocFromI64Pair(&fix.rt, 4, 3)).?;
-    const b = (try allocFromI64Pair(&fix.rt, 3, 4)).?;
-    const prod = try allocMul(&fix.rt, a, b);
-    try testing.expect(prod == null);
 }
 
 test "Runtime.deinit releases Ratio + numer/denom BigInts (no leak)" {

@@ -2,10 +2,12 @@
 //! Cross-type numeric dispatch + auto-promotion paths per F-005
 //! and ROADMAP §9.7 / 5.10.
 //!
-//! Phase 5.10.a scope: Long ↔ BigInt promotion for `+ - *`. The
-//! `/` integer/integer → Ratio path lives in `divPromoting` (Phase
-//! 5.10.b); Ratio / BigDecimal cross-mixed cases land later as the
-//! `(* 1/2 0.5)` kind of expressions become Clojure-reachable.
+//! Scope: Long ↔ BigInt promotion for `+ - *`; the `/`
+//! integer/integer → Ratio path lives in `divPromoting`. Ratio
+//! arithmetic (`+ - * /` over ratio / mixed ratio⊗integer operands,
+//! plus ratio⊗float contagion) routes through `ratioArith`. BigDecimal
+//! cross-mixed cases (e.g. `(* 1/2 0.5M)`) still raise — they land when
+//! such expressions become Clojure-reachable.
 //!
 //! Float-contagion follows JVM Clojure: any float operand makes the
 //! result float (precision loss accepted). i48 overflow (cw v1's
@@ -35,6 +37,10 @@ fn toF64(rt: *Runtime, v: Value) f64 {
         // Lossy: BigInt → f64. Acceptable for float-contagious paths
         // where the user already opted into float semantics.
         return managedToF64(rt, big_int.asManaged(v));
+    }
+    if (v.tag() == .ratio) {
+        const r = v.decodePtr(*const ratio_mod.Ratio);
+        return managedToF64(rt, r.numer.m) / managedToF64(rt, r.denom.m);
     }
     return 0.0; // unreachable for caller that ran ensureNumeric
 }
@@ -89,16 +95,85 @@ pub fn wrapManaged(rt: *Runtime, m: *const Managed) !Value {
 const big_decimal_mod = @import("big_decimal.zig");
 const ratio_mod = @import("ratio.zig");
 
-fn integerCollapseFallback(rt: *Runtime, a: Value, b: Value) !Value {
-    _ = rt;
-    _ = a;
-    _ = b;
-    // Phase 5 placeholder: Ratio op produced a `null` (integer
-    // collapse). Cross-recompute as BigInt arithmetic. Phase 7's
-    // dispatch unification reuses the actual integer-collapse path
-    // from runtime/numeric/ratio.zig; for now Ratio + Ratio with
-    // collapsing result is rare in Phase 5 surface tests.
-    return error.IntegerCollapseNotImplemented;
+/// Numerator / denominator of a numeric operand as owned Manageds. A
+/// ratio yields its stored pair; an integer / BigInt yields `value/1`.
+/// Caller owns both and must `deinit` them.
+const RatioParts = struct { num: Managed, den: Managed };
+
+fn partsOf(rt: *Runtime, v: Value) !RatioParts {
+    if (v.tag() == .ratio) {
+        const r = v.decodePtr(*const ratio_mod.Ratio);
+        var num = try r.numer.m.cloneWithDifferentAllocator(rt.gc.infra);
+        errdefer num.deinit();
+        const den = try r.denom.m.cloneWithDifferentAllocator(rt.gc.infra);
+        return .{ .num = num, .den = den };
+    }
+    var num = try coerceToManaged(rt, v);
+    errdefer num.deinit();
+    var den = try Managed.init(rt.gc.infra);
+    try den.set(1);
+    return .{ .num = num, .den = den };
+}
+
+const RatioOp = enum { add, sub, mul, div };
+
+/// Rational arithmetic over operands where at least one is a ratio (the
+/// other may be ratio / integer / BigInt). Computes the result as a
+/// numerator/denominator Managed pair, then reduces via
+/// `allocFromManagedPair`; when the denominator collapses to 1 the exact
+/// integer quotient is returned (Long if it fits i48, else BigInt) —
+/// matching JVM Clojure, where `(+ 1/2 1/2)` is `1`, not `1/1`.
+fn ratioArith(rt: *Runtime, a: Value, b: Value, op: RatioOp) !Value {
+    var ap = try partsOf(rt, a);
+    defer {
+        ap.num.deinit();
+        ap.den.deinit();
+    }
+    var bp = try partsOf(rt, b);
+    defer {
+        bp.num.deinit();
+        bp.den.deinit();
+    }
+
+    var rn = try Managed.init(rt.gc.infra);
+    defer rn.deinit();
+    var rd = try Managed.init(rt.gc.infra);
+    defer rd.deinit();
+
+    switch (op) {
+        .mul => {
+            try rn.mul(&ap.num, &bp.num);
+            try rd.mul(&ap.den, &bp.den);
+        },
+        .div => {
+            // (an/ad) / (bn/bd) = (an*bd) / (ad*bn)
+            try rn.mul(&ap.num, &bp.den);
+            try rd.mul(&ap.den, &bp.num);
+        },
+        .add, .sub => {
+            // (an*bd ± bn*ad) / (ad*bd)
+            var lhs = try Managed.init(rt.gc.infra);
+            defer lhs.deinit();
+            var rhs = try Managed.init(rt.gc.infra);
+            defer rhs.deinit();
+            try lhs.mul(&ap.num, &bp.den);
+            try rhs.mul(&bp.num, &ap.den);
+            if (op == .add) try rn.add(&lhs, &rhs) else try rn.sub(&lhs, &rhs);
+            try rd.mul(&ap.den, &bp.den);
+        },
+    }
+
+    if (rd.eqlZero()) return error.DivideByZero;
+
+    if (try ratio_mod.allocFromManagedPair(rt, &rn, &rd)) |r| return r;
+
+    // Denominator collapsed to 1: the quotient is exact.
+    var q = try Managed.init(rt.gc.infra);
+    defer q.deinit();
+    var rem = try Managed.init(rt.gc.infra);
+    defer rem.deinit();
+    try q.divTrunc(&rem, &rn, &rd);
+    return try wrapManaged(rt, &q);
 }
 
 /// `a + b` with auto-promotion. Both inputs MUST be numeric (caller
@@ -110,9 +185,8 @@ pub fn addPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     if (a.tag() == .big_decimal and b.tag() == .big_decimal) {
         return try big_decimal_mod.allocAdd(rt, a, b);
     }
-    if (a.tag() == .ratio and b.tag() == .ratio) {
-        return (try ratio_mod.allocAdd(rt, a, b)) orelse
-            try integerCollapseFallback(rt, a, b);
+    if (a.tag() == .ratio or b.tag() == .ratio) {
+        return try ratioArith(rt, a, b, .add);
     }
     if (a.isInt() and b.isInt()) {
         const ai: i64 = @as(i64, a.asInteger());
@@ -141,9 +215,8 @@ pub fn subPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     if (a.tag() == .big_decimal and b.tag() == .big_decimal) {
         return try big_decimal_mod.allocSub(rt, a, b);
     }
-    if (a.tag() == .ratio and b.tag() == .ratio) {
-        return (try ratio_mod.allocSub(rt, a, b)) orelse
-            try integerCollapseFallback(rt, a, b);
+    if (a.tag() == .ratio or b.tag() == .ratio) {
+        return try ratioArith(rt, a, b, .sub);
     }
     if (a.isInt() and b.isInt()) {
         const ai: i64 = @as(i64, a.asInteger());
@@ -171,9 +244,8 @@ pub fn mulPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     if (a.tag() == .big_decimal and b.tag() == .big_decimal) {
         return try big_decimal_mod.allocMul(rt, a, b);
     }
-    if (a.tag() == .ratio and b.tag() == .ratio) {
-        return (try ratio_mod.allocMul(rt, a, b)) orelse
-            try integerCollapseFallback(rt, a, b);
+    if (a.tag() == .ratio or b.tag() == .ratio) {
+        return try ratioArith(rt, a, b, .mul);
     }
     if (a.isInt() and b.isInt()) {
         const ai: i64 = @as(i64, a.asInteger());
@@ -260,6 +332,10 @@ pub fn divPromoting(rt: *Runtime, a: Value, b: Value) !Value {
         // division does not trap). JVM Clojure throws DivideByZero only on
         // the integer/integer path below — float division never throws.
         return Value.initFloat(toF64(rt, a) / toF64(rt, b));
+    }
+
+    if (a.tag() == .ratio or b.tag() == .ratio) {
+        return try ratioArith(rt, a, b, .div);
     }
 
     // Integer / integer path: build Managed for both, compute gcd,
@@ -358,6 +434,57 @@ test "subPromoting (BigInt - Long) returns BigInt" {
     try testing.expect(v.tag() == .big_int);
     // (2^48 - 2) - 1 = 2^48 - 3
     try testing.expectEqual(@as(i64, (1 << 48) - 3), try big_int.asManaged(v).toInt(i64));
+}
+
+test "ratioArith addPromoting (1/2 + 1/2) collapses to Long 1 (no leak)" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    const half = try divPromoting(&fix.rt, Value.initInteger(1), Value.initInteger(2));
+    try testing.expect(half.tag() == .ratio);
+    const v = try addPromoting(&fix.rt, half, half);
+    try testing.expect(v.tag() == .integer);
+    try testing.expectEqual(@as(i48, 1), v.asInteger());
+}
+
+test "ratioArith mulPromoting (1/2 * 4) collapses to Long 2 (mixed operand)" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    const half = try divPromoting(&fix.rt, Value.initInteger(1), Value.initInteger(2));
+    const v = try mulPromoting(&fix.rt, half, Value.initInteger(4));
+    try testing.expect(v.tag() == .integer);
+    try testing.expectEqual(@as(i48, 2), v.asInteger());
+}
+
+test "ratioArith addPromoting (1/2 + 1/3) stays a ratio (no leak)" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    const half = try divPromoting(&fix.rt, Value.initInteger(1), Value.initInteger(2));
+    const third = try divPromoting(&fix.rt, Value.initInteger(1), Value.initInteger(3));
+    const v = try addPromoting(&fix.rt, half, third);
+    try testing.expect(v.tag() == .ratio);
+}
+
+test "ratioArith divPromoting (1/2 / 3) is a ratio; (1/2 / 0) raises DivideByZero" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    const half = try divPromoting(&fix.rt, Value.initInteger(1), Value.initInteger(2));
+    const v = try divPromoting(&fix.rt, half, Value.initInteger(3));
+    try testing.expect(v.tag() == .ratio);
+    try testing.expectError(error.DivideByZero, divPromoting(&fix.rt, half, Value.initInteger(0)));
+}
+
+test "ratioArith mulPromoting (1/2 * 0.5) is float-contagious -> 0.25" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    const half = try divPromoting(&fix.rt, Value.initInteger(1), Value.initInteger(2));
+    const v = try mulPromoting(&fix.rt, half, Value.initFloat(0.5));
+    try testing.expect(v.isFloat());
+    try testing.expectEqual(@as(f64, 0.25), v.asFloat());
 }
 
 test "addPromoting (Long + Float) is float-contagious" {
