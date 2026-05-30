@@ -82,10 +82,15 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
   `expandDefmulti` threads `-global-hierarchy` into the MultiFn, `derefHierarchy` derefs the atom,
   `getMethod` extracts `(:ancestors …)` and invalidates the method cache on hierarchy snapshot identity.
   Follow-ups (new rows if pursued): `isPreferred` transitive parent-walk, `:hierarchy` option, re-eval no-op.
-- **type / class / class? / satisfies? / extends? / extenders** — type queries.
-- **resolve / ns-resolve / requiring-resolve / find-var / intern / the-ns / find-ns / all-ns / create-ns /
-  ns-name / ns-publics / ns-map / ns-aliases / ns-interns / ns-refers / ns-imports / ns-unmap / alias** —
-  var/ns introspection (also unblocks a future resolve-based coverage harness).
+- **type / class / satisfies? / extends?** — **DONE** (verified 2026-05-31): `type`/`class` return JVM
+  class names (`java.lang.Long`, `clojure.lang.PersistentVector`, `clojure.lang.Keyword`); `satisfies?` /
+  `extends?` work. Still open: `class?`, `extenders`.
+- **var/ns introspection** — **DONE** (verified 2026-05-31): `resolve` (→ Var; undef → nil), `find-ns`,
+  `the-ns`, `ns-name`, `ns-publics`, `ns-map`, `ns-interns`, `intern`, `create-ns`. STILL MISSING:
+  `all-ns` (name_error — clean to add: an `rt/__all-ns` primitive over `rt.namespaces` + `list_mod.cons`);
+  `ns-resolve` / `requiring-resolve` / `find-var` / `ns-aliases` / `ns-refers` / `ns-imports` / `ns-unmap` /
+  `alias`. FIDELITY: `ns-interns` returns the same count as `ns-map` (referred vars not excluded — the
+  `home_ns` filter no-ops when `home_ns` is null), low-priority.
 - **eval / read / read-line / read+string / load-string / load-file / load-reader** — eval/read surface. **read-string DONE** 2026-05-30 (rt, reuses edn readOne→formToValue; cljw has no #= eval-reader so core==edn read-string). **`eval` DONE** 2026-05-31 (ADR-0058: typed `driver.evalValue` verb + `rt.macro_table` borrow; built-in macros expand, user macros via env Vars; fidelity limit: char/bignum/hash_map literals raise `macro_return_not_data` until `valueToForm` is extended). Also DONE: `not-every?`. Batch-7 gaps: `uuid?` (cljw UUIDs are STRINGS, not a tag — representation divergence); `mapcat` multi-coll (single-coll only); `iteration`/`realized?` (involved).
 
 ### Deferred / out-of-scope (NOT gaps to chase now)
@@ -146,8 +151,11 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
     groups; `resolve` missing.
 - **New gaps found while sweeping**: ~~`(sort cmp coll)` 2-arg comparator (D-159)~~ **DISCHARGED** —
   `-comparator` normalizer (boolean→{-1,0,1} / numeric pass-through, AFunction.compare) + multi-arity
-  `sort`/`sort-by` in core.clj; `(sort > coll)` / `(sort-by f > coll)` work. Remaining: regex capture
-  groups unsupported ("cycle 1"); `resolve` itself missing (P2).
-- **Batch-5 sweep gaps**: `re-seq` **DONE** (re-find-from primitive + .clj loop, 2026-05-30); STILL open:
-  `type`/`class` (need cljw type model), regex capture groups (cycle 1), `(subs "abc" 1 10)` clamps
-  instead of throwing (lenient divergence).
+  `sort`/`sort-by` in core.clj; `(sort > coll)` / `(sort-by f > coll)` work. (regex capture groups +
+  `resolve` were listed here as missing — both verified DONE 2026-05-31.)
+- **Batch-5 sweep gaps**: `re-seq` / `type` / `class` / **regex capture groups all DONE** (verified
+  2026-05-31: `(re-find #"(\d+)-(\d+)" "12-34")` → `["12-34" "12" "34"]`, `re-matches`/`re-groups` too).
+  STILL open: `(subs "abc" 1 10)` clamps instead of throwing (lenient divergence).
+- **Batch-8 sweep (2026-05-31)**: defrecord/deftype/protocol, dynamic vars (binding/with-redefs/set!/
+  *print-length*), large-input reduce/apply/group-by/frequencies/iterate/doseq (≤1e6), exceptions
+  (ex-data/finally/nested), path-ops (get-in/update-in/assoc-in) — all ROBUST, no structural defect.
