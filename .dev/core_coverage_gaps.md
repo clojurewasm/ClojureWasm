@@ -51,15 +51,17 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
     over reduce/transduce (rt/into retired — no other Zig callers). 8 e2e.
   - **Cycle 3b — DONE**: stateful `take`/`drop`/`map-indexed` transducer arities (volatile! state,
     ensure-reduced for take's early stop — verified on INFINITE `(iterate inc 0)`). 8 e2e (33 total).
-  - **Cycle 4 — NEXT**: `dedupe`/`distinct`/`partition-all` (1-arg completion flush) + `cat`
-    (preserving-reduced). Cycle 5: `halt-when` + `sequence`/`eduction` (DIVERGENCE D1 eager/defer).
-- **BUG FOUND (transducer testing 2026-05-30)**: `(range N)` for N≳100k **SEGFAULTS** — `-range-acc`
-  (core.clj:720) is non-TCO self-recursion, blows the stack. Eager-range DIVERGENCE is intentional but
-  the recursion is a crash. Fix: rewrite `-range-acc` with `loop`/`recur` (constant-stack). **NEXT unit
-  after cycle 3** (a crash on common input — high priority).
-  - **Cycle 4**: `dedupe`/`distinct`/`partition-all` (1-arg completion flush) + `cat` (preserving-reduced).
-  - **Cycle 5**: `halt-when` + `sequence`/`eduction` (DIVERGENCE D1: eager-PROVISIONAL or defer — cljw
-    lacks the lazy pull machinery upstream's TransformerIterator uses).
+  - **Cycle 4 — DONE**: `dedupe`/`distinct`/`partition-all` transducer arities (volatile state, 1-arg
+    flush) + `cat` + `-preserving-reduced` (`(comp cat (take 3))` halts correctly). 7 e2e.
+  - **Cycle 5 — DONE**: `halt-when` (1/2-arg, `:cljw.core/halt` sentinel map through completion).
+    `sequence`/`eduction` **DEFERRED = D-160** (need a push→pull transducer bridge; eager would hang on
+    infinite sources = a lie). 4 e2e (44 total).
+  - **TRANSDUCERS CORE-COMPLETE**: all reduce-driven drivers + every stateless/stateful arity + cat +
+    halt-when. Only lazy-pull `sequence`/`eduction` remain (D-160).
+- **CRASH FIXES (found via transducer testing 2026-05-30, both FIXED)**: `(range N)` N≳100k and
+  `(sort coll)` ≳5k both **segfaulted** — non-TCO recursion (`-range-acc` fn-deep; `-merge-sorted`
+  non-tail). Rewritten with `loop`/`recur` (constant-stack). Eager-recursion class audit complete:
+  remaining core.clj recursions are lazy-seq-wrapped or log-depth (safe).
 - **trampoline** — core.clj defn (loop on fn results).
 
 ### P2 — type / hierarchy / var+ns introspection

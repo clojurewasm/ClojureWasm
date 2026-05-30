@@ -187,6 +187,25 @@
            ([result] (rf result))
            ([result input] (reduce rrf result input))))))
 
+;; `(halt-when pred)` / `(halt-when pred retf)` — a transducer that aborts
+;; the whole transduction when an input matches `pred`, yielding that input
+;; (or `(retf (rf result) input)` when `retf` is supplied). The halt value
+;; rides through the 1-arg completion inside a qualified-keyword sentinel
+;; map so a normal accumulated map result is not mistaken for a halt.
+(def halt-when
+  (fn* ([pred] (halt-when pred nil))
+       ([pred retf]
+        (fn* [rf]
+          (fn* ([] (rf))
+               ([result]
+                (if (if (map? result) (contains? result :cljw.core/halt) false)
+                  (get result :cljw.core/halt)
+                  (rf result)))
+               ([result input]
+                (if (pred input)
+                  (reduced {:cljw.core/halt (if retf (retf (rf result) input) input)})
+                  (rf result input))))))))
+
 ;; ----------------------------------------------------------------
 ;; Pure Clojure HOF (no Zig leaf) — pattern A per ADR-0033 D3.
 ;; ----------------------------------------------------------------

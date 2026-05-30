@@ -62,4 +62,9 @@ assert_eq 'td_cat_map'  "$("$BIN" -e '(into [] (comp cat (map inc)) [[1 2] [3 4]
 # cat + take: preserving-reduced must propagate the early-stop through cat
 assert_eq 'td_cat_take' "$("$BIN" -e '(into [] (comp cat (take 3)) [[1 2] [3 4] [5 6]])')" '[1 2 3]'
 assert_eq 'td_full'     "$("$BIN" -e '(into [] (comp (map inc) (filter even?) (distinct)) [1 1 2 3 3 4])')" '[2 4]'
-echo "OK — phase14_transducers (40 cases, cycles 1-4) green"
+# cycle 5: halt-when (sequence / eduction deferred — D-160, need lazy pull)
+assert_eq 'halt_match'  "$("$BIN" -e '(transduce (halt-when neg?) conj [] [1 2 -3 4])')" '-3'
+assert_eq 'halt_none'   "$("$BIN" -e '(transduce (halt-when neg?) conj [] [1 2 3])')" '[1 2 3]'
+assert_eq 'halt_retf'   "$("$BIN" -e '(transduce (halt-when neg? (fn [r i] (conj r i))) conj [] [1 2 -3 4])')" '[1 2 -3]'
+assert_eq 'halt_comp'   "$("$BIN" -e '(transduce (comp (map inc) (halt-when (fn [x] (> x 4)))) conj [] [1 2 3 4])')" '5'
+echo "OK — phase14_transducers (44 cases, cycles 1-5; sequence/eduction = D-160) green"
