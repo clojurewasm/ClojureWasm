@@ -99,6 +99,22 @@ test "diff: apply spread still binds the trailing seq directly" {
     try f.check("(apply + (quote (1 2 3 4)))", 10);
 }
 
+test "diff: data structures + keywords as IFn (D-085)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // The dispatch arm lives in the shared treeWalkCall (VM op_call routes
+    // through rt.vtable.callFn → treeWalkCall), so both backends agree.
+    // Cases stay primitive-only (the Fixture has no core.clj, so no
+    // map/filter; `apply` is a primitive and exercises the HOF path).
+    try f.check("(:k {:k 42})", 42);
+    try f.check("({:k 7} :k)", 7);
+    try f.check("([10 20 30] 1)", 20);
+    try f.check("(#{5} 5)", 5);
+    try f.check("(apply :a [{:a 99}])", 99);
+    try f.check("(apply {:x 5} [:x])", 5);
+    try f.check("(apply [10 20 30] [2])", 30);
+}
+
 test "diff: binding rebinds a dynamic var (both backends)" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

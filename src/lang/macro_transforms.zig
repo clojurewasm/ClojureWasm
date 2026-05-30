@@ -1230,8 +1230,9 @@ fn threadStep(
     step: Form,
     dir: ThreadDir,
 ) macro_dispatch.ExpandError!Form {
-    // Bare-symbol step: `(-> x f)` → `(f x)`.
-    if (step.data == .symbol) {
+    // Bare-symbol / bare-keyword step: `(-> x f)` → `(f x)`,
+    // `(-> m :k)` → `(:k m)` (keyword-as-fn, D-085).
+    if (step.data == .symbol or step.data == .keyword) {
         const items = try arena.alloc(Form, 2);
         items[0] = step;
         items[1] = acc;

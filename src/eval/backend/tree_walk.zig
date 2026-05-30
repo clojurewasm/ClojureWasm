@@ -40,6 +40,7 @@ const Env = env_mod.Env;
 const Var = env_mod.Var;
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
+const lookup_mod = @import("../../runtime/collection/lookup.zig");
 const host_class = @import("../../runtime/error/host_class.zig");
 const vector_collection = @import("../../runtime/collection/vector.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
@@ -898,6 +899,10 @@ pub fn treeWalkCall(
         .builtin_fn => callBuiltin(rt, env, callee, args, loc),
         .multi_fn => multimethod_mod.callMultiFn(rt, env, callee, args, loc),
         .protocol_fn => callProtocolFn(rt, env, callee, args, loc),
+        // Data structures + keywords as IFn (D-085): (:k m) / (m k) /
+        // (#{…} x) / ([…] i). Routes through the same dispatch so the VM,
+        // `apply`, and `(map :k coll)` all get it for free.
+        .keyword, .symbol, .array_map, .hash_map, .hash_set, .vector => lookup_mod.invoke(callee, args, loc),
         else => |t| error_catalog.raise(.value_not_callable, loc, .{ .actual = @tagName(t) }),
     };
 }
