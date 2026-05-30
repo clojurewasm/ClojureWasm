@@ -29,5 +29,10 @@ assert_eq 'sort_dup'    "$("$BIN" -e '(into [] (sort [2 1 2 1]))')"             
 assert_eq 'sort_by_len' "$("$BIN" -e '(into [] (sort-by count ["aa" "b" "ccc"]))')" '["b" "aa" "ccc"]'
 # stability: a constant key must preserve original order
 assert_eq 'sort_stable' "$("$BIN" -e '(into [] (sort-by (fn* [x] 0) [3 1 2]))')"  '[3 1 2]'
+# D-159: explicit comparator (boolean predicate or numeric) for sort / sort-by
+assert_eq 'sort_gt'     "$("$BIN" -e '(into [] (sort > [3 1 2]))')"               '[3 2 1]'
+assert_eq 'sort_lt'     "$("$BIN" -e '(into [] (sort < [3 1 2]))')"               '[1 2 3]'
+assert_eq 'sort_numcmp' "$("$BIN" -e '(into [] (sort (fn [a b] (- b a)) [1 2 3]))')" '[3 2 1]'
+assert_eq 'sortby_gt'   "$("$BIN" -e '(into [] (sort-by count > ["aa" "b" "ccc"]))')" '["ccc" "aa" "b"]'
 
 echo "ALL phase14_sort PASS"

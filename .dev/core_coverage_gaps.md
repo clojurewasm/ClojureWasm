@@ -106,7 +106,9 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
   - **then**: **transducers** (HIGH ROI, BIG — survey-worthy: transducer protocol over reduce/reduced,
     1-arg HOF arities); MEDIUM fill-ins: `isa?`/hierarchy, `resolve`/ns (needs first-class var Value?),
     `bigint`/`bigdec` (LOW-med ROI + fiddly 5 coerce arms + string parsers — deprioritized).
-  - **also found**: `(sort cmp coll)` comparator-arg = D-159; regex capture groups; `resolve` missing.
-- **New gaps found while sweeping** (not yet chased): `(sort cmp coll)` with a 2-arg COMPARATOR fn
-  errors — cljw `sort`'s 2-arg form treats the fn as a 1-arg key-fn, not a comparator (= **D-159**);
-  regex capture groups unsupported ("cycle 1"); `resolve` itself missing (P2).
+  - **also found**: `(sort cmp coll)` comparator-arg = D-159 (**DONE** 2026-05-30); regex capture
+    groups; `resolve` missing.
+- **New gaps found while sweeping**: ~~`(sort cmp coll)` 2-arg comparator (D-159)~~ **DISCHARGED** —
+  `-comparator` normalizer (boolean→{-1,0,1} / numeric pass-through, AFunction.compare) + multi-arity
+  `sort`/`sort-by` in core.clj; `(sort > coll)` / `(sort-by f > coll)` work. Remaining: regex capture
+  groups unsupported ("cycle 1"); `resolve` itself missing (P2).

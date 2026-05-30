@@ -602,14 +602,33 @@
                        (-msort cmp (vec (take mid v)))
                        (-msort cmp (vec (drop mid v))))))))
 
-;; `(sort coll)` — natural order via the general `compare` (stable).
-(def sort
-  (fn* [coll] (-msort compare (vec coll))))
+;; Normalize a user comparator (Clojure AFunction.compare semantics, D-159):
+;; a Boolean result reads as a less-than predicate (true → -1; else `(cmp b a)`
+;; true → 1; else 0); a number passes through (its sign is the order). Lets
+;; `(sort < coll)` / `(sort > coll)` work next to numeric comparators, since
+;; `-merge-sorted` compares the result with `<= 0`.
+(def -comparator
+  (fn* [cmp]
+    (fn* [a b]
+      (let [r (cmp a b)]
+        (if (boolean? r)
+          (if r -1 (if (cmp b a) 1 0))
+          r)))))
 
-;; `(sort-by f coll)` — order by `(compare (f a) (f b))` (stable).
+;; `(sort coll)` — natural order via `compare`. `(sort comp coll)` — order by
+;; the (boolean-or-number) comparator `comp`. Stable (merge sort).
+(def sort
+  (fn* ([coll] (-msort compare (vec coll)))
+       ([comp coll] (-msort (-comparator comp) (vec coll)))))
+
+;; `(sort-by f coll)` — order by `(compare (f a) (f b))`. `(sort-by f comp coll)`
+;; — order by `(comp (f a) (f b))`. Stable.
 (def sort-by
-  (fn* [f coll]
-    (-msort (fn* [a b] (compare (f a) (f b))) (vec coll))))
+  (fn* ([f coll]
+        (-msort (fn* [a b] (compare (f a) (f b))) (vec coll)))
+       ([f comp coll]
+        (let [c (-comparator comp)]
+          (-msort (fn* [a b] (c (f a) (f b))) (vec coll))))))
 
 ;; ----------------------------------------------------------------
 ;; D-134 range + index fns. The finite arities `(range n)` /
