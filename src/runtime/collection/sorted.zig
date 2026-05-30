@@ -418,6 +418,36 @@ pub fn seq(rt: *Runtime, v: Value) !Value {
     };
 }
 
+// Descending walk: visit left→node→right and prepend, so the largest key
+// (visited last) lands at the front (the mirror of seqInto's ascending walk).
+fn rseqSetInto(rt: *Runtime, h: Value, acc: Value) !Value {
+    if (h.tag() != .rb_node) return acc;
+    const hn = h.decodePtr(*const RbNode);
+    var result = try rseqSetInto(rt, hn.left, acc);
+    result = try list_mod.consHeap(rt, hn.key, result);
+    return rseqSetInto(rt, hn.right, result);
+}
+
+fn rseqMapInto(rt: *Runtime, h: Value, acc: Value) !Value {
+    if (h.tag() != .rb_node) return acc;
+    const hn = h.decodePtr(*const RbNode);
+    var result = try rseqMapInto(rt, hn.left, acc);
+    var pair = vector_mod.empty();
+    pair = try vector_mod.conj(rt, pair, hn.key);
+    pair = try vector_mod.conj(rt, pair, hn.val);
+    result = try list_mod.consHeap(rt, pair, result);
+    return rseqMapInto(rt, hn.right, result);
+}
+
+/// Reverse seq: descending [k v] pairs (map) / descending elements (set).
+pub fn rseq(rt: *Runtime, v: Value) !Value {
+    return switch (v.tag()) {
+        .sorted_map => try rseqMapInto(rt, v.decodePtr(*const SortedMap).root, Value.nil_val),
+        .sorted_set => try rseqSetInto(rt, mapOf(v).decodePtr(*const SortedMap).root, Value.nil_val),
+        else => Value.nil_val,
+    };
+}
+
 // --- SortedSet public API (wraps a SortedMap, element → element) ---
 
 inline fn mapOf(set_val: Value) Value {

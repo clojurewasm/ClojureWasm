@@ -176,6 +176,39 @@ pub fn seqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     };
 }
 
+/// Implements clojure.core/rseq.
+/// Spec: `(rseq coll)` — reverse seq of a *reversible* collection in O(n)
+///   here: vector (reverse order) / sorted-map (descending [k v]) /
+///   sorted-set (descending elements). Empty → nil. Non-reversible →
+///   type error (JVM throws for non-Reversible too).
+/// JVM reference: clojure.lang.RT.rseq / Reversible.rseq
+/// cw v1 tier: A
+pub fn rseqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("rseq", args, 1, loc);
+    const coll = args[0];
+    return switch (coll.tag()) {
+        .vector => if (vector.count(coll) > 0) try vectorToRevList(rt, coll) else .nil_val,
+        .sorted_map, .sorted_set => if (sorted.count(coll) > 0) try sorted.rseq(rt, coll) else .nil_val,
+        else => error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "rseq",
+            .expected = "vector or sorted collection",
+            .actual = @tagName(coll.tag()),
+        }),
+    };
+}
+
+fn vectorToRevList(rt: *Runtime, vec: Value) !Value {
+    const n = vector.count(vec);
+    var acc: Value = .nil_val;
+    var i: u32 = 0;
+    while (i < n) : (i += 1) {
+        const elt = try vector_nth_safe(vec, i, .{ .line = 0, .column = 0 });
+        acc = try list.consHeap(rt, elt, acc);
+    }
+    return acc;
+}
+
 // --- first ---
 
 /// Implements clojure.core/first.
@@ -480,6 +513,7 @@ const Entry = struct {
 const ENTRIES = [_]Entry{
     .{ .name = "count", .f = &countFn },
     .{ .name = "seq", .f = &seqFn },
+    .{ .name = "rseq", .f = &rseqFn },
     .{ .name = "first", .f = &firstFn },
     .{ .name = "rest", .f = &restFn },
     .{ .name = "next", .f = &nextFn },

@@ -95,9 +95,14 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
       sign (Clojure `AFunction.compare`). 8 new e2e (38 total); `>`/`<`/numeric/str-len comparators all
       green incl. get/disj/as-fn parity. **The env-threaded callFn-from-primitive pattern now unblocks
       D-159** (`(sort cmp coll)` 2-arg comparator) — same AFunction.compare logic.
-    - **Cycle C — NEXT**: `rseq` (vector reverse + sorted descending walk — currently name_error) +
-      flip `reversible?` core.clj:736 `(fn* [x] (vector? x))` → also `sorted?` + `subseq`/`rsubseq`
-      (range queries; tree-navigated seqFrom is the finished form, filter-the-full-seq is the floor).
+    - **Cycle C1 — DONE**: `rseq` (Zig primitive, seq/count-style tag dispatch: vector reverse /
+      sorted descending walk = left→node→right + prepend / empty→nil / non-reversible→type_error) +
+      `reversible?` core.clj:736 flipped to `(or (vector? x) (sorted? x))`. 8 new e2e (46 total).
+    - **Cycle C2 — NEXT**: `subseq`/`rsubseq` (sorted range queries — the main reason to use a sorted
+      coll). Finished form: tree-walk emitting entry (pair for map / elem for set) filtered by
+      `(test (coll-comparator-compare node-key bound) 0)` applied via callFn; both 3-arg `(sc test key)`
+      and 5-arg `(sc s-test s-key e-test e-key)` forms; rsubseq = descending. Add `sorted.compareWith`
+      (public comparator-aware compare). Then sorted is fully complete.
   - **then**: **transducers** (HIGH ROI, BIG — survey-worthy: transducer protocol over reduce/reduced,
     1-arg HOF arities); MEDIUM fill-ins: `isa?`/hierarchy, `resolve`/ns (needs first-class var Value?),
     `bigint`/`bigdec` (LOW-med ROI + fiddly 5 coerce arms + string parsers — deprioritized).

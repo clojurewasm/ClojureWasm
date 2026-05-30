@@ -53,4 +53,13 @@ assert_eq 'by_disj'     "$("$BIN" -e '(seq (disj (sorted-set-by > 1 2 3 4 5) 3))
 assert_eq 'by_as_fn'    "$("$BIN" -e '((sorted-set-by > 1 2 3) 2)')"         '2'
 assert_eq 'by_numeric'  "$("$BIN" -e '(seq (sorted-set-by (fn [a b] (- b a)) 1 2 3))')" '(3 2 1)'
 assert_eq 'by_str_len'  "$("$BIN" -e '(vec (sorted-set-by (fn [a b] (- (count a) (count b))) "ccc" "a" "bb"))')" '["a" "bb" "ccc"]'
-echo "OK — phase14_sorted smoke (38 cases) green"
+# rseq / reversible? (cycle C)
+assert_eq 'rseq_smap'   "$("$BIN" -e '(rseq (sorted-map :a 1 :b 2 :c 3))')" '([:c 3] [:b 2] [:a 1])'
+assert_eq 'rseq_sset'   "$("$BIN" -e '(rseq (sorted-set 3 1 2))')"         '(3 2 1)'
+assert_eq 'rseq_vec'    "$("$BIN" -e '(rseq [1 2 3])')"                    '(3 2 1)'
+assert_eq 'rseq_empty'  "$("$BIN" -e '(rseq (sorted-set))')"               'nil'
+assert_eq 'rseq_by'     "$("$BIN" -e '(rseq (sorted-set-by > 1 2 3))')"    '(1 2 3)'
+assert_eq 'rev_smap'    "$("$BIN" -e '(reversible? (sorted-map))')"        'true'
+assert_eq 'rev_sset'    "$("$BIN" -e '(reversible? (sorted-set))')"        'true'
+assert_eq 'rev_list'    "$("$BIN" -e '(reversible? (list 1 2))')"          'false'
+echo "OK — phase14_sorted smoke (46 cases) green"
