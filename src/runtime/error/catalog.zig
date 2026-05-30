@@ -202,6 +202,8 @@ pub const Code = enum {
     doto_form_incomplete,
     dotimes_form_incomplete,
     dotimes_bindings_invalid,
+    doseq_form_incomplete,
+    doseq_bindings_invalid,
     while_form_incomplete,
     when_first_form_incomplete,
     when_first_bindings_invalid,
@@ -693,6 +695,14 @@ pub fn entry(comptime code: Code) Entry {
         .dotimes_bindings_invalid => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "dotimes bindings must be a vector of [name count] with an unqualified symbol name",
+        },
+        .doseq_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "doseq requires a binding vector",
+        },
+        .doseq_bindings_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "doseq bindings must be an even-length vector of binding pairs with optional :let / :when / :while modifiers",
         },
         .while_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,

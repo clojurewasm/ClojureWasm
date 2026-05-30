@@ -103,6 +103,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "dotimes", .expand = expandDotimes },
     .{ .name = "while", .expand = expandWhile },
     .{ .name = "when-first", .expand = expandWhenFirst },
+    .{ .name = "doseq", .expand = expandDoseq },
     .{ .name = "case", .expand = expandCase },
     .{ .name = "condp", .expand = expandCondp },
     .{ .name = "fn", .expand = expandFn },
@@ -803,6 +804,119 @@ fn expandWhenFirst(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, l
     wl_items[1] = .{ .data = .{ .vector = wl_binding }, .location = loc };
     wl_items[2] = inner_let;
     return list(arena, wl_items, loc);
+}
+
+// --- doseq (D-134 / phaseA26) ---
+//
+// `(doseq [bind coll | :let v | :when t | :while t …] body…)` → nested
+// `loop`/`recur` over each binding pair, with :let / :when / :while injected
+// as let / if / when. Always returns nil. A port of the JVM
+// clojure.core/doseq `step` closure, dropping the chunked fast path (cw v1
+// has no chunked-seq; the first/next slow path is semantically identical —
+// see private/notes/phaseA26-doseq-for-survey.md §5.1). Binds go through the
+// `let` macro so destructuring rides the existing let lowering.
+
+const DoseqStep = struct { needrec: bool, form: Form };
+
+/// `(let <binding-vector-form> <body>)` — used so doseq binds destructure.
+fn makeLet(arena: std.mem.Allocator, binding: Form, body: Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    const items = try arena.alloc(Form, 3);
+    items[0] = sym("let", loc);
+    items[1] = binding;
+    items[2] = body;
+    return list(arena, items, loc);
+}
+
+/// Right-to-left recursion over the binding/modifier list. `recform` is the
+/// recur form that continues the enclosing loop (null at top). `needrec=true`
+/// means "the enclosing loop must append its recur after this subform" (the
+/// subform did not itself emit a recur).
+fn doseqStep(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    recform: ?Form,
+    exprs: []const Form,
+    body: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!DoseqStep {
+    if (exprs.len == 0)
+        return .{ .needrec = true, .form = try foldBody(arena, body, loc) };
+
+    const k = exprs[0];
+    const v = exprs[1];
+    const rest = exprs[2..];
+
+    if (k.data == .keyword and k.data.keyword.ns == null) {
+        const kname = k.data.keyword.name;
+        const inner = try doseqStep(arena, rt, recform, rest, body, loc);
+        if (std.mem.eql(u8, kname, "let")) {
+            if (v.data != .vector)
+                return error_catalog.raise(.doseq_bindings_invalid, v.location, .{});
+            return .{ .needrec = inner.needrec, .form = try makeLet(arena, v, inner.form, loc) };
+        } else if (std.mem.eql(u8, kname, "while")) {
+            // (when v inner.form [recform if inner.needrec])
+            const append = inner.needrec and recform != null;
+            const items = try arena.alloc(Form, if (append) 4 else 3);
+            items[0] = sym("when", loc);
+            items[1] = v;
+            items[2] = inner.form;
+            if (append) items[3] = recform.?;
+            return .{ .needrec = false, .form = try list(arena, items, loc) };
+        } else if (std.mem.eql(u8, kname, "when")) {
+            // (if v (do inner.form [recform if needrec]) recform)
+            const then_form = if (inner.needrec and recform != null) blk: {
+                const do_items = try arena.alloc(Form, 3);
+                do_items[0] = sym("do", loc);
+                do_items[1] = inner.form;
+                do_items[2] = recform.?;
+                break :blk try list(arena, do_items, loc);
+            } else inner.form;
+            const if_items = try arena.alloc(Form, 4);
+            if_items[0] = sym("if", loc);
+            if_items[1] = v;
+            if_items[2] = then_form;
+            if_items[3] = recform orelse nilForm(loc);
+            return .{ .needrec = false, .form = try list(arena, if_items, loc) };
+        }
+        return error_catalog.raise(.doseq_bindings_invalid, k.location, .{});
+    }
+
+    // A real `bind coll` pair → build a loop over (seq coll), slow path only.
+    const gname = sym(try rt.gensym(arena, "doseq_seq"), loc);
+    const recform_inner = try makeCall(arena, "recur", &.{try makeCall(arena, "next", &.{gname}, loc)}, loc);
+    const inner = try doseqStep(arena, rt, recform_inner, rest, body, loc);
+
+    // (let [bind (first g)] inner.form)
+    const lb = try arena.alloc(Form, 2);
+    lb[0] = k;
+    lb[1] = try makeCall(arena, "first", &.{gname}, loc);
+    const let_form = try makeLet(arena, .{ .data = .{ .vector = lb }, .location = loc }, inner.form, loc);
+
+    // (when g <let_form> [recur (next g) if inner.needrec])
+    const when_items = try arena.alloc(Form, if (inner.needrec) 4 else 3);
+    when_items[0] = sym("when", loc);
+    when_items[1] = gname;
+    when_items[2] = let_form;
+    if (inner.needrec) when_items[3] = recform_inner;
+
+    // (loop [g (seq coll)] <when>)
+    const loop_binding = try arena.alloc(Form, 2);
+    loop_binding[0] = gname;
+    loop_binding[1] = try makeCall(arena, "seq", &.{v}, loc);
+    const loop_items = try arena.alloc(Form, 3);
+    loop_items[0] = sym("loop", loc);
+    loop_items[1] = .{ .data = .{ .vector = loop_binding }, .location = loc };
+    loop_items[2] = try list(arena, when_items, loc);
+    return .{ .needrec = true, .form = try list(arena, loop_items, loc) };
+}
+
+fn expandDoseq(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    if (args.len < 1)
+        return error_catalog.raise(.doseq_form_incomplete, loc, .{});
+    if (args[0].data != .vector or args[0].data.vector.len % 2 != 0)
+        return error_catalog.raise(.doseq_bindings_invalid, args[0].location, .{});
+    const result = try doseqStep(arena, rt, null, args[0].data.vector, args[1..], loc);
+    return result.form;
 }
 
 // --- case (D-134) ---
