@@ -146,3 +146,6 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
   `-comparator` normalizer (boolean→{-1,0,1} / numeric pass-through, AFunction.compare) + multi-arity
   `sort`/`sort-by` in core.clj; `(sort > coll)` / `(sort-by f > coll)` work. Remaining: regex capture
   groups unsupported ("cycle 1"); `resolve` itself missing (P2).
+- **Batch-5 sweep gaps**: `re-seq` **DONE** (re-find-from primitive + .clj loop, 2026-05-30); STILL open:
+  `type`/`class` (need cljw type model), regex capture groups (cycle 1), `(subs "abc" 1 10)` clamps
+  instead of throwing (lenient divergence).

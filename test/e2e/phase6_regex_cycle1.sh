@@ -73,4 +73,14 @@ assert_eq 'cycle1_anchor_full' "$got" '"abc"'
 got="$("$BIN" -e '(re-find #"^abc$" "xabc")')"
 assert_eq 'cycle1_anchor_no_match' "$got" 'nil'
 
-echo "phase6_regex_cycle1: all 10 cases passed"
+# re-seq — successive non-overlapping matches (via the re-find-from primitive)
+got="$("$BIN" -e '(re-seq #"\d+" "a1b22c333")')"
+assert_eq 'reseq_nums' "$got" '("1" "22" "333")'
+got="$("$BIN" -e '(re-seq #"[a-z]+" "ab cd ef")')"
+assert_eq 'reseq_words' "$got" '("ab" "cd" "ef")'
+got="$("$BIN" -e '(re-seq #"\d+" "abc")')"
+assert_eq 'reseq_none' "$got" 'nil'
+got="$("$BIN" -e '(re-find-from #"\d+" "a1b22" 2)')"
+assert_eq 'refindfrom' "$got" '["22" 3 5]'
+
+echo "phase6_regex_cycle1: all 14 cases passed"

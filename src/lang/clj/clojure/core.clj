@@ -1057,6 +1057,19 @@
   (fn* [obj f & args]
     (with-meta obj (apply f (meta obj) args))))
 
+;; `(re-seq re s)` — seq of successive non-overlapping match strings of `re`
+;; in `s` via the `re-find-from` primitive (loop/recur, advancing past each
+;; match's end; +1 on an empty match to avoid looping). Capture-group vectors
+;; land when groups do (regex cycle 3+).
+(def re-seq
+  (fn* [re s]
+    (loop [pos 0 acc []]
+      (let [m (re-find-from re s pos)]
+        (if (nil? m)
+          (seq acc)
+          (recur (if (= (nth m 2) (nth m 1)) (inc (nth m 2)) (nth m 2))
+                 (conj acc (nth m 0))))))))
+
 ;; ----------------------------------------------------------------
 ;; Ad-hoc hierarchies — make-hierarchy / derive / underive / isa? /
 ;; parents / ancestors / descendants over a global hierarchy.

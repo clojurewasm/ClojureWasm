@@ -25,6 +25,7 @@ const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
+const vector_collection = @import("../../runtime/collection/vector.zig");
 const regex_value = @import("../../runtime/regex/value.zig");
 const regex_match = @import("../../runtime/regex/match.zig");
 
@@ -95,6 +96,31 @@ pub fn reMatches(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     return try string_collection.alloc(rt, input[result.start..result.end]);
 }
 
+/// `(re-find-from re s start)` — like re-find but scanning from byte
+/// offset `start`; returns `[match start end]` (the match string + its
+/// byte span) or nil. Internal helper for `clojure.core/re-seq` (which
+/// loops, advancing past each match's end).
+pub fn reFindFrom(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("re-find-from", args, 3, loc);
+    const r = try coerceRegex(rt, args[0], loc, "re-find-from");
+    if (args[1].tag() != .string) {
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "re-find-from", .actual = @tagName(args[1].tag()) });
+    }
+    if (args[2].tag() != .integer) {
+        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = "re-find-from", .actual = @tagName(args[2].tag()) });
+    }
+    const input = string_collection.asString(args[1]);
+    const start_i = args[2].asInteger();
+    if (start_i < 0 or start_i > input.len) return .nil_val;
+    const result = (try regex_match.findFrom(rt.gpa, r.program, input, @intCast(start_i))) orelse return .nil_val;
+    var v = vector_collection.empty();
+    v = try vector_collection.conj(rt, v, try string_collection.alloc(rt, input[result.start..result.end]));
+    v = try vector_collection.conj(rt, v, Value.initInteger(@intCast(result.start)));
+    v = try vector_collection.conj(rt, v, Value.initInteger(@intCast(result.end)));
+    return v;
+}
+
 /// Coerce a Value to `*const Regex`. Accepts an existing regex
 /// Value directly, or a string (compiled on the spot — matches
 /// JVM `Pattern.compile` flexibility). Other types raise a
@@ -128,6 +154,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "re-pattern", .f = &rePattern },
     .{ .name = "re-find", .f = &reFind },
     .{ .name = "re-matches", .f = &reMatches },
+    .{ .name = "re-find-from", .f = &reFindFrom },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
