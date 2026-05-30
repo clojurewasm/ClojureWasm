@@ -592,10 +592,13 @@ fn writeFloatPrec(w: *std.Io.Writer, f: f64, prec: usize) !void {
 }
 
 /// `(format fmt & args)` — printf-style string formatting. Supported
-/// directives: `%s` `%d` `%f` `%.Nf` `%x` `%%` `%n`. No width / flags yet (a
-/// leading width digit raises `format_spec_invalid`). Args are consumed
-/// left-to-right; `%%` / `%n` consume none. Matches clojure.core/format for
-/// the supported subset (the JVM delegates to java.util.Formatter).
+/// directives: `%[-][width][.prec]CONV` where CONV is `s` `d` `f` `x` plus
+/// the no-arg `%%` / `%n`. `-` left-justifies; `width` is the min field
+/// width (space-padded; the `0` zero-pad flag is not supported, so a leading
+/// width zero just space-pads); `.prec` is the float fractional-digit count
+/// (only for `%f`, default 6). Args are consumed left-to-right. Matches
+/// clojure.core/format for the supported subset (the JVM delegates to
+/// java.util.Formatter).
 pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (args.len == 0 or args[0].tag() != .string)
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "format", .actual = if (args.len == 0) "nil" else @tagName(args[0].tag()) });
@@ -615,9 +618,19 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         i += 1; // past '%'
         if (i >= fmt.len) return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%" });
 
-        // Optional precision `.N` (only meaningful for %f). No width / flags.
+        // Optional `-` (left-justify) flag, then min field width (space-pad).
+        var left = false;
+        if (fmt[i] == '-') {
+            left = true;
+            i += 1;
+        }
+        var width: usize = 0;
+        while (i < fmt.len and fmt[i] >= '0' and fmt[i] <= '9') : (i += 1)
+            width = width * 10 + (fmt[i] - '0');
+
+        // Optional precision `.N` (only meaningful for %f).
         var prec: ?usize = null;
-        if (fmt[i] == '.') {
+        if (i < fmt.len and fmt[i] == '.') {
             i += 1;
             var p: usize = 0;
             var saw_digit = false;
@@ -631,36 +644,58 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         if (i >= fmt.len) return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%" });
         const conv = fmt[i];
         i += 1;
+
+        // %% / %n take no argument and ignore width.
+        if (conv == '%') {
+            try w.writeByte('%');
+            continue;
+        }
+        if (conv == 'n') {
+            try w.writeByte('\n');
+            continue;
+        }
         if (prec != null and conv != 'f')
             return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%." });
 
+        // Render the conversion into a temp, then space-pad to `width` into w.
+        var tmp: std.Io.Writer.Allocating = .init(rt.gpa);
+        defer tmp.deinit();
+        const tw = &tmp.writer;
         switch (conv) {
-            '%' => try w.writeByte('%'),
-            'n' => try w.writeByte('\n'),
             's' => {
                 if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
-                try writeArgsSpaced(rt, env, w, args[ai .. ai + 1], false);
+                try writeArgsSpaced(rt, env, tw, args[ai .. ai + 1], false);
                 ai += 1;
             },
             'd' => {
                 if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
-                try w.print("{d}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
+                try tw.print("{d}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
                 ai += 1;
             },
             'x' => {
                 if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
-                try w.print("{x}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
+                try tw.print("{x}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
                 ai += 1;
             },
             'f' => {
                 if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
-                try writeFloatPrec(w, try error_catalog.expectNumber(args[ai], "format", loc), prec orelse 6);
+                try writeFloatPrec(tw, try error_catalog.expectNumber(args[ai], "format", loc), prec orelse 6);
                 ai += 1;
             },
             else => {
                 const sb = [_]u8{ '%', conv };
                 return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = sb[0..] });
             },
+        }
+        const rendered = tw.buffered();
+        if (rendered.len >= width) {
+            try w.writeAll(rendered);
+        } else if (left) {
+            try w.writeAll(rendered);
+            for (0..width - rendered.len) |_| try w.writeByte(' ');
+        } else {
+            for (0..width - rendered.len) |_| try w.writeByte(' ');
+            try w.writeAll(rendered);
         }
     }
     return try string_mod.alloc(rt, w.buffered());
