@@ -660,15 +660,20 @@
 
 ;; Stable merge of two cmp-sorted vectors; on a tie the left item wins
 ;; (`<=` keeps `a` first), preserving input order.
+;; loop/recur (NOT fn* self-recursion): the merge is non-tail when written
+;; as `(into [x] (-merge-sorted …))`, so it recursed one frame per element
+;; and `(sort (range 5000))` segfaulted. Accumulating into `acc` and
+;; recurring is constant-stack; stability holds (`<= 0` drains `a` first).
 (def -merge-sorted
   (fn* [cmp a b]
-    (if (empty? a)
-      b
-      (if (empty? b)
-        a
-        (if (<= (cmp (first a) (first b)) 0)
-          (into (conj [] (first a)) (-merge-sorted cmp (rest a) b))
-          (into (conj [] (first b)) (-merge-sorted cmp a (rest b))))))))
+    (loop [a a b b acc []]
+      (if (empty? a)
+        (into acc b)
+        (if (empty? b)
+          (into acc a)
+          (if (<= (cmp (first a) (first b)) 0)
+            (recur (rest a) b (conj acc (first a)))
+            (recur a (rest b) (conj acc (first b)))))))))
 
 ;; Merge sort over a vector with comparator `cmp`.
 (def -msort

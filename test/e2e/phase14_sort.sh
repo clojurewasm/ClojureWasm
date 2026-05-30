@@ -34,5 +34,10 @@ assert_eq 'sort_gt'     "$("$BIN" -e '(into [] (sort > [3 1 2]))')"             
 assert_eq 'sort_lt'     "$("$BIN" -e '(into [] (sort < [3 1 2]))')"               '[1 2 3]'
 assert_eq 'sort_numcmp' "$("$BIN" -e '(into [] (sort (fn [a b] (- b a)) [1 2 3]))')" '[3 2 1]'
 assert_eq 'sortby_gt'   "$("$BIN" -e '(into [] (sort-by count > ["aa" "b" "ccc"]))')" '["ccc" "aa" "b"]'
+# large sort must not blow the stack (-merge-sorted is loop/recur, was a
+# non-tail recursion that segfaulted at a few thousand elements)
+assert_eq 'sort_large'  "$("$BIN" -e '(count (sort (reverse (range 5000))))')" '5000'
+assert_eq 'sort_large_min' "$("$BIN" -e '(first (sort (reverse (range 5000))))')" '0'
+assert_eq 'sort_large_max' "$("$BIN" -e '(last (sort (reverse (range 5000))))')" '4999'
 
 echo "ALL phase14_sort PASS"
