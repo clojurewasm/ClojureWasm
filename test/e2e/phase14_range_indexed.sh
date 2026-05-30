@@ -36,5 +36,10 @@ assert_eq 'range_step_empty' "$("$BIN" -e '(into [] (range 5 5 2))')"    '[]'
 assert_eq 'range_step_zero' "$("$BIN" -e '(into [] (take 3 (range 0 10 0)))')" '[0 0 0]'
 assert_eq 'map_indexed'  "$("$BIN" -e '(into [] (map-indexed (fn* [i x] [i x]) [:a :b]))')" '[[0 :a] [1 :b]]'
 assert_eq 'keep_indexed' "$("$BIN" -e '(into [] (keep-indexed (fn* [i x] (if (= 0 (rem i 2)) x nil)) [:a :b :c]))')" '[:a :c]'
+# large range must not blow the stack (-range-acc uses loop/recur, not fn-deep
+# recursion — (range 100000) segfaulted before)
+assert_eq 'range_large'  "$("$BIN" -e '(count (range 100000))')"        '100000'
+assert_eq 'range_large_sum' "$("$BIN" -e '(reduce + 0 (range 1000))')"  '499500'
+assert_eq 'range_large_last' "$("$BIN" -e '(last (range 50000))')"      '49999'
 
 echo "ALL phase14_range_indexed PASS"

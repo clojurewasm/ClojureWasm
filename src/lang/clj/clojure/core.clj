@@ -717,8 +717,12 @@
 ;; ----------------------------------------------------------------
 
 ;; Accumulate [start..end-1] into a vector (the eager range body).
+;; loop/recur (NOT fn* self-recursion) so large ranges don't blow the
+;; stack — `(range 100000)` was a segfault when this recursed fn-deep.
 (def -range-acc
-  (fn* [i n acc] (if (>= i n) acc (-range-acc (inc i) n (conj acc i)))))
+  (fn* [i n acc]
+    (loop [i i acc acc]
+      (if (>= i n) acc (recur (inc i) (conj acc i))))))
 
 ;; `(iterate f x)` — infinite lazy seq: x, (f x), (f (f x)), …. Defined
 ;; before `range` because `(range)`'s 0-arg body calls it: cw v1 resolves
