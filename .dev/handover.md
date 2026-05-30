@@ -5,25 +5,29 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (≈ `aae647b6`).
-- **First commit on resume MUST be**: implement **atoms** — `atom` /
-  `swap!` / `reset!` / `deref` (`@`) / `compare-and-set!`. Highest-ROI
-  remaining gap (`(atom 0)` → name_error today; state is fundamental).
-  Step 0 survey FIRST, then decide the Phase-15 pull-forward scope: land
-  the single-threaded mutable box + the core ops now (no lock needed when
-  single-threaded); defer watchers / validators / CAS-under-contention to
-  Phase 15 (ADR-0009/0010). If Step 0 surfaces a blocking Phase-15
-  structural reservation on the value representation, self-select **letfn**
-  instead (surveyed + ready: `private/notes/phaseA26-letfn-survey.md` —
-  `letfn*` special form, analyzer pre-declare + tree_walk closure
-  back-patch "B2" + VM arm, dual-backend per ADR-0036). Do NOT ask
-  (Direction-ask smell).
+- **HEAD**: see `git log` (≈ `b852ac59`).
+- **Direction (user, 2026-05-30)**: raise **functional completeness FIRST**,
+  before optimization complexity (no premature JIT/superinstruction). Work
+  **corpus-driven**, not AI-probed. Keep strong cross-session state. Clone /
+  copy liberally. Fully autonomous; flexible replanning encouraged.
+- **First task on resume**: continue the **core-coverage gap sweep** driven
+  by [`.dev/core_coverage_gaps.md`](core_coverage_gaps.md) (the unbiased
+  real-`clojure.core`-vs-cljw diff, ~355 missing, triaged). Work the **P0
+  batch first** — `hash` (expose `equal.valueHash`), `gensym` (expose
+  `rt.gensym`), `volatile!`/`vreset!`/`vswap!`/`volatile?` (mutable box,
+  mirror `runtime/atom.zig`), `comparator` (core.clj), `bigint`/`bigdec`
+  (wrap existing numeric) — additive, batch the gate (cadence ≤5). Then P1
+  (memoize / sorted-map+set / metadata / transducers) → P2 (isa?/hierarchy,
+  resolve/ns introspection). **letfn** still queued (surveyed:
+  `private/notes/phaseA26-letfn-survey.md`). Always confirm a gap with a
+  `cljw -e` probe before implementing (static map has minor false-positives,
+  e.g. `subvec` works). Do NOT ask (Direction-ask smell).
 - **Forbidden this session**: re-opening anything landed this session
-  (ratio arithmetic, **D-045** HAMT maps/sets > 8, **D-085** keyword /
-  data-as-IFn + threading keyword-step) or earlier (AOT, format, doseq/for,
-  the numeric-coercion batch). Using `AskUserQuestion` to pick the next task
-  (Direction-ask smell). CPU-heavy subagent during a gate (cold_start false
-  fail). Flipping `phase_at_least_14` / tagging v0.1.0 (release HELD).
+  (ratio arithmetic, **D-045** HAMT, **D-085** keyword/data-as-IFn, **atoms**)
+  or earlier (AOT, format, doseq/for, numeric-coercion batch). Optimization
+  work (JIT / superinstruction) — functional completeness first per user.
+  `AskUserQuestion` to pick the next task. CPU-heavy subagent during a gate.
+  Flipping `phase_at_least_14` / tagging v0.1.0 (release HELD).
 
 ## Current state
 
