@@ -28,6 +28,9 @@ const Runtime = @import("../runtime.zig").Runtime;
 const Env = @import("../env.zig").Env;
 const error_catalog = @import("../error/catalog.zig");
 const SourceLocation = @import("../error/info.zig").SourceLocation;
+const td_mod = @import("../type_descriptor.zig");
+const dispatch = @import("../dispatch.zig");
+const keyword_mod = @import("../keyword.zig");
 
 /// Look up `k` in `m` honouring an optional `default`. With no default,
 /// `map.get` already yields nil for an absent key; with a default we must
@@ -66,6 +69,35 @@ fn vectorIndex(v: Value, i_val: Value, loc: SourceLocation) !Value {
     return vector.nth(v, @intCast(idx));
 }
 
+/// Declared-field read for a `defrecord` TypedInstance (pure): walks
+/// `descriptor.field_layout`, returns the matching field value or null
+/// when the key is not a declared field. deftype instances return null
+/// (no implicit map surface).
+fn recordFieldGet(rec: Value, k: Value) ?Value {
+    const inst = rec.decodePtr(*const td_mod.TypedInstance);
+    if (inst.descriptor.kind != .defrecord) return null;
+    if (k.tag() != .keyword) return null;
+    const layout = inst.descriptor.field_layout orelse return null;
+    const key_name = keyword_mod.asKeyword(k).name;
+    for (layout) |fe| {
+        if (std.mem.eql(u8, fe.name, key_name)) return inst.fields()[fe.index];
+    }
+    return null;
+}
+
+/// `(get rec k default)` for a TypedInstance receiver: declared field
+/// first, then the ILookup `-lookup` slow-path (extend-type), then
+/// `default`. The single source for record associative read — both the
+/// `get` primitive (collection.zig) and the keyword-as-fn `(:k rec)` path
+/// below call it, so `(:k rec)` ≡ `(get rec :k)` by construction.
+pub fn recordGet(rt: *Runtime, env: *Env, rec: Value, k: Value, default: Value, loc: SourceLocation) !Value {
+    if (recordFieldGet(rec, k)) |v| return v;
+    var cs: dispatch.CallSite = .{};
+    const slow_args = [_]Value{ rec, k };
+    if (try dispatch.dispatchOrNull(rt, env, &cs, rec, "ILookup", "-lookup", &slow_args, loc)) |v| return v;
+    return default;
+}
+
 /// Invoke a data-structure / keyword `callee` with `args` (the call's
 /// arguments, callee excluded). The caller (`treeWalkCall`) guarantees
 /// `callee.tag()` is one of keyword/symbol/array_map/hash_map/hash_set/
@@ -75,7 +107,13 @@ pub fn invoke(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: 
         .keyword, .symbol => {
             // callee is the KEY; args[0] is the collection.
             if (args.len < 1 or args.len > 2) return arityError("keyword/symbol", args.len, 1, 2, loc);
-            return lookupWithDefault(args[0], callee, args.len == 2, if (args.len == 2) args[1] else Value.nil_val);
+            const default = if (args.len == 2) args[1] else Value.nil_val;
+            // A defrecord receiver routes through the record get (declared
+            // field → ILookup → default), same as the `get` primitive, so
+            // `(:k rec)` ≡ `(get rec :k)`. map.get cannot see record fields.
+            if (args[0].tag() == .typed_instance)
+                return recordGet(rt, env, args[0], callee, default, loc);
+            return lookupWithDefault(args[0], callee, args.len == 2, default);
         },
         .array_map, .hash_map => {
             // callee is the MAP; args[0] is the key.
@@ -108,7 +146,6 @@ pub fn invoke(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: 
 // --- tests ---
 
 const std_testing = std.testing;
-const keyword_mod = @import("../keyword.zig");
 
 const Fixture = struct {
     threaded: std.Io.Threaded,

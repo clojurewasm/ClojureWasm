@@ -256,4 +256,31 @@ EOF
 ) || fail "case26: non-zero exit ($got)"
 assert_eq 'defrecord_as_map_key' "$(last_line "$got")" ':hit'
 
-echo "OK — phase7_defrecord smoke (26 cases) green"
+# --- Case 27: keyword-as-fn reads a declared field — (:k rec) ≡ (get rec :k) ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defrecord Point [x y])
+(:x (->Point 1 2))
+EOF
+) || fail "case27: non-zero exit ($got)"
+assert_eq 'defrecord_keyword_as_fn_field' "$(last_line "$got")" '1'
+
+# --- Case 28: keyword-as-fn on a non-declared key → nil ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defrecord Point [x y])
+(:missing (->Point 1 2))
+EOF
+) || fail "case28: non-zero exit ($got)"
+assert_eq 'defrecord_keyword_as_fn_missing' "$(last_line "$got")" 'nil'
+
+# --- Case 29: a record protocol method body using (:field s) works ---
+# Regression for the (:k rec) → nil defect: the method body's (:side s)
+# must read the field, not return nil (which made (* nil nil) throw).
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol Shape (area [s]))
+(defrecord Sq [side] Shape (area [s] (* (:side s) (:side s))))
+(area (->Sq 4))
+EOF
+) || fail "case29: non-zero exit ($got)"
+assert_eq 'defrecord_protocol_method_keyword_field' "$(last_line "$got")" '16'
+
+echo "OK — phase7_defrecord smoke (29 cases) green"

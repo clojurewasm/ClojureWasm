@@ -35,6 +35,7 @@ const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
+const lookup = @import("../../runtime/collection/lookup.zig");
 
 /// Bare protocol-name constants for the D-089 hybrid slow-path family
 /// (mirrors `sequence.zig` row 7.7's IPC_FQCN / SEQABLE_FQCN style).
@@ -229,17 +230,9 @@ pub fn getFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             if (idx >= n) break :blk default;
             break :blk vector.nth(coll, @intCast(idx));
         },
-        .typed_instance => blk: {
-            // Row 7.4 cycle 3 fast-path: declared defrecord field
-            // wins (returns the field value if present).
-            if (recordGetOptional(coll, k)) |v| break :blk v;
-            // D-089 row 8.6 cycle 2: non-declared key → consult
-            // ILookup -lookup before silent default fall-through.
-            var cs: dispatch.CallSite = .{};
-            const slow_args = [_]Value{ coll, k };
-            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ILOOKUP_FQCN, "-lookup", &slow_args, loc)) |v| break :blk v;
-            break :blk default;
-        },
+        // Declared field → ILookup -lookup slow-path → default. Shared
+        // with the keyword-as-fn `(:k rec)` path so the two agree (D-089).
+        .typed_instance => try lookup.recordGet(rt, env, coll, k, default, loc),
         else => blk: {
             // D-089 row 8.6 cycle 2: consult ILookup -lookup before
             // silent default fall-through. dispatchOrNull returns null
@@ -251,28 +244,6 @@ pub fn getFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             break :blk default;
         },
     };
-}
-
-/// Implicit IPersistentMap read for a `defrecord` TypedInstance.
-/// `(get rec :k)` walks `descriptor.field_layout` and returns the
-/// matching field value, or null when the key is not a declared
-/// field (caller routes the null result through ILookup `-lookup`
-/// slow-path then default per D-089 row 8.6 cycle 2). `deftype`
-/// instances (`.kind = .deftype`) do not route through the map
-/// surface — they return null. `__extmap` overflow tracked at
-/// D-086.
-fn recordGetOptional(rec: Value, k: Value) ?Value {
-    const inst = rec.decodePtr(*const td_mod.TypedInstance);
-    if (inst.descriptor.kind != .defrecord) return null;
-    if (k.tag() != .keyword) return null;
-    const layout = inst.descriptor.field_layout orelse return null;
-    const key_name = keyword_mod.asKeyword(k).name;
-    for (layout) |fe| {
-        if (std.mem.eql(u8, fe.name, key_name)) {
-            return inst.fields()[fe.index];
-        }
-    }
-    return null;
 }
 
 // --- nth ---
