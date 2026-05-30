@@ -133,4 +133,27 @@ EOF
 ) || fail "case9: non-zero exit ($got)"
 assert_eq 'satisfies_wrapper_true_native_receiver' "$(last_line "$got")" 'true'
 
-echo "OK — phase7_protocol smoke (9 cases) green"
+# --- Case 10: extends? true when the type carries the protocol ---
+# extends? takes a type (a .type_descriptor Value), unlike satisfies?
+# which takes an instance. Long extends IInc here, so (extends? IInc Long).
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol IInc (inc-one [x]))
+(def Long (rt/__native-type :integer))
+(extend-type Long IInc (inc-one [x] (+ x 1)))
+(extends? IInc Long)
+EOF
+) || fail "case10: non-zero exit ($got)"
+assert_eq 'extends_wrapper_true_for_extended_type' "$(last_line "$got")" 'true'
+
+# --- Case 11: extends? false for a protocol the type does not carry ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol IInc (inc-one [x]))
+(defprotocol IPing (ping [this]))
+(def Long (rt/__native-type :integer))
+(extend-type Long IInc (inc-one [x] (+ x 1)))
+(extends? IPing Long)
+EOF
+) || fail "case11: non-zero exit ($got)"
+assert_eq 'extends_wrapper_false_for_unextended_protocol' "$(last_line "$got")" 'false'
+
+echo "OK — phase7_protocol smoke (11 cases) green"

@@ -468,6 +468,35 @@ pub fn satisfiesPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
     return Value.initBoolean(protocol_mod.satisfies(proto, td));
 }
 
+/// `(rt/__extends? proto type)` — returns true iff the TypeDescriptor
+/// `type` (a `.type_descriptor` Value from `__native-type` /
+/// `defrecord` / `deftype`) carries a method entry for the protocol on
+/// itself or any ancestor. The type-level counterpart of `__satisfies?`:
+/// where `__satisfies?` takes an instance and reads its descriptor,
+/// `__extends?` receives the descriptor directly.
+pub fn extendsPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("__extends?", args, 2, loc);
+    if (args[0].tag() != .protocol) {
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "__extends?",
+            .expected = "protocol",
+            .actual = @tagName(args[0].tag()),
+        });
+    }
+    if (args[1].tag() != .type_descriptor) {
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "__extends?",
+            .expected = "type_descriptor",
+            .actual = @tagName(args[1].tag()),
+        });
+    }
+    const proto = protocol_mod.asProtocol(args[0]);
+    const td = td_mod.asTypeDescriptorRef(args[1]);
+    return Value.initBoolean(protocol_mod.satisfies(proto, td));
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -480,6 +509,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "__make-protocol-fn!", .f = &makeProtocolFn },
     .{ .name = "__extend-type!", .f = &extendType },
     .{ .name = "__satisfies?", .f = &satisfiesPrim },
+    .{ .name = "__extends?", .f = &extendsPrim },
     .{ .name = "__native-type", .f = &nativeType },
     .{ .name = "__defrecord!", .f = &defrecordPrim },
     .{ .name = "__reify!", .f = &reifyPrim },
@@ -634,6 +664,68 @@ test "__satisfies? returns true when typed_instance's descriptor implements the 
     try testing.expectEqual(Value.true_val, result);
 }
 
+test "__extends? returns true when the type itself carries the protocol" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const proto_name = try symbol_mod.intern(&fix.rt, null, "P");
+    var methods_vec = vector_mod.empty();
+    methods_vec = try vector_mod.conj(&fix.rt, methods_vec, try symbol_mod.intern(&fix.rt, null, "m"));
+    const proto_val = try makeProtocol(&fix.rt, &fix.env, &[_]Value{ proto_name, methods_vec }, .{});
+
+    const td = try fix.rt.gc.infra.create(td_mod.TypeDescriptor);
+    defer fix.rt.gc.infra.destroy(td);
+    const impl_entries = try fix.rt.gc.infra.alloc(td_mod.TypeDescriptor.MethodEntry, 1);
+    defer fix.rt.gc.infra.free(impl_entries);
+    impl_entries[0] = .{ .protocol_name = "P", .method_name = "m", .method_val = Value.nil_val };
+    td.* = .{
+        .fqcn = "user/Foo",
+        .kind = .deftype,
+        .field_layout = null,
+        .protocol_impls = &.{},
+        .method_table = impl_entries,
+        .parent = null,
+        .meta = Value.nil_val,
+    };
+
+    // extends? receives the TypeDescriptor directly (not an instance).
+    const type_val = try td_mod.makeTypeDescriptorRef(&fix.rt, td);
+    const result = try extendsPrim(&fix.rt, &fix.env, &[_]Value{ proto_val, type_val }, .{});
+    try testing.expectEqual(Value.true_val, result);
+}
+
+test "__extends? returns false when the type lacks the protocol" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    // A protocol the descriptor was never extended with.
+    const other_name = try symbol_mod.intern(&fix.rt, null, "Q");
+    var methods_vec = vector_mod.empty();
+    methods_vec = try vector_mod.conj(&fix.rt, methods_vec, try symbol_mod.intern(&fix.rt, null, "n"));
+    const other_proto = try makeProtocol(&fix.rt, &fix.env, &[_]Value{ other_name, methods_vec }, .{});
+
+    const td = try fix.rt.gc.infra.create(td_mod.TypeDescriptor);
+    defer fix.rt.gc.infra.destroy(td);
+    const impl_entries = try fix.rt.gc.infra.alloc(td_mod.TypeDescriptor.MethodEntry, 1);
+    defer fix.rt.gc.infra.free(impl_entries);
+    impl_entries[0] = .{ .protocol_name = "P", .method_name = "m", .method_val = Value.nil_val };
+    td.* = .{
+        .fqcn = "user/Foo",
+        .kind = .deftype,
+        .field_layout = null,
+        .protocol_impls = &.{},
+        .method_table = impl_entries,
+        .parent = null,
+        .meta = Value.nil_val,
+    };
+
+    const type_val = try td_mod.makeTypeDescriptorRef(&fix.rt, td);
+    const result = try extendsPrim(&fix.rt, &fix.env, &[_]Value{ other_proto, type_val }, .{});
+    try testing.expectEqual(Value.false_val, result);
+}
+
 test "register installs the 4 protocol primitives in rt/" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
@@ -645,6 +737,7 @@ test "register installs the 4 protocol primitives in rt/" {
     try testing.expect(rt_ns.resolve("__make-protocol-fn!") != null);
     try testing.expect(rt_ns.resolve("__extend-type!") != null);
     try testing.expect(rt_ns.resolve("__satisfies?") != null);
+    try testing.expect(rt_ns.resolve("__extends?") != null);
 }
 
 /// Test helper: build an `impls-vec` cell `[method-name fn-val]`

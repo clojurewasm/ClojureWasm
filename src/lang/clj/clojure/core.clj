@@ -1046,6 +1046,13 @@
 (def satisfies?
   (fn* [protocol x] (rt/__satisfies? protocol x)))
 
+;; `(extends? protocol atype)` — true iff atype (a type, e.g. a defrecord/
+;; deftype name or (rt/__native-type :tag)) carries the protocol. The
+;; type-level counterpart of satisfies?: satisfies? takes a value, extends?
+;; takes the type directly.
+(def extends?
+  (fn* [protocol atype] (rt/__extends? protocol atype)))
+
 ;; `(memoize f)` returns a cached version of f: each distinct argument
 ;; tuple computes f once, then returns the stored result. Keys the
 ;; atom-backed cache by `(vec args)` — vectors compare by value (D-092),
