@@ -594,6 +594,16 @@ pub fn charCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     };
 }
 
+/// `(num x)` — coerce to a Number: identity for any numeric Value, type
+/// error otherwise. Matches clojure.core/num (a Number cast on the JVM).
+fn numCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("num", args, 1, loc);
+    try ensureNumeric(args, "num", loc);
+    return args[0];
+}
+
 /// `(rand-int n)` — a uniform random integer in [0, n). `n <= 0` → 0
 /// (matches `(int (rand n))` for the degenerate cases). Uses the lazily-
 /// seeded process PRNG (`runtime/random.zig`); non-deterministic by design.
@@ -670,6 +680,9 @@ const ENTRIES = [_]Entry{
     .{ .name = "min", .f = &min },
     .{ .name = "max", .f = &max },
     .{ .name = "int", .f = &intCoerce },
+    // long ≡ int in cw v1 (a single i64 integer type — no 32-bit int).
+    .{ .name = "long", .f = &intCoerce },
+    .{ .name = "num", .f = &numCoerce },
     .{ .name = "char", .f = &charCoerce },
     .{ .name = "rand-int", .f = &randInt },
     .{ .name = "rand", .f = &randFn },

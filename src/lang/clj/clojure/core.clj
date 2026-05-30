@@ -186,6 +186,7 @@
 (def bit-clear (fn* [x n] (bit-and x (bit-not (bit-shift-left 1 n)))))
 (def bit-flip  (fn* [x n] (bit-xor x (bit-shift-left 1 n))))
 (def bit-test  (fn* [x n] (not (zero? (bit-and x (bit-shift-left 1 n))))))
+(def bit-and-not (fn* [x y] (bit-and x (bit-not y))))
 
 ;; `(peek coll)` / `(pop coll)` — stack ops. Vector: peek = last element,
 ;; pop = drop the last (returns a vector). List/seq: peek = first, pop =
