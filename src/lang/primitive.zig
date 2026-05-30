@@ -23,6 +23,7 @@ const std = @import("std");
 const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const Runtime = @import("../runtime/runtime.zig").Runtime;
+const Value = @import("../runtime/value/value.zig").Value;
 
 const math = @import("primitive/math.zig");
 const core = @import("primitive/core.zig");
@@ -70,6 +71,11 @@ pub fn registerAll(env: *Env) !void {
     try collection.register(env, rt_ns);
     try transient_prim.register(env, rt_ns);
     try edn_prim.register(env);
+    // clojure.core/read-string — in cljw the reader has no `#=` eval-reader,
+    // so core/read-string is the same full-reader readOne→formToValue as
+    // clojure.edn/read-string (a safe DIVERGENCE: JVM core/read-string can
+    // eval). Reuse the edn impl, interned into rt (→ referred into user).
+    _ = try env.intern(rt_ns, "read-string", Value.initBuiltinFn(&edn_prim.readStringFn), null);
     try json_prim.register(env);
     try csv_prim.register(env);
     try cli_prim.register(env);
