@@ -34,22 +34,38 @@ So: **batch additive, gate shared-code.**
 
 ## Mechanical enforcement (this is law, not advice)
 
-- **`scripts/gate_state_hash.sh`** — prints a fingerprint of the source
-  state (`src/` + `test/` + `build.zig*`, HEAD-folded; `bench/`
-  excluded).
-- **`test/run_all.sh`** — on a full green gate writes that fingerprint
-  to `.dev/.gate_pass` (gitignored).
+- **`scripts/gate_state_hash.sh`** — prints a fingerprint by hashing the
+  *content* (path + bytes) of every tracked or untracked-non-ignored file
+  under `src/` + `test/` + `build.zig*` (`bench/` excluded). Hashing
+  content — not a diff vs HEAD — makes the fingerprint independent of HEAD
+  position and of staging, so it still matches after `git add` and survives
+  a `git add && git commit` batched into one shell command.
+- **`test/run_all.sh`** — on a full green gate writes that fingerprint to
+  `.dev/.gate_pass` (gitignored).
 - **`scripts/check_gate_cadence.sh`** — PreToolUse hook on `git commit`.
-  Classifies the staged diff (numstat: any deleted line in `src/`/`test/`
-  ⇒ risky; `build.zig*` ⇒ risky; else additive). If the current
-  fingerprint equals `.dev/.gate_pass`, the gate verified this exact
-  state ⇒ authorise + reset the counter (`.dev/.gate_cadence`).
-  Otherwise: risky ⇒ block; additive ⇒ consume a batch slot, block at
-  the 6th.
+  Classifies the change from **`git diff HEAD` + an untracked listing**
+  (NOT `git diff --cached`): a PreToolUse hook fires *before* the command,
+  so `git add … && git commit` batched into one call leaves the index empty
+  at hook time — `--cached` would see nothing and wrongly exempt the commit.
+  `git diff HEAD` reflects the working tree regardless of whether `git add`
+  ran. Rule: any deleted line in a tracked `src/`/`test/` file ⇒ risky;
+  `build.zig*` modified ⇒ risky; a new untracked `src/`/`test/` file or a
+  pure insertion ⇒ additive. If the current fingerprint equals
+  `.dev/.gate_pass`, the gate verified this exact content ⇒ authorise +
+  reset the counter (`.dev/.gate_cadence`). Otherwise: risky ⇒ block;
+  additive ⇒ consume a batch slot, block at the 6th.
 
 `git commit --no-verify` is denied in `.claude/settings.json`, so the
 hook cannot be bypassed. `GATE_MAX_BATCH` (default 5) is overridable
 via env for a one-off.
+
+**Clean-tree implication.** Because classification reads the whole working
+tree vs HEAD (not just the index), a dirty *risky* `src/`/`test/` file
+blocks **every** commit until it is gated, reverted, or committed — even a
+doc-only commit. This is intentional: it enforces the edit → gate → commit
+rhythm (one unit at a time, clean tree between units). Stage-and-commit a
+unit before starting the next; don't leave a half-done risky edit lying
+beside an unrelated commit.
 
 ## Workflow it produces
 

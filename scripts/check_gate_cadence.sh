@@ -34,40 +34,41 @@ PASS_FILE=".dev/.gate_pass"
 COUNT_FILE=".dev/.gate_cadence"
 RULE=".claude/rules/gate_cadence.md"
 
-# --- 1. classify the staged diff -------------------------------------------
-src_staged=0
+# --- 1. classify the working-tree change vs HEAD (staging-independent) ------
+# Classify from `git diff HEAD` + an untracked listing, NOT `git diff
+# --cached`. PreToolUse fires BEFORE the command runs, so a
+# `git add … && git commit` batched into one shell command leaves the index
+# empty at hook time — `--cached` would then see nothing and wrongly exempt
+# the commit. `git diff HEAD` reflects the working tree regardless of whether
+# `git add` has run yet; brand-new files (untracked) are picked up separately.
+src_changed=0
 risky=0
 risky_reason=""
 
+# Tracked changes vs HEAD (modifications + insertions). numstat columns:
+# <added> <deleted> <path>; binary files render '-' (treated as risky).
+while IFS=$'\t' read -r added deleted path; do
+  [[ -z "${path:-}" ]] && continue
+  case "$path" in
+    build.zig|build.zig.zon)
+      src_changed=1; risky=1; risky_reason="build.zig* modified" ;;
+    src/*|test/*)
+      src_changed=1
+      if [[ "$deleted" == "-" ]] || { [[ "$deleted" =~ ^[0-9]+$ ]] && [[ "$deleted" -gt 0 ]]; }; then
+        risky=1; risky_reason="existing lines modified/removed in $path"
+      fi
+      ;;
+  esac
+done < <(git diff HEAD --numstat -- src test build.zig build.zig.zon)
+
+# Brand-new (untracked, non-ignored) src/ or test/ files = additive source.
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
-  case "$f" in
-    build.zig|build.zig.zon)
-      src_staged=1; risky=1; risky_reason="build.zig* staged" ;;
-    src/*|test/*)
-      src_staged=1 ;;
-  esac
-done < <(git diff --cached --name-only)
+  case "$f" in src/*|test/*) src_changed=1 ;; esac
+done < <(git ls-files --others --exclude-standard -- src test)
 
-# No source staged → docs/scripts/config commit → exempt.
-[[ "$src_staged" -eq 0 ]] && exit 0
-
-# A removed/modified existing line in any staged src/ or test/ file makes
-# the commit RISKY (it is not a pure addition). numstat columns:
-# <added> <deleted> <path>; binary files render '-' (treat as risky).
-if [[ "$risky" -eq 0 ]]; then
-  while IFS=$'\t' read -r added deleted path; do
-    [[ -z "${path:-}" ]] && continue
-    case "$path" in
-      src/*|test/*)
-        if [[ "$deleted" == "-" ]] || { [[ "$deleted" =~ ^[0-9]+$ ]] && [[ "$deleted" -gt 0 ]]; }; then
-          risky=1; risky_reason="existing lines modified/removed in $path"
-          break
-        fi
-        ;;
-    esac
-  done < <(git diff --cached --numstat)
-fi
+# No source change → docs/scripts/config commit → exempt.
+[[ "$src_changed" -eq 0 ]] && exit 0
 
 # --- 2. gate freshness ------------------------------------------------------
 now_hash="$(bash "$(dirname "$0")/gate_state_hash.sh")"
