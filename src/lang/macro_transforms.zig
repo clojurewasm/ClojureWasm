@@ -104,6 +104,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "while", .expand = expandWhile },
     .{ .name = "when-first", .expand = expandWhenFirst },
     .{ .name = "doseq", .expand = expandDoseq },
+    .{ .name = "for", .expand = expandFor },
     .{ .name = "case", .expand = expandCase },
     .{ .name = "condp", .expand = expandCondp },
     .{ .name = "fn", .expand = expandFn },
@@ -917,6 +918,71 @@ fn expandDoseq(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: 
         return error_catalog.raise(.doseq_bindings_invalid, args[0].location, .{});
     const result = try doseqStep(arena, rt, null, args[0].data.vector, args[1..], loc);
     return result.form;
+}
+
+// --- for (D-134 / phaseA26) — lazy list comprehension ---
+//
+// `(for [bind coll | :let v | :when t …] expr)` → nested `mapcat` over each
+// binding pair, each element wrapped in `(list expr)` so a uniform
+// mapcat-of-singletons composes (mapcat of 1-element seqs = map; mapcat of
+// the inner comprehension = the nested product). `:let`→`(let* v …)`,
+// `:when`→`(if t … (list))` (empty seq ⇒ mapcat drops the element). Lazy
+// (mapcat is lazy). `fn` (not `fn*`) carries destructuring binds. Survey:
+// private/notes/phaseA26-doseq-for-survey.md §4 (shape a-i). cljw lacks
+// named-`fn` self-reference, so the JVM/SCI named-fn+lazy-seq shape is out;
+// the mapcat composition is the finished-form-clean equivalent. DIVERGENCE:
+// `:while` needs a short-circuit the mapcat shape cannot express — it raises
+// `for_while_not_supported` (D-134 follow-up; use :when or wrap take-while).
+fn forStep(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    exprs: []const Form,
+    body: Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    if (exprs.len == 0)
+        return makeCall(arena, "list", &.{body}, loc); // innermost: a 1-element seq
+
+    const k = exprs[0];
+    const v = exprs[1];
+    const rest = exprs[2..];
+
+    if (k.data == .keyword and k.data.keyword.ns == null) {
+        const kname = k.data.keyword.name;
+        if (std.mem.eql(u8, kname, "let")) {
+            if (v.data != .vector)
+                return error_catalog.raise(.for_bindings_invalid, v.location, .{});
+            return buildLetStarBody(arena, v.data.vector, try forStep(arena, rt, rest, body, loc), loc);
+        } else if (std.mem.eql(u8, kname, "when")) {
+            // (if v <inner> (list))  — empty seq when false, mapcat drops it.
+            const if_items = try arena.alloc(Form, 4);
+            if_items[0] = sym("if", loc);
+            if_items[1] = v;
+            if_items[2] = try forStep(arena, rt, rest, body, loc);
+            if_items[3] = try makeCall(arena, "list", &.{}, loc);
+            return list(arena, if_items, loc);
+        } else if (std.mem.eql(u8, kname, "while")) {
+            return error_catalog.raise(.for_while_not_supported, k.location, .{});
+        }
+        return error_catalog.raise(.for_bindings_invalid, k.location, .{});
+    }
+
+    // A real `bind coll` pair → (mapcat (fn [bind] <inner>) coll).
+    const param_vec = try arena.alloc(Form, 1);
+    param_vec[0] = k;
+    const fn_items = try arena.alloc(Form, 3);
+    fn_items[0] = sym("fn", loc);
+    fn_items[1] = .{ .data = .{ .vector = param_vec }, .location = loc };
+    fn_items[2] = try forStep(arena, rt, rest, body, loc);
+    return makeCall(arena, "mapcat", &.{ try list(arena, fn_items, loc), v }, loc);
+}
+
+fn expandFor(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    if (args.len < 2)
+        return error_catalog.raise(.for_form_incomplete, loc, .{});
+    if (args[0].data != .vector or args[0].data.vector.len % 2 != 0)
+        return error_catalog.raise(.for_bindings_invalid, args[0].location, .{});
+    return forStep(arena, rt, args[0].data.vector, try foldBody(arena, args[1..], loc), loc);
 }
 
 // --- case (D-134) ---

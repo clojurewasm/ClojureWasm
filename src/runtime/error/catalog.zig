@@ -204,6 +204,9 @@ pub const Code = enum {
     dotimes_bindings_invalid,
     doseq_form_incomplete,
     doseq_bindings_invalid,
+    for_form_incomplete,
+    for_bindings_invalid,
+    for_while_not_supported,
     while_form_incomplete,
     when_first_form_incomplete,
     when_first_bindings_invalid,
@@ -703,6 +706,18 @@ pub fn entry(comptime code: Code) Entry {
         .doseq_bindings_invalid => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "doseq bindings must be an even-length vector of binding pairs with optional :let / :when / :while modifiers",
+        },
+        .for_form_incomplete => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "for requires a binding vector and a body expression",
+        },
+        .for_bindings_invalid => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "for bindings must be an even-length vector of binding pairs with optional :let / :when modifiers",
+        },
+        .for_while_not_supported => .{
+            .kind = .syntax_error, .phase = .macroexpand,
+            .template = "for with :while is not yet supported; use :when, or wrap with take-while",
         },
         .while_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,
