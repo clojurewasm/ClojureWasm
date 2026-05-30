@@ -76,13 +76,19 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
     a clean next follow-up now that with-meta exists), symbol meta, alter-meta!/reset-meta!, reader `^`.
   - **DONE**: clojure.set project/rename meta-wrap restored (4b3cee2e) → D-075 fully discharged bar
     symbol meta / alter-meta! / reset-meta! / reader `^`.
-  - **next (reordered by ROI 2026-05-30)**: the high-ROI items deserve a fresh turn + Step-0 survey:
-    **transducers** (transduce/sequence/eduction/completing/cat + comp-of-xforms — HIGH ROI in modern
-    Clojure, BIG: transducer protocol over the existing reduce/reduced) and **sorted-map/sorted-set**
-    (HIGH ROI, new tree — heap_tag C14/C15 reserved, like the HAMT cycle). MEDIUM fill-ins:
-    `isa?`/hierarchy (multimethod hierarchy structure), `resolve`/ns introspection (needs a first-class
-    var Value — check), `bigint`/`bigdec`/`biginteger` (LOW-med ROI + fiddly: 5 coerce arms + the
-    big_int/big_decimal string parsers nLiteral/parseBigDecimalLiteral — deprioritized).
+  - **NEXT (surveyed, ready): sorted-map / sorted-set** — survey
+    `private/notes/phaseA26-sorted-coll-survey.md`. Verdict: **flat sorted array `[k0 v0 …]` + binary
+    search** (NOT red-black — RB is a speed opt + the hardest algorithm; flat array = cljw-scale
+    finished form, RB deferred as a debt swap). `compare`/`valueCompare` (ADR-0053) already exists — no
+    prereq. New `runtime/collection/sorted.zig` (don't bloat map.zig >1000 LOC); `.sorted_map`/
+    `.sorted_set` dispatch arms at collection.zig/sequence.zig/lookup.zig/print.zig. **Step-0.6
+    Devil's-advocate fork MANDATORY** on the structural choices (entries-as-PersistentVector vs slice;
+    set independent-array vs wrap-a-sorted-map). Cycle split: A (structs+GC+build/get/contains/count/
+    seq+sorted-map/set+sorted?) → B (assoc/dissoc/conj/disj+dup-collapse+-by) → C (seqFrom+subseq/
+    rsubseq+rseq+flip reversible?).
+  - **then**: **transducers** (HIGH ROI, BIG — survey-worthy: transducer protocol over reduce/reduced,
+    1-arg HOF arities); MEDIUM fill-ins: `isa?`/hierarchy, `resolve`/ns (needs first-class var Value?),
+    `bigint`/`bigdec` (LOW-med ROI + fiddly 5 coerce arms + string parsers — deprioritized).
   - **also found**: `(sort cmp coll)` comparator-arg = D-159; regex capture groups; `resolve` missing.
 - **New gaps found while sweeping** (not yet chased): `(sort cmp coll)` with a 2-arg COMPARATOR fn
   errors — cljw `sort`'s 2-arg form treats the fn as a 1-arg key-fn, not a comparator (= **D-159**);
