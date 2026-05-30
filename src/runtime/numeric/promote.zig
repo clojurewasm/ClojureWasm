@@ -73,6 +73,17 @@ fn wrapI64(rt: *Runtime, x: i64) !Value {
     return try big_int.allocFromManaged(rt, &m);
 }
 
+/// Collapse a Managed integer to a Value: immediate-Long when it fits i48,
+/// else BigInt. Public counterpart of `wrapI64` for callers that already
+/// hold a Managed (e.g. the ratio numerator/denominator accessors), so a
+/// small numerator prints as `3`, not `3N`.
+pub fn wrapManaged(rt: *Runtime, m: *const Managed) !Value {
+    if (m.toInt(i64)) |x| {
+        if (inI48(x)) return Value.initInteger(x);
+    } else |_| {}
+    return try big_int.allocFromManaged(rt, m);
+}
+
 const big_decimal_mod = @import("big_decimal.zig");
 const ratio_mod = @import("ratio.zig");
 

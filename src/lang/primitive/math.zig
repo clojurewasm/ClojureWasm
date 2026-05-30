@@ -25,6 +25,8 @@ const promote = @import("../../runtime/numeric/promote.zig");
 const equal = @import("../../runtime/equal.zig");
 const compare_mod = @import("../../runtime/compare.zig");
 const random_mod = @import("../../runtime/random.zig");
+const ratio_mod = @import("../../runtime/numeric/ratio.zig");
+const big_int_mod = @import("../../runtime/numeric/big_int.zig");
 
 // --- numeric helpers ---
 
@@ -188,6 +190,31 @@ pub fn slash(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         };
     }
     return acc;
+}
+
+// --- ratio accessors ---
+
+/// `(numerator r)` — the numerator of a Ratio as an integer. JVM requires a
+/// Ratio argument (a non-ratio raises), since only Ratio carries a numerator.
+/// Matches clojure.core/numerator.
+fn numerator(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("numerator", args, 1, loc);
+    if (args[0].tag() != .ratio)
+        return error_catalog.raise(.type_arg_not_ratio, loc, .{ .fn_name = "numerator", .actual = @tagName(args[0].tag()) });
+    const r = args[0].decodePtr(*const ratio_mod.Ratio);
+    return promote.wrapManaged(rt, r.numer.m);
+}
+
+/// `(denominator r)` — the denominator of a Ratio as an integer (always > 0,
+/// per the Ratio sign-normalisation invariant). Matches clojure.core/denominator.
+fn denominator(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("denominator", args, 1, loc);
+    if (args[0].tag() != .ratio)
+        return error_catalog.raise(.type_arg_not_ratio, loc, .{ .fn_name = "denominator", .actual = @tagName(args[0].tag()) });
+    const r = args[0].decodePtr(*const ratio_mod.Ratio);
+    return promote.wrapManaged(rt, r.denom.m);
 }
 
 // --- comparison ---
@@ -608,6 +635,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "-", .f = &minus },
     .{ .name = "*", .f = &star },
     .{ .name = "/", .f = &slash },
+    .{ .name = "numerator", .f = &numerator },
+    .{ .name = "denominator", .f = &denominator },
     .{ .name = "+'", .f = &plusStrict },
     .{ .name = "-'", .f = &minusStrict },
     .{ .name = "*'", .f = &starStrict },

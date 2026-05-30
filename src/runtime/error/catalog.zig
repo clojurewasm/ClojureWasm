@@ -216,6 +216,7 @@ pub const Code = enum {
     type_arg_not_integer,
     type_arg_not_boolean,
     type_arg_not_string,
+    type_arg_not_ratio,
     /// args: `.{ .fn_name = "...", .expected = "...", .actual = "..." }`
     /// Generic type mismatch — used by Phase 6.16.a+ core glue
     /// primitives where the expected category is "seqable" /
@@ -838,6 +839,10 @@ pub fn entry(comptime code: Code) Entry {
         .type_arg_not_string => .{
             .kind = .type_error, .phase = .eval,
             .template = "{[fn_name]s}: expected string, got {[actual]s}",
+        },
+        .type_arg_not_ratio => .{
+            .kind = .type_error, .phase = .eval,
+            .template = "{[fn_name]s}: expected ratio, got {[actual]s}",
         },
         .type_arg_invalid => .{
             .kind = .type_error, .phase = .eval,
