@@ -23,6 +23,8 @@ assert_eq() {
 
 assert_eq 'vec_coerce'    "$("$BIN" -e '(vec (keys {:a 1}))')"                          '[:a]'
 assert_eq 'mapv_inc'      "$("$BIN" -e '(mapv inc [1 2 3])')"                           '[2 3 4]'
+assert_eq 'mapv_2coll'    "$("$BIN" -e '(mapv + [1 2 3] [10 20 30])')"                  '[11 22 33]'
+assert_eq 'mapv_3coll'    "$("$BIN" -e '(mapv vector [1 2] [:a :b] [true false])')"     '[[1 :a true] [2 :b false]]'
 assert_eq 'filterv_even'  "$("$BIN" -e '(filterv (fn* [x] (= 0 (rem x 2))) [1 2 3 4])')" '[2 4]'
 assert_eq 'update_inc'    "$("$BIN" -e '(get (update {:a 1} :a inc) :a)')"              '2'
 assert_eq 'update_args'   "$("$BIN" -e '(get (update {:a 1} :a + 10) :a)')"             '11'

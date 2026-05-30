@@ -510,7 +510,9 @@
 
 ;; `(mapv f coll)` — eager `map` returning a vector. Single-coll form.
 (def mapv
-  (fn* [f coll] (reduce (fn* [acc x] (conj acc (f x))) [] coll)))
+  (fn* ([f coll] (reduce (fn* [acc x] (conj acc (f x))) [] coll))
+       ([f c1 c2] (vec (map f c1 c2)))
+       ([f c1 c2 c3] (vec (map f c1 c2 c3)))))
 
 ;; `(filterv pred coll)` — eager `filter` returning a vector.
 (def filterv
