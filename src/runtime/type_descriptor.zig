@@ -58,6 +58,15 @@ pub const TypeDescriptor = struct {
     /// User-attached metadata Value (Clojure `meta` map). `nil_val`
     /// when none.
     meta: Value,
+    /// Interned boxed identity of this descriptor — the single canonical
+    /// `.type_descriptor` Value `makeTypeDescriptorRef` hands out (ADR-0059).
+    /// Filled on first wrap, returned on every subsequent call, so two
+    /// `(class x)` results are bit-identical and identity equality
+    /// (valueEqual / keyEqValue / valueHash) holds without a per-tag arm.
+    /// The ref is `rt.gc.infra`-allocated (process-lifetime, never
+    /// GC-collected) and the descriptor is per-Runtime, so this never
+    /// dangles and needs no GC trace edge.
+    ref_cache: ?Value = null,
 
     pub const FieldEntry = struct {
         name: []const u8,
@@ -169,13 +178,22 @@ pub const TypeDescriptorRef = extern struct {
 /// surfaced this latent gap when `(rt/__native-type :integer)` got
 /// exercised on every bootstrap-defprotocol-using path.
 pub fn makeTypeDescriptorRef(rt: *Runtime, td: *const TypeDescriptor) !Value {
+    // INVARIANT (ADR-0059): one canonical boxed Value per descriptor, so
+    // two `.type_descriptor` Values are bit-equal iff same descriptor and
+    // identity equality/hash holds with no equal.zig arm. Do NOT add a
+    // path that mints a fresh ref for an already-wrapped descriptor.
+    if (td.ref_cache) |cached| return cached;
     const ref = try rt.gc.infra.create(TypeDescriptorRef);
     ref.* = .{
         .header = HeapHeader.init(.type_descriptor),
         .td_ptr = td,
     };
     try rt.trackHeap(.{ .ptr = ref, .free = freeTypeDescriptorRef });
-    return Value.encodeHeapPtr(.type_descriptor, ref);
+    const val = Value.encodeHeapPtr(.type_descriptor, ref);
+    // Logical-const memoization (mirrors extendType's @constCast); the
+    // descriptor is per-Runtime + process-lifetime so this is safe.
+    @constCast(td).ref_cache = val;
+    return val;
 }
 
 fn freeTypeDescriptorRef(gpa: std.mem.Allocator, ptr: *anyopaque) void {

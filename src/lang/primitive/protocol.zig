@@ -497,6 +497,27 @@ pub fn extendsPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     return Value.initBoolean(protocol_mod.satisfies(proto, td));
 }
 
+/// `(rt/__class x)` — the TypeDescriptor of `x` as an interned
+/// `.type_descriptor` Value (ADR-0059). `(class nil)` → nil (JVM
+/// semantics). typed_instance / reified_instance carry their own
+/// descriptor; every other value consults the per-Tag native
+/// descriptor. Interning (`makeTypeDescriptorRef` caches one ref per
+/// descriptor) makes `(= (class a) (class b))` hold iff a and b share a
+/// type, and lets a class be a map key. The `.clj` `class` wraps this;
+/// `type` = `(or (:type (meta x)) (class x))`.
+pub fn classPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("__class", args, 1, loc);
+    const v = args[0];
+    if (v.tag() == .nil) return Value.nil_val;
+    const td: *const td_mod.TypeDescriptor = switch (v.tag()) {
+        .typed_instance => v.decodePtr(*const td_mod.TypedInstance).descriptor,
+        .reified_instance => v.decodePtr(*const td_mod.ReifiedInstance).descriptor,
+        else => try rt.nativeDescriptor(v.tag()),
+    };
+    return td_mod.makeTypeDescriptorRef(rt, td);
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -510,6 +531,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "__extend-type!", .f = &extendType },
     .{ .name = "__satisfies?", .f = &satisfiesPrim },
     .{ .name = "__extends?", .f = &extendsPrim },
+    .{ .name = "__class", .f = &classPrim },
     .{ .name = "__native-type", .f = &nativeType },
     .{ .name = "__defrecord!", .f = &defrecordPrim },
     .{ .name = "__reify!", .f = &reifyPrim },
@@ -726,6 +748,32 @@ test "__extends? returns false when the type lacks the protocol" {
     try testing.expectEqual(Value.false_val, result);
 }
 
+test "__class returns nil for a nil input (JVM semantics)" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const result = try classPrim(&fix.rt, &fix.env, &[_]Value{Value.nil_val}, .{});
+    try testing.expectEqual(Value.nil_val, result);
+}
+
+test "__class interns one boxed Value per descriptor (identity equality)" {
+    var fix: TestFixture = undefined;
+    try fix.init(testing.allocator);
+    defer fix.deinit();
+
+    const a = try classPrim(&fix.rt, &fix.env, &[_]Value{Value.initInteger(5)}, .{});
+    const b = try classPrim(&fix.rt, &fix.env, &[_]Value{Value.initInteger(6)}, .{});
+    try testing.expect(a.tag() == .type_descriptor);
+    // Interning invariant: same native descriptor → bit-identical Value,
+    // so the equality/hash identity fast path makes (= (class 5) (class 6)).
+    try testing.expectEqual(@intFromEnum(a), @intFromEnum(b));
+
+    // A different native tag is a different descriptor → different Value.
+    const s = try classPrim(&fix.rt, &fix.env, &[_]Value{try string_mod.alloc(&fix.rt, "x")}, .{});
+    try testing.expect(@intFromEnum(a) != @intFromEnum(s));
+}
+
 test "register installs the 4 protocol primitives in rt/" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
@@ -738,6 +786,7 @@ test "register installs the 4 protocol primitives in rt/" {
     try testing.expect(rt_ns.resolve("__extend-type!") != null);
     try testing.expect(rt_ns.resolve("__satisfies?") != null);
     try testing.expect(rt_ns.resolve("__extends?") != null);
+    try testing.expect(rt_ns.resolve("__class") != null);
 }
 
 /// Test helper: build an `impls-vec` cell `[method-name fn-val]`

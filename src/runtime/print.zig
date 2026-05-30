@@ -205,6 +205,7 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
         .ratio => try printRatio(w, v),
         .big_decimal => try printBigDecimal(w, v),
         .typed_instance => try printTypedInstance(w, v),
+        .type_descriptor => try printTypeDescriptor(w, v),
         else => |t| try w.print("#<{s}>", .{@tagName(t)}),
     }
 }
@@ -279,6 +280,20 @@ fn printTypedInstance(w: *Writer, v: Value) Writer.Error!void {
         try printValue(w, fv);
     }
     try w.writeByte(']');
+}
+
+/// Render a `.type_descriptor` Value (the value `(class x)` returns) as
+/// its simple class name (ADR-0059): `Long`, `String`, `PersistentVector`,
+/// or a user record's `Point`. Simple name, not a JVM FQCN, per the
+/// no-JVM-assumption rule. Anonymous (reify) descriptors fall back to the
+/// generic placeholder since they carry no name.
+fn printTypeDescriptor(w: *Writer, v: Value) Writer.Error!void {
+    const td = td_mod.asTypeDescriptorRef(v);
+    if (td.fqcn) |name| {
+        try w.writeAll(name);
+    } else {
+        try w.writeAll("#<type>");
+    }
 }
 
 /// Render an `ex-info` Value in `#error{ :message "..." :data ... }`

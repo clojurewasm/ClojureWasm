@@ -1053,6 +1053,15 @@
 (def extends?
   (fn* [protocol atype] (rt/__extends? protocol atype)))
 
+;; `(class x)` — the type of x as an interned type value (ADR-0059):
+;; native types render as Long / String / PersistentVector, user records
+;; as their name; (class nil) → nil. Interned, so (= (class 5) (class 6))
+;; is true and a class is a valid map key (group-by class).
+(def class (fn* [x] (rt/__class x)))
+
+;; `(type x)` — (:type (meta x)) when present, else (class x).
+(def type (fn* [x] (or (:type (meta x)) (class x))))
+
 ;; `(memoize f)` returns a cached version of f: each distinct argument
 ;; tuple computes f once, then returns the stored result. Keys the
 ;; atom-backed cache by `(vec args)` — vectors compare by value (D-092),
