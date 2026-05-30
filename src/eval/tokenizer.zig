@@ -38,6 +38,7 @@ pub const TokenKind = enum(u8) {
     keyword,
 
     quote, // '
+    deref, // @ — `@x` reader macro → (deref x)
     discard, // #_
     symbolic, // ## (##Inf / ##-Inf / ##NaN)
     /// `#"..."` regex literal. Token text includes the leading
@@ -104,6 +105,7 @@ pub const Tokenizer = struct {
             '{' => return self.singleChar(.lbrace, start, start_line, start_col),
             '}' => return self.singleChar(.rbrace, start, start_line, start_col),
             '\'' => return self.singleChar(.quote, start, start_line, start_col),
+            '@' => return self.singleChar(.deref, start, start_line, start_col),
             '"' => return self.readString(start, start_line, start_col),
             ':' => return self.readKeyword(start, start_line, start_col),
             '#' => return self.readDispatch(start, start_line, start_col),

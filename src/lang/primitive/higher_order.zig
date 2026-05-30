@@ -113,8 +113,8 @@ fn canBindDirect(f: Value, leading_count: usize, trailing: Value) bool {
 }
 
 /// Invoke a callable Value (builtin or Function) with args via the
-/// runtime vtable.
-fn invokeCallable(rt: *Runtime, env: *Env, f: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
+/// runtime vtable. Shared by apply / the HOFs / `swap!` (atom.zig).
+pub fn invokeCallable(rt: *Runtime, env: *Env, f: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (f.tag() == .builtin_fn) {
         const fn_ptr = f.asBuiltinFn(dispatch.BuiltinFn);
         return fn_ptr(rt, env, args, loc);

@@ -20,6 +20,7 @@ const ref_mod = @import("../../runtime/stm/ref.zig");
 const delay_mod = @import("../../runtime/delay.zig");
 const promise_mod = @import("../../runtime/promise.zig");
 const future_mod = @import("../../runtime/future.zig");
+const atom_mod = @import("../../runtime/atom.zig");
 
 /// `(ref init)` — construct a Tier A STM Ref seeded with `init`.
 /// JVM `clojure.core/ref` also accepts `:meta` / `:validator` /
@@ -39,13 +40,14 @@ pub fn derefFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     try error_catalog.checkArity("deref", args, 1, loc);
     const v = args[0];
     return switch (v.tag()) {
+        .atom => atom_mod.current(v),
         .ref => ref_mod.current(v),
         .delay => try delay_mod.force(rt, env, v, loc),
         .promise => promise_mod.deref(v) orelse
             error_catalog.raise(.promise_undelivered_error, loc, .{}),
         .future => future_mod.deref(v) orelse
             error_catalog.raise(.future_thunk_failed, loc, .{}),
-        else => error_catalog.raise(.feature_not_supported, loc, .{ .name = "deref of non-IDeref value (atom lands Phase 15)" }),
+        else => error_catalog.raise(.feature_not_supported, loc, .{ .name = "deref of non-IDeref value" }),
     };
 }
 

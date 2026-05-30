@@ -115,6 +115,19 @@ test "diff: data structures + keywords as IFn (D-085)" {
     try f.check("(apply [10 20 30] [2])", 30);
 }
 
+test "diff: atom — atom/deref/@/swap!/reset!/compare-and-set! (D-085 sibling)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // Atom is a runtime value; the ops are primitives and `@` desugars at
+    // the reader → (deref x). No analyzer Node / opcode, so both backends
+    // agree. (Fixture has no core.clj, so cases stay primitive-only.)
+    try f.check("(deref (atom 42))", 42);
+    try f.check("@(atom 7)", 7);
+    try f.check("(let* [a (atom 0)] (swap! a inc) @a)", 1);
+    try f.check("(let* [a (atom 5)] (reset! a 9) @a)", 9);
+    try f.check("(if (compare-and-set! (atom 1) 1 2) 100 200)", 100);
+}
+
 test "diff: binding rebinds a dynamic var (both backends)" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

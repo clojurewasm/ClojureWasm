@@ -95,6 +95,7 @@ pub const Reader = struct {
             .set_open => self.readSet(tok),
             .fn_lit => self.readFnLit(tok),
             .quote => self.readQuote(tok),
+            .deref => self.readDeref(tok),
             .symbolic => self.readSymbolic(tok),
             .discard => self.readDiscard(tok),
             .rparen, .rbracket, .rbrace => error_catalog.raise(.delimiter_unexpected, self.locOf(tok), .{ .delim = tok.text(self.source) }),
@@ -336,6 +337,25 @@ pub const Reader = struct {
 
         const items = self.allocator.alloc(Form, 2) catch return error.OutOfMemory;
         items[0] = Form{ .data = .{ .symbol = .{ .name = "quote" } }, .location = loc };
+        items[1] = inner;
+        return Form{ .data = .{ .list = items }, .location = loc };
+    }
+
+    /// `@x` reader macro → `(deref x)` (mirrors `readQuote`).
+    fn readDeref(self: *Reader, tok: Token) ReadError!Form {
+        const loc = self.locOf(tok);
+        self.depth += 1;
+        if (self.depth > self.max_depth)
+            return error_catalog.raise(.form_nesting_too_deep, loc, .{ .max = self.max_depth });
+        defer self.depth -= 1;
+
+        const next_tok = self.nextToken();
+        if (next_tok.kind == .eof)
+            return error_catalog.raise(.eof_unexpected, loc, .{});
+        const inner = try self.readForm(next_tok);
+
+        const items = self.allocator.alloc(Form, 2) catch return error.OutOfMemory;
+        items[0] = Form{ .data = .{ .symbol = .{ .name = "deref" } }, .location = loc };
         items[1] = inner;
         return Form{ .data = .{ .list = items }, .location = loc };
     }
