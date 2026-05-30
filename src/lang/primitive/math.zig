@@ -27,6 +27,7 @@ const compare_mod = @import("../../runtime/compare.zig");
 const random_mod = @import("../../runtime/random.zig");
 const ratio_mod = @import("../../runtime/numeric/ratio.zig");
 const big_int_mod = @import("../../runtime/numeric/big_int.zig");
+const string_mod = @import("../../runtime/collection/string.zig");
 
 // --- numeric helpers ---
 
@@ -604,6 +605,47 @@ fn numCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     return args[0];
 }
 
+// --- string parsers (clojure.core 1.11) ---
+
+/// `(parse-long s)` — parse a base-10 long from string `s`; `nil` if `s` is
+/// not a valid long. A non-string argument is a type error (JVM parse-long
+/// takes a CharSequence). The result collapses to a Long (i48) or BigInt.
+fn parseLong(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("parse-long", args, 1, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "parse-long", .actual = @tagName(args[0].tag()) });
+    const i = std.fmt.parseInt(i64, string_mod.asString(args[0]), 10) catch return .nil_val;
+    var m = try std.math.big.int.Managed.initSet(rt.gc.infra, i);
+    defer m.deinit();
+    return promote.wrapManaged(rt, &m);
+}
+
+/// `(parse-double s)` — parse a double from string `s`; `nil` if not valid.
+fn parseDouble(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("parse-double", args, 1, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "parse-double", .actual = @tagName(args[0].tag()) });
+    const f = std.fmt.parseFloat(f64, string_mod.asString(args[0])) catch return .nil_val;
+    return Value.initFloat(f);
+}
+
+/// `(parse-boolean s)` — `true` / `false` for the exact strings "true" /
+/// "false"; `nil` for any other string. Non-string argument is a type error.
+fn parseBoolean(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("parse-boolean", args, 1, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "parse-boolean", .actual = @tagName(args[0].tag()) });
+    const s = string_mod.asString(args[0]);
+    if (std.mem.eql(u8, s, "true")) return .true_val;
+    if (std.mem.eql(u8, s, "false")) return .false_val;
+    return .nil_val;
+}
+
 /// `(rand-int n)` — a uniform random integer in [0, n). `n <= 0` → 0
 /// (matches `(int (rand n))` for the degenerate cases). Uses the lazily-
 /// seeded process PRNG (`runtime/random.zig`); non-deterministic by design.
@@ -684,6 +726,9 @@ const ENTRIES = [_]Entry{
     .{ .name = "long", .f = &intCoerce },
     .{ .name = "num", .f = &numCoerce },
     .{ .name = "char", .f = &charCoerce },
+    .{ .name = "parse-long", .f = &parseLong },
+    .{ .name = "parse-double", .f = &parseDouble },
+    .{ .name = "parse-boolean", .f = &parseBoolean },
     .{ .name = "rand-int", .f = &randInt },
     .{ .name = "rand", .f = &randFn },
 };
