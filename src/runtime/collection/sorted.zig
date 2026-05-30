@@ -448,6 +448,69 @@ pub fn rseq(rt: *Runtime, v: Value) !Value {
     };
 }
 
+// --- subseq / rsubseq (range queries) ---
+
+/// Up to two `(test, key)` constraints; a node passes when ALL present
+/// constraints hold. `(subseq sc test key)` sets one; the 5-arg form sets
+/// both. `test` is a user fn (`<` / `<=` / `>` / `>=`) applied to
+/// `(test (compare node-key bound) 0)` — mirrors Clojure's `mk-bound-fn`.
+pub const Bound = struct {
+    test1: ?Value = null,
+    key1: Value = Value.nil_val,
+    test2: ?Value = null,
+    key2: Value = Value.nil_val,
+};
+
+fn applyTest(rt: *Runtime, env: *Env, test_fn: Value, order: std.math.Order, loc: SourceLocation) !bool {
+    const cmp_int: i48 = switch (order) {
+        .lt => -1,
+        .eq => 0,
+        .gt => 1,
+    };
+    const vt = rt.vtable orelse return error.NoVTable;
+    const r = try vt.callFn(rt, env, test_fn, &.{ Value.initInteger(cmp_int), Value.initInteger(0) }, loc);
+    return r.isTruthy();
+}
+
+fn inRange(rt: *Runtime, env: *Env, comparator: Value, node_key: Value, b: Bound, loc: SourceLocation) !bool {
+    if (b.test1) |t| {
+        if (!try applyTest(rt, env, t, try compareKeys(rt, env, comparator, node_key, b.key1, loc), loc)) return false;
+    }
+    if (b.test2) |t| {
+        if (!try applyTest(rt, env, t, try compareKeys(rt, env, comparator, node_key, b.key2, loc), loc)) return false;
+    }
+    return true;
+}
+
+// Visit order is the reverse of the desired output order (consHeap prepends):
+// ascending output ⇒ visit right→node→left; descending ⇒ left→node→right.
+fn subseqWalk(rt: *Runtime, env: *Env, is_map: bool, comparator: Value, h: Value, b: Bound, ascending: bool, acc: Value, loc: SourceLocation) !Value {
+    if (h.tag() != .rb_node) return acc;
+    const hn = h.decodePtr(*const RbNode);
+    const first = if (ascending) hn.right else hn.left;
+    const second = if (ascending) hn.left else hn.right;
+    var result = try subseqWalk(rt, env, is_map, comparator, first, b, ascending, acc, loc);
+    if (try inRange(rt, env, comparator, hn.key, b, loc)) {
+        const entry = if (is_map) blk: {
+            var pair = vector_mod.empty();
+            pair = try vector_mod.conj(rt, pair, hn.key);
+            pair = try vector_mod.conj(rt, pair, hn.val);
+            break :blk pair;
+        } else hn.key;
+        result = try list_mod.consHeap(rt, entry, result);
+    }
+    return subseqWalk(rt, env, is_map, comparator, second, b, ascending, result, loc);
+}
+
+/// `(subseq sc …)` / `(rsubseq sc …)` — entries whose key satisfies `b`,
+/// in ascending (subseq) or descending (rsubseq) order. Empty → nil.
+pub fn subseqRange(rt: *Runtime, env: *Env, coll: Value, ascending: bool, b: Bound, loc: SourceLocation) !Value {
+    const is_map = coll.tag() == .sorted_map;
+    const inner = if (is_map) coll else mapOf(coll);
+    const m = inner.decodePtr(*const SortedMap);
+    return subseqWalk(rt, env, is_map, m.comparator, m.root, b, ascending, Value.nil_val, loc);
+}
+
 // --- SortedSet public API (wraps a SortedMap, element → element) ---
 
 inline fn mapOf(set_val: Value) Value {

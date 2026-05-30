@@ -58,6 +58,30 @@ fn buildSet(rt: *Runtime, env: *Env, comparator: Value, xs: []const Value, loc: 
     return s;
 }
 
+/// `(subseq sc test key)` / `(subseq sc s-test s-key e-test e-key)` —
+/// ascending sub-sequence of entries whose key satisfies the bound(s).
+pub fn subseqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    return subseqImpl(rt, env, args, true, "subseq", loc);
+}
+
+/// `(rsubseq sc …)` — same as subseq but descending.
+pub fn rsubseqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    return subseqImpl(rt, env, args, false, "rsubseq", loc);
+}
+
+fn subseqImpl(rt: *Runtime, env: *Env, args: []const Value, ascending: bool, name: []const u8, loc: SourceLocation) anyerror!Value {
+    if (args.len != 3 and args.len != 5)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = name, .got = args.len, .min = 3, .max = 5 });
+    const sc = args[0];
+    if (sc.tag() != .sorted_map and sc.tag() != .sorted_set)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = name, .expected = "sorted collection", .actual = @tagName(sc.tag()) });
+    const b: sorted.Bound = if (args.len == 3)
+        .{ .test1 = args[1], .key1 = args[2] }
+    else
+        .{ .test1 = args[1], .key1 = args[2], .test2 = args[3], .key2 = args[4] };
+    return sorted.subseqRange(rt, env, sc, ascending, b, loc);
+}
+
 /// `(sorted? coll)` — true for sorted maps/sets.
 pub fn sortedQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
@@ -80,6 +104,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "sorted-set", .f = &sortedSetFn },
     .{ .name = "sorted-set-by", .f = &sortedSetByFn },
     .{ .name = "sorted?", .f = &sortedQFn },
+    .{ .name = "subseq", .f = &subseqFn },
+    .{ .name = "rsubseq", .f = &rsubseqFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {

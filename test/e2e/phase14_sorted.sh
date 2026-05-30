@@ -62,4 +62,14 @@ assert_eq 'rseq_by'     "$("$BIN" -e '(rseq (sorted-set-by > 1 2 3))')"    '(1 2
 assert_eq 'rev_smap'    "$("$BIN" -e '(reversible? (sorted-map))')"        'true'
 assert_eq 'rev_sset'    "$("$BIN" -e '(reversible? (sorted-set))')"        'true'
 assert_eq 'rev_list'    "$("$BIN" -e '(reversible? (list 1 2))')"          'false'
-echo "OK — phase14_sorted smoke (46 cases) green"
+# subseq / rsubseq — range queries (cycle C2)
+assert_eq 'subseq_gt'   "$("$BIN" -e '(subseq (sorted-set 1 2 3 4 5) > 2)')" '(3 4 5)'
+assert_eq 'subseq_gte'  "$("$BIN" -e '(subseq (sorted-set 1 2 3 4 5) >= 3)')" '(3 4 5)'
+assert_eq 'subseq_lt'   "$("$BIN" -e '(subseq (sorted-set 1 2 3 4 5) < 3)')" '(1 2)'
+assert_eq 'subseq_rng'  "$("$BIN" -e '(subseq (sorted-set 1 2 3 4 5 6 7) >= 2 <= 5)')" '(2 3 4 5)'
+assert_eq 'subseq_map'  "$("$BIN" -e '(subseq (sorted-map 1 :a 2 :b 3 :c 4 :d) > 2)')" '([3 :c] [4 :d])'
+assert_eq 'subseq_none' "$("$BIN" -e '(subseq (sorted-set 1 2 3) > 99)')"  'nil'
+assert_eq 'rsubseq_gt'  "$("$BIN" -e '(rsubseq (sorted-set 1 2 3 4 5) > 2)')" '(5 4 3)'
+assert_eq 'rsubseq_rng' "$("$BIN" -e '(rsubseq (sorted-set 1 2 3 4 5 6 7) > 2 < 6)')" '(5 4 3)'
+assert_eq 'subseq_by'   "$("$BIN" -e '(subseq (sorted-set-by > 1 2 3 4 5) > 3)')" '(2 1)'
+echo "OK — phase14_sorted smoke (55 cases) green"

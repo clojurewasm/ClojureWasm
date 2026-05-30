@@ -98,11 +98,11 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
     - **Cycle C1 — DONE**: `rseq` (Zig primitive, seq/count-style tag dispatch: vector reverse /
       sorted descending walk = left→node→right + prepend / empty→nil / non-reversible→type_error) +
       `reversible?` core.clj:736 flipped to `(or (vector? x) (sorted? x))`. 8 new e2e (46 total).
-    - **Cycle C2 — NEXT**: `subseq`/`rsubseq` (sorted range queries — the main reason to use a sorted
-      coll). Finished form: tree-walk emitting entry (pair for map / elem for set) filtered by
-      `(test (coll-comparator-compare node-key bound) 0)` applied via callFn; both 3-arg `(sc test key)`
-      and 5-arg `(sc s-test s-key e-test e-key)` forms; rsubseq = descending. Add `sorted.compareWith`
-      (public comparator-aware compare). Then sorted is fully complete.
+    - **Cycle C2 — DONE**: `subseq`/`rsubseq` (sorted range queries). Tree-walk in sorted.zig emits
+      entry (pair for map / elem for set) filtered by `(test (compareKeys node-key bound) 0)` applied
+      via callFn; both 3-arg `(sc test key)` and 5-arg `(sc s-test s-key e-test e-key)` forms; rsubseq =
+      descending walk. Honors custom `-by` comparators. 9 new e2e (55 total). **sorted is now FULLY
+      complete** (build/read/delete/`-by`/rseq/reversible?/subseq/rsubseq + print + IFn + GC).
   - **then**: **transducers** (HIGH ROI, BIG — survey-worthy: transducer protocol over reduce/reduced,
     1-arg HOF arities); MEDIUM fill-ins: `isa?`/hierarchy, `resolve`/ns (needs first-class var Value?),
     `bigint`/`bigdec` (LOW-med ROI + fiddly 5 coerce arms + string parsers — deprioritized).
