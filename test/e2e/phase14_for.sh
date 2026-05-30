@@ -19,5 +19,10 @@ assert_eq 'destr'   "$("$BIN" -e '(for [[a b] [[1 2] [3 4]]] (+ a b))')"        
 assert_eq 'lazy'    "$("$BIN" -e '(take 4 (for [x (range)] (* x x)))')"         '(0 1 4 9)'
 assert_eq 'range'   "$("$BIN" -e '(vec (for [x (range 5) :when (even? x)] x))')" '[0 2 4]'
 assert_eq 'empty'   "$("$BIN" -e '(for [x []] x)')"                             'nil'
-assert_has 'while'  "$("$BIN" -e '(for [x [1 2] :while (< x 2)] x)' 2>&1)"      ':while is not yet supported'
-echo "OK — phase14_for smoke (11 cases) green"
+# :while after a binding → take-while on the coll
+assert_eq 'while'   "$("$BIN" -e '(for [x [1 2 3 4 5] :while (< x 3)] x)')"     '(1 2)'
+assert_eq 'while_lz' "$("$BIN" -e '(take 4 (for [x (range) :while (< x 100)] (* x x)))')" '(0 1 4 9)'
+assert_eq 'while_wn' "$("$BIN" -e '(for [x (range 10) :while (< x 4) :when (odd? x)] x)')" '(1 3)'
+# :while after a :let in the same group is the deferred edge → raises
+assert_has 'while_let' "$("$BIN" -e '(for [x [1 2] :let [y x] :while (< y 2)] y)' 2>&1)" ':while is not yet supported'
+echo "OK — phase14_for smoke (14 cases) green"

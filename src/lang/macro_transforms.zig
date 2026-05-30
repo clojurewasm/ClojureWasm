@@ -930,9 +930,12 @@ fn expandDoseq(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: 
 // (mapcat is lazy). `fn` (not `fn*`) carries destructuring binds. Survey:
 // private/notes/phaseA26-doseq-for-survey.md §4 (shape a-i). cljw lacks
 // named-`fn` self-reference, so the JVM/SCI named-fn+lazy-seq shape is out;
-// the mapcat composition is the finished-form-clean equivalent. DIVERGENCE:
-// `:while` needs a short-circuit the mapcat shape cannot express — it raises
-// `for_while_not_supported` (D-134 follow-up; use :when or wrap take-while).
+// the mapcat composition is the finished-form-clean equivalent. `:while`
+// immediately after a binding lowers to `take-while` on that coll (the
+// common `(for [x (range) :while p] …)` idiom). DIVERGENCE: a `:while` that
+// follows a `:let` in the same group (so its pred reads the let binding)
+// still raises `for_while_not_supported` — the let-threaded take-while pred
+// is a D-134 follow-up.
 fn forStep(
     arena: std.mem.Allocator,
     rt: *Runtime,
@@ -968,13 +971,33 @@ fn forStep(
     }
 
     // A real `bind coll` pair → (mapcat (fn [bind] <inner>) coll).
+    // A `:while` modifier immediately after the binding is applied as a
+    // take-while on the coll (the common `(for [x (range) :while p] …)`
+    // idiom). `:while` after a :let in the same group still reaches the
+    // keyword case above and raises — the :let-threaded pred is a follow-up.
+    var coll_form = v;
+    var tail = rest;
+    if (tail.len >= 2 and tail[0].data == .keyword and tail[0].data.keyword.ns == null and
+        std.mem.eql(u8, tail[0].data.keyword.name, "while"))
+    {
+        const pred = tail[1];
+        const tw_param = try arena.alloc(Form, 1);
+        tw_param[0] = k;
+        const tw_fn = try arena.alloc(Form, 3);
+        tw_fn[0] = sym("fn", loc);
+        tw_fn[1] = .{ .data = .{ .vector = tw_param }, .location = loc };
+        tw_fn[2] = pred;
+        coll_form = try makeCall(arena, "take-while", &.{ try list(arena, tw_fn, loc), v }, loc);
+        tail = tail[2..];
+    }
+
     const param_vec = try arena.alloc(Form, 1);
     param_vec[0] = k;
     const fn_items = try arena.alloc(Form, 3);
     fn_items[0] = sym("fn", loc);
     fn_items[1] = .{ .data = .{ .vector = param_vec }, .location = loc };
-    fn_items[2] = try forStep(arena, rt, rest, body, loc);
-    return makeCall(arena, "mapcat", &.{ try list(arena, fn_items, loc), v }, loc);
+    fn_items[2] = try forStep(arena, rt, tail, body, loc);
+    return makeCall(arena, "mapcat", &.{ try list(arena, fn_items, loc), coll_form }, loc);
 }
 
 fn expandFor(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
