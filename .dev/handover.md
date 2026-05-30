@@ -87,12 +87,20 @@ stop) → `.dev/project_facts.md` (F-010 + edge mission) → `.dev/principle.md`
 
 ## Stopped — user requested
 
-User instruction (2026-05-30): keep advancing autonomously but emphasise
-**structural defects, not ad-hoc gaps** — when found, follow F-002
-(finished-form-clean) and do the rework without sparing effort. Before this
-session ends: audit the continuation wiring / reference chain so a CLEAR
-session resumes this mode via `continue`, writing out anything missing. Then
-stop and clear. (Done: chain audited — wiring intact; the mode + defect
-catalog written to `lessons/structural_defect_hunting.md` and wired into the
-Direction + First-commit + cold-start order above.) Resume = structural-defect
-hunting per the lesson.
+User instruction (2026-05-31): restarting the machine (load 5 from an orphan
+OrbStack VM + iOS Simulator + 3 parallel claude sessions was corrupting tool
+output — empty/duplicated/leaked results; cause + discipline in
+[`private/notes/phaseA26-CHANNEL-INCIDENT-resume.md`](../private/notes/phaseA26-CHANNEL-INCIDENT-resume.md)
+and saved to memory). Before restart: wire the session's knowledge + audit the
+resume reference chain. (Done: D-161-done + verified-real-gaps + channel/load
+discipline wired into Resume contract above; D-161 debt.md row left as the
+explicit first-commit fix because surgical Edits on the corrupted channel were
+unsafe — deferred to the clean post-restart session.) Resume per the
+First-commit line.
+
+**Channel/load discipline for resume**: chain `zig build && <probe>` (a
+not-yet-relinked binary gives STALE results); write every command's output to a
+SENTINEL-marked /tmp file and trust only sentinel-tagged lines (the channel
+drops/duplicates/leaks under load); run critical probes 3x and require
+agreement; trust `git log`/`git rev-parse` from a file over streamed stdout;
+`Smell-audited: <DIGIT>: …` (the push hook rejects the word `depth`).
