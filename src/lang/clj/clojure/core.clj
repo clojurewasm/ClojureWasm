@@ -643,13 +643,15 @@
       (assoc (zipmap (rest ks) (rest vs)) (first ks) (first vs)))))
 
 ;; `(interleave c1 c2)` — alternate items from two colls, stopping at
-;; the shorter (eager vector). Two-coll form.
+;; the shorter (eager vector). Two-coll form. loop/recur (NOT fn* self-
+;; recursion): the original `(into [x y] (interleave …))` was non-tail and
+;; segfaulted at ~1000 elements per coll.
 (def interleave
   (fn* [c1 c2]
-    (if (or (empty? c1) (empty? c2))
-      []
-      (into (conj (conj [] (first c1)) (first c2))
-            (interleave (rest c1) (rest c2))))))
+    (loop [s1 (seq c1) s2 (seq c2) acc []]
+      (if (and s1 s2)
+        (recur (next s1) (next s2) (conj (conj acc (first s1)) (first s2)))
+        acc))))
 
 ;; ----------------------------------------------------------------
 ;; D-134 cluster 5 — reduce-shaped helpers (Pattern A).

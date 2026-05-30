@@ -58,10 +58,15 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
     infinite sources = a lie). 4 e2e (44 total).
   - **TRANSDUCERS CORE-COMPLETE**: all reduce-driven drivers + every stateless/stateful arity + cat +
     halt-when. Only lazy-pull `sequence`/`eduction` remain (D-160).
-- **CRASH FIXES (found via transducer testing 2026-05-30, both FIXED)**: `(range N)` N≳100k and
-  `(sort coll)` ≳5k both **segfaulted** — non-TCO recursion (`-range-acc` fn-deep; `-merge-sorted`
-  non-tail). Rewritten with `loop`/`recur` (constant-stack). Eager-recursion class audit complete:
-  remaining core.clj recursions are lazy-seq-wrapped or log-depth (safe).
+- **CRASH FIXES — eager non-TCO recursion class (found via testing 2026-05-30, all FIXED)**: `(range N)`
+  N≳100k, `(sort coll)` ≳5k, and `(interleave a b)` ≳1k each **segfaulted** — non-TCO recursion
+  (`-range-acc` fn-deep; `-merge-sorted` + `interleave` non-tail `(into [..] (SELF …))`). All rewritten
+  with `loop`/`recur` (constant-stack). **Class audit now THOROUGH** (public fns too, not just `-`
+  helpers): probed take-while/take-nth/partition-by/range-step/tree-seq at 5-10k — all lazy-seq-wrapped
+  (safe); `-msort` log-depth (safe). interleave was the last offender.
+- **GAPS found in the robustness sweep (not crashes, not yet fixed)**: `mapv` is single-coll only
+  (`(mapv + [1 2] [3 4])` → arity_error; Clojure mapv is multi-coll); `interleave`/`mapv` lack the
+  variadic N-coll arity. Lower priority than crashes; chase opportunistically.
 - **trampoline** — core.clj defn (loop on fn results).
 
 ### P2 — type / hierarchy / var+ns introspection

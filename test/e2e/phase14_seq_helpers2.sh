@@ -29,5 +29,8 @@ assert_eq 'fnil_nil'     "$("$BIN" -e '((fnil inc 0) nil)')"                  '1
 assert_eq 'fnil_val'     "$("$BIN" -e '((fnil inc 0) 5)')"                    '6'
 assert_eq 'zipmap'       "$("$BIN" -e '(get (zipmap [:a :b] [1 2]) :b)')"     '2'
 assert_eq 'interleave'   "$("$BIN" -e '(into [] (interleave [1 2] [:a :b]))')" '[1 :a 2 :b]'
+assert_eq 'interleave_unequal' "$("$BIN" -e '(into [] (interleave [1 2 3] [:a :b]))')" '[1 :a 2 :b]'
+# large interleave must not blow the stack (loop/recur, was non-tail recursion)
+assert_eq 'interleave_large' "$("$BIN" -e '(count (interleave (range 50000) (range 50000)))')" '100000'
 
 echo "ALL phase14_seq_helpers2 PASS"
