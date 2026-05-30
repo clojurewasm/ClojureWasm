@@ -380,6 +380,7 @@ run_step "e2e_phase14_reductions_splitat"  "bash test/e2e/phase14_reductions_spl
 run_step "e2e_phase14_counted_reversible"  "bash test/e2e/phase14_counted_reversible.sh"
 run_step "e2e_phase14_doseq"                "bash test/e2e/phase14_doseq.sh"
 run_step "e2e_phase14_for"                  "bash test/e2e/phase14_for.sh"
+run_step "e2e_phase14_format"               "bash test/e2e/phase14_format.sh"
 run_step "e2e_phase14_bit_ops"              "bash test/e2e/phase14_bit_ops.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
 run_step "e2e_phase14_core_cluster"          "bash test/e2e/phase14_core_cluster.sh"

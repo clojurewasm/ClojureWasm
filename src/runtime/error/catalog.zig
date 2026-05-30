@@ -207,6 +207,8 @@ pub const Code = enum {
     for_form_incomplete,
     for_bindings_invalid,
     for_while_not_supported,
+    format_spec_invalid,
+    format_args_insufficient,
     while_form_incomplete,
     when_first_form_incomplete,
     when_first_bindings_invalid,
@@ -718,6 +720,14 @@ pub fn entry(comptime code: Code) Entry {
         .for_while_not_supported => .{
             .kind = .syntax_error, .phase = .macroexpand,
             .template = "for with :while is not yet supported; use :when, or wrap with take-while",
+        },
+        .format_spec_invalid => .{
+            .kind = .type_error, .phase = .eval,
+            .template = "format: unsupported directive '{[spec]s}' (supported: %s %d %f %.Nf %x %% %n; no width/flags yet)",
+        },
+        .format_args_insufficient => .{
+            .kind = .type_error, .phase = .eval,
+            .template = "format: not enough arguments for the format string",
         },
         .while_form_incomplete => .{
             .kind = .syntax_error, .phase = .macroexpand,

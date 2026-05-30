@@ -571,6 +571,101 @@ pub fn strFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     return try string_mod.alloc(rt, aw.writer.buffered());
 }
 
+/// Render `f` with `prec` fractional digits. Zig's `{d:.N}` precision is a
+/// comptime specifier, so dispatch the runtime precision over a fixed switch
+/// (printf's common range); precision > 10 caps at the printf default 6.
+fn writeFloatPrec(w: *std.Io.Writer, f: f64, prec: usize) !void {
+    switch (prec) {
+        0 => try w.print("{d:.0}", .{f}),
+        1 => try w.print("{d:.1}", .{f}),
+        2 => try w.print("{d:.2}", .{f}),
+        3 => try w.print("{d:.3}", .{f}),
+        4 => try w.print("{d:.4}", .{f}),
+        5 => try w.print("{d:.5}", .{f}),
+        6 => try w.print("{d:.6}", .{f}),
+        7 => try w.print("{d:.7}", .{f}),
+        8 => try w.print("{d:.8}", .{f}),
+        9 => try w.print("{d:.9}", .{f}),
+        10 => try w.print("{d:.10}", .{f}),
+        else => try w.print("{d:.6}", .{f}),
+    }
+}
+
+/// `(format fmt & args)` — printf-style string formatting. Supported
+/// directives: `%s` `%d` `%f` `%.Nf` `%x` `%%` `%n`. No width / flags yet (a
+/// leading width digit raises `format_spec_invalid`). Args are consumed
+/// left-to-right; `%%` / `%n` consume none. Matches clojure.core/format for
+/// the supported subset (the JVM delegates to java.util.Formatter).
+pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    if (args.len == 0 or args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "format", .actual = if (args.len == 0) "nil" else @tagName(args[0].tag()) });
+    const fmt = string_mod.asString(args[0]);
+    var ai: usize = 1;
+    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+    defer aw.deinit();
+    const w = &aw.writer;
+
+    var i: usize = 0;
+    while (i < fmt.len) {
+        if (fmt[i] != '%') {
+            try w.writeByte(fmt[i]);
+            i += 1;
+            continue;
+        }
+        i += 1; // past '%'
+        if (i >= fmt.len) return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%" });
+
+        // Optional precision `.N` (only meaningful for %f). No width / flags.
+        var prec: ?usize = null;
+        if (fmt[i] == '.') {
+            i += 1;
+            var p: usize = 0;
+            var saw_digit = false;
+            while (i < fmt.len and fmt[i] >= '0' and fmt[i] <= '9') : (i += 1) {
+                p = p * 10 + (fmt[i] - '0');
+                saw_digit = true;
+            }
+            if (!saw_digit) return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%." });
+            prec = p;
+        }
+        if (i >= fmt.len) return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%" });
+        const conv = fmt[i];
+        i += 1;
+        if (prec != null and conv != 'f')
+            return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%." });
+
+        switch (conv) {
+            '%' => try w.writeByte('%'),
+            'n' => try w.writeByte('\n'),
+            's' => {
+                if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
+                try writeArgsSpaced(rt, env, w, args[ai .. ai + 1], false);
+                ai += 1;
+            },
+            'd' => {
+                if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
+                try w.print("{d}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
+                ai += 1;
+            },
+            'x' => {
+                if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
+                try w.print("{x}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
+                ai += 1;
+            },
+            'f' => {
+                if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
+                try writeFloatPrec(w, try error_catalog.expectNumber(args[ai], "format", loc), prec orelse 6);
+                ai += 1;
+            },
+            else => {
+                const sb = [_]u8{ '%', conv };
+                return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = sb[0..] });
+            },
+        }
+    }
+    return try string_mod.alloc(rt, w.buffered());
+}
+
 /// `(subs s start)` / `(subs s start end)` — substring slice over
 /// codepoint indices (ADR-0014: cw v1 strings are UTF-8 internally
 /// but `count` and `subs` operate on codepoints). Returns a new
@@ -657,6 +752,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "prn", .f = &prnFn },
     .{ .name = "pr-str", .f = &prStrFn },
     .{ .name = "str", .f = &strFn },
+    .{ .name = "format", .f = &formatFn },
     .{ .name = "subs", .f = &subsFn },
 };
 
