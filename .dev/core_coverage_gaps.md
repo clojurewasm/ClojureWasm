@@ -44,10 +44,12 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
   Reduced sentinel + `reduce` honors it + `volatile!` + multi-arity `fn*`). 5-cycle plan:
   - **Cycle 1 — DONE**: `reduced`/`reduced?`/`unreduced`/`ensure-reduced` Clojure-visible (Zig wrappers
     over reduced.zig) + `deref` `.reduced` arm. 8 e2e (`phase14_transducers.sh`).
-  - **Cycle 2 — NEXT**: transducer arities `(map f)`/`(filter pred)`/`(remove pred)`/`(keep f)` + `completing`
-    + `transduce` (all .clj). cat deferred (needs preserving-reduced). conj 0/1-arg arities needed later
-    for bare-`conj` `into`.
-  - **Cycle 3**: 3-arg `into` (one Zig widen) + conj 0/1-arg + stateful `take`/`drop`/`map-indexed`.
+  - **Cycle 2 — DONE**: transducer arities `(map f)`/`(filter pred)`/`(remove pred)`/`(keep f)` + `completing`
+    + `transduce` (all .clj). `(transduce (comp (map inc) (filter even?)) + 0 coll)` works; lazy coll
+    arities + infinite-source intact. 9 new e2e (17 total). cat deferred (preserving-reduced).
+  - **Cycle 3 — NEXT**: 3-arg `into` (relocate to core.clj over reduce/transduce — Zig intoFn has no
+    other callers; first `into` use is line 165 so define after transduce ~150) + conj 0/1-arg arities
+    (Zig, finished-form) + stateful `take`/`drop`/`map-indexed` transducer arities.
   - **Cycle 4**: `dedupe`/`distinct`/`partition-all` (1-arg completion flush) + `cat` (preserving-reduced).
   - **Cycle 5**: `halt-when` + `sequence`/`eduction` (DIVERGENCE D1: eager-PROVISIONAL or defer — cljw
     lacks the lazy pull machinery upstream's TransformerIterator uses).

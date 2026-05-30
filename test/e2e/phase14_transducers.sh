@@ -22,4 +22,15 @@ assert_eq 'ensure_idem' "$("$BIN" -e '(unreduced (ensure-reduced (reduced 9)))')
 assert_eq 'deref_red'   "$("$BIN" -e '@(reduced 42)')"                    '42'
 # reduce honors early termination
 assert_eq 'reduce_early' "$("$BIN" -e '(reduce (fn [acc x] (if (>= acc 6) (reduced acc) (+ acc x))) 0 [1 2 3 4 5])')" '6'
-echo "OK — phase14_transducers (8 cases, cycle 1 foundation) green"
+# cycle 2: transducer arities + completing + transduce
+assert_eq 'td_map'      "$("$BIN" -e '(transduce (map inc) + [1 2 3])')"       '9'
+assert_eq 'td_filter'   "$("$BIN" -e '(transduce (filter even?) + 0 [1 2 3 4])')" '6'
+assert_eq 'td_comp'     "$("$BIN" -e '(transduce (comp (map inc) (filter even?)) + 0 [1 2 3 4])')" '6'
+assert_eq 'td_conj'     "$("$BIN" -e '(transduce (map inc) (completing conj) [] [1 2 3])')" '[2 3 4]'
+assert_eq 'td_remove'   "$("$BIN" -e '(transduce (remove odd?) + 0 [1 2 3 4 5 6])')" '12'
+assert_eq 'td_keep'     "$("$BIN" -e '(transduce (keep (fn [x] (if (even? x) x nil))) + 0 [1 2 3 4])')" '6'
+# transducer arities must NOT break the lazy collection arities
+assert_eq 'lazy_map'    "$("$BIN" -e '(into [] (map inc [1 2 3]))')"           '[2 3 4]'
+assert_eq 'lazy_filter' "$("$BIN" -e '(into [] (filter even? [1 2 3 4]))')"    '[2 4]'
+assert_eq 'lazy_inf'    "$("$BIN" -e '(first (map inc (iterate inc 0)))')"     '1'
+echo "OK — phase14_transducers (17 cases, cycles 1-2) green"

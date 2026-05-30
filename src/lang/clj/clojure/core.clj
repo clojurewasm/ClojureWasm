@@ -41,7 +41,13 @@
 ;; every?/identity which are later core.clj defns (def-order; fn-body
 ;; symbols resolve at def time), so it would need a primitive-only seq-all.
 (def map
-  (fn* ([f coll]
+  (fn* ([f]
+        ;; transducer arity: (map f) returns a transducer
+        (fn* [rf]
+          (fn* ([] (rf))
+               ([result] (rf result))
+               ([result input] (rf result (f input))))))
+       ([f coll]
         (lazy-seq
           (let [s (seq coll)]
             (if s (cons (f (first s)) (map f (rest s))) nil))))
@@ -59,14 +65,20 @@
                     (map f (rest s1) (rest s2) (rest s3)))
               nil))))))
 (def filter
-  (fn* [pred coll]
-    (lazy-seq
-      (let [s (seq coll)]
-        (if s
-          (if (pred (first s))
-            (cons (first s) (filter pred (rest s)))
-            (filter pred (rest s)))
-          nil)))))
+  (fn* ([pred]
+        ;; transducer arity
+        (fn* [rf]
+          (fn* ([] (rf))
+               ([result] (rf result))
+               ([result input] (if (pred input) (rf result input) result)))))
+       ([pred coll]
+        (lazy-seq
+          (let [s (seq coll)]
+            (if s
+              (if (pred (first s))
+                (cons (first s) (filter pred (rest s)))
+                (filter pred (rest s)))
+              nil))))))
 (def take (fn* [n coll] (-take-eager n coll)))
 (def drop
   (fn* [n coll]
@@ -81,15 +93,50 @@
 (def nthnext (fn* [coll n] (seq (drop n coll))))
 (def nthrest (fn* [coll n] (drop n coll)))
 (def keep
-  (fn* [f coll]
-    (lazy-seq
-      (let [s (seq coll)]
-        (if s
-          (let [r (f (first s))]
-            (if (nil? r) (keep f (rest s)) (cons r (keep f (rest s)))))
-          nil)))))
+  (fn* ([f]
+        ;; transducer arity: keeps the non-nil (f input)
+        (fn* [rf]
+          (fn* ([] (rf))
+               ([result] (rf result))
+               ([result input] (let [v (f input)] (if (nil? v) result (rf result v)))))))
+       ([f coll]
+        (lazy-seq
+          (let [s (seq coll)]
+            (if s
+              (let [r (f (first s))]
+                (if (nil? r) (keep f (rest s)) (cons r (keep f (rest s)))))
+              nil))))))
 (def remove
-  (fn* [pred coll] (filter (fn* [x] (not (pred x))) coll)))
+  (fn* ([pred]
+        ;; transducer arity: drops inputs where pred is truthy
+        (fn* [rf]
+          (fn* ([] (rf))
+               ([result] (rf result))
+               ([result input] (if (pred input) result (rf result input))))))
+       ([pred coll] (filter (fn* [x] (not (pred x))) coll))))
+
+;; ----------------------------------------------------------------
+;; Transducer drivers (the foundation — reduced?/unreduced/reduce —
+;; already exists). `cat` + the stateful transducers (take/drop/
+;; dedupe/distinct/partition-all) land in later cycles.
+;; ----------------------------------------------------------------
+
+;; `(completing f)` / `(completing f cf)` — adapt a 2-arg fn into a
+;; reducing fn with 0-arg init `(f)`, 1-arg completion (`cf`, default
+;; identity), and 2-arg step `(f x y)`.
+(def completing
+  (fn* ([f] (fn* ([] (f)) ([x] x) ([x y] (f x y))))
+       ([f cf] (fn* ([] (f)) ([x] (cf x)) ([x y] (f x y))))))
+
+;; `(transduce xform f coll)` / `(transduce xform f init coll)` — reduce
+;; `coll` through the transformed reducing fn, then call its 1-arg
+;; completion. `(f)` supplies the init when omitted.
+(def transduce
+  (fn* ([xform f coll] (transduce xform f (f) coll))
+       ([xform f init coll]
+        (let [rf (xform f)
+              ret (reduce rf init coll)]
+          (rf (unreduced ret))))))
 
 ;; ----------------------------------------------------------------
 ;; Pure Clojure HOF (no Zig leaf) — pattern A per ADR-0033 D3.
