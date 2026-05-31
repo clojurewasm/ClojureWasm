@@ -52,6 +52,8 @@
 
 const std = @import("std");
 const Value = @import("../value/value.zig").Value;
+const ex_info_mod = @import("../collection/ex_info.zig");
+const Kind = @import("info.zig").Kind;
 
 /// One node of the recognised exception hierarchy. `parent == null`
 /// marks the chain root (Throwable). Names are simple (no package
@@ -80,6 +82,7 @@ pub const ENTRIES = [_]Entry{
     .{ .name = "ArithmeticException", .parent = "RuntimeException" },
     .{ .name = "ClassCastException", .parent = "RuntimeException" },
     .{ .name = "IllegalArgumentException", .parent = "RuntimeException" },
+    .{ .name = "ArityException", .parent = "IllegalArgumentException" },
     .{ .name = "NumberFormatException", .parent = "IllegalArgumentException" },
     .{ .name = "IllegalStateException", .parent = "RuntimeException" },
     .{ .name = "IndexOutOfBoundsException", .parent = "RuntimeException" },
@@ -101,6 +104,7 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "java.lang.ArithmeticException", "ArithmeticException" },
     .{ "java.lang.ClassCastException", "ClassCastException" },
     .{ "java.lang.IllegalArgumentException", "IllegalArgumentException" },
+    .{ "clojure.lang.ArityException", "ArityException" },
     .{ "java.lang.NumberFormatException", "NumberFormatException" },
     .{ "java.lang.IllegalStateException", "IllegalStateException" },
     .{ "java.lang.IndexOutOfBoundsException", "IndexOutOfBoundsException" },
@@ -165,8 +169,34 @@ pub fn isSubclassOf(child: []const u8, parent: []const u8) bool {
 /// parent walk inside `matches()` below.
 fn thrownClassName(thrown: Value) ?[]const u8 {
     return switch (thrown.tag()) {
-        .ex_info => "ExceptionInfo",
+        // ADR-0060: a runtime-synthesized internal error carries its
+        // class (`"ArithmeticException"`, …); a real `(ex-info …)` has
+        // none → `"ExceptionInfo"`. So `(instance? ExceptionInfo …)` is
+        // false for a synthesized exception and true for a user ex-info.
+        .ex_info => ex_info_mod.className(thrown) orelse "ExceptionInfo",
         else => null,
+    };
+}
+
+/// ADR-0060: map a catalog error `Kind` to the exception class a
+/// `(catch …)` clause should match (grounded against real `clj`), or
+/// `null` for the uncatchable Kinds. `internal_error` / `out_of_memory`
+/// descend from `Error` (JVM `(catch Exception …)` does not catch them);
+/// `not_implemented` stays a loud uncaught signal so a `(catch Exception
+/// …)` cannot silently swallow a missing-feature gap (Silent-default-shift
+/// smell). The returned strings are comptime-static (stored by pointer on
+/// the synthesized ex_info, never duped/freed).
+pub fn kindToHostClass(kind: Kind) ?[]const u8 {
+    return switch (kind) {
+        .arithmetic_error => "ArithmeticException",
+        .type_error => "ClassCastException",
+        .index_error => "IndexOutOfBoundsException",
+        .value_error => "IllegalArgumentException",
+        .arity_error => "ArityException",
+        .number_error => "NumberFormatException",
+        .name_error, .syntax_error, .string_error => "RuntimeException",
+        .io_error => "IOException",
+        .not_implemented, .internal_error, .out_of_memory => null,
     };
 }
 

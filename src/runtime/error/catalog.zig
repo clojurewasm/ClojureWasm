@@ -135,6 +135,9 @@ pub const Code = enum {
     // --- Eval (tree-walk runtime) ---
     /// args: `.{ .form = "Local"|"let*"|"loop*"|"catch", .index = N, .max = M }`
     slot_out_of_range,
+    /// args: `.{ .fn_name = "nth" }` — a user index error (Kind index_error
+    /// → IndexOutOfBoundsException per ADR-0060).
+    index_out_of_range,
     /// args: `.{ .got = N, .max = M }`
     recur_args_exceed_buffer,
     /// args: `.{ .got = N, .max = M }`
@@ -578,6 +581,13 @@ pub fn entry(comptime code: Code) Entry {
         .slot_out_of_range => .{
             .kind = .index_error, .phase = .eval,
             .template = "{[form]s} slot {[index]d} out of range (max {[max]d})",
+        },
+        // ADR-0060: a user `(nth …)` index error is an index_error Kind so
+        // it maps to IndexOutOfBoundsException (matching real Clojure),
+        // not type_error/ClassCastException.
+        .index_out_of_range => .{
+            .kind = .index_error, .phase = .eval,
+            .template = "{[fn_name]s}: index out of range",
         },
         .recur_args_exceed_buffer => .{
             .kind = .not_implemented, .phase = .eval,

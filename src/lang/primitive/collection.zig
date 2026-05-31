@@ -295,22 +295,14 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             const n = vector.count(coll);
             if (idx >= n) {
                 if (has_default) break :blk default;
-                break :blk error_catalog.raise(.type_arg_invalid, loc, .{
-                    .fn_name = "nth",
-                    .expected = "index in bounds",
-                    .actual = "out of range",
-                });
+                break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
             }
             break :blk vector.nth(coll, @intCast(idx));
         },
         .list, .cons => blk: {
             if (idx < 0) {
                 if (has_default) break :blk default;
-                break :blk error_catalog.raise(.type_arg_invalid, loc, .{
-                    .fn_name = "nth",
-                    .expected = "non-negative integer index",
-                    .actual = "negative",
-                });
+                break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
             }
             var cur: Value = coll;
             var remaining: i64 = idx;
@@ -318,11 +310,7 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
                 cur = list.rest(cur);
                 if (cur.isNil()) {
                     if (has_default) break :blk default;
-                    break :blk error_catalog.raise(.type_arg_invalid, loc, .{
-                        .fn_name = "nth",
-                        .expected = "index in bounds",
-                        .actual = "out of range",
-                    });
+                    break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
                 }
             }
             break :blk list.first(cur);

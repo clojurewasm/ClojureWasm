@@ -810,18 +810,39 @@ fn evalTry(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.TryNode) anyerr
             _ = try eval(rt, env, locals, fb);
         }
         return result;
-    } else |err| switch (err) {
-        error.ThrownValue => {
-            const thrown = dispatch.last_thrown_exception orelse return error_catalog.raiseInternal(n.loc, "ThrownValue without last_thrown_exception");
-            // Walk catch clauses linearly — Phase 3 only matches
-            // `ExceptionInfo` against `.ex_info`-tagged Values.
+    } else |err| {
+        // Determine the thrown Value for catch-matching. Two sources
+        // funnel into the SAME catch-clause loop (F-011 commonisation):
+        //  - user `(throw v)`: error.ThrownValue + last_thrown_exception.
+        //  - ADR-0060: a user-domain internal error (error_catalog) whose
+        //    Kind maps to an exception class → synthesize a class-name-
+        //    bearing ex_info from the threadlocal Info. internal_error /
+        //    out_of_memory / not_implemented map to null = uncatchable.
+        var thrown: ?Value = null;
+        if (err == error.ThrownValue) {
+            thrown = dispatch.last_thrown_exception orelse return error_catalog.raiseInternal(n.loc, "ThrownValue without last_thrown_exception");
+        } else if (error_mod.peekLastError()) |info| {
+            if (host_class.kindToHostClass(info.kind)) |class| {
+                // Synthesize ONCE: the internal error becomes a thrown
+                // exception Value and propagates as error.ThrownValue
+                // thereafter — identical to a user throw, identical to the
+                // VM handler path (parity). A truly uncaught error (no
+                // enclosing try) never reaches here, so it keeps its raw
+                // Zig error + `[kind]` CLI header.
+                const synth = try ex_info_collection.allocException(rt, info.message, class);
+                dispatch.last_thrown_exception = synth;
+                error_mod.clearLastError();
+                thrown = synth;
+            }
+        }
+        if (thrown) |tv| {
             for (n.catch_clauses) |cc| {
-                if (try catchMatches(rt, cc.target, thrown)) {
+                if (try catchMatches(rt, cc.target, tv)) {
                     dispatch.last_thrown_exception = null;
                     dispatch.last_thrown_context = null;
                     if (cc.binding_index >= locals.len)
                         return error_catalog.raise(.slot_out_of_range, cc.loc, .{ .form = "catch", .index = cc.binding_index, .max = locals.len });
-                    locals[cc.binding_index] = thrown;
+                    locals[cc.binding_index] = tv;
                     const caught = eval(rt, env, locals, cc.body);
                     if (n.finally_body) |fb| {
                         _ = try eval(rt, env, locals, fb);
@@ -829,22 +850,21 @@ fn evalTry(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.TryNode) anyerr
                     return caught;
                 }
             }
-            // No catch matched — finally runs, then we re-raise.
+            // No catch matched — finally runs, then re-raise as a thrown
+            // value (last_thrown_exception holds `tv`), so the outer frame's
+            // ThrownValue arm matches it.
             if (n.finally_body) |fb| {
                 _ = try eval(rt, env, locals, fb);
             }
-            // last_thrown_exception is still populated; the outer
-            // frame (or the CLI) sees the same Value.
             return error.ThrownValue;
-        },
-        else => {
-            // Non-Clojure errors (OOM, internal_error, etc.) still run
-            // finally so external resources get released, then bubble.
-            if (n.finally_body) |fb| {
-                _ = eval(rt, env, locals, fb) catch {};
-            }
-            return err;
-        },
+        }
+        // Uncatchable (internal_error / out_of_memory / not_implemented /
+        // a non-catalog Zig error such as OOM) — finally for resource
+        // release, then bubble with the `[kind]` Info intact.
+        if (n.finally_body) |fb| {
+            _ = eval(rt, env, locals, fb) catch {};
+        }
+        return err;
     }
 }
 

@@ -50,6 +50,14 @@ pub const ExInfo = extern struct {
     message_len: usize,
     data: Value,
     cause: Value,
+    // ADR-0060: the exception class this Value represents. `null` ≡
+    // "ExceptionInfo" (a real `(ex-info …)`); a non-null class
+    // (`"ArithmeticException"`, …) marks a runtime-synthesized internal
+    // error. The bytes are a comptime-static catalog string (NOT duped,
+    // NOT GC-traced/freed) — `kindToHostClass` only returns string
+    // literals. So `finaliseGc`/`traceGc` are unchanged.
+    class_name_ptr: ?[*]const u8 = null,
+    class_name_len: usize = 0,
 
     comptime {
         std.debug.assert(@alignOf(ExInfo) >= 8);
@@ -58,6 +66,12 @@ pub const ExInfo = extern struct {
 
     pub fn message(self: *const ExInfo) []const u8 {
         return self.message_ptr[0..self.message_len];
+    }
+
+    /// The synthesized exception class, or `null` for a real ex-info.
+    pub fn className(self: *const ExInfo) ?[]const u8 {
+        const p = self.class_name_ptr orelse return null;
+        return p[0..self.class_name_len];
     }
 };
 
@@ -74,6 +88,28 @@ pub fn alloc(rt: *Runtime, msg_bytes: []const u8, data_v: Value, cause_v: Value)
         .message_len = owned_msg.len,
         .data = data_v,
         .cause = cause_v,
+    };
+    return Value.encodeHeapPtr(.ex_info, ex);
+}
+
+/// Allocate a synthesized internal-error exception (ADR-0060): an
+/// `.ex_info` Value carrying the Kind-derived `class_name` (so `(catch
+/// ArithmeticException …)` matches and `(instance? ExceptionInfo …)` is
+/// false), `nil` data (matching JVM: a bare exception has no ex-data),
+/// no cause. `class_name` is a comptime-static catalog string, stored by
+/// pointer (not duped); `msg_bytes` IS duped like `alloc`.
+pub fn allocException(rt: *Runtime, msg_bytes: []const u8, class: []const u8) !Value {
+    const owned_msg = try rt.gc.infra.dupe(u8, msg_bytes);
+    errdefer rt.gc.infra.free(owned_msg);
+    const ex = try rt.gc.alloc(ExInfo);
+    ex.* = .{
+        .header = HeapHeader.init(.ex_info),
+        .message_ptr = owned_msg.ptr,
+        .message_len = owned_msg.len,
+        .data = .nil_val,
+        .cause = .nil_val,
+        .class_name_ptr = class.ptr,
+        .class_name_len = class.len,
     };
     return Value.encodeHeapPtr(.ex_info, ex);
 }
@@ -122,6 +158,13 @@ pub fn data(val: Value) Value {
 /// Convenience: pull the cause Value (`.nil_val` when no cause).
 pub fn cause(val: Value) Value {
     return asExInfo(val).cause;
+}
+
+/// Convenience: the synthesized exception class, or `null` for a real
+/// `(ex-info …)` Value (ADR-0060). A non-null result means this Value is
+/// a runtime-synthesized internal error, NOT a user ExceptionInfo.
+pub fn className(val: Value) ?[]const u8 {
+    return asExInfo(val).className();
 }
 
 // --- tests ---

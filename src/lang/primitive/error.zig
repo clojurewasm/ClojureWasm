@@ -64,6 +64,11 @@ pub fn exData(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     try error_catalog.checkArity("ex-data", args, 1, loc);
     const v = args[0];
     if (v.tag() != .ex_info) return .nil_val;
+    // ADR-0060: a runtime-synthesized internal error (carries a class
+    // name) is NOT an ExceptionInfo — a bare ArithmeticException has no
+    // ex-data, matching real Clojure. Only real `(ex-info …)` (class
+    // name null) yields data.
+    if (ex_info.className(v) != null) return .nil_val;
     return ex_info.data(v);
 }
 

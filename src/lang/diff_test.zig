@@ -622,6 +622,38 @@ test "diff: row 7.11 catch FQCN java.lang.RuntimeException normalises" {
     try f.check("(try (throw (ex-info \"x\" {})) (catch java.lang.RuntimeException e 5))", 5);
 }
 
+// ADR-0060: internal runtime errors (error_catalog) are catchable via a
+// synthesized class-name-bearing ex_info. Both backends synthesize at
+// their error-propagation point and route through the SAME catch-match
+// loop, so the class hierarchy + no-match re-raise must agree.
+
+test "diff: ADR-0060 catch ArithmeticException on (/ 1 0)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    try f.check("(try (/ 1 0) (catch ArithmeticException e 1))", 1);
+}
+
+test "diff: ADR-0060 catch Exception on (/ 1 0) via RuntimeException" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    try f.check("(try (/ 1 0) (catch Exception e 2))", 2);
+}
+
+test "diff: ADR-0060 catch IndexOutOfBoundsException on nth out-of-range" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    try f.check("(try (nth [1] 5) (catch IndexOutOfBoundsException e 4))", 4);
+}
+
+test "diff: ADR-0060 internal error no-match inner re-raises to outer" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    try f.check(
+        \\(try (try (/ 1 0) (catch clojure.lang.ExceptionInfo e 0))
+        \\  (catch ArithmeticException e 6))
+    , 6);
+}
+
 // Row 7.12 cycle 1 (D-078 prep): `instance?` macro + `__instance?`
 // primitive + `runtime/class_name.zig` registry. Both backends share
 // the macro_dispatch lowering and the Layer-2 primitive, so dispatch

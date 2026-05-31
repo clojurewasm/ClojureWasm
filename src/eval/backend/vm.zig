@@ -81,7 +81,23 @@ pub fn eval(
         if (step_result) |maybe_return| {
             if (maybe_return) |v| return v;
         } else |err| {
-            if (err == error.ThrownValue and handler_count > 0) {
+            var thrown_err = err;
+            // ADR-0060: convert a catchable internal error (error_catalog)
+            // into a thrown exception so the handler stack can catch it —
+            // parity with tree_walk evalTry. Only when a handler exists;
+            // uncatchable Kinds (null) and a truly-uncaught error (no
+            // handler) keep the raw Zig error + `[kind]` CLI header.
+            if (err != error.ThrownValue and handler_count > 0) {
+                if (error_mod.peekLastError()) |info| {
+                    if (host_class.kindToHostClass(info.kind)) |class| {
+                        const synth = ex_info_mod.allocException(rt, info.message, class) catch return err;
+                        dispatch.last_thrown_exception = synth;
+                        error_mod.clearLastError();
+                        thrown_err = error.ThrownValue;
+                    }
+                }
+            }
+            if (thrown_err == error.ThrownValue and handler_count > 0) {
                 handler_count -= 1;
                 const h = handlers[handler_count];
                 ip = h.catch_ip;

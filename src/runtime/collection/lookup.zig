@@ -61,10 +61,10 @@ fn vectorIndex(v: Value, i_val: Value, loc: SourceLocation) !Value {
     }
     const idx = i_val.asInteger();
     if (idx < 0) {
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "nth", .expected = "non-negative integer index", .actual = "negative" });
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
     }
     if (idx >= vector.count(v)) {
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "nth", .expected = "index in bounds", .actual = "out of range" });
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
     }
     return vector.nth(v, @intCast(idx));
 }
@@ -194,8 +194,10 @@ test "map-as-fn: (m k) gets; vector-as-fn: ([..] i) nth; OOB throws" {
     vec = try vector.conj(&fix.rt, vec, Value.initInteger(10));
     vec = try vector.conj(&fix.rt, vec, Value.initInteger(20));
     try std_testing.expectEqual(@as(i48, 20), (try invoke(&fix.rt, &env,vec, &.{Value.initInteger(1)}, noloc)).asInteger());
-    try std_testing.expectError(error.TypeError, invoke(&fix.rt, &env,vec, &.{Value.initInteger(5)}, noloc)); // OOB
-    try std_testing.expectError(error.TypeError, invoke(&fix.rt, &env,vec, &.{Value.initInteger(-1)}, noloc)); // negative
+    // ADR-0060: nth index errors are index_error Kind → error.IndexError
+    // (→ IndexOutOfBoundsException), not type_error.
+    try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env,vec, &.{Value.initInteger(5)}, noloc)); // OOB
+    try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env,vec, &.{Value.initInteger(-1)}, noloc)); // negative
 }
 
 test "set-as-fn: (#{..} x) returns x or nil; arity errors" {
