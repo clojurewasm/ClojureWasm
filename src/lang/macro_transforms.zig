@@ -1409,18 +1409,25 @@ fn expandDefn(
     if (args[0].data != .symbol or args[0].data.symbol.ns != null)
         return error_catalog.raise(.defn_name_invalid, args[0].location, .{});
 
-    const name_form = args[0];
+    var name_form = args[0];
 
     // JVM defn: `(defn name doc-string? attr-map? [params] body)` (and the
-    // multi-arity equivalent). Skip a leading docstring (string) and a
-    // leading attr-map (map) immediately after the name (D-091). They are
-    // parsed and dropped here — :doc / attr metadata attachment to the Var
-    // awaits var-metadata support (a separate gap; cljw has no `#'`/`var`
-    // reader yet). A string AFTER the params is the body, not a docstring,
-    // because this scan only fires at the name+1 position.
+    // multi-arity equivalent). A leading docstring (string) + attr-map (map)
+    // immediately after the name are captured into the Var metadata below
+    // (D-183 part d, closes D-091); they no longer drop. A string AFTER the
+    // params is the body, not a docstring — this scan only fires at the
+    // name+1 position.
     var head: usize = 1;
-    if (head < args.len and args[head].data == .string) head += 1;
-    if (head < args.len and args[head].data == .map) head += 1;
+    var doc_form: ?Form = null;
+    var attr_form: ?Form = null;
+    if (head < args.len and args[head].data == .string) {
+        doc_form = args[head];
+        head += 1;
+    }
+    if (head < args.len and args[head].data == .map) {
+        attr_form = args[head];
+        head += 1;
+    }
     if (head >= args.len)
         return error_catalog.raise(.defn_form_incomplete, loc, .{});
     const body_forms = args[head..];
@@ -1460,12 +1467,57 @@ fn expandDefn(
         break :blk try list(arena, fn_items, loc);
     };
 
+    // D-183 part (d): build the defn metadata map and park it on the name
+    // Form's `.meta` side-channel so `analyzeDef` lifts it into `Var.meta`
+    // (closes D-091's silent docstring/attr-map drop). Always carries
+    // `:arglists` (the original param vectors); `:doc` when a docstring is
+    // present; merges any explicit attr-map. Reader meta already on the
+    // name (`(defn ^:private f ...)`) is preserved and merged first.
+    name_form.meta = try buildDefnMeta(arena, name_form.meta, doc_form, attr_form, body_forms, loc);
+
     // (def name (fn* ...))
     const def_items = try arena.alloc(Form, 3);
     def_items[0] = sym("def", loc);
     def_items[1] = name_form;
     def_items[2] = fn_form;
     return list(arena, def_items, loc);
+}
+
+/// Build the `^meta` map Form for a `defn` target (D-183 part d). Merges,
+/// in precedence order (last wins at `mapFormToValue`): existing reader
+/// meta on the name → explicit attr-map → `:doc` (docstring) → `:arglists`
+/// (the original param vectors, always added — single-arity `([params])`,
+/// multi-arity `([p0] [p1] ...)`). `body_forms` is the post-head slice and
+/// is already arity-validated by the caller, so `.list`/`[0]` are safe.
+fn buildDefnMeta(
+    arena: std.mem.Allocator,
+    existing: ?*const Form,
+    doc_form: ?Form,
+    attr_form: ?Form,
+    body_forms: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!*const Form {
+    var arglist_vecs: std.ArrayList(Form) = .empty;
+    if (body_forms[0].data == .vector) {
+        try arglist_vecs.append(arena, body_forms[0]);
+    } else {
+        for (body_forms) |af| try arglist_vecs.append(arena, af.data.list[0]);
+    }
+    const arglists = try list(arena, arglist_vecs.items, loc);
+
+    var meta_items: std.ArrayList(Form) = .empty;
+    if (existing) |m| try meta_items.appendSlice(arena, m.data.map);
+    if (attr_form) |a| try meta_items.appendSlice(arena, a.data.map);
+    if (doc_form) |d| {
+        try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = loc });
+        try meta_items.append(arena, d);
+    }
+    try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "arglists" } }, .location = loc });
+    try meta_items.append(arena, arglists);
+
+    const mp = try arena.create(Form);
+    mp.* = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = loc };
+    return mp;
 }
 
 /// One arity's param-destructuring lowering (D-076 cycle 3, shared by

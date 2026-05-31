@@ -250,6 +250,15 @@ test "diff: ^meta on def target reaches Var.meta" {
     try f.check("(do (def ^{:a 7} diff-dm 1) (:a (meta (var diff-dm))))", 7);
 }
 
+test "diff: defn attr-map reaches Var.meta" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // D-183(d) / D-091: `expandDefn` lowers docstring + attr-map +
+    // `:arglists` onto the name Form's `.meta`, so `(meta (var f))` reads
+    // them identically under both backends (shared macroexpand+analyze).
+    try f.check("(do (defn diff-dn {:v 9} [a] a) (:v (meta (var diff-dn))))", 9);
+}
+
 test "diff: def_node forward ref inside (do)" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
