@@ -65,6 +65,7 @@ pub const Code = enum {
     var_arity_invalid,
     var_arg_not_symbol,
     var_unresolved,
+    metadata_value_invalid,
     symbol_unresolved,
     /// args: `.{ .sym = "ns/name", .ns = "ns" }` — raised when a
     /// `^:private` var is referenced as a symbol from outside its
@@ -410,6 +411,10 @@ pub fn entry(comptime code: Code) Entry {
         .var_unresolved => .{
             .kind = .name_error, .phase = .analysis,
             .template = "Unable to resolve var: '{[sym]s}' in this context",
+        },
+        .metadata_value_invalid => .{
+            .kind = .syntax_error, .phase = .parse,
+            .template = "Metadata must be Symbol, Keyword, String or Map",
         },
         .symbol_unresolved => .{
             .kind = .name_error, .phase = .analysis,

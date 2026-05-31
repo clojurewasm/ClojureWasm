@@ -58,6 +58,13 @@ pub const FormData = union(enum) {
 pub const Form = struct {
     data: FormData,
     location: SourceLocation = .{},
+    /// `^meta` reader-macro side-channel (D-183). cljw symbols are
+    /// interned + metadata-less (ADR-0037 D6), so reader-attached
+    /// metadata cannot ride a symbol Value — it rides the Form here
+    /// instead, normalised to a map Form (`:kw`→`{:kw true}`,
+    /// `Sym`→`{:tag Sym}`). The analyzer reads it (e.g. `analyzeDef`
+    /// → `Var.meta`). Null for forms with no `^meta` prefix.
+    meta: ?*const Form = null,
 
     /// Type name suitable for error messages.
     pub fn typeName(self: Form) []const u8 {

@@ -34,6 +34,9 @@ pub fn metaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         .hash_set => set.metaOf(v),
         .list => list.metaOf(v),
         .lazy_seq => lazy_seq.metaOf(v),
+        // D-183: `(meta #'x)` reads the Var's `.meta` Clojure-map slot,
+        // populated by `analyzeDef` from a `^meta` def target.
+        .var_ref => v.decodePtr(*const env_mod.Var).meta orelse Value.nil_val,
         else => Value.nil_val,
     };
 }

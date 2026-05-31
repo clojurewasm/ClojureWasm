@@ -241,6 +241,15 @@ test "diff: var special form const-folds to a stable var_ref" {
     try f.check("(do (def diff-vx 7) (deref (var diff-vx)))", 7);
 }
 
+test "diff: ^meta on def target reaches Var.meta" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // D-183(b)+(c): `analyzeDef` lifts a `^{...}` def-target meta into
+    // `Var.meta` at analyze time (backend-shared analysis), so `(meta
+    // (var x))` reads the same map under both TreeWalk + VM.
+    try f.check("(do (def ^{:a 7} diff-dm 1) (:a (meta (var diff-dm))))", 7);
+}
+
 test "diff: def_node forward ref inside (do)" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

@@ -97,6 +97,7 @@ pub const Reader = struct {
             .quote => self.readQuote(tok),
             .deref => self.readDeref(tok),
             .var_quote => self.readVarQuote(tok),
+            .meta_caret => self.readMeta(tok),
             .symbolic => self.readSymbolic(tok),
             .discard => self.readDiscard(tok),
             .rparen, .rbracket, .rbrace => error_catalog.raise(.delimiter_unexpected, self.locOf(tok), .{ .delim = tok.text(self.source) }),
@@ -378,6 +379,73 @@ pub const Reader = struct {
         items[0] = Form{ .data = .{ .symbol = .{ .name = "var" } }, .location = loc };
         items[1] = inner;
         return Form{ .data = .{ .list = items }, .location = loc };
+    }
+
+    /// `^meta target` reader macro → `target` with `meta` attached to
+    /// its `Form.meta` side-channel (D-183 part b). `meta` is normalised
+    /// to a map Form: `^{m}` keeps the map, `^:kw`→`{:kw true}`,
+    /// `^Sym`/`^"s"`→`{:tag <x>}`. Stacked metas (`^:a ^:b x`) merge,
+    /// outer winning on duplicate keys (placed last for last-wins).
+    fn readMeta(self: *Reader, tok: Token) ReadError!Form {
+        const loc = self.locOf(tok);
+        self.depth += 1;
+        if (self.depth > self.max_depth)
+            return error_catalog.raise(.form_nesting_too_deep, loc, .{ .max = self.max_depth });
+        defer self.depth -= 1;
+
+        const meta_tok = self.nextToken();
+        if (meta_tok.kind == .eof)
+            return error_catalog.raise(.eof_unexpected, loc, .{});
+        const meta_raw = try self.readForm(meta_tok);
+
+        const tgt_tok = self.nextToken();
+        if (tgt_tok.kind == .eof)
+            return error_catalog.raise(.eof_unexpected, loc, .{});
+        var target = try self.readForm(tgt_tok);
+
+        const norm = try self.normalizeMeta(meta_raw, loc);
+        const final_meta = if (target.meta) |inner|
+            try self.mergeMetaMaps(inner.*, norm, loc)
+        else
+            norm;
+        const meta_ptr = self.allocator.create(Form) catch return error.OutOfMemory;
+        meta_ptr.* = final_meta;
+        target.meta = meta_ptr;
+        return target;
+    }
+
+    /// Normalise a reader metadata form into a map Form. Mirrors JVM's
+    /// reader: keyword → `{:kw true}`, symbol/string → `{:tag <x>}`,
+    /// map → itself. Anything else is a read error.
+    fn normalizeMeta(self: *Reader, meta_raw: Form, loc: SourceLocation) ReadError!Form {
+        switch (meta_raw.data) {
+            .map => return meta_raw,
+            .keyword => {
+                const items = self.allocator.alloc(Form, 2) catch return error.OutOfMemory;
+                items[0] = meta_raw;
+                items[1] = Form{ .data = .{ .boolean = true }, .location = loc };
+                return Form{ .data = .{ .map = items }, .location = loc };
+            },
+            .symbol, .string => {
+                const items = self.allocator.alloc(Form, 2) catch return error.OutOfMemory;
+                items[0] = Form{ .data = .{ .keyword = .{ .name = "tag" } }, .location = loc };
+                items[1] = meta_raw;
+                return Form{ .data = .{ .map = items }, .location = loc };
+            },
+            else => return error_catalog.raise(.metadata_value_invalid, loc, .{}),
+        }
+    }
+
+    /// Concatenate two map Forms' flat k/v pairs; `outer` is appended
+    /// last so a duplicate key resolves to the outer meta (last-wins at
+    /// `mapFormToValue`), matching JVM's `^:a ^:b x` precedence.
+    fn mergeMetaMaps(self: *Reader, inner: Form, outer: Form, loc: SourceLocation) ReadError!Form {
+        const ipairs = inner.data.map;
+        const opairs = outer.data.map;
+        const merged = self.allocator.alloc(Form, ipairs.len + opairs.len) catch return error.OutOfMemory;
+        @memcpy(merged[0..ipairs.len], ipairs);
+        @memcpy(merged[ipairs.len..], opairs);
+        return Form{ .data = .{ .map = merged }, .location = loc };
     }
 
     fn readSymbolic(self: *Reader, tok: Token) ReadError!Form {

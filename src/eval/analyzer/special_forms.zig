@@ -248,7 +248,15 @@ pub fn analyzeDef(
     // is idempotent (env.zig:353-357 updates root in place).
     const ns = env.current_ns orelse
         return error_catalog.raiseInternal(form.location, "def: no current namespace");
-    _ = try env.intern(ns, name_sym.name, .nil_val, null);
+    const var_ptr = try env.intern(ns, name_sym.name, .nil_val, null);
+    // D-183 part (c): honour a `^meta` map on the def target. cljw
+    // symbols are metadata-less (ADR-0037), so the reader parks the
+    // metadata on the name Form's `.meta` side-channel; lift it into the
+    // (otherwise dormant) `Var.meta` Clojure-map slot here, at analyze
+    // time. `env.intern`'s runtime re-intern (ADR-0038) updates root only
+    // and never touches `.meta`, so this survives evaluation.
+    if (items[1].meta) |meta_form|
+        var_ptr.meta = try analyzer_mod.formToValue(rt, meta_form.*);
     const value_node = if (items.len == 3)
         try analyzer_mod.analyze(arena, rt, env, scope, items[2], macro_table)
     else

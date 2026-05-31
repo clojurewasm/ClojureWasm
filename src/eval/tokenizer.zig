@@ -55,6 +55,9 @@ pub const TokenKind = enum(u8) {
     fn_lit,
     /// `#'` var-quote reader macro → `(var x)` (mirrors `quote`/`deref`).
     var_quote,
+    /// `^` metadata reader macro. `^meta target` attaches `meta` (a map,
+    /// or `:kw`→`{:kw true}` / `Sym`→`{:tag Sym}` shorthand) to `target`.
+    meta_caret,
 
     eof,
     invalid,
@@ -108,6 +111,7 @@ pub const Tokenizer = struct {
             '}' => return self.singleChar(.rbrace, start, start_line, start_col),
             '\'' => return self.singleChar(.quote, start, start_line, start_col),
             '@' => return self.singleChar(.deref, start, start_line, start_col),
+            '^' => return self.singleChar(.meta_caret, start, start_line, start_col),
             '"' => return self.readString(start, start_line, start_col),
             ':' => return self.readKeyword(start, start_line, start_col),
             '#' => return self.readDispatch(start, start_line, start_col),
