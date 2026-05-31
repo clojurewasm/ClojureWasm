@@ -21,12 +21,13 @@
 ;; Phase 6.16.a-3.2 — eager higher-order surface (ADR-0033 D6 + v5 §5.2).
 ;;
 ;; Each surface fn delegates to its Zig leaf (`-foo-eager`) via the
-;; `-name` Pattern B2 contract from ADR-0033 D4. Transducer 1-arg
-;; arity (`(map f)` returning an xform) is **deferred to D-177** (its
-;; multi-arity prereq, D-070, has since landed — what remains is the
-;; xform Value shape). For this cycle these are eager-only forms — JVM
-;; `clojure.core/map` is lazy, cw v1 `map` here builds the full list
-;; eagerly. The full lazy + transducer semantics land with D-177.
+;; `-name` Pattern B2 contract from ADR-0033 D4. The transducer 1-arg
+;; arities (`(map f)` returning an xform) + `transduce`/`into`-xform/
+;; `completing`/`cat`/`halt-when` LANDED 2026-05-30 (D-177, the multi-
+;; arity prereq D-070 is discharged) in the transducer section below;
+;; these `-foo-eager` forms are the eager collection arities. The lazy
+;; `sequence`/`eduction` pull surface is the only remaining gap (D-160,
+;; needs a push→pull transducer bridge).
 ;; ----------------------------------------------------------------
 
 ;; map / filter / keep / remove / drop are LAZY (ADR-0054 cycle 2/3):
@@ -541,9 +542,13 @@
 ;; D-070 multi-arity makes this reachable). `(apply map f colls)` only
 ;; spreads the finite `colls` list, so it never eager-realizes an infinite
 ;; coll; lazy throughout — `(take 5 (mapcat (fn [x] [x x]) (range)))` works.
+;; `(mapcat f)` (no colls) returns the transducer `(comp (map f) cat)`
+;; (D-177 single-arity); with colls it is the lazy variadic above.
 (def mapcat
   (fn* [f & colls]
-    (-concat-seqs (apply map f colls))))
+    (if (seq colls)
+      (-concat-seqs (apply map f colls))
+      (comp (map f) cat))))
 
 ;; `(tree-seq branch? children root)` — a lazy depth-first (pre-order) seq
 ;; of all nodes. `branch?` says whether a node can have children; `children`

@@ -325,9 +325,9 @@ pub fn someQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 // The `-name` `defn-` `^:private :zig-leaf` pattern from ADR-0033 D4.
 // These are the eager backends for clojure.core's map/filter/take/
 // drop/keep/remove — the Layer 3 `.clj` shim calls them directly when
-// the multi-arity form is the eager one. The transducer 1-arg arity
-// (returning an xform) is **deferred to D-177** (its multi-arity
-// prereq, D-070, has since landed; what remains is the xform shape).
+// the multi-arity form is the eager one. The transducer 1-arg arities
+// landed 2026-05-30 (D-177) in core.clj over reduce/reduced; only the
+// lazy `sequence`/`eduction` pull surface remains (D-160).
 
 // `-map-eager` / `-filter-eager` / `-drop-eager` deleted — map/filter
 // are lazy `.clj` (ADR-0054 cycle 2), drop is lazy `.clj` (cycle 3).

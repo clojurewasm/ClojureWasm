@@ -62,6 +62,9 @@ assert_eq 'td_cat_map'  "$("$BIN" -e '(into [] (comp cat (map inc)) [[1 2] [3 4]
 # cat + take: preserving-reduced must propagate the early-stop through cat
 assert_eq 'td_cat_take' "$("$BIN" -e '(into [] (comp cat (take 3)) [[1 2] [3 4] [5 6]])')" '[1 2 3]'
 assert_eq 'td_full'     "$("$BIN" -e '(into [] (comp (map inc) (filter even?) (distinct)) [1 1 2 3 3 4])')" '[2 4]'
+# mapcat 1-arg xform = (comp (map f) cat) — the last single-arity arm (D-177)
+assert_eq 'td_mapcat'    "$("$BIN" -e '(into [] (mapcat (fn [x] [x x])) [1 2 3])')" '[1 1 2 2 3 3]'
+assert_eq 'td_mapcat_tr' "$("$BIN" -e '(transduce (mapcat range) + 0 [1 2 3])')"   '4'
 # cycle 5: halt-when (sequence / eduction deferred — D-160, need lazy pull)
 assert_eq 'halt_match'  "$("$BIN" -e '(transduce (halt-when neg?) conj [] [1 2 -3 4])')" '-3'
 assert_eq 'halt_none'   "$("$BIN" -e '(transduce (halt-when neg?) conj [] [1 2 3])')" '[1 2 3]'

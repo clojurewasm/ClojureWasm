@@ -6,10 +6,10 @@
 # complement / constantly / juxt) per ADR-0033 D6 + v5 §5.2.
 #
 # **Note**: file named `transducer_unlock_a3.sh` per v5 §9.2 schedule
-# (transducer 先取り cycle), but transducer 1-arg arity is **deferred to
-# D-177** (its multi-arity prereq, D-070, has since landed). This cycle
-# ships eager-only surface; the file name is preserved to keep the
-# v5 deliverable-name commitment.
+# (transducer 先取り cycle). This file ships the eager higher-order
+# surface; the transducer 1-arg arities landed later (2026-05-30, D-177,
+# tested in phase14_transducers.sh). The file name is preserved to keep
+# the v5 deliverable-name commitment.
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
