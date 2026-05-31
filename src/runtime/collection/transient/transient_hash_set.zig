@@ -95,10 +95,10 @@ pub fn conj(rt: *Runtime, ts_val: Value, e: Value, loc: SourceLocation) !Value {
     return ts_val;
 }
 
-pub fn disj(ts_val: Value, e: Value, loc: SourceLocation) !Value {
+pub fn disj(rt: *Runtime, ts_val: Value, e: Value, loc: SourceLocation) !Value {
     const ts = try expectTransient(ts_val, "disj!", loc);
     try ensureEditable(ts, "disj!", loc);
-    _ = try transient_array_map.dissoc(ts.inner_map, e, loc);
+    _ = try transient_array_map.dissoc(rt, ts.inner_map, e, loc);
     ts.count = transientMapCount(ts.inner_map);
     return ts_val;
 }
@@ -217,7 +217,7 @@ test "disj! removes an element" {
     const ts = try fromSet(&fix.rt, Value.nil_val);
     _ = try conj(&fix.rt, ts, Value.initInteger(1), loc);
     _ = try conj(&fix.rt, ts, Value.initInteger(2), loc);
-    _ = try disj(ts, Value.initInteger(1), loc);
+    _ = try disj(&fix.rt, ts, Value.initInteger(1), loc);
     const p = try toPersistent(&fix.rt, ts, loc);
     try testing.expectEqual(@as(u32, 1), set_mod.count(p));
     try testing.expect(!try set_mod.contains(p, Value.initInteger(1)));

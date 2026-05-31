@@ -160,14 +160,36 @@
               ret (reduce rf init coll)]
           (rf (unreduced ret))))))
 
+;; `-editable?` — can `coll` be built via `transient` + `persistent!`?
+;; Mirrors JVM IEditableCollection: hash-based vectors, maps, sets. A
+;; nil or list target is excluded — `(into nil xs)` / `(into () xs)`
+;; build a list by prepend, which the transient path would not reproduce.
+;; Sorted maps/sets are also excluded: they have no transient (and JVM's
+;; sorted collections are not IEditableCollection either), so they keep
+;; the persistent-conj path.
+(def -editable?
+  (fn* [coll]
+    (if (sorted? coll)
+      false
+      (or (vector? coll) (map? coll) (set? coll)))))
+
 ;; `(into to from)` conj every item of `from` onto `to`; `(into to xform
 ;; from)` does so through the transducer `xform`. Defined here (Layer 2)
 ;; over reduce/transduce — supersedes the rt/into eager primitive (which
 ;; had no other Zig callers). `conj`'s 1-arg completion arity makes the
 ;; bare-`conj` reducing fn work for the transduce path.
+;; PERF: editable targets build via a transient (O(n) persistent! over a flat buffer) vs N persistent conjs O(n log n) [refs: O-003, D-180]
 (def into
-  (fn* ([to from] (reduce conj to from))
-       ([to xform from] (transduce xform conj to from))))
+  (fn* ([to from]
+         (if (-editable? to)
+           (persistent! (reduce conj! (transient to) from))
+           (reduce conj to from)))
+       ([to xform from]
+         (if (-editable? to)
+           (let [rf (fn* ([tc] (persistent! tc))
+                         ([tc x] (conj! tc x)))]
+             (transduce xform rf (transient to) from))
+           (transduce xform conj to from)))))
 
 ;; `(-preserving-reduced rf)` wraps rf so that a Reduced result from an
 ;; INNER reduce (cat uses one) is double-wrapped — the outer reduce then
@@ -501,8 +523,9 @@
     (assoc m k (apply f (into [(get m k)] args)))))
 
 ;; `(vec coll)` — eager coerce any collection to a vector.
+;; PERF: build via a transient (O(n) persistent! over a flat buffer) vs N persistent conjs O(n log n) [refs: O-003, D-180]
 (def vec
-  (fn* [coll] (reduce conj [] coll)))
+  (fn* [coll] (persistent! (reduce conj! (transient []) coll))))
 ;; `(vector & args)` — construct a vector from its args (D-134). Unblocks
 ;; the common `(map vector ks vs)` / `(apply vector …)` idioms.
 (def vector

@@ -40,9 +40,11 @@ pub fn transientFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     const coll = args[0];
     return switch (coll.tag()) {
         .vector => try transient_vector.fromVector(rt, coll),
+        // Both map variants route through fromMap: `.array_map` copies
+        // entries (flat mode), `.hash_map` is held directly (hash mode).
+        // Past 8 entries the transient promotes to a persistent HAMT
+        // (ADR-0064; was an error.HashMapNotImplemented stub pre-D-045).
         .array_map => try transient_array_map.fromMap(rt, coll),
-        // `.hash_map` source bubbles `error.HashMapNotImplemented` —
-        // mirrors the persistent dispatch gap pending D-045 (HAMT body).
         .hash_map => try transient_array_map.fromMap(rt, coll),
         .hash_set => try transient_hash_set.fromSet(rt, coll),
         .nil => try transient_vector.fromVector(rt, coll),
@@ -105,12 +107,11 @@ pub fn conjBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 /// JVM reference: clojure.core/disj! → ITransientSet.disjoin
 /// cw v1 tier: A (Phase 8.5 cycle 3)
 pub fn disjBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("disj!", args, 2, loc);
     const tcoll = args[0];
     return switch (tcoll.tag()) {
-        .transient_set => try transient_hash_set.disj(tcoll, args[1], loc),
+        .transient_set => try transient_hash_set.disj(rt, tcoll, args[1], loc),
         else => error_catalog.raise(.transient_kind_mismatch, loc, .{
             .fn_name = "disj!",
             .expected = "transient_set",
@@ -144,12 +145,11 @@ pub fn assocBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 /// JVM reference: clojure.core/dissoc! → ITransientMap.without
 /// cw v1 tier: A (Phase 8.5 cycle 2)
 pub fn dissocBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("dissoc!", args, 2, loc);
     const tcoll = args[0];
     return switch (tcoll.tag()) {
-        .transient_map => try transient_array_map.dissoc(tcoll, args[1], loc),
+        .transient_map => try transient_array_map.dissoc(rt, tcoll, args[1], loc),
         else => error_catalog.raise(.transient_kind_mismatch, loc, .{
             .fn_name = "dissoc!",
             .expected = "transient_map",

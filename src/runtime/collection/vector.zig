@@ -371,6 +371,72 @@ pub fn subvec(rt: *Runtime, v: Value, start: u32, end: u32) !Value {
     return out;
 }
 
+/// Bulk-build a PersistentVector from a flat slice in O(n). Builds the
+/// HAMT trie bottom-up — 32-element leaf HamtNodes, then interior levels
+/// grouped 32 children at a time until one root remains; the trailing
+/// ≤ 32 elements form the tail. The result is observationally identical
+/// to a vector built by `items.len` successive `conj`s (Clojure's trie
+/// is left-packed + dense, so bottom-up grouping reproduces the same
+/// shape), but avoids the O(n log n) repeated-conj rebuild that
+/// `toPersistent` previously paid. `meta` is nil — callers that need
+/// `to`'s metadata (transient `persistent!`) re-apply it via `withMeta`.
+// PERF: bulk O(n) trie build vs N persistent conjs O(n log n) [refs: O-003, D-180]
+pub fn fromSlice(rt: *Runtime, items: []const Value) !Value {
+    const n: u32 = @intCast(items.len);
+    if (n == 0) return empty();
+
+    const off = tailoff(n); // multiple of 32; in-root element count
+    const tail_len = n - off; // 1..32 for n > 0
+
+    const tail = try rt.gc.alloc(TailNode);
+    tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_len };
+    @memcpy(tail.slots[0..tail_len], items[off..n]);
+
+    if (off == 0) {
+        // n ≤ 32: tail-only, no root (matches conj's tail fast path).
+        return try newVector(rt, n, 0, null, tail, Value.nil_val);
+    }
+
+    // Leaf level: `off` elements → `off / 32` leaf HamtNodes.
+    const leaf_count = off >> SHIFT_BITS;
+    const level_nodes = try rt.gc.infra.alloc(*HamtNode, leaf_count);
+    defer rt.gc.infra.free(level_nodes);
+    var li: u32 = 0;
+    while (li < leaf_count) : (li += 1) {
+        const leaf = try rt.gc.alloc(HamtNode);
+        leaf.* = .{ .header = HeapHeader.init(.hamt_node) };
+        @memcpy(&leaf.slots, items[li * BRANCH_FACTOR ..][0..BRANCH_FACTOR]);
+        level_nodes[li] = leaf;
+    }
+
+    // Group 32 children per interior node, level by level, until the
+    // single root remains. The buffer is reused in place: parent index
+    // `pi` is always < its first child index `pi * 32` (for pi ≥ 1) and
+    // child `pi` was already consumed by an earlier parent, so the
+    // overwrite never clobbers an unread child.
+    var shift: u32 = 0;
+    var current = level_nodes;
+    while (current.len > 1) {
+        shift += SHIFT_BITS;
+        const child_count: u32 = @intCast(current.len);
+        const parent_count: u32 = (child_count + BRANCH_FACTOR - 1) >> SHIFT_BITS;
+        var pi: u32 = 0;
+        while (pi < parent_count) : (pi += 1) {
+            const parent = try rt.gc.alloc(HamtNode);
+            parent.* = .{ .header = HeapHeader.init(.hamt_node) };
+            const base = pi * BRANCH_FACTOR;
+            const cnt = @min(BRANCH_FACTOR, child_count - base);
+            var ci: u32 = 0;
+            while (ci < cnt) : (ci += 1) {
+                parent.slots[ci] = Value.encodeHeapPtr(.hamt_node, current[base + ci]);
+            }
+            level_nodes[pi] = parent;
+        }
+        current = level_nodes[0..parent_count];
+    }
+    return try newVector(rt, n, shift, current[0], tail, Value.nil_val);
+}
+
 /// Allocate a new Vector with the given fields. Helper to keep conj /
 /// pop / assoc bodies tight.
 fn newVector(
@@ -808,6 +874,69 @@ test "subvec out-of-bounds: errors" {
     const v = try conj(&fix.rt, empty(), Value.initInteger(1));
     try testing.expectError(error.SubvecOutOfBounds, subvec(&fix.rt, v, 0, 5));
     try testing.expectError(error.SubvecOutOfBounds, subvec(&fix.rt, v, 5, 0));
+}
+
+test "fromSlice matches conj-built vector at all boundary sizes" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    // The HAMT boundary set: tail-only edges (1,31,32), tail→root
+    // promotion (33,63,64,65), one→two interior levels (1023,1024,1025)
+    // — per D-180's exhaustive boundary mandate. Each is cross-checked
+    // against a conj-built vector (the left-packed-dense invariant).
+    const sizes = [_]u32{ 0, 1, 31, 32, 33, 63, 64, 65, 1023, 1024, 1025 };
+    for (sizes) |n| {
+        const items = try testing.allocator.alloc(Value, n);
+        defer testing.allocator.free(items);
+        for (0..n) |i| items[i] = Value.initInteger(@intCast(i));
+
+        const bulk = try fromSlice(&fix.rt, items);
+
+        // Element-wise + count parity with the source slice.
+        try testing.expectEqual(n, count(bulk));
+        for (0..n) |i| {
+            try testing.expectEqual(@as(i48, @intCast(i)), nth(bulk, @intCast(i)).asInteger());
+        }
+        try testing.expect(nth(bulk, n).isNil()); // out-of-bounds
+
+        // Structural parity with a conj-built vector: identical trie
+        // depth (shift) and tail split — the left-packed-dense invariant.
+        var conjd = empty();
+        for (0..n) |i| conjd = try conj(&fix.rt, conjd, Value.initInteger(@intCast(i)));
+        const bulk_vec = bulk.decodePtr(*const Vector);
+        const conj_vec = conjd.decodePtr(*const Vector);
+        try testing.expectEqual(conj_vec.shift, bulk_vec.shift);
+        const bulk_tail_len = if (bulk_vec.tail) |t| t.len else 0;
+        const conj_tail_len = if (conj_vec.tail) |t| t.len else 0;
+        try testing.expectEqual(conj_tail_len, bulk_tail_len);
+        try testing.expectEqual(conj_vec.root == null, bulk_vec.root == null);
+    }
+}
+
+test "fromSlice builds a deep multi-level trie (n = 100000)" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    // 100000 exercises a shift=15 trie (three interior levels). Verified
+    // by fromSlice's own invariants rather than a conj cross-check — a
+    // 100k-element conj build is too slow for the per-commit unit phase;
+    // the ≤1025 parity test already pins fromSlice == conj shape-wise.
+    const n: u32 = 100000;
+    const items = try testing.allocator.alloc(Value, n);
+    defer testing.allocator.free(items);
+    for (0..n) |i| items[i] = Value.initInteger(@intCast(i));
+
+    const bulk = try fromSlice(&fix.rt, items);
+    try testing.expectEqual(n, count(bulk));
+    for (0..n) |i| {
+        try testing.expectEqual(@as(i48, @intCast(i)), nth(bulk, @intCast(i)).asInteger());
+    }
+    try testing.expect(nth(bulk, n).isNil());
+
+    const vec = bulk.decodePtr(*const Vector);
+    try testing.expectEqual(@as(u32, 15), vec.shift); // 3124 leaves → 98 → 4 → 1
+    try testing.expect(vec.root != null);
+    try testing.expectEqual(@as(u32, 32), vec.tail.?.len); // 100000 - 99968
 }
 
 test "nth in-root path: handcrafted shift=5 vector with 33 elements" {

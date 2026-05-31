@@ -121,14 +121,12 @@ pub fn toPersistent(rt: *Runtime, tv_val: Value, loc: SourceLocation) !Value {
     try ensureEditable(tv, "persistent!", loc);
     tv.consumed = 1;
 
-    var out = vector.empty();
-    if (tv.items_ptr) |p| {
-        var i: u32 = 0;
-        while (i < tv.count) : (i += 1) {
-            out = try vector.conj(rt, out, p[i]);
-        }
-    }
-    return out;
+    // PERF: bulk O(n) trie build from the flat buffer vs N persistent conjs O(n log n) [refs: O-003, D-180]
+    const out = try vector.fromSlice(rt, tv.items());
+    // Carry through the source's metadata (`(transient ^{…} v)` / the
+    // `to` collection of `into`); `fromSlice` mints a meta-less vector.
+    if (tv.meta.isNil()) return out;
+    return try vector.withMeta(rt, out, tv.meta);
 }
 
 /// Append `x` to the transient's items buffer. Returns the same
