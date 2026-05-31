@@ -6,14 +6,17 @@
 ## Resume contract
 
 - **HEAD**: see `git log` (perf-campaign + quality-loop commits on `cw-from-scratch`).
-  Tree clean, 0 unpushed. Mac gate green (181).
-- **First on resume MUST be**: **the quality-loop floor** (drain
-  highest-value-first per CLAUDE.md Step 0.5). The §9.2.S perf campaign's
-  contained high-ROI wins are COMPLETE — the timeout-class pathologies are
-  resolved (see DONE below) — so the loop returns to the F-010 quality loop
-  (clj differential sweep + correctness floor). Drain order: **D-169/170**
-  (quot/int on the numeric tower) → **D-171** (json float, D-166 sibling) →
-  **D-172** (Math *Exact) → **D-174** (rest char-seq); D-173 low.
+  Tree clean, 0 unpushed. Mac gate green (187).
+- **First on resume MUST be**: **D-183 part (b)** — the `^meta` reader
+  macro (`^{:k v} form` / `^:kw form` / `^Type form`) attaching metadata to
+  the def-target. Part (a) (`var` special form + `#'` reader) landed
+  `925e3283`. Then part (c) (`def` honours target meta → `Var.meta`) and
+  part (d) (`defn`/`defmacro` docstring+attr-map lowering, closes D-091).
+  Survey + ordering: `private/notes/phaseA26-var-metadata-survey.md`
+  (KEY: cljw symbols are meta-less per ADR-0037, so def-target meta rides a
+  Form side-channel, not symbol meta — inverts the JVM order).
+  Remaining floor after D-183: **D-177** (transducer 1-arg xform, now
+  doable), **D-182** (JSON BigInt write-side cheap), D-184/D-173 low.
 - **Perf campaign §9.2.S — CLOSED (Debug-measurement correction 2026-06-01).**
   Landed: O-001 `72d7bfcc`, O-002 `0898ba2c`, **O-003/D-180 + ADR-0064**
   `9188820b`, **O-004/D-163 first cycle** `50ccbf3b`. **BUT the alarming
@@ -36,17 +39,6 @@
   (D-133, post-M). Re-opening perf without a Release `scripts/perf.sh` number.
   Touching `tree_walk.zig`/`vm.zig` for statics/fields (backend-agnostic;
   diff oracle verifies parity).
-
-## Stopped — user requested
-
-User instruction (2026-06-01, close paraphrase): *"Unify the test builds
-to ReleaseSafe (if any e2e verified in Debug), add a principled guard so
-local speed measurement never uses Debug, then verify the wiring + reference
-chain and stop the session."* Done: phase4_* e2e → ReleaseSafe default;
-`scripts/perf.sh` + `.claude/rules/perf_measure_release.md` guard;
-optimizations.md / this handover annotated with the Debug→Release correction.
-**Resume at: the quality-loop floor** (D-169/170 → D-171 → D-172 → D-174).
-This stop applied to that session only; `/continue` resumes the loop.
 
 ## Process discipline (full detail in memory + rules)
 
@@ -76,11 +68,13 @@ notes: `private/notes/phaseA26-*.md`.
 - **Perf §9.2.S CLOSED** (see Resume contract; Debug→Release correction).
   O-001..O-004 + ADR-0064 landed. D-163 later increments + D-140 startup =
   low-ROI / moot in Release. Re-open only with a `scripts/perf.sh` number.
-- **Quality-loop floor (resume here)** — D-169/170 quot/int on the tower,
-  D-171 json float, D-172 Math *Exact, D-174 rest char-seq, D-173 (low);
-  re-anchored D-086/087/088/090/091; D-175 Lens-C + M5. Index:
+- **Quality-loop floor (resume here)** — **D-183** var-metadata surface
+  (part a done `925e3283`; b/c/d remain — see Resume contract); **D-177**
+  transducer 1-arg xform; **D-182** JSON BigInt; D-184/D-173 low;
+  re-anchored D-086/088; D-175 Lens-C + M5. Index:
   `.dev/tech_debt_consolidation.md`.
-- **DISCHARGED**: D-166/167/161/168 + D-180 + ADR-0064 (transient HAMT map).
+- **DISCHARGED**: D-166/167/161/168/169/170/171/172/174/185 + D-087/090/091
+  + D-180 + ADR-0064 (transient HAMT map).
 - **Structural-deferred (F-003)**: D-164 empty≡nil, D-165 i48→i64, D-178
   `.list`/`.cons` split, D-179 `.string_seq`/`.array_seq`, D-006/036/037/039 zwasm v2.
 - **Acceptable divergences**: `(class 5)`→`Long` (ADR-0059); `(float 1/3)` f64;
