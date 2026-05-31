@@ -124,8 +124,18 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             // tags split (PersistentList vs Cons); see debt D-178.
             var n: i64 = 0;
             var cur = try lazy_seq.seq(rt, env, coll);
-            while (!cur.isNil()) : (n += 1) {
-                cur = try seqNext(rt, env, cur);
+            while (!cur.isNil()) {
+                // PERF: when the walk lands on a chunk, add the whole chunk's
+                // remaining count and skip to its tail — O(chunks) not
+                // O(elements) for a chunked source (range seq, chunk-aware
+                // map/filter). [refs: O-004, D-163]
+                if (cur.tag() == .chunked_cons) {
+                    n += @intCast(chunked_cons.currentChunkCount(cur));
+                    cur = try lazy_seq.seq(rt, env, chunked_cons.chunkRest(cur));
+                } else {
+                    n += 1;
+                    cur = try seqNext(rt, env, cur);
+                }
             }
             return Value.initInteger(n);
         },
@@ -318,10 +328,11 @@ pub fn nextFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         .vector => if (vector.count(coll) > 1) try vectorTailAsList(rt, coll, 1) else .nil_val,
         .chunked_cons => blk: {
             const r = try chunked_cons.rest(rt, coll);
-            // Match JVM next: nil for empty rest.
-            if (r.isNil()) break :blk .nil_val;
-            // If rest yields an empty chunked sequence, normalize to nil.
-            break :blk r;
+            // Match JVM next: nil for empty rest. seq the tail so a
+            // chunk-boundary `next` set to an unrealized empty lazy_seq
+            // (chunk-aware map/filter) forces to nil rather than trailing
+            // a spurious nil. Within-chunk rest is a chunked_cons (no-op).
+            break :blk try seqFn(rt, env, &.{r}, loc);
         },
         .lazy_seq => blk: {
             const r = try lazy_seq.rest(rt, env, coll);
@@ -523,8 +534,13 @@ fn seqNext(rt: *Runtime, env: *Env, cur: Value) anyerror!Value {
         // walk over a lazy seq over-counts by one (the unforced lazy
         // tail reads as non-nil). Mirrors the `next` fix in `nextFn`.
         .list, .cons => try lazy_seq.seq(rt, env, list.rest(cur)),
-        .chunked_cons => try chunked_cons.rest(rt, cur),
-        .range => try chunked_cons.rest(rt, try range.seqChunk(rt, cur)),
+        // seq the chunk-boundary tail too: chunk-aware map/filter sets a
+        // chunk's `next` to an unrealized `(map f (chunk-rest s))` lazy_seq
+        // that may force to nil, so the raw rest must be seq'd or a
+        // count/walk over-counts by one (an unforced empty lazy tail reads
+        // as non-nil). Within-chunk rest is a chunked_cons → seq is a no-op.
+        .chunked_cons => try lazy_seq.seq(rt, env, try chunked_cons.rest(rt, cur)),
+        .range => try lazy_seq.seq(rt, env, try chunked_cons.rest(rt, try range.seqChunk(rt, cur))),
         .lazy_seq => try lazy_seq.next(rt, env, cur),
         else => .nil_val,
     };
@@ -535,6 +551,58 @@ fn seqNext(rt: *Runtime, env: *Env, cur: Value) anyerror!Value {
 fn vector_nth_safe(vec: Value, i: u32, loc: SourceLocation) anyerror!Value {
     _ = loc;
     return vector.nth(vec, i);
+}
+
+// --- chunk-builder primitives (ADR-0065 / D-163) ---
+// Thin wrappers over chunked_cons.zig that let the `.clj` map/filter/keep/
+// remove 2-arg bodies preserve chunking (JVM chunk-cons shape).
+
+fn chunkedSeqQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("chunked-seq?", args, 1, loc);
+    return if (chunked_cons.isChunked(args[0])) Value.true_val else Value.false_val;
+}
+
+fn chunkCountFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("-chunk-count", args, 1, loc);
+    return Value.initInteger(@intCast(chunked_cons.currentChunkCount(args[0])));
+}
+
+fn chunkNthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("-chunk-nth", args, 2, loc);
+    return chunked_cons.currentChunkNth(args[0], @intCast(args[1].asInteger()));
+}
+
+fn chunkRestFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("chunk-rest", args, 1, loc);
+    return chunked_cons.chunkRest(args[0]);
+}
+
+fn chunkBufferFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("chunk-buffer", args, 1, loc);
+    // The size arg is a hint; the backing array is always CHUNK_SIZE.
+    return try chunked_cons.newChunkBuffer(rt);
+}
+
+fn chunkAppendFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("chunk-append", args, 2, loc);
+    return chunked_cons.chunkAppend(args[0], args[1]);
+}
+
+fn chunkConsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("chunk-cons", args, 2, loc);
+    return try chunked_cons.chunkCons(rt, args[0], args[1]);
 }
 
 // --- registration ---
@@ -554,6 +622,13 @@ const ENTRIES = [_]Entry{
     .{ .name = "cons", .f = &consFn },
     .{ .name = "__lazy-seq-create", .f = &lazySeqCreateFn },
     .{ .name = "empty", .f = &emptyFn },
+    .{ .name = "chunked-seq?", .f = &chunkedSeqQFn },
+    .{ .name = "-chunk-count", .f = &chunkCountFn },
+    .{ .name = "-chunk-nth", .f = &chunkNthFn },
+    .{ .name = "chunk-rest", .f = &chunkRestFn },
+    .{ .name = "chunk-buffer", .f = &chunkBufferFn },
+    .{ .name = "chunk-append", .f = &chunkAppendFn },
+    .{ .name = "chunk-cons", .f = &chunkConsFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {

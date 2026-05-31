@@ -5,30 +5,29 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (perf-campaign commits on `cw-from-scratch`).
-  Tree clean, 0 unpushed. Mac gate green (180).
-- **First on resume MUST be**: **ROADMAP §9.2.S Performance tuning campaign**
-  (user-directed pull-forward, ADR-0063, ROI-ordered, PERF-marked →
-  `.dev/optimizations.md` SSOT). Start at **D-163 — lazy-chain reduce perf,
-  ADR-0065 first cycle (Alt C)**: chunked seqs for the implicit `(reduce f
-  (map g coll))` path + the EXISTING transducers for the explicit 0-alloc
-  opt-in (JVM finished form; NOT cw-v0 meta-fuse — that would be an F-011
-  second mechanism, REJECTED by ADR-0065). First cycle, all landing
-  together (the reduce arm alone is inert — map's `cons` shreds chunks):
-  (1) `chunked_cons` arm in `higher_order.zig::reduceFn`; (2) `.clj` chunk
-  primitives (`chunk-buffer`/`chunk-append`/`chunk`/`chunk-cons`/`chunk-first`/
-  `chunk-rest`/`chunked-seq?`) backed by `chunked_cons.zig`; (3) chunk-aware
-  `map`/`filter`/`keep`/`remove` 2-arg bodies in core.clj. Gate on `(count
-  (map inc (range 1e5)))`. Realistic **~4-7×** (per-element `f` vtable
-  residual = D-133). Then D-140 startup cache. DONE: O-001 `72d7bfcc`,
-  O-002 `0898ba2c`, **O-003/D-180 + ADR-0064** (`9188820b`: bulk
-  `vector.fromSlice` 121s→2.4s + transient HAMT map >8).
-- **Then** quality-loop floor (D-169/170 quot/int on tower, D-171 json float,
-  D-172 Math *Exact, D-174 rest char-seq; D-173 low) — D-168 DONE.
-- **Operating mode** = clj differential sweep (F-011) + perf campaign (§9.2.S):
-  probe via BOTH `clj`+`cljw`, fix at the finished form, commonise; perf =
-  measure before/after + `// PERF:` marker + optimizations.md row per win.
-  Autonomous; loop self-selects per F-002 / ROI.
+- **HEAD**: see `git log` (perf-campaign + quality-loop commits on `cw-from-scratch`).
+  Tree clean, 0 unpushed. Mac gate green (181).
+- **First on resume MUST be**: **the quality-loop floor** (drain
+  highest-value-first per CLAUDE.md Step 0.5). The §9.2.S perf campaign's
+  contained high-ROI wins are COMPLETE — the timeout-class pathologies are
+  resolved (see DONE below) — so the loop returns to the F-010 quality loop
+  (clj differential sweep + correctness floor). Drain order: **D-169/170**
+  (quot/int on the numeric tower) → **D-171** (json float, D-166 sibling) →
+  **D-172** (Math *Exact) → **D-174** (rest char-seq); D-173 low.
+- **Perf campaign §9.2.S — contained wins DONE**: O-001 range `72d7bfcc`,
+  O-002 reduce-vector `0898ba2c`, **O-003/D-180 + ADR-0064** `9188820b`
+  (bulk `vector.fromSlice` 121s→2.4s + transient HAMT map >8),
+  **O-004/D-163 first cycle** (chunk-preserving map/filter/keep + chunked
+  reduce/count; `(count (map inc (range 1e5)))` 41s→2.8s ~15×). **Remaining
+  perf is non-contained**: D-140 startup cache (~0.48s/invocation —
+  architectural, best folded into Phase 12 bytecode cache), D-163 later
+  increments (explicit-path transducer 0-alloc — low ROI), D-133/super-
+  instruction (per-element fn-dispatch residual — post-M, NOT premature JIT).
+  Pick D-140 up as a dedicated unit only if dev-velocity demands it.
+- **Operating mode** = clj differential sweep (F-011) + quality-loop floor:
+  probe via BOTH `clj`+`cljw`, fix at the finished form, commonise.
+  Autonomous; loop self-selects per F-002 / ROI. (Perf work, if any, still
+  uses measure-before/after + `// PERF:` marker + optimizations.md row.)
 - **Forbidden**: re-opening anything landed (git log = SSOT). JIT/superinstruction
   (deferred to §9.2.R / D-133 — NOT the D-163 reduce-fusion that is now NEXT).
   Touching `tree_walk.zig`/`vm.zig` for statics/fields

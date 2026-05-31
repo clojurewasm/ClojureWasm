@@ -48,9 +48,22 @@
                ([result] (rf result))
                ([result input] (rf result (f input))))))
        ([f coll]
+        ;; PERF: when the source is chunked (range seq, chunked map/filter),
+        ;; transform a whole 32-chunk per thunk so the lazy-seq machinery is
+        ;; amortised 32x (JVM chunk-cons shape) [refs: O-004, D-163]
         (lazy-seq
           (let [s (seq coll)]
-            (if s (cons (f (first s)) (map f (rest s))) nil))))
+            (if s
+              (if (chunked-seq? s)
+                (let [size (-chunk-count s)
+                      b (chunk-buffer size)]
+                  (loop [i 0]
+                    (when (< i size)
+                      (chunk-append b (f (-chunk-nth s i)))
+                      (recur (inc i))))
+                  (chunk-cons b (map f (chunk-rest s))))
+                (cons (f (first s)) (map f (rest s))))
+              nil))))
        ([f c1 c2]
         (lazy-seq
           (let [s1 (seq c1) s2 (seq c2)]
@@ -72,12 +85,25 @@
                ([result] (rf result))
                ([result input] (if (pred input) (rf result input) result)))))
        ([pred coll]
+        ;; PERF: chunk-preserving filter — drop within a 32-chunk, emit a
+        ;; (possibly shorter) chunk; empty chunks are skipped by chunk-cons
+        ;; [refs: O-004, D-163]
         (lazy-seq
           (let [s (seq coll)]
             (if s
-              (if (pred (first s))
-                (cons (first s) (filter pred (rest s)))
-                (filter pred (rest s)))
+              (if (chunked-seq? s)
+                (let [size (-chunk-count s)
+                      b (chunk-buffer size)]
+                  (loop [i 0]
+                    (when (< i size)
+                      (let [v (-chunk-nth s i)]
+                        (when (pred v) (chunk-append b v)))
+                      (recur (inc i))))
+                  (chunk-cons b (filter pred (chunk-rest s))))
+                (let [v (first s)]
+                  (if (pred v)
+                    (cons v (filter pred (rest s)))
+                    (filter pred (rest s)))))
               nil))))))
 (def take
   (fn* ([n]
@@ -122,11 +148,22 @@
                ([result] (rf result))
                ([result input] (let [v (f input)] (if (nil? v) result (rf result v)))))))
        ([f coll]
+        ;; PERF: chunk-preserving keep (drops nil (f x) within a chunk)
+        ;; [refs: O-004, D-163]
         (lazy-seq
           (let [s (seq coll)]
             (if s
-              (let [r (f (first s))]
-                (if (nil? r) (keep f (rest s)) (cons r (keep f (rest s)))))
+              (if (chunked-seq? s)
+                (let [size (-chunk-count s)
+                      b (chunk-buffer size)]
+                  (loop [i 0]
+                    (when (< i size)
+                      (let [r (f (-chunk-nth s i))]
+                        (when (not (nil? r)) (chunk-append b r)))
+                      (recur (inc i))))
+                  (chunk-cons b (keep f (chunk-rest s))))
+                (let [r (f (first s))]
+                  (if (nil? r) (keep f (rest s)) (cons r (keep f (rest s))))))
               nil))))))
 (def remove
   (fn* ([pred]

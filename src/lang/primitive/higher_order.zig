@@ -38,6 +38,7 @@ const dispatch = @import("../../runtime/dispatch.zig");
 const reduced = @import("../../runtime/collection/reduced.zig");
 const range_mod = @import("../../runtime/collection/range.zig");
 const vector_mod = @import("../../runtime/collection/vector.zig");
+const chunked_cons = @import("../../runtime/collection/chunked_cons.zig");
 const sequence = @import("sequence.zig");
 const tree_walk = @import("../../eval/backend/tree_walk.zig");
 
@@ -232,6 +233,24 @@ pub fn reduceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         cur = try sequence.nextFn(rt, env, &.{cur}, loc);
     }
     while (!cur.isNil()) {
+        // PERF: drain a whole chunk per step (slots[offset..count]) instead
+        // of one firstFn/nextFn per element, so a chunked source (range seq,
+        // chunk-aware map/filter) pays the seq-node overhead once per 32
+        // elements. [refs: O-004, D-163]
+        if (cur.tag() == .chunked_cons) {
+            const cnt = chunked_cons.currentChunkCount(cur);
+            var ci: u32 = 0;
+            while (ci < cnt) : (ci += 1) {
+                const elt = chunked_cons.currentChunkNth(cur, ci);
+                const step = try invokeCallable(rt, env, f, &.{ acc, elt }, loc);
+                if (reduced.isReduced(step)) return reduced.unreduce(step);
+                acc = step;
+            }
+            // Skip the whole drained chunk; re-seq the tail (may be a
+            // lazy_seq / chunked_cons / cons / nil).
+            cur = try sequence.seqFn(rt, env, &.{chunked_cons.chunkRest(cur)}, loc);
+            continue;
+        }
         const elt = try sequence.firstFn(rt, env, &.{cur}, loc);
         const step = try invokeCallable(rt, env, f, &.{ acc, elt }, loc);
         if (reduced.isReduced(step)) {

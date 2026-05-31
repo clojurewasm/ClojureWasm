@@ -135,6 +135,82 @@ pub fn rest(rt: *Runtime, v: Value) !Value {
     return Value.encodeHeapPtr(.chunked_cons, new_cc);
 }
 
+// --- chunk-builder surface (ADR-0065, D-163) ------------------------
+// Thin primitives that let the `.clj` `map`/`filter`/`keep`/`remove`
+// bodies preserve chunking (JVM `chunk-cons` shape): a chunked source is
+// transformed one whole 32-chunk at a time into a fresh chunk, so the
+// per-element lazy-seq machinery (cons + lazy_seq alloc + body tree-walk,
+// ~408µs/element measured) is paid once per 32 elements instead of once
+// per element. The fill loop stays in `.clj` (cljw measured a tree-walk
+// loop at ~2µs/iter — negligible vs the 408µs it amortises).
+
+/// `chunked-seq?` — is `v` a chunked_cons (eligible for the fast path)?
+pub fn isChunked(v: Value) bool {
+    return v.tag() == .chunked_cons;
+}
+
+/// `-chunk-count` — element count of `v`'s CURRENT chunk from the read
+/// cursor (`chunk.count - offset`); 0 for non-chunked / exhausted.
+pub fn currentChunkCount(v: Value) u32 {
+    if (v.tag() != .chunked_cons) return 0;
+    const cc = v.decodePtr(*const ChunkedCons);
+    const c = cc.chunk orelse return 0;
+    if (cc.offset >= c.count) return 0;
+    return c.count - cc.offset;
+}
+
+/// `-chunk-nth` — element `i` (relative to the read cursor) of `v`'s
+/// current chunk: `chunk.slots[offset + i]`.
+pub fn currentChunkNth(v: Value, i: u32) Value {
+    if (v.tag() != .chunked_cons) return Value.nil_val;
+    const cc = v.decodePtr(*const ChunkedCons);
+    const c = cc.chunk orelse return Value.nil_val;
+    const idx = cc.offset + i;
+    if (idx >= c.count) return Value.nil_val;
+    return c.slots[idx];
+}
+
+/// `chunk-rest` — the seq after `v`'s ENTIRE current chunk (= `next`,
+/// skipping the whole chunk). The chunk-preserving counterpart to `rest`.
+pub fn chunkRest(v: Value) Value {
+    if (v.tag() != .chunked_cons) return Value.nil_val;
+    return v.decodePtr(*const ChunkedCons).next;
+}
+
+/// `chunk-buffer` — a fresh empty ChunkBuffer to fill via `chunk-append`
+/// (≤ CHUNK_SIZE appends; the backing array is always CHUNK_SIZE).
+pub fn newChunkBuffer(rt: *Runtime) !Value {
+    const cb = try rt.gc.alloc(ChunkBuffer);
+    cb.* = .{ .header = HeapHeader.init(.chunk_buffer), .count = 0 };
+    return Value.encodeHeapPtr(.chunk_buffer, cb);
+}
+
+/// `chunk-append` — push `x` into the buffer's next slot, return the
+/// buffer (mutated in place during construction).
+pub fn chunkAppend(bufv: Value, x: Value) Value {
+    const cb = bufv.decodePtr(*ChunkBuffer);
+    cb.slots[cb.count] = x;
+    cb.count += 1;
+    return bufv;
+}
+
+/// `chunk-cons` — wrap a filled ChunkBuffer + continuation seq into a
+/// chunked_cons (offset 0). An EMPTY chunk is skipped (returns `next`
+/// directly) — matches JVM `chunk-cons`, so a `filter` chunk where every
+/// element was dropped does not leave a 0-count chunk in the chain.
+pub fn chunkCons(rt: *Runtime, bufv: Value, next: Value) !Value {
+    const cb = bufv.decodePtr(*ChunkBuffer);
+    if (cb.count == 0) return next;
+    const cc = try rt.gc.alloc(ChunkedCons);
+    cc.* = .{
+        .header = HeapHeader.init(.chunked_cons),
+        .offset = 0,
+        .chunk = cb,
+        .next = next,
+    };
+    return Value.encodeHeapPtr(.chunked_cons, cc);
+}
+
 /// Per-tag trace fns. ChunkBuffer walks every populated slot (slots
 /// past `count` stay nil_val — Value.heapHeader filters). ChunkedCons
 /// walks the chunk pointer (encoded as a raw *ChunkBuffer; cast +
@@ -257,4 +333,36 @@ test "count + first on nil / non-chunked = 0 / nil" {
     try testing.expectEqual(@as(u32, 0), count(Value.nil_val));
     try testing.expectEqual(@as(u32, 0), count(Value.initInteger(42)));
     try testing.expect(first(Value.nil_val).isNil());
+}
+
+test "chunk-builder round-trip: buffer → append → chunk-cons (ADR-0065)" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    // Fill a 3-element chunk via the builder surface.
+    const b = try newChunkBuffer(&fix.rt);
+    _ = chunkAppend(b, Value.initInteger(7));
+    _ = chunkAppend(b, Value.initInteger(8));
+    _ = chunkAppend(b, Value.initInteger(9));
+    const v = try chunkCons(&fix.rt, b, Value.nil_val);
+
+    try testing.expect(isChunked(v));
+    try testing.expectEqual(@as(u32, 3), currentChunkCount(v));
+    try testing.expectEqual(@as(i48, 7), currentChunkNth(v, 0).asInteger());
+    try testing.expectEqual(@as(i48, 9), currentChunkNth(v, 2).asInteger());
+    try testing.expectEqual(@as(u32, 3), count(v));
+    try testing.expect(chunkRest(v).isNil());
+}
+
+test "chunk-cons of an empty buffer is skipped (returns next)" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    // An empty filtered chunk must NOT leave a 0-count chunk in the chain
+    // (JVM chunk-cons semantics) — chunk-cons returns `next` directly.
+    const empty_b = try newChunkBuffer(&fix.rt);
+    const tail = Value.initInteger(99); // stand-in continuation
+    const v = try chunkCons(&fix.rt, empty_b, tail);
+    try testing.expect(!isChunked(v));
+    try testing.expectEqual(@as(i48, 99), v.asInteger());
 }

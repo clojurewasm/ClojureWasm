@@ -258,6 +258,37 @@ fusion design in this cycle can remove. The first cycle lands the reduce
 arm + chunk primitives + chunk-aware map/filter together (the reduce arm
 alone is inert per DA Trap 1).
 
+## Implementation note (2026-05-31, measurement-validated — corrects the DA's residual estimate)
+
+Before implementing, the fill-loop design fork was resolved by measurement
+(cljw is a **tree-walk interpreter**, so unlike JVM the `.clj` fill loop is
+NOT compiled to bytecode — the question was whether a `.clj` `dotimes` fill
+amortises the per-element lazy-seq machinery, or whether the fill itself
+must be a Zig per-chunk primitive):
+
+- Pure tree-walk loop, 1e5 iters, multi-op body (`(loop [i 0 acc 0] (if (<
+  i 100000) (recur (inc i) (+ acc (inc i))) acc))`) = **0.71s** (~2.3µs/iter
+  after the 0.48s startup) → the per-element fn-call + loop overhead (the
+  DA's "term 2") is **~2µs, not 50-100µs**.
+- `(count (map inc (range 1e5)))` = **41.3s** = ~408µs/element → **term 1
+  (per-element lazy-seq machinery: lazy_seq + cons alloc + map-body
+  tree-walk + recursive map) is ~408µs and utterly dominates.**
+
+**Resolution:** the `.clj` `dotimes`/`loop` fill is fine — its ~2µs/iter is
+dwarfed by the 408µs term-1 it amortises 32×. No Zig per-chunk fill
+primitive is needed; the JVM `.clj` chunk-builder surface (thin Zig
+`chunk-buffer`/`chunk-append`/`chunk-cons` + `-chunk-count`/`-chunk-nth`/
+`chunk-rest`/`chunked-seq?`) works for cljw. **Realistic win is ~25-30×**
+(headline 42s → ~1.5s), NOT the DA's 4-7× — the DA overestimated term-2;
+the residual after chunking is the amortised chunk overhead (~13µs/element)
++ the ~2µs fill step, not a 50-100µs fn-call. (The per-element `f` vtable
+call genuinely is ~2µs and is NOT the bottleneck here; D-133/superinstruction
+is for other hot paths, not this one.) High blast radius (map/filter are
+used everywhere) → verify with the diff oracle across many seq scenarios
+(empty / 1 / 31 / 32 / 33 / 1024 elements; nested map∘filter; lazy
+infinite + take; nil; into/reduce/count/last/nth/seq= over the chunked
+output) before gating.
+
 ## Affected files (first cycle)
 
 - `src/lang/primitive/higher_order.zig` (`reduceFn` `chunked_cons` arm).

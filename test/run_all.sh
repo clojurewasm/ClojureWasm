@@ -428,6 +428,7 @@ run_step "e2e_phase14_read_string"           "bash test/e2e/phase14_read_string.
 run_step "e2e_phase14_range_indexed"         "bash test/e2e/phase14_range_indexed.sh"
 run_step "e2e_phase14_lazy_seq"              "bash test/e2e/phase14_lazy_seq.sh"
 run_step "e2e_phase14_lazy_map"              "bash test/e2e/phase14_lazy_map.sh"
+run_step "e2e_phase14_chunked_seq"           "bash test/e2e/phase14_chunked_seq.sh"
 run_step "e2e_phase14_lazy_seq_cycle3"       "bash test/e2e/phase14_lazy_seq_cycle3.sh"
 run_step "e2e_phase14_lazy_seq_cycle4"       "bash test/e2e/phase14_lazy_seq_cycle4.sh"
 run_step "e2e_phase14_exit_smoke"            "bash test/e2e/phase14_exit_smoke.sh"
