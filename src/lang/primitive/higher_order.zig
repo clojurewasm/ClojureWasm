@@ -37,6 +37,7 @@ const dispatch = @import("../../runtime/dispatch.zig");
 
 const reduced = @import("../../runtime/collection/reduced.zig");
 const range_mod = @import("../../runtime/collection/range.zig");
+const vector_mod = @import("../../runtime/collection/vector.zig");
 const sequence = @import("sequence.zig");
 const tree_walk = @import("../../eval/backend/tree_walk.zig");
 
@@ -186,6 +187,29 @@ pub fn reduceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         var ri: i64 = if (args.len == 3) 0 else 1;
         while (ri < n) : (ri += 1) {
             const rstep = try invokeCallable(rt, env, f, &.{ racc, range_mod.elementAt(coll, ri) }, loc);
+            if (reduced.isReduced(rstep)) return reduced.unreduce(rstep);
+            racc = rstep;
+        }
+        return racc;
+    }
+
+    // PERF: index-walk a vector instead of seqFn → vectorToList (which
+    // builds an N-element eager cons list before the walk). `(reduce f
+    // bigvec)` / `(into to bigvec)` (into = reduce conj) went O(n)
+    // intermediate alloc → O(1). [refs: O-002, D-163]
+    if (coll.tag() == .vector) {
+        const n = vector_mod.count(coll);
+        var racc: Value = undefined;
+        var ri: u32 = 0;
+        if (args.len == 3) {
+            racc = args[1];
+        } else {
+            if (n == 0) return try invokeCallable(rt, env, f, &.{}, loc);
+            racc = vector_mod.nth(coll, 0);
+            ri = 1;
+        }
+        while (ri < n) : (ri += 1) {
+            const rstep = try invokeCallable(rt, env, f, &.{ racc, vector_mod.nth(coll, ri) }, loc);
             if (reduced.isReduced(rstep)) return reduced.unreduce(rstep);
             racc = rstep;
         }
