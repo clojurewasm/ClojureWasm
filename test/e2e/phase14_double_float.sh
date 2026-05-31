@@ -15,7 +15,9 @@ assert_eq 'd_float'  "$("$BIN" -e '(double 1.5)')"        '1.5'
 assert_eq 'd_char'   "$("$BIN" -e '(double (char 65))')"  '65.0'
 assert_eq 'd_ratio'  "$("$BIN" -e '(double 1/2)')"        '0.5'
 assert_eq 'd_ratio2' "$("$BIN" -e '(double 3/4)')"        '0.75'
-assert_eq 'd_bigint' "$("$BIN" -e '(double 10000000000000000000N)')" '10000000000000000000.0'
+# D-166: 1e19 ≥ 1e7 → scientific notation (was wrongly pinned as full decimal
+# before the float-printer fix; clj prints `1.0E19`).
+assert_eq 'd_bigint' "$("$BIN" -e '(double 10000000000000000000N)')" '1.0E19'
 assert_eq 'd_bigdec' "$("$BIN" -e '(double 1.50M)')"      '1.5'
 assert_eq 'd_eq'     "$("$BIN" -e '(= 0.5 (double 1/2))')" 'true'
 assert_has 'd_type'  "$("$BIN" -e '(double "x")' 2>&1)"   'expected number'

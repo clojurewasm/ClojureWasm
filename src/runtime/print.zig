@@ -116,28 +116,78 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
     }
 }
 
-/// Render an f64 in Clojure surface form. A Clojure double ALWAYS
-/// prints with a decimal point or exponent so it reads back as a double,
-/// not a long — Zig's `{d}` drops the `.0` for whole values (`5.0` →
-/// "5"), so append `.0` when the formatted text carries no `.`/`e`/`E`
-/// (D-149). `(read-string (pr-str 5.0))` must yield a double. (Exact JVM
-/// `Double.toString` E-notation thresholds are a cosmetic follow-up; the
-/// `.0` here is the round-trip-fidelity fix.) NaN / ±Inf use the cljw
-/// reader's `##` syntax.
-fn printFloat(w: *Writer, f: f64) Writer.Error!void {
+/// Render an f64 in Clojure surface form, matching JVM `Double.toString`.
+/// A Clojure double always prints with a decimal point or exponent so it
+/// reads back as a double, not a long (D-149); the JVM switches to
+/// computerized scientific notation `<d>.<dd>E<exp>` outside the decimal
+/// window `1e-3 ≤ |x| < 1e7` — i.e. when the decimal exponent leaves
+/// `[-3, 6]` (D-166). NaN / ±Inf use the cljw reader's `##` syntax.
+///
+/// The shortest round-trip digits come from Zig's `std.fmt.float.render`
+/// in scientific mode (`[-]d[.frac]e[-]exp`, lowercase e, signed exponent
+/// with no leading zeros) — those digits already match the JVM, so this is
+/// a RE-LAYOUT, not a float→string algorithm. This is the single float
+/// formatter; the analyzer's Form printer (`eval/form.zig`) delegates here
+/// (F-011 commonisation). Acceptable divergence: the smallest subnormal
+/// prints `5.0E-324` (Ryū shortest) where the JVM prints `4.9E-324` — same
+/// double, value-exact.
+pub fn printFloat(w: *Writer, f: f64) Writer.Error!void {
     if (std.math.isNan(f)) return w.writeAll("##NaN");
     if (std.math.isPositiveInf(f)) return w.writeAll("##Inf");
     if (std.math.isNegativeInf(f)) return w.writeAll("##-Inf");
-    var buf: [512]u8 = undefined;
-    const s = std.fmt.bufPrint(&buf, "{d}", .{f}) catch
-        // Pathologically long decimal (near-f64-max) — write directly;
-        // it already carries enough digits to round-trip as a double.
-        return w.print("{d}", .{f});
-    try w.writeAll(s);
-    if (std.mem.findScalar(u8, s, '.') == null and
-        std.mem.findScalar(u8, s, 'e') == null and
-        std.mem.findScalar(u8, s, 'E') == null)
-        try w.writeAll(".0");
+
+    // Scientific shortest form is ≤ 53 bytes for an f64, so a 64-byte buffer
+    // cannot overflow — render's only error (BufferTooSmall) is unreachable.
+    var buf: [64]u8 = undefined;
+    const sci = std.fmt.float.render(&buf, f, .{ .mode = .scientific, .precision = null }) catch unreachable;
+
+    var rest = sci;
+    const negative = rest[0] == '-';
+    if (negative) rest = rest[1..];
+
+    const e_idx = std.mem.findScalar(u8, rest, 'e').?;
+    const mant = rest[0..e_idx];
+    const exp10 = std.fmt.parseInt(i32, rest[e_idx + 1 ..], 10) catch unreachable;
+
+    // Significant digits with the `.` stripped: lead digit + optional frac.
+    var digbuf: [32]u8 = undefined;
+    digbuf[0] = mant[0];
+    var len: usize = 1;
+    if (mant.len > 1) { // mant[1] is the '.'
+        @memcpy(digbuf[1 .. mant.len - 1], mant[2..]);
+        len = mant.len - 1;
+    }
+    const digits = digbuf[0..len];
+
+    if (negative) try w.writeByte('-');
+
+    if (exp10 >= -3 and exp10 <= 6) {
+        // Decimal layout (no exponent).
+        if (exp10 >= 0) {
+            const point: usize = @intCast(exp10 + 1); // digits before the point
+            if (point >= len) {
+                try w.writeAll(digits);
+                try w.splatByteAll('0', point - len); // pad the integer part
+                try w.writeAll(".0"); // JVM always keeps one fractional digit
+            } else {
+                try w.writeAll(digits[0..point]);
+                try w.writeByte('.');
+                try w.writeAll(digits[point..]);
+            }
+        } else {
+            // |x| < 1: `0.` + (-exp10-1) leading zeros + every digit.
+            try w.writeAll("0.");
+            try w.splatByteAll('0', @intCast(-exp10 - 1));
+            try w.writeAll(digits);
+        }
+    } else {
+        // Scientific layout: `d.<rest>E<exp>`, mantissa always carries a `.`.
+        try w.writeByte(digits[0]);
+        try w.writeByte('.');
+        if (len > 1) try w.writeAll(digits[1..]) else try w.writeByte('0');
+        try w.writeByte('E');
+        try w.print("{d}", .{exp10});
+    }
 }
 
 /// Render `v` to `w` in `pr-str` style. Phase-3 surface covers nil /
