@@ -180,21 +180,6 @@ compiler is a parity gap.
 The last two lists are silent-gap candidates; each line should
 have a `// VM-DEFER:` marker on the line directly above it.
 
-## Sweep result at HEAD `0cd92fa` (T1 introducing cycle)
-
-5 gap sites enumerated; all retrofitted in T1's source commit:
-
-| # | Site                                              | Body status                                          | T1 action             |
-|---|---------------------------------------------------|------------------------------------------------------|-----------------------|
-| 1 | `vm/compiler.zig` `.deftype_node => …`           | `return error.NotImplemented;`                       | Split + VM-DEFER      |
-| 2 | `vm/compiler.zig` `.ctor_call_node => …`         | same                                                 | Split + VM-DEFER      |
-| 3 | `vm/compiler.zig` `.field_access_node => …`      | same                                                 | Split + VM-DEFER      |
-| 4 | `vm/compiler.zig` `compileRequire` libspec branch | `if (alias != null …) return error.NotImplemented;` | VM-DEFER (defer impl) |
-| 5 | `vm/compiler.zig` `compileNs` filter line         | `_ = n.refer_clojure;`                               | VM-DEFER              |
-
-Diff coverage: 11 new cases land in `src/lang/diff_test.zig`
-covering the previously-untested non-deferred Node variants.
-
 ## Scope clarification
 
 - The rule applies to commits that touch backend dispatch files

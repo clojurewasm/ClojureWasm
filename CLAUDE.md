@@ -122,19 +122,13 @@ turn 1 must be Japanese.
   principles before adopting an idiom; always note one DIVERGENCE).
 - After each task, write a 5-minute per-task note from hot context
   (`private/notes/<phase>-<task>.md`, gitignored).
-- `bash test/run_all.sh` must be green **on Mac (host)** before
-  every commit. **Linux x86_64 gate is no longer per-commit** as
-  of ADR-0049 (2026-05-28): the OrbStack `my-ubuntu-amd64` path
-  is retired (orphan / fan hazard). Linux now runs via
-  `bash scripts/run_remote_ubuntu.sh` against the `ubuntunote`
-  SSH host at Phase-boundary review chains, before the v0.1.0
-  release tag, and on demand for feature-branch verification.
-  Setup: [`.dev/ubuntunote_setup.md`](.dev/ubuntunote_setup.md);
-  OrbStack convenience host remains in
-  [`.dev/orbstack_setup.md`](.dev/orbstack_setup.md) (deprecated
-  for gate use). Don't bypass hooks. The Mac runner includes the
-  zlinter `no_deprecated` gate (ADR-0003); ubuntunote skips it,
-  so a 1-PASS-count diff between hosts is expected.
+- `bash test/run_all.sh` green **on Mac (host)** before every commit.
+  **Linux x86_64 is no longer per-commit** (ADR-0049, orphan / fan
+  hazard): run `bash scripts/run_remote_ubuntu.sh` (→ `ubuntunote` SSH
+  host) at Phase boundaries, before the v0.1.0 tag, and on demand.
+  Don't bypass hooks. ubuntunote skips the Mac-only zlinter
+  `no_deprecated` gate (ADR-0003), so a 1-PASS-count host diff is
+  expected. Setup: [`.dev/ubuntunote_setup.md`](.dev/ubuntunote_setup.md).
 - Commit at the natural granularity of code changes. The per-concept
   chapter cadence (`docs/ja/learn_clojurewasm/NNNN_*.md`) is **dormant**
   per ADR-0025 until a resumption ADR fires; only the per-task notes
@@ -496,18 +490,12 @@ smallest-diff as the secondary tiebreaker per F-002), records the
 rejected alternatives in the ADR's "Alternatives considered"
 section, and continues.
 
-**When the DA fork rates Alt N as finished-form-clean and the
-main loop's instinct is to pick Alt M (smaller-diff)** citing
-cycle size / LOC budget / "Phase X mid is the right place for
-the rest" / "follow-up cycle will absorb the migration", **that
-instinct IS the Cycle-budget defer smell** (`.dev/principle.md`).
-Re-pick Alt N. Cycle / diff / LOC is not a project constraint;
-F-NNN is. The exception is a real F-NNN block — when the
-cleaner shape requires an F-NNN amendment (user-owned), pick the
-best F-NNN-compliant alternative and continue. The smell sensor's
-first question on every DA recommendation override: "is this
-defer driven by an F-NNN block, or by cycle size?" If cycle size,
-take the surgery.
+**If the DA fork rates Alt N finished-form-clean and the loop's
+instinct is a smaller-diff Alt M** citing cycle / LOC budget, that
+instinct IS the **Cycle-budget defer smell** (`.dev/principle.md`):
+re-pick Alt N. Cycle / diff / LOC is not a project constraint — only
+F-NNN is. The sole exception is a real F-NNN block (pick the best
+F-NNN-compliant alternative; F-NNN amendment is user-owned).
 
 ## Skills (the runnable procedures)
 
@@ -560,7 +548,7 @@ zig build run          # run executable (`cljw`)
 zig fmt src/           # format
 ```
 
-## Data sources (Phase 4 entry additions)
+## Data sources
 
 - [`compat_tiers.yaml`](compat_tiers.yaml) — authoritative Tier A / B /
   C / D classification per var, special form, and host class. Read by
@@ -588,10 +576,5 @@ zig fmt src/           # format
 - [`.dev/handover.md`](.dev/handover.md) — short, mutable, current state.
   Framing per [`.claude/rules/handover_framing.md`](.claude/rules/handover_framing.md)
   (≤ 100 lines; driving doc, not session log).
-- [`.dev/decisions/`](.dev/decisions/) — ADRs (load-bearing decisions).
-  Phase 4 entry batch: ADR-0004 through ADR-0024 (Day-1 enums, dual
-  backend, Wasm defer, TypeDescriptor, protocol unify, heap-only lock,
-  STM Tier A, host extension, ValueTag, Tier D permanent, UTF-8,
-  io_interface, file size smell, Allocator strategy, error catalog
-  SSOT, crash policy, ADR governance, test taxonomy, differential
-  wiring, comptime stub, scan framework + run_step).
+- [`.dev/decisions/`](.dev/decisions/) — ADRs (load-bearing decisions);
+  numbers are time-ordered, newest wins on conflict.

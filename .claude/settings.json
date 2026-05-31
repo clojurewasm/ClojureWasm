@@ -1,6 +1,7 @@
 {
   "defaultMode": "acceptEdits",
   "outputStyle": "Japanese",
+  "model": "claude-opus-4-8",
   "permissions": {
     "additionalDirectories": [
       "~/Documents/MyProducts/ClojureWasm",
@@ -57,10 +58,20 @@
   "env": {
     "ZIG_LOCAL_CACHE_DIR": ".zig-cache"
   },
+  "enabledPlugins": {
+    "figma@claude-plugins-official": false,
+    "slack@claude-plugins-official": false,
+    "notion@claude-plugins-official": false,
+    "chrome-devtools-mcp@claude-plugins-official": false,
+    "playwright@claude-plugins-official": false
+  },
+  "disabledMcpServers": [
+    "datadog-mcp"
+  ],
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "*",
+        "matcher": "startup|resume|clear",
         "hooks": [
           {
             "type": "command",
@@ -71,7 +82,7 @@
     ],
     "PostCompact": [
       {
-        "matcher": "*",
+        "matcher": "auto|manual",
         "hooks": [
           {
             "type": "command",

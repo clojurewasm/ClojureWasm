@@ -1,3 +1,13 @@
+---
+paths:
+  - "test/run_all.sh"
+  - "test/**/*.sh"
+  - "scripts/run_gate.sh"
+  - "scripts/gate_state_hash.sh"
+  - "scripts/check_gate_cadence.sh"
+  - ".claude/settings.json"
+---
+
 # Gate cadence (batch additive, gate shared-code)
 
 Auto-loaded when editing the test runner / hook scripts / settings.
