@@ -52,6 +52,18 @@ assert_eq 'native_method_substr2'   "$("$BIN" -e '(.substring "hello" 2)')"   '"
 assert_eq 'native_method_indexOf'   "$("$BIN" -e '(.indexOf "hello" "ll")')"  '2'
 assert_eq 'native_method_indexOf_miss' "$("$BIN" -e '(.indexOf "hi" "z")')"   '-1'
 
+# --- Case 3c: charAt / contains / startsWith / endsWith / isEmpty / concat /
+#     repeat — clj-verified scalar & predicate String methods ---
+assert_eq 'native_method_charAt'      "$("$BIN" -e '(.charAt "abc" 1)')"        '\b'
+assert_eq 'native_method_contains'    "$("$BIN" -e '(.contains "abcdef" "cd")')" 'true'
+assert_eq 'native_method_contains_no' "$("$BIN" -e '(.contains "abc" "xy")')"    'false'
+assert_eq 'native_method_startsWith'  "$("$BIN" -e '(.startsWith "abcdef" "abc")')" 'true'
+assert_eq 'native_method_endsWith'    "$("$BIN" -e '(.endsWith "abcdef" "def")')"   'true'
+assert_eq 'native_method_isEmpty'     "$("$BIN" -e '(.isEmpty "")')"            'true'
+assert_eq 'native_method_isEmpty_no'  "$("$BIN" -e '(.isEmpty "x")')"           'false'
+assert_eq 'native_method_concat'      "$("$BIN" -e '(.concat "abc" "def")')"    '"abcdef"'
+assert_eq 'native_method_repeat'      "$("$BIN" -e '(.repeat "ab" 3)')"         '"ababab"'
+
 # --- Case 4: deftype field read still works (field-first, no regression) ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
 (deftype Point [x y])

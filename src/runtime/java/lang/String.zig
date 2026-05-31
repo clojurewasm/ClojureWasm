@@ -107,6 +107,106 @@ fn indexOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return Value.initInteger(@intCast(idx));
 }
 
+/// Implements `(.charAt s i)` → the char at codepoint index `i`
+/// (ADR-0014: cw v1 strings index by codepoint, not UTF-16 unit). JVM
+/// reference: java.lang.String#charAt (IndexOutOfBoundsException when out
+/// of range). cw v1 tier: A.
+fn charAt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity(".charAt", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = ".charAt", .actual = @tagName(args[1].tag()) });
+    const s = string_collection.asString(args[0]);
+    const idx = args[1].asInteger();
+    if (idx < 0)
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = ".charAt" });
+    const cp = charset.codepointAt(s, @intCast(idx)) catch
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = ".charAt" });
+    return Value.initChar(cp);
+}
+
+/// Implements `(.contains s needle)` → whether `needle` occurs in `s`.
+/// JVM reference: java.lang.String#contains (CharSequence). cw v1 tier: A.
+fn contains(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity(".contains", args, 2, loc);
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".contains", .actual = @tagName(args[1].tag()) });
+    const found = std.mem.find(u8, string_collection.asString(args[0]), string_collection.asString(args[1])) != null;
+    return Value.initBoolean(found);
+}
+
+/// Implements `(.startsWith s prefix)`. A UTF-8 byte-prefix test is
+/// codepoint-correct (a valid UTF-8 string cannot start mid-codepoint).
+/// JVM reference: java.lang.String#startsWith. cw v1 tier: A.
+fn startsWith(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity(".startsWith", args, 2, loc);
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".startsWith", .actual = @tagName(args[1].tag()) });
+    return Value.initBoolean(std.mem.startsWith(u8, string_collection.asString(args[0]), string_collection.asString(args[1])));
+}
+
+/// Implements `(.endsWith s suffix)`. Byte-suffix test is codepoint-correct
+/// for the same reason as `startsWith`. JVM reference:
+/// java.lang.String#endsWith. cw v1 tier: A.
+fn endsWith(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity(".endsWith", args, 2, loc);
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".endsWith", .actual = @tagName(args[1].tag()) });
+    return Value.initBoolean(std.mem.endsWith(u8, string_collection.asString(args[0]), string_collection.asString(args[1])));
+}
+
+/// Implements `(.isEmpty s)` → whether `s` has length zero. JVM reference:
+/// java.lang.String#isEmpty. cw v1 tier: A.
+fn isEmpty(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity(".isEmpty", args, 1, loc);
+    return Value.initBoolean(string_collection.asString(args[0]).len == 0);
+}
+
+/// Implements `(.concat s t)` → `s` followed by `t`. JVM reference:
+/// java.lang.String#concat. cw v1 tier: A.
+fn concat(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity(".concat", args, 2, loc);
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".concat", .actual = @tagName(args[1].tag()) });
+    const a = string_collection.asString(args[0]);
+    const b = string_collection.asString(args[1]);
+    const buf = try rt.gpa.alloc(u8, a.len + b.len);
+    defer rt.gpa.free(buf);
+    @memcpy(buf[0..a.len], a);
+    @memcpy(buf[a.len..], b);
+    return string_collection.alloc(rt, buf);
+}
+
+/// Implements `(.repeat s n)` → `s` concatenated `n` times. A negative
+/// count is an error (JVM throws IllegalArgumentException). JVM reference:
+/// java.lang.String#repeat. cw v1 tier: A.
+fn repeat(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity(".repeat", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = ".repeat", .actual = @tagName(args[1].tag()) });
+    const n = args[1].asInteger();
+    if (n < 0)
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = ".repeat" });
+    const s = string_collection.asString(args[0]);
+    const count: usize = @intCast(n);
+    const buf = try rt.gpa.alloc(u8, s.len * count);
+    defer rt.gpa.free(buf);
+    var i: usize = 0;
+    while (i < count) : (i += 1) @memcpy(buf[i * s.len ..][0..s.len], s);
+    return string_collection.alloc(rt, buf);
+}
+
 /// Populate the per-Runtime native `.string` descriptor's `method_table`
 /// with String instance methods. Driven from `lang/primitive.zig` at
 /// runtime init (Layer 2 — Layer 0 `runtime/` may not import this
@@ -119,13 +219,23 @@ pub fn installNativeMethods(rt: *Runtime) !void {
     const td = try rt.nativeDescriptor(.string);
     if (td.method_table.len != 0) return; // idempotent re-run
     const gpa = rt.gc.infra;
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 6);
-    entries[0] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "toUpperCase"), .method_val = Value.initBuiltinFn(&toUpperCase) };
-    entries[1] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "toLowerCase"), .method_val = Value.initBuiltinFn(&toLowerCase) };
-    entries[2] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "trim"), .method_val = Value.initBuiltinFn(&trim) };
-    entries[3] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "length"), .method_val = Value.initBuiltinFn(&length) };
-    entries[4] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "substring"), .method_val = Value.initBuiltinFn(&substring) };
-    entries[5] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "indexOf"), .method_val = Value.initBuiltinFn(&indexOf) };
+    const specs = .{
+        .{ "toUpperCase", &toUpperCase }, .{ "toLowerCase", &toLowerCase },
+        .{ "trim", &trim },               .{ "length", &length },
+        .{ "substring", &substring },     .{ "indexOf", &indexOf },
+        .{ "charAt", &charAt },           .{ "contains", &contains },
+        .{ "startsWith", &startsWith },   .{ "endsWith", &endsWith },
+        .{ "isEmpty", &isEmpty },         .{ "concat", &concat },
+        .{ "repeat", &repeat },
+    };
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
+    inline for (specs, 0..) |spec, i| {
+        entries[i] = .{
+            .protocol_name = "",
+            .method_name = try gpa.dupe(u8, spec[0]),
+            .method_val = Value.initBuiltinFn(spec[1]),
+        };
+    }
     td.method_table = entries;
 }
 
@@ -147,6 +257,13 @@ test "installNativeMethods populates the native .string descriptor" {
     try testing.expect(td.lookupMethod(null, "length") != null);
     try testing.expect(td.lookupMethod(null, "substring") != null);
     try testing.expect(td.lookupMethod(null, "indexOf") != null);
+    try testing.expect(td.lookupMethod(null, "charAt") != null);
+    try testing.expect(td.lookupMethod(null, "contains") != null);
+    try testing.expect(td.lookupMethod(null, "startsWith") != null);
+    try testing.expect(td.lookupMethod(null, "endsWith") != null);
+    try testing.expect(td.lookupMethod(null, "isEmpty") != null);
+    try testing.expect(td.lookupMethod(null, "concat") != null);
+    try testing.expect(td.lookupMethod(null, "repeat") != null);
     try testing.expect(td.lookupMethod(null, "noSuchMethod") == null);
 
     // Idempotent: a second call leaves the table length unchanged.
