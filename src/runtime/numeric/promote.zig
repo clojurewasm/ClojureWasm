@@ -372,6 +372,171 @@ pub fn divPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     return try big_int.allocFromManaged(rt, &q);
 }
 
+/// True when `v` carries an exact arbitrary-precision tag (BigInt or
+/// Ratio). Used by `quotPromoting` for the JVM category-contagion rule:
+/// `quot` of a BigInt/Ratio operand returns a BigInt (prints `N`), even
+/// when the quotient is small enough to fit a Long.
+fn isExactBig(v: Value) bool {
+    return v.tag() == .big_int or v.tag() == .ratio;
+}
+
+/// Exact sign of a numeric Value: `.lt` (negative) / `.eq` (zero) /
+/// `.gt` (positive). Used by `modPromoting`'s floor-mod correction.
+/// Exact (no float round-off) for the integer / BigInt / Ratio cases;
+/// the float arm reads the f64 sign directly.
+fn numSign(v: Value) std.math.Order {
+    return switch (v.tag()) {
+        .integer => std.math.order(@as(i64, v.asInteger()), 0),
+        .char => std.math.order(@as(i64, v.asChar()), 0),
+        .float => std.math.order(v.asFloat(), 0),
+        .big_int => big_int.asManaged(v).toConst().orderAgainstScalar(0),
+        .ratio => v.decodePtr(*const ratio_mod.Ratio).numer.m.toConst().orderAgainstScalar(0),
+        .big_decimal => v.decodePtr(*const big_decimal_mod.BigDecimal).unscaled.m.toConst().orderAgainstScalar(0),
+        else => .eq,
+    };
+}
+
+/// `(quot a b)` — truncating division toward zero, across the numeric
+/// tower. Mirrors JVM `Numbers.quotient`: any float operand → float
+/// trunc; a BigInt/Ratio operand → BigInt result (category contagion);
+/// both Long → Long. Divide-by-zero raises for EVERY category including
+/// float (unlike `/`, where the float path yields IEEE Inf). BigDecimal
+/// operands raise `error.UnsupportedBigDecimal` (the same deferral the
+/// module's BigDecimal-mixed arithmetic carries — see the module doc).
+pub fn quotPromoting(rt: *Runtime, a: Value, b: Value) !Value {
+    if (a.isFloat() or b.isFloat()) {
+        const bd = toF64(rt, b);
+        if (bd == 0) return error.DivideByZero;
+        return Value.initFloat(@trunc(toF64(rt, a) / bd));
+    }
+    if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
+        return error.UnsupportedBigDecimal;
+    }
+
+    // Exact path (Long / BigInt / Ratio). a/b = (an*bd)/(ad*bn); the
+    // truncated quotient is divTrunc of that cross-multiplied fraction.
+    var ap = try partsOf(rt, a);
+    defer {
+        ap.num.deinit();
+        ap.den.deinit();
+    }
+    var bp = try partsOf(rt, b);
+    defer {
+        bp.num.deinit();
+        bp.den.deinit();
+    }
+
+    var numer = try Managed.init(rt.gc.infra);
+    defer numer.deinit();
+    var denom = try Managed.init(rt.gc.infra);
+    defer denom.deinit();
+    try numer.mul(&ap.num, &bp.den);
+    try denom.mul(&ap.den, &bp.num);
+    if (denom.eqlZero()) return error.DivideByZero;
+
+    var q = try Managed.init(rt.gc.infra);
+    defer q.deinit();
+    var r = try Managed.init(rt.gc.infra);
+    defer r.deinit();
+    try q.divTrunc(&r, &numer, &denom);
+
+    // Category contagion: a BigInt/Ratio operand forces a BigInt result
+    // (so `(quot 10N 3N)` prints `3N`); both-Long stays Long.
+    if (isExactBig(a) or isExactBig(b)) return try big_int.allocFromManaged(rt, &q);
+    return try wrapManaged(rt, &q);
+}
+
+/// `(rem a b)` — remainder with the sign of the dividend, across the
+/// tower. Defined as `a - (quot a b) * b` so it rides the existing
+/// promotion ladder (F-011 commonization): a ratio dividend yields a
+/// Ratio, a float yields a float, BigInt stays BigInt.
+pub fn remPromoting(rt: *Runtime, a: Value, b: Value) !Value {
+    const q = try quotPromoting(rt, a, b);
+    const qb = try mulPromoting(rt, q, b);
+    return try subPromoting(rt, a, qb);
+}
+
+/// `(mod a b)` — floor-mod (result has the sign of the divisor), across
+/// the tower. `rem` plus the JVM correction: when the remainder is
+/// non-zero and its sign differs from the divisor, add the divisor.
+pub fn modPromoting(rt: *Runtime, a: Value, b: Value) !Value {
+    const r = try remPromoting(rt, a, b);
+    const rs = numSign(r);
+    if (rs == .eq) return r;
+    if (rs != numSign(b)) return try addPromoting(rt, r, b);
+    return r;
+}
+
+/// Truncate a numeric Value toward zero to an i64. `error.OutOfRange`
+/// when the integer part exceeds i64 (callers map this to the JVM
+/// "value out of range" coercion error) or the float is NaN/Inf;
+/// `error.NotANumber` for a non-numeric tag. Shared by `int` / `long`
+/// (F-011 DRY) so both coerce the whole tower identically.
+pub fn truncToI64(rt: *Runtime, v: Value) !i64 {
+    switch (v.tag()) {
+        .integer => return @as(i64, v.asInteger()),
+        .char => return @as(i64, v.asChar()),
+        .float => {
+            const f = v.asFloat();
+            if (!std.math.isFinite(f) or f >= 9.223372036854776e18 or f <= -9.223372036854776e18)
+                return error.OutOfRange;
+            return @intFromFloat(f);
+        },
+        .big_int => return big_int.asManaged(v).toInt(i64) catch error.OutOfRange,
+        .ratio => {
+            const ratio = v.decodePtr(*const ratio_mod.Ratio);
+            var q = try Managed.init(rt.gc.infra);
+            defer q.deinit();
+            var r = try Managed.init(rt.gc.infra);
+            defer r.deinit();
+            try q.divTrunc(&r, ratio.numer.m, ratio.denom.m);
+            return q.toInt(i64) catch error.OutOfRange;
+        },
+        .big_decimal => {
+            const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
+            // value = unscaled * 10^(-scale); trunc toward zero is
+            // divTrunc(unscaled, 10^scale) for scale>0, an exact multiply
+            // for scale<=0.
+            var u = try bd.unscaled.m.cloneWithDifferentAllocator(rt.gc.infra);
+            defer u.deinit();
+            if (bd.scale == 0) return u.toInt(i64) catch error.OutOfRange;
+            var pow = try tenPow(rt, if (bd.scale < 0) -bd.scale else bd.scale);
+            defer pow.deinit();
+            if (bd.scale > 0) {
+                var q = try Managed.init(rt.gc.infra);
+                defer q.deinit();
+                var r = try Managed.init(rt.gc.infra);
+                defer r.deinit();
+                try q.divTrunc(&r, &u, &pow);
+                return q.toInt(i64) catch error.OutOfRange;
+            }
+            var p = try Managed.init(rt.gc.infra);
+            defer p.deinit();
+            try p.mul(&u, &pow);
+            return p.toInt(i64) catch error.OutOfRange;
+        },
+        else => return error.NotANumber,
+    }
+}
+
+/// `10^exp` as an owned Managed (exp ≥ 0). Caller must `deinit`.
+fn tenPow(rt: *Runtime, exp: i32) !Managed {
+    var acc = try Managed.init(rt.gc.infra);
+    errdefer acc.deinit();
+    try acc.set(1);
+    var ten = try Managed.init(rt.gc.infra);
+    defer ten.deinit();
+    try ten.set(10);
+    var scratch = try Managed.init(rt.gc.infra);
+    defer scratch.deinit();
+    var k: i32 = exp;
+    while (k > 0) : (k -= 1) {
+        try scratch.mul(&acc, &ten);
+        std.mem.swap(Managed, &acc, &scratch);
+    }
+    return acc;
+}
+
 // --- tests ---
 
 const testing = std.testing;
@@ -566,4 +731,69 @@ test "addStrict in-range stays Long" {
 
     const v = try addStrict(&fix.rt, Value.initInteger(3), Value.initInteger(4));
     try testing.expectEqual(@as(i48, 7), v.asInteger());
+}
+
+test "quotPromoting Long stays Long; truncates toward zero" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    const q = try quotPromoting(&fix.rt, Value.initInteger(10), Value.initInteger(3));
+    try testing.expect(q.tag() == .integer);
+    try testing.expectEqual(@as(i48, 3), q.asInteger());
+
+    const qn = try quotPromoting(&fix.rt, Value.initInteger(-7), Value.initInteger(3));
+    try testing.expectEqual(@as(i48, -2), qn.asInteger());
+}
+
+test "quotPromoting Ratio operand forces a BigInt result (category contagion)" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    // (quot 17/2 2) → 4N : ratio operand → BigInt-tagged even though 4 fits a Long.
+    const half17 = try divPromoting(&fix.rt, Value.initInteger(17), Value.initInteger(2));
+    try testing.expect(half17.tag() == .ratio);
+    const q = try quotPromoting(&fix.rt, half17, Value.initInteger(2));
+    try testing.expect(q.tag() == .big_int);
+    try testing.expectEqual(@as(i64, 4), try big_int.asManaged(q).toInt(i64));
+}
+
+test "quotPromoting float trunc; divide-by-zero raises for float (unlike /)" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    const q = try quotPromoting(&fix.rt, Value.initFloat(10.5), Value.initInteger(3));
+    try testing.expect(q.isFloat());
+    try testing.expectEqual(@as(f64, 3.0), q.asFloat());
+
+    try testing.expectError(error.DivideByZero, quotPromoting(&fix.rt, Value.initFloat(10.0), Value.initInteger(0)));
+}
+
+test "remPromoting sign-of-dividend; modPromoting sign-of-divisor" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    const r = try remPromoting(&fix.rt, Value.initInteger(-7), Value.initInteger(3));
+    try testing.expectEqual(@as(i48, -1), r.asInteger());
+    const m = try modPromoting(&fix.rt, Value.initInteger(-7), Value.initInteger(3));
+    try testing.expectEqual(@as(i48, 2), m.asInteger());
+
+    const r2 = try remPromoting(&fix.rt, Value.initInteger(7), Value.initInteger(-3));
+    try testing.expectEqual(@as(i48, 1), r2.asInteger());
+    const m2 = try modPromoting(&fix.rt, Value.initInteger(7), Value.initInteger(-3));
+    try testing.expectEqual(@as(i48, -2), m2.asInteger());
+}
+
+test "truncToI64 over the tower (int / float / bigint / ratio)" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+
+    try testing.expectEqual(@as(i64, 3), try truncToI64(&fix.rt, Value.initInteger(3)));
+    try testing.expectEqual(@as(i64, 3), try truncToI64(&fix.rt, Value.initFloat(3.9)));
+    try testing.expectEqual(@as(i64, -3), try truncToI64(&fix.rt, Value.initFloat(-3.9)));
+
+    const seven_halves = try divPromoting(&fix.rt, Value.initInteger(7), Value.initInteger(2));
+    try testing.expectEqual(@as(i64, 3), try truncToI64(&fix.rt, seven_halves));
+
+    try testing.expectError(error.NotANumber, truncToI64(&fix.rt, Value.nil_val));
+    try testing.expectError(error.OutOfRange, truncToI64(&fix.rt, Value.initFloat(1e30)));
 }

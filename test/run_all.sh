@@ -389,6 +389,7 @@ run_step "e2e_phase14_num_predicates"      "bash test/e2e/phase14_num_predicates
 run_step "e2e_phase14_ratio_accessors"     "bash test/e2e/phase14_ratio_accessors.sh"
 run_step "e2e_phase14_rationalize"         "bash test/e2e/phase14_rationalize.sh"
 run_step "e2e_phase14_ratio_arith"         "bash test/e2e/phase14_ratio_arith.sh"
+run_step "e2e_phase14_quot_rem_mod_tower"  "bash test/e2e/phase14_quot_rem_mod_tower.sh"
 run_step "e2e_phase14_long_num_bitandnot"   "bash test/e2e/phase14_long_num_bitandnot.sh"
 run_step "e2e_phase14_parse"                "bash test/e2e/phase14_parse.sh"
 run_step "e2e_phase14_double_float"        "bash test/e2e/phase14_double_float.sh"

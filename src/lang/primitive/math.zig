@@ -506,42 +506,44 @@ pub fn abs(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return args[0];
 }
 
-/// `(quot a b)` — integer division, truncating toward zero.
-/// Matches clojure.core/quot semantics for the Long fast-path
-/// (BigInt arm is a follow-up).
+/// Map the shared numeric-tower errors a quot/rem/mod helper can raise
+/// onto user-facing catalog errors (F-011: one translation, three sites).
+fn raiseTowerDivError(name: []const u8, err: anyerror, loc: SourceLocation) anyerror {
+    return switch (err) {
+        error.DivideByZero => error_catalog.raise(.divide_by_zero, loc, .{}),
+        error.UnsupportedBigDecimal => error_catalog.raise(.feature_not_supported, loc, .{ .name = name }),
+        else => err,
+    };
+}
+
+/// `(quot a b)` — truncating division toward zero, across the numeric
+/// tower (Long / BigInt / Ratio / Float). Matches clojure.core/quot via
+/// `promote.quotPromoting`. Divide-by-zero raises for every category.
 pub fn quot(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("quot", args, 2, loc);
-    const a = try error_catalog.expectInteger(args[0], "quot", loc);
-    const b = try error_catalog.expectInteger(args[1], "quot", loc);
-    if (b == 0) return error_catalog.raise(.divide_by_zero, loc, .{});
-    return Value.initInteger(@divTrunc(@as(i64, a), @as(i64, b)));
+    try ensureNumeric(args, "quot", loc);
+    return promote.quotPromoting(rt, args[0], args[1]) catch |err| raiseTowerDivError("quot on BigDecimal", err, loc);
 }
 
 /// `(rem a b)` — remainder with sign matching the dividend
-/// (Java `%` semantics, NOT floor-mod). Matches clojure.core/rem.
+/// (Java `%` semantics, NOT floor-mod). Matches clojure.core/rem across
+/// the tower via `promote.remPromoting`.
 pub fn rem(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("rem", args, 2, loc);
-    const a = try error_catalog.expectInteger(args[0], "rem", loc);
-    const b = try error_catalog.expectInteger(args[1], "rem", loc);
-    if (b == 0) return error_catalog.raise(.divide_by_zero, loc, .{});
-    return Value.initInteger(@rem(@as(i64, a), @as(i64, b)));
+    try ensureNumeric(args, "rem", loc);
+    return promote.remPromoting(rt, args[0], args[1]) catch |err| raiseTowerDivError("rem on BigDecimal", err, loc);
 }
 
 /// `(mod a b)` — floor-mod: result has the same sign as the
-/// divisor. Matches clojure.core/mod (which differs from
-/// `rem` by exactly this sign rule).
+/// divisor. Matches clojure.core/mod across the tower via
+/// `promote.modPromoting` (differs from `rem` by the sign-correction rule).
 pub fn mod(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("mod", args, 2, loc);
-    const a = try error_catalog.expectInteger(args[0], "mod", loc);
-    const b = try error_catalog.expectInteger(args[1], "mod", loc);
-    if (b == 0) return error_catalog.raise(.divide_by_zero, loc, .{});
-    return Value.initInteger(@mod(@as(i64, a), @as(i64, b)));
+    try ensureNumeric(args, "mod", loc);
+    return promote.modPromoting(rt, args[0], args[1]) catch |err| raiseTowerDivError("mod on BigDecimal", err, loc);
 }
 
 /// `(bit-and a b)` — bitwise AND on two integers.
@@ -652,27 +654,23 @@ pub fn max(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return best;
 }
 
-/// `(int x)` — coerce to a Long. A float truncates toward zero; a char
-/// yields its codepoint; an integer passes through. (clojure.core/int's
-/// Long / Double / Character cases; ratio / bigdec coercion is a follow-up.)
+/// `(int x)` / `(long x)` — coerce to a Long across the numeric tower.
+/// A float / BigDecimal / Ratio truncates toward zero; a char yields its
+/// codepoint; an integer / BigInt passes through its value. cw v1 has a
+/// single Long type so `int` and `long` share this body (no i32 narrowing
+/// — see the no-i32-type divergence). The exact-integer result rides
+/// `promote.wrapI64` so a value beyond i48 stays exact (D-165). A value
+/// outside i64 range raises (JVM's out-of-range coercion error).
 pub fn intCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("int", args, 1, loc);
     const v = args[0];
-    return switch (v.tag()) {
-        .integer => v,
-        .float => blk: {
-            const f = v.asFloat();
-            // Guard the i64 range BEFORE @intFromFloat (a safe-mode build
-            // panics on an out-of-range conversion).
-            if (!std.math.isFinite(f) or f >= 9.223372036854776e18 or f <= -9.223372036854776e18)
-                return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "int", .expected = "a finite float within Long range", .actual = "out-of-range float" });
-            break :blk Value.initInteger(@intFromFloat(f));
-        },
-        .char => Value.initInteger(@intCast(v.asChar())),
-        else => |t| return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "int", .actual = @tagName(t) }),
+    const i = promote.truncToI64(rt, v) catch |err| switch (err) {
+        error.OutOfRange => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "int", .expected = "a value within Long range", .actual = "out-of-range number" }),
+        error.NotANumber => return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "int", .actual = @tagName(v.tag()) }),
+        else => return err,
     };
+    return promote.wrapI64(rt, i);
 }
 
 /// `(char n)` — the character whose Unicode codepoint is the integer `n`
