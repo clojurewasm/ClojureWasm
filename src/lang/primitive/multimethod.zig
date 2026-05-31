@@ -44,7 +44,6 @@ fn expectMultiFn(arg: Value, loc: SourceLocation) anyerror!*MultiFn {
 /// the public `-global-hierarchy` atom (D-161). A `nil` hierarchy
 /// means equality-only dispatch.
 pub fn makeMultiFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("__make-multifn", args, 4, loc);
     if (args[0].tag() != .symbol) {
         return error_catalog.raise(.type_arg_invalid, loc, .{
@@ -52,6 +51,16 @@ pub fn makeMultiFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
             .expected = "symbol",
             .actual = @tagName(args[0].tag()),
         });
+    }
+    // D-184: defmulti is defonce-style — if `name` already resolves to a
+    // MultiFn in the current ns, return that existing one so its
+    // method_table survives re-eval (REPL reload), mirroring JVM defmulti's
+    // when-not-already-a-MultiFn guard. Reachable now that `analyzeDef` no
+    // longer resets the Var's root at analyze time (ADR-0038 amendment).
+    if (env.current_ns) |ns| {
+        if (ns.resolve(symbol_mod.asSymbol(args[0]).name)) |existing_var| {
+            if (existing_var.root.tag() == .multi_fn) return existing_var.root;
+        }
     }
     const mf = try rt.gc.alloc(MultiFn);
     mf.* = .{

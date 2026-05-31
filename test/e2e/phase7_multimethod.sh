@@ -96,4 +96,17 @@ EOF
 ) || fail "case5: non-zero exit ($got)"
 assert_eq 'defmethod_body_uses_param' "$(last_line "$got")" '42'
 
-echo "OK — phase7_multimethod ladder (5 cases) green"
+# --- Case 6 (D-184): re-evaluating defmulti is a defonce-style no-op —
+# the existing MultiFn (with its registered defmethods) survives, so a
+# namespace reload keeps the methods. Enabled by the ADR-0038 amendment
+# (analyzeDef no longer resets the Var's root at analyze time). ---
+got=$("$BIN" - <<'EOF' 2>&1
+(defmulti area :shape)
+(defmethod area :circle [_] :circ)
+(defmulti area :shape)
+(area {:shape :circle})
+EOF
+) || fail "case6: non-zero exit ($got)"
+assert_eq 'defmulti_reeval_noop' "$(last_line "$got")" ':circ'
+
+echo "OK — phase7_multimethod ladder (6 cases) green"

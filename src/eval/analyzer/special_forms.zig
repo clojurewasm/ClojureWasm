@@ -217,7 +217,8 @@ pub fn analyzeDefmacro(
     // analyzeDef pattern (ADR-0038).
     const ns = env.current_ns orelse
         return error_catalog.raiseInternal(form.location, "defmacro: no current namespace");
-    const placeholder_var = try env.intern(ns, name_sym.name, .nil_val, null);
+    // ADR-0038 amendment (D-184): declare-if-absent (no root reset).
+    const placeholder_var = try env.internDeclare(ns, name_sym.name);
     placeholder_var.flags.macro_ = true;
 
     // D-187: lower docstring / attr-map / synthesized :arglists into
@@ -282,7 +283,11 @@ pub fn analyzeDef(
     // is idempotent (env.zig:353-357 updates root in place).
     const ns = env.current_ns orelse
         return error_catalog.raiseInternal(form.location, "def: no current namespace");
-    const var_ptr = try env.intern(ns, name_sym.name, .nil_val, null);
+    // ADR-0038 amendment (D-184): declare-if-absent — pre-register so
+    // recursive / forward refs resolve, but do NOT reset an existing Var's
+    // root to nil (evalDef sets the value at eval time; a throwing re-def
+    // must leave the old root intact — JVM parity).
+    const var_ptr = try env.internDeclare(ns, name_sym.name);
     // D-183 part (c): honour a `^meta` map on the def target. cljw
     // symbols are metadata-less (ADR-0037), so the reader parks the
     // metadata on the name Form's `.meta` side-channel; lift it into the

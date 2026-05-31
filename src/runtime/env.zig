@@ -401,6 +401,28 @@ pub const Env = struct {
         try ns.mappings.put(self.alloc, owned_name, v);
         return v;
     }
+
+    /// Register a placeholder Var for `name` if absent (root nil), returning
+    /// the existing local Var UNTOUCHED if present (ADR-0038 amendment,
+    /// D-184). The analyzer pre-registers a def target so recursive / forward
+    /// references resolve — but resolvability only needs the Var to *exist*,
+    /// not to be reset to nil. `evalDef` / op_def set the real value at eval
+    /// time, so a throwing re-def must leave the old root intact (JVM parity:
+    /// `(def x 5) (def x (/ 1 0)) x` → 5), and `defmulti`'s defonce-style
+    /// no-op (D-184) can see the prior MultiFn. Checks `ns.mappings` (local
+    /// only, NOT `resolve` — a refer'd name must not suppress a shadowing
+    /// local def). The value-bearing `intern` keeps its eval-time overwrite
+    /// contract.
+    pub fn internDeclare(self: *Env, ns: *Namespace, name: []const u8) !*Var {
+        if (ns.mappings.get(name)) |existing| return existing;
+        const owned_name = try self.alloc.dupe(u8, name);
+        errdefer self.alloc.free(owned_name);
+        const v = try self.alloc.create(Var);
+        errdefer self.alloc.destroy(v);
+        v.* = .{ .ns = ns, .name = owned_name, .root = .nil_val };
+        try ns.mappings.put(self.alloc, owned_name, v);
+        return v;
+    }
 };
 
 /// Linear-scan name match; used by `referAllWithFilter` to test
