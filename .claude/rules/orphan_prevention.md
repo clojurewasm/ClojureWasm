@@ -27,6 +27,38 @@ that window. Pick a larger explicit value (e.g. `timeout 1800 …`
 for the Linux gate when it is unusually slow) — never omit the
 wrap.
 
+## Gate launcher: `scripts/run_gate.sh` (single gate, auto-reap)
+
+The full Mac gate is the most-repeated background long-runner, and
+the one most prone to **stacking into orphans**: a premature
+task-completion notification (the harness can report a gate
+"completed" while it is still at its e2e step under host load —
+memory `premature-gate-notification`) tempts a second gate launch
+while the first is still alive. Each gate forks e2e sub-shells +
+`cljw -e` large-input probes; when a gate is killed/timed-out its
+`cljw` children **re-parent to PID 1 and keep running** (the
+`timeout` SIGTERM does not reach a different process group — see the
+Caveat below), so the pile drives load to 10–17 and garbles tool
+output. (Incident 2026-05-31.)
+
+`scripts/run_gate.sh` makes "one gate at a time, no orphans"
+**structural**: on each launch it reaps any prior `test/run_all.sh`
+tree + any `cljw` orphaned to PID 1 (precise — ppid==1 only, so a
+live gate's children and interactive `cljw` are untouched), then
+`exec`s `timeout ${GATE_TIMEOUT:-300} bash test/run_all.sh`.
+`.dev/.gate_pass` is still written by `run_all.sh`, so the cadence
+hook is unaffected.
+
+- **Launch a gate**: `bash scripts/run_gate.sh` (preferred over raw
+  `bash test/run_all.sh` — CLAUDE.md Step 5).
+- **Reap on demand** ("notice → kill", no gate):
+  `bash scripts/run_gate.sh reap`.
+
+The SessionStart `~/.claude/hooks/cleanup_orphans.sh` (etime > 30 min)
+remains the cross-session backstop; `run_gate.sh` is the intra-session
+guard the 30-minute threshold is far too coarse for (a stale gate at
+5 min is already an orphan).
+
 ## Failure modes the wrap defeats
 
 1. **Parent-session-kill orphan**: Claude Code's bash subprocess

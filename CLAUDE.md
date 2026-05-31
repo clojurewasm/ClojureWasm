@@ -264,9 +264,19 @@ per principle.md and act before commit.
 
 **Step 5 — Test gate** (Mac per-commit; ubuntunote at boundaries)
 
-Run the Mac gate every commit:
+Run the Mac gate every commit via the single-gate launcher:
 
-- `bash test/run_all.sh` (Mac host, `aarch64-darwin`)
+- `bash scripts/run_gate.sh` (Mac host, `aarch64-darwin`) — reaps any
+  orphan `run_all.sh` tree + PID-1-orphaned `cljw` probes from a prior
+  run, then `exec`s `timeout 300 bash test/run_all.sh` (so `.gate_pass`
+  is written exactly as before; the cadence hook is unaffected). This
+  prevents the gate-stacking that a premature task-completion
+  notification + host load can cause (see
+  [`.claude/rules/orphan_prevention.md`](.claude/rules/orphan_prevention.md)
+  § Gate launcher + memory `premature-gate-notification`). On-demand
+  reap without a gate: `bash scripts/run_gate.sh reap`.
+- Raw `bash test/run_all.sh` still works (it writes `.gate_pass`), but
+  prefer the launcher so orphans never accumulate.
 
 If the output exceeds ~200 lines, delegate to a Bash subagent
 and ask for "pass/fail + first failure only".
