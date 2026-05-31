@@ -6,8 +6,8 @@
 # complement / constantly / juxt) per ADR-0033 D6 + v5 §5.2.
 #
 # **Note**: file named `transducer_unlock_a3.sh` per v5 §9.2 schedule
-# (transducer 先取り cycle), but transducer 1-arg arity is **deferred**
-# to a future cycle that lands multi-arity `fn*` (D-NEW-2). This cycle
+# (transducer 先取り cycle), but transducer 1-arg arity is **deferred to
+# D-177** (its multi-arity prereq, D-070, has since landed). This cycle
 # ships eager-only surface; the file name is preserved to keep the
 # v5 deliverable-name commitment.
 
@@ -79,4 +79,4 @@ assert_eq 'reduce_filter'   "$("$BIN" -e '(reduce + 0 (filter pos? [-1 1 -2 2 -3
 assert_eq 'comp_in_map'     "$("$BIN" -e '(map (comp inc inc) [1 2 3])')"     '(3 4 5)'
 
 echo ""
-echo "=== transducer_unlock_a3: all assertions passed (eager-only; transducer arity deferred D-NEW-2) ==="
+echo "=== transducer_unlock_a3: all assertions passed (eager-only; transducer arity deferred D-177) ==="

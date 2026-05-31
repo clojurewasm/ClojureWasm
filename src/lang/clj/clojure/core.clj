@@ -22,12 +22,11 @@
 ;;
 ;; Each surface fn delegates to its Zig leaf (`-foo-eager`) via the
 ;; `-name` Pattern B2 contract from ADR-0033 D4. Transducer 1-arg
-;; arity (`(map f)` returning an xform) is **deferred** until cw v1
-;; `fn*`/`defn` gains multi-arity support (tracked at D-NEW-2). For
-;; this cycle these are eager-only forms — JVM `clojure.core/map` is
-;; lazy, cw v1 `map` here builds the full list eagerly. The full
-;; lazy + transducer semantics land at Phase 7+ once lazy-seq Layer
-;; 2 wiring and multi-arity `fn*` both land.
+;; arity (`(map f)` returning an xform) is **deferred to D-177** (its
+;; multi-arity prereq, D-070, has since landed — what remains is the
+;; xform Value shape). For this cycle these are eager-only forms — JVM
+;; `clojure.core/map` is lazy, cw v1 `map` here builds the full list
+;; eagerly. The full lazy + transducer semantics land with D-177.
 ;; ----------------------------------------------------------------
 
 ;; map / filter / keep / remove / drop are LAZY (ADR-0054 cycle 2/3):
@@ -273,9 +272,8 @@
 (def constantly
   (fn* [x] (fn* [& _] x)))
 
-;; `(complement pred)` returns a fn that negates pred's truthiness.
-;; Single-arg only at this cycle (transducer arities + multi-arg
-;; pred deferred per D-NEW-2).
+;; `(complement pred)` returns a fn that negates pred's truthiness;
+;; the returned fn is variadic (`[& args]`), matching JVM.
 (def complement
   (fn* [pred] (fn* [& args] (not (apply pred args)))))
 
@@ -296,8 +294,6 @@
     (fn* [& more]
       (apply f (into (into [] args) more)))))
 
-;; `(comp f g)` returns a fn that computes `(f (g x))`. Multi-fn
-;; comp `(comp f g h)` deferred to D-NEW-2 multi-arity follow-up.
 ;; `comp` — variadic right-to-left function composition (D-134). `(comp)`
 ;; is identity; the N-ary case folds the 2-ary `comp` over the rest (comp
 ;; is associative). Composed fns take any arity via `& args` + `apply`.

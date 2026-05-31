@@ -326,9 +326,8 @@ pub fn someQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 // These are the eager backends for clojure.core's map/filter/take/
 // drop/keep/remove — the Layer 3 `.clj` shim calls them directly when
 // the multi-arity form is the eager one. The transducer 1-arg arity
-// (returning an xform) is **deferred** until cw v1's `fn*`/`defn`
-// analyzer grows multi-arity support (tracked at D-NEW-2 per
-// 6.16.a-3.2 commit body).
+// (returning an xform) is **deferred to D-177** (its multi-arity
+// prereq, D-070, has since landed; what remains is the xform shape).
 
 // `-map-eager` / `-filter-eager` / `-drop-eager` deleted — map/filter
 // are lazy `.clj` (ADR-0054 cycle 2), drop is lazy `.clj` (cycle 3).

@@ -25,8 +25,13 @@ gate=0
 search_paths=(src CLAUDE.md .dev .claude scripts test feature_deps.yaml placement.yaml compat_tiers.yaml)
 # debt.md itself defines + discusses IDs (incl. phantom ones it tracks for
 # repair), so it is not a citation site; the consolidation doc + audit notes
-# likewise describe phantoms by name.
-exclude='\.dev/debt\.md|tech_debt_consolidation\.md|audit-lens|check_debt_id_refs\.sh'
+# likewise describe phantoms by name. `.dev/decisions/` (ADRs) are excluded
+# because an ADR is an APPEND-ONLY decision record that may quote a Devil's-
+# advocate's text or a then-proposed placeholder ID verbatim — requiring every
+# ID in immutable history to resolve to a live row fights that immutability,
+# and ADRs do not drive the Step-0.5 trigger system (debt.md rows do). The
+# check guards LIVE trigger sites (src + live docs), not history.
+exclude='\.dev/debt\.md|\.dev/decisions/|tech_debt_consolidation\.md|audit-lens|check_debt_id_refs\.sh'
 
 # 1. Phantom placeholder IDs — never a real row.
 phantom=$(rg -n --no-heading 'D-NEW[A-Z0-9-]*' "${search_paths[@]}" 2>/dev/null \

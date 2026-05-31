@@ -137,8 +137,15 @@ category). Full per-row proposals in `audit-lensC-barrier-quality.md`.
 - **Stale test comments** (false "acceptable divergence" records):
   `phase14_core_cluster.sh` (concat/mapcat now return seqs);
   `phase6_clojure_set_group_c.sh` (project/rename now preserve metadata).
-- **Phantom debt IDs** `D-NEW` / `D-NEW-2` / `D-NEW-A` (≥5 source sites) —
-  replace with the real filed IDs (D-177 etc.) or remove.
+- **Phantom debt IDs** `D-NEW` / `D-NEW-2` / `D-NEW-A` — **DONE 2026-06-01**:
+  `D-NEW-2` (6 sites: core.clj ×3, higher_order.zig, transducer_unlock_a3.sh ×2)
+  → **D-177** filed (transducer single-arity + N-ary comp; prereq D-070 is
+  Discharged, so doable). `D-NEW` (macro_transforms.zig:1573, defmulti re-eval
+  clobber) → **D-184** filed. `D-NEW-A` was in `.dev/decisions/0035` (immutable
+  ADR narration) — handled by excluding `.dev/decisions/` from the phantom scan.
+  Also: **D-162** (eval/ADR-0058, discharged but never row-recorded → flagged
+  UNDEFINED) got a Discharged row. `check_debt_id_refs.sh` is now **gating**
+  (`--gate` in run_all.sh).
 
 ### F. Structural-deferred — keep deferred, verify trigger live, annotate (F-003)
 
@@ -167,9 +174,13 @@ category). Full per-row proposals in `audit-lensC-barrier-quality.md`.
 
 ## Recurrence prevention (so this doesn't re-accrue)
 
-1. **`scripts/check_debt_id_refs.sh`** (new) — every `D-NNN` cited in
-   `src/**` + tracked docs must exist in `debt.md`. Kills phantom
-   `D-NEW`/typo IDs at gate time. (M5)
+1. **`scripts/check_debt_id_refs.sh`** — every `D-NNN` cited in `src/**` +
+   tracked docs (excluding `.dev/decisions/` ADRs = immutable narration) must
+   exist in `debt.md`. Kills phantom `D-NEW`/typo IDs. **Now GATING** as of
+   2026-06-01 (`--gate` in `run_all.sh`) — the initial phantom backlog
+   (`D-NEW-2`/`D-NEW`/`D-NEW-A` + undefined `D-162`) was drained first, then the
+   check was flipped from informational to hard-fail so phantoms cannot
+   re-accrue. (M5)
 2. **Quality-loop floor backlog count** printed at gate time — the open
    `quality-loop floor:` row count is surfaced so the F-010 loop can't
    ignore the floor. (M1/M2)

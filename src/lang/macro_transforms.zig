@@ -1570,7 +1570,7 @@ fn wrapBodyInDo(arena: std.mem.Allocator, body: []const Form, loc: SourceLocatio
 // semantics (preserves method_table across REPL reloads). cw v1
 // cycle 5c omits this; re-eval clobbers. Restoring the no-op
 // requires `resolved?` + `multi-fn?` predicates that arrive at a
-// later cycle (D-NEW candidate).
+// later cycle (D-184).
 fn expandDefmulti(
     arena: std.mem.Allocator,
     rt: *Runtime,

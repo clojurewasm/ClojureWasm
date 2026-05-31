@@ -237,7 +237,7 @@ run_step "test_reach"           "bash scripts/check_test_reach.sh --gate"
 # to a debt.md row (kills phantom IDs), + prints the quality-loop-floor
 # backlog so the F-010 loop sees it. Tech-debt consolidation 2026-05-31 /
 # .dev/tech_debt_consolidation.md. Gate-promotion tracked in D-175.
-run_step "debt_id_refs"         "bash scripts/check_debt_id_refs.sh"
+run_step "debt_id_refs"         "bash scripts/check_debt_id_refs.sh --gate"
 
 # zlinter no_deprecated gate (ADR-0003) — Mac-host only. zlinter is
 # fetched via `zig fetch` against GitHub; OrbStack runs are network-
