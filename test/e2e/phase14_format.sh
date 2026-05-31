@@ -26,6 +26,11 @@ assert_eq 'w_left'  "$("$BIN" -e '(format "[%-5d]" 3)')"         '"[3    ]"'
 assert_eq 'w_s'     "$("$BIN" -e '(format "[%10s]" "hi")')"      '"[        hi]"'
 assert_eq 'w_sl'    "$("$BIN" -e '(format "[%-10s]" "hi")')"     '"[hi        ]"'
 assert_eq 'w_f'     "$("$BIN" -e '(format "[%8.2f]" 3.14159)')"  '"[    3.14]"'
+# zero-pad flag (clj-verified): sign stays leftmost, `-` overrides `0`
+assert_eq 'w_zero'  "$("$BIN" -e '(format "%05d" 42)')"          '"00042"'
+assert_eq 'w_zneg'  "$("$BIN" -e '(format "%05d" -42)')"         '"-0042"'
+assert_eq 'w_zleft' "$("$BIN" -e '(format "[%-05d]" 42)')"       '"[42   ]"'
+assert_eq 'w_zhex'  "$("$BIN" -e '(format "%04x" 255)')"         '"00ff"'
 assert_eq 'w_over'  "$("$BIN" -e '(format "[%3d]" 12345)')"      '"[12345]"'
 # newline directive (count + split prove a real \n)
 assert_eq 'newline' "$("$BIN" -e '(count (format "x%ny"))')"     '3'

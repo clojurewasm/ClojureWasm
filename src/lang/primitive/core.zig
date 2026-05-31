@@ -619,11 +619,12 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         i += 1; // past '%'
         if (i >= fmt.len) return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%" });
 
-        // Optional `-` (left-justify) flag, then min field width (space-pad).
+        // Optional `-` (left-justify) and `0` (zero-pad) flags, then min
+        // field width. `-` overrides `0` (Java semantics).
         var left = false;
-        if (fmt[i] == '-') {
-            left = true;
-            i += 1;
+        var zero_pad = false;
+        while (i < fmt.len and (fmt[i] == '-' or fmt[i] == '0')) : (i += 1) {
+            if (fmt[i] == '-') left = true else zero_pad = true;
         }
         var width: usize = 0;
         while (i < fmt.len and fmt[i] >= '0' and fmt[i] <= '9') : (i += 1)
@@ -694,6 +695,17 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         } else if (left) {
             try w.writeAll(rendered);
             for (0..width - rendered.len) |_| try w.writeByte(' ');
+        } else if (zero_pad) {
+            // Zero-pad: a leading sign stays leftmost, zeros fill the gap.
+            const pad = width - rendered.len;
+            if (rendered.len > 0 and rendered[0] == '-') {
+                try w.writeByte('-');
+                for (0..pad) |_| try w.writeByte('0');
+                try w.writeAll(rendered[1..]);
+            } else {
+                for (0..pad) |_| try w.writeByte('0');
+                try w.writeAll(rendered);
+            }
         } else {
             for (0..width - rendered.len) |_| try w.writeByte(' ');
             try w.writeAll(rendered);
