@@ -40,4 +40,13 @@ assert_first 'print_spaced'   '(print 1 2)'   '1 2nil'
 assert_first 'pr_str_map'    '(println (pr-str {:a 1}))' '{:a 1}'
 assert_first 'pr_str_string' '(println (pr-str "x"))'    '"x"'
 
+# --- D-185: *print-readably* threads into COLLECTION elements, not just the
+# top level. print/println render nested strings raw + chars bare; pr/prn/str
+# keep them readable. (char 98)=\b, (char 121)=\y. ---
+assert_first 'print_coll_str'  '(print ["a" "b"])'                '[a b]nil'
+assert_first 'print_coll_mix'  '(print ["a" (char 98) {:k "v"}])' '[a b {:k v}]nil'
+assert_first 'println_list'    '(println (list "x" (char 121)))'  '(x y)'
+assert_first 'prn_coll_quoted' '(prn ["a" (char 98)])'            '["a" \b]'
+assert_first 'str_coll_quoted' '(println (str ["a" (char 98)]))'  '["a" \b]'
+
 echo "ALL phase14_print_family PASS"

@@ -478,6 +478,13 @@ pub fn nameFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 /// (top-level strings emitted as raw bytes; nested strings inside a
 /// printed collection still go through `printValue` and get quoted).
 fn writeArgsSpaced(rt: *Runtime, env: *Env, w: *std.Io.Writer, args: []const Value, readable: bool) anyerror!void {
+    // D-185: `print`/`println` (`!readable`) render strings/chars raw at EVERY
+    // depth, not just the top level — thread the flag into `printValue`'s
+    // collection recursion via `*print-readably*`. Restored after so a later
+    // `pr-str` / result-print stays readable.
+    const saved_readably = print_mod.print_readably;
+    print_mod.print_readably = readable;
+    defer print_mod.print_readably = saved_readably;
     for (args, 0..) |arg, i| {
         if (i > 0) try w.writeByte(' ');
         if (!readable and arg.tag() == .string) {

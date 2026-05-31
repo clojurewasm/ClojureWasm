@@ -192,6 +192,15 @@ pub fn printFloat(w: *Writer, f: f64) Writer.Error!void {
 /// forms for the standard whitespace chars, `\<ch>` for printable ASCII,
 /// `\uXXXX` otherwise. (The raw `str`/`print` form emits the bare char —
 /// see `lang/primitive/core.zig::writeArgsSpaced`.)
+/// `print`-form of a char (D-185): the bare UTF-8 character, no `\` literal
+/// prefix. Mirrors `writeArgsSpaced`'s top-level raw-char path (D-154) for
+/// chars nested inside a collection printed under `print`/`println`.
+pub fn printCharRaw(w: *Writer, cp: u21) Writer.Error!void {
+    var buf: [4]u8 = undefined;
+    const n = std.unicode.utf8Encode(cp, &buf) catch 0;
+    try w.writeAll(buf[0..n]);
+}
+
 pub fn printCharReadable(w: *Writer, cp: u21) Writer.Error!void {
     switch (cp) {
         '\n' => try w.writeAll("\\newline"),
@@ -215,13 +224,21 @@ pub fn printCharReadable(w: *Writer, cp: u21) Writer.Error!void {
 /// list. Other heap kinds render as `#<tag>` placeholders so the user
 /// always sees *something* instead of an undecipherable address —
 /// Phase 3.10+ adds dedicated branches as the heap types ship.
+/// Clojure's `*print-readably*` (D-185), as a thread-local since the pure
+/// `printValue` renderer carries no `rt`/`env`. `true` (default) = `pr`
+/// form: strings quoted, chars as `\X` literals. `false` = `print` form:
+/// strings raw, chars bare — set by `print`/`println` for the whole render
+/// (incl. nested collection elements), restored after. `pr`/`prn`/`pr-str`/
+/// `str`-collections keep the default.
+pub threadlocal var print_readably: bool = true;
+
 pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
     switch (v.tag()) {
         .nil => try w.writeAll("nil"),
         .boolean => try w.writeAll(if (v.asBoolean()) "true" else "false"),
         .integer => try w.print("{d}", .{v.asInteger()}),
         .float => try printFloat(w, v.asFloat()),
-        .char => try printCharReadable(w, v.asChar()),
+        .char => if (print_readably) try printCharReadable(w, v.asChar()) else try printCharRaw(w, v.asChar()),
         .builtin_fn => try w.writeAll("#builtin"),
         .keyword => {
             const k = keyword.asKeyword(v);
@@ -240,7 +257,7 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
             }
             try w.writeAll(s.name);
         },
-        .string => try printString(w, string_collection.asString(v)),
+        .string => if (print_readably) try printString(w, string_collection.asString(v)) else try w.writeAll(string_collection.asString(v)),
         .list => try printList(w, v),
         .range => try printRange(w, v),
         .vector => try printVector(w, v),
