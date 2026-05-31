@@ -39,4 +39,11 @@ assert_last 'defn_plain_arglists' '(defn plain [a] a) (:arglists (meta #'"'"'pla
 # --- reader meta (^:private) preserved + merged with docstring ---
 assert_last 'defn_private_doc' '(defn ^:private p "d" [a] a) [(:private (meta #'"'"'p)) (:doc (meta #'"'"'p))]' '[true "d"]'
 
+# --- D-187: defmacro accepts + lowers docstring / attr-map / :arglists
+# (was a hard "parameter list must be a vector" error). ---
+assert_last 'defmacro_works'   '(defmacro mm "doc" [x] (list (quote inc) x)) (mm 5)'           '6'
+assert_last 'defmacro_doc'     '(defmacro mm "the doc" [x] x) (:doc (meta #'"'"'mm))'           '"the doc"'
+assert_last 'defmacro_attr'    '(defmacro mm "d" {:custom 9} [x] x) (:custom (meta #'"'"'mm))'  '9'
+assert_last 'defmacro_arglists' '(defmacro mm [x] x) (:arglists (meta #'"'"'mm))'               '([x])'
+
 echo "ALL phase14_defn_meta PASS"

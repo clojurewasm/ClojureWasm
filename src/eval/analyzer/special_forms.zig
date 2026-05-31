@@ -189,11 +189,26 @@ pub fn analyzeDefmacro(
         return error_catalog.raise(.defmacro_arity_invalid, form.location, .{});
     if (items[1].data != .symbol)
         return error_catalog.raise(.defmacro_name_not_symbol, items[1].location, .{});
-    if (items[2].data != .vector)
-        return error_catalog.raise(.defmacro_params_not_vector, items[2].location, .{});
     const name_sym = items[1].data.symbol;
     if (name_sym.ns != null)
         return error_catalog.raise(.def_name_namespace_qualified, items[1].location, .{ .ns = name_sym.ns.?, .name = name_sym.name });
+
+    // D-187: accept a leading docstring (string) + attr-map (map) after the
+    // name, like `defn` (was a hard `defmacro_params_not_vector` error on a
+    // valid `(defmacro m "doc" [x] …)`).
+    var head: usize = 2;
+    var doc_form: ?Form = null;
+    var attr_form: ?Form = null;
+    if (head < items.len and items[head].data == .string) {
+        doc_form = items[head];
+        head += 1;
+    }
+    if (head < items.len and items[head].data == .map) {
+        attr_form = items[head];
+        head += 1;
+    }
+    if (head >= items.len or items[head].data != .vector)
+        return error_catalog.raise(.defmacro_params_not_vector, form.location, .{});
 
     // Pre-register the macro Var with `flags.macro_ = true` so the
     // analyzer's `expandIfMacro` can see the macro flag before the
@@ -205,13 +220,32 @@ pub fn analyzeDefmacro(
     const placeholder_var = try env.intern(ns, name_sym.name, .nil_val, null);
     placeholder_var.flags.macro_ = true;
 
+    // D-187: lower docstring / attr-map / synthesized :arglists into
+    // Var.meta (mirrors defn's D-183(d), so `(:doc (meta #'m))` works);
+    // reader `^meta` on the name merges first. :arglists is always present.
+    {
+        var meta_items: std.ArrayList(Form) = .empty;
+        if (items[1].meta) |mf| try meta_items.appendSlice(arena, mf.data.map);
+        if (attr_form) |a| try meta_items.appendSlice(arena, a.data.map);
+        if (doc_form) |d| {
+            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location });
+            try meta_items.append(arena, d);
+        }
+        const arglists_inner = try arena.alloc(Form, 1);
+        arglists_inner[0] = items[head];
+        try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "arglists" } }, .location = form.location });
+        try meta_items.append(arena, .{ .data = .{ .list = arglists_inner }, .location = form.location });
+        const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
+        placeholder_var.meta = try analyzer_mod.formToValue(rt, meta_map);
+    }
+
     // Build the synthetic `(fn* [PARAMS] BODY...)` Form, then analyse
     // it through the regular path so multi-arity / closure / arg
     // checks all ride existing FnNode infrastructure.
-    var fn_items = try arena.alloc(Form, 2 + (items.len - 3));
+    var fn_items = try arena.alloc(Form, 2 + (items.len - head - 1));
     fn_items[0] = macro_dispatch.makeSymbol("fn*", form.location);
-    fn_items[1] = items[2]; // params vector
-    @memcpy(fn_items[2..], items[3..]);
+    fn_items[1] = items[head]; // params vector
+    @memcpy(fn_items[2..], items[head + 1 ..]);
     const fn_form: Form = .{ .data = .{ .list = fn_items }, .location = form.location };
     const value_node = try analyzer_mod.analyze(arena, rt, env, scope, fn_form, macro_table);
 

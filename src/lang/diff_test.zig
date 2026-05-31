@@ -258,6 +258,14 @@ test "diff: defn attr-map reaches Var.meta" {
     // them identically under both backends (shared macroexpand+analyze).
     try f.check("(do (defn diff-dn {:v 9} [a] a) (:v (meta (var diff-dn))))", 9);
 }
+test "diff: defmacro docstring/attr-map reaches Var.meta (D-187)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // `analyzeDefmacro` (shared special form) lowers the attr-map into
+    // `Var.meta` at analyze time, so `(meta (var m))` agrees on both backends.
+    try f.check("(do (defmacro dmm \"d\" {:k 8} [x] x) (:k (meta (var dmm))))", 8);
+}
+
 test "diff: ^meta on collection literal lowers to with-meta (D-186)" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
