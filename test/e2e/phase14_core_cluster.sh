@@ -7,10 +7,10 @@
 # primitives (reduce / get / assoc / first / next / conj / into / apply).
 #
 # JVM Clojure: get-in/assoc-in/update-in walk a key path; concat/mapcat
-# return lazy seqs. cw v1 ships eager concat/mapcat (DIVERGENCE: returns
-# a vector, consistent with the file's eager map/filter surface — true
-# lazy lands with the lazy-seq Layer-2 gap). Coverage tested via
-# `(into [] ...)` so the assertion is order+content, not print-form.
+# return lazy seqs — cw v1 now matches (concat/mapcat are lazy via
+# `-concat2`/`-concat-seqs`; mapcat is variadic over N colls, JVM shape).
+# Coverage tested via `(into [] ...)` so the assertion is order+content,
+# not print-form.
 #
 # Layer 2 (e2e CLI) per ADR-0021.
 
@@ -44,7 +44,11 @@ assert_eq 'update_in_args' "$("$BIN" -e '(get-in (update-in {:a {:b 1}} [:a :b] 
 assert_eq 'concat_two'   "$("$BIN" -e '(into [] (concat [1 2] [3 4]))')" '[1 2 3 4]'
 assert_eq 'concat_three' "$("$BIN" -e '(into [] (concat [1] [2] [3]))')" '[1 2 3]'
 
-# --- mapcat (eager single-coll) ---
-assert_eq 'mapcat_pairs' "$("$BIN" -e '(into [] (mapcat (fn* [x] [x x]) [1 2 3]))')" '[1 1 2 2 3 3]'
+# --- mapcat: single-coll + variadic over N colls (JVM shape, lazy) ---
+assert_eq 'mapcat_pairs'  "$("$BIN" -e '(into [] (mapcat (fn* [x] [x x]) [1 2 3]))')" '[1 1 2 2 3 3]'
+assert_eq 'mapcat_2coll'  "$("$BIN" -e '(into [] (mapcat list [1 2] [3 4]))')"          '[1 3 2 4]'
+assert_eq 'mapcat_3coll'  "$("$BIN" -e '(into [] (mapcat vector [1 2] [3 4] [5 6]))')"  '[1 3 5 2 4 6]'
+# lazy over an infinite outer coll (must not hang)
+assert_eq 'mapcat_lazy'   "$("$BIN" -e '(into [] (take 5 (mapcat (fn* [x] [x x]) (range))))')" '[0 0 1 1 2]'
 
 echo "ALL phase14_core_cluster PASS"

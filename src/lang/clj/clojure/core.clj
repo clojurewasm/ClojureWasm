@@ -522,16 +522,28 @@
   (fn* [& colls]
     (reduce -concat2 nil colls)))
 
-;; `(mapcat f coll)` — lazy `concat` of `(map f coll)`. Single-coll
-;; form (multi-coll deferred, like `map`). Recurses under `lazy-seq`
-;; so it composes with an infinite `coll`.
-(def mapcat
-  (fn* [f coll]
+;; `(-concat-seqs ss)` — lazily catenate a seq OF seqs, one level deep,
+;; WITHOUT realizing the outer `ss` (the lazy counterpart of
+;; `(apply concat ss)`, which would hang on an infinite outer because cw
+;; v1's `apply` eagerly spreads its final argument). Walks `ss` under
+;; `lazy-seq` so it composes with an infinite outer.
+(def -concat-seqs
+  (fn* [ss]
     (lazy-seq
-      (let [s (seq coll)]
+      (let [s (seq ss)]
         (if s
-          (-concat2 (f (first s)) (mapcat f (rest s)))
+          (-concat2 (first s) (-concat-seqs (rest s)))
           nil)))))
+
+;; `(mapcat f & colls)` — the JVM shape `(apply concat (apply map f colls))`,
+;; but with `-concat-seqs` instead of `apply concat` to stay lazy over an
+;; infinite outer. Variadic over collections (`map` walks them in parallel;
+;; D-070 multi-arity makes this reachable). `(apply map f colls)` only
+;; spreads the finite `colls` list, so it never eager-realizes an infinite
+;; coll; lazy throughout — `(take 5 (mapcat (fn [x] [x x]) (range)))` works.
+(def mapcat
+  (fn* [f & colls]
+    (-concat-seqs (apply map f colls))))
 
 ;; `(tree-seq branch? children root)` — a lazy depth-first (pre-order) seq
 ;; of all nodes. `branch?` says whether a node can have children; `children`
