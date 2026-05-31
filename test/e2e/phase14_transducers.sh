@@ -70,4 +70,14 @@ assert_eq 'halt_match'  "$("$BIN" -e '(transduce (halt-when neg?) conj [] [1 2 -
 assert_eq 'halt_none'   "$("$BIN" -e '(transduce (halt-when neg?) conj [] [1 2 3])')" '[1 2 3]'
 assert_eq 'halt_retf'   "$("$BIN" -e '(transduce (halt-when neg? (fn [r i] (conj r i))) conj [] [1 2 -3 4])')" '[1 2 -3]'
 assert_eq 'halt_comp'   "$("$BIN" -e '(transduce (comp (map inc) (halt-when (fn [x] (> x 4)))) conj [] [1 2 3 4])')" '5'
-echo "OK — phase14_transducers (44 cases, cycles 1-5; sequence/eduction = D-160) green"
+# cycle 6 (D-160): `sequence` lazy push→pull bridge. The iterate/take cases are
+# the laziness guard — an eager (seq (into [] xform coll)) would hang here.
+assert_eq 'seq_finite'  "$("$BIN" -e '(into [] (sequence (map inc) [1 2 3]))')"            '[2 3 4]'
+assert_eq 'seq_lazy'    "$("$BIN" -e '(first (sequence (map inc) (iterate inc 0)))')"      '1'
+assert_eq 'seq_take_inf' "$("$BIN" -e '(into [] (sequence (take 2) (iterate inc 0)))')"    '[0 1]'
+assert_eq 'seq_comp'    "$("$BIN" -e '(into [] (sequence (comp (filter even?) (map inc)) [1 2 3 4]))')" '[3 5]'
+assert_eq 'seq_part'    "$("$BIN" -e '(into [] (sequence (partition-all 2) [1 2 3 4 5]))')" '[[1 2] [3 4] [5]]'
+assert_eq 'seq_mapcat'  "$("$BIN" -e '(into [] (sequence (mapcat (fn [x] [x x])) [1 2 3]))')" '[1 1 2 2 3 3]'
+assert_eq 'seq_1arg'    "$("$BIN" -e '(into [] (sequence [1 2 3]))')"                       '[1 2 3]'
+assert_eq 'seq_empty'   "$("$BIN" -e '(into [] (sequence (map inc) []))')"                  '[]'
+echo "OK — phase14_transducers (cycles 1-6; sequence lazy bridge D-160; eduction follow-up) green"

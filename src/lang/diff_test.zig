@@ -258,6 +258,11 @@ test "diff: defn attr-map reaches Var.meta" {
     // them identically under both backends (shared macroexpand+analyze).
     try f.check("(do (defn diff-dn {:v 9} [a] a) (:v (meta (var diff-dn))))", 9);
 }
+// NOTE: `sequence`'s dual-backend parity is NOT diff-tested here — the
+// Fixture loads primitives + macro_transforms only, NOT core.clj, so the
+// `.clj` `sequence`/`map` are absent. Its TreeWalk↔VM parity is verified by
+// `cljw --compare -e '(reduce + 0 (sequence (map inc) [1 2 3]))'` → OK 9
+// (the real bootstrap runs both backends) + the phase14_transducers e2e.
 
 test "diff: def_node forward ref inside (do)" {
     var f = try Fixture.init(testing.allocator);

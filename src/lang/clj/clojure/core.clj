@@ -265,6 +265,57 @@
                   (reduced {:cljw.core/halt (if retf (retf (rf result) input) input)})
                   (rf result input))))))))
 
+;; D-160 push→pull transducer bridge. JVM builds `sequence`/`eduction` on
+;; `TransformerIterator` (a buffering java.util.Iterator); cljw has no
+;; Iterator protocol, so the bridge is pure `.clj` in cljw's lazy-seq idiom
+;; (DIVERGENCE D1): step the source through the transducer's reducing fn —
+;; a buffering rf that conj's each emitted output into a volatile vector —
+;; and drain that buffer lazily. `xf` is `(xform rf)` created ONCE so
+;; stateful xforms (`take`/`partition-all`) keep their volatile state across
+;; the pull. An eager `(seq (into [] xform coll))` is forbidden: it would
+;; hang on an infinite source where `sequence` must stay lazy.
+;;
+;; `-tx-seq-pump` recurses through its own top-level name (avoids a named
+;; local fn — D-147). `done` flags that the completion arity has run (it may
+;; flush a final buffered value, e.g. `partition-all`'s tail).
+;; `buf` is the output vector (rf appends), `pos` the next index to emit, so
+;; draining needs only `nth`/`count` (no `subvec`/`vec`, which are defined
+;; later in this file and would be forward-refs at bootstrap). On each fill
+;; cycle `buf`/`pos` reset before stepping one source item.
+(def -tx-seq-pump
+  (fn* [xf src buf pos done]
+    (lazy-seq
+      (let [b @buf p @pos]
+        (if (< p (count b))
+          (do (vreset! pos (inc p))
+              (cons (nth b p) (-tx-seq-pump xf src buf pos done)))
+          (if @done
+            nil
+            (do (vreset! buf []) (vreset! pos 0)
+                (let [s (seq src)]
+                  (if (nil? s)
+                    (do (xf nil) (vreset! done true)
+                        (-tx-seq-pump xf src buf pos done))
+                    (let [r (xf nil (first s))]
+                      (if (reduced? r)
+                        (do (xf nil) (vreset! done true)
+                            (-tx-seq-pump xf src buf pos done))
+                        (-tx-seq-pump xf (rest s) buf pos done))))))))))))
+
+;; `(sequence coll)` coerces to a seq (`(list)` empty, not the bare `()`
+;; literal — cljw treats unquoted `()` as an empty invocation, D-188); the
+;; 2-arg arm lazily applies the transducer via the bridge above. The 3-arg+
+;; multi-coll arm (`(sequence xform c1 c2 …)`) is a follow-up, not faked.
+(def sequence
+  (fn* ([coll] (or (seq coll) (list)))
+       ([xform coll]
+        (let [buf  (volatile! [])
+              pos  (volatile! 0)
+              done (volatile! false)
+              rf   (fn* ([] nil) ([result] result) ([_ x] (vswap! buf conj x) nil))
+              xf   (xform rf)]
+          (-tx-seq-pump xf (seq coll) buf pos done)))))
+
 ;; ----------------------------------------------------------------
 ;; Pure Clojure HOF (no Zig leaf) — pattern A per ADR-0033 D3.
 ;; ----------------------------------------------------------------
