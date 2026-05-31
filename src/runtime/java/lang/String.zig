@@ -59,6 +59,54 @@ fn trim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyer
     return string_collection.alloc(rt, charset.trim(string_collection.asString(args[0])));
 }
 
+/// Implements `(.length s)` → codepoint count (ADR-0014: cw v1 strings
+/// count codepoints, not UTF-16 units). JVM reference: java.lang.String#length.
+/// cw v1 tier: A.
+fn length(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity(".length", args, 1, loc);
+    const n = charset.codepointCount(string_collection.asString(args[0])) catch
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = ".length on invalid UTF-8" });
+    return Value.initInteger(@intCast(n));
+}
+
+/// Implements `(.substring s start)` / `(.substring s start end)` over
+/// codepoint indices. JVM reference: java.lang.String#substring.
+/// cw v1 tier: A.
+fn substring(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len < 2 or args.len > 3)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = ".substring", .got = args.len, .min = 2, .max = 3 });
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = ".substring", .actual = @tagName(args[1].tag()) });
+    const s = string_collection.asString(args[0]);
+    const start: usize = @intCast(args[1].asInteger());
+    var end: usize = std.math.maxInt(usize);
+    if (args.len == 3) {
+        if (args[2].tag() != .integer)
+            return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = ".substring", .actual = @tagName(args[2].tag()) });
+        end = @intCast(args[2].asInteger());
+    }
+    const slice = charset.substring(s, start, end) catch
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = ".substring index out of range" });
+    return string_collection.alloc(rt, slice);
+}
+
+/// Implements `(.indexOf s needle)` → codepoint index of the first
+/// occurrence of the substring `needle`, or -1 when absent. JVM
+/// reference: java.lang.String#indexOf. cw v1 tier: A.
+fn indexOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity(".indexOf", args, 2, loc);
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".indexOf", .actual = @tagName(args[1].tag()) });
+    const idx = charset.codepointIndexOf(string_collection.asString(args[0]), string_collection.asString(args[1])) orelse
+        return Value.initInteger(-1);
+    return Value.initInteger(@intCast(idx));
+}
+
 /// Populate the per-Runtime native `.string` descriptor's `method_table`
 /// with String instance methods. Driven from `lang/primitive.zig` at
 /// runtime init (Layer 2 — Layer 0 `runtime/` may not import this
@@ -71,10 +119,13 @@ pub fn installNativeMethods(rt: *Runtime) !void {
     const td = try rt.nativeDescriptor(.string);
     if (td.method_table.len != 0) return; // idempotent re-run
     const gpa = rt.gc.infra;
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 3);
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 6);
     entries[0] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "toUpperCase"), .method_val = Value.initBuiltinFn(&toUpperCase) };
     entries[1] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "toLowerCase"), .method_val = Value.initBuiltinFn(&toLowerCase) };
     entries[2] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "trim"), .method_val = Value.initBuiltinFn(&trim) };
+    entries[3] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "length"), .method_val = Value.initBuiltinFn(&length) };
+    entries[4] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "substring"), .method_val = Value.initBuiltinFn(&substring) };
+    entries[5] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "indexOf"), .method_val = Value.initBuiltinFn(&indexOf) };
     td.method_table = entries;
 }
 
@@ -93,6 +144,9 @@ test "installNativeMethods populates the native .string descriptor" {
     try testing.expect(td.lookupMethod(null, "toUpperCase") != null);
     try testing.expect(td.lookupMethod(null, "toLowerCase") != null);
     try testing.expect(td.lookupMethod(null, "trim") != null);
+    try testing.expect(td.lookupMethod(null, "length") != null);
+    try testing.expect(td.lookupMethod(null, "substring") != null);
+    try testing.expect(td.lookupMethod(null, "indexOf") != null);
     try testing.expect(td.lookupMethod(null, "noSuchMethod") == null);
 
     // Idempotent: a second call leaves the table length unchanged.

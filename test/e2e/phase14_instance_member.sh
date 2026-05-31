@@ -45,6 +45,13 @@ assert_eq 'native_method_toLowerCase' "$got" '"hello"'
 got="$("$BIN" -e '(.trim "  hi  ")')" || fail "case3: non-zero exit"
 assert_eq 'native_method_trim' "$got" '"hi"'
 
+# --- Case 3b: native String length / substring / indexOf (clj-verified) ---
+assert_eq 'native_method_length'    "$("$BIN" -e '(.length "hello")')"       '5'
+assert_eq 'native_method_substring' "$("$BIN" -e '(.substring "hello" 1 3)')" '"el"'
+assert_eq 'native_method_substr2'   "$("$BIN" -e '(.substring "hello" 2)')"   '"llo"'
+assert_eq 'native_method_indexOf'   "$("$BIN" -e '(.indexOf "hello" "ll")')"  '2'
+assert_eq 'native_method_indexOf_miss' "$("$BIN" -e '(.indexOf "hi" "z")')"   '-1'
+
 # --- Case 4: deftype field read still works (field-first, no regression) ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
 (deftype Point [x y])
