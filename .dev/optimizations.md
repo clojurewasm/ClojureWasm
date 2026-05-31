@@ -29,39 +29,33 @@
 
 ## Entries
 
-| ID    | Site                                         | Naive form (the contract)                                                                                  | Optimized form                                                                                         | Why faster                                                                                                                                                  | Verified by                                       | Refs          |
-|-------|----------------------------------------------|------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------|---------------|
-| O-001 | `runtime/collection/range.zig` + call sites  | `(range a b s)` as a lazy cons-seq (one cons + lazy_seq per element)                                       | Compact `.range` value `{start,end,step,count}`: O(1) count/nth, tight-loop reduce, chunked-cons `seq` | No per-element alloc on count/nth/reduce; 1 alloc/32 on walk                                                                                                | `phase14_range_indexed.sh` + diff oracle vs `clj` | D-163 / D-168 |
-| O-002 | `higher_order.zig::reduceFn` (`.vector` arm) | `reduce` over a vector via `seqFn` → `vectorToList` (N-element eager cons list), then walk via first/next | Index-walk: `vector.nth(coll, i)` in a tight `i` loop, honouring `reduced`                             | No N-element intermediate cons list; `(reduce f bigvec)` / `(into to bigvec)` went O(n) alloc → O(1). Measured `(reduce + (vec (range 1e6)))` 182s → fast | `phase14_*` reduce e2e + diff oracle vs `clj`     | D-163         |
+| ID    | Site                                                                                               | Naive form (the contract)                                                                                                                      | Optimized form                                                                                                                                                                                                                                                                                          | Why faster                                                                                                                                                                                                                     | Verified by                                                                                                                                                                                                     | Refs          |
+|-------|----------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| O-001 | `runtime/collection/range.zig` + call sites                                                        | `(range a b s)` as a lazy cons-seq (one cons + lazy_seq per element)                                                                           | Compact `.range` value `{start,end,step,count}`: O(1) count/nth, tight-loop reduce, chunked-cons `seq`                                                                                                                                                                                                  | No per-element alloc on count/nth/reduce; 1 alloc/32 on walk                                                                                                                                                                   | `phase14_range_indexed.sh` + diff oracle vs `clj`                                                                                                                                                               | D-163 / D-168 |
+| O-002 | `higher_order.zig::reduceFn` (`.vector` arm)                                                       | `reduce` over a vector via `seqFn` → `vectorToList` (N-element eager cons list), then walk via first/next                                     | Index-walk: `vector.nth(coll, i)` in a tight `i` loop, honouring `reduced`                                                                                                                                                                                                                              | No N-element intermediate cons list; `(reduce f bigvec)` / `(into to bigvec)` went O(n) alloc → O(1). Measured `(reduce + (vec (range 1e6)))` 182s → fast                                                                    | `phase14_*` reduce e2e + diff oracle vs `clj`                                                                                                                                                                   | D-163         |
+| O-003 | `vector.zig::fromSlice` + `transient/transient_vector.zig::toPersistent` + `core.clj` `into`/`vec` | `persistent!` rebuilds the persistent vector via N persistent `conj`s (O(n log n)); `into`/`vec` = `(reduce conj …)`, also N persistent conjs | Bulk `fromSlice` builds the HAMT trie bottom-up from the transient's flat buffer in O(n) (32-element leaves → interiors grouped 32-at-a-time → root; last ≤32 = tail); `into`/`vec` route editable targets (vector/hash-map/hash-set, NOT sorted/nil/list) through `transient`/`conj!`/`persistent!` | `persistent!` O(n log n) → O(n); `into`/`vec` build O(n) over a flat buffer + one O(n) trie conversion, vs N persistent conjs. Measured `(count (vec (range 1e6)))` 121s → 2.4s; `(reduce + (vec (range 1e6)))` 123s → 2.5s | `vector.zig` boundary unit test (n ∈ {0,1,31,32,33,63,64,65,1023,1024,1025,1e5}: `fromSlice` == conj-built, same shift/tail/root) + diff oracle vs `clj` (into/vec over vector/map/set/sorted/nil/list + meta) | D-180         |
 
 ## Identified high-ROI candidates (measured, not yet implemented)
 
 Ranked by ROI (impact × frequency / effort·risk). Measured 2026-05-31 on
 mac-arm-m4pro, startup baseline 0.48s subtracted where noted.
 
-1. **`persistent!` rebuilds the vector via N persistent `conj`s**
-   (`transient_vector.zig::toPersistent` L124-131 loops `vector.conj`
-   per element). The transient's flat buffer fill is O(1) amortised, but
-   `persistent!` is O(n log n) + N node allocs — so transient-backed
-   `into`/`vec` get NO benefit (the win JVM transients give is an O(1)
-   `persistent!` handoff). **Measured: `(count (vec (range 1e6)))` =
-   121s; `(reduce + (vec (range 1e6)))` = 123s — almost entirely
-   `persistent!`** (the `reduce conj!` fill is <1s; cf. `(reduce +
-   (range 1e6))` = 60ms). **Fix:** a bulk `vector.fromSlice(rt, items)`
-   that builds the HAMT trie bottom-up from the flat buffer in O(n)
-   (fill 32-element leaf HamtNodes → interior levels → tail), then
-   `toPersistent` + transient `into`/`vec` use it. **HIGH ROI**
-   (into/vec ubiquitous) but **touches the core Vector type → needs a
-   focused unit with exhaustive boundary tests** (n ∈ {0,1,31,32,33,63,
-   64,65,1023,1024,1025,1e5}: build → nth-all + count + `=` vs a
-   conj-built vector). cw v0 + JVM both maintain the trie incrementally
-   in the transient so `persistent!` is O(1); a bulk `fromSlice` is the
-   cljw-appropriate equivalent (the transient stays a flat buffer; the
-   conversion is the one O(n) pass). Tracked: D-180.
-   *(The transient-routing half — `into`/`vec` calling `transient`/
-   `conj!`/`persistent!` with an `-editable?` guard — was prototyped and
-   reverted 2026-05-31: net-neutral until this `persistent!` fix lands,
-   so the pair must land together.)*
+1. **`persistent!` bulk trie build — DONE (O-003, D-180 discharged).**
+   `transient_vector.toPersistent` now calls `vector.fromSlice`, which
+   builds the HAMT trie bottom-up from the flat buffer in O(n) instead of
+   N persistent conjs (O(n log n)); `into`/`vec` route editable targets
+   through `transient`/`conj!`/`persistent!`. **Measured: `(count (vec
+   (range 1e6)))` 121s → 2.4s; `(reduce + (vec (range 1e6)))` 123s →
+   2.5s.** Verified by the `fromSlice`-vs-conj boundary unit test +
+   diff oracle. The residual ~2.4s is per-element `reduce`/`conj!`
+   interpreter dispatch + the lazy-seq walk of `from` — addressed by
+   D-163 (fusion) / D-140 (startup), not `persistent!`.
+   *(The map/set arm of the routing is correctness-enabling, not a perf
+   win: routing `into {}` / `into #{}` through transients required
+   completing the transient hash map for > 8 entries — ADR-0064, which
+   delegates to the persistent HAMT (O(n log n), no map speedup). The
+   in-place editable-CHAMP transient that would make maps faster is
+   deferred to D-181. The vector arm is the measured O-003 win.)*
 
 2. **cljw startup ≈ 0.48s per invocation** — every `cljw -e` / test /
    probe re-parses + analyses + evaluates ~1000-line `core.clj`. The

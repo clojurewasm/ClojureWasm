@@ -9,14 +9,14 @@
   Tree clean, 0 unpushed. Mac gate green (180).
 - **First on resume MUST be**: **ROADMAP §9.2.S Performance tuning campaign**
   (user-directed pull-forward, ADR-0063, ROI-ordered, PERF-marked →
-  `.dev/optimizations.md` SSOT). Start at **D-180 — bulk `persistent!` /
-  `vector.fromSlice`**: `transient_vector.toPersistent` rebuilds via N
-  persistent conjs (O(n log n)) → `(vec (range 1e6))` = 121s; build the HAMT
-  from the flat buffer in O(n), then re-land the reverted O-003 transient
-  `into`/`vec` pair (they land together). **Core Vector → exhaustive boundary
-  tests** (n∈{0,1,31,32,33,63,64,65,1023,1024,1025,1e5}: build → nth-all +
-  count + `=` vs conj-built). Then D-163 fusion (own ADR), D-140 startup.
-  DONE: O-001 range `72d7bfcc`, O-002 reduce-vector `0898ba2c`.
+  `.dev/optimizations.md` SSOT). Start at **D-163 — map/filter/take
+  reduce-fusion** (cw v0 `fusedReduce`: collapse a lazy chain to a 0-alloc
+  pass over the base; `.range` O-001 + the chunked-cons seq are the
+  substrate). **Own ADR** (separate from ADR-0063). `(count (map inc (range
+  1e5)))` ≈ 42s ≈ 420µs/elem (lazy_seq thunk per element). Then D-140
+  startup bootstrap cache. DONE: O-001 range `72d7bfcc`, O-002 reduce-vector
+  `0898ba2c`, **O-003/D-180** bulk `vector.fromSlice` (persistent! O(n) +
+  into/vec transient routing; `(count (vec (range 1e6)))` 121s → 2.4s).
 - **Then** quality-loop floor (D-169/170 quot/int on tower, D-171 json float,
   D-172 Math *Exact, D-174 rest char-seq; D-173 low) — D-168 DONE.
 - **Operating mode** = clj differential sweep (F-011) + perf campaign (§9.2.S):
@@ -24,7 +24,8 @@
   measure before/after + `// PERF:` marker + optimizations.md row per win.
   Autonomous; loop self-selects per F-002 / ROI.
 - **Forbidden**: re-opening anything landed (git log = SSOT). JIT/superinstruction
-  (perf deferred, D-163). Touching `tree_walk.zig`/`vm.zig` for statics/fields
+  (deferred to §9.2.R / D-133 — NOT the D-163 reduce-fusion that is now NEXT).
+  Touching `tree_walk.zig`/`vm.zig` for statics/fields
   (they resolve to `.constant` Node / shared builtins — backend-agnostic; the
   diff oracle verifies parity).
 

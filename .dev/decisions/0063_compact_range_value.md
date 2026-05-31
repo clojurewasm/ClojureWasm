@@ -271,11 +271,13 @@ ADR-0033 D4 (`:zig-leaf` producer pattern) · survey
   recorded as **ROADMAP §9.2.S Performance tuning campaign** (ACTIVE
   resume target, ahead of the §9.2.R Phase-15/JIT sequence; F-003: no
   renumber). Landed since this ADR: **O-002** (reduce index-walks a
-  vector, `0898ba2c`). NEXT: **D-180** (bulk `persistent!` /
-  `vector.fromSlice` — `toPersistent`'s N-persistent-conj rebuild is the
-  `into`/`vec` bottleneck; pairs with the reverted transient `into`/`vec`
-  / O-003). Then D-163 (map/filter reduce-fusion) + D-140 (startup
-  bootstrap cache). The campaign carries its own focused units because
-  D-180 touches the core Vector type (needs exhaustive boundary tests) —
+  vector, `0898ba2c`) and **O-003 / D-180** (bulk `vector.fromSlice` —
+  `toPersistent` builds the HAMT trie from the transient's flat buffer
+  in O(n) instead of N persistent conjs; `into`/`vec` route editable
+  targets through transients; `(count (vec (range 1e6)))` 121s → 2.4s).
+  NEXT: **D-163** (map/filter/take reduce-fusion — its own ADR) then
+  **D-140** (startup bootstrap cache). The campaign carries its own
+  focused units because D-180 touched the core Vector type (exhaustive
+  boundary tests at n ∈ {0,1,31,32,33,63,64,65,1023,1024,1025,1e5}) —
   a deliberate "腰を据えて" treatment rather than a rushed mega-session
   addition.
