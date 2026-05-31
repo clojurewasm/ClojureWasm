@@ -1333,3 +1333,21 @@
                     (make-hierarchy) (partition 2 deriv-seq))
             h)))))
 
+;; `(doc sym)` — print a Var's documentation (name / arglists / docstring)
+;; in clojure.repl/doc's format (D-187 part 2). The Var-metadata surface
+;; (D-183) makes this the user-facing payoff: `(defn f "d" [x] x)` then
+;; `(doc f)` shows the docstring. cljw has no `clojure.repl` ns yet, so this
+;; lives in core (always referred); the `clojure.repl` home is a later
+;; structural refinement. `print-doc` formats off `(meta var-ref)`; the
+;; qualified name comes from `(str var-ref)` (`#'ns/name`) minus the `#'`.
+(def print-doc
+  (fn* [v]
+    (let [m (meta v)]
+      (println "-------------------------")
+      (println (subs (str v) 2))
+      (when (:arglists m) (println (:arglists m)))
+      (when (:doc m) (println (str "  " (:doc m)))))))
+
+(defmacro doc [sym]
+  (list (quote print-doc) (list (quote var) sym)))
+
