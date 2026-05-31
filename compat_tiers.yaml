@@ -174,7 +174,8 @@ tiers:
         phase: 14
         files:
           surface: runtime/java/lang/Math.zig
-        methods: [abs, sqrt, floor, ceil, round, pow, min, max]
+        methods: [abs, sqrt, floor, ceil, round, pow, min, max, floorDiv, floorMod]
+        static_fields: [PI, E]
         clojure_peer_vars: []
       - fqn: java.lang.System
         cljw_ns: cljw.java.lang.System

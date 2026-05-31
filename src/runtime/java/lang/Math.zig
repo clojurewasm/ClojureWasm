@@ -195,6 +195,33 @@ fn hypot(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anye
     return Value.initFloat(std.math.hypot(a, b));
 }
 
+/// Implements `(Math/floorDiv a b)` — integer division rounding toward
+/// negative infinity (so `floorDiv(-7, 2)` = -4). Divide-by-zero throws.
+/// JVM reference: java.lang.Math#floorDiv. cw v1 tier: A (§A26).
+fn floorDiv(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("Math/floorDiv", args, 2, loc);
+    const a = try error_catalog.expectInteger(args[0], "Math/floorDiv", loc);
+    const b = try error_catalog.expectInteger(args[1], "Math/floorDiv", loc);
+    if (b == 0) return error_catalog.raise(.divide_by_zero, loc, .{});
+    return Value.initInteger(@divFloor(@as(i64, a), @as(i64, b)));
+}
+
+/// Implements `(Math/floorMod a b)` — `a - floorDiv(a, b) * b`; the
+/// result takes the sign of the divisor (so `floorMod(-7, 3)` = 2).
+/// Divide-by-zero throws. JVM reference: java.lang.Math#floorMod.
+/// cw v1 tier: A (§A26).
+fn floorMod(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("Math/floorMod", args, 2, loc);
+    const a = try error_catalog.expectInteger(args[0], "Math/floorMod", loc);
+    const b = try error_catalog.expectInteger(args[1], "Math/floorMod", loc);
+    if (b == 0) return error_catalog.raise(.divide_by_zero, loc, .{});
+    return Value.initInteger(@mod(@as(i64, a), @as(i64, b)));
+}
+
 fn initMath(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent re-run
     const specs = .{
@@ -219,6 +246,7 @@ fn initMath(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerro
         .{ "toRadians", &Unary("toRadians", fToRadians).call },
         .{ "toDegrees", &Unary("toDegrees", fToDegrees).call },
         .{ "atan2", &atan2 }, .{ "hypot", &hypot },
+        .{ "floorDiv", &floorDiv }, .{ "floorMod", &floorMod },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {
@@ -237,12 +265,19 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
     .init = &initMath,
 };
 
+// Static fields (ADR-0061) — comptime-const f64 constants.
+const math_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
+    .{ .name = "PI", .value = .{ .float = std.math.pi } },
+    .{ .name = "E", .value = .{ .float = std.math.e } },
+};
+
 var descriptor: type_descriptor.TypeDescriptor = .{
     .fqcn = "cljw.java.lang.Math",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},
     .method_table = &.{},
+    .static_fields = &math_static_fields,
     .parent = null,
     .meta = .nil_val,
 };

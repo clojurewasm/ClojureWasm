@@ -347,6 +347,7 @@ run_step "e2e_phase14_character_statics"     "bash test/e2e/phase14_character_st
 run_step "e2e_phase14_static_fields"         "bash test/e2e/phase14_static_fields.sh"
 run_step "e2e_phase14_bignum_compare"        "bash test/e2e/phase14_bignum_compare.sh"
 run_step "e2e_phase14_boolean_statics"       "bash test/e2e/phase14_boolean_statics.sh"
+run_step "e2e_phase14_math_extra"            "bash test/e2e/phase14_math_extra.sh"
 run_step "e2e_phase14_instance_member"       "bash test/e2e/phase14_instance_member.sh"
 run_step "e2e_phase14_math"                  "bash test/e2e/phase14_math.sh"
 run_step "e2e_phase14_math_transcendental" "bash test/e2e/phase14_math_transcendental.sh"
