@@ -44,7 +44,7 @@ arcs:
 2. **clj differential parity** (user-directed, F-011): flatten/sort/sort-by/
    distinct/dedupe/reductions/map-indexed/keep-indexed return SEQS not vectors;
    interleave variadic+seq; format `%0` zero-pad; **string seq/first yield
-   CHARACTERS not 1-char strings**.
+   CHARACTERS not 1-char strings**; String `.length`/`.substring`/`.indexOf`.
 
 New invariant **F-011** (commonisation/clean/behavioural-equivalence over
 effort; clj oracle wired). New ADRs **0059** (class/type), **0060** (catch).
@@ -85,3 +85,21 @@ handover → master ledger (above) → CLAUDE.md (§ Project spirit + Autonomous
 Workflow + The only stop) → `.dev/project_facts.md` (F-011 + F-010) →
 `.dev/principle.md` (Bad Smell) → `.dev/reference_clones.md` (clj oracle) →
 `.dev/lessons/structural_defect_hunting.md`.
+
+## Stopped — user requested
+
+User instruction (2026-05-31 night, close paraphrase): stop at a clean point
+and wire up new-session continuity. Working tree clean, all pushed (HEAD
+6db3b141). Resume per the First-commit line — continue the clj differential
+sweep; the next queued unit is Java interop (Integer/Long/Double statics +
+more String instance methods, per the master ledger's Java-interop section).
+
+Problems surfaced this run (none blocking, all recorded): (1) **high host
+load** (5-min avg peaked ~17) slowed gates and triggered channel garbling +
+premature notifications; accrued orphan `run_all.sh` were killed — start the
+morning on a clean machine. (2) **Premature gate-completion notifications**
+fire while a gate is still at its e2e step (memory
+`premature-gate-notification`) — verify `SENTINEL-…-EXIT=0` + `gate_state_hash`
+== `.dev/.gate_pass` before committing, not the notification. (3) **D-164**
+(empty-seq≡nil) is the biggest remaining clj-parity gap (structural; deferred).
+(4) **D-163** perf (large reduce/range timeout; deferred to the perf phase).
