@@ -233,6 +233,11 @@ run_step "feature_keyword"      "bash scripts/check_feature_keyword.sh --gate"
 # analysis silently skips its tests). See zig_tips.md "Test
 # discovery via @import" + scripts/check_test_reach.sh.
 run_step "test_reach"           "bash scripts/check_test_reach.sh --gate"
+# Informational (no --gate): every D-NNN cited in source/docs must resolve
+# to a debt.md row (kills phantom IDs), + prints the quality-loop-floor
+# backlog so the F-010 loop sees it. Tech-debt consolidation 2026-05-31 /
+# .dev/tech_debt_consolidation.md. Gate-promotion tracked in D-175.
+run_step "debt_id_refs"         "bash scripts/check_debt_id_refs.sh"
 
 # zlinter no_deprecated gate (ADR-0003) — Mac-host only. zlinter is
 # fetched via `zig fetch` against GitHub; OrbStack runs are network-
