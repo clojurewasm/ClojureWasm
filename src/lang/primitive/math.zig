@@ -28,6 +28,7 @@ const random_mod = @import("../../runtime/random.zig");
 const ratio_mod = @import("../../runtime/numeric/ratio.zig");
 const big_int_mod = @import("../../runtime/numeric/big_int.zig");
 const big_decimal_mod = @import("../../runtime/numeric/big_decimal.zig");
+const parse_mod = @import("../../runtime/numeric/parse.zig");
 const string_mod = @import("../../runtime/collection/string.zig");
 
 // --- numeric helpers ---
@@ -703,7 +704,10 @@ fn parseLong(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     try error_catalog.checkArity("parse-long", args, 1, loc);
     if (args[0].tag() != .string)
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "parse-long", .actual = @tagName(args[0].tag()) });
-    const i = std.fmt.parseInt(i64, string_mod.asString(args[0]), 10) catch return .nil_val;
+    // Shared neutral leaf (F-011 DRY): same acceptance as Integer/parseInt
+    // and Long/parseLong, so `(parse-long "1_000")` is nil like real clj
+    // (Zig's bare parseInt would accept the `_` separator).
+    const i = parse_mod.parseSigned(i64, string_mod.asString(args[0]), 10) catch return .nil_val;
     var m = try std.math.big.int.Managed.initSet(rt.gc.infra, i);
     defer m.deinit();
     return promote.wrapManaged(rt, &m);

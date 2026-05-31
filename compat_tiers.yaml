@@ -122,7 +122,15 @@ tiers:
       - { fqn: "java.lang.Object",                       native_ns: "cljw.host.java.lang.Object",                       phase: 5 }
       - { fqn: "java.lang.String",                       native_ns: "cljw.host.java.lang.String",                       phase: 5 }
       - { fqn: "java.lang.Long",                         native_ns: "cljw.host.java.lang.Long",                         phase: 5 }
-      - { fqn: "java.lang.Integer",                      native_ns: "cljw.host.java.lang.Integer",                      phase: 5 }
+      - fqn: java.lang.Integer
+        cljw_ns: cljw.java.lang.Integer
+        keyword: integer
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/lang/Integer.zig
+        methods: [parseInt, valueOf, toBinaryString, toHexString, toOctalString]
+        clojure_peer_vars: [parse-long]
       - { fqn: "java.lang.Double",                       native_ns: "cljw.host.java.lang.Double",                       phase: 5 }
       - { fqn: "java.lang.Boolean",                      native_ns: "cljw.host.java.lang.Boolean",                      phase: 5 }
       - fqn: java.lang.Math

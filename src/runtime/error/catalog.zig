@@ -223,6 +223,10 @@ pub const Code = enum {
 
     // --- Eval (type) ---
     type_arg_not_number,
+    /// `(Integer/parseInt s)` / `(Long/parseLong s)` / `(Double/parseDouble s)`
+    /// failed to parse a number from the string. Kind `number_error` →
+    /// NumberFormatException (ADR-0060), so try/catch can catch it.
+    number_format_invalid,
     type_arg_not_integer,
     type_arg_not_boolean,
     type_arg_not_string,
@@ -419,6 +423,10 @@ pub fn entry(comptime code: Code) Entry {
         .multimethod_ambiguous_dispatch => .{
             .kind = .value_error, .phase = .eval,
             .template = "Multiple methods in multimethod '{[name]s}' match dispatch value and neither is preferred",
+        },
+        .number_format_invalid => .{
+            .kind = .number_error, .phase = .eval,
+            .template = "{[fn_name]s}: invalid number '{[text]s}'",
         },
         .bindings_form_incomplete => .{
             .kind = .syntax_error, .phase = .analysis,

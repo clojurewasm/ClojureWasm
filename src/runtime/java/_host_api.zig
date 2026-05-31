@@ -69,6 +69,7 @@ pub const Extension = struct {
 /// alternative to a generated build.zig codegen step.
 const java_surfaces = [_]type{
     @import("io/File.zig"),
+    @import("lang/Integer.zig"),
     @import("lang/Math.zig"),
     @import("lang/System.zig"),
     // Phase 14 row 14.2 (D-097) second wave begins ↓
