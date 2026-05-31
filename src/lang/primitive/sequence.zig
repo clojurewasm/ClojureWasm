@@ -257,10 +257,16 @@ pub fn firstFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             break :blk try firstOfSeq(rt, env, sv, loc);
         },
         else => blk: {
-            // D-089 row 8.6 cycle 1: route unknown receivers through
-            // (extend-type X ISeq (-first [c] ...)) before raising.
+            // D-089: route unknown receivers through ISeq `-first`. D-189:
+            // when the receiver implements Seqable but NOT ISeq (e.g. an
+            // Eduction), coerce via `seq` first — JVM `RT.first` →
+            // `seq().first()`. `dispatchOrNull` returns null when no ISeq
+            // `-first` MethodEntry is registered.
             var cs: dispatch.CallSite = .{};
-            break :blk try dispatch.dispatch(rt, env, &cs, coll, ISEQ_FQCN, "-first", args, loc);
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ISEQ_FQCN, "-first", args, loc)) |v| break :blk v;
+            const sv = try seqFn(rt, env, args, loc);
+            if (sv.isNil()) break :blk .nil_val;
+            break :blk try firstOfSeq(rt, env, sv, loc);
         },
     };
 }
@@ -299,9 +305,13 @@ pub fn restFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             break :blk try restOfSeq(rt, env, sv, loc);
         },
         else => blk: {
-            // D-089 row 8.6 cycle 1: ISeq -rest slow-path.
+            // D-089: ISeq -rest slow-path. D-189: Seqable→seq coercion
+            // fallback for a Seqable-only deftype (e.g. Eduction).
             var cs: dispatch.CallSite = .{};
-            break :blk try dispatch.dispatch(rt, env, &cs, coll, ISEQ_FQCN, "-rest", args, loc);
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ISEQ_FQCN, "-rest", args, loc)) |v| break :blk v;
+            const sv = try seqFn(rt, env, args, loc);
+            if (sv.isNil()) break :blk .nil_val;
+            break :blk try restOfSeq(rt, env, sv, loc);
         },
     };
 }
@@ -350,9 +360,14 @@ pub fn nextFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             break :blk try restOfSeq(rt, env, sv, loc);
         },
         else => blk: {
-            // D-089 row 8.6 cycle 1: ISeq -next slow-path.
+            // D-089: ISeq -next slow-path. D-189: Seqable→seq coercion
+            // fallback (cljw rest≡next: nil for empty) for a Seqable-only
+            // deftype (e.g. Eduction).
             var cs: dispatch.CallSite = .{};
-            break :blk try dispatch.dispatch(rt, env, &cs, coll, ISEQ_FQCN, "-next", args, loc);
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ISEQ_FQCN, "-next", args, loc)) |v| break :blk v;
+            const sv = try seqFn(rt, env, args, loc);
+            if (sv.isNil()) break :blk .nil_val;
+            break :blk try restOfSeq(rt, env, sv, loc);
         },
     };
 }

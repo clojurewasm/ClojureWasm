@@ -88,4 +88,9 @@ assert_eq 'ed_reduce'    "$("$BIN" -e '(reduce + (eduction (map inc) [1 2 3]))')
 assert_eq 'ed_reduce_in' "$("$BIN" -e '(reduce + 100 (eduction (map inc) [1 2 3]))')"         '109'
 assert_eq 'ed_seqview'   "$("$BIN" -e '(into [] (map str (eduction (map inc) [1 2 3])))')"    '["2" "3" "4"]'
 assert_eq 'ed_reiter'    "$("$BIN" -e '(let [c (atom 0) e (eduction (map (fn [x] (swap! c inc) x)) [1 2 3])] (reduce + 0 e) (reduce + 0 e) @c)')" '6'
-echo "OK — phase14_transducers (cycles 1-7; sequence D-160 + eduction ADR-0067) green"
+# D-189: first/rest/next coerce a Seqable-only deftype (Eduction) via seq
+# (JVM RT.first → seq → first), instead of raising "no ISeq -first".
+assert_eq 'ed_first'     "$("$BIN" -e '(first (eduction (map inc) [5 6 7]))')"               '6'
+assert_eq 'ed_rest'      "$("$BIN" -e '(into [] (rest (eduction (map inc) [5 6 7])))')"       '[7 8]'
+assert_eq 'ed_next'      "$("$BIN" -e '(into [] (next (eduction (map inc) [5 6 7])))')"       '[7 8]'
+echo "OK — phase14_transducers (cycles 1-7; sequence D-160 + eduction ADR-0067; D-189) green"
