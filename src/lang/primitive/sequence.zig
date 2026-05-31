@@ -227,7 +227,7 @@ pub fn firstFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             .nil_val,
         .chunked_cons => chunked_cons.first(coll),
         .lazy_seq => try lazy_seq.first(rt, env, coll),
-        .string => firstStringCodepoint(rt, coll),
+        .string => firstStringCodepoint(coll),
         .array_map, .hash_map, .hash_set => blk: {
             const sv = try seqFn(rt, env, args, loc);
             if (sv.isNil()) break :blk .nil_val;
@@ -418,7 +418,8 @@ fn vectorTailAsList(rt: *Runtime, vec: Value, start: u32) !Value {
     return acc;
 }
 
-/// string → eager codepoint list build.
+/// string → eager char list build. Elements are `.char` Values (JVM
+/// parity: `(seq "abc")` → `(\a \b \c)`, chars not 1-char strings).
 fn stringToList(rt: *Runtime, s: []const u8) !Value {
     const cp_count = try charset.codepointCount(s);
     if (cp_count == 0) return .nil_val;
@@ -427,22 +428,18 @@ fn stringToList(rt: *Runtime, s: []const u8) !Value {
     while (i > 0) {
         i -= 1;
         const cp = charset.codepointAt(s, i) catch return error.InvalidUtf8;
-        var cp_buf: [4]u8 = undefined;
-        const cp_len = std.unicode.utf8Encode(@intCast(cp), &cp_buf) catch return error.InvalidUtf8;
-        const ch = try string_collection.alloc(rt, cp_buf[0..cp_len]);
-        acc = try list.consHeap(rt, ch, acc);
+        acc = try list.consHeap(rt, Value.initChar(@intCast(cp)), acc);
     }
     return acc;
 }
 
-/// Helper: first codepoint of a string as a 1-char string Value.
-fn firstStringCodepoint(rt: *Runtime, s: Value) Value {
+/// Helper: first codepoint of a string as a `.char` Value (JVM parity:
+/// `(first "abc")` → `\a`, a Character, not a 1-char String).
+fn firstStringCodepoint(s: Value) Value {
     const bytes = string_collection.asString(s);
     if (bytes.len == 0) return .nil_val;
     const cp = charset.codepointAt(bytes, 0) catch return .nil_val;
-    var cp_buf: [4]u8 = undefined;
-    const cp_len = std.unicode.utf8Encode(@intCast(cp), &cp_buf) catch return .nil_val;
-    return string_collection.alloc(rt, cp_buf[0..cp_len]) catch .nil_val;
+    return Value.initChar(@intCast(cp));
 }
 
 /// Helper: rest of a string as a string Value (drop first codepoint).

@@ -23,5 +23,9 @@ assert_eq 'char_eq'       "$("$BIN" -e '(= (char 65) (char 65))')" 'true'
 # guarded errors (no ReleaseSafe panic on out-of-range float / codepoint)
 out="$("$BIN" -e '(int "x")' 2>&1 || true)";        [[ "$out" == *"expected number"* ]] || fail "int_str: $out";  echo "PASS int_str -> err"
 out="$("$BIN" -e '(char 9999999999)' 2>&1 || true)"; [[ "$out" == *"codepoint"* ]] || fail "char_oob: $out"; echo "PASS char_oob -> err"
+# string seq/first yield CHARACTERS, not 1-char strings (JVM parity, clj-verified)
+assert_eq 'str_first_char' "$("$BIN" -e '(char? (first "abc"))')"          'true'
+assert_eq 'str_seq_int'    "$("$BIN" -e '(into [] (map int "abc"))')"      '[97 98 99]'
+assert_eq 'str_freq_char'  "$("$BIN" -e '(get (frequencies "aab") (char 97))')" '2'
 
-echo "OK — phase14_int_char smoke (10 cases) green"
+echo "OK — phase14_int_char smoke (13 cases) green"
