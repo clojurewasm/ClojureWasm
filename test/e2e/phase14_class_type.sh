@@ -84,5 +84,12 @@ assert_eq 'bigint_int'    "$("$BIN" -e '(bigint 100)' 2>/dev/null | tail -1)" '1
 assert_eq 'bigint_trunc'  "$("$BIN" -e '(bigint 3.9)' 2>/dev/null | tail -1)" '3N'
 assert_eq 'bigint_negtrunc' "$("$BIN" -e '(bigint -3.9)' 2>/dev/null | tail -1)" '-3N'
 assert_eq 'bigint_ratio'  "$("$BIN" -e '(bigint 1/2)' 2>/dev/null | tail -1)" '0N'
+# --- (bigdec x): int/BigInt→scale0, BigDecimal passthrough, float via toString ---
+assert_eq 'bigdec_int'    "$("$BIN" -e '(bigdec 100)' 2>/dev/null | tail -1)" '100M'
+assert_eq 'bigdec_float'  "$("$BIN" -e '(bigdec 1.5)' 2>/dev/null | tail -1)" '1.5M'
+assert_eq 'bigdec_float2' "$("$BIN" -e '(bigdec 0.25)' 2>/dev/null | tail -1)" '0.25M'
+assert_eq 'bigdec_whole'  "$("$BIN" -e '(bigdec 100.0)' 2>/dev/null | tail -1)" '100.0M'
+assert_eq 'bigdec_bigint' "$("$BIN" -e '(bigdec (bigint 5))' 2>/dev/null | tail -1)" '5M'
+assert_eq 'bigdec_pass'   "$("$BIN" -e '(bigdec 1.5M)' 2>/dev/null | tail -1)" '1.5M'
 
-echo "OK — phase14_class_type (17 cases) green"
+echo "OK — phase14_class_type (23 cases) green"

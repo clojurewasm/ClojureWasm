@@ -29,6 +29,7 @@ const ratio_mod = @import("../../runtime/numeric/ratio.zig");
 const big_int_mod = @import("../../runtime/numeric/big_int.zig");
 const big_decimal_mod = @import("../../runtime/numeric/big_decimal.zig");
 const parse_mod = @import("../../runtime/numeric/parse.zig");
+const print_mod = @import("../../runtime/print.zig");
 const string_mod = @import("../../runtime/collection/string.zig");
 
 // --- numeric helpers ---
@@ -692,6 +693,67 @@ pub fn bigintCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     return big_int_mod.allocFromI64(rt, i);
 }
 
+/// `(bigdec x)` — coerce to a BigDecimal (`…M`). A BigDecimal passes through;
+/// an integer / BigInt becomes scale-0; a float reproduces JVM `(bigdec d)` =
+/// `BigDecimal(Double.toString(d))` by rendering via `printFloat` (cw's
+/// Double.toString, D-166) then parsing its plain-decimal form. A scientific or
+/// >Long-unscaled float, a ratio, or a string is deferred (D-191): those need a
+/// terminating-decimal check / a wider unscaled / a decimal-literal parser.
+/// JVM reference: clojure.core/bigdec. cw v1 tier: A (§A26 sweep).
+pub fn bigdecCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("bigdec", args, 1, loc);
+    const v = args[0];
+    switch (v.tag()) {
+        .big_decimal => return v,
+        .integer => return big_decimal_mod.allocFromI64Scale(rt, v.asInteger(), 0),
+        .big_int => return big_decimal_mod.allocFromManagedScale(rt, big_int_mod.asManaged(v), 0),
+        .float => {
+            var fbuf: [400]u8 = undefined;
+            var fw: std.Io.Writer = .fixed(&fbuf);
+            print_mod.printFloat(&fw, v.asFloat()) catch return bigdecDeferred(loc);
+            return (try parseDecimalToBigDec(rt, fw.buffered())) orelse bigdecDeferred(loc);
+        },
+        else => |t| return switch (t) {
+            // ratio / string are valid `bigdec` inputs in clj but deferred here.
+            .ratio, .string => bigdecDeferred(loc),
+            else => error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "bigdec", .actual = @tagName(t) }),
+        },
+    }
+}
+
+fn bigdecDeferred(loc: SourceLocation) anyerror {
+    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "bigdec of a ratio, string, or scientific/large float (D-191)" });
+}
+
+/// Parse a plain-decimal string (`[-]ddd[.ddd]`, no exponent) into a
+/// BigDecimal: the digits (sans `.`) are the unscaled significand, the
+/// fractional-digit count is the scale. Returns null for a scientific form or
+/// a >Long unscaled (deferred to D-191).
+fn parseDecimalToBigDec(rt: *Runtime, s: []const u8) !?Value {
+    if (std.mem.findScalar(u8, s, 'E') != null or std.mem.findScalar(u8, s, 'e') != null) return null;
+    var t = s;
+    const neg = t.len > 0 and t[0] == '-';
+    if (neg) t = t[1..];
+    var digits: [32]u8 = undefined;
+    var dlen: usize = 0;
+    var scale: i32 = 0;
+    var seen_dot = false;
+    for (t) |c| {
+        if (c == '.') {
+            seen_dot = true;
+            continue;
+        }
+        if (c < '0' or c > '9') return null;
+        if (dlen >= digits.len) return null; // wider than i64 — defer
+        digits[dlen] = c;
+        dlen += 1;
+        if (seen_dot) scale += 1;
+    }
+    const mag = std.fmt.parseInt(i64, digits[0..dlen], 10) catch return null;
+    return try big_decimal_mod.allocFromI64Scale(rt, if (neg) -mag else mag, scale);
+}
+
 /// `(char n)` — the character whose Unicode codepoint is the integer `n`
 /// (0..0x10FFFF), or a char passed through.
 pub fn charCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -865,6 +927,7 @@ const ENTRIES = [_]Entry{
     // long ≡ int in cw v1 (a single i64 integer type — no 32-bit int).
     .{ .name = "long", .f = &intCoerce },
     .{ .name = "bigint", .f = &bigintCoerce },
+    .{ .name = "bigdec", .f = &bigdecCoerce },
     .{ .name = "num", .f = &numCoerce },
     .{ .name = "double", .f = &floatCoerce },
     .{ .name = "float", .f = &floatCoerce },
