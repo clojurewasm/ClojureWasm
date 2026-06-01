@@ -681,7 +681,7 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             try w.writeByte('\n');
             continue;
         }
-        if (prec != null and conv != 'f' and conv != 'e' and conv != 'E')
+        if (prec != null and conv != 'f' and conv != 'e' and conv != 'E' and conv != 'g' and conv != 'G')
             return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%." });
 
         // Render the conversion into a temp, then space-pad to `width` into w.
@@ -722,6 +722,11 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             'e', 'E' => {
                 if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
                 try writeScientific(tw, try error_catalog.expectNumber(args[ai], "format", loc), prec orelse 6, conv == 'E');
+                ai += 1;
+            },
+            'g', 'G' => {
+                if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
+                try writeGeneral(tw, try error_catalog.expectNumber(args[ai], "format", loc), prec orelse 6, conv == 'G');
                 ai += 1;
             },
             else => {
@@ -798,6 +803,26 @@ fn writeDecimal(tw: *std.Io.Writer, n: i48, group: bool, plus: bool, space: bool
 fn writeScientific(w: *std.Io.Writer, f: f64, prec: usize, upper: bool) !void {
     var buf: [64]u8 = undefined;
     var fbs: std.Io.Writer = .fixed(&buf);
+    try sciRaw(&fbs, f, prec);
+    const zig = fbs.buffered();
+    const epos = std.mem.findScalar(u8, zig, 'e') orelse std.mem.findScalar(u8, zig, 'E') orelse {
+        try w.writeAll(zig);
+        return;
+    };
+    try w.writeAll(zig[0..epos]);
+    try w.writeByte(if (upper) 'E' else 'e');
+    const exp = parseSciExp(zig[epos + 1 ..]);
+    try w.writeByte(if (exp < 0) '-' else '+');
+    var ebuf: [16]u8 = undefined;
+    const edigits = std.fmt.bufPrint(&ebuf, "{d}", .{@abs(exp)}) catch unreachable;
+    if (edigits.len < 2) try w.writeByte('0');
+    try w.writeAll(edigits);
+}
+
+/// Zig's `{e:.N}` with a runtime precision dispatched over the printf-common
+/// range (precision is comptime in Zig's `print`). Shared by `writeScientific`
+/// (output) and `writeGeneral` (exponent probe).
+fn sciRaw(fbs: *std.Io.Writer, f: f64, prec: usize) !void {
     switch (prec) {
         0 => try fbs.print("{e:.0}", .{f}),
         1 => try fbs.print("{e:.1}", .{f}),
@@ -812,25 +837,43 @@ fn writeScientific(w: *std.Io.Writer, f: f64, prec: usize, upper: bool) !void {
         10 => try fbs.print("{e:.10}", .{f}),
         else => try fbs.print("{e:.6}", .{f}),
     }
-    const zig = fbs.buffered();
-    const epos = std.mem.findScalar(u8, zig, 'e') orelse std.mem.findScalar(u8, zig, 'E') orelse {
-        try w.writeAll(zig);
+}
+
+/// Parse the signed exponent from the tail after `e` in a `{e}` rendering
+/// (`"+04"` / `"-4"` / `"7"` → 4 / -4 / 7).
+fn parseSciExp(tail: []const u8) i32 {
+    var s = tail;
+    var neg = false;
+    if (s.len > 0 and (s[0] == '+' or s[0] == '-')) {
+        neg = s[0] == '-';
+        s = s[1..];
+    }
+    const mag = std.fmt.parseInt(i32, s, 10) catch 0;
+    return if (neg) -mag else mag;
+}
+
+/// Render `f` in `%g` general form: round to `prec` significant figures
+/// (default 6, 0 → 1), then use fixed notation when the rounded exponent is in
+/// `-4 ≤ exp < prec` else scientific — Java's rule. Unlike C, Java keeps
+/// trailing zeros, which `writeFloatPrec`/`writeScientific` already do.
+fn writeGeneral(w: *std.Io.Writer, f: f64, prec: usize, upper: bool) !void {
+    const p: usize = if (prec == 0) 1 else prec;
+    var buf: [64]u8 = undefined;
+    var fbs: std.Io.Writer = .fixed(&buf);
+    try sciRaw(&fbs, f, p - 1);
+    const sci = fbs.buffered();
+    const epos = std.mem.findScalar(u8, sci, 'e') orelse {
+        try w.writeAll(sci);
         return;
     };
-    try w.writeAll(zig[0..epos]);
-    try w.writeByte(if (upper) 'E' else 'e');
-    var exp_str = zig[epos + 1 ..];
-    var exp_neg = false;
-    if (exp_str.len > 0 and (exp_str[0] == '+' or exp_str[0] == '-')) {
-        exp_neg = exp_str[0] == '-';
-        exp_str = exp_str[1..];
+    const exp = parseSciExp(sci[epos + 1 ..]);
+    const pi: i32 = @intCast(p);
+    if (exp >= -4 and exp < pi) {
+        // Fixed: `p` sig figs at exponent `exp` = `p-1-exp` fractional digits.
+        try writeFloatPrec(w, f, @intCast(pi - 1 - exp));
+    } else {
+        try writeScientific(w, f, p - 1, upper);
     }
-    const exp_val = std.fmt.parseInt(u32, exp_str, 10) catch 0;
-    try w.writeByte(if (exp_neg) '-' else '+');
-    var ebuf: [16]u8 = undefined;
-    const edigits = std.fmt.bufPrint(&ebuf, "{d}", .{exp_val}) catch unreachable;
-    if (edigits.len < 2) try w.writeByte('0');
-    try w.writeAll(edigits);
 }
 
 /// `(subs s start)` / `(subs s start end)` — substring slice over

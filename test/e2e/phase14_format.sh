@@ -53,6 +53,15 @@ assert_eq 'sci_neg'  "$("$BIN" -e '(format "%e" -5.5)')"          '"-5.500000e+0
 assert_eq 'sci_small' "$("$BIN" -e '(format "%e" 0.000123)')"     '"1.230000e-04"'
 assert_eq 'sci_zero' "$("$BIN" -e '(format "%e" 0.0)')"           '"0.000000e+00"'
 assert_eq 'sci_one'  "$("$BIN" -e '(format "%e" 1.0)')"           '"1.000000e+00"'
+# general %g / %G (P sig figs; fixed when -4<=exp<P else scientific; keeps zeros)
+assert_eq 'gen_g'    "$("$BIN" -e '(format "%g" 0.0001234)')"     '"0.000123400"'
+assert_eq 'gen_int'  "$("$BIN" -e '(format "%g" 123456.0)')"      '"123456"'
+assert_eq 'gen_sci'  "$("$BIN" -e '(format "%g" 1234567.0)')"     '"1.23457e+06"'
+assert_eq 'gen_zero' "$("$BIN" -e '(format "%g" 0.0)')"           '"0.00000"'
+assert_eq 'gen_prec' "$("$BIN" -e '(format "%.3g" 123456.0)')"    '"1.23e+05"'
+assert_eq 'gen_small' "$("$BIN" -e '(format "%g" 0.00001)')"      '"1.00000e-05"'
+assert_eq 'gen_G'    "$("$BIN" -e '(format "%G" 1234567.0)')"     '"1.23457E+06"'
+assert_eq 'gen_neg'  "$("$BIN" -e '(format "%g" -42.5)')"         '"-42.5000"'
 # errors
 assert_has 'badtype' "$("$BIN" -e '(format "%d" "x")' 2>&1)"     'expected integer'
 assert_has 'fewargs' "$("$BIN" -e '(format "%d")' 2>&1)"         'not enough arguments'
