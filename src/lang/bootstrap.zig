@@ -63,6 +63,9 @@ pub const FILES: []const FileEntry = &.{
     .{ .label = "<clojure.pprint>", .source = @embedFile("clj/clojure/pprint.clj") },
     .{ .label = "<clojure.test>", .source = @embedFile("clj/clojure/test.clj") },
     .{ .label = "<cljw.error>", .source = @embedFile("clj/cljw/error.clj") },
+    // clojure.data calls clojure.set/* fully-qualified, so it loads last
+    // (after FILES[2] clojure.set has interned those vars).
+    .{ .label = "<clojure.data>", .source = @embedFile("clj/clojure/data.clj") },
 };
 
 /// First file's source — exposed so `main.zig`'s renderer can fall
@@ -95,6 +98,7 @@ fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
     if (std.mem.eql(u8, ns_name, "clojure.pprint")) return FILES[9];
     if (std.mem.eql(u8, ns_name, "clojure.test")) return FILES[10];
     if (std.mem.eql(u8, ns_name, "cljw.error")) return FILES[11];
+    if (std.mem.eql(u8, ns_name, "clojure.data")) return FILES[12];
     return null;
 }
 

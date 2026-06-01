@@ -168,6 +168,14 @@ test "diff: ::name auto-resolved keyword (D-195) — analyzer-shared resolution"
     try f.check("(get {::k 7} ::k)", 7); // map-literal key resolves
 }
 
+test "diff: contains? on a vector tests index validity — primitive, backend-shared" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    try f.check("(if (contains? [1 2 3] 2) 1 0)", 1); // valid index
+    try f.check("(if (contains? [1 2 3] 5) 1 0)", 0); // out of range
+    try f.check("(if (contains? [1 2 3] :x) 1 0)", 0); // non-integer → false, not error
+}
+
 test "diff: runtime metadata (meta / with-meta) — backend-shared" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

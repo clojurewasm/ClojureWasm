@@ -161,18 +161,15 @@ pub fn disjFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 // --- contains? ---
 
 /// Implements clojure.core/contains?.
-/// Spec: `(contains? coll key)` — set: membership; map: has-key.
-///
-/// **DIVERGENCE D1 from v5 §5.2 wording**: cw v1 rejects
-/// `(contains? [1 2 3] 1)` with type_arg_invalid. JVM Clojure
-/// `RT.contains` returns true (treats vectors as has-index?), which
-/// is the documented gotcha all Clojure newcomers hit. cw v1 picks
-/// the cleaner "set/map only" semantic; v5 wording originally read
-/// "vector の has-index? は不採用 = JVM 同様" which incorrectly
-/// labels the cw choice as JVM-compatible. Follow-up v5 amendment
-/// to relabel as DIVERGENCE (not "same as JVM").
+/// Spec: `(contains? coll key)` — set: membership; map: has-key;
+/// vector: INDEX validity (`integer? k ∧ 0 ≤ k < count`), the documented
+/// JVM gotcha. Per ADR-0069 cljw matches JVM here (F-011 behavioural
+/// equivalence; the prior DIVERGENCE D1 reject-as-type_error was a
+/// pre-F-011 judgment-divergence, reversed because real code —
+/// `clojure.data/diff` — depends on vector contains? returning false on
+/// an out-of-range index rather than throwing).
 /// JVM reference: clojure.lang.RT.contains
-/// cw v1 tier: A (Phase 6.16.a-2)
+/// cw v1 tier: A (Phase 6.16.a-2; vector arm ADR-0069)
 pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("contains?", args, 2, loc);
     const coll = args[0];
@@ -183,6 +180,14 @@ pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
         .sorted_set => if (try sorted.setContains(rt, env, coll, k, loc)) .true_val else .false_val,
         .sorted_map => if (try sorted.contains(rt, env, coll, k, loc)) .true_val else .false_val,
         .array_map, .hash_map => if (try map.contains(coll, k)) .true_val else .false_val,
+        // A vector is Indexed: `contains?` tests index validity, NOT element
+        // membership. A non-integer key is simply absent (false), not an error
+        // (matches clj `(contains? [1 2 3] :x)` → false).
+        .vector => blk: {
+            if (k.tag() != .integer) break :blk .false_val;
+            const idx: i64 = k.asInteger();
+            break :blk if (idx >= 0 and idx < @as(i64, vector.count(coll))) .true_val else .false_val;
+        },
         else => blk: {
             // D-089 row 8.6 cycle 3: Associative -contains-key? slow-path.
             // DIVERGENCE D2 (survey §6): unifies JVM's
@@ -715,13 +720,20 @@ test "contains? nil → false" {
     try testing.expectEqual(Value.false_val, r);
 }
 
-test "contains? vector raises type_error (DIVERGENCE D1)" {
+test "contains? vector tests index validity (ADR-0069, JVM-match)" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
     var v = vector.empty();
     v = try vector.conj(&fix.rt, v, Value.initInteger(1));
-    try testing.expectError(error.TypeError, containsQFn(&fix.rt, &fix.env, &.{ v, Value.initInteger(0) }, .{ .line = 0, .column = 0 }));
+    v = try vector.conj(&fix.rt, v, Value.initInteger(2));
+    const loc: SourceLocation = .{ .line = 0, .column = 0 };
+    // valid index → true; out-of-range → false; non-integer → false (no throw).
+    try testing.expectEqual(Value.true_val, try containsQFn(&fix.rt, &fix.env, &.{ v, Value.initInteger(1) }, loc));
+    try testing.expectEqual(Value.false_val, try containsQFn(&fix.rt, &fix.env, &.{ v, Value.initInteger(5) }, loc));
+    try testing.expectEqual(Value.false_val, try containsQFn(&fix.rt, &fix.env, &.{ v, Value.initInteger(-1) }, loc));
+    const kw = try keyword_mod.intern(&fix.rt, null, "x");
+    try testing.expectEqual(Value.false_val, try containsQFn(&fix.rt, &fix.env, &.{ v, kw }, loc));
 }
 
 test "get nil → nil; get nil :a default → default" {
