@@ -18,4 +18,10 @@ assert_eq 'c_nil'  "$("$BIN" -e '(counted? nil)')"      'false'
 assert_eq 'r_vec'  "$("$BIN" -e '(reversible? [1])')"     'true'
 assert_eq 'r_list' "$("$BIN" -e '(reversible? (list 1))')" 'false'
 assert_eq 'r_map'  "$("$BIN" -e '(reversible? {})')"     'false'
-echo "OK — phase14_counted_reversible smoke (10 cases) green"
+# §A26 sweep: rational? / seqable? / indexed? / ident family predicates.
+assert_eq 'p_rational' "$("$BIN" -e '[(rational? 1/2) (rational? 1M) (rational? 1.5)]')" '[true true false]'
+assert_eq 'p_seqable'  "$("$BIN" -e '[(seqable? nil) (seqable? "x") (seqable? 5)]')"      '[true true false]'
+assert_eq 'p_indexed'  "$("$BIN" -e "[(indexed? [1]) (indexed? (list 1))]")"              '[true false]'
+assert_eq 'p_qual_kw'  "$("$BIN" -e '[(qualified-keyword? :a/b) (qualified-keyword? :a)]')" '[true false]'
+assert_eq 'p_ident'    "$("$BIN" -e "[(ident? :a) (ident? 'a) (ident? \"a\")]")"          '[true true false]'
+echo "OK — phase14_counted_reversible smoke (15 cases) green"

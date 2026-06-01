@@ -1148,6 +1148,20 @@
 ;; — true iff x supports rseq: vector + sorted map/set (LLRB, ADR-0057).
 (def counted? (fn* [x] (or (vector? x) (map? x) (set? x) (list? x))))
 (def reversible? (fn* [x] (or (vector? x) (sorted? x))))
+;; Numeric / collection / ident predicates (clj-source-faithful). `rational?`
+;; = exact non-float; `seqable?` = nil / coll / string / seq; `indexed?` =
+;; O(1) nth (vector in cw v1); the ident family keys on keyword/symbol +
+;; `namespace` for the qualified/simple split.
+(def rational? (fn* [x] (or (integer? x) (ratio? x) (decimal? x))))
+(def seqable? (fn* [x] (or (nil? x) (seq? x) (coll? x) (string? x))))
+(def indexed? (fn* [x] (vector? x)))
+(def ident? (fn* [x] (or (keyword? x) (symbol? x))))
+(def simple-ident? (fn* [x] (and (ident? x) (not (namespace x)))))
+(def qualified-ident? (fn* [x] (boolean (and (ident? x) (namespace x) true))))
+(def simple-symbol? (fn* [x] (and (symbol? x) (not (namespace x)))))
+(def qualified-symbol? (fn* [x] (boolean (and (symbol? x) (namespace x) true))))
+(def simple-keyword? (fn* [x] (and (keyword? x) (not (namespace x)))))
+(def qualified-keyword? (fn* [x] (boolean (and (keyword? x) (namespace x) true))))
 ;; `(take-nth n)` / `(take-nth n coll)` — every nth item. The 1-arg form is a
 ;; stateful transducer (emit when the running index is a multiple of n); the
 ;; 2-arg form is lazy.
