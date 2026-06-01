@@ -777,3 +777,51 @@ generalises) · F-009 (feature neutrality — shared impl home) ·
 - 2026-05-31 added: commonization + clean-code + behavioural-equivalence
   prioritised over effort; clj differential oracle wired as a first-class
   tool; optimization prefers shared mechanism with cw v0 as seed.
+
+---
+
+## F-012 — Production default backend is the VM; tree_walk is the differential oracle
+
+**Status**: `confirmed` — direction of travel is law. Amendable only by user
+direction + Revision history entry.
+
+**Declared**: 2026-06-02 (user chat, during the backend-default drift audit).
+
+**Verbatim**:
+1. 「デフォルトtreewalkがまずくないかなあ？treewalkはいずれにしても実装する線上に
+   のってて、しかも本番配布時にはデフォルトvm（高速）であるべきだと思うんですが」
+2. 「わたしの記憶だと、デフォルトをvmに設定しろと伝えた記憶があるが、本当はどうだ？」
+3. 「どこかで方針変えたのかな」
+
+**What this changes for the loop**:
+
+1. **The production / distribution default backend is the VM** (the fast path).
+   `tree_walk` is retained as the **differential oracle + reference
+   implementation** (evaluator.compare, diff_test, the corpus gate), never as
+   the shipped default. This matches ROADMAP §349 ("default is VM after Phase
+   4") — the original plan; tree_walk-default was only the "until 4.12 confirms
+   parity" interim (4.8), and 4.12 confirmed parity.
+2. **The 2026-06-02 audit found the flip was never executed** (drift): build.zig
+   kept `orelse .tree_walk` and ADR-0050/0056/0036 narrated tree_walk-default as
+   intended. A flip experiment proved the VM is not yet production-ready (5 e2e
+   failed on VM-default) — i.e. tree_walk-default was **masking real VM gaps**.
+3. **The flip is now an explicit, gated target** (ADR-0070 + D-196): the default
+   stays tree_walk ONLY until the enumerated VM-parity blockers are closed and
+   the full gate is green under `-Dbackend=vm`; then build.zig flips to `vm`.
+   Any future default change is a user-owned F-NNN amendment, never a quiet edit.
+4. **VM parity is gated, not assumed**: a VM-parity probe runs e2e + corpus on
+   the VM build; on D-196 close it becomes a hard per-commit gate so VM
+   divergences can never be silently masked again.
+
+**Cross-references**: ROADMAP §349 + build.zig 4.8 comment (original VM-default
+intent); ADR-0070 (intent + blocker list + flip gating); D-196 (the parity
+blocker cluster); ADR-0005 (dual-backend oracle); ADR-0050/0056/0036 (the drift
+narration this corrects); F-002 (finished-form: production ships the fast path);
+F-010 (VM is the JIT/perf substrate); F-011 (tree_walk oracle verifies
+behavioural equivalence).
+
+### Revision history
+
+- 2026-06-02 added: user re-asserted the §349 VM-default intent during the
+  drift audit; recorded VM-as-production-default as law, the flip gated on
+  D-196 parity blockers (the flip experiment surfaced 5 masked VM gaps).
