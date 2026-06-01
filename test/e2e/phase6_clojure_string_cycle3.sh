@@ -77,10 +77,16 @@ assert_eq 'escape_fn_nil_passthrough' "$got" '"abc"'
 got="$("$BIN" -e '(clojure.string/escape "abc" (fn* [c] "X"))')"
 assert_eq 'escape_fn_constant' "$got" '"XXX"'
 
-# Map cmap path (`array_map` / `hash_map`) is implemented but
-# untestable in cycle 3 until both `{...}` literal-as-Value and the
-# `\<char>` reader literal land (analyzer + tokenizer gaps tracked
-# at D-059). Tests added in the cycle that closes those gaps.
+# Map cmap path — now testable since `{...}` literal-as-Value AND the
+# `\<char>` reader literal both land (D-059 discharged §A26). Char-literal
+# map keys need stdin (the `\` is shell-hostile through -e); first line is prn.
+got="$("$BIN" - <<'CLJ' 2>/dev/null
+(prn (clojure.string/escape "a&b<c" {\& "&amp;" \< "&lt;"}))
+CLJ
+)"
+assert_eq 'escape_html_entities' "$(printf '%s' "$got" | head -1)" '"a&amp;b&lt;c"'
+got="$("$BIN" -e '(clojure.string/escape "xy" {})')"
+assert_eq 'escape_empty_map_passthrough' "$got" '"xy"'
 
 # --- reverse ---
 

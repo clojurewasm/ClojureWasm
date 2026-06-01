@@ -34,6 +34,9 @@ pub const TokenKind = enum(u8) {
     /// digit pair; the reader splits on `/` before parsing each side.
     ratio_literal,
     string,
+    /// `\a` / `\newline` / `\uXXXX` / `\oNNN` — character literal. Token text
+    /// includes the leading `\`; the reader decodes the body to a codepoint.
+    char_lit,
     symbol,
     keyword,
 
@@ -113,6 +116,7 @@ pub const Tokenizer = struct {
             '@' => return self.singleChar(.deref, start, start_line, start_col),
             '^' => return self.singleChar(.meta_caret, start, start_line, start_col),
             '"' => return self.readString(start, start_line, start_col),
+            '\\' => return self.readCharLiteral(start, start_line, start_col),
             ':' => return self.readKeyword(start, start_line, start_col),
             '#' => return self.readDispatch(start, start_line, start_col),
             else => {
@@ -154,6 +158,21 @@ pub const Tokenizer = struct {
             self.advance();
         }
         return self.makeToken(.invalid, start, start_line, start_col); // unterminated
+    }
+
+    /// `\<body>` character literal. The char directly after `\` is ALWAYS
+    /// part of the literal — even a terminator like `(` (`\(` is the char
+    /// `(`). Subsequent non-terminator chars are consumed so multi-char
+    /// forms (`\newline`, `\uXXXX`, `\oNNN`) are captured as one token; the
+    /// reader decodes the body. A bare trailing `\` is `.invalid`.
+    fn readCharLiteral(self: *Tokenizer, start: u32, start_line: u32, start_col: u16) Token {
+        self.advance(); // the leading `\`
+        if (self.pos >= self.source.len)
+            return self.makeToken(.invalid, start, start_line, start_col);
+        self.advance(); // the unconditional first char
+        while (self.pos < self.source.len and !isTerminator(self.source[self.pos]))
+            self.advance();
+        return self.makeToken(.char_lit, start, start_line, start_col);
     }
 
     fn readRegexLiteral(self: *Tokenizer, start: u32, start_line: u32, start_col: u16) Token {

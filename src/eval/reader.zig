@@ -87,6 +87,7 @@ pub const Reader = struct {
             .big_decimal_literal => self.readBigDecimalLiteral(tok),
             .ratio_literal => self.readRatioLiteral(tok),
             .string => self.readString(tok),
+            .char_lit => self.readCharLiteral(tok),
             .regex_literal => self.readRegexLiteral(tok),
             .keyword => self.readKeyword(tok),
             .lparen => self.readList(tok),
@@ -164,6 +165,44 @@ pub const Reader = struct {
             return err;
         };
         return Form{ .data = .{ .string = unescaped }, .location = loc };
+    }
+
+    /// Decode a `\<body>` character-literal token into a `.char` Form. The
+    /// body (token text minus the leading `\`) is one of: a single codepoint
+    /// (`\a`, `\(`, `\λ`); a named char (`\newline`/`\space`/`\tab`/`\return`/
+    /// `\backspace`/`\formfeed`); `\uXXXX` (4 hex); or `\oNNN` (octal).
+    fn readCharLiteral(self: *Reader, tok: Token) ReadError!Form {
+        const txt = tok.text(self.source);
+        const loc = self.locOf(tok);
+        if (txt.len < 2)
+            return error_catalog.raise(.token_invalid, loc, .{ .token = txt });
+        const body = txt[1..];
+        const cp: u21 = blk: {
+            // A single UTF-8 codepoint that spans the whole body is a
+            // single-char literal (covers `\a`, `\(`, `\,`, `\λ`).
+            const first_len = std.unicode.utf8ByteSequenceLength(body[0]) catch 1;
+            if (first_len == body.len)
+                break :blk switch (body.len) {
+                    2 => std.unicode.utf8Decode2(body[0..2].*) catch body[0],
+                    3 => std.unicode.utf8Decode3(body[0..3].*) catch body[0],
+                    4 => std.unicode.utf8Decode4(body[0..4].*) catch body[0],
+                    else => body[0], // length 1 (ASCII)
+                };
+            if (std.mem.eql(u8, body, "newline")) break :blk '\n';
+            if (std.mem.eql(u8, body, "space")) break :blk ' ';
+            if (std.mem.eql(u8, body, "tab")) break :blk '\t';
+            if (std.mem.eql(u8, body, "return")) break :blk '\r';
+            if (std.mem.eql(u8, body, "backspace")) break :blk 8;
+            if (std.mem.eql(u8, body, "formfeed")) break :blk 12;
+            if (body[0] == 'u' and body.len == 5)
+                break :blk std.fmt.parseInt(u21, body[1..], 16) catch
+                    return error_catalog.raise(.token_invalid, loc, .{ .token = txt });
+            if (body[0] == 'o' and body.len >= 2 and body.len <= 4)
+                break :blk std.fmt.parseInt(u21, body[1..], 8) catch
+                    return error_catalog.raise(.token_invalid, loc, .{ .token = txt });
+            return error_catalog.raise(.token_invalid, loc, .{ .token = txt });
+        };
+        return Form{ .data = .{ .char = cp }, .location = loc };
     }
 
     fn readKeyword(self: *Reader, tok: Token) ReadError!Form {

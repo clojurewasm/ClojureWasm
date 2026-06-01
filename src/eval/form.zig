@@ -23,6 +23,10 @@ pub const FormData = union(enum) {
     boolean: bool,
     integer: i64,
     float: f64,
+    /// `\a` / `\newline` / `\uXXXX` / `\oNNN` — a character literal decoded
+    /// to its Unicode codepoint by the reader; the analyzer lifts it to a
+    /// `.char` Value via `Value.initChar`.
+    char: u21,
     /// `42N`. The string slice is the digits without the trailing `N`,
     /// i.e. exactly what `std.math.big.int.Managed.setString` accepts.
     big_int_literal: []const u8,
@@ -73,6 +77,7 @@ pub const Form = struct {
             .boolean => "boolean",
             .integer => "integer",
             .float => "float",
+            .char => "char",
             .big_int_literal => "big_int_literal",
             .big_decimal_literal => "big_decimal_literal",
             .ratio_literal => "ratio_literal",
@@ -103,6 +108,25 @@ pub const Form = struct {
             .boolean => |b| try w.writeAll(if (b) "true" else "false"),
             .integer => |i| try w.print("{d}", .{i}),
             .float => |f| try print.printFloat(w, f),
+            .char => |cp| {
+                try w.writeByte('\\');
+                switch (cp) {
+                    '\n' => try w.writeAll("newline"),
+                    ' ' => try w.writeAll("space"),
+                    '\t' => try w.writeAll("tab"),
+                    '\r' => try w.writeAll("return"),
+                    8 => try w.writeAll("backspace"),
+                    12 => try w.writeAll("formfeed"),
+                    else => {
+                        var buf: [4]u8 = undefined;
+                        const n = std.unicode.utf8Encode(cp, &buf) catch {
+                            try w.print("u{x:0>4}", .{cp});
+                            return;
+                        };
+                        try w.writeAll(buf[0..n]);
+                    },
+                }
+            },
             .big_int_literal => |s| try w.print("{s}N", .{s}),
             .big_decimal_literal => |s| try w.print("{s}M", .{s}),
             .ratio_literal => |s| try w.print("{s}", .{s}),

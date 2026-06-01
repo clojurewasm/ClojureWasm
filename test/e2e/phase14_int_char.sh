@@ -36,4 +36,22 @@ assert_eq 'str_rest_int'    "$("$BIN" -e '(into [] (map int (rest "abc")))')" '[
 assert_eq 'str_next_notstr' "$("$BIN" -e '(string? (next "abc"))')"        'false'
 assert_eq 'str_next_int'    "$("$BIN" -e '(into [] (map int (next "abc")))')" '[98 99]'
 
-echo "OK — phase14_int_char smoke (19 cases) green"
+# --- char-literal reader (D-059): single / terminator / named / octal / UTF-8.
+#     Read via stdin (the `\` is shell-hostile through -e); first line is the prn. ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn [(int \a) (int \A) (int \() (int \,)])
+EOF
+)
+assert_eq 'charlit_single'  "$(printf '%s' "$got" | head -1)" '[97 65 40 44]'
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn [(int \newline) (int \space) (int \tab) (int \backspace) (int \return) (int \formfeed)])
+EOF
+)
+assert_eq 'charlit_named'   "$(printf '%s' "$got" | head -1)" '[10 32 9 8 13 12]'
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn [(int \o101) (int \é) (= \a (char 97)) (str \a \b \c)])
+EOF
+)
+assert_eq 'charlit_octal_utf8' "$(printf '%s' "$got" | head -1)" '[65 233 true "abc"]'
+
+echo "OK — phase14_int_char smoke (22 cases) green"
