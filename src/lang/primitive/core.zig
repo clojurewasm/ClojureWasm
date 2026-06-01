@@ -632,12 +632,24 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         i += 1; // past '%'
         if (i >= fmt.len) return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%" });
 
-        // Optional `-` (left-justify) and `0` (zero-pad) flags, then min
-        // field width. `-` overrides `0` (Java semantics).
+        // Flags, then min field width. `-` overrides `0` (Java semantics).
+        // `+`/` `/`(` are sign flags and `,` is grouping — applied to `%d`.
         var left = false;
         var zero_pad = false;
-        while (i < fmt.len and (fmt[i] == '-' or fmt[i] == '0')) : (i += 1) {
-            if (fmt[i] == '-') left = true else zero_pad = true;
+        var plus = false; // '+': always show a sign
+        var space = false; // ' ': leading space for non-negative
+        var paren = false; // '(': render negatives in parentheses
+        var group = false; // ',': locale grouping separators (every 3 digits)
+        flags: while (i < fmt.len) : (i += 1) {
+            switch (fmt[i]) {
+                '-' => left = true,
+                '0' => zero_pad = true,
+                '+' => plus = true,
+                ' ' => space = true,
+                '(' => paren = true,
+                ',' => group = true,
+                else => break :flags,
+            }
         }
         var width: usize = 0;
         while (i < fmt.len and fmt[i] >= '0' and fmt[i] <= '9') : (i += 1)
@@ -684,12 +696,22 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             },
             'd' => {
                 if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
-                try tw.print("{d}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
+                try writeDecimal(tw, try error_catalog.expectInteger(args[ai], "format", loc), group, plus, space, paren);
                 ai += 1;
             },
             'x' => {
                 if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
                 try tw.print("{x}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
+                ai += 1;
+            },
+            'X' => {
+                if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
+                try tw.print("{X}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
+                ai += 1;
+            },
+            'o' => {
+                if (ai >= args.len) return error_catalog.raise(.format_args_insufficient, loc, .{});
+                try tw.print("{o}", .{try error_catalog.expectInteger(args[ai], "format", loc)});
                 ai += 1;
             },
             'f' => {
@@ -709,10 +731,12 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             try w.writeAll(rendered);
             for (0..width - rendered.len) |_| try w.writeByte(' ');
         } else if (zero_pad) {
-            // Zero-pad: a leading sign stays leftmost, zeros fill the gap.
+            // Zero-pad: a leading sign (-, +, space) stays leftmost, zeros
+            // fill the gap after it (Java: `%+05d` 42 → "+0042").
             const pad = width - rendered.len;
-            if (rendered.len > 0 and rendered[0] == '-') {
-                try w.writeByte('-');
+            const sign = rendered.len > 0 and (rendered[0] == '-' or rendered[0] == '+' or rendered[0] == ' ');
+            if (sign) {
+                try w.writeByte(rendered[0]);
                 for (0..pad) |_| try w.writeByte('0');
                 try w.writeAll(rendered[1..]);
             } else {
@@ -725,6 +749,40 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         }
     }
     return try string_mod.alloc(rt, w.buffered());
+}
+
+/// Render an i48 in `%d` form with the sign + grouping flags. `group` inserts
+/// `,` every 3 digits; `paren` wraps negatives as `(123)`; `plus`/`space`
+/// prefix a non-negative with `+`/` `. The width / zero-pad step in `formatFn`
+/// then pads the result (its sign-leftmost rule keeps `-`/`+`/` ` outermost).
+fn writeDecimal(tw: *std.Io.Writer, n: i48, group: bool, plus: bool, space: bool, paren: bool) !void {
+    const neg = n < 0;
+    const mag: u64 = @intCast(if (neg) -@as(i64, n) else @as(i64, n));
+    var dbuf: [24]u8 = undefined;
+    const digits = std.fmt.bufPrint(&dbuf, "{d}", .{mag}) catch unreachable;
+
+    if (neg) {
+        try tw.writeByte(if (paren) '(' else '-');
+    } else if (plus) {
+        try tw.writeByte('+');
+    } else if (space) {
+        try tw.writeByte(' ');
+    }
+
+    if (group) {
+        // Emit the leading 1-3 digit run, then `,`-separated triplets.
+        const head = if (digits.len % 3 == 0) 3 else digits.len % 3;
+        try tw.writeAll(digits[0..head]);
+        var idx: usize = head;
+        while (idx < digits.len) : (idx += 3) {
+            try tw.writeByte(',');
+            try tw.writeAll(digits[idx .. idx + 3]);
+        }
+    } else {
+        try tw.writeAll(digits);
+    }
+
+    if (neg and paren) try tw.writeByte(')');
 }
 
 /// `(subs s start)` / `(subs s start end)` — substring slice over

@@ -35,6 +35,16 @@ assert_eq 'w_over'  "$("$BIN" -e '(format "[%3d]" 12345)')"      '"[12345]"'
 # newline directive (count + split prove a real \n)
 assert_eq 'newline' "$("$BIN" -e '(count (format "x%ny"))')"     '3'
 assert_eq 'nl_mid'  "$("$BIN" -e '(vec (clojure.string/split (format "x%ny") #"\n"))')" '["x" "y"]'
+# integer conversions X / o + sign flags (+, space, parens) + grouping (clj sweep)
+assert_eq 'Xhex'    "$("$BIN" -e '(format "%X" 255)')"           '"FF"'
+assert_eq 'octal'   "$("$BIN" -e '(format "%o" 8)')"             '"10"'
+assert_eq 'signplus' "$("$BIN" -e '(format "%+d" 42)')"          '"+42"'
+assert_eq 'signspace' "$("$BIN" -e '(format "% d" 42)')"         '" 42"'
+assert_eq 'parens'  "$("$BIN" -e '(format "%(d" -5)')"           '"(5)"'
+assert_eq 'grouping' "$("$BIN" -e '(format "%,d" 1000000)')"     '"1,000,000"'
+assert_eq 'groupneg' "$("$BIN" -e '(format "%,d" -1234567)')"    '"-1,234,567"'
+assert_eq 'plus_zero' "$("$BIN" -e '(format "%+05d" 42)')"       '"+0042"'
+assert_eq 'group_zero' "$("$BIN" -e '(format "%,012d" 1000)')"   '"00000001,000"'
 # errors
 assert_has 'badtype' "$("$BIN" -e '(format "%d" "x")' 2>&1)"     'expected integer'
 assert_has 'fewargs' "$("$BIN" -e '(format "%d")' 2>&1)"         'not enough arguments'
