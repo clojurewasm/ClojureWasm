@@ -85,5 +85,9 @@ check '(Integer/signum -5)'                   '-1'          integer_signum_neg
 check '(Integer/signum 0)'                    '0'           integer_signum_zero
 check '(Integer/rotateLeft 1 4)'              '16'          integer_rotateLeft
 check '(Integer/rotateRight 16 4)'            '1'           integer_rotateRight
+# --- toString (signed; optional radix 2-36, out-of-range → 10) ---
+check '(Integer/toString 255)'                '"255"'       integer_toString_dec
+check '(Integer/toString 255 16)'             '"ff"'        integer_toString_radix16
+check '(Integer/toString -255 16)'            '"-ff"'       integer_toString_neg
 
 echo "ALL PASS phase14_integer_statics"

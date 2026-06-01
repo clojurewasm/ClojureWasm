@@ -99,6 +99,28 @@ fn RadixString(comptime verb: []const u8, comptime name: []const u8) type {
     };
 }
 
+/// `(Integer/toString n)` / `(Integer/toString n radix)` — the SIGNED int
+/// value in `radix` (default 10; a radix outside 2..36 silently falls back to
+/// 10, per Java). Distinct from `toHexString` etc. (unsigned bit pattern):
+/// `(Integer/toString -255 16)` is `"-ff"`. Truncated to 32-bit int width,
+/// matching the `RadixString` arm. JVM reference: java.lang.Integer#toString.
+/// cw v1 tier: A (§A26 sweep).
+fn toString(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len < 1 or args.len > 2)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "Integer/toString", .got = args.len, .min = 1, .max = 2 });
+    const n = try error_catalog.expectInteger(args[0], "Integer/toString", loc);
+    var radix: u8 = 10;
+    if (args.len == 2) {
+        const r = try error_catalog.expectInteger(args[1], "Integer/toString", loc);
+        if (r >= 2 and r <= 36) radix = @intCast(r);
+    }
+    const v: i32 = @truncate(@as(i64, n));
+    var buf: [40]u8 = undefined;
+    const len = std.fmt.printInt(&buf, v, radix, .lower, .{});
+    return string_mod.alloc(rt, buf[0..len]);
+}
+
 /// The five bit-twiddling statics, identified by the Zig builtin each one
 /// reduces to at 32-bit (`int`) width.
 const BitMethod = enum { bit_count, leading_zeros, trailing_zeros, highest_one_bit, reverse, lowest_one_bit, reverse_bytes, signum };
@@ -168,6 +190,7 @@ fn initInteger(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anye
     const specs = .{
         .{ "parseInt", &parseInt },
         .{ "valueOf", &valueOf },
+        .{ "toString", &toString },
         .{ "toBinaryString", &RadixString("b", "toBinaryString").call },
         .{ "toHexString", &RadixString("x", "toHexString").call },
         .{ "toOctalString", &RadixString("o", "toOctalString").call },

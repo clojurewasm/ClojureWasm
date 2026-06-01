@@ -73,4 +73,10 @@ check '(Long/rotateLeft 1 4)'    '16' long_rotateLeft
 check '(Long/rotateRight 16 4)'  '1'  long_rotateRight
 check '(Long/reverseBytes 1)'    '72057594037927936N' long_reverseBytes_bigint
 
+# --- toString (signed; optional radix 2-36, out-of-range → 10) ---
+check '(Long/toString 255)'      '"255"'      long_toString_dec
+check '(Long/toString 255 16)'   '"ff"'       long_toString_radix16
+check '(Long/toString -255 16)'  '"-ff"'      long_toString_neg
+check '(Long/toString 255 2)'    '"11111111"' long_toString_bin
+
 echo "ALL PASS phase14_long_statics"

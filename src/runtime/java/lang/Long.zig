@@ -98,6 +98,27 @@ fn RadixString(comptime verb: []const u8, comptime name: []const u8) type {
     };
 }
 
+/// `(Long/toString n)` / `(Long/toString n radix)` — the SIGNED value in
+/// `radix` (default 10; a radix outside 2..36 silently falls back to 10, per
+/// Java, NOT an error). Distinct from `toHexString`/`toBinaryString` etc.,
+/// which render the UNSIGNED two's-complement bit pattern: `(Long/toString -255
+/// 16)` is `"-ff"`, whereas `(Long/toHexString -255)` is the full 64-bit word.
+/// JVM reference: java.lang.Long#toString. cw v1 tier: A (§A26 sweep).
+fn toString(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len < 1 or args.len > 2)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "Long/toString", .got = args.len, .min = 1, .max = 2 });
+    const n = try error_catalog.expectInteger(args[0], "Long/toString", loc);
+    var radix: u8 = 10;
+    if (args.len == 2) {
+        const r = try error_catalog.expectInteger(args[1], "Long/toString", loc);
+        if (r >= 2 and r <= 36) radix = @intCast(r);
+    }
+    var buf: [70]u8 = undefined;
+    const len = std.fmt.printInt(&buf, @as(i64, n), radix, .lower, .{});
+    return string_mod.alloc(rt, buf[0..len]);
+}
+
 /// The five bit-twiddling statics, identified by the Zig builtin each one
 /// reduces to at 64-bit (`long`) width.
 const BitMethod = enum { bit_count, leading_zeros, trailing_zeros, highest_one_bit, reverse, lowest_one_bit, reverse_bytes, signum };
@@ -163,6 +184,7 @@ fn initLong(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerro
     const specs = .{
         .{ "parseLong", &parseLong },
         .{ "valueOf", &valueOf },
+        .{ "toString", &toString },
         .{ "toBinaryString", &RadixString("b", "toBinaryString").call },
         .{ "toHexString", &RadixString("x", "toHexString").call },
         .{ "toOctalString", &RadixString("o", "toOctalString").call },
