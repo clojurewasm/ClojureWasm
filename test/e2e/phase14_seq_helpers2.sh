@@ -25,6 +25,10 @@ assert_eq 'empty_no'     "$("$BIN" -e '(empty? [1])')"                        'f
 assert_eq 'empty_nil'    "$("$BIN" -e '(empty? nil)')"                        'true'
 assert_eq 'interpose'    "$("$BIN" -e '(into [] (interpose :s [1 2 3]))')"    '[1 :s 2 :s 3]'
 assert_eq 'interpose_one' "$("$BIN" -e '(into [] (interpose :s [1]))')"       '[1]'
+# 1-arg transducer forms (§A26 sweep): interpose / drop-while as xforms.
+assert_eq 'interpose_xf'  "$("$BIN" -e '(into [] (interpose 0) [1 2 3])')"     '[1 0 2 0 3]'
+assert_eq 'drop_while_xf' "$("$BIN" -e '(into [] (drop-while neg?) [-1 -2 3 4])')" '[3 4]'
+assert_eq 'drop_while_comp' "$("$BIN" -e '(into [] (comp (drop-while neg?) (take 1)) [-1 3 4 5])')" '[3]'
 assert_eq 'fnil_nil'     "$("$BIN" -e '((fnil inc 0) nil)')"                  '1'
 assert_eq 'fnil_val'     "$("$BIN" -e '((fnil inc 0) 5)')"                    '6'
 # fnil 2/3-default arities + variadic-pass-through (was 1-default, 1-arg only)

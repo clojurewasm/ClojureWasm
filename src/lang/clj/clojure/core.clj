@@ -807,11 +807,23 @@
        ([f x y] (fn* [a b & args] (apply f (if (nil? a) x a) (if (nil? b) y b) args)))
        ([f x y z] (fn* [a b c & args] (apply f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c) args)))))
 
-;; `(interpose sep coll)` — sep between consecutive items (eager).
-;; Prepend sep before each, then drop the leading sep with `rest`.
+;; `(interpose sep)` / `(interpose sep coll)` — sep between consecutive items.
+;; The 1-arg form is a stateful transducer (emit sep before every item except
+;; the first); the 2-arg form is eager (prepend sep before each, drop the
+;; leading sep with `rest`).
 (def interpose
-  (fn* [sep coll]
-    (rest (reduce (fn* [acc x] (conj (conj acc sep) x)) [] coll))))
+  (fn* ([sep]
+        (fn* [rf]
+          (let [started (volatile! false)]
+            (fn* ([] (rf))
+                 ([result] (rf result))
+                 ([result input]
+                  (if @started
+                    (let [sepr (rf result sep)]
+                      (if (reduced? sepr) sepr (rf sepr input)))
+                    (do (vreset! started true) (rf result input))))))))
+       ([sep coll]
+        (rest (reduce (fn* [acc x] (conj (conj acc sep) x)) [] coll)))))
 
 ;; `(zipmap ks vs)` — map pairing keys with values, stopping at the
 ;; shorter. Recursive parallel walk.
@@ -1080,14 +1092,26 @@
             nil)
           nil)))))
 
-;; `(drop-while pred coll)` — drop the leading pred-truthy run, lazy tail.
+;; `(drop-while pred)` / `(drop-while pred coll)` — drop the leading pred-truthy
+;; run. The 1-arg form is a stateful transducer (drop until the first falsey,
+;; then pass everything); the 2-arg form is the lazy tail.
 (def drop-while
-  (fn* [pred coll]
-    (lazy-seq
-      (let [s (seq coll)]
-        (if (and s (pred (first s)))
-          (drop-while pred (rest s))
-          s)))))
+  (fn* ([pred]
+        (fn* [rf]
+          (let [dv (volatile! true)]
+            (fn* ([] (rf))
+                 ([result] (rf result))
+                 ([result input]
+                  (let [drop? @dv]
+                    (if (and drop? (pred input))
+                      result
+                      (do (vreset! dv false) (rf result input)))))))))
+       ([pred coll]
+        (lazy-seq
+          (let [s (seq coll)]
+            (if (and s (pred (first s)))
+              (drop-while pred (rest s))
+              s))))))
 ;; `(split-with pred coll)` → `[(take-while …) (drop-while …)]`.
 (def split-with
   (fn* [pred coll] [(take-while pred coll) (drop-while pred coll)]))
