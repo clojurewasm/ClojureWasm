@@ -30,6 +30,13 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   {ident,keyword,symbol}?.
 - **JSON (data.json)** — read/write number parity incl. BigInt both directions
   (D-182). `:bigdec` opt + ratio write are minor residuals.
+- **seq-return type class** — sort/sort-by/keys/vals/reverse/rest/next/seq/map/
+  filter/distinct/take/drop/concat/remove/map-indexed/interpose/partition/
+  flatten all return SEQS matching clj (NOT vectors — the feared sort-returns-
+  vector class was a non-issue; only zip lefts/rights diverged, now fixed). Gap
+  found+fixed: `array-map` constructor was unregistered (`name_error`) — now
+  registered (cljw maps are array-backed ≤8, so array-map ≡ hash-map output for
+  the small-map surface). Corpus `seq_return`.
 - **clojure.zip** — vector-zip nav (down/up/right/left/next/node/root/edit/
   branch?/children/end?/append-child/insert-child) at parity. Gap found+fixed:
   `lefts`/`rights` returned the raw vector field; JVM returns a SEQ (`(1)` not
@@ -89,8 +96,9 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   no 0-arity → ArityException) — low-value edge; `macroexpand-all` is a stub.
 - **Unswept areas** worth a focused pass: EDN tagged literals
   (`#inst`/`#uuid`/custom `:readers`), `alter-meta!` (needs var-metadata
-  D-183), `clojure.walk/macroexpand-all` (stub), `seq?`-vs-vector return
-  divergences (sort returns vector — like the zip lefts/rights class).
+  D-183), `clojure.walk/macroexpand-all` (stub), `clojure.string` deeper edges,
+  transients (`transient`/`conj!`/`persistent!`), `clojure.core.async`-free
+  concurrency primitives.
 - **`random-sample`** — undefined (1-arg transducer + 2-arg; non-deterministic).
 - **Remaining Java interop** (structural-deferred, array/regex repr):
   `.split`/`.toCharArray`/`.getBytes` (needs F-004 Group-D `array` slot);

@@ -64,6 +64,11 @@ const Entry = struct {
 const RT_ENTRIES = [_]Entry{
     .{ .name = "hash-set", .f = &hashSet },
     .{ .name = "hash-map", .f = &hashMap },
+    // array-map: a cljw map starts array-backed (insertion-ordered) for ≤8
+    // entries, so for the realistic small-map surface array-map ≡ hash-map's
+    // output. (Residual: clj's array-map never hash-promotes; cljw promotes
+    // past 8 entries — a >8-entry array-map is rare.)
+    .{ .name = "array-map", .f = &hashMap },
 };
 
 /// Register `hash-set` / `hash-map` into `rt/` (so they are user-
