@@ -30,6 +30,11 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   {ident,keyword,symbol}?.
 - **JSON (data.json)** — read/write number parity incl. BigInt both directions
   (D-182). `:bigdec` opt + ratio write are minor residuals.
+- **clojure.edn/read-string** — vector/map/set/list/string/keyword/ratio/
+  bigint/bigdec/float/bool/nil/neg/nested/quote literals + pr-str round-trip
+  all at parity (only set print order + `(class)`→`Long` diverge, both
+  acceptable). Corpus `edn_readstring`. (Tagged literals `#inst`/`#uuid` +
+  custom `:readers` not yet probed.)
 - **metadata (with-meta / vary-meta)** — meta read/attach on vector/map/list/
   set/seq, vary-meta assoc/update/multi-key/fn, nested re-wrap, `(with-meta x
   nil)`, meta-doesn't-affect-`=`, meta not printed. All at parity (no gaps).
@@ -67,9 +72,9 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   parity (only set print order + the now-fixed collection-key bug diverged).
   Residual: `intersection`/`difference` 0-arity (cljw variadic returns nil; JVM has
   no 0-arity → ArityException) — low-value edge; `macroexpand-all` is a stub.
-- **Unswept areas** worth a focused pass: `clojure.edn` round-trips,
-  destructuring corners, `clojure.data/diff`, `alter-meta!` (needs var-metadata
-  D-183).
+- **Unswept areas** worth a focused pass: destructuring corners,
+  `clojure.data/diff`, EDN tagged literals (`#inst`/`#uuid`/custom `:readers`),
+  `alter-meta!` (needs var-metadata D-183).
 - **`random-sample`** — undefined (1-arg transducer + 2-arg; non-deterministic).
 - **Remaining Java interop** (structural-deferred, array/regex repr):
   `.split`/`.toCharArray`/`.getBytes` (needs F-004 Group-D `array` slot);

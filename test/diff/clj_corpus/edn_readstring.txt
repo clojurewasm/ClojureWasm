@@ -1,0 +1,36 @@
+(clojure.edn/read-string "[1 2 3]")
+;;=> [1 2 3]
+(clojure.edn/read-string "{:a 1 :b 2}")
+;;=> {:a 1, :b 2}
+(clojure.edn/read-string "(1 2 3)")
+;;=> (1 2 3)
+(clojure.edn/read-string "42")
+;;=> 42
+(clojure.edn/read-string "3.14")
+;;=> 3.14
+(clojure.edn/read-string "true")
+;;=> true
+(clojure.edn/read-string "nil")
+;;=> nil
+(clojure.edn/read-string ":foo/bar")
+;;=> :foo/bar
+(clojure.edn/read-string "1/2")
+;;=> 1/2
+(clojure.edn/read-string "42N")
+;;=> 42N
+(clojure.edn/read-string "1.5M")
+;;=> 1.5M
+(clojure.edn/read-string "{:a [1 2] :b #{3}}")
+;;=> {:a [1 2], :b #{3}}
+(pr-str (clojure.edn/read-string "[1 2 3]"))
+;;=> "[1 2 3]"
+(clojure.edn/read-string "(quote x)")
+;;=> (quote x)
+(clojure.edn/read-string "-17")
+;;=> -17
+(clojure.edn/read-string "\"hi\"")
+;;=> "hi"
+(= (clojure.edn/read-string "[1 2 3]") [1 2 3])
+;;=> true
+(clojure.edn/read-string "[1 [2 [3 [4]]]]")
+;;=> [1 [2 [3 [4]]]]
