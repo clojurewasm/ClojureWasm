@@ -28,5 +28,8 @@ assert_eq 'not_empty_e'   "$("$BIN" -e '(not-empty [])')"                   'nil
 assert_eq 'not_empty_ne'  "$("$BIN" -e '(not-empty [1])')"                  '[1]'
 assert_eq 'take_last'     "$("$BIN" -e '(into [] (take-last 2 [1 2 3]))')"  '[2 3]'
 assert_eq 'drop_last'     "$("$BIN" -e '(into [] (drop-last [1 2 3]))')"    '[1 2]'
+# 2-arity (drop-last n coll) — §A26 sweep (clj `(map (fn [x _] x) s (drop n s))`).
+assert_eq 'drop_last_n'   "$("$BIN" -e '(into [] (drop-last 2 [1 2 3 4]))')" '[1 2]'
+assert_eq 'drop_last_n0'  "$("$BIN" -e '(into [] (drop-last 0 [1 2 3]))')"   '[1 2 3]'
 
 echo "ALL phase14_accessors PASS"

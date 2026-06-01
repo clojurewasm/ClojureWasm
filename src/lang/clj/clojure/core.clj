@@ -886,10 +886,12 @@
 (def take-last
   (fn* [n coll] (reverse (take n (reverse coll)))))
 
-;; `(drop-last coll)` — all but the last item. 1-arg form (same body as
-;; butlast, inlined to avoid a forward reference); the n-arity
-;; `(drop-last n coll)` awaits multi-arity.
-(def drop-last (fn* [coll] (reverse (rest (reverse coll)))))
+;; `(drop-last coll)` / `(drop-last n coll)` — all but the last 1 / n items.
+;; clj's n-arity `(map (fn [x _] x) s (drop n s))` pairs each element with the
+;; one n ahead, so the map stops when `drop` runs out — dropping the last n.
+(def drop-last
+  (fn* ([s] (drop-last 1 s))
+       ([n s] (map (fn* [x _] x) s (drop n s)))))
 
 ;; ----------------------------------------------------------------
 ;; D-134 sort cluster — unblocked by D-137 (general compare).
