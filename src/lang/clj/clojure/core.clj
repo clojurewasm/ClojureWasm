@@ -562,11 +562,22 @@
 ;; producers (`(take 5 (concat [1 2] (range)))`).
 ;; ----------------------------------------------------------------
 
-;; `(get-in m ks)` — walk the key path `ks` through nested associatives.
-;; Returns nil when any step is absent (get on nil is nil). The
-;; 3-arity `[m ks not-found]` is deferred until multi-arity fn* lands.
+;; `(get-in m ks)` / `(get-in m ks not-found)` — walk the key path `ks`
+;; through nested associatives. The 3-arity returns `not-found` when any step
+;; is absent, distinguishing it from a present nil via a fresh-identity
+;; sentinel (clj's `lookup-sentinel`): `(get m k sentinel)` yields the sentinel
+;; only when `k` is truly absent.
 (def get-in
-  (fn* [m ks] (reduce get m ks)))
+  (fn* ([m ks] (reduce get m ks))
+       ([m ks not-found]
+        (let [sentinel (list '::get-in-sentinel)]
+          (loop [m m ks (seq ks)]
+            (if ks
+              (let [v (get m (first ks) sentinel)]
+                (if (identical? sentinel v)
+                  not-found
+                  (recur v (next ks))))
+              m))))))
 
 ;; `(assoc-in m ks v)` — assoc `v` at the nested path `ks`, creating
 ;; intermediate maps as needed. `next` yields nil at the final key.

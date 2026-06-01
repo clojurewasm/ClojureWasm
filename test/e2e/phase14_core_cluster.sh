@@ -31,6 +31,9 @@ assert_eq() {
 assert_eq 'get_in_nested'  "$("$BIN" -e '(get-in {:a {:b 1}} [:a :b])')"      '1'
 assert_eq 'get_in_missing' "$("$BIN" -e '(get-in {:a 1} [:x :y])')"           'nil'
 assert_eq 'get_in_single'  "$("$BIN" -e '(get-in {:a 7} [:a])')"              '7'
+# 3-arity not-found — sentinel distinguishes absent from a present nil (§A26).
+assert_eq 'get_in_nf'      "$("$BIN" -e '(get-in {:a 1} [:x] :none)')"        ':none'
+assert_eq 'get_in_nf_pnil' "$("$BIN" -e '(get-in {:a nil} [:a] :none)')"      'nil'
 
 # --- assoc-in ---
 assert_eq 'assoc_in_add'   "$("$BIN" -e '(get-in (assoc-in {:a {:b 1}} [:a :c] 2) [:a :c])')" '2'
