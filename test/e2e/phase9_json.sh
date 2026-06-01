@@ -123,11 +123,11 @@ EOF
 ) || fail "read_bigint_eq: non-zero exit"
 assert_eq 'read_bigint_eq' "$(last_line "$got")" 'true'
 # Beyond i64 → std.json hands a number_string → BigInt (D-182 read residual
-# landed). 12345678901234567890 (< 2^64, D-047-safe) > Long.MAX → BigInteger.
+# landed). 2^65 (> 2^64) exercises the D-047-safe parseBase10 path.
 got=$("$BIN" - <<'EOF' 2>/dev/null
-(clojure.data.json/read-str "[1, 12345678901234567890, 2.5]")
+(clojure.data.json/read-str "[1, 36893488147419103232, 2.5]")
 EOF
 ) || fail "read_bigint_huge: non-zero exit"
-assert_eq 'read_bigint_huge' "$(last_line "$got")" '[1 12345678901234567890N 2.5]'
+assert_eq 'read_bigint_huge' "$(last_line "$got")" '[1 36893488147419103232N 2.5]'
 
 echo "phase9_json: 16/16 cases pass"

@@ -87,9 +87,10 @@ assert_eq 'bigint_ratio'  "$("$BIN" -e '(bigint 1/2)' 2>/dev/null | tail -1)" '0
 # (bigint "..."): arbitrary-precision via setString (D-191 string arm).
 assert_eq 'bigint_str'    "$("$BIN" -e '(bigint "100")' 2>/dev/null | tail -1)" '100N'
 assert_eq 'bigint_str_neg' "$("$BIN" -e '(bigint "-5")' 2>/dev/null | tail -1)" '-5N'
-# Below 2^64 to dodge the D-047 setString Linux divergence (matches the
-# existing literal tests' safe range; ≥2^64 strings inherit D-047).
-assert_eq 'bigint_str_big' "$("$BIN" -e '(bigint "12345678901234567890")' 2>/dev/null | tail -1)" '12345678901234567890N'
+# 2^65 (= 36893488147419103232) — the exact value D-047 documented as
+# setString-broken on Linux; the D-047-safe parseBase10 makes it correct on
+# every platform, so the test no longer has to stay < 2^64.
+assert_eq 'bigint_str_big' "$("$BIN" -e '(bigint "36893488147419103232")' 2>/dev/null | tail -1)" '36893488147419103232N'
 # --- (bigdec x): int/BigInt→scale0, BigDecimal passthrough, float via toString ---
 assert_eq 'bigdec_int'    "$("$BIN" -e '(bigdec 100)' 2>/dev/null | tail -1)" '100M'
 assert_eq 'bigdec_float'  "$("$BIN" -e '(bigdec 1.5)' 2>/dev/null | tail -1)" '1.5M'

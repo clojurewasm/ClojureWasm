@@ -295,10 +295,9 @@ pub fn integerLiteralToValue(rt: *Runtime, i: i64) !Value {
 
 /// Used by both the atom-analyzer path and the quote-lift path.
 pub fn parseBigIntLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.SourceLocation) !Value {
-    var m = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer m.deinit();
-    m.setString(10, digits) catch
+    var m = big_int.parseBase10(rt, digits) catch
         return error_catalog.raise(.integer_literal_invalid, loc, .{ .text = digits });
+    defer m.deinit();
     return try big_int.allocFromManaged(rt, &m);
 }
 
@@ -339,10 +338,9 @@ pub fn parseBigDecimalLiteral(rt: *Runtime, digits: []const u8, loc: error_mod.S
         buf_len = digits.len;
     }
 
-    var unscaled = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer unscaled.deinit();
-    unscaled.setString(10, buf[0..buf_len]) catch
+    var unscaled = big_int.parseBase10(rt, buf[0..buf_len]) catch
         return error_catalog.raise(.float_literal_invalid, loc, .{ .text = digits });
+    defer unscaled.deinit();
 
     return try big_decimal.allocFromManagedScale(rt, &unscaled, scale);
 }

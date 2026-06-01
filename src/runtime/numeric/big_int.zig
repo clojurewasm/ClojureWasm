@@ -49,6 +49,34 @@ pub const BigInt = extern struct {
 };
 
 /// Allocate a BigInt holding the i64 `v`. The Managed is constructed
+/// Parse a base-10 digit string `[-+]?ddd` into a Managed on `rt.gc.infra`,
+/// WITHOUT `std`'s `setString` — which has a Linux-glibc-x86 off-by-one past
+/// 2^64 (D-047). Builds the value as `acc = acc·10 + digit`, exact on every
+/// platform. `error.InvalidCharacter` on a non-digit or empty mantissa; the
+/// caller owns the returned Managed.
+pub fn parseBase10(rt: *Runtime, s: []const u8) !std.math.big.int.Managed {
+    var t = s;
+    var neg = false;
+    if (t.len > 0 and (t[0] == '-' or t[0] == '+')) {
+        neg = t[0] == '-';
+        t = t[1..];
+    }
+    if (t.len == 0) return error.InvalidCharacter;
+    var acc = try std.math.big.int.Managed.initSet(rt.gc.infra, 0);
+    errdefer acc.deinit();
+    var ten = try std.math.big.int.Managed.initSet(rt.gc.infra, 10);
+    defer ten.deinit();
+    var scratch = try std.math.big.int.Managed.init(rt.gc.infra);
+    defer scratch.deinit();
+    for (t) |c| {
+        if (c < '0' or c > '9') return error.InvalidCharacter;
+        try scratch.mul(&acc, &ten);
+        try acc.addScalar(&scratch, c - '0');
+    }
+    if (neg) acc.negate();
+    return acc;
+}
+
 /// on `rt.gc.infra` (GPA) per F-006 §2; the BigInt wrapper lives on
 /// `rt.gc.alloc` (GC heap). Finaliser releases both at sweep time.
 pub fn allocFromI64(rt: *Runtime, v: i64) !Value {
@@ -68,11 +96,10 @@ pub fn allocFromI64(rt: *Runtime, v: i64) !Value {
 /// Managed can be deinit'd independently. Useful when arithmetic
 /// produces a Managed result that needs to land on the GC heap.
 ///
-/// **Note**: `Managed.setString` from `std.math.big.int` has a
-/// known Linux glibc-x86 platform divergence in Zig 0.16 (off-by-
-/// one result for values past i64). Until upstream lands a fix
-/// (tracked in D-047), construct large BigInts via `set` + bit-shift
-/// or via repeated arithmetic instead of base-10 string parsing.
+/// **Note**: do NOT use `Managed.setString` for base-10 input — it has a
+/// Linux glibc-x86 off-by-one past 2^64 in Zig 0.16 (D-047). Parse base-10
+/// digit strings via `parseBase10` above (platform-independent mul/add); use
+/// `set` + bit-shift for powers of two.
 pub fn allocFromManaged(rt: *Runtime, src: *const std.math.big.int.Managed) !Value {
     const m_ptr = try rt.gc.infra.create(std.math.big.int.Managed);
     errdefer rt.gc.infra.destroy(m_ptr);
@@ -236,6 +263,28 @@ test "allocFromManaged holds values beyond i64 range (2^65 via shiftLeft)" {
     const m = asManaged(v);
     try testing.expect(m.bitCountAbs() > 64);
     try testing.expect(m.eql(src));
+}
+
+test "parseBase10 is exact past 2^64 (D-047 canary: 2^65 string)" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+
+    // 2^65 = 36893488147419103232 — the exact value std setString miscomputes
+    // on Linux glibc-x86 (D-047). parseBase10 builds it via mul/add, so it is
+    // correct on every platform.
+    var parsed = try parseBase10(&fix.rt, "36893488147419103232");
+    defer parsed.deinit();
+    var expected = try std.math.big.int.Managed.init(testing.allocator);
+    defer expected.deinit();
+    try expected.set(1);
+    try expected.shiftLeft(&expected, 65);
+    try testing.expect(parsed.eql(expected));
+
+    var neg = try parseBase10(&fix.rt, "-36893488147419103232");
+    defer neg.deinit();
+    try testing.expect(!neg.isPositive());
+    try testing.expectError(error.InvalidCharacter, parseBase10(&fix.rt, "12x3"));
+    try testing.expectError(error.InvalidCharacter, parseBase10(&fix.rt, ""));
 }
 
 test "compareManaged orders (3 < 5 == 5)" {

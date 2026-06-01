@@ -281,18 +281,16 @@ fn rationalize(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         nlen = s.len;
     }
 
-    var num_m = try std.math.big.int.Managed.init(rt.gc.infra);
+    var num_m = try big_int_mod.parseBase10(rt, numbuf[0..nlen]);
     defer num_m.deinit();
-    try num_m.setString(10, numbuf[0..nlen]);
     if (scale == 0) return promote.wrapManaged(rt, &num_m);
 
     // denominator = 10^scale, written as "1" followed by `scale` zeros.
     var denbuf: [520]u8 = undefined;
     denbuf[0] = '1';
     @memset(denbuf[1 .. 1 + scale], '0');
-    var den_m = try std.math.big.int.Managed.init(rt.gc.infra);
+    var den_m = try big_int_mod.parseBase10(rt, denbuf[0 .. 1 + scale]);
     defer den_m.deinit();
-    try den_m.setString(10, denbuf[0 .. 1 + scale]);
 
     if (try ratio_mod.allocFromManagedPair(rt, &num_m, &den_m)) |ratio_v| return ratio_v;
     return promote.wrapManaged(rt, &num_m);
@@ -705,14 +703,13 @@ pub fn bigintCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     const v = args[0];
     if (v.tag() == .big_int) return v;
     if (v.tag() == .string) {
-        // `(bigint "999…")` → arbitrary-precision N. setString(10) accepts
-        // `[-]ddd` and rejects `.` / `e` / non-digits, matching clj's
-        // NumberFormatException on those. (`bigint` large-float: D-191.)
+        // `(bigint "999…")` → arbitrary-precision N. parseBase10 accepts
+        // `[-+]?ddd` and rejects `.` / `e` / non-digits, matching clj's
+        // NumberFormatException on those. (D-047-safe: no setString.)
         const s = string_mod.asString(v);
-        var m = try std.math.big.int.Managed.init(rt.gc.infra);
-        defer m.deinit();
-        m.setString(10, s) catch
+        var m = big_int_mod.parseBase10(rt, s) catch
             return error_catalog.raise(.number_format_invalid, loc, .{ .fn_name = "bigint", .text = s });
+        defer m.deinit();
         return big_int_mod.allocFromManaged(rt, &m);
     }
     const i = promote.truncToI64(rt, v) catch |err| switch (err) {
@@ -880,9 +877,8 @@ fn parseDecimalToBigDec(rt: *Runtime, s: []const u8) !?Value {
     const scale_i64: i64 = frac - exp;
     if (scale_i64 > std.math.maxInt(i32) or scale_i64 < std.math.minInt(i32)) return null;
 
-    var m = try std.math.big.int.Managed.init(rt.gc.infra);
+    var m = big_int_mod.parseBase10(rt, digits[0..dlen]) catch return null;
     defer m.deinit();
-    m.setString(10, digits[0..dlen]) catch return null;
     if (sign_neg) m.negate();
     return try big_decimal_mod.allocFromManagedScale(rt, &m, @intCast(scale_i64));
 }
