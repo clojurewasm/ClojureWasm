@@ -30,6 +30,13 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   {ident,keyword,symbol}?.
 - **JSON (data.json)** — read/write number parity incl. BigInt both directions
   (D-182). `:bigdec` opt + ratio write are minor residuals.
+- **clojure.string deeper edges** — split (limit + regex), replace
+  (literal-string / regex / `$N` capture / fn), replace-first, includes?/
+  starts-with?/ends-with?, blank?(+nil), triml/trimr, capitalize, join,
+  split-lines, no-match replace. Gap found+fixed: `index-of`/`last-index-of`
+  3-arity `from-index` (`(index-of s sub from)`→4, `(last-index-of s sub from)`
+  = last start ≤ from) — both the primitive + the string.clj wrapper went
+  variadic. Corpus `string_deep`.
 - **exception / ex-info family** — `ex-info`/`ex-data`/`ex-message`, `ex-data`
   on non-ex→nil, `try`/`catch <Class>` (ExceptionInfo/Exception/Arithmetic/
   IndexOutOfBounds/AssertionError/Throwable)/`finally`, nested ex-data,

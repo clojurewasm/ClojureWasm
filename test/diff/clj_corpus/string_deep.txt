@@ -1,0 +1,52 @@
+(clojure.string/split "a,b,c" #"," 2)
+;;=> ["a" "b,c"]
+(clojure.string/split "a-b-c-d" #"-")
+;;=> ["a" "b" "c" "d"]
+(clojure.string/replace "a.b.c" "." "X")
+;;=> "aXbXc"
+(clojure.string/replace "abc" #"[ac]" "X")
+;;=> "XbX"
+(clojure.string/replace "ab" #"(a)(b)" "$2$1")
+;;=> "ba"
+(clojure.string/replace-first "aaa" "a" "X")
+;;=> "Xaa"
+(clojure.string/index-of "abcabc" "bc")
+;;=> 1
+(clojure.string/index-of "abcabc" "bc" 3)
+;;=> 4
+(clojure.string/last-index-of "abcabc" "bc")
+;;=> 4
+(clojure.string/index-of "abc" "z")
+;;=> nil
+(clojure.string/includes? "hello" "ell")
+;;=> true
+(clojure.string/starts-with? "hello" "he")
+;;=> true
+(clojure.string/ends-with? "hello" "lo")
+;;=> true
+(clojure.string/blank? "   ")
+;;=> true
+(clojure.string/blank? nil)
+;;=> true
+(clojure.string/triml "  x  ")
+;;=> "x  "
+(clojure.string/trimr "  x  ")
+;;=> "  x"
+(clojure.string/capitalize "hELLO")
+;;=> "Hello"
+(clojure.string/join ", " [1 2 3])
+;;=> "1, 2, 3"
+(clojure.string/split-lines "a\nb\nc")
+;;=> ["a" "b" "c"]
+(clojure.string/replace "x" #"y" "z")
+;;=> "x"
+(clojure.string/replace "foo bar" #"\w+" (fn [m] (clojure.string/upper-case m)))
+;;=> "FOO BAR"
+(clojure.string/last-index-of "abcabc" "bc" 3)
+;;=> 1
+(clojure.string/last-index-of "abcabc" "bc" 4)
+;;=> 4
+(clojure.string/last-index-of "abcabc" "a" 2)
+;;=> 0
+(clojure.string/index-of "abcabc" "a" 1)
+;;=> 3

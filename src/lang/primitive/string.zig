@@ -165,34 +165,65 @@ pub fn includes(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return prefixImpl("includes?", .contains, args, loc);
 }
 
-/// `(clojure.string/index-of s substr)` — codepoint index of first
-/// occurrence, or nil. Per DIVERGENCE D1 the index is in codepoint
-/// units (JVM is UTF-16 code-unit index). 2-arity (substr) only at
-/// cycle 3; the optional `from-index` arity lands later when integer
-/// arg validation absorbs negative offsets.
+/// `(clojure.string/index-of s substr)` / `(… s substr from-index)` —
+/// codepoint index of the first occurrence (at or after from-index), or nil.
+/// Per DIVERGENCE D1 the index is in codepoint units (JVM is UTF-16). The
+/// 3-arity searches the codepoint tail `s[from..]` then re-bases the result.
 pub fn indexOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    try error_catalog.checkArity("index-of", args, 2, loc);
+    if (args.len < 2 or args.len > 3)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "index-of", .got = args.len, .min = 2, .max = 3 });
     if (args[0].tag() != .string)
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "index-of", .actual = @tagName(args[0].tag()) });
     if (args[1].tag() != .string)
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "index-of", .actual = @tagName(args[1].tag()) });
-    const idx = charset.codepointIndexOf(string_collection.asString(args[0]), string_collection.asString(args[1])) orelse return .nil_val;
+    const hay = string_collection.asString(args[0]);
+    const needle = string_collection.asString(args[1]);
+    if (args.len == 3) {
+        if (args[2].tag() != .integer)
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "index-of", .expected = "integer from-index", .actual = @tagName(args[2].tag()) });
+        var from: i64 = args[2].asInteger();
+        if (from < 0) from = 0;
+        const count: i64 = @intCast(charset.codepointCount(hay) catch return .nil_val);
+        if (from > count) return .nil_val;
+        const tail = charset.substring(hay, @intCast(from), @intCast(count)) catch return .nil_val;
+        const rel = charset.codepointIndexOf(tail, needle) orelse return .nil_val;
+        return Value.initInteger(@intCast(from + @as(i64, @intCast(rel))));
+    }
+    const idx = charset.codepointIndexOf(hay, needle) orelse return .nil_val;
     return Value.initInteger(@intCast(idx));
 }
 
-/// `(clojure.string/last-index-of s substr)` — codepoint index of
-/// LAST occurrence, or nil.
+/// `(clojure.string/last-index-of s substr)` / `(… s substr from-index)` —
+/// codepoint index of the LAST occurrence whose START is ≤ from-index, or nil.
+/// 3-arity searches the prefix `s[0 .. from+len(substr)]` so a match starting
+/// at from-index is still found, then takes its last occurrence.
 pub fn lastIndexOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    try error_catalog.checkArity("last-index-of", args, 2, loc);
+    if (args.len < 2 or args.len > 3)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "last-index-of", .got = args.len, .min = 2, .max = 3 });
     if (args[0].tag() != .string)
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "last-index-of", .actual = @tagName(args[0].tag()) });
     if (args[1].tag() != .string)
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "last-index-of", .actual = @tagName(args[1].tag()) });
-    const idx = charset.codepointLastIndexOf(string_collection.asString(args[0]), string_collection.asString(args[1])) orelse return .nil_val;
+    const hay = string_collection.asString(args[0]);
+    const needle = string_collection.asString(args[1]);
+    if (args.len == 3) {
+        if (args[2].tag() != .integer)
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "last-index-of", .expected = "integer from-index", .actual = @tagName(args[2].tag()) });
+        const from: i64 = args[2].asInteger();
+        if (from < 0) return .nil_val;
+        const count: i64 = @intCast(charset.codepointCount(hay) catch return .nil_val);
+        const needle_count: i64 = @intCast(charset.codepointCount(needle) catch return .nil_val);
+        var end: i64 = from + needle_count;
+        if (end > count) end = count;
+        const prefix = charset.substring(hay, 0, @intCast(end)) catch return .nil_val;
+        const idx = charset.codepointLastIndexOf(prefix, needle) orelse return .nil_val;
+        return Value.initInteger(@intCast(idx));
+    }
+    const idx = charset.codepointLastIndexOf(hay, needle) orelse return .nil_val;
     return Value.initInteger(@intCast(idx));
 }
 

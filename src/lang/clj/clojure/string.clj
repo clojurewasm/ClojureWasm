@@ -43,8 +43,8 @@
 (def starts-with?    (fn* [s sub] (-starts-with? s sub)))
 (def ends-with?      (fn* [s sub] (-ends-with? s sub)))
 (def includes?       (fn* [s sub] (-includes? s sub)))
-(def index-of        (fn* [s sub] (-index-of s sub)))
-(def last-index-of   (fn* [s sub] (-last-index-of s sub)))
+(def index-of        (fn* ([s sub] (-index-of s sub)) ([s sub from] (-index-of s sub from))))
+(def last-index-of   (fn* ([s sub] (-last-index-of s sub)) ([s sub from] (-last-index-of s sub from))))
 (def reverse         (fn* [s] (-reverse s)))
 
 ;; Phase 6.16.e.1 — GREEN trio (v5 §9.2). Pure rename-and-shim
