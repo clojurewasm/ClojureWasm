@@ -80,6 +80,11 @@ assert_eq 'seq_part'    "$("$BIN" -e '(into [] (sequence (partition-all 2) [1 2 
 assert_eq 'seq_mapcat'  "$("$BIN" -e '(into [] (sequence (mapcat (fn [x] [x x])) [1 2 3]))')" '[1 1 2 2 3 3]'
 assert_eq 'seq_1arg'    "$("$BIN" -e '(into [] (sequence [1 2 3]))')"                       '[1 2 3]'
 assert_eq 'seq_empty'   "$("$BIN" -e '(into [] (sequence (map inc) []))')"                  '[]'
+# D-160 residual: multi-coll `(sequence xform c1 c2 …)` applies the transducer
+# across tuples in lockstep, stopping at the shortest (clj-grounded).
+assert_eq 'seq_multi_add'   "$("$BIN" -e '(into [] (sequence (map +) [1 2 3] [4 5 6]))')"        '[5 7 9]'
+assert_eq 'seq_multi_vec'   "$("$BIN" -e '(into [] (sequence (map vector) [1 2] [3 4] [5 6]))')" '[[1 3 5] [2 4 6]]'
+assert_eq 'seq_multi_short' "$("$BIN" -e '(into [] (sequence (map +) [1 2 3] [4 5]))')"          '[5 7]'
 # cycle 7 (D-160 / ADR-0067): `eduction` — a re-iterable reducible+seqable
 # deftype (NOT an alias for sequence). ed_reiter is the contract test: a
 # cached lazy-seq would count 3, the re-iterable eduction counts 6.

@@ -349,8 +349,12 @@ pub fn nextFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         },
         .lazy_seq => blk: {
             const r = try lazy_seq.rest(rt, env, coll);
-            if (r.isNil()) break :blk .nil_val;
-            break :blk r;
+            // seq the tail so an EMPTY lazy rest collapses to nil — matching
+            // the .list / .chunked_cons arms above. Without this, `(next
+            // (map identity [1]))` returns a non-nil empty lazy_seq (prints
+            // as nil yet `nil?`→false), and any seq-walk advancing via `next`
+            // (incl. `apply`'s eager spread) appends a spurious trailing nil.
+            break :blk try seqFn(rt, env, &.{r}, loc);
         },
         // A string seqs to a char list (D-174): `(next "abc")` is a char-seq,
         // not a substring. Same seqFn route + nil-empty as the map/set/range arm.

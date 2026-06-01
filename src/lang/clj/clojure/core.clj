@@ -46,7 +46,12 @@
         (fn* [rf]
           (fn* ([] (rf))
                ([result] (rf result))
-               ([result input] (rf result (f input))))))
+               ([result input] (rf result (f input)))
+               ;; multi-input arity: a multi-coll `sequence` steps the xform
+               ;; with one item per source — `map` is the only core transducer
+               ;; that consumes them (D-160 3-arg residual). A single-input
+               ;; transducer placed first stays 2-arg → arity error (clj parity).
+               ([result input & inputs] (rf result (apply f input inputs))))))
        ([f coll]
         ;; PERF: when the source is chunked (range seq, chunked map/filter),
         ;; transform a whole 32-chunk per thunk so the lazy-seq machinery is
@@ -280,41 +285,54 @@
 ;; flush a final buffered value, e.g. `partition-all`'s tail).
 ;; `buf` is the output vector (rf appends), `pos` the next index to emit, so
 ;; draining needs only `nth`/`count` (no `subvec`/`vec`, which are defined
-;; later in this file and would be forward-refs at bootstrap). On each fill
-;; cycle `buf`/`pos` reset before stepping one source item.
+;; later in this file and would be forward-refs at bootstrap).
+;; `srcs` is a collection of N source colls (N≥1): on each fill cycle the
+;; xform is stepped with one item per source (`(apply xf nil heads)`), stopping
+;; when ANY source is exhausted (shortest-coll semantics, D-160 multi-coll).
+;; The single-coll `sequence` is the N=1 case — one commonised bridge (F-011).
 (def -tx-seq-pump
-  (fn* [xf src buf pos done]
+  (fn* [xf srcs buf pos done]
     (lazy-seq
       (let [b @buf p @pos]
         (if (< p (count b))
           (do (vreset! pos (inc p))
-              (cons (nth b p) (-tx-seq-pump xf src buf pos done)))
+              (cons (nth b p) (-tx-seq-pump xf srcs buf pos done)))
           (if @done
             nil
             (do (vreset! buf []) (vreset! pos 0)
-                (let [s (seq src)]
-                  (if (nil? s)
+                (let [seqs (map seq srcs)]
+                  (if (some nil? seqs)
                     (do (xf nil) (vreset! done true)
-                        (-tx-seq-pump xf src buf pos done))
-                    (let [r (xf nil (first s))]
+                        (-tx-seq-pump xf srcs buf pos done))
+                    (let [r (apply xf nil (map first seqs))]
                       (if (reduced? r)
                         (do (xf nil) (vreset! done true)
-                            (-tx-seq-pump xf src buf pos done))
-                        (-tx-seq-pump xf (rest s) buf pos done))))))))))))
+                            (-tx-seq-pump xf srcs buf pos done))
+                        (-tx-seq-pump xf (map rest seqs) buf pos done))))))))))))
+
+;; Shared setup for the transducer arities: a buffering rf (each emitted
+;; output conj'd into `buf`, stepped one source-tuple per lazy thunk) + the
+;; volatiles the pump drains. Both the 2-arg and multi-coll `sequence` arms
+;; route through here (F-011 — one source of the bridge wiring).
+(def -tx-seq-run
+  (fn* [xform srcs]
+    (let [buf  (volatile! [])
+          pos  (volatile! 0)
+          done (volatile! false)
+          rf   (fn* ([] nil) ([result] result) ([_ x] (vswap! buf conj x) nil))
+          xf   (xform rf)]
+      (-tx-seq-pump xf srcs buf pos done))))
 
 ;; `(sequence coll)` coerces to a seq (`(list)` empty, not the bare `()`
 ;; literal — cljw treats unquoted `()` as an empty invocation, D-188); the
-;; 2-arg arm lazily applies the transducer via the bridge above. The 3-arg+
-;; multi-coll arm (`(sequence xform c1 c2 …)`) is a follow-up, not faked.
+;; 2-arg arm lazily applies the transducer via the bridge above. The multi-coll
+;; arm (`(sequence xform c1 c2 …)`) steps the xform across tuples, stopping at
+;; the shortest (D-160 residual); a single-input xform placed first is a 2-arg
+;; step → arity error, matching clj's ArityException (not silently passed).
 (def sequence
   (fn* ([coll] (or (seq coll) (list)))
-       ([xform coll]
-        (let [buf  (volatile! [])
-              pos  (volatile! 0)
-              done (volatile! false)
-              rf   (fn* ([] nil) ([result] result) ([_ x] (vswap! buf conj x) nil))
-              xf   (xform rf)]
-          (-tx-seq-pump xf (seq coll) buf pos done)))))
+       ([xform coll] (-tx-seq-run xform [coll]))
+       ([xform coll & colls] (-tx-seq-run xform (cons coll colls)))))
 
 ;; ----------------------------------------------------------------
 ;; Pure Clojure HOF (no Zig leaf) — pattern A per ADR-0033 D3.

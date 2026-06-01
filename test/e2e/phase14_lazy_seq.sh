@@ -33,5 +33,10 @@ assert_eq 'iterate_mul'    "$("$BIN" -e '(into [] (take 4 (iterate (fn* [x] (* x
 assert_eq 'iterate_first'  "$("$BIN" -e '(first (iterate inc 0))')"                     '0'
 # lazy-seq wrapping a finite tail realizes correctly
 assert_eq 'lazy_seq_finite' "$("$BIN" -e '(into [] (take 3 (lazy-seq (cons 1 (cons 2 (cons 3 nil))))))')" '[1 2 3]'
+# `next` on a single-element lazy seq collapses the empty tail to canonical
+# nil (was a non-nil empty lazy_seq: printed nil yet nil?→false, and made
+# apply's eager spread append a trailing nil). clj: both true.
+assert_eq 'next_lazy_single_nil' "$("$BIN" -e '(nil? (next (map identity [1])))')"   'true'
+assert_eq 'apply_lazy_no_trailing_nil' "$("$BIN" -e '(apply vector 9 (map identity [1 3]))')" '[9 1 3]'
 
 echo "ALL phase14_lazy_seq PASS"
