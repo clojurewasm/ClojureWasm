@@ -30,6 +30,13 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   {ident,keyword,symbol}?.
 - **JSON (data.json)** — read/write number parity incl. BigInt both directions
   (D-182). `:bigdec` opt + ratio write are minor residuals.
+- **exception / ex-info family** — `ex-info`/`ex-data`/`ex-message`, `ex-data`
+  on non-ex→nil, `try`/`catch <Class>` (ExceptionInfo/Exception/Arithmetic/
+  IndexOutOfBounds/AssertionError/Throwable)/`finally`, nested ex-data,
+  `instance? ExceptionInfo` — the cljw-native error API at parity (16/18).
+  Corpus `exception_api`. **Gap (D-198)**: Java interop `(Exception. msg)` ctor
+  + `(.getMessage e)` unwired (host-class machinery, D-048) — use ex-info/
+  ex-message (the native path).
 - **vector / associative ops** — subvec (2+3-arity, empty), mapv/filterv,
   into (coll/xform/set/map), assoc (set + append-at-count), update (+args),
   get/nth (not-found), peek/pop, assoc-in/update-in/get-in (deep + not-found),

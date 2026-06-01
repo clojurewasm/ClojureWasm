@@ -1,0 +1,32 @@
+(ex-data (ex-info "boom" {:a 1}))
+;;=> {:a 1}
+(ex-message (ex-info "boom" {:a 1}))
+;;=> "boom"
+(ex-data 42)
+;;=> nil
+(try (throw (ex-info "x" {:k 9})) (catch clojure.lang.ExceptionInfo e (ex-data e)))
+;;=> {:k 9}
+(try (throw (ex-info "x" {:k 9})) (catch Exception e (ex-message e)))
+;;=> "x"
+(try (/ 1 0) (catch ArithmeticException e :caught-arith))
+;;=> :caught-arith
+(try (/ 1 0) (catch Exception e :caught-generic))
+;;=> :caught-generic
+(try 1 (finally 2))
+;;=> 1
+(try (throw (ex-info "x" {})) (catch Exception e :c) (finally :f))
+;;=> :c
+(try (+ 1 2) (catch Exception e :e))
+;;=> 3
+(:k (ex-data (ex-info "m" {:k :v})))
+;;=> :v
+(try (throw (ex-info "outer" {:level 1})) (catch Exception e (:level (ex-data e))))
+;;=> 1
+(try (nth [1] 5) (catch IndexOutOfBoundsException e :oob))
+;;=> :oob
+(instance? clojure.lang.ExceptionInfo (ex-info "m" {}))
+;;=> true
+(try (assert false "msg") (catch AssertionError e :asserted))
+;;=> :asserted
+(try (throw (ex-info "a" {:x 1})) (catch Throwable e (ex-message e)))
+;;=> "a"
