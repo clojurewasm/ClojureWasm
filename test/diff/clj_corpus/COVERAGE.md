@@ -30,6 +30,10 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   {ident,keyword,symbol}?.
 - **JSON (data.json)** — read/write number parity incl. BigInt both directions
   (D-182). `:bigdec` opt + ratio write are minor residuals.
+- **destructuring** — vector `[a b & r :as all]` + missing→nil, map
+  `:keys`/`:strs`/`:syms`/`{a :a}`/`:or`/`:as`, nested vector+map, fn-param +
+  loop destructure, destructure on nil. All at parity (D-076 surface). Corpus
+  `destructuring`.
 - **clojure.edn/read-string** — vector/map/set/list/string/keyword/ratio/
   bigint/bigdec/float/bool/nil/neg/nested/quote literals + pr-str round-trip
   all at parity (only set print order + `(class)`→`Long` diverge, both
@@ -72,9 +76,9 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   parity (only set print order + the now-fixed collection-key bug diverged).
   Residual: `intersection`/`difference` 0-arity (cljw variadic returns nil; JVM has
   no 0-arity → ArityException) — low-value edge; `macroexpand-all` is a stub.
-- **Unswept areas** worth a focused pass: destructuring corners,
-  `clojure.data/diff`, EDN tagged literals (`#inst`/`#uuid`/custom `:readers`),
-  `alter-meta!` (needs var-metadata D-183).
+- **Unswept areas** worth a focused pass: `clojure.data/diff`, EDN tagged
+  literals (`#inst`/`#uuid`/custom `:readers`), `alter-meta!` (needs
+  var-metadata D-183).
 - **`random-sample`** — undefined (1-arg transducer + 2-arg; non-deterministic).
 - **Remaining Java interop** (structural-deferred, array/regex repr):
   `.split`/`.toCharArray`/`.getBytes` (needs F-004 Group-D `array` slot);

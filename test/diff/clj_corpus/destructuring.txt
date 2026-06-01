@@ -1,0 +1,40 @@
+(let [[a b] [1 2]] [a b])
+;;=> [1 2]
+(let [[a b & r] [1 2 3 4]] r)
+;;=> (3 4)
+(let [[a & r :as all] [1 2 3]] [a r all])
+;;=> [1 (2 3) [1 2 3]]
+(let [[a b c] [1]] [a b c])
+;;=> [1 nil nil]
+(let [{:keys [a b]} {:a 1 :b 2}] [a b])
+;;=> [1 2]
+(let [{:keys [a b] :or {b 9}} {:a 1}] [a b])
+;;=> [1 9]
+(let [{:keys [a] :as m} {:a 1 :b 2}] [a m])
+;;=> [1 {:a 1, :b 2}]
+(let [{a :a b :b} {:a 1 :b 2}] [a b])
+;;=> [1 2]
+(let [{:strs [a b]} {"a" 1 "b" 2}] [a b])
+;;=> [1 2]
+(let [{:syms [a b]} {(quote a) 1 (quote b) 2}] [a b])
+;;=> [1 2]
+(let [[[a b] [c d]] [[1 2] [3 4]]] [a b c d])
+;;=> [1 2 3 4]
+(let [{[x y] :pt} {:pt [3 4]}] [x y])
+;;=> [3 4]
+(let [{:keys [a b c] :or {c 0}} {:a 1 :b 2}] [a b c])
+;;=> [1 2 0]
+((fn [[a b]] (+ a b)) [3 4])
+;;=> 7
+((fn [{:keys [x y]}] (+ x y)) {:x 1 :y 2})
+;;=> 3
+(let [[a b & r] [1]] [a b r])
+;;=> [1 nil nil]
+(let [{:keys [a]} nil] a)
+;;=> nil
+(let [[a] nil] a)
+;;=> nil
+(loop [[h & t] [1 2 3] acc 0] (if h (recur t (+ acc h)) acc))
+;;=> 6
+(let [{:keys [a] :or {a 5}} {}] a)
+;;=> 5
