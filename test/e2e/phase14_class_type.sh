@@ -87,7 +87,9 @@ assert_eq 'bigint_ratio'  "$("$BIN" -e '(bigint 1/2)' 2>/dev/null | tail -1)" '0
 # (bigint "..."): arbitrary-precision via setString (D-191 string arm).
 assert_eq 'bigint_str'    "$("$BIN" -e '(bigint "100")' 2>/dev/null | tail -1)" '100N'
 assert_eq 'bigint_str_neg' "$("$BIN" -e '(bigint "-5")' 2>/dev/null | tail -1)" '-5N'
-assert_eq 'bigint_str_big' "$("$BIN" -e '(bigint "999999999999999999999999999")' 2>/dev/null | tail -1)" '999999999999999999999999999N'
+# Below 2^64 to dodge the D-047 setString Linux divergence (matches the
+# existing literal tests' safe range; ≥2^64 strings inherit D-047).
+assert_eq 'bigint_str_big' "$("$BIN" -e '(bigint "12345678901234567890")' 2>/dev/null | tail -1)" '12345678901234567890N'
 # --- (bigdec x): int/BigInt→scale0, BigDecimal passthrough, float via toString ---
 assert_eq 'bigdec_int'    "$("$BIN" -e '(bigdec 100)' 2>/dev/null | tail -1)" '100M'
 assert_eq 'bigdec_float'  "$("$BIN" -e '(bigdec 1.5)' 2>/dev/null | tail -1)" '1.5M'
@@ -105,5 +107,13 @@ assert_eq 'bigdec_ratio_25' "$("$BIN" -e '(bigdec 7/20)' 2>/dev/null | tail -1)"
 assert_eq 'bigdec_ratio_neg' "$("$BIN" -e '(bigdec -1/4)' 2>/dev/null | tail -1)" '-0.25M'
 # Non-terminating ratio → arithmetic error (exit non-zero).
 "$BIN" -e '(bigdec 1/3)' >/dev/null 2>&1 && fail 'bigdec_ratio_nonterm: expected error' || true
+# Scientific notation (JVM BigDecimal.toString): scale<0 or adjExp<-6 → E± form.
+assert_eq 'bigdec_sci_float' "$("$BIN" -e '(bigdec 1e30)' 2>/dev/null | tail -1)" '1.0E+30M'
+assert_eq 'bigdec_sci_str'   "$("$BIN" -e '(bigdec "1.5E2")' 2>/dev/null | tail -1)" '1.5E+2M'
+assert_eq 'bigdec_sci_small' "$("$BIN" -e '(bigdec 1e-10)' 2>/dev/null | tail -1)" '1.0E-10M'
+assert_eq 'bigdec_plain_sm'  "$("$BIN" -e '(bigdec 1e-5)' 2>/dev/null | tail -1)" '0.000010M'
+# (bigint large-float): bigdec(d).toBigInteger() truncation (D-191, D-047-safe).
+assert_eq 'bigint_lgfloat'   "$("$BIN" -e '(bigint 1e30)' 2>/dev/null | tail -1)" '1000000000000000000000000000000N'
+assert_eq 'bigint_lgfloat_n' "$("$BIN" -e '(bigint -1e20)' 2>/dev/null | tail -1)" '-100000000000000000000N'
 
-echo "OK — phase14_class_type (33 cases) green"
+echo "OK — phase14_class_type (39 cases) green"

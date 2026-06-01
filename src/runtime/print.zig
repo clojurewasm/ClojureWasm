@@ -331,48 +331,53 @@ fn printRatio(w: *Writer, v: Value) Writer.Error!void {
 }
 
 fn printBigDecimal(w: *Writer, v: Value) Writer.Error!void {
-    // value = unscaled * 10^(-scale). For scale > 0 we render with
-    // a decimal point inserted; for scale <= 0 we use scientific-ish
-    // `<unscaled>E<-scale>M` (rare; matches JVM `toPlainString` for
-    // scale > 0, otherwise `toString`).
+    // value = unscaled * 10^(-scale). Reproduces JVM `BigDecimal.toString`:
+    // plain notation when `scale >= 0` AND the adjusted exponent
+    // `(precision-1) - scale >= -6`, otherwise scientific `d.dddE±exp`.
     const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
-    if (bd.scale == 0) {
-        try w.print("{f}M", .{bd.unscaled.m});
-        return;
-    }
-    // Render unscaled digits into a scratch buffer first, then place
-    // the decimal point per JVM `BigDecimal.toPlainString` for
-    // scale > 0 (`1.5M` from unscaled=15, scale=1) or append trailing
-    // zeros for scale < 0 (`1500M` from unscaled=15, scale=-2).
-    // Phase 14 row 14.4 (D-014a) gap (c) discharge.
-    var buf: [128]u8 = undefined;
+
+    // Render unscaled digits into a scratch buffer; split off the sign.
+    var buf: [1024]u8 = undefined;
     var sw: std.Io.Writer = .fixed(&buf);
     sw.print("{f}", .{bd.unscaled.m}) catch {
-        // Unscaled wider than 128 chars — fall back to the lossy form
-        // rather than a panic; user can re-render via toString once
-        // arbitrary-width path lands.
+        // Unscaled wider than the buffer — fall back to the lossy form
+        // rather than a panic.
         return w.print("{f}M", .{bd.unscaled.m});
     };
     const written = buf[0..sw.end];
     const neg = written.len > 0 and written[0] == '-';
     const digits = if (neg) written[1..] else written;
+    const n: i64 = @intCast(digits.len);
+    const adj_exp: i64 = (n - 1) - bd.scale;
+
     if (neg) try w.writeByte('-');
-    if (bd.scale > 0) {
-        const scale_u: usize = @intCast(bd.scale);
-        if (scale_u >= digits.len) {
-            try w.writeAll("0.");
-            for (0..scale_u - digits.len) |_| try w.writeByte('0');
+    if (bd.scale >= 0 and adj_exp >= -6) {
+        // Plain notation (toPlainString).
+        if (bd.scale == 0) {
             try w.writeAll(digits);
         } else {
-            const dot_pos = digits.len - scale_u;
-            try w.writeAll(digits[0..dot_pos]);
-            try w.writeByte('.');
-            try w.writeAll(digits[dot_pos..]);
+            const scale_u: usize = @intCast(bd.scale);
+            if (scale_u >= digits.len) {
+                try w.writeAll("0.");
+                for (0..scale_u - digits.len) |_| try w.writeByte('0');
+                try w.writeAll(digits);
+            } else {
+                const dot_pos = digits.len - scale_u;
+                try w.writeAll(digits[0..dot_pos]);
+                try w.writeByte('.');
+                try w.writeAll(digits[dot_pos..]);
+            }
         }
     } else {
-        try w.writeAll(digits);
-        const trailing: usize = @intCast(-bd.scale);
-        for (0..trailing) |_| try w.writeByte('0');
+        // Scientific: one digit, optional fraction, `E`, signed exponent.
+        try w.writeByte(digits[0]);
+        if (digits.len > 1) {
+            try w.writeByte('.');
+            try w.writeAll(digits[1..]);
+        }
+        try w.writeByte('E');
+        if (adj_exp >= 0) try w.writeByte('+');
+        try w.print("{d}", .{adj_exp});
     }
     try w.writeByte('M');
 }

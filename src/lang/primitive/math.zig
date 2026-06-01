@@ -697,11 +697,65 @@ pub fn bigintCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
         return big_int_mod.allocFromManaged(rt, &m);
     }
     const i = promote.truncToI64(rt, v) catch |err| switch (err) {
-        error.OutOfRange => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a value within Long range (large-float bigint: D-191)", .actual = "out-of-range number" }),
+        error.OutOfRange => {
+            // A float beyond Long range → clj's `bigdec(d).toBigInteger()`
+            // (truncate toward zero). The mantissa is ≤17 digits so the
+            // BigDecimal path is D-047-safe (no ≥2^64 setString).
+            if (v.tag() == .float) return bigintFromFloat(rt, v.asFloat(), loc);
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a finite number", .actual = "out-of-range number" });
+        },
         error.NotANumber => return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "bigint", .actual = @tagName(v.tag()) }),
         else => return err,
     };
     return big_int_mod.allocFromI64(rt, i);
+}
+
+/// A float beyond Long range coerced to a BigInt: render via `printFloat` (cw's
+/// `Double.toString`), parse to a BigDecimal, then truncate toward zero. Mirrors
+/// clj `(bigint d) = bigdec(d).toBigInteger()`. NaN / Inf raise (no integer).
+fn bigintFromFloat(rt: *Runtime, f: f64, loc: SourceLocation) anyerror!Value {
+    if (!std.math.isFinite(f))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a finite number", .actual = "infinite or NaN float" });
+    var fbuf: [400]u8 = undefined;
+    var fw: std.Io.Writer = .fixed(&fbuf);
+    print_mod.printFloat(&fw, f) catch
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a representable float", .actual = "unrenderable float" });
+    const bd = (try parseDecimalToBigDec(rt, fw.buffered())) orelse
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a representable float", .actual = "unparseable float" });
+    return bigdecTruncToBigInt(rt, bd);
+}
+
+/// Truncate a BigDecimal toward zero into a BigInt. `value = unscaled·10^(−scale)`:
+/// scale ≤ 0 multiplies by `10^(−scale)`, scale > 0 divides by `10^scale`
+/// (`divTrunc` = round toward zero). Uses exact big-int `pow`/`mul`/`divTrunc`,
+/// so it never touches the ≥2^64 `setString` D-047 path.
+fn bigdecTruncToBigInt(rt: *Runtime, bd: Value) anyerror!Value {
+    const infra = rt.gc.infra;
+    const scale = big_decimal_mod.asScale(bd);
+    var result = try big_decimal_mod.asUnscaled(bd).m.clone();
+    defer result.deinit();
+    if (scale != 0) {
+        const exp: u32 = @intCast(@abs(scale));
+        var ten = try std.math.big.int.Managed.initSet(infra, 10);
+        defer ten.deinit();
+        var pow10 = try std.math.big.int.Managed.init(infra);
+        defer pow10.deinit();
+        try pow10.pow(&ten, exp);
+        if (scale < 0) {
+            var prod = try std.math.big.int.Managed.init(infra);
+            defer prod.deinit();
+            try prod.mul(&result, &pow10);
+            result.swap(&prod);
+        } else {
+            var q = try std.math.big.int.Managed.init(infra);
+            defer q.deinit();
+            var rmd = try std.math.big.int.Managed.init(infra);
+            defer rmd.deinit();
+            try q.divTrunc(&rmd, &result, &pow10);
+            result.swap(&q);
+        }
+    }
+    return big_int_mod.allocFromManaged(rt, &result);
 }
 
 /// `(bigdec n/d)` — exact decimal of a Ratio, or ArithmeticException when the
@@ -800,28 +854,59 @@ fn bigdecDeferred(loc: SourceLocation) anyerror {
 /// BigDecimal: the digits (sans `.`) are the unscaled significand, the
 /// fractional-digit count is the scale. Returns null for a scientific form or
 /// a >Long unscaled (deferred to D-191).
+/// Parse a plain-or-scientific decimal `[-]ddd[.ddd][eE][+-]ddd` into a
+/// BigDecimal Value (arbitrary-precision unscaled, signed scale). Returns null
+/// on malformed input (caller raises `number_format_invalid`). The unscaled
+/// integer is the mantissa with the point removed; `scale = (#frac digits) −
+/// exponent`, so `1.0E30` → unscaled 10, scale −29 — matching clj's
+/// `BigDecimal(Double.toString d)`.
 fn parseDecimalToBigDec(rt: *Runtime, s: []const u8) !?Value {
-    if (std.mem.findScalar(u8, s, 'E') != null or std.mem.findScalar(u8, s, 'e') != null) return null;
     var t = s;
-    const neg = t.len > 0 and t[0] == '-';
-    if (neg) t = t[1..];
-    var digits: [32]u8 = undefined;
+    if (t.len == 0) return null;
+    const sign_neg = t[0] == '-';
+    if (t[0] == '-' or t[0] == '+') t = t[1..];
+    if (t.len == 0) return null;
+
+    // Split off an optional exponent.
+    var mant = t;
+    var exp: i64 = 0;
+    if (std.mem.findScalar(u8, t, 'e') orelse std.mem.findScalar(u8, t, 'E')) |epos| {
+        mant = t[0..epos];
+        const exp_str = t[epos + 1 ..];
+        if (exp_str.len == 0) return null;
+        exp = std.fmt.parseInt(i64, exp_str, 10) catch return null;
+    }
+    if (mant.len == 0) return null;
+
+    // Collect mantissa digits (drop the dot); count fractional digits.
+    var digits: [512]u8 = undefined;
     var dlen: usize = 0;
-    var scale: i32 = 0;
+    var frac: i64 = 0;
     var seen_dot = false;
-    for (t) |c| {
+    var any_digit = false;
+    for (mant) |c| {
         if (c == '.') {
+            if (seen_dot) return null;
             seen_dot = true;
             continue;
         }
         if (c < '0' or c > '9') return null;
-        if (dlen >= digits.len) return null; // wider than i64 — defer
+        if (dlen >= digits.len) return null; // pathologically wide — defer
         digits[dlen] = c;
         dlen += 1;
-        if (seen_dot) scale += 1;
+        any_digit = true;
+        if (seen_dot) frac += 1;
     }
-    const mag = std.fmt.parseInt(i64, digits[0..dlen], 10) catch return null;
-    return try big_decimal_mod.allocFromI64Scale(rt, if (neg) -mag else mag, scale);
+    if (!any_digit) return null;
+
+    const scale_i64: i64 = frac - exp;
+    if (scale_i64 > std.math.maxInt(i32) or scale_i64 < std.math.minInt(i32)) return null;
+
+    var m = try std.math.big.int.Managed.init(rt.gc.infra);
+    defer m.deinit();
+    m.setString(10, digits[0..dlen]) catch return null;
+    if (sign_neg) m.negate();
+    return try big_decimal_mod.allocFromManagedScale(rt, &m, @intCast(scale_i64));
 }
 
 /// `(char n)` — the character whose Unicode codepoint is the integer `n`
