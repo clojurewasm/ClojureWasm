@@ -27,6 +27,7 @@ const Env = @import("env.zig").Env;
 const lazy_seq = @import("lazy_seq.zig");
 const string_mod = @import("collection/string.zig");
 const hash = @import("hash.zig");
+const uuid_mod = @import("uuid.zig");
 const vector = @import("collection/vector.zig");
 const list = @import("collection/list.zig");
 const range = @import("collection/range.zig");
@@ -270,6 +271,9 @@ pub fn valueHash(v: Value) u32 {
         // map.contentEq / set.contentEq.
         .array_map, .hash_map => map.contentHash(v),
         .hash_set => set.contentHash(v),
+        // UUID hashes by its 128 bits so equal UUIDs share a bucket
+        // (partner of the `.uuid` valueEqual arm, ADR-0074).
+        .uuid => hash.hashString(&uuid_mod.asUuid(v).bytes),
         // defrecord keys hash by descriptor + fields (partner of
         // typedInstanceKeyEq); deftype keeps the identity bit-hash.
         .typed_instance => blk: {
@@ -389,6 +393,9 @@ pub fn valueEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
         .array_map, .hash_map => mapEqual(rt, env, a, b),
         .hash_set => setEqual(rt, a, b),
         .typed_instance => typedInstanceEqual(rt, env, a, b),
+        // UUID equality is by the 128 bits (ADR-0074): two distinct
+        // allocations with the same bytes are `=` (clj UUID value equality).
+        .uuid => std.mem.eql(u8, &uuid_mod.asUuid(a).bytes, &uuid_mod.asUuid(b).bytes),
         else => false,
     };
 }

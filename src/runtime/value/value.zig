@@ -74,7 +74,7 @@ pub const Value = enum(u64) {
         type_descriptor = 28,
         host_instance = 29,
         typed_instance = 30,
-        reserved_b15 = 31,
+        uuid = 31,
         // Group C (slots 32..47)
         atom = 32,
         agent = 33,

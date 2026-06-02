@@ -49,6 +49,7 @@ const big_int_mod = @import("numeric/big_int.zig");
 const ratio_mod = @import("numeric/ratio.zig");
 const big_decimal_mod = @import("numeric/big_decimal.zig");
 const regex_mod = @import("regex/value.zig");
+const uuid_mod = @import("uuid.zig");
 const td_mod = @import("type_descriptor.zig");
 const lazy_seq_mod = @import("lazy_seq.zig");
 const range_collection = @import("collection/range.zig");
@@ -321,6 +322,16 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
             // here. The source is shown verbatim (not re-escaped).
             try w.writeAll("#\"");
             try w.writeAll(regex_mod.asRegex(v).source());
+            try w.writeByte('"');
+        },
+        .uuid => {
+            // `#uuid "<canonical>"` for every print-method path (pr / prn /
+            // print / println) — the reader form, so EDN round-trips. Only
+            // `str` (UUID.toString → the bare canonical) differs, and `strFn`
+            // special-cases `.uuid` before reaching here (ADR-0074).
+            const canon = uuid_mod.canonicalOf(v);
+            try w.writeAll("#uuid \"");
+            try w.writeAll(&canon);
             try w.writeByte('"');
         },
         else => |t| try w.print("#<{s}>", .{@tagName(t)}),

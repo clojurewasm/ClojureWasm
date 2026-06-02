@@ -66,7 +66,9 @@ assert_eq 'regex_matches' "$("$BIN" -e '(re-matches #"[a-z]+" "hello")')" '"hell
 
 # --- random-uuid (substitute for the host-aggregator-gated
 # `(java.util.UUID/randomUUID)` form per D-079) ---
-got="$("$BIN" -e '(random-uuid)')"
+# random-uuid now returns a `.uuid` value (ADR-0074); `(str …)` is the bare
+# canonical 36-char form (the value itself prints as `#uuid "…"`).
+got="$("$BIN" -e '(str (random-uuid))')"
 # Pattern: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" (8-4-4-4-12 hex).
 if [[ ! "$got" =~ ^\"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"$ ]]; then
     fail "random_uuid_format: not a 36-char UUID string (got '$got')"

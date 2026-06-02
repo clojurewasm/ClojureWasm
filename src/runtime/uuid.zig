@@ -11,8 +11,24 @@
 //! Both call into `generateV4(...)` / `format(...)` / `parse(...)`
 //! here; neither knows about the other. F-009's "neutral impl,
 //! surfaces are thin wrappers" applies.
+//!
+//! ## The UUID value type (ADR-0074)
+//!
+//! `UuidValue` is the first-class `.uuid` heap Value (NaN-box slot B15).
+//! `#uuid "…"`, `random-uuid`, `parse-uuid`, and `java.util.UUID/randomUUID`
+//! all produce it, so cljw has ONE coherent UUID representation that
+//! round-trips through `pr-str` (`#uuid "…"`) and answers `uuid?` / `class`.
+//! The 16 bytes sit inline in the heap struct (no `gc.infra` payload), so
+//! the GC trace walks only `meta` and no finaliser is needed.
 
 const std = @import("std");
+const value_mod = @import("value/value.zig");
+const Value = value_mod.Value;
+const HeapHeader = value_mod.HeapHeader;
+const Runtime = @import("runtime.zig").Runtime;
+const tag_ops = @import("gc/tag_ops.zig");
+const gc_heap_mod = @import("gc/gc_heap.zig");
+const mark_sweep = @import("gc/mark_sweep.zig");
 
 /// 16-byte UUID payload (RFC 4122 big-endian field order).
 pub const Bytes = [16]u8;
@@ -86,6 +102,53 @@ fn nibble(c: u8) ParseError!u8 {
     };
 }
 
+// --- The .uuid heap value type (ADR-0074) ---
+
+/// Heap-managed UUID Value. `header` at offset 0 (gc.alloc invariant);
+/// the 16 RFC-4122 bytes sit INLINE (no gc.infra payload → no finaliser).
+/// `meta` carries optional user metadata.
+pub const UuidValue = extern struct {
+    header: HeapHeader,
+    _pad: [6]u8 = .{ 0, 0, 0, 0, 0, 0 },
+    bytes: Bytes,
+    meta: Value = Value.nil_val,
+
+    comptime {
+        std.debug.assert(@alignOf(UuidValue) >= 8);
+        std.debug.assert(@offsetOf(UuidValue, "header") == 0);
+    }
+};
+
+/// Wrap 16 UUID bytes in a fresh `.uuid` heap Value.
+pub fn alloc(rt: *Runtime, b: Bytes) !Value {
+    const u = try rt.gc.alloc(UuidValue);
+    u.* = .{ .header = HeapHeader.init(.uuid), .bytes = b, .meta = Value.nil_val };
+    return Value.encodeHeapPtr(.uuid, u);
+}
+
+/// Decode a `.uuid` Value to its carrier. Caller verifies `v.tag() == .uuid`.
+pub fn asUuid(v: Value) *const UuidValue {
+    std.debug.assert(v.tag() == .uuid);
+    return v.decodePtr(*const UuidValue);
+}
+
+/// Canonical 36-char form of a `.uuid` Value (for `str` / printing).
+pub fn canonicalOf(v: Value) Canonical {
+    return format(asUuid(v).bytes);
+}
+
+/// Per-tag trace: the bytes are inline, so only `meta` needs marking.
+fn traceUuid(gc_ptr: *anyopaque, header: *HeapHeader) void {
+    const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
+    const u: *UuidValue = @ptrCast(@alignCast(header));
+    if (u.meta.heapHeader()) |h| mark_sweep.mark(gc, h);
+}
+
+pub fn registerGcHooks() void {
+    tag_ops.registerTrace(.uuid, &traceUuid);
+    // No finaliser — the 16 bytes are inline (no gc.infra payload to free).
+}
+
 // --- tests ---
 
 const testing = std.testing;
@@ -118,4 +181,18 @@ test "parse rejects wrong length" {
 
 test "parse rejects wrong hyphen positions" {
     try testing.expectError(error.InvalidUuid, parse("12345678xabcd-4ef0-8012-3456789abcde"));
+}
+
+test "canonicalOf round-trips a .uuid value's bytes" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+
+    const b: Bytes = .{ 0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44, 0x00, 0x00 };
+    const v = try alloc(&rt, b);
+    try testing.expectEqual(value_mod.Value.Tag.uuid, v.tag());
+    const canon = canonicalOf(v);
+    try testing.expectEqualStrings("550e8400-e29b-41d4-a716-446655440000", &canon);
+    try testing.expectEqualSlices(u8, &b, &asUuid(v).bytes);
 }

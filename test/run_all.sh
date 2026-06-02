@@ -464,6 +464,7 @@ run_step "e2e_phase14_chunked_seq"           "bash test/e2e/phase14_chunked_seq.
 run_step "e2e_phase14_lazy_seq_cycle3"       "bash test/e2e/phase14_lazy_seq_cycle3.sh"
 run_step "e2e_phase14_lazy_seq_cycle4"       "bash test/e2e/phase14_lazy_seq_cycle4.sh"
 run_step "e2e_phase14_tagged_literal"        "bash test/e2e/phase14_tagged_literal.sh"
+run_step "e2e_phase14_uuid_literal"          "bash test/e2e/phase14_uuid_literal.sh"
 run_step "e2e_phase14_exit_smoke"            "bash test/e2e/phase14_exit_smoke.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.

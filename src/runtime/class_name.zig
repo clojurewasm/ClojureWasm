@@ -78,6 +78,7 @@ const NATIVE_ENTRIES = [_]NativeEntry{
     .{ .name = "PersistentHashMap", .tag = .hash_map },
     .{ .name = "PersistentHashSet", .tag = .hash_set },
     .{ .name = "Pattern", .tag = .regex },
+    .{ .name = "UUID", .tag = .uuid },
 };
 
 /// FQCN → simple normalisation for native class names. Throwable
@@ -92,6 +93,7 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "java.lang.Character", "Character" },
     .{ "java.lang.Number", "Number" },
     .{ "java.util.regex.Pattern", "Pattern" },
+    .{ "java.util.UUID", "UUID" },
     .{ "clojure.lang.Keyword", "Keyword" },
     .{ "clojure.lang.Symbol", "Symbol" },
     .{ "clojure.lang.PersistentList", "PersistentList" },

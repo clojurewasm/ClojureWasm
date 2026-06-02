@@ -13,6 +13,7 @@ const Value = @import("../../runtime/value/value.zig").Value;
 const Runtime = @import("../../runtime/runtime.zig").Runtime;
 const env_mod = @import("../../runtime/env.zig");
 const regex_value = @import("../../runtime/regex/value.zig");
+const uuid_value = @import("../../runtime/uuid.zig");
 const Env = env_mod.Env;
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
@@ -616,6 +617,12 @@ pub fn strFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             // `(str #"\d+")` → `\d+`: regex `toString` is the raw pattern, NOT
             // the `#"…"` reader form that `print-method` (pr/println) emits.
             .regex => try aw.writer.writeAll(regex_value.asRegex(arg).source()),
+            // `(str #uuid "x")` → `x`: UUID `toString` is the bare canonical,
+            // NOT the `#uuid "x"` reader form print-method emits (ADR-0074).
+            .uuid => {
+                const canon = uuid_value.canonicalOf(arg);
+                try aw.writer.writeAll(&canon);
+            },
             else => try print_mod.printResult(rt, env, &aw.writer, arg),
         }
     }

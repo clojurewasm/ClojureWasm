@@ -239,6 +239,7 @@ pub const Runtime = struct {
             .big_int => "BigInt",
             .ratio => "Ratio",
             .big_decimal => "BigDecimal",
+            .uuid => "UUID",
             else => @tagName(tag),
         };
     }
@@ -299,6 +300,7 @@ pub const Runtime = struct {
         @import("numeric/ratio.zig").registerGcHooks();
         @import("numeric/big_decimal.zig").registerGcHooks();
         @import("regex/value.zig").registerGcHooks();
+        @import("uuid.zig").registerGcHooks();
         @import("type_descriptor.zig").registerGcHooks();
         return .{
             .io = io,

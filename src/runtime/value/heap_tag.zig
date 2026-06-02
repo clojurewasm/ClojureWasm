@@ -28,7 +28,7 @@
 //!     B0 fn_val         B4 var_ref        B8 tagged_literal  B12 type_descriptor
 //!     B1 multi_fn       B5 ns             B9 reader_cond     B13 host_instance
 //!     B2 protocol       B6 delay          B10 class          B14 typed_instance
-//!     B3 protocol_fn    B7 regex          B11 reified_inst   B15 reserved
+//!     B3 protocol_fn    B7 regex          B11 reified_inst   B15 uuid
 //!
 //!   Group C — Mutable + concurrency + transient + sorted/queue (slots 32..47):
 //!     C0 atom           C4 future         C8 trans_vector    C12 array_chunk
@@ -85,7 +85,7 @@ pub const HeapTag = enum(u8) {
     type_descriptor = 28,
     host_instance = 29,
     typed_instance = 30,
-    reserved_b15 = 31,
+    uuid = 31, // B15 — java.util.UUID value type (ADR-0074)
 
     // Group C — Mutable + concurrency + transient + sorted/queue (slots 32..47)
     atom = 32,

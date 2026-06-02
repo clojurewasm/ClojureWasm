@@ -29,21 +29,17 @@ const Env = @import("../../env.zig").Env;
 const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const uuid = @import("../../uuid.zig");
-const string_collection = @import("../../collection/string.zig");
 
 /// Implements `(java.util.UUID/randomUUID)`.
-/// Spec: returns a 36-char canonical UUID v4 string. JVM
-/// `java.util.UUID.randomUUID()` returns a `java.util.UUID` instance;
-/// cw v1 ships the canonical-string form per F-009 (the canonical
-/// observable surface), matching `clojure.core/random-uuid`.
+/// Spec: returns a UUID v4 `.uuid` value (ADR-0074; was a canonical String
+/// pre-cycle-3). Matches JVM `java.util.UUID.randomUUID()` returning a UUID
+/// instance + `clojure.core/random-uuid`.
 /// JVM reference: java.util.UUID#randomUUID (java.base/java/util/UUID.java).
 /// cw v1 tier: A (Phase 14 row 14.11 / D-121).
 fn randomUUID(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("java.util.UUID/randomUUID", args, 0, loc);
-    const bytes = uuid.generateV4(rt.io);
-    const canonical = uuid.format(bytes);
-    return try string_collection.alloc(rt, &canonical);
+    return try uuid.alloc(rt, uuid.generateV4(rt.io));
 }
 
 const std = @import("std");

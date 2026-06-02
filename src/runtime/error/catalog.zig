@@ -52,6 +52,7 @@ pub const Code = enum {
     eof_unexpected,
     token_invalid,
     reader_tag_unknown,
+    uuid_string_invalid,
     integer_literal_invalid,
     float_literal_invalid,
     string_unterminated,
@@ -369,6 +370,10 @@ pub fn entry(comptime code: Code) Entry {
         .reader_tag_unknown => .{
             .kind = .syntax_error, .phase = .parse,
             .template = "No reader function for tag {[tag]s}",
+        },
+        .uuid_string_invalid => .{
+            .kind = .syntax_error, .phase = .parse,
+            .template = "Invalid UUID string: {[s]s}",
         },
         .integer_literal_invalid => .{
             .kind = .number_error, .phase = .parse,
