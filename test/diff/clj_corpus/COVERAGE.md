@@ -9,6 +9,30 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
 
 ## Swept & at parity (don't re-sweep wholesale)
 
+- **clj-parity root-cause campaign C1..C7 + post-campaign sweep (2026-06-03)** —
+  the exploratory sweep has CONVERGED (7 broad probes → only AD-classified
+  divergences + 2 low-value infra gaps remain, D-220/D-222). Landed this wave:
+  - **heap-boxed Long (D-165/C7)** — a Long in (2^47, i64] stays Long (`(class)`
+    →Long, print no `N`), BigInt only past i64. Corpus `heap_long`.
+  - **str/.toString of BigInt/BigDecimal drop the `N`/`M` suffix (D-212)** — the
+    suffix is a reader form; `pr`/`prn` keep it. Corpus `numeric_str_suffix`.
+  - **`(class e)` → the specific exception class (D-213)** (ExceptionInfo /
+    Exception / ArithmeticException …), not generic "ex_info". Corpus
+    `exception_class` (also pins `class?`, D-215).
+  - **bit-ops accept full-Long operands (D-214)** — `expectI64` + unsigned-64
+    `%x`-style; `(bit-and 1e15 1e15)`→1e15. Corpus `bit_ops_i64`.
+  - **`format` flag/conversion surface completed (D-216)** — `#` alt-form,
+    float sign/group flags, `%S`/`%H`, `%.Ns`, `%h`, unsigned `%x`, heap-Long
+    `%d`, `%s` nil→"null". Corpus `format_surface` (supersedes `format_conv`).
+  - **String is Indexed (D-217)** — `nth`/`get`/`contains?` index a String by
+    codepoint (`(nth "abc" 1)`→\b). Corpus `string_indexed`.
+  - **peek/pop are stack-only (D-218)** — throw on a non-stack seqable (string/
+    lazy/range) like clj, not silent first/rest. Corpus `stack_ops`.
+  - **namespaced map literals `#:ns{…}`/`#::`/`#::alias` (D-219)** — reader
+    key-qualification + compact `#:ns{…}` print (`*print-namespace-maps*`
+    threadlocal default true). `read-string` resolves `::` too (D-221). Corpus
+    `namespaced_maps`.
+
 - **Numeric tower** — `bigint`/`bigdec` constructors (int/BigInt/ratio/string/
   scientific/large-float), bigdec `+ - * / quot rem mod` contagion incl.
   float→f64, ratio terminating-decimal + ArithmeticException. (D-191/D-194
@@ -225,8 +249,22 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
 
 ## Next-sweep candidates (gap-confirmed or unswept)
 
-- **Low-value bit ops** (unswept, low call-frequency): Integer/Long
-  `lowestOneBit`/`reverseBytes`/`rotateLeft`(2-arg)/`rotateRight`(2-arg)/`signum`.
+> **The clj-parity exploratory sweep CONVERGED 2026-06-03.** Seven broad probes
+> across string/format/collection/control/regex/reader/printer/numeric/
+> transducer/metadata surfaces returned only AD-classified divergences (AD-001
+> set order, AD-002 opaque-ref print, AD-003 simple class, AD-007 error Kind,
+> AD-008 overflow, AD-009 hash) plus the two infra gaps below. The remaining
+> items are LOW value and each needs new infrastructure — drain when their area
+> is otherwise warranted, not as standalone grind (Micro-coverage-grind smell).
+
+- **`re-matcher`/`re-groups` (D-220)** — the stateful Java Matcher cursor API;
+  needs a cljw-native Matcher value type. The stateless `re-find`/`re-seq`/
+  `re-matches` forms already cover idiomatic use.
+- **Bindable print vars (D-222)** — `*print-namespace-maps*` / `*print-readably*`
+  are threadlocals (defaults match clj `-e`); making them `(binding …)`-able
+  needs a var-current-value read from the print primitives.
+- **Low-value bit ops** — DONE: `lowestOneBit`/`reverseBytes`/`rotateLeft`/
+  `rotateRight`/`signum` (D-173) + full-Long operands (D-214). Corpus `bit_ops_i64`.
 - **`clojure.set` / `clojure.walk`** — swept 2026-06-02 (§A26): union/intersection/
   difference/subset?/superset?/select/project/rename/rename-keys/map-invert/index/
   join + prewalk/postwalk/*-replace/keywordize-keys/stringify-keys/walk all at
