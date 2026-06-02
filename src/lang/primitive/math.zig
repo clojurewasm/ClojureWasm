@@ -486,16 +486,15 @@ pub fn negQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return lt(rt, env, &pair, loc);
 }
 
-/// `(odd? x)` — true iff `x` is an odd integer. Long fast-path
-/// uses the bottom bit; BigInt arms via Managed.bitAndScalar.
-/// Non-integer raises `type_arg_not_integer` (matches JVM
-/// Clojure's IllegalArgumentException narrowed to cw's catalog).
+/// `(odd? x)` — true iff `x` is an odd integer. Delegates to `parity`
+/// (Long bottom-bit + BigInt least-significant-limb). Non-integer
+/// raises `type_arg_not_integer` (matches JVM Clojure's
+/// IllegalArgumentException narrowed to cw's catalog).
 pub fn oddQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("odd?", args, 1, loc);
-    const n = try error_catalog.expectInteger(args[0], "odd?", loc);
-    return if ((n & 1) != 0) .true_val else .false_val;
+    return if (try parity(args[0], "odd?", loc)) .true_val else .false_val;
 }
 
 /// `(even? x)` — true iff `x` is an even integer. See `odd?`.
@@ -503,8 +502,19 @@ pub fn evenQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     _ = rt;
     _ = env;
     try error_catalog.checkArity("even?", args, 1, loc);
-    const n = try error_catalog.expectInteger(args[0], "even?", loc);
-    return if ((n & 1) == 0) .true_val else .false_val;
+    return if (try parity(args[0], "even?", loc)) .false_val else .true_val;
+}
+
+/// True iff integer `v` is odd. Long uses the bottom bit; BigInt reads
+/// the least-significant limb's bit 0 (big.int is sign-magnitude, so
+/// parity is sign-independent). Non-integer raises type_arg_not_integer.
+fn parity(v: Value, name: []const u8, loc: SourceLocation) !bool {
+    if (v.tag() == .big_int) {
+        const m = big_int_mod.asManaged(v);
+        return (m.limbs[0] & 1) != 0;
+    }
+    const n = try error_catalog.expectInteger(v, name, loc);
+    return (n & 1) != 0;
 }
 
 /// `(abs x)` — clojure.core/abs (1.11+). Returns |x| for any

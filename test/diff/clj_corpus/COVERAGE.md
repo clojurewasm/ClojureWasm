@@ -15,6 +15,17 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   discharged.)
 - **Integer/Long bit + Math `*Exact`** — bitCount/clz/ctz/highestOneBit/reverse;
   addExact/multiplyExact/… (D-172). Remaining low-value: see Next.
+- **Numeric coercion / parity** — `even?`/`odd?` over BigInt (incl. negative,
+  zero, ≥2^64), plus **oversized integer-literal auto-promote**: a bare decimal
+  literal too large for i64 now reads as BigInt (clj `…N`) instead of erroring,
+  matching `(= 99…99 99…99N)`. Gap found+fixed: `even?`/`odd?` rejected `.big_int`
+  (doc claimed a BigInt arm that was never wired) — now via `parity` helper
+  (Long bottom-bit + BigInt least-significant-limb). Corpus `num_coerce`. (`*`
+  overflow→`…N` vs clj ArithmeticException is F-005-intentional; large-Long→`…N`
+  is D-165, both excluded from the corpus.) Residual: a **radix-prefixed**
+  overflow (`0xFFFFFFFFFFFFFFFFFF`) still errors where clj promotes to BigInt —
+  rare; `parseBase10` is base-10-only and the base-N setString path carries the
+  D-047 Linux hazard, so deferred.
 - **String / regex** — clojure.string surface, `format` conversion+flag family,
   re-find/re-matches/re-seq + capturing groups + `$N`/fn replace; regex prints
   `#"src"` (pr) / raw (str).

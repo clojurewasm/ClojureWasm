@@ -120,9 +120,26 @@ pub const Reader = struct {
 
     fn readInteger(self: *Reader, tok: Token) ReadError!Form {
         const txt = tok.text(self.source);
-        const val = std.fmt.parseInt(i64, txt, 0) catch
+        const val = std.fmt.parseInt(i64, txt, 0) catch |e| {
+            // A decimal literal that overflows i64 auto-promotes to BigInt
+            // (Clojure: an integer literal too large for Long reads as
+            // clojure.lang.BigInt). parseBase10 handles the sign + digits;
+            // radix-prefixed (0x/0o/0b) overflow stays an error.
+            if (e == error.Overflow and isPlainDecimal(txt))
+                return Form{ .data = .{ .big_int_literal = txt }, .location = self.locOf(tok) };
             return error_catalog.raise(.integer_literal_invalid, self.locOf(tok), .{ .text = txt });
+        };
         return Form{ .data = .{ .integer = val }, .location = self.locOf(tok) };
+    }
+
+    /// True when `txt` is an optionally-signed run of base-10 digits
+    /// (no `0x`/`0o`/`0b` radix prefix) — the shape `parseBase10` accepts.
+    fn isPlainDecimal(txt: []const u8) bool {
+        var t = txt;
+        if (t.len > 0 and (t[0] == '-' or t[0] == '+')) t = t[1..];
+        if (t.len == 0) return false;
+        for (t) |c| if (c < '0' or c > '9') return false;
+        return true;
     }
 
     fn readFloat(self: *Reader, tok: Token) ReadError!Form {
@@ -833,12 +850,28 @@ test "number error carries token text in message" {
     defer ctx.deinit();
 
     error_mod.clearLastError();
-    // i64-overflowing literal — tokenizer accepts as integer, parseInt fails.
-    try testing.expectError(error.NumberError, ctx.read("99999999999999999999"));
+    // Malformed hex literal (prefix, no digits) — tokenizer accepts as
+    // integer, parseInt fails with InvalidCharacter. (A decimal i64-overflow
+    // no longer errors here: it auto-promotes to BigInt, see below.)
+    try testing.expectError(error.NumberError, ctx.read("0x"));
     const info = error_mod.getLastError() orelse return error.TestUnexpectedResult;
     try testing.expectEqual(error_mod.Kind.number_error, info.kind);
     try testing.expectEqual(error_mod.Phase.parse, info.phase);
-    try testing.expect(std.mem.find(u8, info.message, "99999999999999999999") != null);
+    try testing.expect(std.mem.find(u8, info.message, "0x") != null);
+}
+
+test "i64-overflowing decimal literal auto-promotes to BigInt" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    // Clojure reads an integer literal too large for Long as a BigInt
+    // (e.g. 99999999999999999999 → …N), not an error.
+    const form = try ctx.read("99999999999999999999");
+    try testing.expectEqualStrings("99999999999999999999", form.data.big_int_literal);
+
+    // Sign is preserved by the same path.
+    const neg = try ctx.read("-99999999999999999999");
+    try testing.expectEqualStrings("-99999999999999999999", neg.data.big_int_literal);
 }
 
 test "string error: unknown escape sequence" {
