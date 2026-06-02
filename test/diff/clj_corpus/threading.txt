@@ -1,0 +1,28 @@
+(some-> 5 inc (* 2))
+;;=> 12
+(some-> nil inc)
+;;=> nil
+(some->> [1 2 3] (map inc) (reduce +))
+;;=> 9
+(some->> nil (map inc))
+;;=> nil
+(cond-> 5 true inc false (* 100))
+;;=> 6
+(cond->> [1] true (cons 0))
+;;=> (0 1)
+(as-> 5 x (+ x 1) (* x 2))
+;;=> 12
+(when-let [x 5] (* x 2))
+;;=> 10
+(when-let [x nil] :never)
+;;=> nil
+(if-some [x false] :got :none)
+;;=> :got
+(if-some [x nil] :got :none)
+;;=> :none
+(when-some [x 0] (inc x))
+;;=> 1
+(-> 5 (+ 3) (* 2))
+;;=> 16
+(->> (range 5) (map inc) (filter even?) (reduce +))
+;;=> 6

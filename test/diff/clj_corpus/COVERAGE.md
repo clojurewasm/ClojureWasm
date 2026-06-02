@@ -150,6 +150,12 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   `clojure.set/index`/`join` map-key merge). `(hash coll)` is content-based +
   order-independent for maps/sets. Corpus `collection_keys`. Lazy/range keys
   stay identity (rt-free residual).
+- **threading / conditional macros** — `->`/`->>`/`some->`/`some->>`/`cond->`/
+  `cond->>`/`as->`/`doto` + `when-let`/`if-some`/`when-some` all at parity
+  (nil short-circuit, predicate gating, binding shadowing). Corpus `threading`
+  (14). Only DIFF: `(doto (atom …) …)` returns the atom whose print form is
+  `#<atom>` vs clj's `#object[clojure.lang.Atom 0xADDR {…}]` — an acceptable
+  print divergence (clj embeds a non-reproducible identity hash).
 
 ## Next-sweep candidates (gap-confirmed or unswept)
 
@@ -175,6 +181,10 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
 ## Acceptable divergences (NOT bugs — do not "fix")
 
 - Set / non-sorted-map **print order** differs from clj hash order.
+- **Opaque-object print form**: an atom prints `#<atom>` vs clj's
+  `#object[clojure.lang.Atom 0xADDR {:status :ready, :val N}]` — clj embeds a
+  non-reproducible identity hash, so exact parity is neither possible nor
+  desirable (same class as `#object[…]` for any opaque ref type).
 - `(class 5)` → `Long` not `java.lang.Long` (ADR-0059 no-JVM rule); `(type …)` too.
 - `(float 1/3)` is f64 (cljw has no f32).
 - Subnormal `5.0E-324` vs JVM `4.9E-324` (same double).
