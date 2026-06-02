@@ -508,6 +508,25 @@ fn stepOnce(
                 stack[sp] = Value.nil_val;
                 sp += 1;
             },
+            .op_ns_with_filter => {
+                // D-098: mirror of tree_walk::evalNs's refer-clojure branch
+                // with the `:exclude`/`:only` filter. Enter the ns, then
+                // refer rt + clojure.core through referAllWithFilter.
+                if (instr.operand >= chunk.ns_filters.len)
+                    return raiseInternal("vm: op_ns_with_filter index out of range");
+                const f = chunk.ns_filters[instr.operand];
+                env.current_ns = try env.findOrCreateNs(f.name);
+                if (env.findNs("rt")) |rt_ns| {
+                    try env.referAllWithFilter(rt_ns, env.current_ns.?, f.exclude, f.only);
+                }
+                if (env.findNs("clojure.core")) |clojure_core_ns| {
+                    try env.referAllWithFilter(clojure_core_ns, env.current_ns.?, f.exclude, f.only);
+                }
+                if (sp >= OPERAND_STACK_MAX)
+                    return raiseInternal("vm: operand stack overflow");
+                stack[sp] = Value.nil_val;
+                sp += 1;
+            },
             .op_require => {
                 // ADR-0035 D2 — mirror of tree_walk::evalRequire.
                 if (instr.operand >= chunk.constants.len)

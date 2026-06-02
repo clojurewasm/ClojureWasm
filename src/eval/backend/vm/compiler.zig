@@ -61,6 +61,7 @@ pub fn compile(
 
 const CallSiteEntry = opcode_mod.CallSiteEntry;
 const LibspecEntry = opcode_mod.LibspecEntry;
+const NsFilterEntry = opcode_mod.NsFilterEntry;
 
 const Compiler = struct {
     rt: *Runtime,
@@ -74,6 +75,9 @@ const Compiler = struct {
     /// per-libspec side-table. Each `op_require_with_libspec`
     /// instruction's operand indexes here.
     libspecs: std.ArrayList(LibspecEntry),
+    /// D-098 — per-filtered-`(ns …)` side-table. Each `op_ns_with_filter`
+    /// instruction's operand indexes here.
+    ns_filters: std.ArrayList(NsFilterEntry),
     /// Innermost enclosing `loop*` frame, or `null` outside a loop.
     /// `compileRecur` reads this to know the back-edge target IP and
     /// the slot list to rebind. Saved/restored across nested loops.
@@ -95,6 +99,7 @@ const Compiler = struct {
             .constants = .empty,
             .call_sites = .empty,
             .libspecs = .empty,
+            .ns_filters = .empty,
             .current_loop = null,
         };
     }
@@ -104,6 +109,7 @@ const Compiler = struct {
         self.constants.deinit(self.arena);
         self.call_sites.deinit(self.arena);
         self.libspecs.deinit(self.arena);
+        self.ns_filters.deinit(self.arena);
     }
 
     fn compileNode(self: *Compiler, node: *const Node) Error!void {
@@ -526,21 +532,43 @@ const Compiler = struct {
     }
 
     fn compileNs(self: *Compiler, n: node_mod.NsNode) Error!void {
-        // ADR-0035 D1 ns VM path + D9 second amendment (Phase 7
-        // entry T3, 2026-05-26). When `refer_clojure = true` emit
-        // `op_ns_with_refer_clojure` which performs op_in_ns logic
-        // + referAll(rt) + referAll(clojure.core). When
-        // `refer_clojure = false` emit bare `op_in_ns`.
+        // ADR-0035 D1 ns VM path + D9 second amendment (Phase 7 entry T3).
+        // When `refer_clojure = true` emit `op_ns_with_refer_clojure`
+        // (op_in_ns + referAll(rt) + referAll(clojure.core)); else bare
+        // op_in_ns.
         //
-        // Row 14.7 (D-098): the new fields `refer_clojure_exclude` /
-        // `refer_clojure_only` / `libspecs` are TreeWalk-only today;
-        // VM lowering needs a new opcode (`op_ns_with_filter <name_idx>
-        // <filter_idx>`) plus a per-libspec side-table emission loop.
-        // Both ride VM-DEFER until the bytecode side-table extension
-        // settles per D-100 (a) constants-pool design.
-        if (n.refer_clojure_exclude.len > 0 or n.refer_clojure_only != null or n.libspecs.len > 0) {
-            // VM-DEFER: ns filter + libspec list pending op_ns_with_filter + libspec side-table extension [refs: D-098, feature_deps.yaml#runtime/vm/ns_filter_and_libspec]
-            return error.NotImplemented;
+        // Row 14.7 (D-098, landed 2026-06-02): when a `:refer-clojure`
+        // filter (`:exclude`/`:only`) OR ns-level `:require` libspecs are
+        // present, lower the (filtered) refer-clojure via op_ns_with_filter
+        // over a ns_filters side-table entry, then emit one require op per
+        // libspec — mirroring tree_walk::evalNs. Each op pushes nil, so a
+        // trailing op_pop drops the prior nil before the next push, leaving
+        // exactly one nil (the ns form's value).
+        const has_filter = n.refer_clojure_exclude.len > 0 or n.refer_clojure_only != null;
+        if (has_filter or n.libspecs.len > 0) {
+            if (n.refer_clojure) {
+                if (self.ns_filters.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+                const filter_idx: u16 = @intCast(self.ns_filters.items.len);
+                const name_dup = try self.arena.dupe(u8, n.name);
+                const exclude_dup = try self.arena.alloc([]const u8, n.refer_clojure_exclude.len);
+                for (n.refer_clojure_exclude, 0..) |e, i| exclude_dup[i] = try self.arena.dupe(u8, e);
+                const only_dup: ?[]const []const u8 = if (n.refer_clojure_only) |only| blk: {
+                    const od = try self.arena.alloc([]const u8, only.len);
+                    for (only, 0..) |o, i| od[i] = try self.arena.dupe(u8, o);
+                    break :blk od;
+                } else null;
+                try self.ns_filters.append(self.arena, .{ .name = name_dup, .exclude = exclude_dup, .only = only_dup });
+                try self.emit(.op_ns_with_filter, filter_idx);
+            } else {
+                const name_val = try string_mod.alloc(self.rt, n.name);
+                const idx = try self.addConstant(name_val);
+                try self.emit(.op_in_ns, idx);
+            }
+            for (n.libspecs) |libspec| {
+                try self.emit(.op_pop, 0); // drop the prior op's nil
+                try self.emitLibspec(libspec);
+            }
+            return;
         }
         const name_val = try string_mod.alloc(self.rt, n.name);
         const idx = try self.addConstant(name_val);
@@ -552,13 +580,16 @@ const Compiler = struct {
     }
 
     fn compileRequire(self: *Compiler, n: node_mod.RequireNode) Error!void {
-        // ADR-0035 D2 require VM path. The bare-symbol shape parks
-        // the ns name as a String constant and emits op_require. The
-        // libspec shape (alias or refers present) builds a LibspecEntry
-        // in `self.libspecs` and emits op_require_with_libspec with
-        // the side-table index — row 7.10 cycle 3 (ADR-0036 first
-        // real-feature exercise; Devil's-advocate Alt 2 = chunk
-        // side-table parallel to ADR-0040's `call_sites`).
+        // ADR-0035 D2 require VM path; delegates to emitLibspec (shared with
+        // compileNs's ns-level :require loop, D-098).
+        try self.emitLibspec(n);
+    }
+
+    /// Emit a single require/libspec: the libspec shape (alias or refers)
+    /// builds a `LibspecEntry` + emits `op_require_with_libspec`; the bare
+    /// shape parks the ns name + emits `op_require`. Row 7.10 cycle 3
+    /// (ADR-0036); reused by both `compileRequire` and `compileNs`.
+    fn emitLibspec(self: *Compiler, n: node_mod.RequireNode) Error!void {
         if (n.alias != null or n.refers.len > 0) {
             if (self.libspecs.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
             const idx: u16 = @intCast(self.libspecs.items.len);
@@ -631,13 +662,14 @@ const Compiler = struct {
         const consts = try self.arena.dupe(Value, self.constants.items);
         const sites = try self.arena.dupe(CallSiteEntry, self.call_sites.items);
         const specs = try self.arena.dupe(LibspecEntry, self.libspecs.items);
+        const filters = try self.arena.dupe(NsFilterEntry, self.ns_filters.items);
         // ADR-0047 row 13.3: peephole runs inside finalize so every
         // chunk — top-level + every fn sub-chunk built via
         // compileFnMethodBody → sub.finalize() — is optimized through
         // the same path, and the Phase-12 serializer caches the
         // optimized chunk transparently.
         const instrs = try peephole.optimize(self.arena, raw);
-        return .{ .instructions = instrs, .constants = consts, .call_sites = sites, .libspecs = specs };
+        return .{ .instructions = instrs, .constants = consts, .call_sites = sites, .libspecs = specs, .ns_filters = filters };
     }
 };
 

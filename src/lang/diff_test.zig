@@ -504,6 +504,15 @@ test "diff: ns_node bare with refer-clojure" {
     try f.check("(do (ns diff-ns-1 (:refer-clojure)) 17)", 17);
 }
 
+test "diff: ns_node :refer-clojure :only filter (D-098 VM op_ns_with_filter)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // The `:only [+]` whitelist refers `+` (from rt) into the new ns; the
+    // subsequent `(+ 1 2)` resolves it. op_ns_with_filter on the VM mirrors
+    // tree_walk::evalNs's referAllWithFilter, so both backends agree.
+    try f.check("(do (ns diff-ns-only (:refer-clojure :only [+])) (+ 1 2))", 3);
+}
+
 test "diff: vector_literal_node" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

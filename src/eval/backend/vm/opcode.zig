@@ -198,6 +198,14 @@ pub const Opcode = enum(u8) {
     /// mirrors `tree_walk::catchMatches` `.type_keyword` arm. Closes the
     /// D-014b VM-DEFER (ADR-0036 dual-backend parity).
     op_match_type_keyword = 0x21,
+    /// `(ns foo (:refer-clojure :exclude […] / :only […]))` — operand =
+    /// index into `BytecodeChunk.ns_filters`. Enters the ns (findOrCreateNs
+    /// + current_ns) then refers `rt` + `clojure.core` THROUGH the entry's
+    /// exclude/only filter (`referAllWithFilter`). Pushes nil. Sibling to
+    /// `op_ns_with_refer_clojure` (the unfiltered case); ns-level `:require`
+    /// libspecs are emitted separately as `op_require[_with_libspec]`.
+    /// Closes the D-098 VM-DEFER (ADR-0036 dual-backend parity).
+    op_ns_with_filter = 0x22,
 
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
@@ -239,6 +247,7 @@ pub const Opcode = enum(u8) {
             .op_static_method_call,
             .op_reraise,
             .op_match_type_keyword,
+            .op_ns_with_filter,
             => false,
         };
     }
@@ -285,6 +294,7 @@ pub const Opcode = enum(u8) {
             .op_push_cleanup,
             .op_reraise,
             .op_match_type_keyword,
+            .op_ns_with_filter,
             => false,
         };
     }
@@ -340,6 +350,17 @@ pub const LibspecEntry = struct {
     refers: []const []const u8 = &.{},
 };
 
+/// Per-`(ns …)`-filter side-table entry (D-098). Each `op_ns_with_filter`
+/// instruction references one by index. `exclude` / `only` are the
+/// `:refer-clojure` filter lists threaded into `referAllWithFilter`
+/// (`only == null` ⇒ no whitelist). All fields are analyzer-arena-owned,
+/// chunk lifetime — a straight mirror of `tree_walk::evalNs`.
+pub const NsFilterEntry = struct {
+    name: []const u8,
+    exclude: []const []const u8 = &.{},
+    only: ?[]const []const u8 = null,
+};
+
 /// Compiled bytecode for a single function or top-level form.
 ///
 /// The chunk is immutable after compile (except for `call_sites[i].cache`
@@ -355,6 +376,9 @@ pub const BytecodeChunk = struct {
     /// Side-table indexed by `op_require_with_libspec` operand. Empty
     /// for chunks that contain no libspec require sites.
     libspecs: []LibspecEntry = &.{},
+    /// Side-table indexed by `op_ns_with_filter` operand. Empty for
+    /// chunks with no filtered `(ns …)` form.
+    ns_filters: []NsFilterEntry = &.{},
 };
 
 test "opcode enum tags are stable u8 values" {

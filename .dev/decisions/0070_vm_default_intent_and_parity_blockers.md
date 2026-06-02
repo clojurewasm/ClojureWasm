@@ -46,15 +46,19 @@ flip was reverted; the gaps are tracked as D-196.
 | Gap                                                                   | e2e                                      | Status                                                   |
 |-----------------------------------------------------------------------|------------------------------------------|----------------------------------------------------------|
 | `catch :keyword` type dispatch                                        | phase14_catch_keyword                    | **CLOSED 2026-06-02** — op_match_type_keyword (D-014b)  |
-| `(ns …)` `:refer-clojure :exclude` + libspec                         | phase14_ns_directive                     | VM-DEFER (D-098), compiler.zig:521                       |
+| `(ns …)` `:refer-clojure :exclude` + libspec                         | phase14_ns_directive                     | **CLOSED 2026-06-02** — op_ns_with_filter (D-098)       |
 | java-surface constructor (`(java.io.File. …)`)                       | phase14_java_static_dispatch             | **CLOSED 2026-06-02** — shared constructInstance        |
 | dynamic error-context (`with-context`/`:request-id`, ex-info `:data`) | phase14_with_context, phase14_user_throw | **CLOSED 2026-06-02 — ADR-0071** (cleanup-handler kind) |
 
-4 of the 5 e2e blockers are closed (catch-keyword via op_match_type_keyword;
+**All 5 e2e blockers are CLOSED (2026-06-02)** — `check_vm_parity.sh` reports
+0 failing groups (corpus 375/375 + every blocker e2e green on `-Dbackend=vm`):
+catch-keyword via op_match_type_keyword; ns-directive via op_ns_with_filter;
 the java-surface ctor via the shared `special_forms.constructInstance`;
 error-context via [ADR-0071](0071_vm_cleanup_handler_kind.md)'s cleanup-handler
-kind). **Only `(ns …)` `:refer-clojure` filter + libspec (op_ns_with_filter)
-remains** before the build.zig default flip.
+kind. Per Decision step 4, the remaining work is the **build.zig default flip**
+(`orelse .tree_walk` → `orelse .vm`) + promoting `check_vm_parity.sh` to a hard
+per-commit gate, gated on a full gate run under `-Dbackend=vm` (Mac + ubuntunote)
+confirming 200 pass. That flip is the next cycle (F-012 reality-aligned).
 
 ## Consequences
 

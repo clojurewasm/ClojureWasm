@@ -435,28 +435,27 @@ entries:
   - name: runtime/vm/ns_filter_and_libspec
     kind: runtime_layer
     defined_in: src/eval/backend/vm/compiler.zig
-    status: provisional
+    status: landed
     requires_features: []
     requires_debts:
       - D-098
-    provisional_markers:
-      - src/eval/backend/vm/compiler.zig (compileNs ns-filter / ns-libspec arms — VM-DEFER pending op_ns_with_filter + libspec side-table extension)
+    provisional_markers: []
     notes: |
       Row 14.7 (D-098) landed `(ns foo (:refer-clojure :exclude /
       :only [...]))` and `(ns foo (:require [other :as a :refer
       [...]]))` on TreeWalk via `env.referAllWithFilter` + walking
-      `NsNode.libspecs`. VM compileNs short-circuits to
-      `error.NotImplemented` when ANY of the new fields are non-
-      default. The VM lowering needs (a) a new opcode like
-      `op_ns_with_filter <name_idx> <filter_idx>` carrying the
-      exclude/only sets via a side-table, plus (b) emitting the
-      libspec list through the existing libspec side-table
-      machinery (currently single-libspec; needs N-libspec
-      extension). Both intersect D-100 (a) bytecode chunk constants
-      pool design and are deferred until the cache format settles.
-      TreeWalk-only Layer-2 e2e coverage at
-      test/e2e/phase14_ns_directive.sh is acceptable during the
-      deferral.
+      `NsNode.libspecs`. VM lowering LANDED 2026-06-02 (D-196 blocker
+      2): (a) new opcode `op_ns_with_filter <filter_idx>` over a
+      `BytecodeChunk.ns_filters` side-table (`NsFilterEntry { name,
+      exclude, only }`) whose dispatch enters the ns + refers rt +
+      clojure.core through `referAllWithFilter`; (b) the ns-level
+      libspecs are emitted as a loop of `op_require[_with_libspec]`
+      (compileRequire's body extracted to the shared `emitLibspec`),
+      each preceded by op_pop so the form leaves exactly one nil. The
+      "needs D-100(a) constants-pool design" concern was a non-issue —
+      the side-table pattern (call_sites / libspecs) already existed.
+      phase14_ns_directive (8 cases) passes on `-Dbackend=vm`. VM-DEFER
+      marker removed.
 
   - name: runtime/eval/catch_type_keyword
     kind: runtime_layer

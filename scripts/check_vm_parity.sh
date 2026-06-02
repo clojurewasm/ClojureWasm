@@ -22,7 +22,12 @@ cd "$(dirname "$0")/.."
 
 # D-196 blocker e2e (basename under test/e2e/, minus .sh). Prune as gaps close.
 BLOCKERS=(
-    phase14_ns_directive           # (ns …) :refer-clojure filter (VM-DEFER D-098)
+    # ALL D-196 blockers CLOSED 2026-06-02 — the list is empty; the probe now
+    # verifies the corpus + (the absence of) regressions on -Dbackend=vm. Per
+    # ADR-0070 step 4 the next cycle flips build.zig default to vm and promotes
+    # this probe to a hard per-commit gate.
+    # phase14_ns_directive CLOSED 2026-06-02 (D-098): op_ns_with_filter +
+    # ns_filters side-table + emitLibspec loop. Pruned.
     # phase14_java_static_dispatch CLOSED 2026-06-02 (D-196 blocker 3): the
     # java-surface ctor `(java.io.File. …)` now resolves on the VM via the
     # shared special_forms.constructInstance (was deftype-only). Pruned.
