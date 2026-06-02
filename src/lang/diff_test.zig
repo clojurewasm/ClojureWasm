@@ -486,6 +486,14 @@ test "diff: catch :keyword falls through on :type mismatch (D-014b)" {
     try f.check("(try (throw (ex-info \"x\" {:type :bar})) (catch :foo _ 1) (catch ExceptionInfo _ 2))", 2);
 }
 
+test "diff: .getData on a caught ex_info (D-198 Throwable native method)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // `.getData`/`.getMessage` resolve via the shared `.ex_info` native
+    // descriptor on BOTH backends (no per-backend special-case).
+    try f.check("(try (throw (ex-info \"x\" {:n 7})) (catch ExceptionInfo e (:n (.getData e))))", 7);
+}
+
 test "diff: in_ns_node switches ns" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

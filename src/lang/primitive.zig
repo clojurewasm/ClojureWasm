@@ -112,6 +112,10 @@ pub fn registerAll(env: *Env) !void {
     // static `rt.types` descriptors — `(.toUpperCase s)` dispatches on the
     // receiver's runtime tag via `rt.nativeDescriptor(.string)`.
     try @import("../runtime/java/lang/String.zig").installNativeMethods(env.rt);
+    // D-198: java.lang.Throwable read accessors (.getMessage/.getCause/
+    // .getData) on the `.ex_info` native descriptor — the high-frequency
+    // catch-body pattern. Both backends resolve via receiverDescriptor.
+    try @import("../runtime/java/lang/Throwable.zig").installNativeMethods(env.rt);
 
     // ADR-0035 D9 (sub-cycle d): boot-time rt → user refer makes
     // primitives (`+`, `=`, `count`, ...) reachable unqualified at

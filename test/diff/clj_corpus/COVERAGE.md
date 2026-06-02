@@ -73,9 +73,13 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   on non-ex→nil, `try`/`catch <Class>` (ExceptionInfo/Exception/Arithmetic/
   IndexOutOfBounds/AssertionError/Throwable)/`finally`, nested ex-data,
   `instance? ExceptionInfo` — the cljw-native error API at parity (16/18).
-  Corpus `exception_api`. **Gap (D-198)**: Java interop `(Exception. msg)` ctor
-  + `(.getMessage e)` unwired (host-class machinery, D-048) — use ex-info/
-  ex-message (the native path).
+  Corpus `exception_api`. **`.getMessage`/`.getCause`/`.getData` LANDED**
+  (D-198 partial): Java-interop read accessors on a caught/ex-info exception
+  resolve via `.ex_info` native methods (Throwable.zig) — `(.getMessage e)` /
+  `(:k (.getData e))` in catch bodies at parity on both backends, incl. a
+  caught catalog error (`(/ 1 0)`). Corpus `host_exception` (6). **Remaining
+  gap (D-198/D-048)**: `(Exception. msg)` host-class CONSTRUCTORS still
+  `name_error` — use ex-info to mint exceptions (the native path).
 - **vector / associative ops** — subvec (2+3-arity, empty), mapv/filterv,
   into (coll/xform/set/map), assoc (set + append-at-count), update (+args),
   get/nth (not-found), peek/pop, assoc-in/update-in/get-in (deep + not-found),

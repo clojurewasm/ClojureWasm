@@ -1,0 +1,12 @@
+(.getMessage (ex-info "boom" {:k 1}))
+;;=> "boom"
+(.getData (ex-info "boom" {:k 1}))
+;;=> {:k 1}
+(.getMessage (ex-info "oops" {}))
+;;=> "oops"
+(try (throw (ex-info "boom" {:type :x})) (catch clojure.lang.ExceptionInfo e (.getMessage e)))
+;;=> "boom"
+(try (throw (ex-info "boom" {:n 7})) (catch clojure.lang.ExceptionInfo e (:n (.getData e))))
+;;=> 7
+(try (/ 1 0) (catch java.lang.ArithmeticException e (.getMessage e)))
+;;=> "Divide by zero"
