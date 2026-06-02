@@ -238,9 +238,10 @@ etc.). It walks each unpushed commit's range and checks:
    reference AND at least one `feature_deps.yaml#<key>` reference.
 
 The hook supports the same `--test-range RANGE` and
-`--test-staged` modes as `check_provisional_sync.sh`; self-tests
-under `test/scripts/check_dual_backend_parity_test.sh` exercise
-pass / fail / valid-marker / malformed-marker scenarios.
+`--test-staged` modes as `check_provisional_sync.sh`. It is
+exercised in practice by the per-commit push gate (a malformed or
+missing marker on a dual-backend change is rejected at push time);
+a dedicated self-test script is not yet written (tracked W-010).
 
 ## Cross-references
 
