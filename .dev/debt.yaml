@@ -9,6 +9,18 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-219"
+    status: "now (clj-parity sweep area, exploratory-found 2026-06-03) — namespaced map literals `#:ns{…}` unsupported (reader + printer)."
+    category: "runtime"
+    barrier: |-
+      **Namespaced map literals `#:ns{…}` / `#::{…}` / `#::alias{…}` are not supported** (reader + printer): `(read-string "#:foo{:a 1}")` → cljw EDN-reader-error / clj `#:foo{:a 1}` (= `{:foo/a 1}`); `(pr-str #:foo{:a 1 :b 2})` → cljw "Invalid token ':foo'" / clj "#:foo{:a 1, :b 2}". A Clojure 1.9 reader feature: `#:ns{:a 1, :b 2}` reads as `{:ns/a 1, :ns/b 2}` — unqualified keyword/symbol keys are qualified with `ns`; `:_/a` → `:a` (no namespace); already-qualified keys keep their ns; `#::{…}` uses the current ns; `#::alias{…}` resolves the alias. PRINTER: when `*print-namespace-maps*` is true (clojure.main binds it true) and ALL keys are keyword/symbol sharing one namespace, `pr` emits `#:ns{…}`. Scope: tokenizer `readDispatch` (`#:`), reader (read ns + map + qualify keys), printer (common-ns detection, gated on `*print-namespace-maps*`), the `^:dynamic *print-namespace-maps*` var. Discharge = big-bang reader+printer to parity, corpus `namespaced_maps`. Cross-ref ADR-0073 (data-reader infra) / F-011. recall trigger: clj-parity namespaced-map sweep.
+    last_reviewed: "2026-06-03"
+  - id: "D-220"
+    status: "now (clj-parity sweep area, exploratory-found 2026-06-03) — stateful regex `re-matcher`/`re-groups` unimplemented."
+    category: "runtime"
+    barrier: |-
+      **The stateful Java regex API `re-matcher`/`re-groups` (and `re-find` on a Matcher) is unimplemented**: `(re-groups (re-matcher #"(\d+)-(\d+)" "12-34"))` → cljw "Unable to resolve symbol: 're-groups'" / clj `["12-34" "12" "34"]`. clj's `re-matcher` returns a `java.util.regex.Matcher` (mutable cursor); `re-find`/`re-matches` on it advance the cursor; `re-groups` returns the last match's groups. cljw has no JVM Matcher (ADR-0059). The idiomatic stateless forms (`re-find`/`re-seq`/`re-matches` on a pattern+string) all WORK; only the stateful Matcher cursor API is missing. Options: (a) implement a cljw-native Matcher value type (mutable cursor over a compiled regex + input), (b) accept as out-of-scope (Tier C/D) since the stateless forms cover idiomatic use. LOW-MEDIUM value (stateful matching is rare in idiomatic Clojure). Cross-ref ADR-0059 (no-JVM) / regex impl / F-011. recall trigger: when stateful-regex / Matcher parity is taken up.
+    last_reviewed: "2026-06-03"
   - id: "D-216"
     status: |-
       DISCHARGED 2026-06-03 (clj-parity sweep area, big-bang): the `format`
