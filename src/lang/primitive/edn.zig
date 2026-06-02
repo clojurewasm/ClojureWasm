@@ -41,7 +41,6 @@ const string_collection = @import("../../runtime/collection/string.zig");
 /// JVM reference: clojure.edn/read-string
 /// cw v1 tier: A (Phase 9 row 9.2)
 pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("read-string", args, 1, loc);
     const arg = args[0];
     if (arg.tag() != .string) {
@@ -61,7 +60,7 @@ pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
         });
     };
     const form = form_opt orelse return Value.nil_val;
-    return try analyzer_mod.formToValue(rt, form);
+    return try analyzer_mod.formToValue(rt, env, form);
 }
 
 const Entry = struct {

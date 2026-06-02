@@ -58,6 +58,11 @@ pub const TokenKind = enum(u8) {
     fn_lit,
     /// `#'` var-quote reader macro → `(var x)` (mirrors `quote`/`deref`).
     var_quote,
+    /// `#tag` tagged-literal marker (ADR-0073). Consumes only the `#`; the
+    /// reader reads the following tag symbol + value form. Emitted when `#`
+    /// is followed by a symbol-start char (so it does not collide with
+    /// `#'`/`#(`/`#{`/`#"`/`#_`/`##`).
+    tagged,
     /// `^` metadata reader macro. `^meta target` attaches `meta` (a map,
     /// or `:kw`→`{:kw true}` / `Sym`→`{:tag Sym}` shorthand) to `target`.
     meta_caret,
@@ -314,7 +319,13 @@ pub const Tokenizer = struct {
                 self.advance();
                 return self.makeToken(.var_quote, start, start_line, start_col);
             },
-            else => return self.makeToken(.invalid, start, start_line, start_col),
+            else => |c| {
+                // `#tag form` tagged literal (ADR-0073): a `#` followed by a
+                // symbol-start char. Consume only the `#`; the reader reads
+                // the tag symbol + value form next.
+                if (isSymbolStart(c)) return self.makeToken(.tagged, start, start_line, start_col);
+                return self.makeToken(.invalid, start, start_line, start_col);
+            },
         }
     }
 

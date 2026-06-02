@@ -275,7 +275,7 @@ pub fn analyzeDefmacro(
         try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "arglists" } }, .location = form.location });
         try meta_items.append(arena, .{ .data = .{ .list = arglists_inner }, .location = form.location });
         const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
-        placeholder_var.meta = try analyzer_mod.formToValue(rt, meta_map);
+        placeholder_var.meta = try analyzer_mod.formToValue(rt, env, meta_map);
     }
 
     // Build the synthetic `(fn* [PARAMS] BODY...)` Form, then analyse
@@ -333,7 +333,7 @@ pub fn analyzeDef(
     // time. `env.intern`'s runtime re-intern (ADR-0038) updates root only
     // and never touches `.meta`, so this survives evaluation.
     if (items[1].meta) |meta_form|
-        var_ptr.meta = try analyzer_mod.formToValue(rt, meta_form.*);
+        var_ptr.meta = try analyzer_mod.formToValue(rt, env, meta_form.*);
     const value_node = if (items.len == 3)
         try analyzer_mod.analyze(arena, rt, env, scope, items[2], macro_table)
     else
@@ -396,12 +396,13 @@ pub fn analyzeDo(
 pub fn analyzeQuote(
     arena: std.mem.Allocator,
     rt: *Runtime,
+    env: *Env,
     items: []const Form,
     form: Form,
 ) AnalyzeError!*const Node {
     if (items.len != 2)
         return error_catalog.raise(.quote_arity_invalid, form.location, .{ .got = items.len - 1 });
-    const v = try analyzer_mod.formToValue(rt, items[1]);
+    const v = try analyzer_mod.formToValue(rt, env, items[1]);
     const n = try arena.create(Node);
     n.* = .{ .quote_node = .{ .quoted = v, .loc = form.location } };
     return n;

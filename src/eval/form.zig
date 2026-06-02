@@ -61,6 +61,18 @@ pub const FormData = union(enum) {
     /// `#{1 2 3}` — set literal. Each element form is read in source
     /// order; the analyzer drops duplicates at conj time (set semantics).
     set: []const Form,
+    /// `#tag form` — EDN tagged literal (ADR-0073). `tag` is a SymbolRef
+    /// (ns/name split kept for a qualified record-tag `#my.ns/Rec`); `form`
+    /// is the single value-form following the tag. The data-reader lookup +
+    /// application happens at `formToValue` time against `*data-readers*`.
+    tagged: TaggedForm,
+};
+
+/// `#tag form` payload. Boxed `form` (a `*const Form`) because a union
+/// variant cannot hold its own type by value.
+pub const TaggedForm = struct {
+    tag: SymbolRef,
+    form: *const Form,
 };
 
 /// AST node. Source location is required and defaults to "unknown".
@@ -94,6 +106,7 @@ pub const Form = struct {
             .vector => "vector",
             .map => "map",
             .set => "set",
+            .tagged => "tagged-literal",
         };
     }
 
@@ -156,6 +169,16 @@ pub const Form = struct {
             .vector => |items| try formatCollection(w, "[", "]", items),
             .map => |items| try formatMapEntries(w, items),
             .set => |items| try formatCollection(w, "#{", "}", items),
+            .tagged => |t| {
+                try w.writeByte('#');
+                if (t.tag.ns) |ns| {
+                    try w.writeAll(ns);
+                    try w.writeByte('/');
+                }
+                try w.writeAll(t.tag.name);
+                try w.writeByte(' ');
+                try t.form.formatPrStr(w);
+            },
         }
     }
 
@@ -223,6 +246,24 @@ test "Form typeName covers each kind" {
     try testing.expectEqualStrings("list", (Form{ .data = .{ .list = &.{} } }).typeName());
     try testing.expectEqualStrings("vector", (Form{ .data = .{ .vector = &.{} } }).typeName());
     try testing.expectEqualStrings("map", (Form{ .data = .{ .map = &.{} } }).typeName());
+}
+
+test "tagged form: typeName + pr-str round-trip" {
+    const inner = Form{ .data = .{ .integer = 5 } };
+    const t = Form{ .data = .{ .tagged = .{ .tag = .{ .name = "foo" }, .form = &inner } } };
+    try testing.expectEqualStrings("tagged-literal", t.typeName());
+
+    const s = try t.toString(testing.allocator);
+    defer testing.allocator.free(s);
+    try testing.expectEqualStrings("#foo 5", s);
+}
+
+test "tagged form: qualified tag prints ns/name" {
+    const inner = Form{ .data = .{ .string = "x" } };
+    const t = Form{ .data = .{ .tagged = .{ .tag = .{ .ns = "my.ns", .name = "Rec" }, .form = &inner } } };
+    const s = try t.toString(testing.allocator);
+    defer testing.allocator.free(s);
+    try testing.expectEqualStrings("#my.ns/Rec \"x\"", s);
 }
 
 test "isTruthy follows Clojure truthiness" {

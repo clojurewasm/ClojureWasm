@@ -98,6 +98,7 @@ pub const Reader = struct {
             .quote => self.readQuote(tok),
             .deref => self.readDeref(tok),
             .var_quote => self.readVarQuote(tok),
+            .tagged => self.readTagged(tok),
             .meta_caret => self.readMeta(tok),
             .symbolic => self.readSymbolic(tok),
             .discard => self.readDiscard(tok),
@@ -445,6 +446,35 @@ pub const Reader = struct {
         items[0] = Form{ .data = .{ .symbol = .{ .name = "var" } }, .location = loc };
         items[1] = inner;
         return Form{ .data = .{ .list = items }, .location = loc };
+    }
+
+    /// `#tag form` tagged literal (ADR-0073). The `#tag` marker consumed
+    /// only the `#`; read the tag symbol token, then the value form. The
+    /// data-reader lookup/application is deferred to `formToValue` time
+    /// (against `*data-readers*`), so the reader only builds the `.tagged`
+    /// Form — it stays namespace-unaware and eval-free.
+    fn readTagged(self: *Reader, tok: Token) ReadError!Form {
+        const loc = self.locOf(tok);
+        self.depth += 1;
+        if (self.depth > self.max_depth)
+            return error_catalog.raise(.form_nesting_too_deep, loc, .{ .max = self.max_depth });
+        defer self.depth -= 1;
+
+        const tag_tok = self.nextToken();
+        if (tag_tok.kind == .eof)
+            return error_catalog.raise(.eof_unexpected, loc, .{});
+        if (tag_tok.kind != .symbol)
+            return error_catalog.raise(.token_invalid, self.locOf(tag_tok), .{ .token = tag_tok.text(self.source) });
+        const tag = parseSymbolRef(tag_tok.text(self.source));
+
+        const val_tok = self.nextToken();
+        if (val_tok.kind == .eof)
+            return error_catalog.raise(.eof_unexpected, loc, .{});
+        const inner = try self.readForm(val_tok);
+
+        const form_ptr = self.allocator.create(Form) catch return error.OutOfMemory;
+        form_ptr.* = inner;
+        return Form{ .data = .{ .tagged = .{ .tag = tag, .form = form_ptr } }, .location = loc };
     }
 
     /// `^meta target` reader macro → `target` with `meta` attached to

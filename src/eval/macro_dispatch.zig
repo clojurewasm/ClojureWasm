@@ -119,7 +119,7 @@ pub fn expandIfMacro(
     // closure capture) so passing rt's GC heap is correct.
     var value_args = try arena.alloc(Value, args.len);
     for (args, 0..) |arg, i| {
-        value_args[i] = try analyzer_mod.formToValue(rt, arg);
+        value_args[i] = try analyzer_mod.formToValue(rt, env, arg);
     }
     const vtable = rt.vtable orelse
         return error_catalog.raiseInternal(loc, "expandIfMacro: rt.vtable not installed");
@@ -132,7 +132,11 @@ pub fn expandIfMacro(
     return try analyzer_mod.valueToForm(arena, result_val, loc);
 }
 
-fn narrowCallFnError(e: anyerror, loc: SourceLocation) ExpandError {
+/// Narrow `anyerror` (from `vtable.callFn`) to the analyzer-facing
+/// `ClojureWasmError` envelope. Shared with `analyzer.liftTagged`
+/// (ADR-0073 data-reader fn application) — both invoke a user fn via the
+/// vtable from analyze-time and must re-raise inside the narrow set.
+pub fn narrowCallFnError(e: anyerror, loc: SourceLocation) ExpandError {
     return switch (e) {
         error.OutOfMemory => error.OutOfMemory,
         error.SyntaxError => error.SyntaxError,

@@ -103,6 +103,16 @@ pub const Runtime = struct {
     /// frame without revisiting this borrow.
     macro_table: ?*const anyopaque = null,
 
+    /// Cached `*Var` for `clojure.core/*data-readers*` (root `{}`) and
+    /// `*default-data-reader-fn*` (root `nil`), interned `^:dynamic` at
+    /// bootstrap (ADR-0073). Type-erased to `?*anyopaque` (mirroring
+    /// `macro_table`) so this Layer-0 struct need not name `env.Var`; the
+    /// `formToValue` `.tagged` arm casts back and `Var.deref()`s, so a
+    /// `(binding [*data-readers* …] …)` frame is honoured for free. `null`
+    /// until bootstrap runs (an unknown-tag literal then raises directly).
+    data_readers_var: ?*anyopaque = null,
+    default_data_reader_fn_var: ?*anyopaque = null,
+
     /// Monotonic counter for `gensym` / auto-gensym (`foo#`). Lives on
     /// the Runtime so multiple macros within one analyse pass share a
     /// single sequence; per-Runtime so parallel tests don't collide.

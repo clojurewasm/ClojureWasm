@@ -34,6 +34,7 @@
 
 const std = @import("std");
 const Form = @import("../form.zig").Form;
+const TaggedForm = @import("../form.zig").TaggedForm;
 const FormData = @import("../form.zig").FormData;
 const SymbolRef = @import("../form.zig").SymbolRef;
 const node_mod = @import("../node.zig");
@@ -56,6 +57,7 @@ const ratio_mod = @import("../../runtime/numeric/ratio.zig");
 const regex_value = @import("../../runtime/regex/value.zig");
 const class_name = @import("../../runtime/class_name.zig");
 const type_descriptor = @import("../../runtime/type_descriptor.zig");
+const dispatch = @import("../../runtime/dispatch.zig");
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
@@ -294,6 +296,10 @@ pub fn analyze(
             try analyzeMetaColl(arena, rt, env, scope, form, mf, macro_table)
         else
             try analyzeSetLiteral(arena, rt, env, scope, items, form, macro_table),
+        // `#tag form` in expression position (ADR-0073): apply the data
+        // reader at analyze time (data is data) and emit the result as a
+        // constant. Reuses the `formToValue` lift path.
+        .tagged => |t| try makeConstant(arena, try liftTagged(rt, env, t, form.location), form),
     };
 }
 
@@ -764,7 +770,7 @@ fn analyzeSpecial(
         .defmacro_form => special_forms.analyzeDefmacro(arena, rt, env, scope, items, form, macro_table),
         .if_form => special_forms.analyzeIf(arena, rt, env, scope, items, form, macro_table),
         .do_form => special_forms.analyzeDo(arena, rt, env, scope, items, form, macro_table),
-        .quote_form => special_forms.analyzeQuote(arena, rt, items, form),
+        .quote_form => special_forms.analyzeQuote(arena, rt, env, items, form),
         .var_form => special_forms.analyzeVar(arena, rt, env, items, form),
         .fn_star => bindings.analyzeFnStar(arena, rt, env, scope, items, form, macro_table),
         .let_star => bindings.analyzeLetStar(arena, rt, env, scope, items, form, macro_table),
@@ -795,7 +801,7 @@ const try_form = @import("try_form.zig");
 /// strings, and collection literals need heap support that lands in
 /// later phases. **pub** so `analyzer/special_forms.zig::analyzeQuote`
 /// can call back into it (cyclic-import contract).
-pub fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
+pub fn formToValue(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
     const base: Value = switch (form.data) {
         .nil => .nil_val,
         .boolean => |b| if (b) .true_val else .false_val,
@@ -808,11 +814,12 @@ pub fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
         .regex_literal => |s| try parseRegexLiteral(rt, s, form.location),
         .keyword => |sym| try keyword.intern(rt, sym.ns, sym.name),
         .string => |s| try string_collection.alloc(rt, s),
-        .list => |items| try listFormToValue(rt, items),
+        .list => |items| try listFormToValue(rt, env, items),
         .symbol => |sym| try symbol_mod.intern(rt, sym.ns, sym.name),
-        .vector => |items| try vectorFormToValue(rt, items),
-        .map => |entries| try mapFormToValue(rt, entries, form.location),
-        .set => |items| try setFormToValue(rt, items),
+        .vector => |items| try vectorFormToValue(rt, env, items),
+        .map => |entries| try mapFormToValue(rt, env, entries, form.location),
+        .set => |items| try setFormToValue(rt, env, items),
+        .tagged => |t| return try liftTagged(rt, env, t, form.location),
     };
     // D-186: honour a reader `^meta` map on a collection literal. The reader
     // (readMeta) parks normalised meta on `Form.meta`; lift + attach it to an
@@ -820,7 +827,7 @@ pub fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
     // strings, …) cannot carry metadata in cljw — matching JVM — so the meta
     // is dropped there rather than erroring.
     if (form.meta) |meta_form| {
-        const m = try formToValue(rt, meta_form.*);
+        const m = try formToValue(rt, env, meta_form.*);
         return switch (base.tag()) {
             .vector => try vector_collection.withMeta(rt, base, m),
             .array_map, .hash_map => try map_collection.withMeta(rt, base, m),
@@ -835,25 +842,70 @@ pub fn formToValue(rt: *Runtime, form: Form) AnalyzeError!Value {
 /// Build a persistent vector Value by recursively lifting each form
 /// element. §9.11 row 9.2: powers `clojure.edn/read-string "[1 2 3]"`
 /// + JVM-parity `(quote [1 2 3])` round-trip.
-fn vectorFormToValue(rt: *Runtime, items: []const Form) AnalyzeError!Value {
+fn vectorFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!Value {
     var out = vector_collection.empty();
     for (items) |item| {
-        const v = try formToValue(rt, item);
+        const v = try formToValue(rt, env, item);
         out = try vector_collection.conj(rt, out, v);
     }
     return out;
 }
 
+/// Apply the data-reader for a `#tag form` literal (ADR-0073). The tag is
+/// looked up in `*data-readers*` (live dynamic binding, else the Var root);
+/// a hit lifts the inner form to a Value and invokes the reader fn with it.
+/// A miss consults `*default-data-reader-fn*` (invoked with the tag symbol +
+/// lifted value); still nothing → raise `reader_tag_unknown` (clj parity —
+/// `read-string` with no reader for a tag throws, NOT a placeholder value).
+fn liftTagged(rt: *Runtime, env: *Env, t: TaggedForm, loc: SourceLocation) AnalyzeError!Value {
+    const inner = try formToValue(rt, env, t.form.*);
+
+    if (rt.data_readers_var) |dr_opaque| {
+        const dr_var: *const env_mod.Var = @ptrCast(@alignCast(dr_opaque));
+        const table = dr_var.deref();
+        const tag_sym = try symbol_mod.intern(rt, t.tag.ns, t.tag.name);
+        const reader_fn = try map_collection.get(table, tag_sym);
+        if (reader_fn.tag() != .nil)
+            return try invokeReaderFn(rt, env, reader_fn, &.{inner}, loc);
+    }
+
+    if (rt.default_data_reader_fn_var) |df_opaque| {
+        const df_var: *const env_mod.Var = @ptrCast(@alignCast(df_opaque));
+        const default_fn = df_var.deref();
+        if (default_fn.tag() != .nil) {
+            const tag_sym = try symbol_mod.intern(rt, t.tag.ns, t.tag.name);
+            return try invokeReaderFn(rt, env, default_fn, &.{ tag_sym, inner }, loc);
+        }
+    }
+
+    return error_catalog.raise(.reader_tag_unknown, loc, .{ .tag = symFullName(t.tag) });
+}
+
+/// Invoke a data-reader fn (builtin or backend-vtable) from analyze-time.
+/// Mirrors `higher_order.invokeCallable` but stays Layer-1 (analyzer cannot
+/// import Layer-2 `lang/`): builtin → call directly; else route through the
+/// runtime vtable, narrowing its `anyerror` to the analyzer envelope via the
+/// shared `macro_dispatch.narrowCallFnError`.
+fn invokeReaderFn(rt: *Runtime, env: *Env, f: Value, args: []const Value, loc: SourceLocation) AnalyzeError!Value {
+    if (f.tag() == .builtin_fn) {
+        const fn_ptr = f.asBuiltinFn(dispatch.BuiltinFn);
+        return fn_ptr(rt, env, args, loc) catch |e| return macro_dispatch.narrowCallFnError(e, loc);
+    }
+    const vt = rt.vtable orelse
+        return error_catalog.raiseInternal(loc, "data-reader fn invoked before vtable install");
+    return vt.callFn(rt, env, f, args, loc) catch |e| return macro_dispatch.narrowCallFnError(e, loc);
+}
+
 /// Build a persistent map Value by recursively lifting key/value pairs.
-fn mapFormToValue(rt: *Runtime, entries: []const Form, loc: SourceLocation) AnalyzeError!Value {
+fn mapFormToValue(rt: *Runtime, env: *Env, entries: []const Form, loc: SourceLocation) AnalyzeError!Value {
     if (entries.len % 2 != 0) {
         return error_catalog.raise(.map_literal_arity_odd, loc, .{});
     }
     var out = map_collection.empty();
     var i: usize = 0;
     while (i < entries.len) : (i += 2) {
-        const k = try formToValue(rt, entries[i]);
-        const val = try formToValue(rt, entries[i + 1]);
+        const k = try formToValue(rt, env, entries[i]);
+        const val = try formToValue(rt, env, entries[i + 1]);
         out = map_collection.assoc(rt, out, k, val) catch |err| switch (err) {
             // Astronomically rare: two literal keys share a full 32-bit
             // hash (collision-bucket handling is unimplemented). Convert
@@ -869,10 +921,10 @@ fn mapFormToValue(rt: *Runtime, entries: []const Form, loc: SourceLocation) Anal
 }
 
 /// Build a persistent set Value by recursively lifting elements.
-fn setFormToValue(rt: *Runtime, items: []const Form) AnalyzeError!Value {
+fn setFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!Value {
     var out = set_collection.empty();
     for (items) |item| {
-        const v = try formToValue(rt, item);
+        const v = try formToValue(rt, env, item);
         out = set_collection.conj(rt, out, v) catch |err| switch (err) {
             error.HashCollision => return error_catalog.raise(.feature_not_supported, .{}, .{
                 .name = "a set with hash-colliding elements",
@@ -887,12 +939,12 @@ fn setFormToValue(rt: *Runtime, items: []const Form) AnalyzeError!Value {
 /// Build a heap List Value by recursively lifting each element to a
 /// Value. Empty list → nil (matches Clojure's `(quote ())` → `()` /
 /// `()` is `nil`-equivalent on `rest`/`first`). Used by `quote`.
-fn listFormToValue(rt: *Runtime, items: []const Form) AnalyzeError!Value {
+fn listFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!Value {
     var i = items.len;
     var acc: Value = .nil_val;
     while (i > 0) {
         i -= 1;
-        const head = try formToValue(rt, items[i]);
+        const head = try formToValue(rt, env, items[i]);
         acc = try list_collection.consHeap(rt, head, acc);
     }
     return acc;

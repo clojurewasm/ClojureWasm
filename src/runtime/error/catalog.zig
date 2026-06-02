@@ -51,6 +51,7 @@ pub const Code = enum {
     delimiter_unexpected,
     eof_unexpected,
     token_invalid,
+    reader_tag_unknown,
     integer_literal_invalid,
     float_literal_invalid,
     string_unterminated,
@@ -364,6 +365,10 @@ pub fn entry(comptime code: Code) Entry {
         .token_invalid => .{
             .kind = .syntax_error, .phase = .parse,
             .template = "Invalid token '{[token]s}'",
+        },
+        .reader_tag_unknown => .{
+            .kind = .syntax_error, .phase = .parse,
+            .template = "No reader function for tag {[tag]s}",
         },
         .integer_literal_invalid => .{
             .kind = .number_error, .phase = .parse,

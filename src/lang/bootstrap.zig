@@ -36,6 +36,7 @@ const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const Value = @import("../runtime/value/value.zig").Value;
 const error_context = @import("../runtime/error/context.zig");
+const map_collection = @import("../runtime/collection/map.zig");
 
 /// One entry in the bootstrap file table. `label` is the synthetic
 /// source label the renderer attributes to errors raised while
@@ -198,6 +199,24 @@ pub fn setupCore(arena: std.mem.Allocator, rt: *Runtime, env: *Env, macro_table:
     try error_context.register(env);
 }
 
+/// Intern `clojure.core/*data-readers*` (root `{}`) and
+/// `*default-data-reader-fn*` (root `nil`) as `^:dynamic` Vars and cache
+/// their pointers on the Runtime (ADR-0073). `formToValue`'s `.tagged` arm
+/// reads them via `Var.deref()`, so a `(binding [*data-readers* …] …)`
+/// frame or the `clojure.edn/read-string` 2-arity install is honoured. The
+/// root tables are EMPTY — `#uuid`/`#inst` land with the value-type ADR.
+/// Called from `setupCorePrefix` (BEFORE `loadCore`'s `finalizeUserNs`
+/// `referAll`) so the unqualified `*data-readers*` is referred into `user`.
+fn registerDataReaders(rt: *Runtime, env: *Env) !void {
+    const core = try env.findOrCreateNs("clojure.core");
+    const dr = try env.intern(core, "*data-readers*", map_collection.empty(), null);
+    dr.flags.dynamic = true;
+    rt.data_readers_var = dr;
+    const ddrf = try env.intern(core, "*default-data-reader-fn*", Value.nil_val, null);
+    ddrf.flags.dynamic = true;
+    rt.default_data_reader_fn_var = ddrf;
+}
+
 /// The bootstrap prefix WITHOUT `loadCore`: install the embedded require
 /// resolver + register the kernel primitives + bootstrap macros. Splitting
 /// this out lets the AOT-bootstrap path (ADR-0056) build a fresh env to
@@ -214,6 +233,9 @@ pub fn setupCorePrefix(rt: *Runtime, env: *Env, macro_table: *macro_dispatch.Tab
     // The comment on `Runtime.macro_table` documented this but the
     // assignment was missing (eval was dead until D-197 wired it).
     rt.macro_table = macro_table;
+    // ADR-0073: intern the data-reader dynamic vars here (before loadCore's
+    // user-ns refer) so `*data-readers*` resolves unqualified in user code.
+    try registerDataReaders(rt, env);
 }
 
 /// AOT bootstrap (ADR-0056 Cycle 2b): restore `clojure.core` from the
