@@ -9,6 +9,12 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-207"
+    status: "now — LOW priority (idiomatic Clojure uses str/=/hash/class, not these Java method forms); structural. Surfaced 2026-06-02 by the Object-method probe."
+    category: "interop"
+    barrier: |-
+      **Universal `java.lang.Object` instance methods are unimplemented** on every value: `(.toString x)` / `(.equals a b)` / `(.hashCode x)` / `(.getClass x)` → "No implementation of method '…' on protocol '<.member>' for type '…'". clj: `(.toString 42)`→"42", `(.toString :kw)`→":kw" (keyword toString INCLUDES the colon), `(.equals "a" "a")`→true, `(.getClass "x")`→a class. ALSO class-reflection methods on a `.type_descriptor`: `(.getName (class "x"))`→clj "java.lang.String" / cljw would be "String" (simple-name divergence, consistent with `(class …)` print), `(.getSimpleName (class "x"))`→"String". STRUCTURAL: `.toString`/`.equals`/`.hashCode`/`.getClass` apply to ALL types, so they can't be per-class method-table entries — they need a DISPATCH-LEVEL Object fallback (try the receiver's native/typed method_table, else a universal Object-method handler delegating to `str`/`valueEqual`/`valueHash`/`class`). `.getName`/`.getSimpleName` ARE per-type (on the `.type_descriptor` method table) and independently addable. LOW priority: idiomatic Clojure uses `(str x)`/`(= a b)`/`(hash x)`/`(class x)`, NOT the Java `.method` forms, so real-code impact is small; `.hashCode`/`.toString` would also diverge in VALUE from the JVM (cljw hash ≠ JVM hashCode; documented). Discharge when interop-method dispatch is reworked OR opportunistically. recall trigger: when `<.member>` dispatch / host-method machinery (D-048) is next.
+    last_reviewed: "2026-06-02"
   - id: "D-206"
     status: "now — String interop methods needing regex / collection returns (surfaced 2026-06-02 by the java.lang.String method sweep)"
     category: "interop"
