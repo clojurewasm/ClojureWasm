@@ -34,22 +34,55 @@ const dispatch = @import("../../runtime/dispatch.zig");
 const reader_mod = @import("../../eval/reader.zig");
 const analyzer_mod = @import("../../eval/analyzer/analyzer.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
+const map_collection = @import("../../runtime/collection/map.zig");
+const keyword = @import("../../runtime/keyword.zig");
+const Var = env_mod.Var;
 
 /// Implements clojure.edn/read-string.
-/// Spec: `(read-string s)` reads one EDN form from `s` and returns
-///   it as a Value. An empty / whitespace-only input returns `nil`.
-/// JVM reference: clojure.edn/read-string
-/// cw v1 tier: A (Phase 9 row 9.2)
+/// Spec: `(read-string s)` reads one EDN form from `s` and returns it as
+///   a Value (empty / whitespace-only → `nil`). `(read-string opts s)`
+///   honours an opts map: `:readers` (a `{tag-symbol reader-fn}` map bound
+///   to `*data-readers*` for the read), `:default` (a `(fn [tag value])`
+///   bound to `*default-data-reader-fn*`), `:eof` (value returned on empty
+///   input instead of `nil`). The readers/default install via a
+///   `BindingFrame` (ADR-0073) so the `formToValue` `.tagged` arm sees them.
+/// JVM reference: clojure.edn/read-string (note: opts is the FIRST arg)
+/// cw v1 tier: A (Phase 9 row 9.2 + Phase 14 D-200 cycle 2)
 pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("read-string", args, 1, loc);
-    const arg = args[0];
-    if (arg.tag() != .string) {
+    try error_catalog.checkArityRange("read-string", args, 1, 2, loc);
+    const opts: ?Value = if (args.len == 2) args[0] else null;
+    const str_arg = args[args.len - 1];
+    if (str_arg.tag() != .string) {
         return error_catalog.raise(.type_arg_not_string, loc, .{
             .fn_name = "read-string",
-            .actual = @tagName(arg.tag()),
+            .actual = @tagName(str_arg.tag()),
         });
     }
-    const source = string_collection.asString(arg);
+    const source = string_collection.asString(str_arg);
+
+    // EOF sentinel: `:eof` opt, else `nil` (cljw 1-arity divergence — clj
+    // throws on EOF; cljw returns nil unless `:eof` overrides it).
+    var eof_val: Value = Value.nil_val;
+    if (opts) |o| {
+        if (try optGet(rt, o, "eof")) |v| eof_val = v;
+    }
+
+    // Install `:readers` / `:default` as a dynamic-binding frame for the
+    // read so the data-reader dispatch in `formToValue` sees them.
+    var frame: env_mod.BindingFrame = .{};
+    defer frame.bindings.deinit(rt.gpa);
+    if (opts) |o| {
+        if (try optGet(rt, o, "readers")) |readers| {
+            if (rt.data_readers_var) |p|
+                try frame.bindings.put(rt.gpa, @as(*const Var, @ptrCast(@alignCast(p))), readers);
+        }
+        if (try optGet(rt, o, "default")) |default_fn| {
+            if (rt.default_data_reader_fn_var) |p|
+                try frame.bindings.put(rt.gpa, @as(*const Var, @ptrCast(@alignCast(p))), default_fn);
+        }
+    }
+    env_mod.pushFrame(&frame);
+    defer env_mod.popFrame();
 
     var arena = std.heap.ArenaAllocator.init(rt.gpa);
     defer arena.deinit();
@@ -59,8 +92,21 @@ pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
             .name = "EDN reader error in clojure.edn/read-string",
         });
     };
-    const form = form_opt orelse return Value.nil_val;
+    const form = form_opt orelse return eof_val;
     return try analyzer_mod.formToValue(rt, env, form);
+}
+
+/// Look up `:key` in an opts map, returning the bound value or null when
+/// absent / nil. Returns null (no error) if `opts` is not a map, so a
+/// non-map opts is simply treated as "no options".
+fn optGet(rt: *Runtime, opts: Value, key: []const u8) !?Value {
+    switch (opts.tag()) {
+        .array_map, .hash_map => {},
+        else => return null,
+    }
+    const k = try keyword.intern(rt, null, key);
+    const v = try map_collection.get(opts, k);
+    return if (v.tag() == .nil) null else v;
 }
 
 const Entry = struct {

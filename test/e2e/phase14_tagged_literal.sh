@@ -107,4 +107,38 @@ EOF
 ) || fail "case8: non-zero exit ($got)"
 assert_eq 'backend_parity' "$(last_line "$got")" 'OK 81'
 
-echo "OK — phase14_tagged_literal (8 cases) green"
+# --- Case 9: clojure.edn/read-string 2-arity :readers (opts is the FIRST arg) ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(clojure.edn/read-string {:readers {'foo (fn [v] (* v 2))}} "#foo 5")
+EOF
+) || fail "case9: non-zero exit ($got)"
+assert_eq 'edn_2arity_readers' "$(last_line "$got")" '10'
+
+# --- Case 10: 2-arity :default fn (called with tag symbol + value) ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(clojure.edn/read-string {:default (fn [tag v] [tag v])} "#foo 5")
+EOF
+) || fail "case10: non-zero exit ($got)"
+assert_eq 'edn_2arity_default' "$(last_line "$got")" '[foo 5]'
+
+# --- Case 11: 2-arity :eof returned on empty input ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(clojure.edn/read-string {:eof :the-end} "")
+EOF
+) || fail "case11: non-zero exit ($got)"
+assert_eq 'edn_2arity_eof' "$(last_line "$got")" ':the-end'
+
+# --- Case 12: 1-arity still reads a plain form (no opts) ---
+got=$("$BIN" -e '(clojure.edn/read-string "3")' 2>/dev/null) || fail "case12: non-zero exit ($got)"
+assert_eq 'edn_1arity_plain' "$(last_line "$got")" '3'
+
+# --- Case 13: 2-arity with no matching reader still raises (empty :readers) ---
+if out=$("$BIN" -e '(clojure.edn/read-string {} "#foo 5")' 2>&1); then
+    fail "case13: expected non-zero exit, got success ($out)"
+fi
+case "$out" in
+    *"No reader function for tag foo"*) echo "PASS edn_2arity_unknown_raises -> (clj-parity error)" ;;
+    *) fail "case13: wrong error: $out" ;;
+esac
+
+echo "OK — phase14_tagged_literal (13 cases) green"
