@@ -145,7 +145,25 @@ active:
       **`(class e)` of ANY exception value → "ex_info", not the specific class**: `(class (ex-info "m" {}))` → cljw `"ex_info"` / clj `"clojure.lang.ExceptionInfo"`; `(class (Exception. "x"))` → cljw `"ex_info"` / clj `"Exception"` (AD-003 simple-name aside); `(try (/ 1 0) (catch Throwable e (class e)))` → cljw `"ex_info"` / clj `"ArithmeticException"`. ROOT: an exception is an `.ex_info` Value; `(class)` (protocol.zig `classPrim`) routes a non-typed_instance through `rt.nativeDescriptor(.ex_info)` whose fqcn is the generic `"ex_info"` (`@tagName`), IGNORING the per-value `ExInfo.class_name` field (ADR-0060) that catch-matching DOES consult (`host_class.thrownClassName`). So `(class)` collapses every exception to one name. Pre-existing (predates C5; affects ex-info + caught catalog errors + the C5 `(Exception. …)` ctors uniformly — NOT a C5 regression). Discharge: classPrim's `.ex_info` arm builds a `.type_descriptor` ref from the per-value `class_name` (null → \"ExceptionInfo\"), needing a per-Runtime synthetic-exception-descriptor cache keyed by class-name string (so `makeTypeDescriptorRef`'s per-descriptor ref-cache still holds). clj-grounded (`(class (ex-info …))`→ExceptionInfo, `(class (Exception. …))`→Exception, caught-`(/ 1 0)`→ArithmeticException; cljw shows the simple name per AD-003). Cross-ref ADR-0060 (ExInfo.class_name) / D-198 (surfacer) / host_class.zig (catch uses class_name) / AD-003. recall trigger: when exception `(class)`/reflection OR host-class descriptor work is next."
     last_reviewed: "2026-06-03"
   - id: "D-214"
-    status: "now (bug, deferred to own cycle) — surfaced by C7/D-165 heap-Long sweep 2026-06-03."
+    status: |-
+      DISCHARGED 2026-06-03 (quality-loop floor: clj-parity drain): bit ops now
+      accept a Long operand in (2^47, i64] (heap-boxed Long, D-165) and keep the
+      full 64-bit result. New `error_catalog.expectI64` (accepts inline `.integer`
+      + heap-Long `.big_int` origin `.long`, extracts i64 via `Managed.toInt`;
+      rejects true-BigInt/float/ratio with `type_arg_not_integer` — clj's bit ops
+      are Long-only, `(bit-and 5N 3)` throws there too). The 7 core ops
+      (bit-and/or/xor/not/shift-left/shift-right/unsigned-shift-right in math.zig)
+      read via `expectI64` and wrap results via `promote.wrapI64` (→ heap Long
+      past i48, no `initInteger` float fallback). bit-set/clear/flip/and-not are
+      core.clj compositions → fixed transitively. Long/ statics (BitOp factory,
+      RotateOp, RadixString, toString, BinOp2 max/min) also moved to `expectI64`
+      (+ wrapI64 for max/min). clj-verified: `(bit-and 1e15 1e15)`→1e15,
+      `(bit-shift-left 1 63)`→-9223372036854775808 (wraps), `(Long/highestOneBit
+      1e15)`→562949953421312. Corpus `bit_ops_i64` (30); 12 e2e in phase14_bit_ops.
+      Integer/ statics stay i48/i32 by design (Integer is 32-bit; a heap-Long
+      operand is out of int range, clj errors too). True-BigInt (>i64) bit-ops
+      (multi-word magnitude logic) remain a clean error — secondary, not pursued.
+      Cross-ref D-165 (surfacer) / AD-008 / F-011 / `error/catalog.zig::expectI64`.
     category: "runtime"
     barrier: |-
       **bit-ops raise on a Long operand in (2^47, i64]**: `(bit-and 1000000000000000 1000000000000000)` → cljw `bit-and: expected integer, got big_int` / clj `1000000000000000`. ROOT: every bit op (`bit-and`/`or`/`xor`/`not`/`and-not`/`shift-left`/`shift-right`/`unsigned-shift-right`/`clear`/`set`/`flip`/`test`, plus `Long/`+`Integer/` bit statics) reads operands via `error_catalog.expectInteger`, which returns **i48** and rejects a heap-boxed integer (`.big_int` tag) outright — AND the result is wrapped with `Value.initInteger`, which falls back to **float** past i48. So bit ops are silently i48-only: a >2^47 operand errors, a >2^47 result would lose its integer type. PRE-EXISTING (predates C7 — before heap-Long these values were BigInt and bit ops errored identically; C7 did NOT regress it, only made the gap visible because the values are now Longs that clj operates on cleanly). Discharge (big-bang, all bit ops at once): add a shared `expectI64` helper (accepts inline `.integer` + heap-Long `.big_int` origin `.long`, extracts i64; rejects float/ratio/true-BigInt with the existing message) and wrap results via `promote.wrapManaged` (i64→inline-or-heap-Long, no float fallback). clj-grounded: `(bit-and 1e15 1e15)`→1e15 (Long), `(bit-shift-left 1 50)`→1125899906842624 (Long, no N), shifts/and/or/xor on full-Long operands. Leave a corpus line `test/diff/clj_corpus/bit_ops_i64.txt`. NOTE: true-BigInt (>i64) bit-ops — clj DOES support `(bit-and bigint bigint)` via BigInteger; whether cljw extends that far is a secondary decision (clj-parity would say yes, but needs multi-word bit logic on the managed magnitude — defer that sub-piece, raise a clean error for now). Cross-ref D-165 (surfacer) / AD-008 / F-011 / `error/catalog.zig::expectInteger` / `lang/primitive/math.zig` bit ops. recall trigger: when bit-ops / numeric-tower coverage is next, OR a corpus needs 64-bit bit-twiddling parity.

@@ -87,8 +87,7 @@ fn RadixString(comptime verb: []const u8, comptime name: []const u8) type {
         fn call(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
             _ = env;
             try error_catalog.checkArity("Long/" ++ name, args, 1, loc);
-            const n = try error_catalog.expectInteger(args[0], "Long/" ++ name, loc);
-            const wide: i64 = n; // expectInteger yields i48; sign-extend to i64
+            const wide = try error_catalog.expectI64(args[0], "Long/" ++ name, loc);
             const u: u64 = @bitCast(wide);
             // u64 needs ≤ 64 binary digits — the 70-byte buffer can't overflow.
             var buf: [70]u8 = undefined;
@@ -108,7 +107,7 @@ fn toString(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     _ = env;
     if (args.len < 1 or args.len > 2)
         return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "Long/toString", .got = args.len, .min = 1, .max = 2 });
-    const n = try error_catalog.expectInteger(args[0], "Long/toString", loc);
+    const n = try error_catalog.expectI64(args[0], "Long/toString", loc);
     var radix: u8 = 10;
     if (args.len == 2) {
         const r = try error_catalog.expectInteger(args[1], "Long/toString", loc);
@@ -137,8 +136,7 @@ fn BitOp(comptime op: BitMethod, comptime name: []const u8) type {
         fn call(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
             _ = env;
             try error_catalog.checkArity("Long/" ++ name, args, 1, loc);
-            const n = try error_catalog.expectInteger(args[0], "Long/" ++ name, loc);
-            const wide: i64 = n; // expectInteger yields i48; sign-extend to i64
+            const wide = try error_catalog.expectI64(args[0], "Long/" ++ name, loc);
             const u: u64 = @bitCast(wide);
             const result: i64 = switch (op) {
                 .bit_count => @as(i64, @popCount(u)),
@@ -169,10 +167,10 @@ fn RotateOp(comptime left: bool, comptime name: []const u8) type {
         fn call(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
             _ = env;
             try error_catalog.checkArity("Long/" ++ name, args, 2, loc);
-            const n = try error_catalog.expectInteger(args[0], "Long/" ++ name, loc);
-            const d = try error_catalog.expectInteger(args[1], "Long/" ++ name, loc);
-            const u: u64 = @bitCast(@as(i64, n));
-            const dist: u6 = @truncate(@as(u64, @bitCast(@as(i64, d))));
+            const n = try error_catalog.expectI64(args[0], "Long/" ++ name, loc);
+            const d = try error_catalog.expectI64(args[1], "Long/" ++ name, loc);
+            const u: u64 = @bitCast(n);
+            const dist: u6 = @truncate(@as(u64, @bitCast(d)));
             const r = if (left) std.math.rotl(u64, u, dist) else std.math.rotr(u64, u, dist);
             return promote.wrapI64(rt, @as(i64, @bitCast(r)));
         }
@@ -186,16 +184,17 @@ const Binop = enum { compare, max, min };
 fn BinOp2(comptime op: Binop, comptime name: []const u8) type {
     return struct {
         fn call(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-            _ = rt;
             _ = env;
             try error_catalog.checkArity("Long/" ++ name, args, 2, loc);
-            const a = try error_catalog.expectInteger(args[0], "Long/" ++ name, loc);
-            const b = try error_catalog.expectInteger(args[1], "Long/" ++ name, loc);
-            return Value.initInteger(switch (op) {
-                .compare => @as(i64, if (a < b) -1 else if (a > b) 1 else 0),
-                .max => @max(a, b),
-                .min => @min(a, b),
-            });
+            const a = try error_catalog.expectI64(args[0], "Long/" ++ name, loc);
+            const b = try error_catalog.expectI64(args[1], "Long/" ++ name, loc);
+            // compare → a small -1/0/1; max/min → a full Long, so wrapI64
+            // keeps a result past i48 a heap Long (D-165 / D-214).
+            return switch (op) {
+                .compare => Value.initInteger(if (a < b) -1 else if (a > b) 1 else 0),
+                .max => promote.wrapI64(rt, @max(a, b)),
+                .min => promote.wrapI64(rt, @min(a, b)),
+            };
         }
     };
 }

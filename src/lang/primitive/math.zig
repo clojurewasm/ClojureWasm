@@ -576,84 +576,74 @@ pub fn mod(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
 
 /// `(bit-and a b)` — bitwise AND on two integers.
 pub fn bitAnd(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("bit-and", args, 2, loc);
-    const a = try error_catalog.expectInteger(args[0], "bit-and", loc);
-    const b = try error_catalog.expectInteger(args[1], "bit-and", loc);
-    return Value.initInteger(@intCast(@as(i64, a) & @as(i64, b)));
+    const a = try error_catalog.expectI64(args[0], "bit-and", loc);
+    const b = try error_catalog.expectI64(args[1], "bit-and", loc);
+    return promote.wrapI64(rt, a & b);
 }
 
 /// `(bit-or a b)` — bitwise OR on two integers.
 pub fn bitOr(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("bit-or", args, 2, loc);
-    const a = try error_catalog.expectInteger(args[0], "bit-or", loc);
-    const b = try error_catalog.expectInteger(args[1], "bit-or", loc);
-    return Value.initInteger(@intCast(@as(i64, a) | @as(i64, b)));
+    const a = try error_catalog.expectI64(args[0], "bit-or", loc);
+    const b = try error_catalog.expectI64(args[1], "bit-or", loc);
+    return promote.wrapI64(rt, a | b);
 }
 
 /// `(bit-xor a b)` — bitwise XOR on two integers.
 pub fn bitXor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("bit-xor", args, 2, loc);
-    const a = try error_catalog.expectInteger(args[0], "bit-xor", loc);
-    const b = try error_catalog.expectInteger(args[1], "bit-xor", loc);
-    return Value.initInteger(@intCast(@as(i64, a) ^ @as(i64, b)));
+    const a = try error_catalog.expectI64(args[0], "bit-xor", loc);
+    const b = try error_catalog.expectI64(args[1], "bit-xor", loc);
+    return promote.wrapI64(rt, a ^ b);
 }
 
 /// `(bit-not x)` — bitwise NOT (logical complement) on an integer.
 /// In Clojure / Java this is the two's-complement negation pattern
 /// `~x = -x - 1`.
 pub fn bitNot(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("bit-not", args, 1, loc);
-    const a = try error_catalog.expectInteger(args[0], "bit-not", loc);
-    return Value.initInteger(@intCast(~@as(i64, a)));
+    const a = try error_catalog.expectI64(args[0], "bit-not", loc);
+    return promote.wrapI64(rt, ~a);
 }
 
 /// `(bit-shift-left x n)` — shifts `x` left by `n` bits. JVM Clojure
 /// uses only the low 6 bits of `n` (Java spec); cw v1 mirrors that
-/// to preserve the JVM identity `(bit-shift-left x 64) ≡ x`.
-/// The result is truncated to the i48 immediate envelope (overflow
-/// wraps, matching Long arithmetic).
+/// to preserve the JVM identity `(bit-shift-left x 64) ≡ x`. The full
+/// i64 result rides `wrapI64` (a value past i48 stays a heap Long, D-165).
 pub fn bitShiftLeft(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("bit-shift-left", args, 2, loc);
-    const x = try error_catalog.expectInteger(args[0], "bit-shift-left", loc);
-    const n = try error_catalog.expectInteger(args[1], "bit-shift-left", loc);
+    const x = try error_catalog.expectI64(args[0], "bit-shift-left", loc);
+    const n = try error_catalog.expectI64(args[1], "bit-shift-left", loc);
     const sh: u6 = @intCast(n & 0x3F);
-    const r: i64 = @as(i64, x) << sh;
-    return Value.initInteger(@truncate(r));
+    return promote.wrapI64(rt, x << sh);
 }
 
 /// `(bit-shift-right x n)` — arithmetic right shift (sign-extending).
 pub fn bitShiftRight(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("bit-shift-right", args, 2, loc);
-    const x = try error_catalog.expectInteger(args[0], "bit-shift-right", loc);
-    const n = try error_catalog.expectInteger(args[1], "bit-shift-right", loc);
+    const x = try error_catalog.expectI64(args[0], "bit-shift-right", loc);
+    const n = try error_catalog.expectI64(args[1], "bit-shift-right", loc);
     const sh: u6 = @intCast(n & 0x3F);
-    const r: i64 = @as(i64, x) >> sh;
-    return Value.initInteger(@truncate(r));
+    return promote.wrapI64(rt, x >> sh);
 }
 
 /// `(unsigned-bit-shift-right x n)` — logical right shift (zero-fill).
 pub fn unsignedBitShiftRight(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("unsigned-bit-shift-right", args, 2, loc);
-    const x = try error_catalog.expectInteger(args[0], "unsigned-bit-shift-right", loc);
-    const n = try error_catalog.expectInteger(args[1], "unsigned-bit-shift-right", loc);
+    const x = try error_catalog.expectI64(args[0], "unsigned-bit-shift-right", loc);
+    const n = try error_catalog.expectI64(args[1], "unsigned-bit-shift-right", loc);
     const sh: u6 = @intCast(n & 0x3F);
-    const ux: u64 = @bitCast(@as(i64, x));
+    const ux: u64 = @bitCast(x);
     const r: u64 = ux >> sh;
-    return Value.initInteger(@truncate(@as(i64, @bitCast(r))));
+    return promote.wrapI64(rt, @bitCast(r));
 }
 
 /// `(min x & more)` — minimum across one or more numerics.

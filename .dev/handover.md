@@ -11,13 +11,13 @@
   ADR-0080, heap-boxed Long, landed this session). D-210 is now a STANDING
   `quality-loop floor: clj-parity` (drain any NEW sweep DIFF, no campaign units
   left). Loop is back in self-selected quality-floor-drain mode.
-- **First commit on resume MUST be: D-214** (bit-ops raise on a Long operand in
-  (2^47, i64] — `(bit-and 1e15 1e15)`→cljw error/clj 1e15; pre-existing i48-only
-  gap, all bit ops use the i48 `expectInteger` + `initInteger` float-fallback).
-  Fix big-bang: a shared `expectI64` helper (accepts inline + heap-Long, extracts
-  i64) + wrap results via `promote.wrapManaged`; true-BigInt (>i64) bit-ops stay
-  a clean error (secondary). Then D-215 (`class?` predicate missing, trivial).
-  D-212 + D-213 DONE this session. Full rows: `.dev/debt.yaml`.
+- **First commit on resume MUST be: D-215** (`clojure.core/class?` missing —
+  `(class? String)`→cljw "Unable to resolve symbol"/clj true). Trivial: a builtin
+  returning true when the arg is what `(class …)` returns (a type-descriptor
+  ref); `(class? 5)`/`(class? nil)`→false. Register next to classPrim in
+  protocol.zig; corpus line. Then self-select the next clj-parity sweep area
+  (no floor bugs left after D-215). D-212/D-213/D-214 DONE this session.
+  Full rows: `.dev/debt.yaml`.
 - **Forbidden**: "fixing" an AD-001..009 accepted divergence (set print-order,
   `(class)` simple name AD-003, error Kind, **AD-008 Long-overflow auto-promote**,
   cljw hash AD-009 — see `.dev/accepted_divergences.yaml`); widening the NaN-box
@@ -27,24 +27,22 @@
 
 ## Just landed (this session; git log = SSOT, full rows in `.dev/debt.yaml`)
 
-- **C7 D-165 DISCHARGED** (ADR-0080, the LAST campaign unit): heap-boxed Long.
-  An `IntOrigin = enum(u8){long,bigint}` flag on the heap-int struct (replaces
-  one `_pad` byte — NO new NaN-box slot, F-004 UNCHANGED). A value in (2^47,i64]
-  is now a Long (`(class)`→Long, print no `N`), promoting to BigInt only PAST
-  i64. Classification by dispatch arm: alloc fns take a required `origin`;
-  `promote.wrapManaged` range-splits, `wrapArith` propagates BigInt contagion
-  (heap-Long operand on a Managed arm does NOT gain spurious N). `=`/`hash`
-  untouched (value-equal across origins). Corpus `heap_long` (29); stale `…N`
-  e2e updated to clj-correct. Spun off **D-214** (bit-ops on heap-Long, pre-
-  existing i48-only gap). C1–C6 also DONE earlier this session (see git log).
+- **Campaign C1..C7 + post-campaign floor drains** all landed this session
+  (see git log). C7 D-165 (ADR-0080) = heap-boxed Long: an `IntOrigin` flag on
+  the heap-int struct (NO new NaN-box slot, F-004 UNCHANGED); (2^47,i64] is a
+  Long (class→Long, no `N`), BigInt only past i64; classification by dispatch
+  arm + `wrapArith` BigInt contagion. Then the floor drains: D-212 (str/.toString
+  drop N/M suffix), D-213 (`(class e)`→specific exception class via per-Runtime
+  exceptionDescriptor cache), D-214 (bit-ops accept heap-Long via `expectI64`+
+  `wrapI64`). Each: own commit, corpus pin, e2e, full gate green.
 
 ## clj-parity campaign (A-half) — COMPLETE; standing floor remains
 
 - **C1..C7 all DISCHARGED** (D-164/205/207/209/200/198/165; ADR-0076/77/78/79/80).
   D-210 persists ONLY as the standing `quality-loop floor: clj-parity` — drain
   any NEW cljw↔clj DIFF a future sweep surfaces (highest-value-first). No units left.
-- **Open floor bugs (next drains)**: D-214 (bit-ops on heap-Long) → D-215
-  (`class?` predicate, trivial). D-212 + D-213 DISCHARGED this session.
+- **Open floor bugs (next drains)**: D-215 (`class?` predicate, trivial). D-212
+  + D-213 + D-214 DISCHARGED this session; after D-215, self-select a new sweep area.
 - **Decided, NOT bugs**: AD-008 (Long overflow past i64 auto-promotes per F-005;
   clj throws) · AD-009 (cljw hash ≠ JVM) · D-211 (`+'`/`*'` deferred, F-005-inverted).
 

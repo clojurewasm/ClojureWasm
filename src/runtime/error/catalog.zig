@@ -29,6 +29,7 @@
 const std = @import("std");
 const error_mod = @import("info.zig");
 const Value = @import("../value/value.zig").Value;
+const big_int = @import("../numeric/big_int.zig");
 
 pub const Kind = error_mod.Kind;
 pub const Phase = error_mod.Phase;
@@ -1095,6 +1096,21 @@ pub fn expectNumber(val: Value, name: []const u8, loc: SourceLocation) ClojureWa
 /// mismatch.
 pub fn expectInteger(val: Value, name: []const u8, loc: SourceLocation) ClojureWasmError!i48 {
     if (val.tag() == .integer) return val.asInteger();
+    return raise(.type_arg_not_integer, loc, .{ .fn_name = name, .actual = @tagName(val.tag()) });
+}
+
+/// Assert `val` is a Long-valued integer and return the full i64 — accepts an
+/// inline i48 OR a heap-boxed Long (`.big_int` origin `.long`, D-165). A true
+/// BigInt (origin `.bigint`, even one that fits i64), float, or ratio raises
+/// `type_arg_not_integer`: bit / Long-width ops are Long-only in clj
+/// (`(bit-and 5N 3)` throws there too). Used by the bit-twiddling primitives,
+/// which need the full 64-bit width that `expectInteger`'s i48 truncates.
+pub fn expectI64(val: Value, name: []const u8, loc: SourceLocation) ClojureWasmError!i64 {
+    if (val.tag() == .integer) return val.asInteger();
+    if (val.tag() == .big_int and big_int.originOf(val) == .long) {
+        return big_int.asManaged(val).toInt(i64) catch
+            raise(.type_arg_not_integer, loc, .{ .fn_name = name, .actual = @tagName(val.tag()) });
+    }
     return raise(.type_arg_not_integer, loc, .{ .fn_name = name, .actual = @tagName(val.tag()) });
 }
 
