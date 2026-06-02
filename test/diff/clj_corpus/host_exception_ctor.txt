@@ -1,0 +1,28 @@
+(.getMessage (Exception. "x"))
+;;=> "x"
+(.getMessage (RuntimeException. "r"))
+;;=> "r"
+(.getMessage (Throwable. "t"))
+;;=> "t"
+(try (throw (Exception. "boom")) (catch Exception e (.getMessage e)))
+;;=> "boom"
+(try (throw (RuntimeException. "r")) (catch Exception e (.getMessage e)))
+;;=> "r"
+(try (throw (RuntimeException. "r")) (catch RuntimeException e (.getMessage e)))
+;;=> "r"
+(try (throw (Exception. "e")) (catch Throwable e (.getMessage e)))
+;;=> "e"
+(try (throw (Throwable. "t")) (catch Throwable e (.getMessage e)))
+;;=> "t"
+(try (throw (Exception. "outer")) (catch Exception e (.getMessage e)))
+;;=> "outer"
+(.getMessage (Exception. ""))
+;;=> ""
+(try (throw (ex-info "ei" {:a 1})) (catch Exception e (.getMessage e)))
+;;=> "ei"
+(instance? Exception (Exception. "x"))
+;;=> true
+(instance? Throwable (RuntimeException. "r"))
+;;=> true
+(instance? RuntimeException (Exception. "x"))
+;;=> false

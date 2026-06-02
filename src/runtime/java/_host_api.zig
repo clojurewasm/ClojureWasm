@@ -76,6 +76,11 @@ const java_surfaces = [_]type{
     @import("lang/Long.zig"),
     @import("lang/Math.zig"),
     @import("lang/System.zig"),
+    // D-198 / clj-parity C5 — Throwable-family constructors (`(Exception.
+    // msg)` etc. mint an `.ex_info` tagged with the class name).
+    @import("lang/Throwable.zig"),
+    @import("lang/Exception.zig"),
+    @import("lang/RuntimeException.zig"),
     // Phase 14 row 14.2 (D-097) second wave begins ↓
     @import("math/BigDecimal.zig"),
     // Phase 14 row 14.3 (D-097) third wave — backing impls under

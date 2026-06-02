@@ -36,6 +36,7 @@ const Runtime = @import("../runtime.zig").Runtime;
 const tag_ops = @import("../gc/tag_ops.zig");
 const gc_heap_mod = @import("../gc/gc_heap.zig");
 const mark_sweep = @import("../gc/mark_sweep.zig");
+const string_mod = @import("string.zig");
 
 /// Heap ExInfo. `message` is owned (duped from caller bytes); `data`
 /// and `cause` are Values (`cause = .nil_val` when absent, mirroring
@@ -108,6 +109,31 @@ pub fn allocException(rt: *Runtime, msg_bytes: []const u8, class: []const u8) !V
         .message_len = owned_msg.len,
         .data = .nil_val,
         .cause = .nil_val,
+        .class_name_ptr = class.ptr,
+        .class_name_len = class.len,
+    };
+    return Value.encodeHeapPtr(.ex_info, ex);
+}
+
+/// Build a Throwable-family value from Java constructor args (D-198 /
+/// clj-parity C5): `()` → no message, `(msg)` / `(msg cause)` → message
+/// (+ optional cause). cljw has no JVM class hierarchy (ADR-0059), so
+/// `(Exception. …)` mints an `.ex_info` tagged with the comptime-static
+/// `class` name — `(catch Exception …)` / `(class …)` / `.getMessage`
+/// then work through the existing ex_info bridge. Shared by the
+/// Throwable / Exception / RuntimeException `<init>` surfaces.
+pub fn allocExceptionFromArgs(rt: *Runtime, args: []const Value, class: []const u8) !Value {
+    const msg: []const u8 = if (args.len >= 1 and args[0].tag() == .string) string_mod.asString(args[0]) else "";
+    const cause_val: Value = if (args.len >= 2) args[1] else .nil_val;
+    const owned_msg = try rt.gc.infra.dupe(u8, msg);
+    errdefer rt.gc.infra.free(owned_msg);
+    const ex = try rt.gc.alloc(ExInfo);
+    ex.* = .{
+        .header = HeapHeader.init(.ex_info),
+        .message_ptr = owned_msg.ptr,
+        .message_len = owned_msg.len,
+        .data = .nil_val,
+        .cause = cause_val,
         .class_name_ptr = class.ptr,
         .class_name_len = class.len,
     };

@@ -29,6 +29,8 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const ex_info = @import("../../collection/ex_info.zig");
 const string_collection = @import("../../collection/string.zig");
+const host_api = @import("../_host_api.zig");
+const std = @import("std");
 
 /// `(.getMessage e)` — the exception's message string. clj: returns the
 /// `Throwable.getMessage()` (the ex-info message). Receiver is guaranteed
@@ -78,3 +80,44 @@ pub fn installNativeMethods(rt: *Runtime) !void {
     }
     td.method_table = entries;
 }
+
+// --- constructor surface (D-198 / clj-parity C5) ---
+//
+// `(Throwable. msg)` mints an `.ex_info` tagged "Throwable" (ADR-0059 — no
+// JVM class hierarchy; ex_info is the exception representation). The
+// `<init>` method_table hook is the same constructInstance path the other
+// host-class ctors use. Distinct from `installNativeMethods` above (which
+// adds the READ accessors to the per-Runtime `.ex_info` descriptor).
+
+fn throwableCtor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    _ = loc;
+    return ex_info.allocExceptionFromArgs(rt, args, "Throwable");
+}
+
+fn initThrowable(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
+    if (td.method_table.len != 0) return; // idempotent re-run
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 1);
+    entries[0] = .{
+        .protocol_name = "",
+        .method_name = try gpa.dupe(u8, "<init>"),
+        .method_val = Value.initBuiltinFn(&throwableCtor),
+    };
+    td.method_table = entries;
+}
+
+pub const ___HOST_EXTENSION: host_api.Extension = .{
+    .cljw_ns = "cljw.java.lang.Throwable",
+    .descriptor = &descriptor,
+    .init = &initThrowable,
+};
+
+var descriptor: type_descriptor.TypeDescriptor = .{
+    .fqcn = "Throwable",
+    .kind = .native,
+    .field_layout = null,
+    .protocol_impls = &.{},
+    .method_table = &.{},
+    .parent = null,
+    .meta = .nil_val,
+};
