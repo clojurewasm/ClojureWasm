@@ -274,14 +274,18 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
 - **java.lang.String instance methods** — `toUpperCase`/`toLowerCase`/`trim`/
   `length`/`substring`/`indexOf` (string AND int-codepoint)/`lastIndexOf`/
   `charAt`/`codePointAt`/`contains`/`startsWith`/`endsWith`/`isEmpty`/`isBlank`/
-  `strip`/`concat`/`repeat`/`replace`/`equalsIgnoreCase`/`compareTo`. Corpus
-  `string_methods` (14). Gaps found+fixed: `lastIndexOf`/`isBlank`/`strip`/
-  `equalsIgnoreCase`/`codePointAt`/`compareTo` + `indexOf` int-arg were
-  unimplemented — added (`compareTo` returns the JVM char-diff/length-diff
-  MAGNITUDE, not -1/0/1). `.matches` (anchored full regex match → bool) added
-  too (runtime/regex/, no layering issue). REMAINING (D-206): `.replaceAll`/
-  `.replaceFirst` (regex `$1` backref, impl in Layer-2 lang/) + `.split`/
-  `.toCharArray` (collection-returning).
+  `strip`/`concat`/`repeat`/`replace`/`equalsIgnoreCase`/`compareTo` + the
+  regex/collection family `matches`/`replaceAll`/`replaceFirst`/`split`/
+  `toCharArray`. Corpus `string_methods` (35). Gaps found+fixed: `lastIndexOf`/
+  `isBlank`/`strip`/`equalsIgnoreCase`/`codePointAt`/`compareTo` + `indexOf`
+  int-arg were unimplemented — added (`compareTo` returns the JVM
+  char-diff/length-diff MAGNITUDE, not -1/0/1). The regex/collection family
+  (D-206) landed via a neutral `runtime/regex/replace.zig` leaf shared with
+  `clojure.string/replace`+`split` (F-009): `replaceAll`/`replaceFirst` do
+  `$N`-backref template expansion; `split`/`toCharArray` return a VECTOR (no
+  usable Java-array type — `seq`/`vec`/`count`/`first` parity, `class`/`aget`
+  diverge). The 1 non-ASCII char-print DIFF (`é` vs `\é`) is D-208 (the
+  char value is correct).
 - **Double / Boolean statics** — `Double/parseDouble`/`isNaN`/`isInfinite`/
   `toString`/`valueOf`/`compare`/`max`/`min`/`sum`; `Boolean/parseBoolean`/
   `valueOf`/`logicalAnd`/`logicalOr`/`logicalXor`. Corpus `double_boolean_static`

@@ -29,6 +29,7 @@ const map_collection = @import("../../runtime/collection/map.zig");
 const vector_collection = @import("../../runtime/collection/vector.zig");
 const regex_value = @import("../../runtime/regex/value.zig");
 const regex_match = @import("../../runtime/regex/match.zig");
+const regex_replace = @import("../../runtime/regex/replace.zig");
 const regex_prim = @import("regex.zig");
 
 /// `(clojure.string/upper-case s)` — ASCII upper-case fold per cycle
@@ -227,7 +228,7 @@ pub fn lastIndexOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     return Value.initInteger(@intCast(idx));
 }
 
-const ReplaceKind = enum { all, first };
+const ReplaceKind = regex_replace.ReplaceKind;
 
 fn replaceImpl(rt: *Runtime, fn_name: []const u8, kind: ReplaceKind, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity(fn_name, args, 3, loc);
@@ -336,79 +337,42 @@ fn strReplacePatternImpl(rt: *Runtime, env: *Env, fn_name: []const u8, kind: Rep
     const haystack = string_collection.asString(args[0]);
     const program = regex_value.asRegex(args[1]).program;
 
+    // String replacement: delegate to the shared neutral leaf
+    // (`runtime/regex/replace.zig`, also used by `.replaceAll` /
+    // `.replaceFirst` per F-009). The `$N` backref / `\c` escape
+    // expansion lives there.
+    if (args[2].tag() == .string)
+        return regex_replace.replaceString(rt, program, haystack, string_collection.asString(args[2]), kind);
+
+    // Fn replacement stays in this Layer-2 file: it calls back into the
+    // interpreter via the vtable, which the neutral leaf does not own.
+    if (args[2].tag() != .fn_val and args[2].tag() != .builtin_fn)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "string or fn", .actual = @tagName(args[2].tag()) });
+    const vt = rt.vtable orelse
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "regex-replace fn-arm before vtable install" });
+
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(rt.gc.infra);
     var pos: u32 = 0;
-    var any = false;
     while (pos <= haystack.len) {
         const match = (try regex_match.findFrom(rt.gc.infra, program, haystack, pos)) orelse break;
-        // Append unmatched prefix.
         try out.appendSlice(rt.gc.infra, haystack[pos..match.start]);
-        switch (args[2].tag()) {
-            .string => try expandReplacement(rt, &out, string_collection.asString(args[2]), match, program, haystack),
-            .fn_val, .builtin_fn => {
-                const vt = rt.vtable orelse
-                    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "regex-replace fn-arm before vtable install" });
-                // The replacement fn receives the `re-find` shape: the match
-                // vector `[whole g1 …]` when the pattern has capturing groups,
-                // else the whole-match string (D-093; reuses buildMatchResult).
-                const arg_val = try regex_prim.buildMatchResult(rt, program, haystack, match);
-                var call_args = [_]Value{arg_val};
-                const result = try vt.callFn(rt, env, args[2], &call_args, loc);
-                if (result.tag() != .string)
-                    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "fn returning string", .actual = @tagName(result.tag()) });
-                try out.appendSlice(rt.gc.infra, string_collection.asString(result));
-            },
-            else => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "string or fn", .actual = @tagName(args[2].tag()) }),
-        }
-        any = true;
-        // Advance past the match. Empty matches advance by 1 byte to
-        // avoid infinite loops (mirror JVM Matcher.replaceAll behaviour
-        // on `""` matches).
+        // The replacement fn receives the `re-find` shape: the match
+        // vector `[whole g1 …]` when the pattern has capturing groups,
+        // else the whole-match string (D-093; reuses buildMatchResult).
+        const arg_val = try regex_prim.buildMatchResult(rt, program, haystack, match);
+        var call_args = [_]Value{arg_val};
+        const result = try vt.callFn(rt, env, args[2], &call_args, loc);
+        if (result.tag() != .string)
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "fn returning string", .actual = @tagName(result.tag()) });
+        try out.appendSlice(rt.gc.infra, string_collection.asString(result));
+        // Empty matches advance by 1 byte to avoid an infinite loop
+        // (mirrors JVM `Matcher.replaceAll` on `""` matches).
         pos = if (match.end > match.start) match.end else match.start + 1;
         if (kind == .first) break;
     }
-    // Append tail.
     if (pos <= haystack.len) try out.appendSlice(rt.gc.infra, haystack[pos..]);
-    if (!any and kind == .all) return args[0]; // identity fast-path
     return try string_collection.alloc(rt, out.items);
-}
-
-/// Expand a string replacement template against `match`, JVM
-/// `Matcher.appendReplacement`-style: `$N` (single digit) is group N's text
-/// (`$0` = the whole match; a non-participating group contributes nothing),
-/// `\c` emits `c` literally, everything else is copied verbatim (D-093).
-fn expandReplacement(
-    rt: *Runtime,
-    out: *std.ArrayList(u8),
-    template: []const u8,
-    match: regex_match.MatchResult,
-    program: *const @import("../../runtime/regex/compile.zig").Program,
-    haystack: []const u8,
-) anyerror!void {
-    var i: usize = 0;
-    while (i < template.len) {
-        const c = template[i];
-        if (c == '\\' and i + 1 < template.len) {
-            try out.append(rt.gc.infra, template[i + 1]);
-            i += 2;
-            continue;
-        }
-        if (c == '$' and i + 1 < template.len and template[i + 1] >= '0' and template[i + 1] <= '9') {
-            const g: u16 = template[i + 1] - '0';
-            i += 2;
-            if (g == 0) {
-                try out.appendSlice(rt.gc.infra, haystack[match.start..match.end]);
-            } else if (g <= program.capture_count) {
-                const s = match.captures.slots[@as(usize, 2) * g];
-                const e = match.captures.slots[@as(usize, 2) * g + 1];
-                if (s >= 0 and e >= 0) try out.appendSlice(rt.gc.infra, haystack[@intCast(s)..@intCast(e)]);
-            }
-            continue;
-        }
-        try out.append(rt.gc.infra, c);
-        i += 1;
-    }
 }
 
 pub fn strReplacePattern(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -547,57 +511,8 @@ pub fn split(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     const r = try coerceRegex(rt, args[1], loc, "split");
     const s = string_collection.asString(args[0]);
     const limit: i64 = if (args.len == 3) try error_catalog.expectInteger(args[2], "split", loc) else 0;
-
-    var parts: std.ArrayList(Value) = .empty;
-    defer parts.deinit(rt.gpa);
-
-    if (s.len == 0) {
-        try parts.append(rt.gpa, try string_collection.alloc(rt, ""));
-    } else {
-        var pos: u32 = 0;
-        var nsplits: i64 = 0;
-        var matched = false;
-        while (true) {
-            // limit > 0: after limit-1 splits the rest is one whole chunk.
-            if (limit > 0 and nsplits >= limit - 1) {
-                try parts.append(rt.gpa, try string_collection.alloc(rt, s[pos..]));
-                break;
-            }
-            const match = (try regex_match.findFrom(rt.gpa, r.program, s, pos)) orelse {
-                try parts.append(rt.gpa, try string_collection.alloc(rt, s[pos..]));
-                break;
-            };
-            matched = true;
-            nsplits += 1;
-            try parts.append(rt.gpa, try string_collection.alloc(rt, s[pos..match.start]));
-            if (match.end == match.start) {
-                // Zero-width — advance by one byte to make progress.
-                // Codepoint-aware advance for non-ASCII zero-width patterns is
-                // a future refinement.
-                if (match.end >= s.len) break;
-                pos = match.end + 1;
-            } else {
-                pos = match.end;
-            }
-            if (pos >= s.len) {
-                try parts.append(rt.gpa, try string_collection.alloc(rt, s[pos..]));
-                break;
-            }
-        }
-        // limit == 0: strip trailing empty strings — but only once a match was
-        // consumed (a no-match `[s]` keeps its single element, JVM parity).
-        if (limit == 0 and matched) {
-            while (parts.items.len > 0 and
-                string_collection.asString(parts.items[parts.items.len - 1]).len == 0)
-            {
-                _ = parts.pop();
-            }
-        }
-    }
-
-    var result = vector_collection.empty();
-    for (parts.items) |p| result = try vector_collection.conj(rt, result, p);
-    return result;
+    // Shared neutral leaf (also used by `.split` per F-009).
+    return regex_replace.splitToVector(rt, r.program, s, limit);
 }
 
 /// `(clojure.string/split-lines s)` — split on `\r?\n`. Hand-rolled

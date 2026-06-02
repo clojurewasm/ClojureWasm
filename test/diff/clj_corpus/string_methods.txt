@@ -38,3 +38,33 @@
 ;;=> false
 (.matches "a" "a")
 ;;=> true
+(.replaceAll "a1b2" "[0-9]" "X")
+;;=> "aXbX"
+(.replaceAll "abc" "(.)" "$1$1")
+;;=> "aabbcc"
+(.replaceAll "hello world" "o" "0")
+;;=> "hell0 w0rld"
+(.replaceFirst "a1b2" "[0-9]" "X")
+;;=> "aXb2"
+(vec (.split "a,b,c" ","))
+;;=> ["a" "b" "c"]
+(seq (.split "a,b,c" ","))
+;;=> ("a" "b" "c")
+(count (.split "a,b,c" ","))
+;;=> 3
+(vec (.split "a1b2c" "[0-9]"))
+;;=> ["a" "b" "c"]
+(vec (.split "" ","))
+;;=> [""]
+(vec (.split "a,b,," ","))
+;;=> ["a" "b"]
+(vec (.toCharArray "ab"))
+;;=> [\a \b]
+(count (.toCharArray "abc"))
+;;=> 3
+(first (.toCharArray "xyz"))
+;;=> \x
+(count (.toCharArray "héllo"))
+;;=> 5
+(map int (.toCharArray "é"))
+;;=> (233)

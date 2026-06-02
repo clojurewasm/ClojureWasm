@@ -25,6 +25,8 @@ const charset = @import("../../charset.zig");
 const string_collection = @import("../../collection/string.zig");
 const regex_compile = @import("../../regex/compile.zig");
 const regex_match = @import("../../regex/match.zig");
+const regex_replace = @import("../../regex/replace.zig");
+const vector_collection = @import("../../collection/vector.zig");
 
 /// Implements `(.toUpperCase s)`.
 /// Spec: returns a copy of the string with all codepoints upper-cased.
@@ -344,6 +346,66 @@ fn matches(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return Value.initBoolean(m != null);
 }
 
+/// `(.replaceAll s regex repl)` / `(.replaceFirst s regex repl)` — replace
+/// regex matches with the template `repl` (`$N` backref / `\c` escape, JVM
+/// `Matcher` semantics). The pattern is compiled on the spot. Shares the
+/// `runtime/regex/replace.zig` impl with `clojure.string/replace` (F-009).
+/// JVM ref: java.lang.String#replaceAll / #replaceFirst.
+fn replaceRegex(rt: *Runtime, fn_name: []const u8, kind: regex_replace.ReplaceKind, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(fn_name, args, 3, loc);
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = fn_name, .actual = @tagName(args[1].tag()) });
+    if (args[2].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = fn_name, .actual = @tagName(args[2].tag()) });
+    var program = regex_compile.compile(rt.gpa, string_collection.asString(args[1]), .{}) catch
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "regex-replace (invalid regex pattern)" });
+    defer program.deinit(rt.gpa);
+    return regex_replace.replaceString(rt, &program, string_collection.asString(args[0]), string_collection.asString(args[2]), kind);
+}
+
+fn replaceAll(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    return replaceRegex(rt, ".replaceAll", .all, args, loc);
+}
+
+fn replaceFirst(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    return replaceRegex(rt, ".replaceFirst", .first, args, loc);
+}
+
+/// `(.split s regex)` / `(.split s regex limit)` — split on regex matches.
+/// JVM returns a `String[]`; cw v1 returns a VECTOR (no usable Java-array
+/// value type — `(seq …)` / `(vec …)` / `count` / `first` all work; `class`
+/// / `aget` diverge, a recorded no-JVM-Class surface divergence). Shares the
+/// split impl with `clojure.string/split` (F-009). JVM ref:
+/// java.lang.String#split.
+fn split(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len < 2 or args.len > 3)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = ".split", .got = args.len, .min = 2, .max = 3 });
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".split", .actual = @tagName(args[1].tag()) });
+    const limit: i64 = if (args.len == 3) try error_catalog.expectInteger(args[2], ".split", loc) else 0;
+    var program = regex_compile.compile(rt.gpa, string_collection.asString(args[1]), .{}) catch
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = ".split (invalid regex pattern)" });
+    defer program.deinit(rt.gpa);
+    return regex_replace.splitToVector(rt, &program, string_collection.asString(args[0]), limit);
+}
+
+/// `(.toCharArray s)` — JVM returns a `char[]`; cw v1 returns a VECTOR of
+/// chars (same no-array rationale as `.split`). `(seq …)` / `(vec …)` /
+/// `count` / `first` all work. JVM ref: java.lang.String#toCharArray.
+fn toCharArray(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity(".toCharArray", args, 1, loc);
+    var iter = std.unicode.Utf8Iterator{ .bytes = string_collection.asString(args[0]), .i = 0 };
+    var result = vector_collection.empty();
+    while (iter.nextCodepoint()) |cp| {
+        result = try vector_collection.conj(rt, result, Value.initChar(cp));
+    }
+    return result;
+}
+
 /// Populate the per-Runtime native `.string` descriptor's `method_table`
 /// with String instance methods. Driven from `lang/primitive.zig` at
 /// runtime init (Layer 2 — Layer 0 `runtime/` may not import this
@@ -367,7 +429,9 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "lastIndexOf", &lastIndexOf }, .{ "isBlank", &isBlank },
         .{ "strip", &strip },             .{ "equalsIgnoreCase", &equalsIgnoreCase },
         .{ "codePointAt", &codePointAt }, .{ "compareTo", &compareTo },
-        .{ "matches", &matches },
+        .{ "matches", &matches },         .{ "replaceAll", &replaceAll },
+        .{ "replaceFirst", &replaceFirst }, .{ "split", &split },
+        .{ "toCharArray", &toCharArray },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {
