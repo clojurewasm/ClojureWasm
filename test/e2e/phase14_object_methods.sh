@@ -45,4 +45,17 @@ if "$BIN" -e '(.toString nil)' >/dev/null 2>&1; then
 fi
 echo 'PASS nil_recv -> errors'
 
+# D-212: str / .toString of a BigInt / BigDecimal drop the N / M reader
+# suffix (JVM BigInteger/BigDecimal.toString = plain digits); pr/prn KEEP it.
+assert_eq 'str_bigint'   "$("$BIN" -e '(str 100N)')"        '"100"'
+assert_eq 'str_bignt_n'  "$("$BIN" -e '(str -7N)')"         '"-7"'
+assert_eq 'str_bigdec'   "$("$BIN" -e '(str 1.5M)')"        '"1.5"'
+assert_eq 'str_bigdec_s' "$("$BIN" -e '(str 1.50M)')"       '"1.50"'
+assert_eq 'str_bigdec_f' "$("$BIN" -e '(str 0.001M)')"      '"0.001"'
+assert_eq 'ts_bigint'    "$("$BIN" -e '(.toString 100N)')"  '"100"'
+assert_eq 'ts_bigdec'    "$("$BIN" -e '(.toString 1.5M)')"  '"1.5"'
+assert_eq 'pr_bigint'    "$("$BIN" -e '(pr-str 100N)')"     '"100N"'
+assert_eq 'pr_bigdec'    "$("$BIN" -e '(pr-str 1.5M)')"     '"1.5M"'
+assert_eq 'str_nested'   "$("$BIN" -e '(str [100N 1.5M])')" '"[100N 1.5M]"'
+
 echo "ALL phase14_object_methods PASS"

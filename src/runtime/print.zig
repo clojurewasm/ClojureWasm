@@ -94,6 +94,11 @@ pub fn writeStrValue(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anye
             const canon = uuid_mod.canonicalOf(v);
             try w.writeAll(&canon);
         },
+        // `str`/`.toString` of a BigInt/BigDecimal drops the `N`/`M` reader
+        // suffix that `pr`/`prn` keep — JVM `BigInteger`/`BigDecimal.toString`
+        // emit plain digits (D-212). Ratio's `1/2` form is already suffix-free.
+        .big_int => try w.print("{f}", .{big_int_mod.asManaged(v)}),
+        .big_decimal => try writeBigDecimalDigits(w, v),
         else => try printResult(rt, env, w, v),
     }
 }
@@ -416,6 +421,13 @@ fn printRatio(w: *Writer, v: Value) Writer.Error!void {
 }
 
 fn printBigDecimal(w: *Writer, v: Value) Writer.Error!void {
+    try writeBigDecimalDigits(w, v);
+    // The trailing `M` is the clj reader form (pr/prn). `str`/`.toString`
+    // drop it (JVM `BigDecimal.toString` has no suffix) — D-212.
+    try w.writeByte('M');
+}
+
+fn writeBigDecimalDigits(w: *Writer, v: Value) Writer.Error!void {
     // value = unscaled * 10^(-scale). Reproduces JVM `BigDecimal.toString`:
     // plain notation when `scale >= 0` AND the adjusted exponent
     // `(precision-1) - scale >= -6`, otherwise scientific `d.dddE±exp`.
@@ -426,8 +438,8 @@ fn printBigDecimal(w: *Writer, v: Value) Writer.Error!void {
     var sw: std.Io.Writer = .fixed(&buf);
     sw.print("{f}", .{bd.unscaled.m}) catch {
         // Unscaled wider than the buffer — fall back to the lossy form
-        // rather than a panic.
-        return w.print("{f}M", .{bd.unscaled.m});
+        // (digits only; the caller appends `M` for the reader form).
+        return w.print("{f}", .{bd.unscaled.m});
     };
     const written = buf[0..sw.end];
     const neg = written.len > 0 and written[0] == '-';
@@ -464,7 +476,6 @@ fn printBigDecimal(w: *Writer, v: Value) Writer.Error!void {
         if (adj_exp >= 0) try w.writeByte('+');
         try w.print("{d}", .{adj_exp});
     }
-    try w.writeByte('M');
 }
 
 fn printTypedInstance(w: *Writer, v: Value) Writer.Error!void {

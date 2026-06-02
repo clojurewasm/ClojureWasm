@@ -104,7 +104,19 @@ active:
       **`+'`/`*'`/`-'`/`inc'`/`dec'` (Clojure's promoting arithmetic family) are not implemented**, and F-005's text describing them is **inverted vs real clj**: F-005 says "`+'` family throws on overflow" but clj is the OPPOSITE — clj's `+`/`*` (checked) THROW (`Math.addExact`) and `+'`/`*'` (promoting) AUTO-PROMOTE to BigInt (`addP`), clj-verified 2026-06-02. cljw's current `+`/`*` auto-promote (AD-008, user-ratified) — i.e. cljw's `+` behaves like clj's `+'`. When the `+'`/`*'` family is implemented, decide: (a) cljw `+'`/`*'` = promote (same as cljw `+`, making them redundant — consistent with AD-008's no-throw stance), OR (b) introduce a checked/throwing distinction. This touches F-005's wording (the inverted clause) → a user F-005 decision at that point. Until `+'`/`*'` are on the roadmap, deferred. Cross-ref AD-008 / D-165 / F-005. recall trigger: when promoting-arithmetic (`+'`/`*'`) is taken up OR a corpus needs `+'` parity.
     last_reviewed: "2026-06-02"
   - id: "D-212"
-    status: "now (bug, deferred to own cycle) — surfaced by C3/D-207 Object-method sweep 2026-06-03."
+    status: |-
+      DISCHARGED 2026-06-03 (quality-loop floor: clj-parity drain): `str` /
+      `.toString` of a BigInt / BigDecimal now drop the `N` / `M` reader suffix
+      (JVM `BigInteger`/`BigDecimal.toString` = plain digits), while `pr`/`prn`
+      keep it. `print.zig::printBigDecimal` factored into a suffix-free
+      `writeBigDecimalDigits` (printBigDecimal = digits + `M`); `writeStrValue`
+      gains a `.big_int` arm (`{f}` of the Managed, no `N` regardless of origin)
+      and a `.big_decimal` arm (calls `writeBigDecimalDigits`, no `M`). Fixes
+      `.toString` too (it rides the same str core, D-207). `(str 100N)`→"100",
+      `(str 1.5M)`→"1.5", `(str 1.50M)`→"1.50" (scale kept), `(pr-str 100N)`→
+      "100N", nested `(str [100N 1.5M])`→"[100N 1.5M]" (elements use pr) — all
+      clj-verified. Corpus `numeric_str_suffix` (22); 10 e2e in
+      phase14_object_methods. Cross-ref D-207 (surfacer) / F-011.
     category: "runtime"
     barrier: |-
       **`str` / `.toString` of a BigInt / BigDecimal keeps the readable suffix where clj drops it**: `(str 100N)` → cljw `"100N"` / clj `"100"`; `(str 1.5M)` → cljw `"1.5M"` / clj `"1.5"`; `(str 1.50M)` → cljw `"1.50M"` / clj `"1.50"` (scale kept, M dropped). Ratio is already correct (`(str 1/2)` → `"1/2"` both). ROOT: `print.writeStrValue` (the shared str core, D-207) routes big_int/big_decimal through the readable `printResult`, which appends the `N`/`M` reader-suffix; clj's `str`/`Object.toString` uses `BigInteger.toString` / `BigDecimal.toString` (NO suffix — the suffix is a clj READER form, not the toString). Pre-existing (predates D-207; D-207 only surfaced it via `.toString`). Discharge: add `.big_int` (managed base-10, no `N`) + `.big_decimal` (the plain/scientific digits, no `M` — reuse `printBigDecimal`'s body minus the trailing `M`) arms to `writeStrValue` so the str-form drops the reader suffix while `pr`/`prn` keep it. Verify `(str 100N)`/`(str 1.5M)`/`(str -3.14M)` vs clj. Cross-ref D-207 (surfacer) / F-011 (behavioural equivalence). recall trigger: opportunistic, OR when numeric str/print rendering is next.

@@ -11,13 +11,14 @@
   ADR-0080, heap-boxed Long, landed this session). D-210 is now a STANDING
   `quality-loop floor: clj-parity` (drain any NEW sweep DIFF, no campaign units
   left). Loop is back in self-selected quality-floor-drain mode.
-- **First commit on resume MUST be: D-212** (str/`.toString` of BigInt/BigDecimal
-  keeps the reader suffix where clj drops it — `(str 100N)`→cljw `"100N"`/clj
-  `"100"`; `(str 1.5M)`→`"1.5M"`/`"1.5"`). Highest-frequency of the open floor
-  bugs (str-of-number is everywhere). Fix: `.big_int`/`.big_decimal` arms in
-  `print.writeStrValue` that drop the `N`/`M` (pr/prn keep it). Then D-213
-  (`(class e)`→"ex_info" not the specific class) then D-214 (bit-ops on
-  heap-Long operand raise — pre-existing i48-only gap). Full rows: `.dev/debt.yaml`.
+- **First commit on resume MUST be: D-213** (`(class e)` of ANY exception →
+  "ex_info" not the specific class — `(class (ex-info "m" {}))`→cljw "ex_info"/
+  clj "ExceptionInfo"; caught `(/ 1 0)`→cljw "ex_info"/clj "ArithmeticException").
+  Fix: `protocol.zig::classPrim`'s `.ex_info` arm builds a `.type_descriptor`
+  from the per-value `ExInfo.class_name` (ADR-0060; null→"ExceptionInfo") via a
+  per-Runtime class-name→descriptor cache (simple name per AD-003). Then D-214
+  (bit-ops on heap-Long operand raise — pre-existing i48-only gap). D-212
+  (str/.toString numeric suffix) DONE this session. Full rows: `.dev/debt.yaml`.
 - **Forbidden**: "fixing" an AD-001..009 accepted divergence (set print-order,
   `(class)` simple name AD-003, error Kind, **AD-008 Long-overflow auto-promote**,
   cljw hash AD-009 — see `.dev/accepted_divergences.yaml`); widening the NaN-box
@@ -43,8 +44,8 @@
 - **C1..C7 all DISCHARGED** (D-164/205/207/209/200/198/165; ADR-0076/77/78/79/80).
   D-210 persists ONLY as the standing `quality-loop floor: clj-parity` — drain
   any NEW cljw↔clj DIFF a future sweep surfaces (highest-value-first). No units left.
-- **Open floor bugs (next drains, highest-freq first)**: D-212 (str-of-numeric
-  suffix) → D-213 (class-of-exception) → D-214 (bit-ops on heap-Long).
+- **Open floor bugs (next drains)**: D-213 (class-of-exception) → D-214
+  (bit-ops on heap-Long). D-212 (str-of-numeric suffix) DISCHARGED this session.
 - **Decided, NOT bugs**: AD-008 (Long overflow past i64 auto-promotes per F-005;
   clj throws) · AD-009 (cljw hash ≠ JVM) · D-211 (`+'`/`*'` deferred, F-005-inverted).
 
