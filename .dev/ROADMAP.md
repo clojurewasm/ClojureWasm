@@ -1009,23 +1009,25 @@ a **corpus line** behind (the pin — anti-D-177 mechanical re-check via
 
 **Units** (ADR-0076 table; the honest loop-vs-user split):
 
-| Unit      | Debt  | Gap (clj-visible)                              | あるべき論                                                                                                                | Owner              |
-|-----------|-------|------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|--------------------|
-| C1 (lead) | D-164 | empty `()`/seq → `nil`; `(seq? '())`→false   | interned distinct empty value in existing `.list`/seq tags (no new slot); uniform across every seq fn — highest leverage | loop               |
-| C2        | D-205 | BigDecimal map-key `(get {1.5M :v} 1.5M)`→nil | numeric arm in rt-free `keyEqValue` + scale-normalized hash                                                               | loop               |
-| C3        | D-207 | `.toString`/`.equals`/`.hashCode`/`.getClass`  | dispatch-level Object fallback → `str`/`=`/`hash`/`class` (F-009)                                                        | loop               |
-| C4        | D-209 | `map-entry?` + distinct MapEntry               | activate the **reserved** Group-A `.map_entry` slot (≠ F-004 amend)                                                      | loop               |
-| C5        | D-198 | `(Exception. "x")` host-class ctors            | D-048 host-class machinery (dependency-ordered)                                                                           | loop (after D-048) |
-| C6        | D-200 | `#inst`/Date                                   | ship the **no-slot** cljw-native `typed_instance` Date; dedicated `.date` slot = **user F-004** option                    | loop + user (slot) |
-| C7        | D-165 | long ∈ (2^47, 2^63] → BigInt `…N`           | wider NaN-box payload (F-004) or heap-boxed-Long-without-`N` (F-005) — **user-owned LAW**                                | **user F-NNN**     |
+| Unit      | Debt  | Gap (clj-visible)                              | あるべき論                                                                                                                         | Owner              |
+|-----------|-------|------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|--------------------|
+| C1 (lead) | D-164 | empty `()`/seq → `nil`; `(seq? '())`→false   | interned distinct empty value in existing `.list`/seq tags (no new slot); uniform across every seq fn — highest leverage          | loop               |
+| C2        | D-205 | BigDecimal map-key `(get {1.5M :v} 1.5M)`→nil | numeric arm in rt-free `keyEqValue` + scale-normalized hash                                                                        | loop               |
+| C3        | D-207 | `.toString`/`.equals`/`.hashCode`/`.getClass`  | dispatch-level Object fallback → `str`/`=`/`hash`/`class` (F-009)                                                                 | loop               |
+| C4        | D-209 | `map-entry?` + distinct MapEntry               | activate the **reserved** Group-A `.map_entry` slot (≠ F-004 amend)                                                               | loop               |
+| C5        | D-198 | `(Exception. "x")` host-class ctors            | D-048 host-class machinery (dependency-ordered)                                                                                    | loop (after D-048) |
+| C6        | D-200 | `#inst`/Date                                   | ship the **no-slot** cljw-native `typed_instance` Date; dedicated `.date` slot = **user F-004** option                             | loop + user (slot) |
+| C7        | D-165 | long in (2^47, 2^63] -> BigInt `...N`          | heap-boxed Long (B2 flag on heap-int; NO new slot, F-004 unchanged); stays Long to i64, BigInt past i64; overflow-promote = AD-008 | loop               |
 
 **Resume contract**: start at **C1 (D-164)** — one representation fix
 clears every seq predicate (`seq?`/`list?`/`empty?`/`=` on `()`), the single
 highest-trust win. Then C2 → C3 → C4 → C6(no-slot Date) → C5(after D-048).
-**C7 + the C6 dedicated-slot variant are user F-004/F-005 decision points**
-(all 64 NaN-box slots are named; full-Long / dedicated-Date representation is
-user-owned LAW) — surfaced as flagged debt, NOT auto-decided. This overlay
-runs ahead of §9.2.R and does not renumber it (F-003).
+**All 7 units are now loop-resolvable** (user-decided 2026-06-02, ADR-0076
+am1): C7 D-165 = heap-boxed Long (B2 flag, NO F-004 amendment; F-005 surface
+already wants Long-to-i64); C6 #inst = no-slot typed_instance Date. The
+Long-overflow-past-i64 promote-vs-throw is the accepted divergence AD-008
+(cljw promotes per F-005; clj throws); the promoting prime-arithmetic family
+is deferred D-211. This overlay runs ahead of §9.2.R and does not renumber it (F-003).
 
 ### 9.3 Phase 1 — task list (expanded; this is the active phase)
 

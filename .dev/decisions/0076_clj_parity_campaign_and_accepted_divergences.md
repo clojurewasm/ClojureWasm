@@ -182,3 +182,24 @@ not halt.**
 
 - 2026-06-02 created (Accepted): user-directed. Framework + campaign landed
   as wiring this session; C1… execution begins next clean session.
+- 2026-06-02 amendment 1 (am1): the two "user-owned F-NNN" flags resolved by
+  user decision in chat, so **all 7 units are now loop-resolvable**:
+  - **C6 #inst** — user confirmed the **no-slot `typed_instance` Date** (β);
+    no dedicated `.date` slot. `(class …)`→`Date` is consistent with AD-003
+    (simple class names). C6 is fully loop.
+  - **C7 D-165 (long range)** — user decided **heap-boxed Long, representation
+    B2** (a `Long-origin/fits-i64` flag on the heap-integer struct; **NO new
+    NaN-box slot, F-004 layout UNCHANGED**). This is NOT an F-NNN amendment:
+    F-005's stated surface already wants Long-to-full-i64, and the internal
+    representation is F-005's "Zig-native" domain (loop's call). NaN-box
+    i64-inline was confirmed fundamentally impossible (cw v0 also i48; an
+    8-byte Value cannot hold tag + i64). Heap-box mirrors the JVM (`Numbers.num(long)`→`Long.valueOf`).
+  - **Long overflow past i64** — user ratified **auto-promote** ("A は Promote
+    推奨どおり"): cljw `+`/`*` promote to BigInt on i64 overflow (per F-005's
+    existing promote-clause — **F-005 NOT amended**). clj's checked-`+`/`*`
+    THROW (`Math.addExact`) is recorded as the accepted divergence **AD-008**.
+    The promoting `+'`/`*'` family is unimplemented + F-005's `+'`-clause is
+    clj-inverted → deferred to **D-211**.
+  - Net: no user-LAW amendment was needed (F-004 + F-005 unchanged); the
+    campaign is now 7 loop-resolvable units. The C7-as-user-owned text in the
+    Decision table above is superseded by this am1.

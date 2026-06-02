@@ -22,15 +22,18 @@ active:
       fn; loop) → **C2 D-205** (BigDecimal map-key; loop) → **C3 D-207** (Object
       `.toString`/`.equals`/`.hashCode`/`.getClass` dispatch-fallback; loop) →
       **C4 D-209** (`map-entry?` via the RESERVED `.map_entry` slot; loop) → **C6
-      D-200** (no-slot `typed_instance` Date; loop — dedicated `.date` slot is a
-      user F-004 option) → **C5 D-198** (host-class exception ctors, after D-048;
-      loop). **C7 D-165** (long >2^47 prints `…N`) AND the C6 dedicated-slot are
-      **user-owned F-004/F-005 amendment decisions** (all 64 NaN-box slots are
-      named; full-Long / dedicated-Date representation is user LAW) — surfaced as
-      flagged decision points, NOT auto-decided. Each loop unit: own commit,
+      D-200** (no-slot `typed_instance` Date; loop — user-confirmed β, no
+      dedicated slot) → **C5 D-198** (host-class exception ctors, after D-048;
+      loop) → **C7 D-165** (long >2^47 prints `…N`; loop — user-decided
+      2026-06-02 heap-boxed Long B2, NO F-004 amendment; F-005 surface already
+      wants Long-to-i64). **All 7 units are now loop-resolvable** (the earlier
+      "user-owned F-NNN" flags on C7 + the C6 slot were resolved 2026-06-02 per
+      ADR-0076 am1). Long-overflow-past-i64 (cljw auto-promote vs clj throw) is
+      the user-ratified accepted divergence **AD-008** (not a unit); `+'`/`*'`
+      promoting arithmetic is deferred **D-211**. Each loop unit: own commit,
       F-002/F-011-held, gated, leaves a corpus line (pin, anti-D-177). B-half
       (intentional divergences) is the accepted-divergence framework: SSOT
-      `.dev/accepted_divergences.yaml` (AD-001..007) + rule + gate. Cross-ref
+      `.dev/accepted_divergences.yaml` (AD-001..008) + rule + gate. Cross-ref
       ADR-0076 / ROADMAP §9.2.P / D-164/165/198/200/205/207/209 / F-002/004/005/
       009/010/011 / `.claude/rules/accepted_divergences.md`.
     quality_floor: |-
@@ -43,10 +46,16 @@ active:
       **cljw collapses the empty list / empty realized seq to `nil`; real Clojure has a distinct `()`** (clj-verified): `(list? '())` / `(seq? '())` → cljw false, clj true; `(pr-str '())` → cljw `"nil"`, clj `"()"`; `(= () nil)` → cljw true, clj false; an empty `filter`/`map`/`rest`/`remove`/`flatten` realizes/prints as `"nil"` not `"()"`. Root: cljw has no persistent empty-seq Value distinct from nil — `print.zig::listFromItems([])` returns `nil_val`, and `'()` reads as nil. **あるべき論 (C1, loop-resolvable — DA-confirmed NO new NaN-box slot)**: introduce an interned distinct empty-list/empty-seq Value inside the existing `.list`/seq tags, threaded through cons/rest/seq/filter/map/print/=/list?/seq? — uniform across the WHOLE seq model in ONE big-bang (a per-op `(or … '())` is the ad-hoc-patch smell F-011 forbids). HIGHEST LEVERAGE: one fix clears every empty-seq predicate + equality + print. Leaves a corpus line pinning `(seq? '())`/`(list? '())`/`(pr-str '())`/`(= '() nil)`. Cross-ref ADR-0076 §9.2.P C1 / D-210 anchor / F-011. recall trigger: clj-parity campaign C1 (the lead unit).
     last_reviewed: "2026-06-02"
   - id: "D-165"
-    status: "now — clj-parity campaign C7, USER-OWNED F-004/F-005 decision (re-opened 2026-06-02 from structural-defer; ADR-0076). Loop does NOT auto-decide."
+    status: "now — clj-parity campaign C7, LOOP-RESOLVABLE (user-decided 2026-06-02: heap-boxed Long, B2 representation, no F-004 amendment). Re-opened from structural-defer; ADR-0076 am1."
     category: "runtime"
     barrier: |-
-      **Longs in (2^47, 2^63] print as BigInt (`N` suffix) where JVM keeps a primitive Long** (clj-verified): `(parse-long "999999999999999")` → cljw `999999999999999N` (BigInt), clj `999999999999999` (Long); `(class …)` differs (BigInt vs Long). The VALUE is exact — only print form + `(class …)` diverge. Root: cljw Long is i48 in the NaN-box (F-004); values beyond ±2^47 promote to heap BigInt (D-014a, lossless but prints `N`). **あるべき論 (C7) = USER-OWNED F-NNN AMENDMENT** (DA-flagged, ADR-0076): a faithful full-i64 Long needs EITHER a wider NaN-box integer payload (**F-004** layout = user LAW) OR a heap-boxed-Long Value that prints without `N` (**F-005** numeric-tower surface = user LAW). The loop must NOT self-decide either (treating F-004/F-005 as informational is the Smallest-diff-bias smell on user LAW). **Surfaced as a decision point for the user**; until the user amends F-004/F-005, the BigInt-promotion behaviour stands (lossless). Cross-ref ADR-0076 §9.2.P C7 / D-210 anchor / D-014a / F-004 / F-005. recall trigger: clj-parity campaign C7 — awaiting user F-004/F-005 amendment.
+      **Longs in (2^47, 2^63] print as BigInt (`N` suffix) where JVM keeps a primitive Long** (clj-verified — clj Long is genuinely full i64; promotes only PAST i64): `(parse-long "999999999999999")` → cljw `999999999999999N` (BigInt), clj `999999999999999` (Long); `(class …)` differs (BigInt vs Long). The VALUE is exact — only print form + `(class …)` diverge. Root: cljw Long is i48 in the NaN-box; values beyond ±2^47 promote to heap BigInt (D-014a, lossless but prints `N`) — promotion fires at 2^47 where clj keeps Long to i64. **あるべき論 (C7, LOOP-RESOLVABLE — user-decided 2026-06-02)**: heap-box a distinct **Long** representation for (2^47, i64] so it stays Long (`(class …)`→Long, print no-`N`), promoting to BigInt only PAST i64. **NaN-box i64-inline is fundamentally impossible** (8-byte Value must carry tag + payload; cw v0 also capped at i48 — empirically confirmed) → heap-box is the JVM-mirror finished form (JVM boxes Long on the heap too; `Numbers.num(long)`→`Long.valueOf`). **Representation = B2** (a `Long-origin / fits-i64` flag on the heap-integer struct; **NO new NaN-box slot, F-004 layout UNCHANGED**; print + `(class)` consult the flag). Internal representation is F-005's "Zig-native" domain = loop's call (NOT an F-NNN amendment — F-005's stated surface already wants Long-to-i64). i47-inline window (±1.4e14) covers ms-timestamps (safe ~4400yr) / counters / sizes; only sub-ms timestamps / Snowflake IDs / 64-bit hashes hit the heap path (still ≤ JVM, which boxes everything >127). The OVERFLOW behaviour past i64 (cljw promote vs clj throw) is the separate AD-008 accepted divergence, NOT this row. Cross-ref ADR-0076 §9.2.P C7 / D-210 anchor / D-014a / AD-008 / F-005 (surface) / F-004 (unchanged). recall trigger: clj-parity campaign C7.
+    last_reviewed: "2026-06-02"
+  - id: "D-211"
+    status: "deferred — `+'`/`*'` (promoting arithmetic) not yet implemented; flagged 2026-06-02 (F-005's `+'`-clause is clj-inverted)."
+    category: "runtime"
+    barrier: |-
+      **`+'`/`*'`/`-'`/`inc'`/`dec'` (Clojure's promoting arithmetic family) are not implemented**, and F-005's text describing them is **inverted vs real clj**: F-005 says "`+'` family throws on overflow" but clj is the OPPOSITE — clj's `+`/`*` (checked) THROW (`Math.addExact`) and `+'`/`*'` (promoting) AUTO-PROMOTE to BigInt (`addP`), clj-verified 2026-06-02. cljw's current `+`/`*` auto-promote (AD-008, user-ratified) — i.e. cljw's `+` behaves like clj's `+'`. When the `+'`/`*'` family is implemented, decide: (a) cljw `+'`/`*'` = promote (same as cljw `+`, making them redundant — consistent with AD-008's no-throw stance), OR (b) introduce a checked/throwing distinction. This touches F-005's wording (the inverted clause) → a user F-005 decision at that point. Until `+'`/`*'` are on the roadmap, deferred. Cross-ref AD-008 / D-165 / F-005. recall trigger: when promoting-arithmetic (`+'`/`*'`) is taken up OR a corpus needs `+'` parity.
     last_reviewed: "2026-06-02"
   - id: "D-207"
     status: "now — clj-parity campaign C3 (ADR-0076 §9.2.P; loop-resolvable via dispatch-level Object fallback). Was LOW-priority structural; idiomatic clj uses str/=/hash/class. Surfaced 2026-06-02 by the Object-method probe."

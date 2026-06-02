@@ -86,3 +86,20 @@ accepted:
       format differs, never the accept/reject decision or the value.
     derives_from: "ADR-0059 (no-JVM); error_catalog_only.md (catalog is the message SSOT)"
     pin: "test/e2e/* error-rendering cases (cljw Kind asserted); behaviour = reject, verified"
+  - id: "AD-008"
+    summary: "Long arithmetic overflow past i64 auto-promotes to BigInt; clj's checked `+`/`*` THROW instead"
+    example: '(* 9223372036854775807 2) => cljw 18446744073709551614N (BigInt) / clj THROW ArithmeticException "integer overflow"'
+    why: |-
+      F-005 chose silent auto-promotion as cljw's numeric-tower surface: a
+      Long operation that overflows i64 promotes to BigInt rather than
+      throwing. JVM Clojure's checked `+`/`*` throw `ArithmeticException`
+      (only `+'`/`*'` promote). User-ratified 2026-06-02 ("A は Promote
+      推奨どおり"): cljw keeps the friendlier no-overflow-exception behaviour
+      and accepts the divergence from clj's throw. Note this is the
+      overflow PAST i64 — the separate early-promotion-at-2^47 bug (Long
+      should stay Long to full i64) is D-165 (a real bug, campaign C7), NOT
+      this accepted divergence. The `+'`/`*'` promoting variants are not yet
+      implemented; F-005's "`+'` throws" clause is itself inverted vs clj and
+      is tracked in D-211 for when they land.
+    derives_from: "F-005 (numeric tower: auto-promote on overflow is the chosen cljw surface)"
+    pin: "none — clj diverges (throws) by design; cljw's promote result is pinned by the D-165/overflow cycle's e2e (campaign C7, next session)"

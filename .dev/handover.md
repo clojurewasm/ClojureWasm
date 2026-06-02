@@ -17,14 +17,15 @@
   tags (DA-confirmed NO new NaN-box slot), threaded through cons/rest/seq/
   filter/map/print/=/list?/seq? in ONE big-bang; leave a corpus line pinning
   `(seq? '())`/`(pr-str '())`/`(= '() nil)`. Then C2 D-205 → C3 D-207 → C4
-  D-209 → C6 D-200(no-slot Date) → C5 D-198(after D-048). Full unit table:
-  D-210 anchor row + ROADMAP §9.2.P.
-- **Forbidden**: self-deciding **C7 D-165** (long >2^47 print) or the **C6
-  dedicated `.date` slot** — both are USER-OWNED F-004/F-005 amendments
-  (all 64 NaN-box slots named; surfaced as decision points, NOT auto-decided);
-  "fixing" an AD-001..007 accepted divergence (set print-order, `(class)`
-  simple name, error Kind — see `.dev/accepted_divergences.yaml`); re-opening
-  landed work (git log = SSOT); perf without a Release `scripts/perf.sh` number.
+  D-209 → C6 D-200(no-slot Date) → C5 D-198(after D-048) → C7 D-165(heap-Long
+  B2). Full unit table: D-210 anchor row + ROADMAP §9.2.P. All 7 units are
+  loop-resolvable (ADR-0076 am1; no user-LAW amendment needed).
+- **Forbidden**: "fixing" an AD-001..008 accepted divergence (set print-order,
+  `(class)` simple name, error Kind, **AD-008 Long-overflow auto-promote** —
+  see `.dev/accepted_divergences.yaml`); for C7 D-165, widening the NaN-box
+  inline int or adding a `.date`/heap-Long slot (use **B2**: a flag on the
+  heap-int, F-004 layout UNCHANGED); re-opening landed work (git log = SSOT);
+  perf without a Release `scripts/perf.sh` number.
 
 ## Just landed (this session; git log = SSOT, full rows in `.dev/debt.yaml`)
 
@@ -42,14 +43,17 @@
 
 ## clj-parity campaign units (the A-half; full rows in `.dev/debt.yaml`, D-210 anchor)
 
-- **Loop-resolvable**: C1 D-164 (empty≡nil, LEAD) · C2 D-205 (BigDecimal
-  map-key) · C3 D-207 (Object `.toString`/`.equals`/`.hashCode`/`.getClass`
-  fallback) · C4 D-209 (`map-entry?` via reserved `.map_entry` slot) · C6
-  D-200 (no-slot typed_instance Date) · C5 D-198 (host-class exc ctors, after
-  D-048).
-- **User-owned F-NNN decisions (do NOT auto-decide)**: C7 D-165 (full-i64
-  Long = F-004 wider payload or F-005 heap-boxed Long) · C6 dedicated `.date`
-  slot (F-004 reshuffle — all 64 slots named).
+- **All loop-resolvable** (ADR-0076 am1, user-decided 2026-06-02): C1 D-164
+  (empty≡nil, LEAD) · C2 D-205 (BigDecimal map-key) · C3 D-207 (Object
+  `.toString`/`.equals`/`.hashCode`/`.getClass` fallback) · C4 D-209
+  (`map-entry?` via reserved `.map_entry` slot) · C6 D-200 (no-slot
+  typed_instance Date, β) · C5 D-198 (host-class exc ctors, after D-048) ·
+  C7 D-165 (heap-boxed Long, B2 flag on heap-int — NO F-004 amendment; F-005
+  surface already wants Long-to-i64; NaN-box i64-inline is impossible, cw v0
+  also i48).
+- **Decided, NOT campaign units**: AD-008 (Long overflow past i64 auto-promotes
+  per F-005; clj throws — accepted divergence, user-ratified) · D-211 (`+'`/`*'`
+  promoting arithmetic deferred; F-005's `+'`-clause is clj-inverted).
 
 ## Process discipline (SSOT = memory + rules; do NOT re-expand here)
 
