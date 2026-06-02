@@ -5,87 +5,82 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (VM-parity + VM-default-flip commits on
-  `cw-from-scratch`). Gate green on `vm` (the production default, flipped
+- **HEAD**: see `git log` (VM-default flip + F-011 sweep + moderate-feature
+  commits on `cw-from-scratch`). Gate green on `vm` (production default, flipped
   2026-06-02; ADR-0070 / F-012 realised): Mac 200, **ubuntunote Linux x86_64
-  199 verified** (1-PASS delta = Mac-only zlinter skip, expected). F-012 is
-  cross-platform confirmed.
-- **First commit on resume MUST be: the standing F-011 differential sweep**
-  (`scripts/clj_diff_sweep.sh`, `test/diff/clj_corpus/COVERAGE.md` § Next-sweep
-  → `--corpus`) — the operating mode now that D-196 / F-012 is closed. Tracked
-  non-urgent follow-ups (not the next commit): (a) repurpose
-  `scripts/check_vm_parity.sh` to run e2e on the NON-default backend (tree-walk
-  oracle) so an oracle-only rendering regression can't hide behind the
-  vm-default gate (on-demand / Phase-boundary, ADR-0049 cost concern); (b)
-  v0.1.0-tag closeout (Phase 14.14).
-- **Forbidden this session**: re-sweeping the COVERAGE.md § Swept areas
-  wholesale; seizing the F-003 structural-deferred rows (D-164 empty≡nil,
-  D-165 i48→i64, D-086/088/178/179) incrementally — those are big-bang,
-  user-gated; re-opening landed work (git log = SSOT); JIT/superinstruction
-  (post-M); re-opening perf without a Release `scripts/perf.sh` number.
+  199** (1-PASS delta = Mac-only zlinter skip). F-012 cross-platform confirmed.
+- **First commit on resume MUST be: a tracked MODERATE-FEATURE gap** —
+  self-select per F-002 (highest real-code value first). The F-011 grab-bag
+  quick-win phase is EXHAUSTED (recent ~6 sweeps were ~20/20 parity); the
+  remaining work is focused analyzer/dual-backend features, each with a
+  step-by-step discharge plan + `file:line` refs in its `.dev/debt.md` row.
+  Recommended order:
+  1. **D-202(1) — defrecord/deftype bare-field refs in protocol method
+     bodies** (HIGHEST real-code frequency; wrap method bodies with a
+     field-`let*` in `macro_transforms.zig::lowerDefType` — concrete plan in
+     the D-202 row).
+  2. **D-201 — `letfn`** (`letfn*` mutual-recursion special form + dual-backend).
+  3. **D-202(2) — `extend-type` on a java class** (resolveJavaSurface target).
+  4. **D-200 — EDN `#uuid`/`#inst` tagged literals** (reader infra; `#uuid`
+     needs a UUID-type ADR — partial-string-parity vs a real type).
+  **Verify moderate-feature work via e2e** (top-level forms) — `clj_diff_sweep`
+  can NOT batch-verify define-heavy poly/reader forms (wraps each line in
+  `(prn …)`; clj needs them top-level → `<clj-missing>`; see D-202 HARNESS
+  NOTE). The standing F-011 sweep is a FALLBACK only. Other tracked follow-ups:
+  (a) repurpose `check_vm_parity.sh` to run e2e on the non-default (tree-walk)
+  backend; (b) v0.1.0-tag closeout (Phase 14.14).
+- **Forbidden**: re-sweeping COVERAGE.md § Swept areas wholesale; seizing the
+  F-003 structural-deferred rows (D-164 empty≡nil, D-165 i48→i64, D-086/088/
+  178/179) incrementally — big-bang, user-gated; re-opening landed work
+  (git log = SSOT); perf without a Release `scripts/perf.sh` number.
 
-## Operating mode — clj differential sweep (F-011) + quality-loop floor
+## Stopped — user requested
 
-Probe via BOTH `clj` (oracle) + `cljw`, fix at the finished form, commonise.
-Autonomous; self-selects next area per F-002 / ROI. The harness is the SSOT —
-do NOT hand-roll `for e in …; cljw vs clj` loops (rule Discipline 1). A
-discharge that lists coverage MUST back it with corpus exprs (anti D-177
-false-positive); `check_corpus_regression.sh` replays them cljw-only as a gate
-step. Coverage is **big-bang, not drip-fed** (rule Discipline 2). **Check
-F-NNN before "fixing"** — overflow auto-promote / `+'`-throws are intentional
-(F-005); set print order + `(class 5)`→`Long` are acceptable (COVERAGE.md).
+User instruction (2026-06-02): the F-011 quick-wins are done for this session;
+the remaining moderate features are **NOT** permanently skipped — take them on
+in a fresh, focused session. "Audit the wiring / reference chain so the next
+clean session can autonomously decide + execute, then stop." Wiring audited +
+set: this Resume contract repoints to the moderate-feature queue (D-202(1)
+first); `.dev/debt.md` D-200 / D-201 / D-202 carry step-by-step discharge plans
++ `file:line` refs + the harness note; COVERAGE.md § Next-sweep lists them; the
+cold-start reading order is intact. **Resume**: the next `/continue`
+self-selects a moderate feature (D-202(1) recommended) — this stop does not
+carry across sessions (CLAUDE.md § The only stop).
 
-## Discharged this session (full rows in `.dev/debt.md`)
+## Discharged this session (git log = SSOT; full rows in `.dev/debt.md`)
 
-- **D-191** numeric constructors (bigdec/bigint full ctor parity) ·
-  **D-194** bigdec arithmetic contagion (`+ - * / quot rem mod`) ·
-  **D-182** JSON number parity (read number_string) ·
-  **D-047** setString Linux bug → `big_int.parseBase10` consolidated fix
-  (all 8 sites; ≥2^64 test restrictions removed) ·
-  **D-177** corrected over-claimed discharge + landed 7 missing xform arities ·
-  **D-193** folded into D-157 (add-watch is Phase-15, not a floor item).
-- Plus drop-last/get-in arities, regex print, predicate cluster.
-- **D-196 DISCHARGED + VM-default flip LANDED (ADR-0070 / F-012 realised)**:
-  all 5 VM-parity blockers closed this session — (4) error-context via the
-  ADR-0071 cleanup-handler kind (`op_push_cleanup`/`op_reraise`); (1)
-  catch-`:keyword` via `op_match_type_keyword`; (3) java-surface ctor via the
-  shared `special_forms.constructInstance`; (2) ns `:refer-clojure` filter +
-  libspec via `op_ns_with_filter` + `emitLibspec`. check_vm_parity = 0 fails;
-  `build.zig` default flipped to `vm`; gate keeps unit coverage on both
-  backends. Plus even?/odd? BigInt + oversized-literal auto-promote;
-  coerce_tower corpus.
+- **F-012 realised**: D-196 all 5 VM-parity blockers closed → `build.zig`
+  default flipped to `vm` (ADR-0070 / ADR-0071 cleanup-handler kind,
+  op_match_type_keyword, shared constructInstance, op_ns_with_filter);
+  check_vm_parity = 0, Mac 200 + Linux 199.
+- **D-199** transient read-ops · **D-198** PARTIAL (`.getMessage`/`.getCause`/
+  `.getData`) · **D-202(3)** defmulti `:default`. Quick-wins: even?/odd? BigInt,
+  oversized-literal auto-promote, `%b`/`%c`/`%N$` format, re-quote-replacement,
+  print-str, namespaced `:keys`, force/delay?, realized?-on-lazy-seq.
+- **~14 regression corpora** added (numeric/transients/threading/format/print/
+  sorted/control-flow/destructuring/bit-math/coll-path/lazy-eval/str-char) —
+  broad common-surface parity is corpus-backed.
 
 ## Remaining (pointers — full text in `.dev/debt.md` + COVERAGE.md)
 
-- **Sweep next**: `test/diff/clj_corpus/COVERAGE.md` § Next-sweep candidates.
-- **Structural-deferred (F-003, big-bang, user-gated)**: D-164 empty≡nil (the
-  highest-leverage single fix — collapses a class of diffs), D-165 i48→i64,
-  D-086/088/178/179, D-105 java.time.
+- **Moderate features**: D-202(1)/(2), D-201, D-200 (see Resume contract).
+- **Structural-deferred (F-003, big-bang, user-gated)**: D-164 empty≡nil
+  (highest-leverage single fix), D-165 i48→i64, D-086/088/178/179, D-105.
 - **v0.1.0 closeout**: Phase 14.14 — exit-smoke + `phase_at_least_14` flip +
-  tag + **ubuntunote (Linux) gate** (ADR-0049). The D-047 fix unblocks ≥2^64
-  on Linux.
-- **Perf §9.2.S CLOSED** (Debug-measurement correction): O-001..O-004 landed;
-  Release startup is ms (mission target met). Re-open ONLY with a Release
-  `scripts/perf.sh` number proving a real regression. D-140 startup = moot.
+  tag (D-047 unblocks ≥2^64 on Linux).
+- **Perf §9.2.S CLOSED**: Release startup is ms; re-open ONLY with a Release
+  `scripts/perf.sh` regression number. D-140 startup = moot.
 
-## Process discipline (full detail in memory + rules)
+## Process discipline (SSOT = memory + rules; do NOT re-expand here)
 
-- **Gate hazard**: the -P8 e2e pool intermittently times out under host load —
-  use `timeout 1800 bash test/run_all.sh --serial-e2e` (memory
-  `gate-parallel-e2e-timeout`). Mac per-commit; ubuntunote at Phase boundary.
-- **Never poll a background gate**: launch `run_in_background`, yield, act on
-  the completion notification, read once. **`clj -M -e` → `timeout 20`-wrap** +
-  bound infinite seqs (`(take N …)`). **No `\a` char literals through `cljw -e`**
-  (shell eats `\`); use a file / stdin heredoc.
-- **Under host load, capture probe output to `/tmp/*.txt` and Read it** (bare
-  reads garble). **Measure speed ONLY via `scripts/perf.sh`** (Release), NEVER
-  `time zig-out/bin/cljw` (Debug) — `.claude/rules/perf_measure_release.md`.
+- Gate: `timeout 1800 bash test/run_all.sh --serial-e2e` (the -P8 pool times
+  out under load — memory `gate-parallel-e2e-timeout`). Never poll a bg gate.
+  `clj -M -e` → `timeout 20`-wrap + bound infinite seqs. Speed ONLY via
+  `scripts/perf.sh` (Release) — `.claude/rules/perf_measure_release.md`.
 
 ## Cold-start reading order (tracked-only)
 
 handover → `test/diff/clj_corpus/COVERAGE.md` (sweep state) +
-`.claude/rules/clj_diff_sweep.md` (harness + disciplines) → `.dev/debt.md`
-(open rows) → CLAUDE.md (§ Project spirit + Autonomous Workflow + The only
-stop) → `.dev/project_facts.md` (F-002 / F-010 / F-011) → `.dev/principle.md`
-(Bad Smell) → `.dev/reference_clones.md` (clj oracle). Optional scratch (if
-present, NOT load-bearing): `private/notes/phaseA26-*.md`.
+`.claude/rules/clj_diff_sweep.md` → `.dev/debt.md` (open rows: D-200/201/202)
+→ CLAUDE.md (§ Project spirit + Autonomous Workflow + The only stop) →
+`.dev/project_facts.md` (F-002/010/011/012) → `.dev/principle.md` (Bad Smell).
