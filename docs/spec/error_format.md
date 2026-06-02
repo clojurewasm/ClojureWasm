@@ -114,7 +114,7 @@ require a MAJOR version bump per ROADMAP §1.4.
 
 ## Cross-references
 
-- `.dev/debt.md` D-066 (this surface's tracking row).
+- `.dev/debt.yaml` D-066 (this surface's tracking row).
 - `src/app/error_render.zig` (implementation).
 - `test/e2e/phase14_error_format.sh` (7 e2e cases).
 - ROADMAP §9.16 row 14.13 (v0.1.0 polish bundle).

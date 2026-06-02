@@ -50,7 +50,7 @@ When a Phase-deferred scaffold lands, the author should:
    (covers both orphan symptoms above).
 2. If the scaffold is genuinely too disruptive to compile until
    the deferred phase lands (rare), file an explicit
-   `D-NNN blocked-by: Phase N landing` row in `.dev/debt.md`
+   `D-NNN blocked-by: Phase N landing` row in `.dev/debt.yaml`
    so the deferral has a tracked owner — not a silent orphan.
 
 ## Complementary detection layers cw v1 carries
@@ -63,7 +63,7 @@ When a Phase-deferred scaffold lands, the author should:
   also a covert "is the code still buildable" gate for files
   with no production-path caller.
 - **Periodic debt review** — `Phase N target` /
-  `blocked-by: <event>` rows in `.dev/debt.md` that have been
+  `blocked-by: <event>` rows in `.dev/debt.yaml` that have been
   blocked for ≥ 3 cycles get escalated at Step 0.5 sweep.
 
 ## The aspirational-rule sibling

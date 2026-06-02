@@ -26,7 +26,7 @@ audit.
 ### Mandatory triggers
 
 1. **Phase boundary**: every time §9.X completes (last `[ ]` becomes `[x]`).
-2. **Debt stale escalation**: `.dev/debt.md` rows where Last reviewed > 14 days.
+2. **Debt stale escalation**: `.dev/debt.yaml` rows where Last reviewed > 14 days.
 3. **Resume cycle count**: every 3rd `/continue` resume (rough rolling).
 4. **Pre-release**: before tagging v0.X.0.
 5. **Explicit**: user says "audit scaffolding" / "check for drift" / similar.

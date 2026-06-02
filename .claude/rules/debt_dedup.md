@@ -1,20 +1,26 @@
 ---
 paths:
-  - .dev/debt.md
+  - .dev/debt.yaml
 ---
 
 # Debt deduplication discipline
 
+> `.dev/debt.yaml` is a structured YAML SSOT (ADR-0072 migration): two
+> top-level lists, `active:` and `discharged:`, each entry a mapping
+> (`id` / `status` / `category` / `barrier` / optional `quality_floor` /
+> `last_reviewed`; discharged entries carry `discharged_at` / `resolution`).
+> Edit it as YAML — there is no Markdown table to align any more.
+
 ## Rule
 
-Before adding a new debt row, grep for class overlap:
+Before adding a new debt entry, grep for class overlap:
 
 ```sh
-rg -n '<keyword>' .dev/debt.md
+rg -n '<keyword>' .dev/debt.yaml
 ```
 
-Many additions are actually re-tagging an existing row (status / barrier
-/ last reviewed update).
+Many additions are actually re-tagging an existing entry (status / barrier
+/ last_reviewed update).
 
 ## Why
 
@@ -25,8 +31,8 @@ Many additions are actually re-tagging an existing row (status / barrier
 
 1. Extract keyword from the domain (e.g., "lazy-seq", "boxing",
    "interop", "MVCC").
-2. `rg -n '<keyword>' .dev/debt.md` to find related rows.
-3. Update the existing row (status / barrier / last reviewed) if
+2. `rg -n '<keyword>' .dev/debt.yaml` to find related entries.
+3. Update the existing entry (status / barrier / last_reviewed) if
    relevant.
-4. Otherwise append new D-NNN (next ID via
-   `grep -c "^| D-" .dev/debt.md`).
+4. Otherwise append a new entry under `active:` with the next ID
+   (highest existing: `grep -oE 'D-[0-9]+' .dev/debt.yaml | sort -t- -k2 -n | tail -1`).

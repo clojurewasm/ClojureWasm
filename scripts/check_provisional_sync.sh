@@ -3,7 +3,7 @@
 #
 # PreToolUse hook on Bash that blocks `git push` when any unpushed
 # commit changes a PROVISIONAL: marker in a source-bearing file
-# without also editing feature_deps.yaml AND .dev/debt.md in the
+# without also editing feature_deps.yaml AND .dev/debt.yaml in the
 # same commit. Additionally rejects PROVISIONAL: marker text that
 # lacks a well-formed `[refs: D-NNN, feature_deps.yaml#<key>]` block.
 #
@@ -166,9 +166,9 @@ range_touches_yaml() {
   git diff --name-only "$1" 2>/dev/null | grep -qE '^feature_deps\.yaml$'
 }
 
-# Does the range's file list include .dev/debt.md?
+# Does the range's file list include .dev/debt.yaml?
 range_touches_debt() {
-  git diff --name-only "$1" 2>/dev/null | grep -qE '^\.dev/debt\.md$'
+  git diff --name-only "$1" 2>/dev/null | grep -qE '^\.dev/debt\.ya?ml$'
 }
 
 # --- 4. Build the range to inspect -------------------------------------------
@@ -269,14 +269,14 @@ When introducing OR discharging a PROVISIONAL marker the commit
 must also touch:
     feature_deps.yaml  (the matching entry's provisional_markers
                         list or new entry)
-    .dev/debt.md       (the matching D-NNN row or new row)
+    .dev/debt.yaml       (the matching D-NNN row or new row)
 
 To recover:
   1. Decide whether you are introducing, moving, or discharging a
      provisional behaviour.
   2. Add / update the feature_deps.yaml entry (set status,
      provisional_markers field).
-  3. Open / close the .dev/debt.md row.
+  3. Open / close the .dev/debt.yaml row.
   4. Amend the commit (`git commit --amend`) and re-attempt push.
 
 Findings:

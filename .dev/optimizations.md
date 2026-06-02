@@ -32,7 +32,7 @@
   `// PERF: <what> [refs: O-NNN, …]` marker at the code site and
   (b) a row here. The `O-NNN` id is this ledger's; cross-ref the
   driving `D-NNN` debt row when one exists (perf debt lives in
-  `.dev/debt.md`; this ledger is the *implemented* optimizations).
+  `.dev/debt.yaml`; this ledger is the *implemented* optimizations).
 - A "fast path" that can be removed and replaced by the naive form
   with no behaviour change is the cleanest kind — note the naive
   fallback explicitly so a future reader can verify by deletion.

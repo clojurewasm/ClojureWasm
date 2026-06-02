@@ -91,7 +91,7 @@ audit() {
   echo ""
   echo "Notes:"
   echo "  - Phase 6.16.b-1/-2/-3 migrated 12 clojure.set vars (Group A+B+C). Per-var status flips happen at the discharging commit; if any entry below should be 'stable' or 'migrated', amend in the same cycle."
-  echo "  - D-062 cluster row in .dev/debt.md tracks the overall transient_zig → migrated discharge."
+  echo "  - D-062 cluster row in .dev/debt.yaml tracks the overall transient_zig → migrated discharge."
 }
 
 # --- check mode ---------------------------------------------------------------

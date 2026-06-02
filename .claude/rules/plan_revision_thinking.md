@@ -23,7 +23,7 @@ fix in-flight.
 - Pick depth 1-4 yourself.
 - Fork a subagent for a deeper look when warranted.
 - Record the conclusion at the right layer (commit message / ADR /
-  `debt.md` / `private/notes/`).
+  `debt.yaml` / `private/notes/`).
 
 ## Why this rule auto-loads everywhere
 

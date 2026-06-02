@@ -70,7 +70,7 @@ noise; mark only genuine speed-for-simplicity trades.
   in `.dev/optimizations.md`.
 - **`PROVISIONAL:`** — temporary intermediate behaviour pending an
   upstream feature; closes out when that feature lands. Lives in
-  `feature_deps.yaml` + `.dev/debt.md`.
+  `feature_deps.yaml` + `.dev/debt.yaml`.
 
 A single site can be both (a provisional optimization) — carry both
 markers, each with its own refs.

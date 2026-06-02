@@ -65,7 +65,7 @@ actual module content rides the existing in-source convention:
 
 The `modules/` top-level remains in the tree as a structural
 reservation so the future build.zig migration has a target. The
-deferred migration is tracked at `.dev/debt.md` D-095.
+deferred migration is tracked at `.dev/debt.yaml` D-095.
 
 Module registration into the cw runtime happens via the bootstrap
 loader (cw v1's `(require '[clojure.data.json :as json])` discovery

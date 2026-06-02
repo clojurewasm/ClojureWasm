@@ -84,7 +84,7 @@ The marker mirrors `// PROVISIONAL:` shape from
 [`provisional_marker.md`](provisional_marker.md):
 
 - **Single line**. Multi-line rationale belongs in the
-  `feature_deps.yaml` entry body or the `.dev/debt.md` row.
+  `feature_deps.yaml` entry body or the `.dev/debt.yaml` row.
 - **`[refs:` block mandatory**. At least one `D-NNN` (debt row)
   AND at least one `feature_deps.yaml#<key>` (entry name).
   Multiple refs comma-separated.
@@ -125,14 +125,14 @@ The discharging commit's diff shows:
 - The matching `feature_deps.yaml` entry's `status:` flips from
   `provisional` to `landed`, and `provisional_markers:` list is
   emptied.
-- The matching `.dev/debt.md` row's barrier predicate flips to
+- The matching `.dev/debt.yaml` row's barrier predicate flips to
   satisfied (or the row moves to `## Discharged`).
 - ≥1 differential test case added covering the newly-landed VM
   arm (per contract point 4).
 
 The hook (`scripts/check_dual_backend_parity.sh`) verifies the
 marker form + body-discipline layer; the `feature_deps.yaml` +
-`.dev/debt.md` discharge sync is verified by the existing
+`.dev/debt.yaml` discharge sync is verified by the existing
 `scripts/check_provisional_sync.sh` (the shape is identical).
 
 ## VM-DEFER vs PROVISIONAL
@@ -256,7 +256,7 @@ pass / fail / valid-marker / malformed-marker scenarios.
   discovery + sweep + retrofit-in-same-cycle discipline.
 - [`.dev/principle.md`](../../.dev/principle.md) — Bad Smell
   catalogue ("Dual-backend drift" entry).
-- [`.dev/debt.md`](../../.dev/debt.md) D-073 — VM backend parity
+- [`.dev/debt.yaml`](../../.dev/debt.yaml) D-073 — VM backend parity
   cluster.
 - [`scripts/check_dual_backend_parity.sh`](../../scripts/check_dual_backend_parity.sh)
   — the enforcement hook.

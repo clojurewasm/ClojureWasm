@@ -180,7 +180,7 @@ is a clear continuation (refactor / rename / doc-only). Output
 lands in `private/notes/<phase>-<task>-survey.md`.
 
 **Step 0.5 — Debt sweep**
-Read `.dev/debt.md`. For each row whose `Last reviewed > 14 days
+Read `.dev/debt.yaml`. For each row whose `Last reviewed > 14 days
 ago`, re-evaluate the Barrier predicate. Flip Status if the barrier
 dissolved. **At a Phase entry** (the §9.<N> task list is about to
 open), additionally read every row whose Status names the entering
@@ -220,7 +220,7 @@ spends up to 30 minutes:
      Devil's-advocate subagent (mandatory, even at depth 1)**
      to enumerate finished-form-clean alternatives within the
      F-NNN envelope before committing to the provisional shape.
-     The marker comment + `feature_deps.yaml` entry + `.dev/debt.md`
+     The marker comment + `feature_deps.yaml` entry + `.dev/debt.yaml`
      row triad (per `.claude/rules/provisional_marker.md`) lands
      in the same commit as the provisional behaviour.
 
@@ -252,7 +252,7 @@ Revision history amendment if present** (this is where
 existing-code rewrite scope and inter-Phase corrections are
 narrated per §A25), each `D-NNN` debt row listed in the
 placeholder's "Entry debts:" line (full row text in
-`.dev/debt.md`), `compat_tiers.yaml` entry for the function, and
+`.dev/debt.yaml`), `compat_tiers.yaml` entry for the function, and
 the JVM Clojure source (`~/Documents/OSS/clojure/`) for the
 function.
 
@@ -314,7 +314,7 @@ Before staging:
    minute, no checklist — apply the sensor).
 3. If a smell triggers, choose depth 1-4:
    - depth 1: add a one-line note in the commit message.
-   - depth 2-4: land the ADR amendment / new ADR / `debt.md` row
+   - depth 2-4: land the ADR amendment / new ADR / `debt.yaml` row
      / `private/notes/` entry **autonomously**. Devil's-advocate
      subagent fork is mandatory at depth ≥ 2 — see § ADR-level
      designs are handled inline below for the canonical brief.
@@ -561,7 +561,7 @@ zig fmt src/           # format
   amendment history. Role split: compat_tiers.yaml = Java/cljw surface
   (Class-level), placement.yaml = Clojure-ns vars (var-level). Per
   `private/notes/clj_vs_zig_split_proposal_v5.md` §15.
-- [`.dev/debt.md`](.dev/debt.md) — row-level debt ledger. `continue`
+- [`.dev/debt.yaml`](.dev/debt.yaml) — row-level debt ledger. `continue`
   skill Step 0.5 sweeps this on every resume. See ROADMAP §A13.
 - [`.dev/reference_clones.md`](.dev/reference_clones.md) — explicit
   usage purpose for `additionalDirectories` paths.

@@ -31,7 +31,7 @@ either:
 1. Describe the concrete **next task** the resume should execute
    (§9.<N>.<M> identifier + retrievable file/section pointers), OR
 2. Name a **provable external blocker** with a testable barrier
-   condition (already a `debt.md` row by default — handover only
+   condition (already a `debt.yaml` row by default — handover only
    names the row by ID).
 
 Anything else is forbidden framing. The loop reads handover to
@@ -120,31 +120,31 @@ repair before proceeding.
 
 ### Phrase-level (surrender / stop-rationalisation framing)
 
-| Phrase                                                                                              | Why forbidden                                                                                                       | Replace with                                                                                                           |
-|-----------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| `コンテキスト圧があるため` (and variants)                                                           | Auto-compaction is system-handled; not an agent concern                                                             | Just describe the next task                                                                                            |
-| `キリがいい` / `自然な区切り` / `natural break`                                                     | Not a stop condition. The only stop is user explicit request                                                        | Drop entirely                                                                                                          |
-| `good stopping point` / `この辺で一旦停止` / `region boundary stop` / `task boundary stop`          | Same — region / cluster / task / commit boundaries all roll into the next unit of work                             | Drop entirely                                                                                                          |
-| `Phase boundary reached AND ...`                                                                    | Phase boundary is not a stop. The review chain runs and the loop continues into §9.<N+1>                           | Drop the "AND" clause                                                                                                  |
-| `If above ~60%` / `/compact` / `context budget`                                                     | Compact-gate concept removed; `/compact` is not Skill-tool callable                                                 | Drop; auto-compaction is transparent                                                                                   |
-| `〜判断待ち` / `user 確認待ち` / `awaiting user confirmation` / `awaiting approval`                 | "Awaiting user" is not a stop state. Push is automatic; ADR-level designs are handled inline                        | Drop; if a real external block, file a `debt.md` row with `Status: blocked-by: <named external event>` and name it     |
-| `cannot be self-decided` / `human judgement` / `human judgment` / `needs human` / `user touchpoint` | The loop self-decides design choices; "needs human" reframes a self-decidable case as a stop                        | Drop entirely; if the design is genuinely ADR-level, draft + accept the ADR inline per CLAUDE.md and link the ADR slug |
-| `this needs human judgement` / `help wanted` / `awaiting human review` / `defer to user`            | Same family — invites a pause for human input that is not a stop condition                                         | Drop entirely                                                                                                          |
-| `ADR-level decision` / `ADR-phase mode` (as a stop reason)                                          | ADR-level designs are inline work. Smell-driven ADR drafting is an interrupt, not a stop                            | Rewrite as an Active task entry naming the candidate ADR slug + the F-NNN-compliant shape the AI is taking             |
-| `smell-cluster trip` / `smell cluster` / `patterned smell` / `goal drift trip`                      | Smell triggers are interrupts, not stops. No frequency-counter rule exists                                          | Drop entirely; the surgery already landed inline at the interrupt                                                      |
-| `physically blocked` / `physical block` (when build / test failures are involved)                   | Build / test failure is not a stop condition either. Diagnose and fix; the loop owns getting back to green          | Drop the "block" framing; describe the failure as the current Active task with the diagnosis attempted                 |
-| `stopped — physical block` / `Stopped — physical block`                                           | No such stop condition exists                                                                                       | Rewrite into Active task naming the failing test / build artifact and what to try next                                 |
-| `physical block / blocker` as a *non-debt-row* reason in handover                                   | All real external blocks live in `debt.md` with a `blocked-by: <event>` Status; handover names the D-NNN by ID only | Move to `debt.md`, reference here as `D-NNN`                                                                           |
+| Phrase                                                                                              | Why forbidden                                                                                                         | Replace with                                                                                                           |
+|-----------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| `コンテキスト圧があるため` (and variants)                                                           | Auto-compaction is system-handled; not an agent concern                                                               | Just describe the next task                                                                                            |
+| `キリがいい` / `自然な区切り` / `natural break`                                                     | Not a stop condition. The only stop is user explicit request                                                          | Drop entirely                                                                                                          |
+| `good stopping point` / `この辺で一旦停止` / `region boundary stop` / `task boundary stop`          | Same — region / cluster / task / commit boundaries all roll into the next unit of work                               | Drop entirely                                                                                                          |
+| `Phase boundary reached AND ...`                                                                    | Phase boundary is not a stop. The review chain runs and the loop continues into §9.<N+1>                             | Drop the "AND" clause                                                                                                  |
+| `If above ~60%` / `/compact` / `context budget`                                                     | Compact-gate concept removed; `/compact` is not Skill-tool callable                                                   | Drop; auto-compaction is transparent                                                                                   |
+| `〜判断待ち` / `user 確認待ち` / `awaiting user confirmation` / `awaiting approval`                 | "Awaiting user" is not a stop state. Push is automatic; ADR-level designs are handled inline                          | Drop; if a real external block, file a `debt.yaml` row with `Status: blocked-by: <named external event>` and name it   |
+| `cannot be self-decided` / `human judgement` / `human judgment` / `needs human` / `user touchpoint` | The loop self-decides design choices; "needs human" reframes a self-decidable case as a stop                          | Drop entirely; if the design is genuinely ADR-level, draft + accept the ADR inline per CLAUDE.md and link the ADR slug |
+| `this needs human judgement` / `help wanted` / `awaiting human review` / `defer to user`            | Same family — invites a pause for human input that is not a stop condition                                           | Drop entirely                                                                                                          |
+| `ADR-level decision` / `ADR-phase mode` (as a stop reason)                                          | ADR-level designs are inline work. Smell-driven ADR drafting is an interrupt, not a stop                              | Rewrite as an Active task entry naming the candidate ADR slug + the F-NNN-compliant shape the AI is taking             |
+| `smell-cluster trip` / `smell cluster` / `patterned smell` / `goal drift trip`                      | Smell triggers are interrupts, not stops. No frequency-counter rule exists                                            | Drop entirely; the surgery already landed inline at the interrupt                                                      |
+| `physically blocked` / `physical block` (when build / test failures are involved)                   | Build / test failure is not a stop condition either. Diagnose and fix; the loop owns getting back to green            | Drop the "block" framing; describe the failure as the current Active task with the diagnosis attempted                 |
+| `stopped — physical block` / `Stopped — physical block`                                           | No such stop condition exists                                                                                         | Rewrite into Active task naming the failing test / build artifact and what to try next                                 |
+| `physical block / blocker` as a *non-debt-row* reason in handover                                   | All real external blocks live in `debt.yaml` with a `blocked-by: <event>` Status; handover names the D-NNN by ID only | Move to `debt.yaml`, reference here as `D-NNN`                                                                         |
 
 ### Structural (log / forecast / reproduced-content accumulation)
 
-| Pattern                                                          | Why forbidden                                                                                                          | Replace with                                                                                                                           |
-|------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| More than **one** `## Just landed` section                       | Log accumulation; `git log` is the SSOT                                                                                | Keep at most the most-recent landing as a single ≤ 10-line section, or drop entirely once next task starts                            |
-| `## Future ... shopping list` / forecast tables                  | Forecast belongs in `.dev/debt.md` (recall trigger row) or ROADMAP §A / ADR governance                                | Move to debt.md as a `D-NNN` row with `Status: recall trigger` and remove from handover                                                |
-| `## Notes for the next session` reproducing rule / skill content | CLAUDE.md / `.claude/rules/` / skill `SKILL.md` are the SSOT — auto-loaded each session                               | Drop; the next session re-reads the source SSOT                                                                                        |
-| Numeric predictions (`~N tasks remain`, cycle counts)            | Predictions diverge from reality as time passes; the next session resumes against the stale guess instead of measuring | Concrete identifiers (`next: §9.6 / 4.4`); no counts. Live measurement scripts (`git log`, debt.md, audit_scaffolding) produce truth. |
-| Multi-paragraph editorial framing of work size                   | "deep work" / "substantial multi-cycle" / "重い" framings are stop rationalisations                                    | Just name the task and the entry ADR                                                                                                   |
+| Pattern                                                          | Why forbidden                                                                                                          | Replace with                                                                                                                             |
+|------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| More than **one** `## Just landed` section                       | Log accumulation; `git log` is the SSOT                                                                                | Keep at most the most-recent landing as a single ≤ 10-line section, or drop entirely once next task starts                              |
+| `## Future ... shopping list` / forecast tables                  | Forecast belongs in `.dev/debt.yaml` (recall trigger row) or ROADMAP §A / ADR governance                              | Move to debt.yaml as a `D-NNN` row with `Status: recall trigger` and remove from handover                                                |
+| `## Notes for the next session` reproducing rule / skill content | CLAUDE.md / `.claude/rules/` / skill `SKILL.md` are the SSOT — auto-loaded each session                               | Drop; the next session re-reads the source SSOT                                                                                          |
+| Numeric predictions (`~N tasks remain`, cycle counts)            | Predictions diverge from reality as time passes; the next session resumes against the stale guess instead of measuring | Concrete identifiers (`next: §9.6 / 4.4`); no counts. Live measurement scripts (`git log`, debt.yaml, audit_scaffolding) produce truth. |
+| Multi-paragraph editorial framing of work size                   | "deep work" / "substantial multi-cycle" / "重い" framings are stop rationalisations                                    | Just name the task and the entry ADR                                                                                                     |
 
 ## What handover IS for
 
@@ -159,12 +159,12 @@ repair before proceeding.
   task or two of closing AND the next phase's entry items are not
   already in §9.<N+1> placeholder.
 - **Open questions / blockers** — testable external dependencies
-  only; otherwise the row belongs in `.dev/debt.md`.
+  only; otherwise the row belongs in `.dev/debt.yaml`.
 
 ## What handover IS NOT for
 
 - Listing past landings (`git log --oneline` is the SSOT).
-- Listing future ADRs / debts / refactors (debt.md and ROADMAP
+- Listing future ADRs / debts / refactors (debt.yaml and ROADMAP
   §A are the SSOTs).
 - Re-explaining rules / skills / output styles (the SSOT files are
   auto-loaded each session).
@@ -187,7 +187,7 @@ When reviewing a handover.md commit:
 - [ ] `Active task` names a concrete next §9.<N>.<M> task, not
       an option list.
 - [ ] `Open questions / blockers` rows are either testable
-      external blockers OR already mirrored as `.dev/debt.md`
+      external blockers OR already mirrored as `.dev/debt.yaml`
       D-NNN rows (named here by ID).
 - [ ] No numeric predictions — concrete identifiers only.
 - [ ] If this is the 3rd+ handover update in the session,

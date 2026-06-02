@@ -49,7 +49,7 @@ runs.
 Each upper layer ships provisional behaviour against the next
 layer's not-yet-existence. The lifecycle is mechanised via
 [`provisional_marker.md`](provisional_marker.md) +
-`feature_deps.yaml` + `.dev/debt.md`.
+`feature_deps.yaml` + `.dev/debt.yaml`.
 
 ## What this rule deliberately does *not* prescribe
 

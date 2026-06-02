@@ -49,7 +49,7 @@ A cycle that does any of:
 A cycle that introduces the rule without doing all three is
 **framework-incomplete** — a new smell defined in
 `.dev/principle.md`. The codebase ends up with a 2-tier population
-(new sites compliant, old sites unmarked), and no row in `.dev/debt.md`
+(new sites compliant, old sites unmarked), and no row in `.dev/debt.yaml`
 points at the gap.
 
 ## Why

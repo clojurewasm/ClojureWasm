@@ -10,13 +10,13 @@
 > `private/` ledger.
 >
 > **This doc is the human-readable index + diagnosis.** The LIVE
-> triggers are the `.dev/debt.md` rows it references (Step 0.5 sweep is
+> triggers are the `.dev/debt.yaml` rows it references (Step 0.5 sweep is
 > what fires them). Raw per-lens findings:
 > `private/notes/audit-lens{A..E}-*.md` (gitignored scratch).
 
 ## How an item actually gets resolved (the trigger mechanism)
 
-1. `.dev/debt.md` row with a **`Barrier`** (trigger predicate).
+1. `.dev/debt.yaml` row with a **`Barrier`** (trigger predicate).
 2. **Step 0.5 Debt sweep** (CLAUDE.md): every resume re-evaluates
    Barriers of rows > 14 days old; **at a Phase entry** reads rows whose
    Status names the entering Phase.
@@ -33,7 +33,7 @@ failure modes — each is a way the trigger system leaks:
 | Mode   | Name                                 | What it is                                                                                                                                      | Count |
 |--------|--------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|-------|
 | **M1** | Orphan deferral                      | A real should-do recorded only in a code comment or the `private/` ledger — no `D-NNN`, no `feature_deps` key. Never swept.                    | ~12   |
-| **M2** | Dead-Phase barrier                   | A `debt.md` row whose Barrier names a Phase (5/7/11/…) that **already closed**. Step 0.5 will never re-read it.                                | ~12   |
+| **M2** | Dead-Phase barrier                   | A `debt.yaml` row whose Barrier names a Phase (5/7/11/…) that **already closed**. Step 0.5 will never re-read it.                              | ~12   |
 | **M3** | Weak / self-referential barrier      | Barrier is vague or circular ("when the X cycle opens" with nothing scheduling X). Swept, re-read, re-deferred forever.                         | ~6    |
 | **M4** | Rationalized "acceptable" divergence | An observable input→output gap vs `clj` waved through on **effort** grounds (F-011 forbids effort as a reason).                                | 2     |
 | **M5** | Sync rot                             | Discharged rows never moved; stale `PROVISIONAL` markers / comments citing already-discharged debts; phantom `D-NEW` IDs that were never filed. | ~25   |
@@ -67,7 +67,7 @@ give the F-010 loop a step that drains it by category each pass.
 3. **Re-anchor** the M2/M3 correctness rows onto the matching floor
    category (one-time Phase barriers → standing floor).
 4. **Mechanical backstop** — `scripts/check_debt_id_refs.sh` (new): every
-   `D-NNN` cited in `src/**` / docs must exist in `debt.md` (kills
+   `D-NNN` cited in `src/**` / docs must exist in `debt.yaml` (kills
    phantom `D-NEW`); and a count of open `quality-loop floor` rows is
    printed at gate time so the backlog is visible. Wire into
    `test/run_all.sh` (informational first, gate later).
@@ -176,7 +176,7 @@ category). Full per-row proposals in `audit-lensC-barrier-quality.md`.
 
 1. **`scripts/check_debt_id_refs.sh`** — every `D-NNN` cited in `src/**` +
    tracked docs (excluding `.dev/decisions/` ADRs = immutable narration) must
-   exist in `debt.md`. Kills phantom `D-NEW`/typo IDs. **Now GATING** as of
+   exist in `debt.yaml`. Kills phantom `D-NEW`/typo IDs. **Now GATING** as of
    2026-06-01 (`--gate` in `run_all.sh`) — the initial phantom backlog
    (`D-NEW-2`/`D-NEW`/`D-NEW-A` + undefined `D-162`) was drained first, then the
    check was flipped from informational to hard-fail so phantoms cannot
@@ -194,7 +194,7 @@ category). Full per-row proposals in `audit-lensC-barrier-quality.md`.
 ## Execution plan (this consolidation's own close-out)
 
 1. **[doc]** this file (the index). ← landed
-2. **[debt.md]** file D-168…D-174 (verified/code-read); re-anchor §C/§D;
+2. **[debt.yaml]** file D-168…D-174 (verified/code-read); re-anchor §C/§D;
    housekeeping §E; annotate §F. *Investigate §B before filing those.*
 3. **[infra]** `check_debt_id_refs.sh` + gate wiring + CLAUDE.md
    quality-loop step.

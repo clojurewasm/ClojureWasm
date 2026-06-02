@@ -233,7 +233,7 @@ Severity: **watch** if count climbs > 10 net over a Phase boundary
 without matching discharge commits; **soon** if any single file
 carries > 3 markers (= concentrated rot).
 
-### E2.2 Marker / feature_deps.yaml / debt.md cross-reference
+### E2.2 Marker / feature_deps.yaml / debt.yaml cross-reference
 
 Every marker's `[refs: D-NNN, feature_deps.yaml#<key>]` must point
 at a real debt row + real yaml entry:
@@ -247,8 +247,8 @@ rg --no-heading -o 'PROVISIONAL:.*\[refs: ([^]]+)\]' src/ \
   | sed -E 's/.*\[refs: ([^]]+)\].*/\1/' \
   | tr ',' '\n' | sed 's/^ *//' | sort -u > /tmp/marker_refs.txt
 
-# Refs that exist in debt.md
-grep -oE 'D-[0-9]+' .dev/debt.md | sort -u > /tmp/debt_refs.txt
+# Refs that exist in debt.yaml
+grep -oE 'D-[0-9]+' .dev/debt.yaml | sort -u > /tmp/debt_refs.txt
 
 # Refs that exist in feature_deps.yaml
 grep -E '^  - name:' feature_deps.yaml \
@@ -282,7 +282,7 @@ done
 Severity: **watch** for any line printed. A stale marker is not
 itself a problem — many provisionals legitimately wait for upstream
 features that will not land this phase. But each row should be
-checked against its `.dev/debt.md` close-out predicate; flip from
+checked against its `.dev/debt.yaml` close-out predicate; flip from
 "waiting" to "actionable" if the upstream landed.
 
 ### E2.4 feature_deps.yaml ↔ marker round-trip
@@ -329,8 +329,10 @@ yq -r '.entries[] | select(.status == "provisional") | .name' feature_deps.yaml 
           done)
       pending_debts=$(yq -r ".entries[] | select(.name == \"$name\") | .requires_debts[]?" feature_deps.yaml \
         | while read drow; do
-            # Discharged rows are in `## Discharged` section; check the row's status field
-            grep -E "^\| $drow " .dev/debt.md | grep -E "Discharged \(" >/dev/null || echo "$drow"
+            # Discharged entries live under `discharged:` (or an `active:`
+            # entry whose status starts DISCHARGED). Echo $drow only if NOT yet discharged.
+            yq -r '.discharged[].id, (.active[] | select(.status | test("DISCHARGED|Discharged")) | .id)' .dev/debt.yaml \
+              | grep -qx "$drow" || echo "$drow"
           done)
       if [[ -z "$pending_features" && -z "$pending_debts" ]]; then
         echo "  - $name: all requires satisfied → reclassify candidate"

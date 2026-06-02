@@ -59,6 +59,6 @@ because the debt ledger reads "covered".
 - memory `clj_diff_sweep_methodology` — the original hand-method notes.
 - `.claude/rules/orphan_prevention.md` — the `timeout` / bounded-seq rules
   the harness obeys.
-- `.dev/debt.md` D-164 (empty-seq `()` vs nil overhaul) — the standing
+- `.dev/debt.yaml` D-164 (empty-seq `()` vs nil overhaul) — the standing
   big-bang target this rule's Discipline 2 points at. (D-047 setString was
   discharged 2026-06-02 via the `big_int.parseBase10` consolidated fix.)

@@ -5,30 +5,24 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (VM-default flip + F-011 sweep + moderate-feature
-  commits on `cw-from-scratch`). Gate green on `vm` (production default, flipped
-  2026-06-02; ADR-0070 / F-012 realised): Mac 200, **ubuntunote Linux x86_64
-  199** (1-PASS delta = Mac-only zlinter skip). F-012 cross-platform confirmed.
-- **First commit on resume MUST be: a tracked MODERATE-FEATURE gap** —
-  self-select per F-002 (highest real-code value first). The F-011 grab-bag
-  quick-win phase is EXHAUSTED (recent ~6 sweeps were ~20/20 parity); the
-  remaining work is focused analyzer/dual-backend features, each with a
-  step-by-step discharge plan + `file:line` refs in its `.dev/debt.md` row.
-  Recommended order:
-  1. **D-202(1) — defrecord/deftype bare-field refs in protocol method
-     bodies** (HIGHEST real-code frequency; wrap method bodies with a
-     field-`let*` in `macro_transforms.zig::lowerDefType` — concrete plan in
-     the D-202 row).
-  2. **D-201 — `letfn`** (`letfn*` mutual-recursion special form + dual-backend).
-  3. **D-202(2) — `extend-type` on a java class** (resolveJavaSurface target).
-  4. **D-200 — EDN `#uuid`/`#inst` tagged literals** (reader infra; `#uuid`
-     needs a UUID-type ADR — partial-string-parity vs a real type).
-  **Verify moderate-feature work via e2e** (top-level forms) — `clj_diff_sweep`
-  can NOT batch-verify define-heavy poly/reader forms (wraps each line in
-  `(prn …)`; clj needs them top-level → `<clj-missing>`; see D-202 HARNESS
-  NOTE). The standing F-011 sweep is a FALLBACK only. Other tracked follow-ups:
-  (a) repurpose `check_vm_parity.sh` to run e2e on the non-default (tree-walk)
-  backend; (b) v0.1.0-tag closeout (Phase 14.14).
+- **HEAD**: see `git log` (D-202(1) field-scope + D-201 letfn + debt.yaml
+  migration on `cw-from-scratch`). Gate green on `vm` (Mac 200+; ADR-0070 /
+  F-012). debt ledger is now **`.dev/debt.yaml`** (structured YAML; the former
+  `.dev/debt.md` md-table bloated to 800KB — migrated lossless, 264KB).
+- **First commit on resume MUST be: implement D-203 / ADR-0072** —
+  `extend-type` / `extend-protocol` over a NATIVE or java class
+  (`(extend-type Long P …)` / `(extend-type String P …)`). Design + mandatory
+  Devil's-advocate analysis are DONE and recorded in **ADR-0072 (Proposed)** +
+  the D-203 entry (`file:line` refs there). TDD from an e2e red. Flip ADR-0072
+  to Accepted after it lands. NOTE: the old D-202(2) "resolveJavaSurface" plan
+  is WRONG (Step 0.6 finding) — use the native-descriptor-identity approach in
+  ADR-0072 (resolve native-class symbols in `analyzeSymbol`).
+  Then: **D-200 — EDN `#uuid`/`#inst` tagged literals** (`#uuid` needs a
+  UUID-type ADR — partial-string-parity vs a real type).
+  **Verify via e2e** (top-level forms) — `clj_diff_sweep` can NOT batch-verify
+  define-heavy poly/reader forms (wraps each line in `(prn …)` → `<clj-missing>`).
+  Other follow-ups: (a) the DA Alt-2 name↔Tag SSOT consolidation deferred in
+  D-203; (b) v0.1.0-tag closeout (Phase 14.14).
 - **Forbidden**: re-sweeping COVERAGE.md § Swept areas wholesale; seizing the
   F-003 structural-deferred rows (D-164 empty≡nil, D-165 i48→i64, D-086/088/
   178/179) incrementally — big-bang, user-gated; re-opening landed work
@@ -36,34 +30,33 @@
 
 ## Stopped — user requested
 
-User instruction (2026-06-02): the F-011 quick-wins are done for this session;
-the remaining moderate features are **NOT** permanently skipped — take them on
-in a fresh, focused session. "Audit the wiring / reference chain so the next
-clean session can autonomously decide + execute, then stop." Wiring audited +
-set: this Resume contract repoints to the moderate-feature queue (D-202(1)
-first); `.dev/debt.md` D-200 / D-201 / D-202 carry step-by-step discharge plans
-+ `file:line` refs + the harness note; COVERAGE.md § Next-sweep lists them; the
-cold-start reading order is intact. **Resume**: the next `/continue`
-self-selects a moderate feature (D-202(1) recommended) — this stop does not
-carry across sessions (CLAUDE.md § The only stop).
+User instruction (2026-06-02): "[when you reach a good break] `.dev/debt.md`
+got bloated by the global md-table-align into a huge whitespace-padded table;
+either stop that treatment or make debt.md itself a structured artifact, and
+make every place that references / auto-processes it follow. My preference is
+YAML, but implement the best way you decide (don't present options — choose
+autonomously). After that, audit the wiring / reference chain for the next
+session, then stop." DONE: migrated to `.dev/debt.yaml` (lossless, reconstruction-
+verified; `scripts/migrate_debt_to_yaml.py`); updated all auto-processors
+(`check_debt_id_refs.sh`, `check_provisional_sync.sh:171` functional regex,
+`audit_scaffolding/CHECKS.md` yq, `debt_dedup.md`) + 33 prose refs; deleted
+debt.md; `check_md_tables.sh` skips non-.md so bloat can't recur. **Resume**:
+the next `/continue` implements D-203 / ADR-0072 — this stop does not carry
+across sessions (CLAUDE.md § The only stop).
 
-## Discharged this session (git log = SSOT; full rows in `.dev/debt.md`)
+## Discharged this session (git log = SSOT; full rows in `.dev/debt.yaml`)
 
-- **F-012 realised**: D-196 all 5 VM-parity blockers closed → `build.zig`
-  default flipped to `vm` (ADR-0070 / ADR-0071 cleanup-handler kind,
-  op_match_type_keyword, shared constructInstance, op_ns_with_filter);
-  check_vm_parity = 0, Mac 200 + Linux 199.
-- **D-199** transient read-ops · **D-198** PARTIAL (`.getMessage`/`.getCause`/
-  `.getData`) · **D-202(3)** defmulti `:default`. Quick-wins: even?/odd? BigInt,
-  oversized-literal auto-promote, `%b`/`%c`/`%N$` format, re-quote-replacement,
-  print-str, namespaced `:keys`, force/delay?, realized?-on-lazy-seq.
-- **~14 regression corpora** added (numeric/transients/threading/format/print/
-  sorted/control-flow/destructuring/bit-math/coll-path/lazy-eval/str-char) —
-  broad common-surface parity is corpus-backed.
+- **D-202(1)** defrecord/deftype bare-field refs in protocol method bodies
+  (`lowerDefType` wraps each body in a field `let*` over `(.field inst)`; Step
+  0.6 corrected the debt row's wrong shadowing claim — param shadows field).
+- **D-201** `letfn` / `letfn*` (dedicated `letfn_node` + analyzer + TreeWalk +
+  VM `op_letfn_patch` + macro; mutual recursion via post-alloc closure patch).
+- **debt.yaml migration** (this stop's task) + **ADR-0072 (Proposed)** for
+  D-203 (native-class protocol extension; design + DA preserved, code pending).
 
-## Remaining (pointers — full text in `.dev/debt.md` + COVERAGE.md)
+## Remaining (pointers — full text in `.dev/debt.yaml` + COVERAGE.md)
 
-- **Moderate features**: D-202(1)/(2), D-201, D-200 (see Resume contract).
+- **Moderate features**: D-203/ADR-0072 (next), D-200 (see Resume contract).
 - **Structural-deferred (F-003, big-bang, user-gated)**: D-164 empty≡nil
   (highest-leverage single fix), D-165 i48→i64, D-086/088/178/179, D-105.
 - **v0.1.0 closeout**: Phase 14.14 — exit-smoke + `phase_at_least_14` flip +
@@ -81,6 +74,6 @@ carry across sessions (CLAUDE.md § The only stop).
 ## Cold-start reading order (tracked-only)
 
 handover → `test/diff/clj_corpus/COVERAGE.md` (sweep state) +
-`.claude/rules/clj_diff_sweep.md` → `.dev/debt.md` (open rows: D-200/201/202)
+`.claude/rules/clj_diff_sweep.md` → `.dev/debt.yaml` (open rows: D-200/201/202)
 → CLAUDE.md (§ Project spirit + Autonomous Workflow + The only stop) →
 `.dev/project_facts.md` (F-002/010/011/012) → `.dev/principle.md` (Bad Smell).

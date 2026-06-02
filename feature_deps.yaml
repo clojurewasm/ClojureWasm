@@ -5,7 +5,7 @@
 # is callable in its finished form. Read by:
 #
 #   - scripts/check_provisional_sync.sh — enforces marker / yaml /
-#     debt.md three-way sync on every source-bearing commit.
+#     debt.yaml three-way sync on every source-bearing commit.
 #   - audit_scaffolding skill — counts PROVISIONAL markers per entry,
 #     flags entries that have been provisional for >14 days.
 #   - Cycle planning — topological sort of `requires_features:` graph
@@ -38,7 +38,7 @@
 #                     provisional  — current implementation is
 #                                    intermediate; PROVISIONAL markers
 #                                    point here and a close-out plan
-#                                    is in .dev/debt.md.
+#                                    is in .dev/debt.yaml.
 #                     planned      — not yet implemented; entry exists
 #                                    to record the upcoming dependency.
 #   - requires_features : list of feature_deps entry `name:` references

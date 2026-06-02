@@ -48,7 +48,7 @@ spec is not duplicated here — CLAUDE.md is the single source.
      been opened yet — load the §9.<N> placeholder including
      its **Entry ADRs / Entry debts / Reference / Skeletons /
      Deliverables / Final activation step** lines. The Entry
-     debts list points at `.dev/debt.md` rows the Phase owner
+     debts list points at `.dev/debt.yaml` rows the Phase owner
      must resolve.
 4. (Dormant cadence per ADR-0025: skip the
    `docs/ja/learn_clojurewasm/` chapter check. `private/notes/`

@@ -125,7 +125,7 @@ is never acceptable to ship; an unconnected integration scaffold is a lie
   Structural imagination phase. This lesson is the *applied* form.
 - F-002 (`project_facts.md`) — finished-form wins; cycle size not a
   constraint.
-- `.dev/debt.md` D-160 / D-161 / D-162 — the named structural queue.
+- `.dev/debt.yaml` D-160 / D-161 / D-162 — the named structural queue.
 - `.dev/core_coverage_gaps.md` — CRASH FIXES + sweep sections (the
   per-defect detail).
 - `phase_deferred_scaffolds.md` (Cluster A) — the sibling "scaffold loses

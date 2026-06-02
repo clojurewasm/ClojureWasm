@@ -295,7 +295,7 @@ implementation in the current cycle, the commit must:
   2. Add (or amend) the matching `feature_deps.yaml` entry
      (`status: provisional`, `provisional_markers:` lists the
      source location).
-  3. Add (or amend) the matching `.dev/debt.md` row with a
+  3. Add (or amend) the matching `.dev/debt.yaml` row with a
      close-out barrier predicate.
 
 When discharging a VM-DEFER (the real impl lands), remove the

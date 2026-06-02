@@ -85,7 +85,7 @@ ClojureWasmFromScratch/
 │  ├─ principle.md
 │  ├─ project_facts.md             (F-001..F-009, append-only)
 │  ├─ structure_plan.md            (this file)
-│  ├─ debt.md
+│  ├─ debt.yaml
 │  └─ decisions/
 │     └─ 0001…NNNN.md              (time-ordered, never reserved)
 ├─ scripts/                        pre-commit + pre-push hooks

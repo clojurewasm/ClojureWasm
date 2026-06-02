@@ -3,7 +3,7 @@
 #
 # Recurrence guard from the 2026-05-31 tech-debt consolidation audit
 # (.dev/tech_debt_consolidation.md, failure mode M5). Every `D-NNN`
-# referenced in source / docs MUST resolve to a row in `.dev/debt.md`;
+# referenced in source / docs MUST resolve to an entry in `.dev/debt.yaml`;
 # a phantom ID (`D-NEW`, a typo, a never-filed placeholder) silently
 # detaches the comment that cites it from the Step-0.5 trigger system.
 #
@@ -16,28 +16,28 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DEBT=.dev/debt.md
+DEBT=.dev/debt.yaml
 gate=0
 [ "${1:-}" = "--gate" ] && gate=1
 
-# Files that may legitimately cite a debt ID. Exclude debt.md itself
+# Files that may legitimately cite a debt ID. Exclude debt.yaml itself
 # (it defines + cross-references IDs) and the audit scratch notes.
 search_paths=(src CLAUDE.md .dev .claude scripts test feature_deps.yaml placement.yaml compat_tiers.yaml)
-# debt.md itself defines + discusses IDs (incl. phantom ones it tracks for
+# debt.yaml itself defines + discusses IDs (incl. phantom ones it tracks for
 # repair), so it is not a citation site; the consolidation doc + audit notes
 # likewise describe phantoms by name. `.dev/decisions/` (ADRs) are excluded
 # because an ADR is an APPEND-ONLY decision record that may quote a Devil's-
 # advocate's text or a then-proposed placeholder ID verbatim — requiring every
 # ID in immutable history to resolve to a live row fights that immutability,
-# and ADRs do not drive the Step-0.5 trigger system (debt.md rows do). The
+# and ADRs do not drive the Step-0.5 trigger system (debt.yaml rows do). The
 # check guards LIVE trigger sites (src + live docs), not history.
-exclude='\.dev/debt\.md|\.dev/decisions/|tech_debt_consolidation\.md|audit-lens|check_debt_id_refs\.sh'
+exclude='\.dev/debt\.ya?ml|\.dev/decisions/|tech_debt_consolidation\.md|audit-lens|check_debt_id_refs\.sh|migrate_debt_to_yaml'
 
 # 1. Phantom placeholder IDs — never a real row.
 phantom=$(rg -n --no-heading 'D-NEW[A-Z0-9-]*' "${search_paths[@]}" 2>/dev/null \
   | rg -v "$exclude" || true)
 
-# 2. Real-looking D-NNN refs with no row in debt.md.
+# 2. Real-looking D-NNN refs with no entry in debt.yaml.
 # `\b` so "PID-1" / "JDK-19"-style substrings don't masquerade as a debt ref.
 defined=$(rg -o '\bD-[0-9]+' "$DEBT" 2>/dev/null | sort -u || true)
 referenced=$(rg -o --no-heading '\bD-[0-9]+' "${search_paths[@]}" 2>/dev/null \

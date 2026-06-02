@@ -162,5 +162,5 @@ demand surfaces.
 - F-010 (`.dev/project_facts.md`) — the interim-goal re-cut this plan
   serves; F-001/F-004/F-006/F-008/F-009 — the decreed constraints.
 - `.dev/structure_plan.md` — sibling foresight doc (directory tree).
-- `.dev/debt.md` — the per-gap tracking rows.
+- `.dev/debt.yaml` — the per-gap tracking rows.
 - ROADMAP §17 — the amendment policy each incorporation follows.

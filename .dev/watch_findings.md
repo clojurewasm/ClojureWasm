@@ -21,7 +21,7 @@ same edit. Empty defer (= no row) is the smell.
 | Source          | Commit SHA + section / file:line where the defer was decided.          |
 | Finding         | What the loop saw, in one sentence.                                    |
 | Defer rationale | Why deferring is the right call right now (cost / scope / dependency). |
-| Revisit trigger | Present-tense, testable predicate. Same shape as debt.md Status.       |
+| Revisit trigger | Present-tense, testable predicate. Same shape as debt.yaml Status.     |
 | Last reviewed   | Date (YYYY-MM-DD).                                                     |
 
 ## Audit consumption

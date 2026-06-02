@@ -93,7 +93,7 @@ assert_eq 'defrecord_get_declared_field' "$(last_line "$got")" '3'
 # Note: `(:k coll)` keyword-as-fn callable is intentionally deferred
 # to a future cycle — `tree_walk.callFn` lacks a `.keyword` arm and
 # adding it cleanly requires a Layer-0 lookup helper (eval/ cannot
-# import lang/primitive/collection.zig). Tracked via D-085 in debt.md.
+# import lang/primitive/collection.zig). Tracked via D-085 in debt.yaml.
 got=$("$BIN" - <<'EOF' 2>/dev/null
 (defrecord Point [x y])
 (let* [p (Point. 3 4)] (+ (get p :x) (get p :y)))

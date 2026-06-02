@@ -92,7 +92,7 @@ live in ROADMAP §9. The big landmarks:
 | Why is the architecture this way?          | `.dev/ROADMAP.md` §2 (principles), §4 (architecture)   |
 | What load-bearing decision was made?       | `.dev/decisions/NNNN_*.md`                               |
 | What is the current state?                 | `.dev/handover.md`                                       |
-| What debt is tracked?                      | `.dev/debt.md`                                           |
+| What debt is tracked?                      | `.dev/debt.yaml`                                         |
 | What namespace is at what tier?            | `compat_tiers.yaml`                                      |
 | What does a term mean?                     | `.dev/ROADMAP.md` §16 (glossary)                        |
 | What testing layer is what?                | `.dev/decisions/0021_test_taxonomy.md`, `test/README.md` |
