@@ -231,9 +231,11 @@ pub fn printFloat(w: *Writer, f: f64) Writer.Error!void {
 }
 
 /// Render `v` to `w` in `pr-str` style. Phase-3 surface covers nil /
-/// Render a char in readable (`pr`) form, JVM-faithful (D-154): named
-/// forms for the standard whitespace chars, `\<ch>` for printable ASCII,
-/// `\uXXXX` otherwise. (The raw `str`/`print` form emits the bare char —
+/// Render a char in readable (`pr`) form, clj-faithful (D-154/D-208): named
+/// forms for the 6 standard whitespace chars, else `\` + the literal char
+/// (printable ASCII, control chars, and non-ASCII alike — clj emits NO
+/// `\uXXXX`; D-208 corrected D-154's mistaken belief). (The raw `str`/`print`
+/// form emits the bare char —
 /// see `lang/primitive/core.zig::writeArgsSpaced`.)
 /// `print`-form of a char (D-185): the bare UTF-8 character, no `\` literal
 /// prefix. Mirrors `writeArgsSpaced`'s top-level raw-char path (D-154) for
@@ -253,12 +255,13 @@ pub fn printCharReadable(w: *Writer, cp: u21) Writer.Error!void {
         8 => try w.writeAll("\\backspace"),
         12 => try w.writeAll("\\formfeed"),
         else => {
-            if (cp > 32 and cp < 127) {
-                try w.writeByte('\\');
-                try w.writeByte(@intCast(cp));
-            } else {
-                try w.print("\\u{x:0>4}", .{cp});
-            }
+            // clj prints `\` + the literal char for every non-named
+            // codepoint: printable ASCII, control chars, and non-ASCII
+            // alike. clj emits NO \uXXXX (verified: (char 7) -> `\`+BEL,
+            // (char 233) -> `\`+the UTF-8 char). D-208 corrects D-154's
+            // mistaken "JVM uses \uXXXX" belief.
+            try w.writeByte('\\');
+            try printCharRaw(w, cp);
         },
     }
 }
