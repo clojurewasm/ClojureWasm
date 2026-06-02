@@ -34,4 +34,16 @@ assert_eq 'inst_exc'  "$("$BIN" -e '(instance? Exception (Exception. "x"))')"   
 assert_eq 'inst_thr'  "$("$BIN" -e '(instance? Throwable (RuntimeException. "r"))')" 'true'
 assert_eq 'inst_rte'  "$("$BIN" -e '(instance? RuntimeException (Exception. "x"))')" 'false'
 
+# D-213: (class e) reports the value's SPECIFIC exception class (simple name
+# per AD-003), not a generic "ex_info". ex-info → ExceptionInfo; ctor classes;
+# caught catalog errors carry their Kind-derived class.
+assert_eq 'cls_exinfo' "$("$BIN" -e '(str (class (ex-info "m" {})))')"          '"ExceptionInfo"'
+assert_eq 'cls_exc'    "$("$BIN" -e '(str (class (Exception. "x")))')"          '"Exception"'
+assert_eq 'cls_rte'    "$("$BIN" -e '(str (class (RuntimeException. "r")))')"   '"RuntimeException"'
+assert_eq 'cls_div0'   "$("$BIN" -e '(try (/ 1 0) (catch Throwable e (str (class e))))')" '"ArithmeticException"'
+assert_eq 'cls_nth'    "$("$BIN" -e '(try (nth [] 5) (catch Throwable e (str (class e))))')" '"IndexOutOfBoundsException"'
+# Distinct exception types → distinct classes; same type → one interned class.
+assert_eq 'cls_same'   "$("$BIN" -e '(= (class (ex-info "a" {})) (class (ex-info "b" {})))')" 'true'
+assert_eq 'cls_diff'   "$("$BIN" -e '(= (class (Exception. "x")) (class (RuntimeException. "y")))')" 'false'
+
 echo "ALL phase14_exception_ctor PASS"

@@ -1,0 +1,14 @@
+(= (class (ex-info "a" {})) (class (ex-info "b" {})))
+;;=> true
+(= (class (Exception. "x")) (class (RuntimeException. "y")))
+;;=> false
+(= (class (Exception. "x")) (class (Exception. "z")))
+;;=> true
+(= (class (ex-info "a" {})) (class (Exception. "x")))
+;;=> false
+(instance? clojure.lang.ExceptionInfo (ex-info "m" {}))
+;;=> true
+(try (/ 1 0) (catch ArithmeticException e :ok))
+;;=> :ok
+(try (nth [] 5) (catch IndexOutOfBoundsException e :ok))
+;;=> :ok

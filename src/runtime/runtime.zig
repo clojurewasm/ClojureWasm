@@ -204,6 +204,15 @@ pub const Runtime = struct {
     /// at a single indexed load; no hashing.
     native_descriptors: [70]?*TypeDescriptor = .{null} ** 70,
 
+    /// Synthetic `(class e)` descriptors for exception values, keyed by the
+    /// per-value class name (D-213). An `.ex_info` Value carries its specific
+    /// class (`ExInfo.class_name`: "ArithmeticException", "Exception", …;
+    /// `null` → "ExceptionInfo") that catch-matching already consults, so a
+    /// single shared `.ex_info` native descriptor would collapse every
+    /// exception to one class. Each distinct class name gets one descriptor,
+    /// lazily built on `gc.infra` by `exceptionDescriptor`, freed in `deinit`.
+    exception_descriptors: std.StringHashMapUnmanaged(*TypeDescriptor) = .empty,
+
     /// Per-Runtime `java.util.Date` value descriptor (D-200 / ADR-0079;
     /// `#inst` / Date is a no-slot `.typed_instance`). Lazily allocated on
     /// `gc.infra` by `runtime/time/date.zig::descriptorOf`, freed in
@@ -245,6 +254,30 @@ pub const Runtime = struct {
     fn nativeFqcnFor(tag: @import("value/value.zig").Value.Tag) []const u8 {
         if (tag == .nil) return "nil";
         return class_name_mod.fqcnForTag(tag) orelse @tagName(tag);
+    }
+
+    /// `(class e)` descriptor for an exception value carrying `class_name`
+    /// (already the simple name per AD-003; e.g. "ArithmeticException"). One
+    /// descriptor per distinct class name, cached in `exception_descriptors`
+    /// (D-213). The cache key aliases the descriptor's `fqcn` dup, so both
+    /// share one lifetime freed in `deinit`.
+    pub fn exceptionDescriptor(self: *Runtime, class_name: []const u8) !*TypeDescriptor {
+        if (self.exception_descriptors.get(class_name)) |existing| return existing;
+        const fqcn_dup = try self.gc.infra.dupe(u8, class_name);
+        errdefer self.gc.infra.free(fqcn_dup);
+        const td = try self.gc.infra.create(TypeDescriptor);
+        errdefer self.gc.infra.destroy(td);
+        td.* = .{
+            .fqcn = fqcn_dup,
+            .kind = .native,
+            .field_layout = null,
+            .protocol_impls = &.{},
+            .method_table = &.{},
+            .parent = null,
+            .meta = @import("value/value.zig").Value.nil_val,
+        };
+        try self.exception_descriptors.put(self.gc.infra, fqcn_dup, td);
+        return td;
     }
 
     pub const HeapEntry = struct {
@@ -340,6 +373,19 @@ pub const Runtime = struct {
                 self.gc.infra.destroy(td);
                 slot.* = null;
             }
+        }
+
+        // Free synthetic exception `(class e)` descriptors (D-213). The map
+        // key aliases each descriptor's fqcn dup, so freeing the fqcn frees
+        // the key too; destroy the descriptor, then the map's own storage.
+        {
+            var it = self.exception_descriptors.valueIterator();
+            while (it.next()) |td_ptr| {
+                const td = td_ptr.*;
+                if (td.fqcn) |n| self.gc.infra.free(n);
+                self.gc.infra.destroy(td);
+            }
+            self.exception_descriptors.deinit(self.gc.infra);
         }
 
         for (self.heap_objects.items) |entry| {

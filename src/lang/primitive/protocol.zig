@@ -32,6 +32,8 @@ const vector_mod = @import("../../runtime/collection/vector.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
 const big_int_mod = @import("../../runtime/numeric/big_int.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
+const ex_info_mod = @import("../../runtime/collection/ex_info.zig");
+const host_class_mod = @import("../../runtime/error/host_class.zig");
 
 const MethodEntry = protocol_mod.MethodEntry;
 const ProtocolDescriptor = protocol_mod.ProtocolDescriptor;
@@ -543,6 +545,14 @@ pub fn classPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     // shares the inline-int (`.integer`) native descriptor.
     if (v.tag() == .big_int and big_int_mod.originOf(v) == .long) {
         return td_mod.makeTypeDescriptorRef(rt, try rt.nativeDescriptor(.integer));
+    }
+    // An exception value reports its specific class (D-213): the per-value
+    // `ExInfo.class_name` (null → "ExceptionInfo"), normalized to the simple
+    // name per AD-003 — not the generic `.ex_info` native descriptor.
+    if (v.tag() == .ex_info) {
+        const raw = ex_info_mod.className(v) orelse "ExceptionInfo";
+        const simple = host_class_mod.normalizeClassName(raw);
+        return td_mod.makeTypeDescriptorRef(rt, try rt.exceptionDescriptor(simple));
     }
     const td: *const td_mod.TypeDescriptor = switch (v.tag()) {
         .typed_instance => v.decodePtr(*const td_mod.TypedInstance).descriptor,
