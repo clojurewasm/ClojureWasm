@@ -113,6 +113,23 @@ pub fn normalizeClassName(class_name: []const u8) []const u8 {
     return host_class.normalizeClassName(class_name);
 }
 
+/// Resolve a native class name (simple or FQCN) to its exact
+/// `Value.Tag`, or null if the name is not a `NATIVE_ENTRIES`
+/// exact-tag class. Interface-shaped names (`Number`/`IFn`/
+/// `IPersistent*`) return null — they span multiple tags, so there
+/// is no single descriptor to resolve a bare symbol to. Drives the
+/// analyzer's native-class symbol resolution (ADR-0072): a bare
+/// `Long`/`String`/`java.lang.Long` becomes its native descriptor
+/// value, so `extend-type` over a native class lands where dispatch
+/// finds it and a class symbol is a value (= `(class x)`).
+pub fn nativeTagFor(name: []const u8) ?Tag {
+    const simple = normalizeClassName(name);
+    inline for (NATIVE_ENTRIES) |e| {
+        if (std.mem.eql(u8, e.name, simple)) return e.tag;
+    }
+    return null;
+}
+
 /// Return true iff `class_name` (simple or FQCN) is recognised by
 /// either the native table, the interface table, or the Throwable
 /// hierarchy. Drives the `__instance?` primitive's analyzer-time
@@ -291,4 +308,20 @@ test "isInstance: FQCN normalises to simple" {
 test "isInstance: unknown class returns false defensively" {
     try testing.expect(!isInstance(Value.initInteger(42), "PersistentQueue"));
     try testing.expect(!isInstance(Value.initInteger(42), "FooBarClass"));
+}
+
+test "nativeTagFor: native exact-tag names + FQCN resolve" {
+    try testing.expectEqual(@as(?Tag, .integer), nativeTagFor("Long"));
+    try testing.expectEqual(@as(?Tag, .string), nativeTagFor("String"));
+    try testing.expectEqual(@as(?Tag, .integer), nativeTagFor("java.lang.Long"));
+    try testing.expectEqual(@as(?Tag, .regex), nativeTagFor("java.util.regex.Pattern"));
+}
+
+test "nativeTagFor: interface-shaped + unknown names do NOT resolve" {
+    // Number/IFn span multiple tags — no single descriptor to resolve to.
+    try testing.expectEqual(@as(?Tag, null), nativeTagFor("Number"));
+    try testing.expectEqual(@as(?Tag, null), nativeTagFor("IFn"));
+    // Throwable hierarchy is not a NATIVE_ENTRIES exact-tag class.
+    try testing.expectEqual(@as(?Tag, null), nativeTagFor("Throwable"));
+    try testing.expectEqual(@as(?Tag, null), nativeTagFor("FooBarClass"));
 }

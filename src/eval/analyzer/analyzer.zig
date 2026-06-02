@@ -54,6 +54,8 @@ const big_int = @import("../../runtime/numeric/big_int.zig");
 const big_decimal = @import("../../runtime/numeric/big_decimal.zig");
 const ratio_mod = @import("../../runtime/numeric/ratio.zig");
 const regex_value = @import("../../runtime/regex/value.zig");
+const class_name = @import("../../runtime/class_name.zig");
+const type_descriptor = @import("../../runtime/type_descriptor.zig");
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
@@ -474,7 +476,26 @@ fn analyzeSymbol(
         }
         return error_catalog.raise(.namespace_unknown, form.location, .{ .ns = ns_name });
     } else env.current_ns orelse return error_catalog.raise(.current_namespace_missing, form.location, .{ .sym = sym.name });
-    const v_ptr = ns.resolve(sym.name) orelse return error_catalog.raise(.symbol_unresolved, form.location, .{ .sym = symFullName(sym) });
+    const v_ptr = ns.resolve(sym.name) orelse {
+        // ADR-0072: a bare native-class symbol (`Long`, `String`,
+        // `java.lang.Long`) resolves to its native TypeDescriptor —
+        // AFTER Var resolution so a user `(def String …)` /
+        // `(deftype String …)` shadows. Registers on the same
+        // `rt.nativeDescriptor(tag)` that a primitive receiver
+        // dispatches through (so `extend-type` over a native class
+        // lands where dispatch finds it), and makes a class symbol a
+        // value (= `(class x)`). Interface-shaped names (Number/IFn)
+        // span multiple tags → `nativeTagFor` returns null → they stay
+        // unresolved-symbol errors (documented divergence).
+        if (sym.ns == null) {
+            if (class_name.nativeTagFor(sym.name)) |tag| {
+                const td = try env.rt.nativeDescriptor(tag);
+                const ref = try type_descriptor.makeTypeDescriptorRef(env.rt, td);
+                return try makeConstant(arena, ref, form);
+            }
+        }
+        return error_catalog.raise(.symbol_unresolved, form.location, .{ .sym = symFullName(sym) });
+    };
     // ADR-0033 D4 + D8: `^:private` vars cannot be referenced as a
     // symbol from outside their owning namespace. The check fires only
     // when the resolution target is in a different namespace than the

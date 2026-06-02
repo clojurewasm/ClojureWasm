@@ -315,6 +315,7 @@ run_step "e2e_phase7_record_field_scope"     "bash test/e2e/phase7_record_field_
 run_step "e2e_phase7_reify"                  "bash test/e2e/phase7_reify.sh"
 run_step "e2e_phase7_method_dispatch"        "bash test/e2e/phase7_method_dispatch.sh"
 run_step "e2e_phase7_polymorphic_extend"     "bash test/e2e/phase7_polymorphic_extend.sh"
+run_step "e2e_phase7_extend_native_class"    "bash test/e2e/phase7_extend_native_class.sh"
 run_step "e2e_phase7_multi_arity"            "bash test/e2e/phase7_multi_arity.sh"
 run_step "e2e_phase7_apply_variadic"         "bash test/e2e/phase7_apply_variadic.sh"
 run_step "e2e_phase7_catch_hierarchy"        "bash test/e2e/phase7_catch_hierarchy.sh"

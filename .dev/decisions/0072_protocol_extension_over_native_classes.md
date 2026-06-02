@@ -1,17 +1,19 @@
 # ADR-0072 — Protocol extension over native / java classes (native-descriptor identity)
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-06-02
 - Supersedes: none
 - Refs: D-203 (this decision's debt entry), D-202 gap (2) (the
   superseded plan), ADR-0036 (dual-backend parity), ADR-0059
   (one-canonical-descriptor-ref invariant), F-002 / F-005 / F-009.
 
-> Status is **Proposed**: the design + Devil's-advocate analysis are
-> recorded here so the next session implements + flips to Accepted in
-> one cycle. No source has landed yet (the session stopped at the
-> user's request after the debt-ledger YAML migration). Resume via
-> D-203.
+> Landed 2026-06-02 exactly as the Decision below specifies:
+> `class_name.nativeTagFor` accessor + the `analyzeSymbol`
+> `symbol_unresolved` fallback arm. 8 e2e cases
+> (`test/e2e/phase7_extend_native_class.sh`, incl. `--compare`
+> dual-backend) + 2 unit tests on `nativeTagFor`. The SSOT
+> consolidation in the Deferred section remains its own cycle (tracked
+> in D-203).
 
 ## Context
 

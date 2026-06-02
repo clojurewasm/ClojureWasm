@@ -5,58 +5,48 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (D-202(1) field-scope + D-201 letfn + debt.yaml
-  migration on `cw-from-scratch`). Gate green on `vm` (Mac 200+; ADR-0070 /
-  F-012). debt ledger is now **`.dev/debt.yaml`** (structured YAML; the former
-  `.dev/debt.md` md-table bloated to 800KB — migrated lossless, 264KB).
-- **First commit on resume MUST be: implement D-203 / ADR-0072** —
-  `extend-type` / `extend-protocol` over a NATIVE or java class
-  (`(extend-type Long P …)` / `(extend-type String P …)`). Design + mandatory
-  Devil's-advocate analysis are DONE and recorded in **ADR-0072 (Proposed)** +
-  the D-203 entry (`file:line` refs there). TDD from an e2e red. Flip ADR-0072
-  to Accepted after it lands. NOTE: the old D-202(2) "resolveJavaSurface" plan
-  is WRONG (Step 0.6 finding) — use the native-descriptor-identity approach in
-  ADR-0072 (resolve native-class symbols in `analyzeSymbol`).
-  Then: **D-200 — EDN `#uuid`/`#inst` tagged literals** (`#uuid` needs a
-  UUID-type ADR — partial-string-parity vs a real type).
-  **Verify via e2e** (top-level forms) — `clj_diff_sweep` can NOT batch-verify
-  define-heavy poly/reader forms (wraps each line in `(prn …)` → `<clj-missing>`).
-  Other follow-ups: (a) the DA Alt-2 name↔Tag SSOT consolidation deferred in
-  D-203; (b) v0.1.0-tag closeout (Phase 14.14).
+- **HEAD**: see `git log` (D-203 extend-type-over-native-class + ADR-0072
+  Accepted on `cw-from-scratch`). Gate green on `vm` (Mac 203; ADR-0070 /
+  F-012). debt ledger is **`.dev/debt.yaml`** (structured YAML).
+- **First commit on resume MUST be: implement D-200 — EDN `#uuid`/`#inst`
+  tagged literals + data readers.** Land the reusable reader infra FIRST
+  (tokenizer `#<tag> <form>` arm sibling to `#'`/`#()`, a `readTaggedLiteral`
+  dispatch, a default data-reader table, `read-string` / `clojure.edn/read-string`
+  routing + the 2-arity `[opts s]` form honouring `:readers`/`:default`).
+  Then a SEPARATE ADR for the `#uuid`/`#inst` value-type decision: cljw's
+  `java.util.UUID/randomUUID` returns the canonical 36-char STRING (F-009, no
+  distinct UUID type), so `#uuid "s"` → `(UUID/fromString s)` gives `str`/`=`
+  parity but `uuid?`/`pr-str`/`class` all diverge — partial-string-parity vs a
+  real UUID type is ADR-level (same shape for `#inst`/Date). Full context +
+  the reverted-spike finding in the D-200 row. **Verify via e2e** (top-level
+  forms) — `clj_diff_sweep` can NOT batch-verify define-heavy reader/poly forms
+  (wraps each line in `(prn …)` → `<clj-missing>`).
+  Other follow-ups: (a) **D-204** — name↔Tag SSOT consolidation (spun out of
+  D-203; broadens `instance?`/`class`/`extend-type` to BigInt/Ratio/BigDecimal,
+  its own cycle); (b) v0.1.0-tag closeout (Phase 14.14).
 - **Forbidden**: re-sweeping COVERAGE.md § Swept areas wholesale; seizing the
   F-003 structural-deferred rows (D-164 empty≡nil, D-165 i48→i64, D-086/088/
   178/179) incrementally — big-bang, user-gated; re-opening landed work
   (git log = SSOT); perf without a Release `scripts/perf.sh` number.
 
-## Stopped — user requested
+## Just landed (git log = SSOT; full rows in `.dev/debt.yaml`)
 
-User instruction (2026-06-02): "[when you reach a good break] `.dev/debt.md`
-got bloated by the global md-table-align into a huge whitespace-padded table;
-either stop that treatment or make debt.md itself a structured artifact, and
-make every place that references / auto-processes it follow. My preference is
-YAML, but implement the best way you decide (don't present options — choose
-autonomously). After that, audit the wiring / reference chain for the next
-session, then stop." DONE: migrated to `.dev/debt.yaml` (lossless, reconstruction-
-verified; `scripts/migrate_debt_to_yaml.py`); updated all auto-processors
-(`check_debt_id_refs.sh`, `check_provisional_sync.sh:171` functional regex,
-`audit_scaffolding/CHECKS.md` yq, `debt_dedup.md`) + 33 prose refs; deleted
-debt.md; `check_md_tables.sh` skips non-.md so bloat can't recur. **Resume**:
-the next `/continue` implements D-203 / ADR-0072 — this stop does not carry
-across sessions (CLAUDE.md § The only stop).
-
-## Discharged this session (git log = SSOT; full rows in `.dev/debt.yaml`)
-
-- **D-202(1)** defrecord/deftype bare-field refs in protocol method bodies
-  (`lowerDefType` wraps each body in a field `let*` over `(.field inst)`; Step
-  0.6 corrected the debt row's wrong shadowing claim — param shadows field).
-- **D-201** `letfn` / `letfn*` (dedicated `letfn_node` + analyzer + TreeWalk +
-  VM `op_letfn_patch` + macro; mutual recursion via post-alloc closure patch).
-- **debt.yaml migration** (this stop's task) + **ADR-0072 (Proposed)** for
-  D-203 (native-class protocol extension; design + DA preserved, code pending).
+- **D-203 / ADR-0072 (Accepted)** — `extend-type`/`extend-protocol` over a
+  native/java class. `class_name.nativeTagFor(name) ?Tag` (accessor over the
+  EXISTING `NATIVE_ENTRIES`+`FQCN_MAP`, no new table) + an `analyzeSymbol`
+  `symbol_unresolved` fallback arm resolve a bare native-class symbol
+  (`Long`/`String`/`java.lang.Long`) to `nativeDescriptor(tag)` — the SAME
+  descriptor a primitive receiver dispatches through, so the impl lands where
+  dispatch finds it. AFTER Var resolution → `(def String …)` shadows. Bare
+  class symbol is now a value (= `(class 5)`; coherence). Interface names
+  (Number/IFn) stay unresolved (no single tag). 8 e2e (`--compare` dual) +
+  2 unit tests. Discharges D-202 gap (2) (its `resolveJavaSurface` plan was
+  wrong — would land on a `rt.types` surface descriptor, the wrong object).
 
 ## Remaining (pointers — full text in `.dev/debt.yaml` + COVERAGE.md)
 
-- **Moderate features**: D-203/ADR-0072 (next), D-200 (see Resume contract).
+- **Moderate features**: D-200 (next — see Resume contract), D-204 (name↔Tag
+  SSOT consolidation, opportunistic).
 - **Structural-deferred (F-003, big-bang, user-gated)**: D-164 empty≡nil
   (highest-leverage single fix), D-165 i48→i64, D-086/088/178/179, D-105.
 - **v0.1.0 closeout**: Phase 14.14 — exit-smoke + `phase_at_least_14` flip +
@@ -74,6 +64,6 @@ across sessions (CLAUDE.md § The only stop).
 ## Cold-start reading order (tracked-only)
 
 handover → `test/diff/clj_corpus/COVERAGE.md` (sweep state) +
-`.claude/rules/clj_diff_sweep.md` → `.dev/debt.yaml` (open rows: D-200/201/202)
+`.claude/rules/clj_diff_sweep.md` → `.dev/debt.yaml` (open rows: D-200/D-204)
 → CLAUDE.md (§ Project spirit + Autonomous Workflow + The only stop) →
 `.dev/project_facts.md` (F-002/010/011/012) → `.dev/principle.md` (Bad Smell).
