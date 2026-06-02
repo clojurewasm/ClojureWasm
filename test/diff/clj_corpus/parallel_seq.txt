@@ -1,0 +1,34 @@
+(pmap inc [1 2 3])
+;;=> (2 3 4)
+(pmap + [1 2 3] [10 20 30])
+;;=> (11 22 33)
+(pmap inc [])
+;;=> ()
+(pmap (fn [x] (* x x)) (range 5))
+;;=> (0 1 4 9 16)
+(pcalls (constantly 1) (constantly 2) (constantly 3))
+;;=> (1 2 3)
+(pvalues (+ 1 2) (* 3 4) (- 10 1))
+;;=> (3 12 9)
+(pvalues 42)
+;;=> (42)
+(doall [1 2 3])
+;;=> [1 2 3]
+(dorun [1 2 3])
+;;=> nil
+(doall (map inc [1 2 3]))
+;;=> (2 3 4)
+(doall (filter even? (range 10)))
+;;=> (0 2 4 6 8)
+(doall 2 (map inc (range 5)))
+;;=> (1 2 3 4 5)
+(dorun 3 (range 100))
+;;=> nil
+(let [a (atom 0)] (doall (map (fn [_] (swap! a inc)) (range 5))) @a)
+;;=> 5
+(let [a (atom 0)] (dorun (pmap (fn [_] (swap! a inc)) (range 4))) @a)
+;;=> 4
+(count (pmap inc (range 20)))
+;;=> 20
+(doall (pmap str [1 2] [:a :b]))
+;;=> ("1:a" "2:b")

@@ -16,8 +16,10 @@
   session: **D-157 / ADR-0081** add-watch/remove-watch (appended `Atom.watches`,
   synchronous notify) + set-validator!/get-validator (appended `Atom.validator`,
   validate-before-commit → IllegalStateException, ref unchanged).
-  delay/promise/future/atom/volatile already worked. Residual: atom constructor
-  `:validator`/`:meta` kwargs (D-223, low value).
+  delay/promise/future/atom/volatile already worked. Also landed: `pmap`/`pcalls`/
+  `pvalues` (sequential, result-identical to clj; parallelism deferred to threading
+  D-224) + `doall`/`dorun` (lazy-seq realization). Residuals: atom constructor
+  `:validator`/`:meta` kwargs (D-223), parallelism (D-224) — both low value.
 - **First action on resume**: continue Phase 15 concurrency OR drain a remaining
   low-value clj gap. **The big Phase-15 architectural pieces need a proper
   DA-fork entry** (do NOT cold-seize): `agent` (action queue), STM `dosync`/`ref`

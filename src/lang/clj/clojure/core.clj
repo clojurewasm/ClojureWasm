@@ -364,6 +364,31 @@
       (reset! a v)
       [old v])))
 
+;; `(pmap f & colls)` / `(pcalls & fns)` — clj's parallel map / parallel calls.
+;; cw v1 is single-threaded, so these run SEQUENTIALLY: the RESULT is identical
+;; to clj (pmap is "semantically like map"), only the parallelism is absent.
+;; Real parallelism arrives with Phase-15 threading (D-224); the result contract
+;; is final-form-correct now, so this is not a dropped-semantic stub.
+(def pmap
+  (fn* [f & colls] (apply map f colls)))
+(def pcalls
+  (fn* [& fns] (map (fn* [g] (g)) fns)))
+
+;; `(dorun coll)` / `(dorun n coll)` — realize a (lazy) seq for side effects,
+;; holding no head; returns nil. `(doall coll)` / `(doall n coll)` — same forcing
+;; but returns the (now-realized) head. `if` (not `when`/`and`) keeps these
+;; bootstrap-order-safe. The lazy-seq realization utilities (clojure.core).
+(def dorun
+  (fn* ([coll]
+        (loop* [s (seq coll)]
+          (if s (recur (next s)) nil)))
+       ([n coll]
+        (loop* [i n s (seq coll)]
+          (if (if (pos? i) s nil) (recur (dec i) (next s)) nil)))))
+(def doall
+  (fn* ([coll] (dorun coll) coll)
+       ([n coll] (dorun n coll) coll)))
+
 ;; `(complement pred)` returns a fn that negates pred's truthiness;
 ;; the returned fn is variadic (`[& args]`), matching JVM.
 (def complement
@@ -1543,4 +1568,13 @@
 
 (defmacro doc [sym]
   (list (quote print-doc) (list (quote var) sym)))
+
+;; `(pvalues & exprs)` — clj's parallel-eval of each expr. cw v1 is single-
+;; threaded so it expands to `pcalls` over thunks = SEQUENTIAL eval (result
+;; identical to clj; parallelism deferred to Phase-15 threading, D-224).
+(defmacro pvalues [& exprs]
+  ;; `apply list` realizes the map seq so the expansion is a concrete list,
+  ;; not a cons over a lazy tail (which the macroexpander cannot re-analyze).
+  (apply list (quote pcalls)
+         (map (fn* [e] (list (quote fn*) [] e)) exprs)))
 

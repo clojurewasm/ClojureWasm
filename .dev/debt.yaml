@@ -35,6 +35,12 @@ active:
     barrier: |-
       **Namespaced map literals `#:ns{…}` / `#::{…}` / `#::alias{…}` are not supported** (reader + printer): `(read-string "#:foo{:a 1}")` → cljw EDN-reader-error / clj `#:foo{:a 1}` (= `{:foo/a 1}`); `(pr-str #:foo{:a 1 :b 2})` → cljw "Invalid token ':foo'" / clj "#:foo{:a 1, :b 2}". A Clojure 1.9 reader feature: `#:ns{:a 1, :b 2}` reads as `{:ns/a 1, :ns/b 2}` — unqualified keyword/symbol keys are qualified with `ns`; `:_/a` → `:a` (no namespace); already-qualified keys keep their ns; `#::{…}` uses the current ns; `#::alias{…}` resolves the alias. PRINTER: when `*print-namespace-maps*` is true (clojure.main binds it true) and ALL keys are keyword/symbol sharing one namespace, `pr` emits `#:ns{…}`. Scope: tokenizer `readDispatch` (`#:`), reader (read ns + map + qualify keys), printer (common-ns detection, gated on `*print-namespace-maps*`), the `^:dynamic *print-namespace-maps*` var. Discharge = big-bang reader+printer to parity, corpus `namespaced_maps`. Cross-ref ADR-0073 (data-reader infra) / F-011. recall trigger: clj-parity namespaced-map sweep.
     last_reviewed: "2026-06-03"
+  - id: "D-224"
+    status: "deferred (perf, not a result-bug) — `pmap`/`pcalls`/`pvalues` run SEQUENTIALLY pending Phase-15 threading."
+    category: "concurrency"
+    barrier: |-
+      **`pmap`/`pcalls`/`pvalues` are sequential, not parallel** (landed 2026-06-03 as core.clj defns): cw v1 is single-threaded, so `pmap`=`(apply map …)`, `pcalls`=`(map #(%) fns)`, `pvalues`=`(pcalls thunks…)` — the RESULT is identical to clj (pmap is documented "semantically like map"; corpus `parallel_seq` 17/17 clj-verified), only the PARALLELISM is absent. This is NOT a dropped-semantic stub (the result contract is final-form-correct) — it is a perf property deferred to Phase-15 real threading (std.Io.Threaded + a work-pool), at which point pmap/pcalls gain genuine parallel execution (with bounded look-ahead for pmap) behind the same surface. clj-grounded: `(pmap inc [1 2 3])`→(2 3 4) both; side effects realize via `doall`/`dorun` (also landed). Cross-ref D-157/D-220 (Phase-15 concurrency) / the §9.2.R threading window / F-011. recall trigger: when Phase-15 threading (std.Io.Threaded work-pool) lands — wire pmap/pcalls to it.
+    last_reviewed: "2026-06-03"
   - id: "D-223"
     status: "now (minor follow-up, found 2026-06-03 during D-157 validator) — `(atom x :validator f :meta m)` constructor kwargs unparsed."
     category: "concurrency"
