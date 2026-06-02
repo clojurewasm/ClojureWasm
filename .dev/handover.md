@@ -5,17 +5,19 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (sweep + VM-parity commits on `cw-from-scratch`).
-  Mac gate green (200).
-- **First commit on resume MUST be: the next VM-default parity blocker**
-  (F-012 / D-196, priority thread) — pick one of the 3 remaining via
-  `scripts/check_vm_parity.sh`: (1) catch `:keyword` dispatch
-  (`compiler.zig:360`, `op_match_type_keyword`), (2) `(ns …)`
-  `:refer-clojure :exclude` + libspec (`compiler.zig:521`), (3)
-  `.static_method` (`node.zig:338`). Each is a focused VM-backend cycle;
-  ADR-0071 is the cleanup-handler precedent. Fallback standing mode if a
-  blocker is wedged: continue the F-011 sweep (`scripts/clj_diff_sweep.sh`,
-  COVERAGE.md § Next-sweep) into a `--corpus`.
+- **HEAD**: see `git log` (VM-parity + VM-default-flip commits on
+  `cw-from-scratch`). Mac gate green (200) — **now on `vm` (the production
+  default, flipped 2026-06-02; ADR-0070 / F-012 realised)**.
+- **First commit on resume MUST be: ubuntunote (Linux) verification of the
+  vm-default gate** — `timeout 1800 bash scripts/run_remote_ubuntu.sh` per
+  ADR-0049; the flip changed the production backend, so confirm 200 pass on
+  Linux x86_64 before any v0.1.0-tag work (D-047-class platform deltas live
+  here). If ubuntunote is unreachable, fall back to the **standing F-011
+  sweep** (`scripts/clj_diff_sweep.sh`, `test/diff/clj_corpus/COVERAGE.md`
+  § Next-sweep → `--corpus`). Second tracked follow-up (not urgent): repurpose
+  `scripts/check_vm_parity.sh` to run e2e on the NON-default backend
+  (tree-walk oracle) so an oracle-only rendering regression can't hide behind
+  the vm-default gate (on-demand / Phase-boundary, ADR-0049 cost concern).
 - **Forbidden this session**: re-sweeping the COVERAGE.md § Swept areas
   wholesale; seizing the F-003 structural-deferred rows (D-164 empty≡nil,
   D-165 i48→i64, D-086/088/178/179) incrementally — those are big-bang,
@@ -43,11 +45,14 @@ F-NNN before "fixing"** — overflow auto-promote / `+'`-throws are intentional
   **D-177** corrected over-claimed discharge + landed 7 missing xform arities ·
   **D-193** folded into D-157 (add-watch is Phase-15, not a floor item).
 - Plus drop-last/get-in arities, regex print, predicate cluster.
-- **D-196 blocker (4) error-context — CLOSED (ADR-0071)**: VM distinguishes
-  `.cleanup` from `.catch_clause` handlers (`op_push_cleanup`/`op_reraise`), so a
-  `binding`/bare-try unwind preserves catalog Kind + dynamic error-context like
-  TreeWalk's `defer`. 3 VM-default blockers remain (catch-keyword, ns-directive,
-  static-dispatch). Plus even?/odd? BigInt + oversized-literal auto-promote;
+- **D-196 DISCHARGED + VM-default flip LANDED (ADR-0070 / F-012 realised)**:
+  all 5 VM-parity blockers closed this session — (4) error-context via the
+  ADR-0071 cleanup-handler kind (`op_push_cleanup`/`op_reraise`); (1)
+  catch-`:keyword` via `op_match_type_keyword`; (3) java-surface ctor via the
+  shared `special_forms.constructInstance`; (2) ns `:refer-clojure` filter +
+  libspec via `op_ns_with_filter` + `emitLibspec`. check_vm_parity = 0 fails;
+  `build.zig` default flipped to `vm`; gate keeps unit coverage on both
+  backends. Plus even?/odd? BigInt + oversized-literal auto-promote;
   coerce_tower corpus.
 
 ## Remaining (pointers — full text in `.dev/debt.md` + COVERAGE.md)

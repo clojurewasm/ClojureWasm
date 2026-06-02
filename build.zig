@@ -28,12 +28,13 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "phase_at_least_15", false);
     build_options.addOption(bool, "phase_at_least_17", false);
 
-    // ROADMAP §9.6 / 4.8 — backend gate (ADR-0005). `tree-walk` is the
-    // default; `vm` flips the top-level driver to compile each form
-    // via `vm/compiler` and run it through `vm.eval`. 4.12 flips the
-    // default once differential parity (4.10) is green.
+    // ROADMAP §9.6 / 4.8 / §349 — backend gate (ADR-0005 / ADR-0070 / F-012).
+    // `vm` is the PRODUCTION DEFAULT (flipped 2026-06-02 once every D-196
+    // parity blocker closed: check_vm_parity = 0 fails, corpus 375/375 + all
+    // e2e green on vm). `tree-walk` is retained as the differential oracle /
+    // reference implementation, selectable via `-Dbackend=tree-walk`.
     const Backend = enum { tree_walk, vm };
-    const backend = b.option(Backend, "backend", "Evaluation backend (tree-walk default, vm experimental)") orelse .tree_walk;
+    const backend = b.option(Backend, "backend", "Evaluation backend (vm default — production; tree-walk = differential oracle)") orelse .vm;
     build_options.addOption(Backend, "backend", backend);
 
     // ROADMAP §9.6 / 4.16 reverted 2026-05-23 (D-028 audit): the

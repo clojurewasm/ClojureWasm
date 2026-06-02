@@ -49,5 +49,6 @@ zig build -Dbackend=vm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 [[ -x "$BIN" ]] || fail "vm binary missing"
 run_smoke vm
 
-# Restore default build for subsequent steps.
-zig build -Dbackend=tree_walk -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+# Restore the DEFAULT build (vm, production — ADR-0070) for subsequent steps.
+# Bare `zig build` follows build.zig's default (flip-agnostic).
+zig build -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null

@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
 # scripts/check_vm_parity.sh — VM-backend parity probe (ADR-0070 / D-196).
 #
-# Builds cljw with `-Dbackend=vm` (ReleaseSafe, matching the e2e gate + the
-# production-distribution config) and runs the clj-grounded corpus + the D-196
-# VM-parity-blocker e2e against it, reporting the failing count. This is the
-# mechanism that stops VM gaps from being MASKED by the tree_walk default (the
-# per-commit gate runs e2e on tree_walk only; VM is otherwise covered by unit +
-# diff_test alone). Informational while D-196 is open; on D-196 close it is
-# promoted to a hard per-commit gate and build.zig flips its default to `vm`.
+# Builds cljw with `-Dbackend=vm` (ReleaseSafe) and runs the clj-grounded
+# corpus + the (now-empty) D-196 VM-parity-blocker e2e list against it.
 #
-# The probe lists the D-196 blocker e2e EXPLICITLY (not a glob): a broad
-# phase14 glob proved unreliable here (some sibling e2e perturbed the shared
-# binary mid-run). As each blocker is closed, drop it from BLOCKERS; when the
-# list is empty + corpus green, the flip lands.
+# HISTORY: this probe existed to stop VM gaps being MASKED by the (then)
+# tree_walk default — the per-commit gate ran e2e on tree_walk only. ALL 5
+# D-196 blockers closed 2026-06-02, and **build.zig's default flipped to `vm`**
+# (ADR-0070 step 4 / F-012). Post-flip the per-commit gate runs e2e on vm (the
+# production default), so the masking concern this probe guarded is resolved.
 #
-# Restores the default (tree_walk ReleaseSafe) binary on exit.
+# CURRENT ROLE (on-demand): a `-Dbackend=vm` ReleaseSafe + corpus smoke. The
+# BLOCKERS list is empty (kept as the re-add point should a future VM-only
+# regression need tracking). FOLLOW-UP (tracked): repurpose to exercise the
+# e2e suite on the NON-default backend (`tree-walk`, the differential oracle)
+# so an oracle-only e2e/rendering regression can't hide behind the vm-default
+# gate — run on-demand / at Phase boundaries per ADR-0049's per-commit-cost
+# concern, not as a per-commit gate.
+#
+# Restores the DEFAULT (vm ReleaseSafe — bare `zig build`, flip-following)
+# binary on exit.
 # Usage: bash scripts/check_vm_parity.sh   # exit 0 = all green; N = N failing.
 
 set -uo pipefail

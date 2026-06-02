@@ -28,8 +28,12 @@ assert_exit() {
     echo "    ✓ $label → exit $expected"
 }
 
-echo "==> Building (tree-walk)"
-zig build -Dbackend=tree_walk -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+# Exit-code mapping (kindToExitCode, error_render.zig) is backend-agnostic,
+# so test on the production DEFAULT backend (vm — ADR-0070) via bare
+# `zig build`. This also leaves the default binary in place for subsequent
+# run_all.sh steps (no separate restore needed).
+echo "==> Building (default backend)"
+zig build -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 [[ -x "$BIN" ]] || fail "binary missing"
 
 # (+ 1 :foo) — type_error during eval. Kind=.type_error → exit 1.

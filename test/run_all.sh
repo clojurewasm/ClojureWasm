@@ -223,8 +223,11 @@ print_summary() {
 
 # --- Steps ---
 
-run_step "zig_build_test"      "zig build test"
-run_step "zig_build_test_vm"   "zig build test -Dbackend=vm"
+# Unit tests on BOTH backends. `zig build test` now defaults to vm (the
+# production default, ADR-0070 flip); tree_walk (the differential oracle) is
+# kept explicit so both backends retain unit coverage after the flip.
+run_step "zig_build_test_vm"        "zig build test"
+run_step "zig_build_test_tree_walk" "zig build test -Dbackend=tree_walk"
 run_step "zone_check"           "bash scripts/zone_check.sh --gate"
 run_step "surface_marker"       "bash scripts/check_surface_marker.sh --gate"
 run_step "feature_keyword"      "bash scripts/check_feature_keyword.sh --gate"
@@ -247,12 +250,14 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     run_step "zlinter"          "zig build lint -- --max-warnings 0"
 fi
 
-# Build the default (tree_walk) cljw binary ONCE here, then tell the e2e
-# scripts to skip their own `zig build` (each was a ~0.3s cache-hit ×
-# ~108 scripts ≈ 32s of redundant rebuilds + process spawns per gate).
-# The 3 backend-forcing e2e (phase4_*) keep their own `-Dbackend=…`
-# builds (which honour CLJW_OPT) and restore tree_walk at their end, so
-# the shared binary stays the default+CLJW_OPT for every guarded e2e.
+# Build the default (vm — production, ADR-0070 flip) cljw binary ONCE here,
+# then tell the e2e scripts to skip their own `zig build` (each was a ~0.3s
+# cache-hit × ~108 scripts ≈ 32s of redundant rebuilds + process spawns per
+# gate). The 3 backend-forcing e2e (phase4_*) keep their own `-Dbackend=…`
+# builds (which honour CLJW_OPT) and restore the DEFAULT (vm) at their end
+# (bare `zig build`, default-following), so the shared binary stays the
+# production default+CLJW_OPT for every guarded e2e — i.e. the e2e surface
+# is exercised on vm, the production backend.
 # Standalone e2e runs (env unset) still build normally — the guard is a
 # no-op outside the gate.
 #

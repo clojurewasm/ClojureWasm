@@ -78,6 +78,8 @@ if ! diff -u "$TW_LOG" "$VM_LOG" > "$WORK/diff.txt"; then
 fi
 echo "    ✓ all ${#CASES[@]} cases produce byte-identical output under both backends"
 
-# Restore default (tree-walk) build for subsequent run_all.sh steps so
-# the cached binary matches the post-build state callers expect.
-zig build -Dbackend=tree_walk -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+# Restore the DEFAULT build (vm, production — ADR-0070) for subsequent
+# run_all.sh steps so the cached binary matches the post-build state callers
+# expect. Bare `zig build` (no -Dbackend) follows build.zig's default, so this
+# stays correct across a future default change.
+zig build -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null

@@ -1,6 +1,8 @@
 # ADR-0070 — VM is the intended production default (§349); flip gated on the parity blockers (D-196)
 
-- **Status**: Proposed → Accepted (2026-06-02)
+- **Status**: Proposed → Accepted → **Realised 2026-06-02** (D-196 closed;
+  build.zig default flipped to `vm`; F-012 reality-aligned). See Decision
+  step 4's "LANDED" note.
 - **Records**: ROADMAP §349 ("default is VM after Phase 4") + build.zig 4.8
   comment ("4.12 flips the default once differential parity is green") were the
   ORIGINAL plan; the flip was **never executed** (drift). This ADR makes the
@@ -40,6 +42,22 @@ flip was reverted; the gaps are tracked as D-196.
    no new VM divergence is masked again.
 4. On D-196 close: flip `build.zig` default to `vm`, mark F-012 reality-aligned,
    promote the VM-parity probe to a gate.
+
+**Step 4 LANDED 2026-06-02.** All 5 D-196 blockers closed (check_vm_parity =
+0 fails); `build.zig` default flipped `orelse .tree_walk` → `orelse .vm`. The
+per-commit gate now exercises the e2e surface on `vm` (the production default,
+via `build_cljw`'s bare `zig build`); `run_all.sh` keeps unit coverage on BOTH
+backends (`zig_build_test_vm` = default + `zig_build_test_tree_walk` =
+`-Dbackend=tree_walk`), and the diff_test oracle compares both. The 3
+backend-forcing `phase4_*` e2e restore the DEFAULT (now vm) via bare
+`zig build` so the shared binary stays vm for guarded e2e. F-012 is now
+reality-aligned: VM is the production backend, tree_walk the differential
+oracle. Residual follow-up (tracked, not a blocker): repurpose
+`check_vm_parity.sh` to run the e2e suite on the NON-default backend
+(tree-walk oracle) so an oracle-only rendering regression can't hide behind
+the vm-default gate (on-demand / Phase-boundary per ADR-0049 cost concern);
+Linux (ubuntunote) verification of the vm-default gate per ADR-0049 before the
+v0.1.0 tag.
 
 ## The parity blockers (D-196, evidence = VM-default gate 2026-06-02)
 
