@@ -5,13 +5,17 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (sweep + tooling commits on `cw-from-scratch`).
-  Tree clean, 0 unpushed. Mac gate green (193).
-- **First commit on resume MUST be: continue the F-011 differential sweep**
-  via `scripts/clj_diff_sweep.sh` (see `.claude/rules/clj_diff_sweep.md`),
-  picking the next area from `test/diff/clj_corpus/COVERAGE.md` § Next-sweep
-  candidates (e.g. `clojure.set`/`clojure.walk` edges, metadata, multimethod).
-  Land confirmed exprs into a `*.txt` corpus via `--corpus`.
+- **HEAD**: see `git log` (sweep + VM-parity commits on `cw-from-scratch`).
+  Mac gate green (200).
+- **First commit on resume MUST be: the next VM-default parity blocker**
+  (F-012 / D-196, priority thread) — pick one of the 3 remaining via
+  `scripts/check_vm_parity.sh`: (1) catch `:keyword` dispatch
+  (`compiler.zig:360`, `op_match_type_keyword`), (2) `(ns …)`
+  `:refer-clojure :exclude` + libspec (`compiler.zig:521`), (3)
+  `.static_method` (`node.zig:338`). Each is a focused VM-backend cycle;
+  ADR-0071 is the cleanup-handler precedent. Fallback standing mode if a
+  blocker is wedged: continue the F-011 sweep (`scripts/clj_diff_sweep.sh`,
+  COVERAGE.md § Next-sweep) into a `--corpus`.
 - **Forbidden this session**: re-sweeping the COVERAGE.md § Swept areas
   wholesale; seizing the F-003 structural-deferred rows (D-164 empty≡nil,
   D-165 i48→i64, D-086/088/178/179) incrementally — those are big-bang,
@@ -39,6 +43,12 @@ F-NNN before "fixing"** — overflow auto-promote / `+'`-throws are intentional
   **D-177** corrected over-claimed discharge + landed 7 missing xform arities ·
   **D-193** folded into D-157 (add-watch is Phase-15, not a floor item).
 - Plus drop-last/get-in arities, regex print, predicate cluster.
+- **D-196 blocker (4) error-context — CLOSED (ADR-0071)**: VM distinguishes
+  `.cleanup` from `.catch_clause` handlers (`op_push_cleanup`/`op_reraise`), so a
+  `binding`/bare-try unwind preserves catalog Kind + dynamic error-context like
+  TreeWalk's `defer`. 3 VM-default blockers remain (catch-keyword, ns-directive,
+  static-dispatch). Plus even?/odd? BigInt + oversized-literal auto-promote;
+  coerce_tower corpus.
 
 ## Remaining (pointers — full text in `.dev/debt.md` + COVERAGE.md)
 

@@ -25,8 +25,10 @@ BLOCKERS=(
     phase14_catch_keyword          # catch :keyword type dispatch (VM-DEFER D-014b)
     phase14_ns_directive           # (ns …) :refer-clojure filter (VM-DEFER D-098)
     phase14_java_static_dispatch   # .static_method call (VM-DEFER node.zig:338)
-    phase14_with_context           # dynamic error-context propagation (undocumented)
-    phase14_user_throw             # ex-info :data + error-context on throw
+    # phase14_with_context + phase14_user_throw CLOSED 2026-06-02 (ADR-0071):
+    # the cleanup-handler kind (op_push_cleanup / op_reraise) preserves the
+    # dynamic error-context + catalog Kind through a binding / bare-try
+    # unwind, matching TreeWalk's `defer`. Pruned from the blocker list.
     # NOTE: phase14_eval is NOT a VM blocker — `eval` is unimplemented on BOTH
     # backends (name_error), tracked separately as D-197. Do not add here.
 )

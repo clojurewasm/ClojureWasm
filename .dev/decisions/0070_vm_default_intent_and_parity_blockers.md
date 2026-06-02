@@ -43,15 +43,19 @@ flip was reverted; the gaps are tracked as D-196.
 
 ## The parity blockers (D-196, evidence = VM-default gate 2026-06-02)
 
-| Gap                                                                   | e2e                                      | Status                                        |
-|-----------------------------------------------------------------------|------------------------------------------|-----------------------------------------------|
-| `catch :keyword` type dispatch                                        | phase14_catch_keyword                    | VM-DEFER (D-014b), compiler.zig:360           |
-| `(ns …)` `:refer-clojure :exclude` + libspec                         | phase14_ns_directive                     | VM-DEFER (D-098), compiler.zig:521            |
-| `.static_method` call                                                 | phase14_java_static_dispatch             | VM-DEFER, node.zig:338                        |
-| dynamic error-context (`with-context`/`:request-id`, ex-info `:data`) | phase14_with_context, phase14_user_throw | **undocumented VM gap** (no marker — silent) |
+| Gap                                                                   | e2e                                      | Status                                                   |
+|-----------------------------------------------------------------------|------------------------------------------|----------------------------------------------------------|
+| `catch :keyword` type dispatch                                        | phase14_catch_keyword                    | VM-DEFER (D-014b), compiler.zig:360                      |
+| `(ns …)` `:refer-clojure :exclude` + libspec                         | phase14_ns_directive                     | VM-DEFER (D-098), compiler.zig:521                       |
+| `.static_method` call                                                 | phase14_java_static_dispatch             | VM-DEFER, node.zig:338                                   |
+| dynamic error-context (`with-context`/`:request-id`, ex-info `:data`) | phase14_with_context, phase14_user_throw | **CLOSED 2026-06-02 — ADR-0071** (cleanup-handler kind) |
 
-The undocumented error-context gap is the most concerning (a silent VM
-divergence with no VM-DEFER marker); D-196 adds the marker as part of closing it.
+The error-context gap (most concerning — a silent VM divergence) is **closed
+by [ADR-0071](0071_vm_cleanup_handler_kind.md)**: the VM now distinguishes
+`.cleanup` handlers (binding / bare-try) from `.catch_clause` handlers, so a
+`binding` unwind preserves the catalog Kind + dynamic error-context like
+TreeWalk's `defer`. 3 of the 5 e2e blockers remain (catch-keyword, ns-directive,
+static-dispatch) before the build.zig default flip.
 
 ## Consequences
 
