@@ -62,9 +62,33 @@ assert_eq 'gen_prec' "$("$BIN" -e '(format "%.3g" 123456.0)')"    '"1.23e+05"'
 assert_eq 'gen_small' "$("$BIN" -e '(format "%g" 0.00001)')"      '"1.00000e-05"'
 assert_eq 'gen_G'    "$("$BIN" -e '(format "%G" 1234567.0)')"     '"1.23457E+06"'
 assert_eq 'gen_neg'  "$("$BIN" -e '(format "%g" -42.5)')"         '"-42.5000"'
+# --- D-216: completed flag/conversion surface (clj-parity) ---
+# heap-Long operands (D-165) on %d/%x; unsigned-64 %x/%X/%o; # alternate form
+assert_eq 'd_heaplong' "$("$BIN" -e '(format "%d" 1000000000000000)')"  '"1000000000000000"'
+assert_eq 'd_grp_long' "$("$BIN" -e '(format "%,d" 1000000000000000)')" '"1,000,000,000,000,000"'
+assert_eq 'x_neg_u64'  "$("$BIN" -e '(format "%x" -1)')"                '"ffffffffffffffff"'
+assert_eq 'x_alt'      "$("$BIN" -e '(format "%#x" 255)')"              '"0xff"'
+assert_eq 'X_alt'      "$("$BIN" -e '(format "%#X" 255)')"              '"0XFF"'
+assert_eq 'o_alt'      "$("$BIN" -e '(format "%#o" 64)')"               '"0100"'
+# float sign / group flags
+assert_eq 'f_plus'     "$("$BIN" -e '(format "%+.2f" 3.14)')"           '"+3.14"'
+assert_eq 'f_space'    "$("$BIN" -e '(format "% .2f" 3.14)')"           '" 3.14"'
+assert_eq 'f_paren'    "$("$BIN" -e '(format "%(.2f" -3.14)')"          '"(3.14)"'
+assert_eq 'f_group'    "$("$BIN" -e '(format "%,.2f" 1234567.5)')"      '"1,234,567.50"'
+assert_eq 'e_plus'     "$("$BIN" -e '(format "%+e" 1234.5)')"           '"+1.234500e+03"'
+# %s nil → "null"; %S upper; %.Ns truncate
+assert_eq 's_nil'      "$("$BIN" -e '(format "%s" nil)')"               '"null"'
+assert_eq 'S_upper'    "$("$BIN" -e '(format "%S" "hi")')"              '"HI"'
+assert_eq 's_prec'     "$("$BIN" -e '(format "%.3s" "hello")')"         '"hel"'
+assert_eq 's_prec_w'   "$("$BIN" -e '(format "%8.3s|" "hello")')"       '"     hel|"'
+# %h/%H: valid hex hashcode; value is cljw-native (AD-009), intra-cljw stable
+assert_eq 'h_hex'      "$("$BIN" -e '(format "%h" "abc")')"             '"b3dd93fa"'
+assert_eq 'H_hex'      "$("$BIN" -e '(format "%H" "abc")')"             '"B3DD93FA"'
+assert_eq 'h_nil'      "$("$BIN" -e '(format "%h" nil)')"               '"null"'
+
 # errors
 assert_has 'badtype' "$("$BIN" -e '(format "%d" "x")' 2>&1)"     'expected integer'
 assert_has 'fewargs' "$("$BIN" -e '(format "%d")' 2>&1)"         'not enough arguments'
 assert_has 'badconv' "$("$BIN" -e '(format "%q" 1)' 2>&1)"       'unsupported directive'
 assert_has 'fmtstr'  "$("$BIN" -e '(format 42)' 2>&1)"           'expected string'
-echo "OK — phase14_format smoke (22 cases) green"
+echo "OK — phase14_format smoke (41 cases) green"

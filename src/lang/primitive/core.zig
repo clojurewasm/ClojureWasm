@@ -698,6 +698,7 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         var space = false; // ' ': leading space for non-negative
         var paren = false; // '(': render negatives in parentheses
         var group = false; // ',': locale grouping separators (every 3 digits)
+        var alt = false; // '#': alternate form (0x/0X/0 radix prefix)
         flags: while (i < fmt.len) : (i += 1) {
             switch (fmt[i]) {
                 '-' => left = true,
@@ -706,6 +707,7 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
                 ' ' => space = true,
                 '(' => paren = true,
                 ',' => group = true,
+                '#' => alt = true,
                 else => break :flags,
             }
         }
@@ -739,7 +741,9 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             try w.writeByte('\n');
             continue;
         }
-        if (prec != null and conv != 'f' and conv != 'e' and conv != 'E' and conv != 'g' and conv != 'G')
+        // Precision is valid for floats (fraction digits) and for %s/%S
+        // (max chars — Java truncates). Other conversions reject it.
+        if (prec != null and conv != 'f' and conv != 'e' and conv != 'E' and conv != 'g' and conv != 'G' and conv != 's' and conv != 'S')
             return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%." });
 
         // Resolve the argument source: an explicit `N$` index (1-based →
@@ -753,14 +757,69 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
         defer tmp.deinit();
         const tw = &tmp.writer;
         switch (conv) {
-            's' => try writeArgsSpaced(rt, env, tw, args[src .. src + 1], false),
-            'd' => try writeDecimal(tw, try error_catalog.expectInteger(args[src], "format", loc), group, plus, space, paren),
-            'x' => try tw.print("{x}", .{try error_catalog.expectInteger(args[src], "format", loc)}),
-            'X' => try tw.print("{X}", .{try error_catalog.expectInteger(args[src], "format", loc)}),
-            'o' => try tw.print("{o}", .{try error_catalog.expectInteger(args[src], "format", loc)}),
-            'f' => try writeFloatPrec(tw, try error_catalog.expectNumber(args[src], "format", loc), prec orelse 6),
-            'e', 'E' => try writeScientific(tw, try error_catalog.expectNumber(args[src], "format", loc), prec orelse 6, conv == 'E'),
-            'g', 'G' => try writeGeneral(tw, try error_catalog.expectNumber(args[src], "format", loc), prec orelse 6, conv == 'G'),
+            // `%s`/`%S`: nil → "null" (Java Formatter), precision truncates to N
+            // chars, `%S` upper-cases. Render the value, then trim/upcase.
+            's', 'S' => {
+                var stmp: std.Io.Writer.Allocating = .init(rt.gpa);
+                defer stmp.deinit();
+                if (args[src].tag() == .nil) {
+                    try stmp.writer.writeAll("null");
+                } else {
+                    try writeArgsSpaced(rt, env, &stmp.writer, args[src .. src + 1], false);
+                }
+                var s = stmp.writer.buffered();
+                if (prec) |p| if (p < s.len) {
+                    s = s[0..p];
+                };
+                if (conv == 'S') {
+                    for (s) |ch| try tw.writeByte(std.ascii.toUpper(ch));
+                } else try tw.writeAll(s);
+            },
+            'd' => try writeDecimal(tw, try error_catalog.expectI64(args[src], "format", loc), group, plus, space, paren),
+            // `%x`/`%X`/`%o`: Java renders the UNSIGNED 64-bit two's-complement
+            // value (`%x -1` → "ffffffffffffffff"); `#` adds a 0x/0X/0 prefix.
+            'x', 'X', 'o' => {
+                const uv: u64 = @bitCast(try error_catalog.expectI64(args[src], "format", loc));
+                if (alt) try tw.writeAll(switch (conv) {
+                    'x' => "0x",
+                    'X' => "0X",
+                    else => "0",
+                });
+                switch (conv) {
+                    'x' => try tw.print("{x}", .{uv}),
+                    'X' => try tw.print("{X}", .{uv}),
+                    else => try tw.print("{o}", .{uv}),
+                }
+            },
+            'f' => {
+                var ftmp: std.Io.Writer.Allocating = .init(rt.gpa);
+                defer ftmp.deinit();
+                try writeFloatPrec(&ftmp.writer, try error_catalog.expectNumber(args[src], "format", loc), prec orelse 6);
+                try writeFloatFlagged(tw, ftmp.writer.buffered(), plus, space, paren, group);
+            },
+            'e', 'E' => {
+                var ftmp: std.Io.Writer.Allocating = .init(rt.gpa);
+                defer ftmp.deinit();
+                try writeScientific(&ftmp.writer, try error_catalog.expectNumber(args[src], "format", loc), prec orelse 6, conv == 'E');
+                try writeFloatFlagged(tw, ftmp.writer.buffered(), plus, space, paren, group);
+            },
+            'g', 'G' => {
+                var ftmp: std.Io.Writer.Allocating = .init(rt.gpa);
+                defer ftmp.deinit();
+                try writeGeneral(&ftmp.writer, try error_catalog.expectNumber(args[src], "format", loc), prec orelse 6, conv == 'G');
+                try writeFloatFlagged(tw, ftmp.writer.buffered(), plus, space, paren, group);
+            },
+            // `%h`/`%H`: hex of the value's hashCode, nil → "null". cljw's hash
+            // differs from the JVM's (AD-009), so the hex value diverges from
+            // clj — but it IS a valid lowercase/uppercase hex hashcode.
+            'h', 'H' => {
+                if (args[src].tag() == .nil) {
+                    try tw.writeAll("null");
+                } else {
+                    const hv: u32 = equal_mod.valueHash(args[src]);
+                    if (conv == 'H') try tw.print("{X}", .{hv}) else try tw.print("{x}", .{hv});
+                }
+            },
             // `%b`/`%B` boolean conversion (Java/clj): nil or false → "false",
             // any other value → "true" (logical-truth test, not a type check).
             'b', 'B' => {
@@ -816,9 +875,10 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 /// `,` every 3 digits; `paren` wraps negatives as `(123)`; `plus`/`space`
 /// prefix a non-negative with `+`/` `. The width / zero-pad step in `formatFn`
 /// then pads the result (its sign-leftmost rule keeps `-`/`+`/` ` outermost).
-fn writeDecimal(tw: *std.Io.Writer, n: i48, group: bool, plus: bool, space: bool, paren: bool) !void {
+fn writeDecimal(tw: *std.Io.Writer, n: i64, group: bool, plus: bool, space: bool, paren: bool) !void {
     const neg = n < 0;
-    const mag: u64 = @intCast(if (neg) -@as(i64, n) else @as(i64, n));
+    // i64-MIN-safe magnitude via two's-complement negate on the bit pattern.
+    const mag: u64 = if (neg) (~@as(u64, @bitCast(n)) +% 1) else @as(u64, @bitCast(n));
     var dbuf: [24]u8 = undefined;
     const digits = std.fmt.bufPrint(&dbuf, "{d}", .{mag}) catch unreachable;
 
@@ -843,6 +903,47 @@ fn writeDecimal(tw: *std.Io.Writer, n: i48, group: bool, plus: bool, space: bool
         try tw.writeAll(digits);
     }
 
+    if (neg and paren) try tw.writeByte(')');
+}
+
+/// Apply the sign / grouping flags to an already-rendered float string `s`
+/// (which carries its own leading '-' for negatives). `+`/' ' prefix a
+/// non-negative; '(' wraps a negative as "(1.23)"; ',' groups the integer
+/// part with thousands separators. Mirrors Java Formatter float-flag rules;
+/// the width / zero-pad step in `formatFn` then pads the result.
+fn writeFloatFlagged(tw: *std.Io.Writer, s: []const u8, plus: bool, space: bool, paren: bool, group: bool) !void {
+    const neg = s.len > 0 and s[0] == '-';
+    const body = if (neg) s[1..] else s;
+    if (neg and paren) {
+        try tw.writeByte('(');
+    } else if (neg) {
+        try tw.writeByte('-');
+    } else if (plus) {
+        try tw.writeByte('+');
+    } else if (space) {
+        try tw.writeByte(' ');
+    }
+    if (group) {
+        // Group only the integer part (up to '.', 'e', or 'E').
+        var int_end: usize = body.len;
+        for (body, 0..) |c, idx| {
+            if (c == '.' or c == 'e' or c == 'E') {
+                int_end = idx;
+                break;
+            }
+        }
+        const intp = body[0..int_end];
+        const head = if (intp.len > 0 and intp.len % 3 == 0) 3 else intp.len % 3;
+        try tw.writeAll(intp[0..head]);
+        var idx: usize = head;
+        while (idx < intp.len) : (idx += 3) {
+            try tw.writeByte(',');
+            try tw.writeAll(intp[idx .. idx + 3]);
+        }
+        try tw.writeAll(body[int_end..]);
+    } else {
+        try tw.writeAll(body);
+    }
     if (neg and paren) try tw.writeByte(')');
 }
 

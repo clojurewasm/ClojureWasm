@@ -11,15 +11,16 @@
   ADR-0080, heap-boxed Long, landed this session). D-210 is now a STANDING
   `quality-loop floor: clj-parity` (drain any NEW sweep DIFF, no campaign units
   left). Loop is back in self-selected quality-floor-drain mode.
-- **No open floor bugs.** The clj-parity campaign + all spun-off floor bugs
-  (D-212/213/214/215) are DISCHARGED. **First action on resume: run a broad
-  exploratory `scripts/clj_diff_sweep.sh` over an unswept high-frequency surface
-  to find the next DIFF cluster, then big-bang it to zero** (clj_diff_sweep.md
-  Discipline 2 — enumerate the whole surface, drive to 0 DIFF, pin a corpus,
-  close). Candidate unswept areas: `clojure.string` full surface, `format`/
-  `printf` (`cl-format` subset), collection fns (group-by/frequencies/
-  partition family), regex. Pick highest-value, enumerate, big-bang. Classify
-  every DIFF bug→fix OR accepted→AD-NNN (never floating).
+- **No open floor bugs.** clj-parity campaign + floor drains (D-212/213/214/215)
+  + the `format` surface sweep (D-216) all DISCHARGED. **First action on resume:
+  run a broad exploratory `scripts/clj_diff_sweep.sh` over an unswept
+  high-frequency surface to find the next DIFF cluster, then big-bang it to zero**
+  (clj_diff_sweep.md Discipline 2). Already-clean (probed 2026-06-03): common
+  string/format/collection. Candidate next areas: string-as-Indexed (`(nth
+  "abc" 1)`→cljw errors/clj `\b` — String not Indexed), `clojure.string/escape`
+  (missing), regex edge cases, reader/printer round-trips, transducers. Pick
+  highest-value, enumerate, big-bang. Classify every DIFF bug→fix OR
+  accepted→AD-NNN (never floating).
 - **Forbidden**: "fixing" an AD-001..009 accepted divergence (set print-order,
   `(class)` simple name AD-003, error Kind, **AD-008 Long-overflow auto-promote**,
   cljw hash AD-009 — see `.dev/accepted_divergences.yaml`); widening the NaN-box
@@ -43,8 +44,8 @@
 - **C1..C7 all DISCHARGED** (D-164/205/207/209/200/198/165; ADR-0076/77/78/79/80).
   D-210 persists ONLY as the standing `quality-loop floor: clj-parity` — drain
   any NEW cljw↔clj DIFF a future sweep surfaces (highest-value-first). No units left.
-- **Open floor bugs**: none. D-212/213/214/215 all DISCHARGED this session.
-  Next = self-selected exploratory sweep (see Resume contract).
+- **Open floor bugs**: none. D-212/213/214/215 + D-216 (format surface) all
+  DISCHARGED this session. Next = self-selected exploratory sweep (Resume contract).
 - **Decided, NOT bugs**: AD-008 (Long overflow past i64 auto-promotes per F-005;
   clj throws) · AD-009 (cljw hash ≠ JVM) · D-211 (`+'`/`*'` deferred, F-005-inverted).
 

@@ -9,6 +9,27 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-216"
+    status: |-
+      DISCHARGED 2026-06-03 (clj-parity sweep area, big-bang): the `format`
+      conversion/flag surface (`core.zig::formatFn`) driven to clj parity.
+      `%d`/`%x`/`%X`/`%o` now read via `expectI64` (accept heap-Long operands,
+      D-214 sibling) and `%x`/`%X`/`%o` render the UNSIGNED 64-bit value
+      (`%x -1`→"ffffffffffffffff"); `#` alternate-form flag adds 0x/0X/0 prefix.
+      Float sign/group flags (+/space/(/,) now apply to `%f`/`%e`/`%g` via a new
+      `writeFloatFlagged` post-processor (`%+.2f`→"+3.14", `%,.2f`→"1,234.50",
+      `%(.2f`→"(3.14)"). `%s` of nil → "null" (Java Formatter); `%S`/`%H`
+      upper-case; `%.Ns` truncates a string to N chars; `%h`/`%H` render the
+      hashCode in hex. `writeDecimal` widened i48→i64 (i64-MIN-safe magnitude).
+      Corpus `format_surface` (40 clj-matching); 19 new e2e in phase14_format.
+      `%h`/`%H` VALUE is cljw-native (AD-009, hash≠JVM) — conversion works, value
+      diverges (pinned in phase14_format, ledgered under AD-009). NOT a bug:
+      `%c` with a Long throws in both (Java rejects Long for %c; AD-007 error
+      Kind). Cross-ref D-214 (i48→i64 sibling) / AD-009 (%h value) / AD-007 / F-011.
+    category: "runtime"
+    barrier: |-
+      **`clojure.core/format` is missing ~14 flag/conversion behaviours** (exploratory clj-diff sweep, `lang/primitive/core.zig::formatFn`): (1) **`%d`/`%x`/`%X`/`%o` reject a heap-Long operand** — they read via the i48 `expectInteger`, so `(format "%d" 1000000000000000)` errors / clj "1000000000000000" (C7 interaction, same class as D-214; switch to `expectI64`). (2) **`%x`/`%X`/`%o` are not unsigned-64** — `(format "%x" -1)`→clj "ffffffffffffffff" (render `@bitCast(i64)`→u64). (3) **`#` alternate-form flag** — `%#x`→"0xff", `%#X`→"0XFF", `%#o`→"0100". (4) **sign/group flags ignored on floats** — `%+.2f`/`% .2f`/`%(.2f`/`%,.2f` on `%f`/`%e`/`%g` drop the +/space/paren/comma (currently render the bare magnitude). (5) **`%S`/`%H` uppercase conversions** unsupported (uppercase the `%s`/`%h` result). (6) **`%.Ns` string precision** (truncate to N chars) rejected by the prec-only-for-float guard. (7) **`%h`/`%H` hashcode** unsupported (`Integer.toHexString(x.hashCode())` → cljw hash in hex). (8) **`%s` of nil → "nil"** but clj "null" (Java Formatter renders null literally). NOT bugs: `%c` with a Long throws in BOTH (Java `%c` rejects Long; AD-007 error-Kind) — leave. Discharge = big-bang the whole `format` surface to 0 DIFF (clj_diff_sweep Discipline 2), corpus `format_surface`. Cross-ref D-214 (sibling i48→i64) / AD-007 (error Kind) / F-011. recall trigger: clj-parity format sweep.
+    last_reviewed: "2026-06-03"
   - id: "D-210"
     status: "STANDING FLOOR (quality-loop floor: clj-parity) — the clj-parity root-cause campaign C1..C7 is **COMPLETE 2026-06-03** (ROADMAP §9.2.P, ADR-0076, user-directed 2026-06-02): C1 (D-164) + C2 (D-205) + C3 (D-207) + C4 (D-209) + C6 (D-200) + C5 (D-198) + **C7 (D-165, ADR-0080) DISCHARGED**. The anchor now persists ONLY as the standing `quality-loop floor: clj-parity` that drains any NEW cljw↔clj DIFF a future sweep surfaces (drain highest-value-first, per CLAUDE.md Step 0.5 floor-drain). No remaining campaign units. C7 spun off **D-214** (bit-ops on heap-Long, pre-existing i48-only gap)."
     category: "runtime"

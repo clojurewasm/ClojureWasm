@@ -105,7 +105,7 @@ accepted:
     pin: "none — clj diverges (throws) by design; cljw's promote result is pinned by the D-165/overflow cycle's e2e (campaign C7, next session)"
   - id: "AD-009"
     summary: "`hash` / `.hashCode` values are cljw-native and differ from clj/JVM (only intra-cljw consistency is guaranteed)"
-    example: '(.hashCode "abc") => cljw -1277324294 / clj 96354 ; (hash "abc") => cljw -1277324294 / clj 74834163'
+    example: '(.hashCode "abc") => cljw -1277324294 / clj 96354 ; (hash "abc") => cljw -1277324294 / clj 74834163 ; (format "%h" "abc") => cljw "b3dd93fa" / clj "17862"'
     why: |-
       cljw has its own hash algorithm (no JVM `Object.hashCode` / Clojure
       `Murmur3` hasheq to reproduce). Hash values are explicitly impl-specific
@@ -114,6 +114,9 @@ accepted:
       equal, the HAMT key contract) which holds. `(.hashCode x)` is the
       Object-method fallback (D-207) delegating to cljw `hash` (`valueHash`),
       so it inherits the same cljw-native value. Integers happen to match clj
-      (`(hash 42)` == 1871679806 both); strings/keywords/etc. differ.
+      (`(hash 42)` == 1871679806 both); strings/keywords/etc. differ. The
+      `%h`/`%H` format conversion (D-216) renders that same hashCode in hex, so
+      it inherits the cljw-native value too (the conversion works; only the
+      value diverges).
     derives_from: "ADR-0059 (no-JVM: no Object.hashCode); F-011 (cljw-native internals; hash is impl-specific)"
-    pin: "test/diff/clj_corpus/object_methods.txt — `(= (.hashCode \"abc\") (hash \"abc\"))` → true (delegation locked) + `(integer? (.hashCode 42))` → true"
+    pin: "test/diff/clj_corpus/object_methods.txt — `(= (.hashCode \"abc\") (hash \"abc\"))` → true (delegation locked) + `(integer? (.hashCode 42))` → true; test/e2e/phase14_format.sh — `(format \"%h\" \"abc\")` produces lowercase hex (intra-cljw stable)"
