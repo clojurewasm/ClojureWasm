@@ -562,6 +562,17 @@ pub fn classPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     return td_mod.makeTypeDescriptorRef(rt, td);
 }
 
+/// `(class? x)` — true iff `x` is a class object, i.e. the `.type_descriptor`
+/// Value that `(class …)` returns (D-215). In JVM Clojure this is
+/// `(instance? Class x)`; cljw has no `java.lang.Class`, so the class object
+/// is a boxed TypeDescriptor ref (ADR-0059).
+pub fn classPred(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("__class?", args, 1, loc);
+    return Value.initBoolean(args[0].tag() == .type_descriptor);
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -576,6 +587,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "__satisfies?", .f = &satisfiesPrim },
     .{ .name = "__extends?", .f = &extendsPrim },
     .{ .name = "__class", .f = &classPrim },
+    .{ .name = "__class?", .f = &classPred },
     .{ .name = "__native-type", .f = &nativeType },
     .{ .name = "__defrecord!", .f = &defrecordPrim },
     .{ .name = "__deftype!", .f = &deftypePrim },

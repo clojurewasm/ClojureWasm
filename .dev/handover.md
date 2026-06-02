@@ -11,13 +11,15 @@
   ADR-0080, heap-boxed Long, landed this session). D-210 is now a STANDING
   `quality-loop floor: clj-parity` (drain any NEW sweep DIFF, no campaign units
   left). Loop is back in self-selected quality-floor-drain mode.
-- **First commit on resume MUST be: D-215** (`clojure.core/class?` missing —
-  `(class? String)`→cljw "Unable to resolve symbol"/clj true). Trivial: a builtin
-  returning true when the arg is what `(class …)` returns (a type-descriptor
-  ref); `(class? 5)`/`(class? nil)`→false. Register next to classPrim in
-  protocol.zig; corpus line. Then self-select the next clj-parity sweep area
-  (no floor bugs left after D-215). D-212/D-213/D-214 DONE this session.
-  Full rows: `.dev/debt.yaml`.
+- **No open floor bugs.** The clj-parity campaign + all spun-off floor bugs
+  (D-212/213/214/215) are DISCHARGED. **First action on resume: run a broad
+  exploratory `scripts/clj_diff_sweep.sh` over an unswept high-frequency surface
+  to find the next DIFF cluster, then big-bang it to zero** (clj_diff_sweep.md
+  Discipline 2 — enumerate the whole surface, drive to 0 DIFF, pin a corpus,
+  close). Candidate unswept areas: `clojure.string` full surface, `format`/
+  `printf` (`cl-format` subset), collection fns (group-by/frequencies/
+  partition family), regex. Pick highest-value, enumerate, big-bang. Classify
+  every DIFF bug→fix OR accepted→AD-NNN (never floating).
 - **Forbidden**: "fixing" an AD-001..009 accepted divergence (set print-order,
   `(class)` simple name AD-003, error Kind, **AD-008 Long-overflow auto-promote**,
   cljw hash AD-009 — see `.dev/accepted_divergences.yaml`); widening the NaN-box
@@ -41,8 +43,8 @@
 - **C1..C7 all DISCHARGED** (D-164/205/207/209/200/198/165; ADR-0076/77/78/79/80).
   D-210 persists ONLY as the standing `quality-loop floor: clj-parity` — drain
   any NEW cljw↔clj DIFF a future sweep surfaces (highest-value-first). No units left.
-- **Open floor bugs (next drains)**: D-215 (`class?` predicate, trivial). D-212
-  + D-213 + D-214 DISCHARGED this session; after D-215, self-select a new sweep area.
+- **Open floor bugs**: none. D-212/213/214/215 all DISCHARGED this session.
+  Next = self-selected exploratory sweep (see Resume contract).
 - **Decided, NOT bugs**: AD-008 (Long overflow past i64 auto-promotes per F-005;
   clj throws) · AD-009 (cljw hash ≠ JVM) · D-211 (`+'`/`*'` deferred, F-005-inverted).
 

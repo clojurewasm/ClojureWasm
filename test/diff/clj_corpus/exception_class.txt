@@ -12,3 +12,27 @@
 ;;=> :ok
 (try (nth [] 5) (catch IndexOutOfBoundsException e :ok))
 ;;=> :ok
+(class? (class 5))
+;;=> true
+(class? (class "x"))
+;;=> true
+(class? (class :kw))
+;;=> true
+(class? (class (ex-info "m" {})))
+;;=> true
+(class? String)
+;;=> true
+(class? Long)
+;;=> true
+(class? 5)
+;;=> false
+(class? "x")
+;;=> false
+(class? nil)
+;;=> false
+(class? :kw)
+;;=> false
+(class? [1 2])
+;;=> false
+(mapv class? [5 (class 5) "x" nil])
+;;=> [false true false false]

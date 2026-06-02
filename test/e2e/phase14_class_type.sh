@@ -132,4 +132,11 @@ assert_eq 'bd_rem'       "$("$BIN" -e '(rem 1.50M 0.7M)' 2>/dev/null | tail -1)"
 assert_eq 'bd_mod'       "$("$BIN" -e '(mod 7.5M 2)' 2>/dev/null | tail -1)" '1.5M'
 "$BIN" -e '(/ 1M 3)' >/dev/null 2>&1 && fail 'bd_div_nonterm: expected error' || true
 
-echo "OK — phase14_class_type (50 cases) green"
+# --- class? predicate (D-215): true only for a class object ---
+assert_eq 'classp_cls'   "$("$BIN" -e '(class? (class 5))' 2>/dev/null | tail -1)" 'true'
+assert_eq 'classp_sym'   "$("$BIN" -e '(class? String)' 2>/dev/null | tail -1)" 'true'
+assert_eq 'classp_int'   "$("$BIN" -e '(class? 5)' 2>/dev/null | tail -1)" 'false'
+assert_eq 'classp_nil'   "$("$BIN" -e '(class? nil)' 2>/dev/null | tail -1)" 'false'
+assert_eq 'classp_str'   "$("$BIN" -e '(class? "x")' 2>/dev/null | tail -1)" 'false'
+
+echo "OK — phase14_class_type (55 cases) green"

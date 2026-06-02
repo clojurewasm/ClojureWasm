@@ -1386,6 +1386,9 @@
 ;; is true and a class is a valid map key (group-by class).
 (def class (fn* [x] (rt/__class x)))
 
+;; `(class? x)` — true iff x is a class object (what (class …) returns).
+(def class? (fn* [x] (rt/__class? x)))
+
 ;; `(type x)` — (:type (meta x)) when present, else (class x).
 (def type (fn* [x] (or (:type (meta x)) (class x))))
 
