@@ -217,12 +217,6 @@ active:
     barrier: |-
       ADR-0011 host comptime introspection mechanism (Zig has no directory `@import`; need explicit aggregator pattern) | task 4.20 landing + Phase 5 host first wave
     last_reviewed: "2026-05-28"
-  - id: "D-018"
-    status: "Discharged (7f70047)"
-    category: "tooling"
-    barrier: |-
-      task 4.10 `cases.yaml` parser in Zig (Zig stdlib has no YAML reader; choose JSON-like subset or hand-rolled scanner). Resolution: 4.10 lands `src/eval/evaluator.zig::compare` + `src/lang/diff_test.zig` with hardcoded Zig test blocks; no YAML parser required. Re-evaluate if the case set grows past what Zig test blocks accommodate cleanly. | (none — task 4.10)
-    last_reviewed: "2026-05-23"
   - id: "D-019"
     status: "Phase 5+ continuous"
     category: "docs"
@@ -973,9 +967,11 @@ discharged:
       process | **Execute the remaining tech-debt-consolidation wiring** (`.dev/tech_debt_consolidation.md`): (1) re-anchor M2 dead-Phase barriers — **the high-value Phase-7.x semantic cluster D-086/087/088/090/091 is DONE 2026-05-31 (Barrier → `quality-loop floor:`)**; remaining = the lower-value Lens C audit/cleanup/reserve set (D-016/019/023/024/041/042/043) — re-anchor to `quality-loop floor` / Phase-15 entry in a dedicated housekeeping unit (deferred from the session-clear to avoid risky edits to the wide-format rows); (2) rewrite M3 weak barriers (D-012/015/022/044, D-038/047 externals); (3) M5 housekeeping — move ~22 inline-DISCHARGED rows into `## Discharged`, fix the D-018 duplicate, flip D-064, fix stale PROVISIONAL `rename-keys` (set.clj:73 — DRAINED 2026-06-02: marker removed, `feature_deps#clojure.set/rename-keys`→`landed`, nth form kept per map-invert precedent) + stale comments (bootstrap.zig D-058; test comments concat/mapcat-seqs + project/rename-meta); (4) investigate §B suspects (namespace-registry `user`-dup + phantom `example` ns, VM-DEFER reactivation compiler.zig:346/516, transducer single-arity / phantom `D-NEW-2`). Per-item detail + proposed barriers in the consolidation doc + `private/notes/audit-lens{A..E}-*.md`. | quality-loop floor: debt-hygiene (drain alongside the correctness floor; re-run the 5-lens audit each Phase boundary) | 2026-05-31
 
 conventions: |-
-  - New debt: grep `.dev/debt.md` for class-overlap before adding (per `.claude/rules/debt_dedup.md`).
+  - Structure: two top-level lists — `active:` and `discharged:`. Active entries carry id / status / category / barrier (+ optional quality_floor / last_reviewed); discharged entries carry id / discharged_at / resolution. Edit as YAML (no Markdown table to align).
+  - New debt: grep `.dev/debt.yaml` for class-overlap before adding (per `.claude/rules/debt_dedup.md`).
+  - Discharge: move the entry from `active:` to `discharged:` (do not leave an inline-discharged copy under `active:`).
   - Status `blocked-by:` barrier text must be a present-tense, testable predicate. NO vague hopes.
-  - Last reviewed must be updated when re-evaluating; stale (>14 days) entries trigger narrow audit.
+  - last_reviewed must be updated when re-evaluating; stale (>14 days) entries trigger narrow audit.
   - Debt entries reference ADRs by short ID (e.g., `ADR-0010`) without filesystem paths.
-  - Open questions and external blockers live here as `D-NNN` rows. `.dev/handover.md` names them by ID only (framing per `.claude/rules/handover_framing.md` — handover is a driving doc, not a deliberation doc).
+  - Open questions and external blockers live here as `D-NNN` entries. `.dev/handover.md` names them by ID only (framing per `.claude/rules/handover_framing.md` — handover is a driving doc, not a deliberation doc).
 

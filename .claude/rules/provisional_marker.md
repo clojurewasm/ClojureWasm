@@ -119,8 +119,8 @@ The discharging commit's diff shows:
 - `feature_deps.yaml` entry's `provisional_markers:` list
   emptied (or the whole entry's `status:` flipped from
   `provisional` to `landed`).
-- `.dev/debt.yaml` row moved from `## Active` to `## Discharged`
-  (or a status update on the row).
+- `.dev/debt.yaml` entry moved from the `active:` list to the
+  `discharged:` list (or a status update on the entry).
 
 The hook (`scripts/check_provisional_sync.sh`) verifies all
 three edits ride the same commit.

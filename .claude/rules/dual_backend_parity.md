@@ -125,8 +125,8 @@ The discharging commit's diff shows:
 - The matching `feature_deps.yaml` entry's `status:` flips from
   `provisional` to `landed`, and `provisional_markers:` list is
   emptied.
-- The matching `.dev/debt.yaml` row's barrier predicate flips to
-  satisfied (or the row moves to `## Discharged`).
+- The matching `.dev/debt.yaml` entry's barrier predicate flips to
+  satisfied (or the entry moves to the `discharged:` list).
 - ≥1 differential test case added covering the newly-landed VM
   arm (per contract point 4).
 
