@@ -5,66 +5,78 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (D-200 UUID value type + D-204 name↔Tag SSOT on
-  `cw-from-scratch`). Gate green on `vm` (Mac 205; ADR-0070 / F-012). debt
-  ledger is **`.dev/debt.yaml`** (structured YAML).
-- **First commit on resume MUST be: D-200's last piece — the `#inst` /
-  `java.util.Date` value-type ADR + impl.** This is a GREENFIELD (unlike
-  `#uuid`, there is NO Date value type, NO `clojure.instant.clj` peer, NO
-  ISO-8601 parser today — `runtime/time/instant.zig` + `java.util.Date` /
-  `java.time.Instant` surfaces exist but no reader-literal value). Do a Step 0
-  survey of `clojure.instant`'s grammar (`~/Documents/OSS/clojure/src/clj/
-  clojure/instant.clj` L100-274) + the existing `runtime/time/` impl, then an
-  ADR + mandatory Devil's-advocate fork deciding the Date representation
-  (mirror ADR-0074's real-type decision: a `.inst`/Date heap value vs
-  string/long). Register `#inst` in the root `*data-readers*` (sibling to the
-  `uuid` reader landed this session) + add `inst?` / `inst-ms`. **Verify via
-  e2e** (top-level forms) — `clj_diff_sweep` can NOT batch reader/define forms.
-- **Lighter alternative if Date is deferred**: the generic `tagged_literal`
-  (NaN-box slot 24, reserved-unused) carrier as the unknown-tag FALLBACK —
-  changes ADR-0073's raise contract to a non-throwing carrier + adds
-  `tagged-literal` / `tagged-literal?`. Its own decision; clj-grounded.
-- **Forbidden**: re-sweeping COVERAGE.md § Swept areas wholesale; seizing the
-  F-003 structural-deferred rows (D-164 empty≡nil, D-165 i48→i64, D-086/088/
-  178/179) incrementally — big-bang, user-gated; re-opening landed work
-  (git log = SSOT); perf without a Release `scripts/perf.sh` number.
+- **HEAD**: see `git log` (`.matches` D-206 part 1 on `cw-from-scratch`). Gate
+  green on `vm` (Mac 205; ADR-0070 / F-012). debt ledger is **`.dev/debt.yaml`**.
+- **First commit on resume MUST be: D-206 — the regex/collection
+  `java.lang.String` methods** (`.replaceAll` / `.replaceFirst` / `.split` /
+  `.toCharArray`; `.matches` already landed). DECIDE the structural choice FIRST
+  (recorded in the D-206 row): the regex-replace (`$1` backref `expandReplacement`)
+  + split-by-regex impls live in `lang/primitive/string.zig` (Layer 2) but
+  `runtime/java/lang/String.zig` is runtime/ (Layer 0, can't import lang/) — so
+  either (a) relocate that impl to a NEUTRAL `runtime/regex/` leaf (F-009-clean,
+  shared with clojure.string), or (b) register the String regex-methods from
+  lang/ into the `.string` descriptor `method_table` (needs a merge past the
+  idempotent guard). `.split`/`.toCharArray` also carry an array-vs-vector
+  return-type call. clj: `(.replaceAll "abc" "(.)" "$1$1")`→`"aabbcc"`,
+  `(vec (.split "a,b,c" ","))`→`["a" "b" "c"]`. **Verify via the
+  `clj_diff_sweep` harness** (these are value-exprs). Then the other
+  structural-deferred rows in any order.
+- **Forbidden**: re-sweeping the COVERAGE.md § Swept areas wholesale (java.lang
+  scalar+String-simple + set/walk/numeric-keys are DONE, corpus-backed); seizing
+  the F-003 structural-deferred rows (D-164 empty≡nil, D-165, D-086/088/178/179)
+  incrementally — big-bang, user-gated; re-opening landed work (git log = SSOT);
+  forcing a to-be-unwound representation for #inst/D-205 (both structurally
+  deferred — see below); perf without a Release `scripts/perf.sh` number.
 
-## Just landed (git log = SSOT; full rows in `.dev/debt.yaml`)
+## Just landed (this session; git log = SSOT, full rows in `.dev/debt.yaml`)
 
-- **D-203 / ADR-0072** extend-type/extend-protocol over native/java classes
-  (analyzer native-class symbol resolution → `nativeDescriptor(tag)` identity).
-- **D-200 / ADR-0073** EDN tagged-literal reader infra: `#tag form` →
-  `FormData.tagged` → `formToValue` data-reader dispatch over `*data-readers*`
-  / `*default-data-reader-fn*` (`^:dynamic` Vars, BindingFrame-honoured) +
-  `reader_tag_unknown` clj-parity raise; `clojure.edn/read-string` 2-arity
-  `[opts s]` (`:readers`/`:default`/`:eof`).
-- **D-200 cycle 3 / ADR-0074** `#uuid` reads to a REAL `.uuid` heap value
-  (slot 31), round-trips via `pr-str`, `uuid?`/`class`/`=`; `random-uuid` /
-  `parse-uuid` / `java.util.UUID/randomUUID` migrated to it.
-- **D-204** name↔Tag SSOT consolidation (`class_name.fqcnForTag`); fixed
-  `(class #"x")`→`Pattern` + `(instance? clojure.lang.BigInt 1N)` etc.
+- **Reader-literal family**: ADR-0073 tagged-literal infra + edn 2-arity;
+  ADR-0074 `#uuid` real value type; ADR-0075 `TaggedLiteral` (slot 24). D-200
+  cycles 1-4. **D-203/ADR-0072** extend-type over native/java classes.
+  **D-204** name↔Tag SSOT (`class_name.fqcnForTag`).
+- **Key-equality bug fixes**: uuid/tagged-literal AND BigInt/Ratio as map keys /
+  set elements (the rt-free `keyEqValue` lacked numeric + value-type arms; also
+  fixed non-deterministic numeric `valueHash`). D-205 part 1.
+- **java.lang surface sweep** (~20 methods, corpus-backed clj-parity):
+  Character (isLetterOrDigit/isUpperCase/isLowerCase/getNumericValue/forDigit),
+  Integer/Long (compare/max/min), Double (toString/valueOf/compare/max/min/sum) +
+  Boolean (logicalAnd/Or/Xor), String simple (lastIndexOf/isBlank/strip/
+  equalsIgnoreCase/codePointAt/compareTo + indexOf-int) + `.matches`.
+- Scaffolding audit (0 block; W-009/W-010 tracked). doc-lie fixes.
 
-## Remaining (pointers — full text in `.dev/debt.yaml` + COVERAGE.md)
+## Structurally-deferred (focused-cycle items; full analysis in `.dev/debt.yaml`)
 
-- **D-200 (still open)**: `#inst`/Date value-type (next) + the generic
-  `tagged_literal` fallback carrier.
-- **Structural-deferred (F-003, big-bang, user-gated)**: D-164 empty≡nil
-  (highest-leverage single fix), D-165 i48→i64, D-086/088/178/179, D-105.
-- **v0.1.0 closeout**: Phase 14.14 — exit-smoke + `phase_at_least_14` flip +
-  tag (D-047 unblocks ≥2^64 on Linux).
-- **Perf §9.2.S CLOSED**: re-open ONLY with a Release `scripts/perf.sh` number.
+- **D-206** regex/collection String methods (next — see Resume contract).
+- **#inst/Date** (D-200 last piece): NO free NaN-box slot (all 64 named) → a
+  dedicated `.date` tag needs a USER F-004 decision OR D-048 host_instance;
+  typed_instance fallback is contested. NOT a quick `#uuid` mirror.
+- **D-205 BigDecimal keys**: rt-bound (numeric `=` needs rt-aware scale
+  alignment; rt-free keyEqValue can't — like lazy/range keys).
+- **D-207 Object methods** (`.toString`/`.equals`/`.hashCode`/`.getClass`): need
+  a dispatch-level Object fallback; LOW priority (idiomatic clj uses str/=/etc.).
 
 ## Process discipline (SSOT = memory + rules; do NOT re-expand here)
 
-- Gate: `timeout 1800 bash test/run_all.sh --serial-e2e` (the -P8 pool times
-  out under load — memory `gate-parallel-e2e-timeout`). Never poll a bg gate.
-  `clj -M -e` → `timeout 20`-wrap + bound infinite seqs. Speed ONLY via
-  `scripts/perf.sh` (Release). Tool channel corrupts under host load — verify
+- Gate: `timeout 1800 bash test/run_all.sh --serial-e2e` (~5min actual; 1800 is
+  headroom — the -P8 pool over-runs under load, memory `gate-parallel-e2e-timeout`).
+  Never poll a bg gate. `clj -M -e` → `timeout 20` + bound infinite seqs. Speed
+  ONLY via `scripts/perf.sh`. Tool channel corrupts under host load — verify
   greps via Read / `bash grep` (memory `tool_channel_corrupts_under_load`).
 
 ## Cold-start reading order (tracked-only)
 
-handover → `test/diff/clj_corpus/COVERAGE.md` (sweep state) +
-`.claude/rules/clj_diff_sweep.md` → `.dev/debt.yaml` (open: D-200) →
-CLAUDE.md (§ Project spirit + Autonomous Workflow + The only stop) →
-`.dev/project_facts.md` (F-002/004/009/010/011/012) → `.dev/principle.md`.
+handover → `test/diff/clj_corpus/COVERAGE.md` + `.claude/rules/clj_diff_sweep.md`
+→ `.dev/debt.yaml` (open: D-206/D-205/D-207/D-200/D-198) → CLAUDE.md (§ Project
+spirit + Autonomous Workflow + The only stop) → `.dev/project_facts.md`
+(F-002/004/009/010/011/012) → `.dev/principle.md`.
+
+## Stopped — user requested
+
+User instruction (2026-06-02): "OK、では、コンテキストウィンドウがおおきくなって
+きたので、かえってきて対処が済んだら、最後にクリーンセッションから、continue
+できるか配線や参照チェーンを監査して、止めてください". DONE: the in-flight `.matches`
+work landed (gate green, pushed); resume wiring audited — cold-start files all
+present, `check_debt_id_refs` resolves all cited IDs, scaffolding audit 0-block,
+and the stale `#inst` next-task pointer was repointed to D-206 above. This stop
+does NOT carry across sessions — the next `/continue` resumes the loop at the
+Resume contract's D-206 task (CLAUDE.md § The only stop).
