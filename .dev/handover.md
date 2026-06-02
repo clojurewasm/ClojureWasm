@@ -6,18 +6,18 @@
 ## Resume contract
 
 - **HEAD**: see `git log` (VM-parity + VM-default-flip commits on
-  `cw-from-scratch`). Mac gate green (200) — **now on `vm` (the production
-  default, flipped 2026-06-02; ADR-0070 / F-012 realised)**.
-- **First commit on resume MUST be: ubuntunote (Linux) verification of the
-  vm-default gate** — `timeout 1800 bash scripts/run_remote_ubuntu.sh` per
-  ADR-0049; the flip changed the production backend, so confirm 200 pass on
-  Linux x86_64 before any v0.1.0-tag work (D-047-class platform deltas live
-  here). If ubuntunote is unreachable, fall back to the **standing F-011
-  sweep** (`scripts/clj_diff_sweep.sh`, `test/diff/clj_corpus/COVERAGE.md`
-  § Next-sweep → `--corpus`). Second tracked follow-up (not urgent): repurpose
-  `scripts/check_vm_parity.sh` to run e2e on the NON-default backend
-  (tree-walk oracle) so an oracle-only rendering regression can't hide behind
-  the vm-default gate (on-demand / Phase-boundary, ADR-0049 cost concern).
+  `cw-from-scratch`). Gate green on `vm` (the production default, flipped
+  2026-06-02; ADR-0070 / F-012 realised): Mac 200, **ubuntunote Linux x86_64
+  199 verified** (1-PASS delta = Mac-only zlinter skip, expected). F-012 is
+  cross-platform confirmed.
+- **First commit on resume MUST be: the standing F-011 differential sweep**
+  (`scripts/clj_diff_sweep.sh`, `test/diff/clj_corpus/COVERAGE.md` § Next-sweep
+  → `--corpus`) — the operating mode now that D-196 / F-012 is closed. Tracked
+  non-urgent follow-ups (not the next commit): (a) repurpose
+  `scripts/check_vm_parity.sh` to run e2e on the NON-default backend (tree-walk
+  oracle) so an oracle-only rendering regression can't hide behind the
+  vm-default gate (on-demand / Phase-boundary, ADR-0049 cost concern); (b)
+  v0.1.0-tag closeout (Phase 14.14).
 - **Forbidden this session**: re-sweeping the COVERAGE.md § Swept areas
   wholesale; seizing the F-003 structural-deferred rows (D-164 empty≡nil,
   D-165 i48→i64, D-086/088/178/179) incrementally — those are big-bang,
