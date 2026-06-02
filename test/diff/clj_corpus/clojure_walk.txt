@@ -1,0 +1,38 @@
+(clojure.walk/postwalk identity {:a 1 :b 2})
+;;=> {:a 1, :b 2}
+(clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) [1 2 3])
+;;=> [2 3 4]
+(clojure.walk/postwalk (fn [x] (if (number? x) (* x 10) x)) {:a 1 :b [2 3]})
+;;=> {:a 10, :b [20 30]}
+(clojure.walk/prewalk identity [1 [2 [3]]])
+;;=> [1 [2 [3]]]
+(clojure.walk/prewalk (fn [x] (if (vector? x) (vec (reverse x)) x)) [1 2 3])
+;;=> [3 2 1]
+(clojure.walk/walk inc (partial reduce +) [1 2 3])
+;;=> 9
+(clojure.walk/keywordize-keys {"a" 1 "b" 2})
+;;=> {:a 1, :b 2}
+(clojure.walk/keywordize-keys {"a" {"b" 1}})
+;;=> {:a {:b 1}}
+(clojure.walk/keywordize-keys {"a" [{"b" 1}]})
+;;=> {:a [{:b 1}]}
+(clojure.walk/keywordize-keys {})
+;;=> {}
+(clojure.walk/stringify-keys {:a 1 :b 2})
+;;=> {"a" 1, "b" 2}
+(clojure.walk/stringify-keys {:a {:b 1}})
+;;=> {"a" {"b" 1}}
+(clojure.walk/prewalk-replace {1 :one 2 :two} [1 2 3])
+;;=> [:one :two 3]
+(clojure.walk/prewalk-replace {:a :x} {:a 1 :nested {:a 2}})
+;;=> {:x 1, :nested {:x 2}}
+(clojure.walk/postwalk-replace {1 :one} [1 [1 2] 1])
+;;=> [:one [:one 2] :one]
+(clojure.walk/postwalk-replace {:a :x :b :y} {:a 1 :b 2})
+;;=> {:x 1, :y 2}
+(clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) '(1 2 3))
+;;=> (2 3 4)
+(clojure.walk/keywordize-keys {"a" 1 :b 2})
+;;=> {:a 1, :b 2}
+(clojure.walk/postwalk-replace {[1 2] :pair} [[1 2] [3 4]])
+;;=> [:pair [3 4]]

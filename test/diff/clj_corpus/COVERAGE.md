@@ -271,6 +271,11 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   set-returning ops — the known non-bug (clj_diff_sweep.md), so those lines are
   verified-at-parity-modulo-order but intentionally NOT in the regression
   corpus (the deterministic-output ops are).
+- **clojure.walk** — `postwalk`/`prewalk` (identity + transform fns over
+  nested map/vector/list/set), `walk` (inner+outer), `keywordize-keys` /
+  `stringify-keys` (nested + mixed), `prewalk-replace` / `postwalk-replace`
+  (incl. a vector key) all at parity. Corpus `clojure_walk` (19 golden); the
+  only DIFF is the same set print-order non-bug.
 
 ## Structural-deferred (F-003 — big-bang, do NOT seize incrementally)
 
