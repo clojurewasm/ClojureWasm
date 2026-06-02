@@ -440,6 +440,7 @@ run_step "e2e_phase14_defn_meta"             "bash test/e2e/phase14_defn_meta.sh
 run_step "e2e_phase14_empty_list"            "bash test/e2e/phase14_empty_list.sh"
 run_step "e2e_phase14_object_methods"        "bash test/e2e/phase14_object_methods.sh"
 run_step "e2e_phase14_map_entry"             "bash test/e2e/phase14_map_entry.sh"
+run_step "e2e_phase14_inst_literal"          "bash test/e2e/phase14_inst_literal.sh"
 run_step "e2e_phase14_doc"                   "bash test/e2e/phase14_doc.sh"
 run_step "e2e_phase14_coll_helpers"          "bash test/e2e/phase14_coll_helpers.sh"
 run_step "e2e_phase14_map_helpers"           "bash test/e2e/phase14_map_helpers.sh"

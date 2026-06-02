@@ -53,6 +53,7 @@ pub const Code = enum {
     token_invalid,
     reader_tag_unknown,
     uuid_string_invalid,
+    inst_string_invalid,
     integer_literal_invalid,
     float_literal_invalid,
     string_unterminated,
@@ -374,6 +375,10 @@ pub fn entry(comptime code: Code) Entry {
         .uuid_string_invalid => .{
             .kind = .syntax_error, .phase = .parse,
             .template = "Invalid UUID string: {[s]s}",
+        },
+        .inst_string_invalid => .{
+            .kind = .syntax_error, .phase = .parse,
+            .template = "Invalid instant (#inst) string: {[s]s}",
         },
         .integer_literal_invalid => .{
             .kind = .number_error, .phase = .parse,

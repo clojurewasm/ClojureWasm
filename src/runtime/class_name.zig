@@ -98,6 +98,7 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "java.lang.Number", "Number" },
     .{ "java.util.regex.Pattern", "Pattern" },
     .{ "java.util.UUID", "UUID" },
+    .{ "java.util.Date", "Date" },
     .{ "clojure.lang.BigInt", "BigInt" },
     .{ "clojure.lang.Ratio", "Ratio" },
     .{ "java.math.BigDecimal", "BigDecimal" },

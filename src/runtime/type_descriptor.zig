@@ -80,6 +80,12 @@ pub const TypeDescriptor = struct {
     /// GC-collected) and the descriptor is per-Runtime, so this never
     /// dangles and needs no GC trace edge.
     ref_cache: ?Value = null,
+    /// Reader-tag print form for a host value type (ADR-0079): when
+    /// non-null, the printer emits `#<print_tag> "<body>"` instead of the
+    /// default `#Name[..]`. Today only `java.util.Date` (`print_tag =
+    /// "inst"`, body = the epoch-ms field formatted as the canonical
+    /// `#inst` ISO string). `null` for every other type.
+    print_tag: ?[]const u8 = null,
 
     pub const FieldEntry = struct {
         name: []const u8,

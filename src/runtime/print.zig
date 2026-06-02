@@ -53,6 +53,7 @@ const regex_mod = @import("regex/value.zig");
 const uuid_mod = @import("uuid.zig");
 const tagged_literal_mod = @import("tagged_literal.zig");
 const td_mod = @import("type_descriptor.zig");
+const instant_mod = @import("time/instant.zig");
 const lazy_seq_mod = @import("lazy_seq.zig");
 const range_collection = @import("collection/range.zig");
 const env_mod = @import("env.zig");
@@ -462,6 +463,17 @@ fn printBigDecimal(w: *Writer, v: Value) Writer.Error!void {
 
 fn printTypedInstance(w: *Writer, v: Value) Writer.Error!void {
     const inst = v.decodePtr(*const td_mod.TypedInstance);
+    // Reader-tag host value (ADR-0079): emit `#<tag> "<iso>"`. Today only
+    // `#inst` (java.util.Date) — body = the epoch-ms field 0 as the
+    // canonical ISO string. Descriptor-driven (no rt, no surface import).
+    if (inst.descriptor.print_tag) |tag| {
+        if (inst.field_count >= 1 and inst.fields()[0].tag() == .integer) {
+            var buf: [40]u8 = undefined;
+            const iso = instant_mod.formatInstantMillis(&buf, inst.fields()[0].asInteger());
+            try w.print("#{s} \"{s}\"", .{ tag, iso });
+            return;
+        }
+    }
     const fqcn = inst.descriptor.fqcn orelse "<anonymous>";
     // A record prints map-style `#Name{:k v, …}` from its declared field
     // layout (D-190 / ADR-0068). The `user.`-ns prefix JVM emits is deferred

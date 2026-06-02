@@ -38,6 +38,7 @@ const test_assert_prim = @import("primitive/test_assert.zig");
 const higher_order = @import("primitive/higher_order.zig");
 const error_prim = @import("primitive/error.zig");
 const uuid = @import("primitive/uuid.zig");
+const inst = @import("primitive/inst.zig");
 const file_io_prim = @import("primitive/file_io.zig");
 const regex_prim = @import("primitive/regex.zig");
 const string_prim = @import("primitive/string.zig");
@@ -83,6 +84,7 @@ pub fn registerAll(env: *Env) !void {
     try higher_order.register(env, rt_ns, clojure_core_ns);
     try error_prim.register(env, rt_ns);
     try uuid.register(env, rt_ns);
+    try inst.register(env, rt_ns);
     try file_io_prim.register(env, rt_ns);
     try regex_prim.register(env, rt_ns);
 

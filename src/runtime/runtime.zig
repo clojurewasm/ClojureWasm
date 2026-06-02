@@ -204,6 +204,12 @@ pub const Runtime = struct {
     /// at a single indexed load; no hashing.
     native_descriptors: [70]?*TypeDescriptor = .{null} ** 70,
 
+    /// Per-Runtime `java.util.Date` value descriptor (D-200 / ADR-0079;
+    /// `#inst` / Date is a no-slot `.typed_instance`). Lazily allocated on
+    /// `gc.infra` by `runtime/time/date.zig::descriptorOf`, freed in
+    /// `deinit`. `null` until the first Date value is built.
+    date_descriptor: ?*TypeDescriptor = null,
+
     /// Lazy-init access to the per-Tag default descriptor. On first
     /// call for a given tag, allocates a TypeDescriptor on
     /// `rt.gc.infra` with `fqcn = nativeFqcnFor(tag)` and empty
@@ -315,6 +321,8 @@ pub const Runtime = struct {
         // Free the interned empty-list singleton (gc.infra-allocated, not
         // GC-swept — D-164). Idempotent / no-op if never materialised.
         @import("collection/list.zig").deinitEmptyList(self);
+        // Free the per-Runtime Date descriptor (gc.infra — D-200/ADR-0079).
+        @import("time/date.zig").deinitDescriptor(self);
 
         // Free per-Tag native descriptors first (their method_table
         // slice was re-allocated on rt.gc.infra by extendTypeWithImpls

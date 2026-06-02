@@ -39,6 +39,7 @@ const error_context = @import("../runtime/error/context.zig");
 const map_collection = @import("../runtime/collection/map.zig");
 const symbol_mod = @import("../runtime/symbol.zig");
 const uuid_prim = @import("primitive/uuid.zig");
+const inst_prim = @import("primitive/inst.zig");
 
 /// One entry in the bootstrap file table. `label` is the synthetic
 /// source label the renderer attributes to errors raised while
@@ -211,10 +212,12 @@ pub fn setupCore(arena: std.mem.Allocator, rt: *Runtime, env: *Env, macro_table:
 /// `referAll`) so the unqualified `*data-readers*` is referred into `user`.
 fn registerDataReaders(rt: *Runtime, env: *Env) !void {
     const core = try env.findOrCreateNs("clojure.core");
-    // Root table carries the built-in `#uuid` reader (ADR-0074) so it works
-    // without a `binding`; `#inst` joins when its value-type ADR lands.
+    // Root table carries the built-in `#uuid` (ADR-0074) + `#inst` (ADR-0079,
+    // → java.util.Date) readers so both work without a `binding`.
     const sym_uuid = try symbol_mod.intern(rt, null, "uuid");
-    const root_readers = try map_collection.assoc(rt, map_collection.empty(), sym_uuid, Value.initBuiltinFn(&uuid_prim.uuidReader));
+    var root_readers = try map_collection.assoc(rt, map_collection.empty(), sym_uuid, Value.initBuiltinFn(&uuid_prim.uuidReader));
+    const sym_inst = try symbol_mod.intern(rt, null, "inst");
+    root_readers = try map_collection.assoc(rt, root_readers, sym_inst, Value.initBuiltinFn(&inst_prim.instReader));
     const dr = try env.intern(core, "*data-readers*", root_readers, null);
     dr.flags.dynamic = true;
     rt.data_readers_var = dr;

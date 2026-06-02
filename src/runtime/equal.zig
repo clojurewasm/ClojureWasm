@@ -39,6 +39,7 @@ const big_int = @import("numeric/big_int.zig");
 const ratio = @import("numeric/ratio.zig");
 const big_decimal = @import("numeric/big_decimal.zig");
 const td_mod = @import("type_descriptor.zig");
+const date_mod = @import("time/date.zig");
 
 const NumCat = enum { integer, floating, ratio, decimal, none };
 
@@ -510,6 +511,12 @@ pub fn valueEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
 /// record is never `=` to a plain map: the caller's same-tag gate already
 /// excludes the map tags before this arm.
 fn typedInstanceEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
+    // Date values (D-200 / ADR-0079) compare by epoch-ms — a native
+    // typed_instance otherwise defaults to identity `=` (the arm below),
+    // which would make two equal `#inst` allocations unequal.
+    if (date_mod.isDate(rt, a) and date_mod.isDate(rt, b)) {
+        return date_mod.epochMsOf(a) == date_mod.epochMsOf(b);
+    }
     const ia = a.decodePtr(*const td_mod.TypedInstance);
     const ib = b.decodePtr(*const td_mod.TypedInstance);
     if (ia.descriptor != ib.descriptor) return false;
