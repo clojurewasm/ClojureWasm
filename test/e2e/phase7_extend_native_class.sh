@@ -109,4 +109,21 @@ EOF
 ) || fail "case8: non-zero exit ($got)"
 assert_eq 'backend_parity' "$(last_line "$got")" 'OK 81'
 
-echo "OK — phase7_extend_native_class (8 cases) green"
+# --- Case 9 (D-204): numeric-tower classes resolve too — extend-type BigInt ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol P (q [n]))
+(extend-type BigInt P (q [n] (* n 2)))
+(q 5N)
+EOF
+) || fail "case9: non-zero exit ($got)"
+assert_eq 'extend_type_bigint' "$(last_line "$got")" '10N'
+
+# --- Case 10 (D-204): instance? over the numeric tower (was "not a known class") ---
+assert_eq 'instance_bigint'  "$("$BIN" -e '(instance? clojure.lang.BigInt 1N)')" 'true'
+assert_eq 'instance_ratio'   "$("$BIN" -e '(instance? clojure.lang.Ratio 1/2)')" 'true'
+assert_eq 'instance_bigdec'  "$("$BIN" -e '(instance? java.math.BigDecimal 1M)')" 'true'
+
+# --- Case 11 (D-204): `(class #"x")` is Pattern, not the raw tag name ---
+assert_eq 'class_regex_pattern' "$("$BIN" -e '(class #"x")')" 'Pattern'
+
+echo "OK — phase7_extend_native_class (11 cases) green"

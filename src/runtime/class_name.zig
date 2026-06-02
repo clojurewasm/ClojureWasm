@@ -79,6 +79,9 @@ const NATIVE_ENTRIES = [_]NativeEntry{
     .{ .name = "PersistentHashSet", .tag = .hash_set },
     .{ .name = "Pattern", .tag = .regex },
     .{ .name = "UUID", .tag = .uuid },
+    .{ .name = "BigInt", .tag = .big_int },
+    .{ .name = "Ratio", .tag = .ratio },
+    .{ .name = "BigDecimal", .tag = .big_decimal },
 };
 
 /// FQCN → simple normalisation for native class names. Throwable
@@ -94,6 +97,9 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "java.lang.Number", "Number" },
     .{ "java.util.regex.Pattern", "Pattern" },
     .{ "java.util.UUID", "UUID" },
+    .{ "clojure.lang.BigInt", "BigInt" },
+    .{ "clojure.lang.Ratio", "Ratio" },
+    .{ "java.math.BigDecimal", "BigDecimal" },
     .{ "clojure.lang.Keyword", "Keyword" },
     .{ "clojure.lang.Symbol", "Symbol" },
     .{ "clojure.lang.PersistentList", "PersistentList" },
@@ -128,6 +134,19 @@ pub fn nativeTagFor(name: []const u8) ?Tag {
     const simple = normalizeClassName(name);
     inline for (NATIVE_ENTRIES) |e| {
         if (std.mem.eql(u8, e.name, simple)) return e.tag;
+    }
+    return null;
+}
+
+/// Reverse of `nativeTagFor`: the canonical class name for a native `Tag`,
+/// or null if the Tag is not a `NATIVE_ENTRIES` class. This is the SSOT for
+/// the name↔Tag relation (D-204): `runtime.nativeDescriptor`'s fqcn derives
+/// from it, so `(class x)` and `(instance? Name x)` cannot drift apart (they
+/// did pre-D-204: `nativeFqcnFor` knew BigInt/Ratio/BigDecimal but
+/// `NATIVE_ENTRIES` did not, and `(class #"x")` printed `regex` not `Pattern`).
+pub fn fqcnForTag(tag: Tag) ?[]const u8 {
+    inline for (NATIVE_ENTRIES) |e| {
+        if (e.tag == tag) return e.name;
     }
     return null;
 }
@@ -317,6 +336,21 @@ test "nativeTagFor: native exact-tag names + FQCN resolve" {
     try testing.expectEqual(@as(?Tag, .string), nativeTagFor("String"));
     try testing.expectEqual(@as(?Tag, .integer), nativeTagFor("java.lang.Long"));
     try testing.expectEqual(@as(?Tag, .regex), nativeTagFor("java.util.regex.Pattern"));
+}
+
+test "fqcnForTag is the inverse of nativeTagFor over NATIVE_ENTRIES" {
+    // Every NATIVE_ENTRIES name round-trips name→tag→name (the D-204 SSOT
+    // invariant that keeps `(class x)` and `(instance? Name x)` aligned).
+    inline for (NATIVE_ENTRIES) |e| {
+        try testing.expectEqual(@as(?Tag, e.tag), nativeTagFor(e.name));
+        try testing.expectEqualStrings(e.name, fqcnForTag(e.tag).?);
+    }
+    // Numeric-tower classes now resolve (D-204 drift fix).
+    try testing.expectEqual(@as(?Tag, .big_int), nativeTagFor("clojure.lang.BigInt"));
+    try testing.expectEqualStrings("Pattern", fqcnForTag(.regex).?);
+    try testing.expectEqualStrings("BigDecimal", fqcnForTag(.big_decimal).?);
+    // A tag with no canonical class name → null (caller falls back to @tagName).
+    try testing.expectEqual(@as(?[]const u8, null), fqcnForTag(.fn_val));
 }
 
 test "nativeTagFor: interface-shaped + unknown names do NOT resolve" {

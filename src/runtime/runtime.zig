@@ -27,6 +27,7 @@ const SymbolInterner = @import("symbol.zig").SymbolInterner;
 const dispatch = @import("dispatch.zig");
 const gc_heap_mod = @import("gc/gc_heap.zig");
 const td_mod = @import("type_descriptor.zig");
+const class_name_mod = @import("class_name.zig");
 const print_mod = @import("error/print.zig");
 const VTable = dispatch.VTable;
 const GcHeap = gc_heap_mod.GcHeap;
@@ -217,31 +218,14 @@ pub const Runtime = struct {
         return td;
     }
 
-    /// Canonical user-facing class name for a native Tag. Mirrors JVM
-    /// Clojure surface conventions: `.integer → "Long"`, `.float →
-    /// "Double"`, `.string → "String"`, etc. Tags without a
-    /// JVM-canonical name fall back to `@tagName(tag)`.
+    /// Canonical user-facing class name for a native Tag. Derives from the
+    /// single name↔Tag SSOT in `class_name.fqcnForTag` (D-204), so `(class x)`
+    /// (this fqcn) and `(instance? Name x)` (the same table) cannot drift.
+    /// `.nil` is special-cased (not a heap class, absent from the table);
+    /// anything else with no canonical name falls back to `@tagName`.
     fn nativeFqcnFor(tag: @import("value/value.zig").Value.Tag) []const u8 {
-        return switch (tag) {
-            .integer => "Long",
-            .float => "Double",
-            .boolean => "Boolean",
-            .char => "Character",
-            .nil => "nil",
-            .string => "String",
-            .symbol => "Symbol",
-            .keyword => "Keyword",
-            .list => "PersistentList",
-            .vector => "PersistentVector",
-            .array_map => "PersistentArrayMap",
-            .hash_map => "PersistentHashMap",
-            .hash_set => "PersistentHashSet",
-            .big_int => "BigInt",
-            .ratio => "Ratio",
-            .big_decimal => "BigDecimal",
-            .uuid => "UUID",
-            else => @tagName(tag),
-        };
+        if (tag == .nil) return "nil";
+        return class_name_mod.fqcnForTag(tag) orelse @tagName(tag);
     }
 
     pub const HeapEntry = struct {
