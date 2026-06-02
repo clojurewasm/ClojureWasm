@@ -490,7 +490,17 @@ entries:
       `.static_method` / `.instance_member` / `.constructor`).
       `.instance_member` (op_method_call, field-first; am1 retired the
       separate op_field_access) and `.constructor` (op_ctor_call) ship
-      green on both backends. `.static_method` LANDED on the VM at
+      green on both backends. **2026-06-02 correction (D-196 blocker 3):**
+      `.constructor` was previously deftype-only on the VM — `op_ctor_call`
+      resolved via `rt.types.get` + `allocInstance`, MISSING the java-surface
+      `<init>` path TreeWalk's `evalConstructorCall` had, so
+      `(java.io.File. "x")` raised symbol_unresolved on `-Dbackend=vm` (the
+      "ships green on both backends" claim above was over-stated for the
+      java-surface ctor). FIX: both backends now delegate to the shared
+      `special_forms.constructInstance` (resolveJavaSurface + field_layout /
+      `<init>` / arity), so the java-surface ctor is green on VM;
+      phase14_java_static_dispatch passes under `-Dbackend=vm`.
+      `.static_method` LANDED on the VM at
       ADR-0050 am2 / D-130: the bytecode shape is a sibling opcode
       `op_static_method_call <call_site_idx>` (0x1E) reusing `CallSiteEntry`
       with a non-null `descriptor` (the analyze-time descriptor pointer),

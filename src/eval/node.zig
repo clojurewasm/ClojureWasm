@@ -332,12 +332,14 @@ pub const ThrowNode = struct {
 ///                          `args` = ctor args; `name` / `target` /
 ///                          `descriptor` unused.
 ///
-/// VM lowering: `.instance_member` + `.constructor` compile via the
-/// `op_method_call` / `op_ctor_call` opcodes. am1 retired the separate
-/// `op_field_access`; a field read folds into `op_method_call`'s
-/// receiver-keyed resolver. `.static_method` rides VM-DEFER pending the
-/// row 7.6.b decision on whether to unify into one `op_interop_call` or
-/// add a sibling `op_static_method_call` (D-130).
+/// VM lowering: all three kinds ship on both backends. `.instance_member`
+/// + `.constructor` compile via `op_method_call` / `op_ctor_call` (am1
+/// retired the separate `op_field_access`; a field read folds into
+/// `op_method_call`'s receiver-keyed resolver). `.static_method` lowers to
+/// the sibling `op_static_method_call` (ADR-0050 am2 / D-130). The ctor
+/// path delegates to the shared `special_forms.constructInstance` so
+/// TreeWalk + VM construct identically incl. the java-surface `<init>`
+/// case `(java.io.File. …)` (D-196 blocker 3, 2026-06-02).
 pub const InteropCallNode = struct {
     pub const Kind = enum { static_method, instance_member, constructor };
 

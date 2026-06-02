@@ -545,43 +545,17 @@ fn evalInteropCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.Interop
 }
 
 fn evalConstructorCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.InteropCallNode) !Value {
-    const td = special_forms.resolveJavaSurface(rt, env, n.type_name) orelse
-        return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.type_name });
-    // deftype / defrecord: arity matches field_layout; allocInstance
-    // returns a typed_instance Value carrying the descriptor + fields.
-    if (td.field_layout) |fl| {
-        if (n.args.len != fl.len) {
-            return error_catalog.raise(.arity_not_expected, n.loc, .{ .got = n.args.len, .fn_name = n.type_name, .expected = fl.len });
-        }
-        const buf = try rt.gpa.alloc(Value, n.args.len);
-        defer rt.gpa.free(buf);
-        for (n.args, 0..) |arg_node, i| {
-            buf[i] = try eval(rt, env, locals, &arg_node);
-        }
-        return try type_descriptor_mod.allocInstance(rt, td, buf);
+    // Eval the ctor args, then delegate to the shared resolver/dispatcher
+    // (special_forms.constructInstance) so TreeWalk + VM construct
+    // identically — incl. the java-surface `<init>` path `(java.io.File.
+    // "path")` rides (ADR-0036 dual-backend parity; D-196 blocker 3).
+    var buf: [MAX_LOCALS]Value = undefined;
+    if (n.args.len > MAX_LOCALS)
+        return error_catalog.raise(.call_args_exceed_max_locals, n.loc, .{ .got = n.args.len, .max = MAX_LOCALS });
+    for (n.args, 0..) |arg_node, i| {
+        buf[i] = try eval(rt, env, locals, &arg_node);
     }
-    // Java surface: method_table carries a "<init>" entry. ADR-0050
-    // discharge of D-121 second-half: this is the cljw-prefix-clean
-    // ctor path that `(java.io.File. "path")` rides.
-    if (td.lookupMethod(null, "<init>")) |me| {
-        if (me.method_val.tag() == .nil) {
-            return error_catalog.raise(.feature_not_supported, n.loc, .{ .name = "constructor declared but not implemented" });
-        }
-        const buf = try rt.gpa.alloc(Value, n.args.len);
-        defer rt.gpa.free(buf);
-        for (n.args, 0..) |arg_node, i| {
-            buf[i] = try eval(rt, env, locals, &arg_node);
-        }
-        const vt = rt.vtable orelse return error.NoVTable;
-        return vt.callFn(rt, env, me.method_val, buf, n.loc);
-    }
-    // No field_layout AND no "<init>" entry — descriptor exists but
-    // doesn't accept ctor calls. Treat as unresolved per the v1
-    // arity-vs-name diagnostic shape (zero expected args).
-    if (n.args.len != 0) {
-        return error_catalog.raise(.arity_not_expected, n.loc, .{ .got = n.args.len, .fn_name = n.type_name, .expected = 0 });
-    }
-    return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.type_name });
+    return special_forms.constructInstance(rt, env, n.type_name, buf[0..n.args.len], n.loc);
 }
 
 /// `(.member recv args...)` / `(.-field recv)` unified instance member

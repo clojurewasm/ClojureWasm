@@ -34,6 +34,7 @@ const tree_walk = @import("tree_walk.zig");
 const ex_info_mod = @import("../../runtime/collection/ex_info.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
+const special_forms = @import("../analyzer/special_forms.zig");
 
 const Opcode = opcode_mod.Opcode;
 const Instruction = opcode_mod.Instruction;
@@ -638,11 +639,13 @@ fn stepOnce(
                 if (!name_val.isString())
                     return raiseInternal("vm: op_ctor_call name is not a String");
                 const type_name = string_mod.asString(name_val);
-                const td = rt.types.get(type_name) orelse
-                    return error_catalog.raise(.symbol_unresolved, .{}, .{ .sym = type_name });
                 if (sp < arg_count) return raiseInternal("vm: op_ctor_call underflow");
                 const args_slice = stack[sp - arg_count .. sp];
-                const new_val = try td_mod.allocInstance(rt, td, args_slice);
+                // Shared resolver/dispatcher (deftype/record + java-surface
+                // `<init>`) — identical to TreeWalk's evalConstructorCall so a
+                // `(java.io.File. …)` ctor works on both backends (D-196
+                // blocker 3; was a deftype-only rt.types.get path here).
+                const new_val = try special_forms.constructInstance(rt, env, type_name, args_slice, .{});
                 sp -= arg_count;
                 stack[sp] = new_val;
                 sp += 1;

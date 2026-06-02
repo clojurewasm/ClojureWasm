@@ -23,7 +23,9 @@ cd "$(dirname "$0")/.."
 # D-196 blocker e2e (basename under test/e2e/, minus .sh). Prune as gaps close.
 BLOCKERS=(
     phase14_ns_directive           # (ns …) :refer-clojure filter (VM-DEFER D-098)
-    phase14_java_static_dispatch   # .static_method call (VM-DEFER node.zig:338)
+    # phase14_java_static_dispatch CLOSED 2026-06-02 (D-196 blocker 3): the
+    # java-surface ctor `(java.io.File. …)` now resolves on the VM via the
+    # shared special_forms.constructInstance (was deftype-only). Pruned.
     # phase14_catch_keyword CLOSED 2026-06-02 (D-014b VM lowering):
     # op_match_type_keyword parallels op_match_class. Pruned.
     # phase14_with_context + phase14_user_throw CLOSED 2026-06-02 (ADR-0071):

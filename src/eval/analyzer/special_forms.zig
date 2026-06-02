@@ -65,6 +65,44 @@ pub fn resolveJavaSurface(rt: *Runtime, env: *Env, head: []const u8) ?*const Typ
     return null;
 }
 
+/// Construct an instance of `type_name` from already-evaluated `args`.
+/// Shared by both backends (TreeWalk `evalConstructorCall` + VM
+/// `op_ctor_call`) so the resolution + dispatch is identical — the
+/// dual-backend parity contract (ADR-0036). Resolves via
+/// `resolveJavaSurface` (deftype/record + java-surface), then:
+///   - `field_layout` present (deftype/record) → arity-check + allocInstance;
+///   - else a `<init>` method entry (java surface, e.g. `java.io.File.`) →
+///     call it through the runtime vtable;
+///   - else the descriptor exists but takes no ctor → arity / unresolved
+///     diagnostic (zero expected args).
+/// Mirrors the prior TreeWalk-only body verbatim; the VM previously used a
+/// deftype-only `rt.types.get` + allocInstance path that missed java-surface
+/// ctors (D-196 blocker 3).
+pub fn constructInstance(
+    rt: *Runtime,
+    env: *Env,
+    type_name: []const u8,
+    args: []const Value,
+    loc: error_catalog.SourceLocation,
+) anyerror!Value {
+    const td = resolveJavaSurface(rt, env, type_name) orelse
+        return error_catalog.raise(.symbol_unresolved, loc, .{ .sym = type_name });
+    if (td.field_layout) |fl| {
+        if (args.len != fl.len)
+            return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = type_name, .expected = fl.len });
+        return type_descriptor_mod.allocInstance(rt, td, args);
+    }
+    if (td.lookupMethod(null, "<init>")) |me| {
+        if (me.method_val.tag() == .nil)
+            return error_catalog.raise(.feature_not_supported, loc, .{ .name = "constructor declared but not implemented" });
+        const vt = rt.vtable orelse return error.NoVTable;
+        return vt.callFn(rt, env, me.method_val, args, loc);
+    }
+    if (args.len != 0)
+        return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = type_name, .expected = 0 });
+    return error_catalog.raise(.symbol_unresolved, loc, .{ .sym = type_name });
+}
+
 /// `(Name. args...)` constructor analyzer arm. Per ADR-0050, builds an
 /// `InteropCallNode { .kind = .constructor }`. The type name is kept as
 /// a string for eval-time `resolveJavaSurface` lookup — this allows
