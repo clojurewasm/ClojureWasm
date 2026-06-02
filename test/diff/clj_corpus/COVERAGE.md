@@ -170,6 +170,12 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   (14). Only DIFF: `(doto (atom …) …)` returns the atom whose print form is
   `#<atom>` vs clj's `#object[clojure.lang.Atom 0xADDR {…}]` — an acceptable
   print divergence (clj embeds a non-reproducible identity hash).
+- **control-flow macros** — `case` (literal/keyword/char/string/list-of-keys
+  test sets + default), `condp` (with `=`/`<`/`get` pred + `:else`), `loop`/
+  `recur`, `for` (single + nested seq comprehension), `dotimes`, `cond` all at
+  parity. Corpus `control_flow` (14). Gap (D-201, tracked): **`letfn`**
+  unimplemented (needs a `letfn*` mutual-recursion special form — not
+  expressible as a plain sequential `let*`).
 - **print / pr-str representation** — `pr-str` (readable: strings quoted +
   `\n`/`\t`/`\"`/`\\` escaped, chars `\newline`/`\space`/`\a`, ratios `1/3`,
   keywords `:foo/bar`, nested vec/map/list/seq) vs `str`/`print-str`
@@ -195,6 +201,9 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   Residual: `intersection`/`difference` 0-arity (cljw variadic returns nil; JVM has
   no 0-arity → ArityException) — low-value edge; `macroexpand-all` is a stub.
 - **Transient read/query ops** — CLOSED 2026-06-02 (D-199); see Swept areas.
+- **`letfn`** (D-201) — mutual-recursion local fns; needs a `letfn*` analyzer
+  special form (pre-bind all names) + dual-backend arms. Not a plain `let*`
+  macro (cljw `let*` is sequential, no forward-ref).
 - **Unswept areas** worth a focused pass: EDN tagged literals
   (`#inst`/`#uuid`/custom `:readers`), `alter-meta!` (needs var-metadata
   D-183), `clojure.walk/macroexpand-all` (stub), `clojure.string` deeper edges,
