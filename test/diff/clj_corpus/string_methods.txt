@@ -26,3 +26,15 @@
 ;;=> 2
 (.indexOf "hello" "l")
 ;;=> 2
+(.matches "abc" "[a-c]+")
+;;=> true
+(.matches "abX" "[a-c]+")
+;;=> false
+(.matches "hello" "h.*o")
+;;=> true
+(.matches "123" "[0-9]+")
+;;=> true
+(.matches "abc" "a")
+;;=> false
+(.matches "a" "a")
+;;=> true

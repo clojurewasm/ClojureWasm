@@ -278,8 +278,10 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   `string_methods` (14). Gaps found+fixed: `lastIndexOf`/`isBlank`/`strip`/
   `equalsIgnoreCase`/`codePointAt`/`compareTo` + `indexOf` int-arg were
   unimplemented — added (`compareTo` returns the JVM char-diff/length-diff
-  MAGNITUDE, not -1/0/1). REMAINING (D-206): `.replaceAll`/`.replaceFirst`/
-  `.matches` (regex-backed) + `.split`/`.toCharArray` (collection-returning).
+  MAGNITUDE, not -1/0/1). `.matches` (anchored full regex match → bool) added
+  too (runtime/regex/, no layering issue). REMAINING (D-206): `.replaceAll`/
+  `.replaceFirst` (regex `$1` backref, impl in Layer-2 lang/) + `.split`/
+  `.toCharArray` (collection-returning).
 - **Double / Boolean statics** — `Double/parseDouble`/`isNaN`/`isInfinite`/
   `toString`/`valueOf`/`compare`/`max`/`min`/`sum`; `Boolean/parseBoolean`/
   `valueOf`/`logicalAnd`/`logicalOr`/`logicalXor`. Corpus `double_boolean_static`

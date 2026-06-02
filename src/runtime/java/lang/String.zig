@@ -23,6 +23,8 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const charset = @import("../../charset.zig");
 const string_collection = @import("../../collection/string.zig");
+const regex_compile = @import("../../regex/compile.zig");
+const regex_match = @import("../../regex/match.zig");
 
 /// Implements `(.toUpperCase s)`.
 /// Spec: returns a copy of the string with all codepoints upper-cased.
@@ -323,6 +325,25 @@ fn replace(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return string_collection.alloc(rt, out);
 }
 
+/// `(.matches s regex)` → whether `s` matches the regex PATTERN STRING in
+/// FULL (anchored both ends, like Java `String.matches`). The pattern is
+/// compiled on the spot; a malformed pattern raises. Has no layering issue
+/// (compile + matchFull are runtime/regex/ leaves) — the regex-REPLACE
+/// String methods are D-206 (their impl lives in Layer-2 lang/). JVM ref:
+/// java.lang.String#matches.
+fn matches(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity(".matches", args, 2, loc);
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".matches", .actual = @tagName(args[1].tag()) });
+    var program = regex_compile.compile(rt.gpa, string_collection.asString(args[1]), .{}) catch
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = ".matches (invalid regex pattern)" });
+    defer program.deinit(rt.gpa);
+    const m = regex_match.matchFull(rt.gpa, &program, string_collection.asString(args[0])) catch
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = ".matches" });
+    return Value.initBoolean(m != null);
+}
+
 /// Populate the per-Runtime native `.string` descriptor's `method_table`
 /// with String instance methods. Driven from `lang/primitive.zig` at
 /// runtime init (Layer 2 — Layer 0 `runtime/` may not import this
@@ -346,6 +367,7 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "lastIndexOf", &lastIndexOf }, .{ "isBlank", &isBlank },
         .{ "strip", &strip },             .{ "equalsIgnoreCase", &equalsIgnoreCase },
         .{ "codePointAt", &codePointAt }, .{ "compareTo", &compareTo },
+        .{ "matches", &matches },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {
