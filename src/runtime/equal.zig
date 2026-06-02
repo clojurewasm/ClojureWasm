@@ -152,6 +152,15 @@ fn ratioKeyEq(a: Value, b: Value) bool {
         big_int.compareManaged(ra.denom.m, rb.denom.m) == .eq;
 }
 
+/// BigDecimal map-key equality, rt-free + scale-INDEPENDENT (ADR-0077 /
+/// D-205): compare the cached stripped projection so `1.5M` and `1.50M`
+/// are interchangeable keys (clj parity). Mirrors `ratioKeyEq` — the
+/// normalized fields are canonical, so equal value ⇒ equal fields.
+fn decimalKeyEq(a: Value, b: Value) bool {
+    return big_decimal.asNormScale(a) == big_decimal.asNormScale(b) and
+        big_int.compareManaged(big_decimal.asNormUnscaled(a).m, big_decimal.asNormUnscaled(b).m) == .eq;
+}
+
 fn seqEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     // Length short-circuit only when BOTH are O(1)-countable (vector /
     // list); a lazy seq is walked element-by-element (no cheap length,
@@ -222,16 +231,14 @@ pub fn keyEqValue(a: Value, b: Value) bool {
         switch (ca) {
             .integer => return intEqual(a, b),
             .ratio => return ratioKeyEq(a, b),
+            // `.decimal`: BigDecimal `=` is NUMERIC (`(= 1.5M 1.50M)` → true)
+            //   and clj scale-NORMALIZES the key/hash so `1.5M`/`1.50M` are
+            //   interchangeable. The cached stripped projection (ADR-0077 /
+            //   D-205) makes this a rt-free field compare, like Ratio.
+            .decimal => return decimalKeyEq(a, b),
             // `.floating`: equal floats are bit-identical (caught by the
             //   identity check above); `0.0`/`-0.0` is a rare residual.
-            // `.decimal`: BigDecimal `=` is NUMERIC in BOTH clj and cljw
-            //   (`(= 1.5M 1.50M)` → true), and clj's hasheq scale-NORMALIZES
-            //   so `1.5M`/`1.50M` hash equal + are interchangeable keys.
-            //   Matching that needs rt-aware scale alignment (multiply an
-            //   unscaled BigInt by 10^Δscale = allocation), which this rt-free
-            //   compare cannot do — BigDecimal keys join the lazy/range
-            //   rt-free residual (D-205). Fall through.
-            .floating, .decimal => {},
+            .floating => {},
             .none => unreachable,
         }
     }
@@ -344,8 +351,11 @@ pub fn valueHash(v: Value) u32 {
             break :blk 31 *% big_int.managedHash(r.numer.m) +% big_int.managedHash(r.denom.m);
         },
         .big_decimal => blk: {
+            // Hash the cached STRIPPED projection (ADR-0077 / D-205) so
+            // `1.5M` / `1.50M` collide in one bucket (clj scale-independent
+            // hasheq); keyEqValue's `.decimal` arm then confirms equality.
             const d = v.decodePtr(*const big_decimal.BigDecimal);
-            break :blk 31 *% big_int.managedHash(d.unscaled.m) +% hash.hashInt(d.scale);
+            break :blk 31 *% big_int.managedHash(d.norm_unscaled.m) +% hash.hashInt(d.norm_scale);
         },
         else => hash.hashLong(@bitCast(@intFromEnum(v))),
     };

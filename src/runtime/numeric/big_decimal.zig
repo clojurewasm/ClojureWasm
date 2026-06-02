@@ -40,9 +40,17 @@ const BigInt = big_int_mod.BigInt;
 pub const BigDecimal = extern struct {
     header: HeapHeader,
     _pad: [6]u8 = .{ 0, 0, 0, 0, 0, 0 },
+    /// AUTHORITATIVE value (mirrors java.math.BigDecimal): print,
+    /// arithmetic result-scale, and any scale accessor read this pair.
     unscaled: *BigInt,
     scale: i32,
-    _pad2: [4]u8 = .{ 0, 0, 0, 0 },
+    /// Stripped-trailing-zeros projection (ADR-0077 / D-205): the
+    /// Clojure scale-INDEPENDENT key/hash view, computed once at
+    /// construction. `keyEqValue` / `valueHash` read this so `1.5M` and
+    /// `1.50M` are interchangeable map keys (rt-free, like Ratio's
+    /// canonical fields). NEVER read for print / arithmetic.
+    norm_scale: i32,
+    norm_unscaled: *BigInt,
 
     comptime {
         std.debug.assert(@alignOf(BigDecimal) >= 8);
@@ -53,6 +61,37 @@ pub const BigDecimal = extern struct {
         std.debug.assert(@offsetOf(BigDecimal, "unscaled") == @offsetOf(BigInt, "m"));
     }
 };
+
+/// Build the stripped-trailing-zeros projection of `(unscaled, scale)`:
+/// repeatedly divide the unscaled by 10 while it divides evenly, lowering
+/// the scale in step; a zero unscaled normalises to `(0, 0)`. Returns the
+/// normalised unscaled as a fresh GC BigInt Value plus the normalised
+/// scale. Allocates (construction-time only — `rt` is present); the
+/// resulting fields make the rt-free key/hash compare possible (ADR-0077).
+fn buildNormalized(rt: *Runtime, unscaled: *const std.math.big.int.Managed, scale: i32) !struct { unscaled: Value, scale: i32 } {
+    const infra = rt.gc.infra;
+    var n = try unscaled.cloneWithDifferentAllocator(infra);
+    defer n.deinit();
+    var norm_scale = scale;
+    if (n.eqlZero()) {
+        norm_scale = 0;
+    } else {
+        var ten = try std.math.big.int.Managed.initSet(infra, 10);
+        defer ten.deinit();
+        var q = try std.math.big.int.Managed.init(infra);
+        defer q.deinit();
+        var r = try std.math.big.int.Managed.init(infra);
+        defer r.deinit();
+        while (true) {
+            try q.divTrunc(&r, &n, &ten);
+            if (!r.eqlZero()) break;
+            n.swap(&q);
+            norm_scale -= 1;
+        }
+    }
+    const norm_unscaled = try big_int_mod.allocFromManaged(rt, &n);
+    return .{ .unscaled = norm_unscaled, .scale = norm_scale };
+}
 
 /// Allocate a BigDecimal from an i64 unscaled value + i32 scale.
 pub fn allocFromI64Scale(rt: *Runtime, unscaled_i64: i64, scale: i32) !Value {
@@ -71,12 +110,15 @@ pub fn allocFromManagedScale(
     scale: i32,
 ) !Value {
     const unscaled_val = try big_int_mod.allocFromManaged(rt, unscaled);
+    const norm = try buildNormalized(rt, unscaled, scale);
 
     const bd = try rt.gc.alloc(BigDecimal);
     bd.* = .{
         .header = HeapHeader.init(.big_decimal),
         .unscaled = unscaled_val.decodePtr(*BigInt),
         .scale = scale,
+        .norm_scale = norm.scale,
+        .norm_unscaled = norm.unscaled.decodePtr(*BigInt),
     };
     return Value.encodeHeapPtr(.big_decimal, bd);
 }
@@ -245,6 +287,19 @@ pub fn asScale(v: Value) i32 {
     return v.decodePtr(*const BigDecimal).scale;
 }
 
+/// The stripped-trailing-zeros unscaled significand (ADR-0077): the
+/// scale-independent key/hash projection. NOT the print/arithmetic value.
+pub fn asNormUnscaled(v: Value) *const BigInt {
+    std.debug.assert(v.tag() == .big_decimal);
+    return v.decodePtr(*const BigDecimal).norm_unscaled;
+}
+
+/// The stripped scale paired with `asNormUnscaled` (ADR-0077).
+pub fn asNormScale(v: Value) i32 {
+    std.debug.assert(v.tag() == .big_decimal);
+    return v.decodePtr(*const BigDecimal).norm_scale;
+}
+
 /// Trace fn called by the mark phase. Walks `unscaled` so the
 /// underlying BigInt + its *Managed limbs stay alive across GC
 /// cycles. BigDecimal itself has no non-GC owned resources.
@@ -252,6 +307,8 @@ pub fn traceGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
     const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
     const bd: *BigDecimal = @ptrCast(@alignCast(header));
     mark_sweep.mark(gc, &bd.unscaled.header);
+    // The cached normalized projection (ADR-0077) is GC-managed too.
+    mark_sweep.mark(gc, &bd.norm_unscaled.header);
 }
 
 pub fn registerGcHooks() void {
@@ -482,6 +539,32 @@ test "allocMul (1.5 * 2.0): unscaled=300, scale=2 (= 3.00)" {
     const prod = try allocMul(&fix.rt, a, b);
     try testing.expectEqual(@as(i64, 300), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, asUnscaled(prod))).toInt(i64));
     try testing.expectEqual(@as(i32, 2), asScale(prod));
+}
+
+test "normalized projection strips trailing zeros (1.50 → unscaled 15, scale 1)" {
+    var fix = BdFixture.init();
+    defer fix.deinit();
+
+    const a = try allocFromI64Scale(&fix.rt, 150, 2); // 1.50
+    // authoritative (print/arithmetic) form is preserved
+    try testing.expectEqual(@as(i32, 2), asScale(a));
+    // normalized (key/hash) form is stripped to (15, 1)
+    try testing.expectEqual(@as(i32, 1), asNormScale(a));
+    try testing.expectEqual(@as(i64, 15), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, @constCast(asNormUnscaled(a)))).toInt(i64));
+
+    // 1.5M and 1.50M share the SAME normalized projection (scale-independent key)
+    const b = try allocFromI64Scale(&fix.rt, 15, 1); // 1.5
+    try testing.expectEqual(asNormScale(a), asNormScale(b));
+    try testing.expectEqual(std.math.Order.eq, big_int_mod.compareManaged(asNormUnscaled(a).m, asNormUnscaled(b).m));
+}
+
+test "normalized projection of zero is (0, 0) regardless of scale" {
+    var fix = BdFixture.init();
+    defer fix.deinit();
+
+    const z2 = try allocFromI64Scale(&fix.rt, 0, 2); // 0.00
+    try testing.expectEqual(@as(i32, 0), asNormScale(z2));
+    try testing.expectEqual(@as(i64, 0), try big_int_mod.asManaged(Value.encodeHeapPtr(.big_int, @constCast(asNormUnscaled(z2)))).toInt(i64));
 }
 
 test "Runtime.deinit releases BigDecimal + unscaled BigInt (no leak)" {

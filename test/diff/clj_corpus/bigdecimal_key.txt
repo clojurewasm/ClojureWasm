@@ -1,0 +1,34 @@
+(get {1.5M :v} 1.5M)
+;;=> :v
+(get {1.5M :v} 1.50M)
+;;=> :v
+(get {1.50M :v} 1.5M)
+;;=> :v
+(get {1M :v} 1M)
+;;=> :v
+(contains? {1.5M :v} 1.5M)
+;;=> true
+(contains? #{1.5M} 1.50M)
+;;=> true
+(= 1.5M 1.50M)
+;;=> true
+(= 1.5M 1.5M)
+;;=> true
+(pr-str 1.50M)
+;;=> "1.50M"
+(pr-str 1.5M)
+;;=> "1.5M"
+(= (hash 1.5M) (hash 1.50M))
+;;=> true
+(get {0.0M :v} 0.00M)
+;;=> :v
+(pr-str (+ 1.50M 0.5M))
+;;=> "2.00M"
+(get {1500M :v} 1500.00M)
+;;=> :v
+(get (assoc {} 2.5M :a 2.50M :b) 2.500M)
+;;=> :b
+(count (set [1.5M 1.50M 1.500M]))
+;;=> 1
+(get {12.340M :x} 12.34M)
+;;=> :x
