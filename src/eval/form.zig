@@ -66,6 +66,16 @@ pub const FormData = union(enum) {
     /// is the single value-form following the tag. The data-reader lookup +
     /// application happens at `formToValue` time against `*data-readers*`.
     tagged: TaggedForm,
+    /// `` `form `` syntax-quote (ADR-0082). The reader only WRAPS the inner
+    /// form; the analyzer expands it (template build + `~`/`~@` + `foo#`
+    /// gensym), reusing `env.current_ns` — the reader stays ns-unaware.
+    syntax_quote: *const Form,
+    /// `~form` unquote — valid only inside a `syntax_quote`; the expander
+    /// splices the inner form's value in unchanged.
+    unquote: *const Form,
+    /// `~@form` unquote-splicing — valid only inside a `syntax_quote` list /
+    /// vector / set; the expander splices the inner seq's elements.
+    unquote_splicing: *const Form,
 };
 
 /// `#tag form` payload. Boxed `form` (a `*const Form`) because a union
@@ -107,6 +117,9 @@ pub const Form = struct {
             .map => "map",
             .set => "set",
             .tagged => "tagged-literal",
+            .syntax_quote => "syntax-quote",
+            .unquote => "unquote",
+            .unquote_splicing => "unquote-splicing",
         };
     }
 
@@ -178,6 +191,18 @@ pub const Form = struct {
                 try w.writeAll(t.tag.name);
                 try w.writeByte(' ');
                 try t.form.formatPrStr(w);
+            },
+            .syntax_quote => |inner| {
+                try w.writeByte('`');
+                try inner.formatPrStr(w);
+            },
+            .unquote => |inner| {
+                try w.writeByte('~');
+                try inner.formatPrStr(w);
+            },
+            .unquote_splicing => |inner| {
+                try w.writeAll("~@");
+                try inner.formatPrStr(w);
             },
         }
     }

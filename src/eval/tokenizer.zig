@@ -70,6 +70,11 @@ pub const TokenKind = enum(u8) {
     /// `^` metadata reader macro. `^meta target` attaches `meta` (a map,
     /// or `:kw`→`{:kw true}` / `Sym`→`{:tag Sym}` shorthand) to `target`.
     meta_caret,
+    /// `` ` `` syntax-quote / `~` unquote / `~@` unquote-splicing (ADR-0082).
+    /// Each wraps the next form; the analyzer expands a syntax_quote tree.
+    syntax_quote,
+    unquote,
+    unquote_splicing,
 
     eof,
     invalid,
@@ -124,6 +129,15 @@ pub const Tokenizer = struct {
             '\'' => return self.singleChar(.quote, start, start_line, start_col),
             '@' => return self.singleChar(.deref, start, start_line, start_col),
             '^' => return self.singleChar(.meta_caret, start, start_line, start_col),
+            '`' => return self.singleChar(.syntax_quote, start, start_line, start_col),
+            '~' => {
+                self.advance(); // past '~'
+                if (self.pos < self.source.len and self.source[self.pos] == '@') {
+                    self.advance(); // past '@' → `~@`
+                    return self.makeToken(.unquote_splicing, start, start_line, start_col);
+                }
+                return self.makeToken(.unquote, start, start_line, start_col);
+            },
             '"' => return self.readString(start, start_line, start_col),
             '\\' => return self.readCharLiteral(start, start_line, start_col),
             ':' => return self.readKeyword(start, start_line, start_col),
@@ -397,8 +411,12 @@ fn isWhitespace(c: u8) bool {
 }
 
 fn isTerminator(c: u8) bool {
+    // `#` is NOT a terminator: it is a symbol/keyword constituent mid-token
+    // (clj `foo#` auto-gensym, `foo#bar`). A token-START `#` is still a reader
+    // dispatch — the main `next` switch matches `'#' => readDispatch` before
+    // any symbol read begins, so only a non-leading `#` reaches a symbol body.
     return isWhitespace(c) or switch (c) {
-        '"', ';', '(', ')', '[', ']', '{', '}', '\\', '#' => true,
+        '"', ';', '(', ')', '[', ']', '{', '}', '\\' => true,
         else => false,
     };
 }

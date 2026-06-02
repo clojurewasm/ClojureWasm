@@ -48,6 +48,7 @@ const keyword = @import("../../runtime/keyword.zig");
 const symbol_mod = @import("../../runtime/symbol.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const list_collection = @import("../../runtime/collection/list.zig");
+const lazy_seq_mod = @import("../../runtime/lazy_seq.zig");
 const vector_collection = @import("../../runtime/collection/vector.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
 const set_collection = @import("../../runtime/collection/set.zig");
@@ -62,6 +63,7 @@ const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const macro_dispatch = @import("../macro_dispatch.zig");
+const syntax_quote = @import("syntax_quote.zig");
 
 /// Analyser errors. Phase 2 covers syntax + name resolution only.
 /// Aliases the wide `error_mod.ClojureWasmError` set so calls to
@@ -301,6 +303,14 @@ pub fn analyze(
         // reader at analyze time (data is data) and emit the result as a
         // constant. Reuses the `formToValue` lift path.
         .tagged => |t| try makeConstant(arena, try liftTagged(rt, env, t, form.location), form),
+        // `` `form `` (ADR-0082): expand the syntax-quote tree to its template
+        // form, then analyze that (the analyzer has env.current_ns for the
+        // future qualification pass; stage 1 is non-qualifying).
+        .syntax_quote => |inner| try analyze(arena, rt, env, scope, try syntax_quote.expand(arena, rt, inner.*, form.location), macro_table),
+        // `~`/`~@` are only meaningful inside a syntax-quote (handled by the
+        // expander); reaching them here means they were used standalone.
+        .unquote => error_catalog.raise(.token_invalid, form.location, .{ .token = "~ (unquote outside a syntax-quote)" }),
+        .unquote_splicing => error_catalog.raise(.token_invalid, form.location, .{ .token = "~@ (unquote-splicing outside a syntax-quote)" }),
     };
 }
 
@@ -831,6 +841,16 @@ pub fn formToValue(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
         .map => |entries| try mapFormToValue(rt, env, entries, form.location),
         .set => |items| try setFormToValue(rt, env, items),
         .tagged => |t| return try liftTagged(rt, env, t, form.location),
+        // `` `form `` as DATA (read-string / quoted): expand to the template,
+        // then lift the template as data (clj `` '`(a ~b) `` → the
+        // `(seq (concat …))` form). ADR-0082.
+        .syntax_quote => |inner| blk: {
+            var sq_arena = std.heap.ArenaAllocator.init(rt.gpa);
+            defer sq_arena.deinit();
+            const template = try syntax_quote.expand(sq_arena.allocator(), rt, inner.*, form.location);
+            break :blk try formToValue(rt, env, template);
+        },
+        .unquote, .unquote_splicing => return error_catalog.raise(.token_invalid, form.location, .{ .token = "~ / ~@ outside a syntax-quote" }),
     };
     // D-186: honour a reader `^meta` map on a collection literal. The reader
     // (readMeta) parks normalised meta on `Form.meta`; lift + attach it to an
@@ -976,9 +996,11 @@ fn listFormToValue(rt: *Runtime, env: *Env, items: []const Form) AnalyzeError!Va
 /// `macro_return_not_data` for those tags.
 pub fn valueToForm(
     arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
     v: Value,
     call_loc: SourceLocation,
-) AnalyzeError!Form {
+) anyerror!Form {
     return switch (v.tag()) {
         .nil => .{ .data = .nil, .location = call_loc },
         .boolean => .{ .data = .{ .boolean = v == .true_val }, .location = call_loc },
@@ -993,39 +1015,42 @@ pub fn valueToForm(
             break :blk .{ .data = .{ .keyword = .{ .ns = kw.ns, .name = kw.name } }, .location = call_loc };
         },
         .string => .{ .data = .{ .string = string_collection.asString(v) }, .location = call_loc },
-        .list => try valueListToForm(arena, v, call_loc),
-        .vector => try valueVectorToForm(arena, v, call_loc),
-        .array_map => try valueMapToForm(arena, v, call_loc),
-        .hash_set => try valueSetToForm(arena, v, call_loc),
+        // Any seq tag — FORCE lazy layers so a macro's `(seq (concat …))`
+        // syntax-quote expansion (and its lazy tail) realizes into a concrete
+        // list Form. A plain `list_collection.rest` would not force the lazy
+        // tail → dropped/`nil` elements (ADR-0082).
+        .list, .cons, .lazy_seq, .chunked_cons, .range => try valueSeqToForm(arena, rt, env, v, call_loc),
+        .vector => try valueVectorToForm(arena, rt, env, v, call_loc),
+        .array_map => try valueMapToForm(arena, rt, env, v, call_loc),
+        .hash_set => try valueSetToForm(arena, rt, env, v, call_loc),
         else => error_catalog.raise(.macro_return_not_data, call_loc, .{ .tag = @tagName(v.tag()) }),
     };
 }
 
-fn valueListToForm(arena: std.mem.Allocator, list_val: Value, call_loc: SourceLocation) AnalyzeError!Form {
+fn valueSeqToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, seq_val: Value, call_loc: SourceLocation) anyerror!Form {
     var items: std.ArrayList(Form) = .empty;
     defer items.deinit(arena);
-    var cur = list_val;
+    var cur = try lazy_seq_mod.seq(rt, env, seq_val);
     while (!cur.isNil()) {
-        const head = list_collection.first(cur);
-        const rest = list_collection.rest(cur);
-        try items.append(arena, try valueToForm(arena, head, call_loc));
-        cur = rest;
+        const head = try lazy_seq_mod.first(rt, env, cur);
+        try items.append(arena, try valueToForm(arena, rt, env, head, call_loc));
+        cur = try lazy_seq_mod.seq(rt, env, try lazy_seq_mod.rest(rt, env, cur));
     }
     const owned = try arena.dupe(Form, items.items);
     return .{ .data = .{ .list = owned }, .location = call_loc };
 }
 
-fn valueVectorToForm(arena: std.mem.Allocator, vec_val: Value, call_loc: SourceLocation) AnalyzeError!Form {
+fn valueVectorToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, vec_val: Value, call_loc: SourceLocation) anyerror!Form {
     const n = vector_collection.count(vec_val);
     var items = try arena.alloc(Form, n);
     var i: u32 = 0;
     while (i < n) : (i += 1) {
-        items[i] = try valueToForm(arena, vector_collection.nth(vec_val, i), call_loc);
+        items[i] = try valueToForm(arena, rt, env, vector_collection.nth(vec_val, i), call_loc);
     }
     return .{ .data = .{ .vector = items }, .location = call_loc };
 }
 
-fn valueMapToForm(arena: std.mem.Allocator, map_val: Value, call_loc: SourceLocation) AnalyzeError!Form {
+fn valueMapToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, map_val: Value, call_loc: SourceLocation) anyerror!Form {
     // ArrayMap-only iteration today (D-045 still gates HamtMap path).
     // The decode is direct because `.array_map` tag was already
     // matched in `valueToForm`.
@@ -1033,13 +1058,13 @@ fn valueMapToForm(arena: std.mem.Allocator, map_val: Value, call_loc: SourceLoca
     var entries = try arena.alloc(Form, @as(usize, am.count) * 2);
     var i: u32 = 0;
     while (i < am.count) : (i += 1) {
-        entries[2 * i] = try valueToForm(arena, am.entries[2 * i], call_loc);
-        entries[2 * i + 1] = try valueToForm(arena, am.entries[2 * i + 1], call_loc);
+        entries[2 * i] = try valueToForm(arena, rt, env, am.entries[2 * i], call_loc);
+        entries[2 * i + 1] = try valueToForm(arena, rt, env, am.entries[2 * i + 1], call_loc);
     }
     return .{ .data = .{ .map = entries }, .location = call_loc };
 }
 
-fn valueSetToForm(arena: std.mem.Allocator, set_val: Value, call_loc: SourceLocation) AnalyzeError!Form {
+fn valueSetToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, set_val: Value, call_loc: SourceLocation) anyerror!Form {
     // PersistentHashSet wraps an ArrayMap-backed Value at its `map`
     // field; iterate the map's keys, ignore the sentinel values.
     const ps = set_val.decodePtr(*const set_collection.PersistentHashSet);
@@ -1047,7 +1072,7 @@ fn valueSetToForm(arena: std.mem.Allocator, set_val: Value, call_loc: SourceLoca
     var items = try arena.alloc(Form, am.count);
     var i: u32 = 0;
     while (i < am.count) : (i += 1) {
-        items[i] = try valueToForm(arena, am.entries[2 * i], call_loc);
+        items[i] = try valueToForm(arena, rt, env, am.entries[2 * i], call_loc);
     }
     return .{ .data = .{ .set = items }, .location = call_loc };
 }

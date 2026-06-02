@@ -97,7 +97,7 @@ pub fn evalValue(
     const table: *const macro_dispatch.Table = @ptrCast(@alignCast(table_opaque));
     // `analyze` takes a Form by value (D-197: this verb was dead code until the
     // `eval` primitive wired it, so the old `*Form` arg never type-checked).
-    const form = try analyzer.valueToForm(arena, value, loc);
+    const form = try analyzer.valueToForm(arena, rt, env, value, loc);
     const node = try analyzer.analyze(arena, rt, env, null, form, table);
     return evalForm(rt, env, locals, arena, node);
 }

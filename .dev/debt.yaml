@@ -10,7 +10,28 @@
 
 active:
   - id: "D-226"
-    status: "now (HIGH value, found 2026-06-03) — syntax-quote (backtick `/~/~@) reader macro unsupported."
+    status: |-
+      PARTIAL 2026-06-03 (STAGE 1 landed, ADR-0082) — syntax-quote `` ` ``/`~`/
+      `~@`/`foo#` now WORKS (non-qualifying). Reader emits `.syntax_quote`/
+      `.unquote`/`.unquote_splicing` Form nodes (tokenizer backtick/~/~@; `#` is
+      now a symbol constituent so `foo#` tokenizes); the analyzer
+      (`syntax_quote.zig::expand`) builds the `(seq (concat …))` template + `~`
+      insert + `~@` splice + per-syntax-quote `foo#` auto-gensym; list/vector/map/
+      set covered. **The load-bearing fix: `valueToForm` now FORCES lazy seqs**
+      (threads rt/env, walks via `lazy_seq.seq`/`first`/`rest`) — a macro's lazy
+      `(seq (concat …))` expansion previously mis-converted (dropped/nil elements
+      or `lazy_seq` rejected); this fixes syntax-quote macros AND any lazy macro
+      expansion (pvalues' `apply list` workaround is now unneeded). clj-verified:
+      `` `(1 2 ~(+ 1 2)) ``→(1 2 3), splice, gensym `(m-dbl 21)`→42, `(m-when …)`.
+      Corpus `syntax_quote` (10 qualification-free); 12 e2e phase14_syntax_quote.
+      STAGE 2 (D-226 stays OPEN): (1) **symbol QUALIFICATION** — `` `foo `` should
+      → `current-ns/foo`, `` `+ `` → `clojure.core/+` (+ qualify the emitted
+      `seq`/`concat`/`list`); without it a macro referencing its OWN ns's private
+      helper fails (the real-lib blocker D-158), and `(= `foo 'user/foo)` diverges.
+      (2) **nested backtick** — cljw flattens+evals the inner `~`; clj preserves
+      the inner template (rare). (3) `macroexpand`/`macroexpand-1` still missing.
+      Cross-ref ADR-0082 / D-158 (real-lib goal) / D-219 (reader precedent) / F-011.
+      recall trigger: stage-2 qualification (the real-lib enabler).
     category: "runtime"
     barrier: |-
       **Syntax-quote is not implemented** — `` `(+ ~x 1) `` → cljw "Unable to resolve symbol: '`'" (verified from a file, not a shell artifact). The reader has no `` ` `` (syntax-quote) / `~` (unquote) / `~@` (unquote-splicing) / `foo#` (auto-gensym) support, so EVERY macro must be hand-written with `list`/`cons`/`quote` (as cljw's own core.clj macros are). This is the single highest-value remaining gap: syntax-quote is THE macro-authoring tool in Clojure, so essentially NO real-world library macro can be loaded without it (gates the D-158 real-lib-test goal). Scope (a substantial reader feature): tokenizer `` ` ``/`~`/`~@`; a syntax-quote EXPANDER producing the template form — symbol RESOLUTION (`a` → `current-ns/a` or the resolved var's ns; special-form/`.`-syms left bare), `~x` splice-in, `~@x` splice-elements (via `seq`/`concat`/`apply`), consistent `foo#` auto-gensym within one `` ` ``, and the `(seq (concat (list …) …))` build shape. Likely an ADR-level feature (DA fork for the resolution policy + gensym scoping). clj-grounded against `(macroexpand …)` (also currently missing). Cross-ref D-158 (real-lib goal) / D-219 (reader feature precedent) / F-011. recall trigger: next macro-ergonomics / real-lib-load push — this is the gating enabler.

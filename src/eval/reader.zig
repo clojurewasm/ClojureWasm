@@ -100,6 +100,9 @@ pub const Reader = struct {
             .var_quote => self.readVarQuote(tok),
             .tagged => self.readTagged(tok),
             .ns_map => self.readNsMap(tok),
+            .syntax_quote => self.readWrapped(tok, .syntax_quote),
+            .unquote => self.readWrapped(tok, .unquote),
+            .unquote_splicing => self.readWrapped(tok, .unquote_splicing),
             .meta_caret => self.readMeta(tok),
             .symbolic => self.readSymbolic(tok),
             .discard => self.readDiscard(tok),
@@ -541,6 +544,28 @@ pub const Reader = struct {
             return sref;
         }
         return .{ .ns = ns, .name = sref.name, .auto_resolve = auto };
+    }
+
+    /// `` `form `` / `~form` / `~@form` (ADR-0082): box the next form in a
+    /// `.syntax_quote`/`.unquote`/`.unquote_splicing` node. The reader only
+    /// wraps — the analyzer expands the syntax_quote tree.
+    const WrapKind = enum { syntax_quote, unquote, unquote_splicing };
+    fn readWrapped(self: *Reader, tok: Token, comptime kind: WrapKind) ReadError!Form {
+        const loc = self.locOf(tok);
+        self.depth += 1;
+        if (self.depth > self.max_depth)
+            return error_catalog.raise(.form_nesting_too_deep, loc, .{ .max = self.max_depth });
+        defer self.depth -= 1;
+        const inner_tok = self.nextToken();
+        if (inner_tok.kind == .eof) return error_catalog.raise(.eof_unexpected, loc, .{});
+        const inner = try self.readForm(inner_tok);
+        const p = self.allocator.create(Form) catch return error.OutOfMemory;
+        p.* = inner;
+        return Form{ .data = switch (kind) {
+            .syntax_quote => .{ .syntax_quote = p },
+            .unquote => .{ .unquote = p },
+            .unquote_splicing => .{ .unquote_splicing = p },
+        }, .location = loc };
     }
 
     /// `^meta target` reader macro → `target` with `meta` attached to

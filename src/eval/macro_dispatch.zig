@@ -129,7 +129,7 @@ pub fn expandIfMacro(
     // attribution.
     const result_val = vtable.callFn(rt, env, macro_fn, value_args, loc) catch |e|
         return narrowCallFnError(e, loc);
-    return try analyzer_mod.valueToForm(arena, result_val, loc);
+    return analyzer_mod.valueToForm(arena, rt, env, result_val, loc) catch |e| return narrowCallFnError(e, loc);
 }
 
 /// Narrow `anyerror` (from `vtable.callFn`) to the analyzer-facing
