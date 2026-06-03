@@ -1,0 +1,22 @@
+(any? 5)
+;;=> true
+(any? nil)
+;;=> true
+(ifn? inc)
+;;=> true
+(ifn? :k)
+;;=> true
+(ifn? {})
+;;=> true
+(ifn? #{})
+;;=> true
+(ifn? [1])
+;;=> true
+(ifn? 5)
+;;=> false
+(ifn? "s")
+;;=> false
+(ifn? (quote sym))
+;;=> true
+(map ifn? [inc :k {} 5 "s" [1]])
+;;=> (true true true false false true)

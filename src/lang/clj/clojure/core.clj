@@ -1146,6 +1146,9 @@
   (fn* ([x] (lazy-seq (cons x (repeat x))))
        ([n x] (lazy-seq (if (> n 0) (cons x (repeat (dec n) x)) nil)))))
 
+;; `(any? x)` → always true (clojure 1.9; the "matches anything" spec pred).
+(def any? (fn* [x] true))
+
 ;; `(replicate n x)` → a seq of x repeated n times (deprecated alias for
 ;; `(repeat n x)`, kept for compatibility — clj defines it as `(take n (repeat x))`).
 (def replicate

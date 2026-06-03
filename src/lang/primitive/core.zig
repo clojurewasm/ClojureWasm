@@ -81,6 +81,19 @@ pub fn classIsaPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
         .false_val;
 }
 
+/// `(ifn? x)` — true iff `x` is callable (implements IFn): a fn / builtin /
+/// multimethod / protocol-fn, OR a keyword / symbol / var / vector / map / set
+/// (all invocable as lookups, clj parity). Spec: clojure.core/ifn?.
+pub fn ifnQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("ifn?", args, 1, loc);
+    return switch (args[0].tag()) {
+        .fn_val, .builtin_fn, .multi_fn, .protocol_fn, .keyword, .symbol, .var_ref, .vector, .array_map, .hash_map, .hash_set, .sorted_map, .sorted_set => .true_val,
+        else => .false_val,
+    };
+}
+
 /// `(nil? x)` — true iff `x` is the singleton nil Value.
 pub fn nilQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
@@ -630,6 +643,19 @@ pub fn printFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 pub fn prnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = loc;
     return emitToStdout(rt, env, args, true, true);
+}
+
+/// `(pr & args)` — readable (`pr`) form, space-separated, NO trailing
+/// newline (the no-newline counterpart of `prn`; strings/chars quoted).
+pub fn prFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = loc;
+    return emitToStdout(rt, env, args, true, false);
+}
+
+/// `(newline)` — write a single newline to stdout. Spec: clojure.core/newline.
+pub fn newlineFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("newline", args, 0, loc);
+    return emitToStdout(rt, env, &.{}, false, true);
 }
 
 /// `(pr-str & args)` — render args in readable (`pr`) form,
@@ -1246,6 +1272,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "alter-var-root", .f = &alterVarRootFn },
     .{ .name = "__instance?", .f = &instanceQPrim },
     .{ .name = "-class-isa?", .f = &classIsaPrim },
+    .{ .name = "ifn?", .f = &ifnQ },
     .{ .name = "nil?", .f = &nilQ },
     .{ .name = "true?", .f = &trueQ },
     .{ .name = "false?", .f = &falseQ },
@@ -1292,6 +1319,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "println", .f = &printlnFn },
     .{ .name = "print", .f = &printFn },
     .{ .name = "prn", .f = &prnFn },
+    .{ .name = "pr", .f = &prFn },
+    .{ .name = "newline", .f = &newlineFn },
     .{ .name = "pr-str", .f = &prStrFn },
     .{ .name = "print-str", .f = &printStrFn },
     .{ .name = "str", .f = &strFn },

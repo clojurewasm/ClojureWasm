@@ -513,6 +513,21 @@ active:
       `seq-to-map-for-destructuring` (internal). The clojuredocs corpus needs a
       proper per-example harness (cross-form defs) for thorough mining; the
       one-liner sweep is the quick path.
+      **2026-06-04 systematic missing-core scan** — extracted all 686 clojure.core
+      var names from the export, resolve-checked each in cljw: 274 "missing" (incl.
+      special-form/dynamic-var false-negatives). Of the genuinely-missing common
+      fns, **LANDED**: `any?` (always-true pred, core.clj), `ifn?` (callable pred —
+      fn/builtin/multi/protocol/keyword/symbol/var/vector/map/set, core.zig), `pr`
+      (readable no-newline print) + `newline` (single \n) over the shared
+      emitToStdout choke. corpus any_ifn (11) + e2e phase15_pr_newline (4).
+      **Still-missing common fns (future units)**: `bound?` (var-bound pred),
+      `defonce` (macro: def-if-unbound), `find-var`, `ns-unmap`/`ns-unalias`/
+      `ns-imports`, `bound-fn`/`bound-fn*`/`with-bindings` (thread-binding map),
+      `tap>`/`add-tap` (tap registry), `memfn`, `enumeration-seq`/`iterator-seq`/
+      `line-seq`/`file-seq` (IO seqs); deferred-structural: arrays (aget/aset/
+      *-array/bytes?/booleans/chars/floats…, F-004), agents/await/commute/ensure/
+      dosync/locking (Phase-15 concurrency), gen-class/definterface/proxy/bean/
+      memfn (Tier D / JVM), hash-* (AD-009), *dynamic-vars* (D-238 et al).
       **2026-06-04 `defprotocol` docstrings LANDED**: an optional protocol-level
       docstring after the name (`(defprotocol P "doc" (m [a]) …)`) was rejected
       ("method signature must be a list"); now skipped. Method-level docstrings,
