@@ -18,6 +18,7 @@
 
 const std = @import("std");
 const node_mod = @import("../node.zig");
+const loader = @import("../loader.zig");
 const opcode_mod = @import("vm/opcode.zig");
 const value_mod = @import("../../runtime/value/value.zig");
 const env_mod = @import("../../runtime/env.zig");
@@ -551,12 +552,9 @@ fn stepOnce(
                 if (!already_loaded) {
                     const resolver = rt.require_resolver orelse
                         return error_catalog.raise(.lib_not_found, .{}, .{ .ns = ns_name });
-                    const source_opt = try resolver(rt, ns_name);
-                    if (source_opt == null)
+                    const resolved = (try resolver(rt, ns_name)) orelse
                         return error_catalog.raise(.lib_not_found, .{}, .{ .ns = ns_name });
-                    return error_catalog.raise(.feature_not_supported, .{}, .{
-                        .name = "require: loading a not-yet-loaded namespace (Phase 6.16.b-4 c.5)",
-                    });
+                    try loader.loadNamespace(rt, env, ns_name, resolved, .{});
                 }
                 if (sp >= OPERAND_STACK_MAX)
                     return raiseInternal("vm: operand stack overflow");
@@ -578,12 +576,11 @@ fn stepOnce(
                     }
                     const resolver = rt.require_resolver orelse
                         return error_catalog.raise(.lib_not_found, .{}, .{ .ns = spec.ns_name });
-                    const source_opt = try resolver(rt, spec.ns_name);
-                    if (source_opt == null)
+                    const resolved = (try resolver(rt, spec.ns_name)) orelse
                         return error_catalog.raise(.lib_not_found, .{}, .{ .ns = spec.ns_name });
-                    return error_catalog.raise(.feature_not_supported, .{}, .{
-                        .name = "require: loading a not-yet-loaded namespace (Phase 6.16.b-4 c.5)",
-                    });
+                    try loader.loadNamespace(rt, env, spec.ns_name, resolved, .{});
+                    break :blk env.findNs(spec.ns_name) orelse
+                        return error_catalog.raise(.lib_not_found, .{}, .{ .ns = spec.ns_name });
                 };
                 const here = env.current_ns orelse
                     return error_catalog.raise(.current_namespace_missing, .{}, .{ .sym = spec.ns_name });

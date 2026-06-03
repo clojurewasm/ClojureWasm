@@ -20,29 +20,25 @@
   `pvalues` (sequential, result-identical; parallelism deferred D-224) + `doall`/
   `dorun` + `alter-var-root` (var-root mutator, D-225). delay/promise/future/atom/
   volatile already worked.
-- **Syntax-quote COMPLETE (D-226 DISCHARGED, ADR-0082, stage 1 + 2)**: `` ` ``/`~`/
-  `~@`/`foo#` + full symbol QUALIFICATION (`` `foo ``→user/foo, `` `+ ``→
-  clojure.core/+, special-forms/interop/class bare). Macros with backtick run,
-  incl. same-ns private helpers (the real-lib enabler). Key fix: `valueToForm`
-  now FORCES lazy seqs (fixes all lazy macro expansions). **Backtick now unblocks
-  the next units**: `with-redefs` (D-225 — writable cleanly now), `clojure.test`
-  (D-227 — its is/are/deftest macros lean on backtick), and real-lib loading
-  (D-158). Minor syntax-quote residuals: nested backtick (D-228), `macroexpand`
-  (D-229). `with-redefs` (D-225) DONE. **D-230 DONE (ADR-0083)**: Namespace-as-value
-  (reserved `.ns` slot 21 activated, no new F-004 slot) + `*ns*` (runtime-maintained
-  via `Env.setCurrentNs`) + ns-reflection (`ns-name`/`the-ns`/`find-ns`/`all-ns`/
-  `create-ns`/`ns-interns`/`ns-publics`/`ns-map`/`ns-resolve`); AD-010/AD-011; GC
-  membrane now skips `.var_ref`+`.ns`. **D-227 clojure.test DONE**: real
-  `is`/`deftest`/`are`/`testing`/`run-tests` (per-ns registry keyed by
-  `(ns-name *ns*)`, `assert-expr`+`report` multimethods, dynamic
-  `*report-counters*` atom — needed the `^:dynamic` analyzer fix, 09f2a90a);
-  removed the dead test_assert.zig + phase11 e2e. **First action on resume —
-  D-158 real-lib load** (now genuinely reachable: backtick + clojure.test +
-  ns-reflection all present): pick a small pure-Clojure lib, load its source via
-  require, run its `clojure.test` suite on cljw. Lower-value alternatives if
-  D-158 needs infra: D-231 (Var-as-IFn), D-228 (nested backtick), D-229
-  (macroexpand). Deferred clojure.test extras: use-fixtures, thrown-with-msg?,
-  `*test-out*` (needs `*out*`).
+- **Real-lib-compat stack COMPLETE this session** (git log = SSOT): syntax-quote
+  (D-226/ADR-0082, `` ` ``/`~`/`~@`/`foo#` + symbol qualification; key fix
+  valueToForm forces lazy seqs), with-redefs (D-225), Namespace-as-value + `*ns*`
+  + ns-reflection (D-230/ADR-0083; slot 21 activated NO new F-004 slot;
+  AD-010/011; GC membrane skips `.var_ref`+`.ns`), `^:dynamic` analyzer fix
+  (09f2a90a), real `clojure.test` (D-227: deftest/is/are/testing/run-tests,
+  per-ns registry keyed `(ns-name *ns*)`, assert-expr+report multimethods), and
+  **filesystem `require` (D-158/ADR-0084)** — `-cp`/`CLJW_PATH` load `.clj` off
+  disk via `eval/loader.zig` + embedded-FIRST `chainedResolver`, cycle-guarded
+  (`require_in_progress`→circular_require), `loaded_libs`-idempotent,
+  `RequireResolverFn`→`{source,label}`. Verified: a disk test-ns runs its
+  `deftest` suite (`[4 0]`).
+- **First action on resume — the lib-suite VALIDATION campaign** (D-158 tier 2,
+  now runnable): clone a small pure-Clojure lib, `require` it off `-cp`, run its
+  `clojure.test` suite on cljw; each failure is a real bug → fix (F-011). Then
+  Phase-15 concurrency (DA-fork: STM/agent/threading) OR minor residuals: D-231
+  (Var-as-IFn), D-228 (nested backtick), D-229 (macroexpand), deps.edn,
+  multi-libspec standalone-require, `*out*`/with-out-str, clojure.test
+  use-fixtures/thrown-with-msg?.
 - **Phase-15 architectural pieces need a DA-fork entry** (do NOT cold-seize):
   `agent`, STM `dosync`/`ref` (§9 STM 15.1-15.4 ADR), `locking`, real threading
   (std.Io.Threaded work-pool — also activates real `pmap` parallelism D-224 +

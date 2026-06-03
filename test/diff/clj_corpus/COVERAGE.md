@@ -263,6 +263,12 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   extraction across pass/fail/error/thrown/are/multi-deftest/testing). Report
   PRINT format is cljw-specific (no `*test-out*`); only the returned counts +
   `is` return values are clj-asserted.
+- **filesystem `require`** (D-158 / ADR-0084) — `-cp`/`CLJW_PATH` load a lib's
+  `.clj` off disk (ns→path munge, embedded-first chain, cycle guard,
+  loaded-libs idempotency). e2e phase15_require_fs (6: cp-load / env-path /
+  run-a-disk-test-suite / lib_not_found / no-shadow / cycle) + a munge unit test.
+  No corpus (it's I/O, not a value-diff); the capstone case runs a disk test-ns's
+  `clojure.test` suite end-to-end.
 
 ## Next-sweep candidates (gap-confirmed or unswept)
 

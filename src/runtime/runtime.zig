@@ -41,7 +41,15 @@ const SourceContext = print_mod.SourceContext;
 /// `clojure.core` / `clojure.set` / `clojure.string` / `clojure.walk`.
 /// Phase 12+ swaps the slot for classpath / build-artifact resolvers;
 /// Phase 16+ swaps for Wasm pod resolvers. ADR-0035 D8.
-pub const RequireResolverFn = *const fn (rt: *Runtime, ns_name: []const u8) anyerror!?[]const u8;
+/// A namespace's source bytes plus the SourceContext label to register them
+/// under (ADR-0084). For an embedded ns the label is the `<ns-name>` sentinel;
+/// for a filesystem ns it is the resolved path (so errors render `file:line`).
+pub const ResolvedSource = struct {
+    source: []const u8,
+    label: []const u8,
+};
+
+pub const RequireResolverFn = *const fn (rt: *Runtime, ns_name: []const u8) anyerror!?ResolvedSource;
 
 /// Process-wide execution context.
 ///
@@ -179,6 +187,23 @@ pub const Runtime = struct {
     /// can swap for classpath / build-artifact resolvers; Phase 16+
     /// for Wasm pod resolvers.
     require_resolver: ?RequireResolverFn = null,
+
+    /// Filesystem classpath roots searched by the filesystem require resolver
+    /// (ADR-0084). Colon-separated `--classpath`/`CLJW_PATH`, default `["."]`,
+    /// set by the CLI. Empty in the test/embedded path (embedded-only).
+    load_paths: []const []const u8 = &.{},
+
+    /// Set of namespace names that have FULLY loaded (ADR-0084). Distinct from
+    /// `require_in_progress` (in-flight) and from `findNs` (an ns exists with
+    /// partial mappings mid-load): a require skips only when the lib is in this
+    /// completed set. Keys are gpa-owned, freed in `deinit`.
+    loaded_libs: std.StringHashMapUnmanaged(void) = .empty,
+
+    /// Session-lifetime arena for `require`-loaded namespace Forms/Nodes
+    /// (ADR-0084). Loaded fns/macros capture their analyzer Nodes, so the
+    /// storage must outlive the load (as the bootstrap arena does); freed at
+    /// `deinit`.
+    load_arena: std.heap.ArenaAllocator,
 
     /// Monotonic counter bumped by `extend-type` / `extend-protocol`
     /// (cycle 5+ primitives) so live `CallSite` caches can detect
@@ -347,6 +372,7 @@ pub const Runtime = struct {
             .symbols = SymbolInterner.init(gpa),
             .gc = GcHeap.init(gpa),
             .types = std.StringHashMap(*const TypeDescriptor).init(gpa),
+            .load_arena = std.heap.ArenaAllocator.init(gpa),
         };
     }
 
@@ -430,6 +456,12 @@ pub const Runtime = struct {
         var rp_it = self.require_in_progress.iterator();
         while (rp_it.next()) |entry| self.gpa.free(entry.key_ptr.*);
         self.require_in_progress.deinit(self.gpa);
+
+        // ADR-0084: free fully-loaded-lib name keys + the require load arena.
+        var ll_it = self.loaded_libs.iterator();
+        while (ll_it.next()) |entry| self.gpa.free(entry.key_ptr.*);
+        self.loaded_libs.deinit(self.gpa);
+        self.load_arena.deinit();
 
         // ADR-0035 D7: free per-file source registry entries.
         var sr_it = self.source_registry.iterator();

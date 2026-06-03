@@ -32,6 +32,7 @@ const driver = @import("../eval/driver.zig");
 const primitive = @import("primitive.zig");
 const macro_transforms = @import("macro_transforms.zig");
 const Runtime = @import("../runtime/runtime.zig").Runtime;
+const ResolvedSource = @import("../runtime/runtime.zig").ResolvedSource;
 const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const Value = @import("../runtime/value/value.zig").Value;
@@ -106,18 +107,20 @@ fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
     return null;
 }
 
-/// ADR-0035 D8 embedded resolver: serves the 4 bootstrap
-/// namespaces (`clojure.core` / `clojure.set` / `clojure.string` /
-/// `clojure.walk`) from `@embedFile`'d byte slices. Returns `null`
-/// for everything else — the caller (`requireOne`) maps `null` to
-/// `lib_not_found`. Phase 12+ adds a `cljw_path` resolver that
-/// swaps this slot; Phase 16+ adds a Wasm pod resolver.
+/// ADR-0035 D8 embedded resolver: serves the bootstrap-embedded namespaces
+/// (clojure.core/string/set/walk/zip/edn/data.json/csv/tools.cli/pprint/test/
+/// cljw.error/data — see `FILES`) from `@embedFile`'d byte slices, as a
+/// `ResolvedSource{source, label}`. Returns `null` for everything else. Per
+/// ADR-0084 the CLI wraps this in `require_resolver.chainedResolver`
+/// (embedded-FIRST, then the filesystem) so user libs load off disk while these
+/// can never be shadowed; Phase 16+ adds a Wasm pod resolver to the chain.
 pub fn embeddedResolver(
     rt: *Runtime,
     ns_name: []const u8,
-) anyerror!?[]const u8 {
+) anyerror!?ResolvedSource {
     _ = rt;
-    if (lookupEmbeddedFile(ns_name)) |entry| return entry.source;
+    if (lookupEmbeddedFile(ns_name)) |entry|
+        return .{ .source = entry.source, .label = entry.label };
     return null;
 }
 
@@ -377,18 +380,18 @@ test "embeddedResolver serves the 4 bootstrap namespaces (ADR-0035 D8)" {
     defer rt.deinit();
 
     const core = try embeddedResolver(&rt, "clojure.core") orelse return error.TestUnexpectedResult;
-    try testing.expect(core.len > 0);
+    try testing.expect(core.source.len > 0);
     // The first form is the `(ns clojure.core (:refer-clojure))`
     // head landed at Phase 6.16.b-4 sub-cycle d (ADR-0035 D9
     // discharge) — confirms we returned the right source.
-    try testing.expect(std.mem.find(u8, core, "(ns clojure.core") != null);
+    try testing.expect(std.mem.find(u8, core.source, "(ns clojure.core") != null);
 
     const set = try embeddedResolver(&rt, "clojure.set") orelse return error.TestUnexpectedResult;
-    try testing.expect(std.mem.find(u8, set, "(ns clojure.set") != null);
+    try testing.expect(std.mem.find(u8, set.source, "(ns clojure.set") != null);
     const string = try embeddedResolver(&rt, "clojure.string") orelse return error.TestUnexpectedResult;
-    try testing.expect(std.mem.find(u8, string, "(ns clojure.string") != null);
+    try testing.expect(std.mem.find(u8, string.source, "(ns clojure.string") != null);
     const walk = try embeddedResolver(&rt, "clojure.walk") orelse return error.TestUnexpectedResult;
-    try testing.expect(std.mem.find(u8, walk, "(ns clojure.walk") != null);
+    try testing.expect(std.mem.find(u8, walk.source, "(ns clojure.walk") != null);
 }
 
 test "embeddedResolver returns null for unknown namespaces" {
@@ -414,5 +417,5 @@ test "installEmbeddedResolver sets rt.require_resolver" {
 
     // Round-trip the installed resolver through the slot.
     const core = try rt.require_resolver.?(&rt, "clojure.core") orelse return error.TestUnexpectedResult;
-    try testing.expect(core.len > 0);
+    try testing.expect(core.source.len > 0);
 }

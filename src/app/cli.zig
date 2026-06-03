@@ -131,7 +131,7 @@ pub fn dispatch(init: std.process.Init) !void {
         }
         // Not a recognised subcommand — fall through to legacy flag
         // parsing by re-routing `first` through the existing arm.
-        try dispatchArgsRest(io, gpa, arena, stdout, stderr, first, &args);
+        try dispatchArgsRest(io, gpa, arena, stdout, stderr, first, &args, init.environ_map.get("CLJW_PATH"));
         return;
     }
 
@@ -151,10 +151,12 @@ fn dispatchArgsRest(
     stderr: *std.Io.Writer,
     first_arg: []const u8,
     args: anytype,
+    cljw_path_env: ?[]const u8,
 ) !void {
     var source_text: ?[]const u8 = null;
     var source_label: []const u8 = "<-e>";
     var compare_mode: bool = false;
+    var classpath_arg: ?[]const u8 = null;
 
     var current_arg: ?[]const u8 = first_arg;
     while (current_arg) |arg| : (current_arg = args.next()) {
@@ -164,6 +166,8 @@ fn dispatchArgsRest(
                 \\  -e, --eval <expr>  Read, analyse, evaluate <expr>; print each result.
                 \\  <file.clj>         Read+evaluate the named source file.
                 \\  -                  Read+evaluate from stdin (heredoc-friendly).
+                \\  -cp, --classpath <dirs>  Colon-separated dirs `require` searches
+                \\                     for `.clj`/`.cljc` libs (else $CLJW_PATH, else ".").
                 \\  --compare          Run source through tree_walk AND vm backends;
                 \\                     print OK + value on agreement, MISMATCH + both
                 \\                     values (exit 1) on divergence.
@@ -174,6 +178,12 @@ fn dispatchArgsRest(
             return;
         } else if (std.mem.eql(u8, arg, "--compare")) {
             compare_mode = true;
+        } else if (std.mem.eql(u8, arg, "-cp") or std.mem.eql(u8, arg, "--classpath")) {
+            classpath_arg = args.next() orelse {
+                try stderr.print("Error: -cp / --classpath requires an argument\n", .{});
+                try stderr.flush();
+                std.process.exit(1);
+            };
         } else if (std.mem.eql(u8, arg, "-e") or std.mem.eql(u8, arg, "--eval")) {
             const expr = args.next() orelse {
                 try stderr.print("Error: -e / --eval requires an argument\n", .{});
@@ -220,9 +230,26 @@ fn dispatchArgsRest(
         return;
     }
 
+    // ADR-0084 classpath: `-cp` wins, else `CLJW_PATH`, else cwd. Colon-split
+    // into the filesystem-require search roots (`src:test` is the common shape).
+    const cp_spec = classpath_arg orelse cljw_path_env orelse ".";
+    const load_paths = try splitClasspath(arena, cp_spec);
+
     if (compare_mode) {
         try runner.runSourceCompare(io, gpa, arena, stdout, stderr, source_text.?, source_label);
     } else {
-        try runner.runSource(io, gpa, arena, stdout, stderr, source_text.?, source_label);
+        try runner.runSource(io, gpa, arena, stdout, stderr, source_text.?, source_label, load_paths);
     }
+}
+
+/// Split a colon-separated classpath string into its directory roots, allocated
+/// in `arena`. Empty segments are dropped; an all-empty spec yields `["."]`.
+fn splitClasspath(arena: std.mem.Allocator, spec: []const u8) ![]const []const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    var it = std.mem.splitScalar(u8, spec, ':');
+    while (it.next()) |seg| {
+        if (seg.len > 0) try list.append(arena, seg);
+    }
+    if (list.items.len == 0) try list.append(arena, ".");
+    return list.toOwnedSlice(arena);
 }

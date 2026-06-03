@@ -24,6 +24,7 @@ const Runtime = @import("../runtime/runtime.zig").Runtime;
 const Env = @import("../runtime/env.zig").Env;
 const Value = @import("../runtime/value/value.zig").Value;
 const bootstrap = @import("../lang/bootstrap.zig");
+const require_resolver = @import("../lang/require_resolver.zig");
 const error_print = @import("../runtime/error/print.zig");
 const print = @import("../runtime/print.zig");
 
@@ -43,6 +44,7 @@ pub fn runSource(
     stderr: *Writer,
     source_text: []const u8,
     source_label: []const u8,
+    load_paths: []const []const u8,
 ) !void {
     const ctx = error_print.SourceContext{ .file = source_label, .text = source_text };
 
@@ -83,6 +85,12 @@ pub fn runSource(
     bootstrap.setupCoreAot(arena, &rt, &env, &macro_table, @import("bootstrap_cache").data) catch |err| {
         error_render.renderAndExitRegistry(stderr, &rt, bootstrap_ctx, err);
     };
+
+    // ADR-0084: enable filesystem `require` for user libs. setupCore* installs
+    // the embedded-only resolver; swap to the embedded-FIRST chain + the
+    // classpath so `(require '[my.lib])` loads `my/lib.clj` off `load_paths`.
+    rt.load_paths = load_paths;
+    require_resolver.installChained(&rt);
 
     // --- Read - Analyse - Eval - Print loop ---
     var reader = Reader.init(arena, source_text);

@@ -54,6 +54,7 @@ const method_table = @import("../../runtime/dispatch/method_table.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const node_mod = @import("../node.zig");
+const loader = @import("../loader.zig");
 const Node = node_mod.Node;
 const special_forms = @import("../analyzer/special_forms.zig");
 const opcode_mod = @import("vm/opcode.zig");
@@ -458,12 +459,11 @@ fn evalRequire(rt: *Runtime, env: *Env, n: node_mod.RequireNode) !Value {
         }
         const resolver = rt.require_resolver orelse
             return error_catalog.raise(.lib_not_found, n.loc, .{ .ns = n.ns_name });
-        const source_opt = try resolver(rt, n.ns_name);
-        if (source_opt == null)
+        const resolved = (try resolver(rt, n.ns_name)) orelse
             return error_catalog.raise(.lib_not_found, n.loc, .{ .ns = n.ns_name });
-        return error_catalog.raise(.feature_not_supported, n.loc, .{
-            .name = "require: loading a not-yet-loaded namespace (Phase 6.16.b-4 c.6)",
-        });
+        try loader.loadNamespace(rt, env, n.ns_name, resolved, n.loc);
+        break :blk env.findNs(n.ns_name) orelse
+            return error_catalog.raise(.lib_not_found, n.loc, .{ .ns = n.ns_name });
     };
 
     const here = env.current_ns orelse

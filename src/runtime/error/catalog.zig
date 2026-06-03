@@ -290,6 +290,10 @@ pub const Code = enum {
     /// `Runtime.require_resolver` returns `null` for a requested
     /// namespace name.
     lib_not_found,
+    /// args: `.{ .ns = "...", .detail = "..." }` — raised when a lib's source
+    /// is found but cannot be opened/read (ADR-0084). Distinct from
+    /// `lib_not_found` (no such lib): here the file exists but I/O failed.
+    lib_load_failed,
 
     // --- Protocol dispatch (ADR-0008 amendment 1, Phase 7.1) ---
     /// args: `.{ .protocol = "ISeq", .method = "first",
@@ -450,6 +454,10 @@ pub fn entry(comptime code: Code) Entry {
         .lib_not_found => .{
             .kind = .name_error, .phase = .analysis,
             .template = "Could not locate '{[ns]s}' on the require resolver",
+        },
+        .lib_load_failed => .{
+            .kind = .io_error, .phase = .eval,
+            .template = "Failed to load '{[ns]s}': {[detail]s}",
         },
         .protocol_no_satisfies => .{
             .kind = .type_error, .phase = .eval,
