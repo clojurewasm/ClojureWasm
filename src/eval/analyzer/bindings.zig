@@ -331,7 +331,10 @@ pub fn analyzeBinding(
     form: Form,
     macro_table: *const macro_dispatch.Table,
 ) AnalyzeError!*const Node {
-    if (items.len < 3)
+    // `(binding [..])` with no body is valid (→ nil, clj parity) — e.g. a
+    // `(testing "label")` with no body expands to it. Only the binding vector
+    // is required.
+    if (items.len < 2)
         return error_catalog.raise(.bindings_form_incomplete, form.location, .{ .form = "binding" });
     if (items[1].data != .vector)
         return error_catalog.raise(.bindings_not_vector, items[1].location, .{ .form = "binding" });

@@ -202,7 +202,11 @@ active:
       lacks = accepted JVM-interop divergence); `macroexpand-1`
       (D-229, macros); `clojure.math` ns (math); `map->Foo` defrecord factory in a
       test (clojure_walk); `fails-with-cause?`/test-helper (fn); `:import` (delays/
-      parse/try_catch/data); `into-array`/Java arrays (predicates, F-004). This
+      parse/try_catch/data); `into-array`/Java arrays (predicates, F-004).
+      **transients.clj**: `binding` with an EMPTY body (→ nil, clj parity — a
+      `(testing "label")` with no body expands to it) + **`defn-`** (private defn
+      macro_transform) both LANDED (corpus binding_defn_private 5); transients then
+      parks on `reify Object`/`hashCode` (JVM-class interop, deferred). This
       is the standing `quality-loop floor: validation-campaign` — drain
       highest-value-first, one upstream suite at a time, big-bang per suite
       (anti-drip per clj_diff_sweep.md Discipline 2). Cross-ref D-158 (infra) /

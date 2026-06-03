@@ -109,6 +109,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "condp", .expand = expandCondp },
     .{ .name = "fn", .expand = expandFn },
     .{ .name = "defn", .expand = expandDefn },
+    .{ .name = "defn-", .expand = expandDefnPrivate },
     .{ .name = "defmulti", .expand = expandDefmulti },
     .{ .name = "defmethod", .expand = expandDefmethod },
     .{ .name = "prefer-method", .expand = expandPreferMethod },
@@ -1485,6 +1486,28 @@ fn expandDefn(
     def_items[1] = name_form;
     def_items[2] = fn_form;
     return list(arena, def_items, loc);
+}
+
+/// `(defn- name …)` = `defn` whose Var is `^:private`. Inject `:private true`
+/// into the name's reader-meta (merging any existing name meta), then delegate
+/// to `expandDefn` — `buildDefnMeta` carries it onto the Var (D-232).
+fn expandDefnPrivate(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    if (args.len < 1 or args[0].data != .symbol or args[0].data.symbol.ns != null)
+        return error_catalog.raise(.defn_name_invalid, loc, .{});
+    var meta_items: std.ArrayList(Form) = .empty;
+    if (args[0].meta) |m| try meta_items.appendSlice(arena, m.data.map);
+    try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "private" } }, .location = loc });
+    try meta_items.append(arena, .{ .data = .{ .boolean = true }, .location = loc });
+    const meta_form = try arena.create(Form);
+    meta_form.* = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = loc };
+    const new_args = try arena.dupe(Form, args);
+    new_args[0].meta = meta_form;
+    return expandDefn(arena, rt, new_args, loc);
 }
 
 /// Build the `^meta` map Form for a `defn` target (D-183 part d). Merges,

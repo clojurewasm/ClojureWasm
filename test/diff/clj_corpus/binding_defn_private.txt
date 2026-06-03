@@ -1,0 +1,10 @@
+(binding [] )
+;;=> nil
+(do (def ^:dynamic *x* 1) (binding [*x* 2]) *x*)
+;;=> 1
+(do (defn- f [x] (* x 2)) (f 5))
+;;=> 10
+(do (defn- g "doc" [x] (inc x)) (g 9))
+;;=> 10
+(do (defn- h [a b] (+ a b)) (h 3 4))
+;;=> 7
