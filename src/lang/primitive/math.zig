@@ -464,12 +464,14 @@ pub fn decStrict(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     return minusStrict(rt, env, &pair, loc);
 }
 
-/// `(zero? x) ≡ (= x 0)`. Delegates to `equals` so all numeric
-/// type arms (Long / Float / BigInt / Ratio / BigDecimal) work.
+/// `(zero? x) ≡ (== x 0)`. Delegates to numeric `==` (not `=`) so that
+/// `(zero? 0.0)` is true — `=` distinguishes Long 0 from Double 0.0
+/// (clj parity), but `zero?` is a numeric test. Non-numbers throw, as
+/// in clj. All numeric arms (Long / Float / BigInt / Ratio / BigDecimal).
 pub fn zeroQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("zero?", args, 1, loc);
     const pair = [_]Value{ args[0], Value.initInteger(0) };
-    return equals(rt, env, &pair, loc);
+    return equiv(rt, env, &pair, loc);
 }
 
 /// `(pos? x) ≡ (> x 0)`.

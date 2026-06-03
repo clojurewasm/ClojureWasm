@@ -22,3 +22,55 @@
 ;;=> -1.0
 (clojure.math/sin 0.0)
 ;;=> 0.0
+(clojure.math/ulp 1.0)
+;;=> 2.220446049250313E-16
+(clojure.math/scalb 1.0 3)
+;;=> 8.0
+(clojure.math/next-after 1.0 2.0)
+;;=> 1.0000000000000002
+(clojure.math/next-up 1.0)
+;;=> 1.0000000000000002
+(clojure.math/next-down 1.0)
+;;=> 0.9999999999999999
+(clojure.math/get-exponent 8.0)
+;;=> 3
+(clojure.math/get-exponent 1.0)
+;;=> 0
+(clojure.math/get-exponent 0.0)
+;;=> -1023
+(clojure.math/copy-sign 3.0 -1.0)
+;;=> -3.0
+(clojure.math/IEEE-remainder 5.0 3.0)
+;;=> -1.0
+(clojure.math/rint 2.5)
+;;=> 2.0
+(clojure.math/rint 3.5)
+;;=> 4.0
+(clojure.math/rint -2.5)
+;;=> -2.0
+(clojure.math/expm1 0.0)
+;;=> 0.0
+(clojure.math/log1p 0.0)
+;;=> 0.0
+(clojure.math/floor-div 7 2)
+;;=> 3
+(clojure.math/floor-mod 7 -3)
+;;=> -2
+(clojure.math/add-exact 1 2)
+;;=> 3
+(clojure.math/multiply-exact 4 5)
+;;=> 20
+(clojure.math/negate-exact 7)
+;;=> -7
+(clojure.math/increment-exact 9)
+;;=> 10
+(clojure.math/decrement-exact 9)
+;;=> 8
+(clojure.math/sinh 0.0)
+;;=> 0.0
+(clojure.math/cosh 0.0)
+;;=> 1.0
+(clojure.math/tanh 0.0)
+;;=> 0.0
+(clojure.math/round -2.5)
+;;=> -2

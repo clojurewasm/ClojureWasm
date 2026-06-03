@@ -89,6 +89,25 @@ fn valueOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return Value.initFloat(try error_catalog.expectNumber(args[0], "Double/valueOf", loc));
 }
 
+/// JVM `Double.doubleToLongBits` total order: all NaNs collapse to one
+/// canonical bit pattern; -0.0 sorts below +0.0. Used by `compare`.
+fn doubleToLongBits(x: f64) i64 {
+    if (std.math.isNan(x)) return @bitCast(@as(u64, 0x7ff8000000000000));
+    return @bitCast(x);
+}
+
+/// JVM `Double.compare`: the `doubleToLongBits` total order, so -0.0 < +0.0
+/// and NaN is greatest. The raw f64 `<`/`>` (which treats ±0.0 as equal and
+/// orders NaN nowhere) only resolves the strict-inequality cases; the
+/// bit-order tie-break covers ±0.0 and any-NaN.
+fn fcompare(a: f64, b: f64) i64 {
+    if (a < b) return -1;
+    if (a > b) return 1;
+    const ab = doubleToLongBits(a);
+    const bb = doubleToLongBits(b);
+    return if (ab == bb) 0 else if (ab < bb) -1 else 1;
+}
+
 /// `Double/compare` / `max` / `min` / `sum`: two-number f64 statics.
 /// JVM reference: java.lang.Double#compare/max/min/sum.
 const FBinop = enum { compare, max, min, sum };
@@ -101,7 +120,7 @@ fn FBinOp2(comptime op: FBinop, comptime name: []const u8) type {
             const a = try error_catalog.expectNumber(args[0], "Double/" ++ name, loc);
             const b = try error_catalog.expectNumber(args[1], "Double/" ++ name, loc);
             return switch (op) {
-                .compare => Value.initInteger(if (a < b) -1 else if (a > b) 1 else 0),
+                .compare => Value.initInteger(fcompare(a, b)),
                 .max => Value.initFloat(@max(a, b)),
                 .min => Value.initFloat(@min(a, b)),
                 .sum => Value.initFloat(a + b),
@@ -146,6 +165,9 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 const double_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
     .{ .name = "MAX_VALUE", .value = .{ .float = std.math.floatMax(f64) } },
     .{ .name = "MIN_VALUE", .value = .{ .float = std.math.floatTrueMin(f64) } },
+    // Unbiased binary exponent bounds of a normal double (int constants).
+    .{ .name = "MAX_EXPONENT", .value = .{ .int = 1023 } },
+    .{ .name = "MIN_EXPONENT", .value = .{ .int = -1022 } },
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{

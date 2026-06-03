@@ -263,12 +263,23 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   extraction across pass/fail/error/thrown/are/multi-deftest/testing). Report
   PRINT format is cljw-specific (no `*test-out*`); only the returned counts +
   `is` return values are clj-asserted.
-- **clojure.math** (D-232) — a new bootstrapped ns of thin `Math/*` wrappers:
-  sin/cos/tan/asin/acos/atan/atan2/to-radians/to-degrees, exp/log/log10,
-  sqrt/cbrt/pow/hypot, ceil/floor/round/signum, + PI/E. Corpus clojure_math (12)
-  all clj-exact. Deferred: `rint` (cljw host Math lacks it) + the exotic IEEE-754
-  helpers (ulp/scalb/next-after/*-exact/floor-div/sinh/cosh/tanh/expm1/log1p/…).
-  Note `abs` is clojure.core, NOT clojure.math (correctly omitted).
+- **clojure.math** (D-232) — bootstrapped ns of thin `Math/*` wrappers, now at
+  JVM clojure.math parity: trig + hyperbolics (sin/cos/tan/asin/acos/atan/atan2/
+  sinh/cosh/tanh), exp/expm1/log/log10/log1p, sqrt/cbrt/pow/hypot, ceil/floor/
+  rint/round/signum, the IEEE-754 helpers (ulp/scalb/next-after/next-up/next-down/
+  get-exponent/copy-sign/IEEE-remainder), and the integer set (floor-div/floor-mod/
+  add-exact/subtract-exact/multiply-exact/negate-exact/increment-exact/
+  decrement-exact), + PI/E. Corpus clojure_math (38). **Upstream
+  `clojure.test-clojure.math` runs CLEAN: 41 tests / 262 assertions, 0 fail.**
+  `abs` is clojure.core, NOT clojure.math (correctly omitted). Fixes landed
+  draining it: `zero?` was `(= x 0)` → now `(== x 0)` (`(zero? 0.0)` was wrongly
+  false); `Double/compare` now uses the doubleToLongBits total order (-0.0 < +0.0,
+  NaN greatest); `Math/round` no longer panics on ±Inf/NaN (clamps to Long.MIN/MAX,
+  ties toward +∞, keeps the full i64 range a Long); `Math/rint` preserves -0.0;
+  `Math/pow(±1, ±Inf)` → NaN (JVM quirk). Bug-fix regression corpus
+  numeric_zero_signed (9). Accepted divergence: `(ulp 0.0)` prints `5.0E-324`
+  vs clj `4.9E-324` — same value (Double.MIN_VALUE), a float shortest-repr
+  subnormal print difference (float-printer family), not a clojure.math gap.
 - **filesystem `require`** (D-158 / ADR-0084) — `-cp`/`CLJW_PATH` load a lib's
   `.clj` off disk (ns→path munge, embedded-first chain, cycle guard,
   loaded-libs idempotency). e2e phase15_require_fs (6: cp-load / env-path /

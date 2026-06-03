@@ -308,6 +308,23 @@ active:
       both backends, `(:use …)` ns directive). First finding: upstream
       `clojure.test-clojure.keywords` loads off `-cp ~/Documents/OSS/clojure/test`
       then hits `find-keyword` unresolved (a real clojure.core gap).
+      **2026-06-04 math.clj DRAINED CLEAN** (41 tests / 262 assertions, 0
+      fail/0 error): completed clojure.math to JVM parity (11 new host
+      `Math/*` methods — ulp/scalb/nextAfter/nextUp/nextDown/getExponent/
+      copySign/IEEEremainder/rint/expm1/log1p — + all `.clj` wrappers incl.
+      the *-exact/floor-div/floor-mod set + sinh/cosh/tanh; Double/MAX_EXPONENT
+      /MIN_EXPONENT). Real bugs root-caused draining it: (1) **`zero?` was
+      `(= x 0)` → now `(== x 0)`** — `(zero? 0.0)` was wrongly false (`=`
+      distinguishes Long 0 from Double 0.0); broad pre-existing bug. (2)
+      **`Double/compare`** now the doubleToLongBits total order (-0.0<+0.0,
+      NaN greatest) — was raw f64 `<`/`>` (±0.0 equal, NaN unordered). (3)
+      **`Math/round`** no longer panics on ±Inf/NaN (clamps Long.MIN/MAX,
+      ties→+∞ not @round's ties-away, full i64 range stays Long via wrapI64).
+      (4) **`Math/rint`** preserves -0.0. (5) **`Math/pow(±1,±Inf)`**→NaN (JVM
+      quirk). (6) **floorDiv/floorMod** accept i64 big_ints + handle MIN/-1
+      overflow. Corpus clojure_math (38) + numeric_zero_signed (9). `(ulp 0.0)`
+      print `5.0E-324` vs clj `4.9E-324` = the D-166-accepted subnormal Ryū
+      divergence (value-exact), not a gap.
     category: "scope"
     barrier: |-
       **The corpus-driven validation campaign (D-158 tier 2) is now runnable** —
