@@ -28,6 +28,17 @@ const Env = env_mod.Env;
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const macro_dispatch = @import("../macro_dispatch.zig");
 const analyzer_mod = @import("analyzer.zig");
+const map_collection = @import("../../runtime/collection/map.zig");
+const keyword_mod = @import("../../runtime/keyword.zig");
+
+/// True when `meta` (a Clojure map Value, or null) maps `key` to a truthy value
+/// — used to read `^:dynamic` / `^:private` off a `def` target's metadata.
+fn metaFlag(rt: *Runtime, meta: ?Value, key: []const u8) bool {
+    const m = meta orelse return false;
+    const kw = keyword_mod.intern(rt, null, key) catch return false;
+    const v = map_collection.get(m, kw) catch return false;
+    return !v.isNil() and v != Value.false_val;
+}
 const AnalyzeError = analyzer_mod.AnalyzeError;
 const Scope = analyzer_mod.Scope;
 const type_descriptor_mod = @import("../../runtime/type_descriptor.zig");
@@ -334,6 +345,12 @@ pub fn analyzeDef(
     // and never touches `.meta`, so this survives evaluation.
     if (items[1].meta) |meta_form|
         var_ptr.meta = try analyzer_mod.formToValue(rt, env, meta_form.*);
+    // `^:dynamic` / `^:private` on the def target set the Var flags (evalDef /
+    // op_def copy DefNode flags onto the Var). Without this the metadata was
+    // lifted into Var.meta but the flags stayed false, so `(def ^:dynamic *x*)`
+    // could not be `binding`-rebound. `^:macro` has its own defmacro path.
+    const is_dynamic = metaFlag(rt, var_ptr.meta, "dynamic");
+    const is_private = metaFlag(rt, var_ptr.meta, "private");
     const value_node = if (items.len == 3)
         try analyzer_mod.analyze(arena, rt, env, scope, items[2], macro_table)
     else
@@ -342,6 +359,8 @@ pub fn analyzeDef(
     n.* = .{ .def_node = .{
         .name = name_sym.name,
         .value_expr = value_node,
+        .is_dynamic = is_dynamic,
+        .is_private = is_private,
         .loc = form.location,
     } };
     return n;

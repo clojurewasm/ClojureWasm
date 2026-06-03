@@ -1,0 +1,10 @@
+(do (def ^:dynamic *x* 1) (binding [*x* 2] *x*))
+;;=> 2
+(do (def ^:dynamic *x* 1) [(binding [*x* 2] *x*) *x*])
+;;=> [2 1]
+(do (def ^:dynamic *y* 10) (binding [*y* 20] (binding [*y* 30] *y*)))
+;;=> 30
+(do (def ^:dynamic *a* :root) (binding [*a* :inner] (defn peek-a [] *a*) (peek-a)))
+;;=> :inner
+(do (def ^:dynamic *cnt* 0) (binding [*cnt* 5] (+ *cnt* *cnt*)))
+;;=> 10
