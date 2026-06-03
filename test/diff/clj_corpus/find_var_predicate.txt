@@ -1,0 +1,16 @@
+(= (find-var (quote clojure.core/inc)) (var inc))
+;;=> true
+(find-var (quote clojure.core/nonexistent-xyz))
+;;=> nil
+(= (find-var (quote clojure.core/map)) (var map))
+;;=> true
+(var? (find-var (quote clojure.core/reduce)))
+;;=> true
+(var? (var inc))
+;;=> true
+(var? inc)
+;;=> false
+(var? 5)
+;;=> false
+(nil? (find-var (quote clojure.core/no-such-fn-zzz)))
+;;=> true

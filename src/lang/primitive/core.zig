@@ -94,6 +94,14 @@ pub fn ifnQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     };
 }
 
+/// `(var? x)` — true iff `x` is a Var reference. Spec: clojure.core/var?.
+pub fn varQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("var?", args, 1, loc);
+    return if (args[0].tag() == .var_ref) .true_val else .false_val;
+}
+
 /// `(nil? x)` — true iff `x` is the singleton nil Value.
 pub fn nilQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
@@ -1273,6 +1281,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "__instance?", .f = &instanceQPrim },
     .{ .name = "-class-isa?", .f = &classIsaPrim },
     .{ .name = "ifn?", .f = &ifnQ },
+    .{ .name = "var?", .f = &varQ },
     .{ .name = "nil?", .f = &nilQ },
     .{ .name = "true?", .f = &trueQ },
     .{ .name = "false?", .f = &falseQ },

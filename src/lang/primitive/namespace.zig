@@ -143,6 +143,20 @@ pub fn nsMapFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return m;
 }
 
+/// `(find-var sym)` — the Var named by a FULLY-QUALIFIED symbol `ns/name`, or
+/// nil if no such var (the ns must exist). Spec: clojure.core/find-var.
+pub fn findVarFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    try error_catalog.checkArity("find-var", args, 1, loc);
+    if (args[0].tag() != .symbol or symbol_mod.asSymbol(args[0]).ns == null)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "find-var needs a namespace-qualified symbol" });
+    const sym = symbol_mod.asSymbol(args[0]);
+    const ns = env.findNs(sym.ns.?) orelse
+        return error_catalog.raise(.namespace_unknown, loc, .{ .ns = sym.ns.? });
+    if (ns.resolve(sym.name)) |v| return Value.encodeHeapPtr(.var_ref, v);
+    return Value.nil_val;
+}
+
 /// `(ns-refers ns)` — map of `symbol → Var` for the vars REFERRED into the ns
 /// (via use / refer / require :refer), excluding the ns's own interned vars.
 /// Spec: clojure.core/ns-refers (the refers-only counterpart of `ns-map`).
@@ -421,6 +435,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "ns-map", .f = &nsMapFn },
     .{ .name = "ns-refers", .f = &nsRefersFn },
     .{ .name = "ns-resolve", .f = &nsResolveFn },
+    .{ .name = "find-var", .f = &findVarFn },
     .{ .name = "alias", .f = &aliasFn },
     .{ .name = "ns-aliases", .f = &nsAliasesFn },
     .{ .name = "in-ns", .f = &inNsFn },

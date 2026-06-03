@@ -524,7 +524,15 @@ active:
       `defonce` (macro: def-if-unbound), `find-var`, `ns-unmap`/`ns-unalias`/
       `ns-imports`, `bound-fn`/`bound-fn*`/`with-bindings` (thread-binding map),
       `tap>`/`add-tap` (tap registry), `memfn`, `enumeration-seq`/`iterator-seq`/
-      `line-seq`/`file-seq` (IO seqs); deferred-structural: arrays (aget/aset/
+      `line-seq`/`file-seq` (IO seqs).
+      **2026-06-04 `find-var` + `var?` LANDED**: `(find-var 'ns/name)` → the Var
+      (or nil; ns must exist) via env.findNs+resolve; `(var? x)` → `.var_ref` tag.
+      corpus find_var_predicate (8). NOTE `bound?`/`defonce` are DEFERRED: cljw's
+      `Var.root` defaults to nil with NO unbound sentinel, so `(def foo)` (no init)
+      is indistinguishable from `(def foo nil)`. Faithful `bound?` (and `defonce` =
+      def-if-unbound) need an unbound marker — a moderate-structural change
+      (DefNode.has_init flag + evalDef on both backends + a Var.bound flag).
+      Recorded as the next bound?/defonce unit. deferred-structural: arrays (aget/aset/
       *-array/bytes?/booleans/chars/floats…, F-004), agents/await/commute/ensure/
       dosync/locking (Phase-15 concurrency), gen-class/definterface/proxy/bean/
       memfn (Tier D / JVM), hash-* (AD-009), *dynamic-vars* (D-238 et al).
