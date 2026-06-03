@@ -446,6 +446,30 @@ pub fn keywordFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "keyword", .got = args.len, .min = 1, .max = 2 });
 }
 
+/// `(find-keyword name)` / `(find-keyword ns name)` — return the keyword IF it
+/// is ALREADY interned (i.e. has been used), else nil. Unlike `keyword`, never
+/// creates one. JVM reference: clojure.core/find-keyword.
+pub fn findKeywordFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len == 1) {
+        const x = args[0];
+        // An existing keyword Value is, by construction, already interned.
+        if (x.tag() == .keyword) return x;
+        if (x.tag() == .string) return keyword_mod.find(rt, null, string_mod.asString(x)) orelse .nil_val;
+        if (x.tag() == .symbol) {
+            const s = symbol_mod.asSymbol(x);
+            return keyword_mod.find(rt, s.ns, s.name) orelse .nil_val;
+        }
+        if (x.isNil()) return .nil_val;
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "find-keyword from non-string/non-keyword/non-symbol" });
+    } else if (args.len == 2) {
+        if (args[0].tag() != .string or args[1].tag() != .string)
+            return error_catalog.raise(.feature_not_supported, loc, .{ .name = "find-keyword (2-arg) requires both ns and name to be strings" });
+        return keyword_mod.find(rt, string_mod.asString(args[0]), string_mod.asString(args[1])) orelse .nil_val;
+    }
+    return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "find-keyword", .got = args.len, .min = 1, .max = 2 });
+}
+
 /// `(symbol s)` / `(symbol ns name)` — intern a Symbol Value
 /// (ADR-0037, F-004 Group A slot 1). 1-arg: if `s` is already a
 /// symbol, return it (idempotent); if `s` is a string, intern
@@ -1208,6 +1232,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "neg-int?", .f = &negIntQ },
     .{ .name = "nat-int?", .f = &natIntQ },
     .{ .name = "keyword", .f = &keywordFn },
+    .{ .name = "find-keyword", .f = &findKeywordFn },
     .{ .name = "symbol", .f = &symbolFn },
     .{ .name = "name", .f = &nameFn },
     .{ .name = "namespace", .f = &namespaceFn },

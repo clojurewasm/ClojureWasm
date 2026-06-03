@@ -165,7 +165,10 @@ active:
       clojure.test-clojure.<x>)) (clojure.test/run-tests …)'` loads + runs an
       upstream Clojure test suite; each unresolved-symbol / DIFF / failure is a
       real clojure.core gap to fix (F-011). The densest bug-finder. Findings so
-      far (fix each, then re-run): **`find-keyword`** missing (keywords.clj). This
+      far (fix each, then re-run): **`find-keyword`** DONE (clojure.core primitive
+      over the existing `keyword_mod.find`; 7/7 corpus). NEXT in keywords.clj:
+      **`(.name *ns*)`** — `.name`/`.getName` interop on the Namespace `.ns` value
+      (D-230 added the value, not its host method table). This
       is the standing `quality-loop floor: validation-campaign` — drain
       highest-value-first, one upstream suite at a time, big-bang per suite
       (anti-drip per clj_diff_sweep.md Discipline 2). Cross-ref D-158 (infra) /

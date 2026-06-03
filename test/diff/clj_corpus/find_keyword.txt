@@ -1,0 +1,14 @@
+(find-keyword "never-used-kw-xyz")
+;;=> nil
+(do (keyword "usedkw") (find-keyword "usedkw"))
+;;=> :usedkw
+(find-keyword :already)
+;;=> :already
+(find-keyword "a" "b")
+;;=> nil
+(do :ns-kw/x (find-keyword "ns-kw" "x"))
+;;=> :ns-kw/x
+(keyword? (find-keyword :foo))
+;;=> true
+(find-keyword "nope-unused-2")
+;;=> nil
