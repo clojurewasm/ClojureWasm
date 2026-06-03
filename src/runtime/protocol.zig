@@ -182,6 +182,13 @@ pub fn satisfies(proto: *const ProtocolDescriptor, td: *const TypeDescriptor) bo
         for (t.method_table) |entry| {
             if (std.mem.eql(u8, entry.protocol_name, target_name)) return true;
         }
+        // A zero-method MARKER protocol installs no method_table entry — its
+        // membership lives only in `protocol_impls` (the declared-interface
+        // SSOT, D-190 / ADR-0068). Without this scan a type that extends a
+        // marker protocol is invisible to satisfies?.
+        for (t.protocol_impls) |p| {
+            if (std.mem.eql(u8, p, target_name)) return true;
+        }
         cursor = t.parent;
     }
     return false;

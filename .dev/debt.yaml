@@ -351,13 +351,16 @@ active:
       `^type` return hints, and multiple arity vectors were already tolerated
       (only the method-name symbol is read). e2e phase15_defprotocol_docstring
       (3). Surfaced by protocols/examples.clj, which then parks on `definterface`
-      (a JVM-interface unit, deferred). **NEW PARKED BUG (separate unit):** a
-      type that EXTENDS a method-LESS marker protocol (via defrecord body OR
-      extend-type) does not register as satisfying it — `(satisfies? M x)` is
-      false where clj is true. ROOT: cljw tracks protocol membership through the
-      installed method entries, and a 0-method protocol installs none. Needs an
-      explicit extends-registration independent of method count. Moderate;
-      clojure_walk / protocols-style code hits it.
+      (a JVM-interface unit, deferred).
+      **2026-06-04 marker-protocol satisfaction FIXED**: a type extending a
+      method-LESS marker protocol (via defrecord body OR extend-type) read as
+      NOT satisfying it (`(satisfies? M x)` false where clj is true). ROOT:
+      `protocol.satisfies` scanned only `method_table`, never `protocol_impls`
+      (the declared-interface SSOT where marker membership lives, D-190/
+      ADR-0068) — the registration WAS happening, satisfies? just ignored it.
+      One-loop fix in satisfies. clj-grounded. e2e phase15_marker_protocol
+      (4: marker-defrecord / marker-extend-type / non-member-false /
+      method-proto-regression).
     category: "scope"
     barrier: |-
       **The corpus-driven validation campaign (D-158 tier 2) is now runnable** —
