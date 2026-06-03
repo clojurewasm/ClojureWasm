@@ -74,3 +74,14 @@ handover → `.dev/decisions/0076_clj_parity_campaign_and_accepted_divergences.m
 `.claude/rules/clj_diff_sweep.md` → `.dev/debt.yaml` (D-232 campaign + D-237) →
 CLAUDE.md (§ Project spirit + Autonomous Workflow + The only stop) →
 `.dev/project_facts.md` (F-002/004/005/009/010/011/012) → `.dev/principle.md`.
+
+## Stopped — user requested
+
+User instruction (2026-06-04): audit the wiring / reference chain so a clear
+session can `/continue` cleanly, then end the session. Done — resume-readiness
+audit clean (cold-start 10 files present, handover 76 lines framing-clean, debt
+IDs all resolve, 15 e2e wired, final gate 231/0 re-synced `.gate_pass` to the
+current tree so the fresh session starts on an authorised fingerprint). Resume
+the loop normally next session at the Resume contract above (continue D-232;
+structural units via DA-fork). Per-task wind-down note (3 items) at
+`private/notes/phase15-session-winddown-2026-06-04.md`.
