@@ -1,0 +1,8 @@
+(let [{:a/keys [b c] :or {c 3}} {:a/b 1}] [b c])
+;;=> [1 3]
+(let [{:a/keys [b c]} {:a/b 1 :a/c 2}] [b c])
+;;=> [1 2]
+(let [{:a/syms [b c]} {(quote a/b) 1 (quote a/c) 2}] [b c])
+;;=> [1 2]
+(let [{:foo/keys [x y]} {:foo/x 10 :foo/y 20}] [x y])
+;;=> [10 20]

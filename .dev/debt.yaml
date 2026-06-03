@@ -425,6 +425,13 @@ active:
       DIRECTIVE (`:ns/keys` applies ns to each entry's key, ≡ `{:keys [:ns/b
       :ns/c]}`); cljw only recognises the unqualified `:keys`/`:strs`/`:syms`
       directives — next clean unit.
+      **2026-06-04 namespaced `:ns/keys` / `:ns/syms` directive LANDED**:
+      `{:a/keys [b c]}` ≡ `{:keys [:a/b :a/c]}` (the directive's ns becomes each
+      entry's key ns); cljw only recognised unqualified directives. corpus
+      namespaced_keys_directive (4). special advances 61 → parks on
+      `clojure.test-helper/getCause` (an exception-interop / test-helper-internal
+      reference — deeper, no longer a destructure gap). The destructuring family
+      (:as-empty / :keys-keyword / :ns/keys) is now complete for special.
       **2026-06-04 `defprotocol` docstrings LANDED**: an optional protocol-level
       docstring after the name (`(defprotocol P "doc" (m [a]) …)`) was rejected
       ("method signature must be a list"); now skipped. Method-level docstrings,

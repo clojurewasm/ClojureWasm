@@ -386,6 +386,30 @@ fn associativeDestructure(
     while (i + 1 < pairs.len) : (i += 2) {
         const k = pairs[i];
         const v = pairs[i + 1];
+        // Namespaced directive `:ns/keys` / `:ns/syms` (`{:a/keys [b c]}` ≡
+        // `{:keys [:a/b :a/c]}`, clj parity): the directive's namespace becomes
+        // each plain-symbol entry's key namespace.
+        if (k.data == .keyword and k.data.keyword.ns != null and
+            (std.mem.eql(u8, k.data.keyword.name, "keys") or std.mem.eql(u8, k.data.keyword.name, "syms")))
+        {
+            const dir_ns = k.data.keyword.ns.?;
+            const is_keys = std.mem.eql(u8, k.data.keyword.name, "keys");
+            if (v.data != .vector)
+                return error_catalog.raise(.feature_not_supported, loc, .{ .name = "destructuring `:ns/keys`/`:ns/syms` needs a symbol vector" });
+            for (v.data.vector) |s| {
+                if (s.data != .symbol)
+                    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "destructuring `:ns/keys`/`:ns/syms` entries must be symbols" });
+                const nm = s.data.symbol.name;
+                const local: Form = .{ .data = .{ .symbol = .{ .ns = null, .name = nm } }, .location = loc };
+                const key_form: Form = if (is_keys)
+                    .{ .data = .{ .keyword = .{ .ns = dir_ns, .name = nm } }, .location = loc }
+                else
+                    try makeCall(arena, "quote", &.{.{ .data = .{ .symbol = .{ .ns = dir_ns, .name = nm } }, .location = loc }}, loc);
+                try out.append(arena, local);
+                try out.append(arena, try makeGet(arena, g, key_form, findOrDefault(or_pairs, nm), loc));
+            }
+            continue;
+        }
         if (k.data == .keyword and k.data.keyword.ns == null) {
             const kn = k.data.keyword.name;
             if (std.mem.eql(u8, kn, "or")) continue;
