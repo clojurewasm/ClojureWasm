@@ -10,7 +10,26 @@
 
 active:
   - id: "D-234"
-    status: "now (characterised 2026-06-03 running for.clj) — `for` `:while` in a modifier position (after `:when`/`:let`) raises; needs a letfn+lazy-seq for-rewrite."
+    status: |-
+      DISCHARGED 2026-06-03 — `for` rewritten from mapcat-of-singletons to
+      clj's `letfn` + `lazy-seq` `emit-bind` shape (`src/lang/macro_transforms.zig`
+      forStep): each binding group is a self-recursive iterator
+      `(giter [gxs] (lazy-seq (loop* [gxs gxs] (when (seq gxs) (let [bind (first
+      gxs)] <do-mod>)))))` (self-ref via letfn — cljw has no named-fn self-ref),
+      `do-mod` threads modifiers in order (`:let`→let, `:while`→`(when t …)`
+      terminate, `:when`→`(if t … (recur (rest gxs)))` skip), innermost emits
+      `(cons body (giter (rest gxs)))`, nested splices via `(let [fs (seq (child
+      coll))] (if fs (concat fs (giter (rest gxs))) (recur (rest gxs))))`. Now
+      clj-exact for ALL `:while` positions incl. post-`:when` (the previously
+      impossible case) and `:while` reading a same-group `:let` var. 12 ad-hoc
+      clj-oracle cmps + 7 e2e (phase15_for_while). NO diff-oracle cases: `for`
+      is a macro expanding to bootstrap `.clj` closures (letfn/lazy-seq/concat/
+      cons), so `evaluator.compare` hits the documented bootstrap-closure blind
+      spot; both backends verified correct whole-program (VM default +
+      `-Dbackend=tree-walk` both match clj). for.clj went from won't-load to
+      49/51 pass (2 errors = `(Integer. …)` ctor interop, unrelated).
+      `for_while_not_supported` catalog code fully removed (variant + entry arm,
+      dead). Cross-ref D-134 / D-133 / F-011.
     category: "runtime"
     barrier: |-
       **`(for [a coll :when w :while p] …)` raises `for_while_not_supported`.**

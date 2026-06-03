@@ -768,6 +768,14 @@ fn setupDiffTargetNs(f: *Fixture) !void {
     _ = try f.env.intern(ns, "marker2", Value.initInteger(7), null);
 }
 
+// NOTE (D-234): no `for` differential cases here. `for` is a MACRO (it
+// expands to letfn/lazy-seq/concat/cons — all bootstrap `.clj` closures), so
+// `evaluator.compare` hits the documented bootstrap-closure harness blind
+// spot (Fixture bootstraps core.clj once under one backend then swaps the
+// vtable). Both backends compute `for` correctly whole-program (verified:
+// VM and `-Dbackend=tree-walk` both match clj); coverage is the
+// phase15_for_while e2e + clj-oracle cmps, not the diff oracle.
+
 test "diff: op_ctor_call name index survives >255 constants (D-233)" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

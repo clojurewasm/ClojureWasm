@@ -940,37 +940,41 @@ fn expandDoseq(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: 
     return result.form;
 }
 
-// --- for (D-134 / phaseA26) — lazy list comprehension ---
+// --- for (D-134 / D-234) - lazy list comprehension ---
 //
-// `(for [bind coll | :let v | :when t …] expr)` → nested `mapcat` over each
-// binding pair, each element wrapped in `(list expr)` so a uniform
-// mapcat-of-singletons composes (mapcat of 1-element seqs = map; mapcat of
-// the inner comprehension = the nested product). `:let`→`(let* v …)`,
-// `:when`→`(if t … (list))` (empty seq ⇒ mapcat drops the element). Lazy
-// (mapcat is lazy). `fn` (not `fn*`) carries destructuring binds. Survey:
-// private/notes/phaseA26-doseq-for-survey.md §4 (shape a-i). cljw lacks
-// named-`fn` self-reference, so the JVM/SCI named-fn+lazy-seq shape is out;
-// the mapcat composition is the finished-form-clean equivalent. `:while`
-// immediately after a binding (no preceding `:when`/`:let` in the group)
-// lowers to `take-while` on that coll (the common `(for [x (range) :while
-// p] …)` idiom). DIVERGENCE: any OTHER `:while` (after a `:when` or `:let`
-// in the same group) raises `for_while_not_supported`. clj's semantics
-// apply `:while` AFTER the `:when` filter — it breaks only on elements that
-// PASSED `:when` (e.g. `(for [a (range 5) :when (> a 0) :while (odd? a)] a)`
-// → `(1)` in clj, because a=0 is skipped by `:when` so `:while` never sees
-// it). A mapcat-of-singletons cannot express that post-filter sequential
-// short-circuit by lifting `:while` to a raw-coll `take-while` (the lift
-// would break on the skipped element). The finished-form fix is a
-// `letfn` + `lazy-seq` rewrite of `for` (both primitives now exist) — D-234.
+// `(for [bind coll | :let v | :when t | :while t ...] expr)` -> a `letfn` +
+// `lazy-seq` step chain, a port of clojure.core/for's `emit-bind` (dropping
+// the chunked fast path; cw v1 has no chunked-seq). Each binding group gets
+// a self-recursive iterator fn `(giter [gxs] (lazy-seq (loop* [gxs gxs]
+// (when (seq gxs) (let [bind (first gxs)] <do-mod>)))))`; self-reference
+// rides `letfn` (cljw has no named-`fn` self-ref). `do-mod` threads the
+// modifiers in written order: `:let`->`(let v ...)`, `:while`->`(when t ...)`
+// (false => nil => the seq terminates), `:when`->`(if t ... (recur (rest gxs)))`
+// (false => skip this element). The innermost group emits `(cons body (giter
+// (rest gxs)))`; a non-innermost group splices its child via `(let [fs (seq
+// (child coll'))] (if fs (concat fs (giter (rest gxs))) (recur (rest gxs))))`.
+// This gives clj's exact sequential semantics - crucially `:while` is
+// evaluated AFTER `:when` per element, so `(for [a (range 5) :when (> a 0)
+// :while (odd? a)] a)` -> `(1)` (a=0 is `:when`-skipped, never reaching
+// `:while`). Replaces the old mapcat-of-singletons lowering (D-234), which
+// could not express that post-filter short-circuit. `let` (not `let*`)
+// carries destructuring binds. Survey: phaseA26-doseq-for-survey.md.
+//
+// `outer_cont` / `outer_recform` are the enclosing binding's lazy
+// self-continuation `(giter (rest gxs))` and skip form `(recur (rest gxs))`;
+// both null only at the top (where the first expr must be a binding pair).
 fn forStep(
     arena: std.mem.Allocator,
     rt: *Runtime,
+    outer_cont: ?Form,
+    outer_recform: ?Form,
     exprs: []const Form,
     body: Form,
     loc: SourceLocation,
 ) macro_dispatch.ExpandError!Form {
     if (exprs.len == 0)
-        return makeCall(arena, "list", &.{body}, loc); // innermost: a 1-element seq
+        // Innermost: emit the body and lazily continue the enclosing iterator.
+        return makeCall(arena, "cons", &.{ body, outer_cont.? }, loc);
 
     const k = exprs[0];
     const v = exprs[1];
@@ -978,54 +982,101 @@ fn forStep(
 
     if (k.data == .keyword and k.data.keyword.ns == null) {
         const kname = k.data.keyword.name;
+        if (outer_recform == null) // a modifier with no preceding binding pair
+            return error_catalog.raise(.for_bindings_invalid, k.location, .{});
+        const inner = try forStep(arena, rt, outer_cont, outer_recform, rest, body, loc);
         if (std.mem.eql(u8, kname, "let")) {
             if (v.data != .vector)
                 return error_catalog.raise(.for_bindings_invalid, v.location, .{});
-            return buildLetStarBody(arena, v.data.vector, try forStep(arena, rt, rest, body, loc), loc);
-        } else if (std.mem.eql(u8, kname, "when")) {
-            // (if v <inner> (list))  — empty seq when false, mapcat drops it.
-            const if_items = try arena.alloc(Form, 4);
-            if_items[0] = sym("if", loc);
-            if_items[1] = v;
-            if_items[2] = try forStep(arena, rt, rest, body, loc);
-            if_items[3] = try makeCall(arena, "list", &.{}, loc);
-            return list(arena, if_items, loc);
+            return makeLet(arena, v, inner, loc);
         } else if (std.mem.eql(u8, kname, "while")) {
-            return error_catalog.raise(.for_while_not_supported, k.location, .{});
+            // (when v inner) - false => nil => the lazy-seq terminates.
+            const items = try arena.alloc(Form, 3);
+            items[0] = sym("when", loc);
+            items[1] = v;
+            items[2] = inner;
+            return list(arena, items, loc);
+        } else if (std.mem.eql(u8, kname, "when")) {
+            // (if v inner (recur (rest gxs))) - false => skip this element.
+            const items = try arena.alloc(Form, 4);
+            items[0] = sym("if", loc);
+            items[1] = v;
+            items[2] = inner;
+            items[3] = outer_recform.?;
+            return list(arena, items, loc);
         }
         return error_catalog.raise(.for_bindings_invalid, k.location, .{});
     }
 
-    // A real `bind coll` pair → (mapcat (fn [bind] <inner>) coll).
-    // A `:while` modifier immediately after the binding is applied as a
-    // take-while on the coll (the common `(for [x (range) :while p] …)`
-    // idiom). A `:while` in any other position (after a :when/:let in the
-    // group) reaches the keyword case above and raises — clj applies it
-    // post-:when-filter, which mapcat cannot express; the finished-form fix
-    // is a letfn+lazy-seq for-rewrite (D-234).
-    var coll_form = v;
-    var tail = rest;
-    if (tail.len >= 2 and tail[0].data == .keyword and tail[0].data.keyword.ns == null and
-        std.mem.eql(u8, tail[0].data.keyword.name, "while"))
-    {
-        const pred = tail[1];
-        const tw_param = try arena.alloc(Form, 1);
-        tw_param[0] = k;
-        const tw_fn = try arena.alloc(Form, 3);
-        tw_fn[0] = sym("fn", loc);
-        tw_fn[1] = .{ .data = .{ .vector = tw_param }, .location = loc };
-        tw_fn[2] = pred;
-        coll_form = try makeCall(arena, "take-while", &.{ try list(arena, tw_fn, loc), v }, loc);
-        tail = tail[2..];
-    }
+    // A real `bind coll` pair -> a self-recursive lazy iterator over (seq coll).
+    const giter = sym(try rt.gensym(arena, "for_iter"), loc);
+    const gxs = sym(try rt.gensym(arena, "for_s"), loc);
+    const cont_form = try listOf(arena, &.{ giter, try makeCall(arena, "rest", &.{gxs}, loc) }, loc); // (giter (rest gxs))
+    const recform = try makeCall(arena, "recur", &.{try makeCall(arena, "rest", &.{gxs}, loc)}, loc); // (recur (rest gxs))
+    const inner = try forStep(arena, rt, cont_form, recform, rest, body, loc);
 
+    // (let [bind (first gxs)] inner)
+    const lb = try arena.alloc(Form, 2);
+    lb[0] = k;
+    lb[1] = try makeCall(arena, "first", &.{gxs}, loc);
+    const let_form = try makeLet(arena, .{ .data = .{ .vector = lb }, .location = loc }, inner, loc);
+
+    // (when (seq gxs) <let_form>)
+    const when_items = try arena.alloc(Form, 3);
+    when_items[0] = sym("when", loc);
+    when_items[1] = try makeCall(arena, "seq", &.{gxs}, loc);
+    when_items[2] = let_form;
+    const when_form = try list(arena, when_items, loc);
+
+    // (loop* [gxs gxs] <when>)
+    const loop_binding = try arena.alloc(Form, 2);
+    loop_binding[0] = gxs;
+    loop_binding[1] = gxs;
+    const loop_items = try arena.alloc(Form, 3);
+    loop_items[0] = sym("loop*", loc);
+    loop_items[1] = .{ .data = .{ .vector = loop_binding }, .location = loc };
+    loop_items[2] = when_form;
+    const loop_form = try list(arena, loop_items, loc);
+
+    // (letfn [(giter [gxs] (lazy-seq <loop>))] (giter coll))
     const param_vec = try arena.alloc(Form, 1);
-    param_vec[0] = k;
-    const fn_items = try arena.alloc(Form, 3);
-    fn_items[0] = sym("fn", loc);
-    fn_items[1] = .{ .data = .{ .vector = param_vec }, .location = loc };
-    fn_items[2] = try forStep(arena, rt, tail, body, loc);
-    return makeCall(arena, "mapcat", &.{ try list(arena, fn_items, loc), coll_form }, loc);
+    param_vec[0] = gxs;
+    const spec_items = try arena.alloc(Form, 3);
+    spec_items[0] = giter;
+    spec_items[1] = .{ .data = .{ .vector = param_vec }, .location = loc };
+    spec_items[2] = try makeCall(arena, "lazy-seq", &.{loop_form}, loc);
+    const spec_form = try list(arena, spec_items, loc);
+    const letfn_bindings = try arena.alloc(Form, 1);
+    letfn_bindings[0] = spec_form;
+    const letfn_items = try arena.alloc(Form, 3);
+    letfn_items[0] = sym("letfn", loc);
+    letfn_items[1] = .{ .data = .{ .vector = letfn_bindings }, .location = loc };
+    letfn_items[2] = try listOf(arena, &.{ giter, v }, loc); // (giter coll)
+    const iter_expr = try list(arena, letfn_items, loc);
+
+    if (outer_cont == null)
+        return iter_expr; // top-level binding - the comprehension itself
+
+    // Nested under an outer binding: splice this child seq into the outer
+    // iteration. (let [fs (seq <iter_expr>)] (if fs (concat fs cont) recur))
+    const gfs = sym(try rt.gensym(arena, "for_fs"), loc);
+    const fb = try arena.alloc(Form, 2);
+    fb[0] = gfs;
+    fb[1] = try makeCall(arena, "seq", &.{iter_expr}, loc);
+    const if_items = try arena.alloc(Form, 4);
+    if_items[0] = sym("if", loc);
+    if_items[1] = gfs;
+    if_items[2] = try makeCall(arena, "concat", &.{ gfs, outer_cont.? }, loc);
+    if_items[3] = outer_recform.?;
+    return makeLet(arena, .{ .data = .{ .vector = fb }, .location = loc }, try list(arena, if_items, loc), loc);
+}
+
+/// `(head a b ...)` where `head` is an already-built Form (vs `makeCall`
+/// which takes a string head). Used for `(giter (rest gxs))` etc.
+fn listOf(arena: std.mem.Allocator, items: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    const buf = try arena.alloc(Form, items.len);
+    @memcpy(buf, items);
+    return list(arena, buf, loc);
 }
 
 fn expandFor(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
@@ -1033,7 +1084,7 @@ fn expandFor(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: So
         return error_catalog.raise(.for_form_incomplete, loc, .{});
     if (args[0].data != .vector or args[0].data.vector.len % 2 != 0)
         return error_catalog.raise(.for_bindings_invalid, args[0].location, .{});
-    return forStep(arena, rt, args[0].data.vector, try foldBody(arena, args[1..], loc), loc);
+    return forStep(arena, rt, null, null, args[0].data.vector, try foldBody(arena, args[1..], loc), loc);
 }
 
 // --- case (D-134) ---

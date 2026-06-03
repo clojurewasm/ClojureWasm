@@ -223,7 +223,6 @@ pub const Code = enum {
     doseq_bindings_invalid,
     for_form_incomplete,
     for_bindings_invalid,
-    for_while_not_supported,
     format_spec_invalid,
     format_args_insufficient,
     while_form_incomplete,
@@ -798,11 +797,7 @@ pub fn entry(comptime code: Code) Entry {
         },
         .for_bindings_invalid => .{
             .kind = .syntax_error, .phase = .macroexpand,
-            .template = "for bindings must be an even-length vector of binding pairs with optional :let / :when modifiers",
-        },
-        .for_while_not_supported => .{
-            .kind = .syntax_error, .phase = .macroexpand,
-            .template = "for with :while is not yet supported; use :when, or wrap with take-while",
+            .template = "for bindings must be an even-length vector of binding pairs with optional :let / :when / :while modifiers",
         },
         .format_spec_invalid => .{
             .kind = .type_error, .phase = .eval,
