@@ -9,6 +9,33 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-234"
+    status: "now (characterised 2026-06-03 running for.clj) — `for` `:while` in a modifier position (after `:when`/`:let`) raises; needs a letfn+lazy-seq for-rewrite."
+    category: "runtime"
+    barrier: |-
+      **`(for [a coll :when w :while p] …)` raises `for_while_not_supported`.**
+      cljw's `for` lowers to a mapcat-of-singletons composition; a `:while`
+      immediately after a binding lifts to `take-while` on that coll (the
+      common idiom, works), but a `:while` after a `:when`/`:let` in the same
+      group cannot. clj's semantics apply `:while` AFTER the `:when` filter —
+      it breaks only on elements that PASSED `:when`. Proof:
+      `(for [a (range 5) :when (> a 0) :while (odd? a)] a)` → clj `(1)` (a=0 is
+      skipped by `:when`, so `:while` never sees it and does not break); a
+      raw-coll `take-while` lift would break at a=0 and yield `()`. A
+      mapcat-of-singletons has no "stream at the modifier point" to truncate,
+      so the post-filter sequential short-circuit is inexpressible by lifting.
+      **Finished-form fix**: rewrite `for` to clj's `letfn` + `lazy-seq` step
+      shape (one step-fn per binding level; `:while` → `(when p <cont> nil)`,
+      `:when` → skip, `:let` → inner let), mirroring
+      `clojure.core/for`. Both prerequisites now exist (letfn* + the lazy_seq
+      producer, D-133). This is a depth-3 macro redesign of `expandFor`
+      (`src/lang/macro_transforms.zig`); `doseq` (loop/recur) already handles
+      `:while` correctly and is the reference for the per-element modifier
+      order. NOT urgent (the common `:while`-after-binding case works); HIGH
+      value for upstream-suite parity (for.clj). Cross-ref D-134 / D-133 /
+      F-011 / F-002 (finished-form). recall trigger: the for-macro redesign
+      cycle, or a corpus lib using `:while` after `:when`.
+    last_reviewed: "2026-06-03"
   - id: "D-233"
     status: |-
       DISCHARGED 2026-06-03 (root cause was NOT "unresolved class" — it was an
@@ -220,8 +247,10 @@ active:
       big_int/big_decimal + regex — a macro expansion containing any literal
       re-analyses; e2e phase15_macro_literals 6); this got `for` + other_functions
       past their literal gaps. Remaining PARKED findings (each its own future
-      unit, mostly deferred-structural): `for` `:while` modifier (doseq has it,
-      for doesn't); **`{n}`/`{n,}`/`{n,m}` bounded-repeat regex DONE** (compile.zig
+      unit, mostly deferred-structural): `for` `:while` in a modifier position
+      (after `:when`/`:let`) → **D-234** (needs a letfn+lazy-seq for-rewrite;
+      `:while`-right-after-binding already works); **`{n}`/`{n,}`/`{n,m}`
+      bounded-repeat regex DONE** (compile.zig
       parseRepeat + emit: n mandatory copies + greedy-optional/`*`; groups work;
       corpus regex_bounded_repeat 10); `re-matcher`/`re-groups` still deferred
       (D-220, needs the reserved `.matcher` slot-56 mutable value; other_functions);

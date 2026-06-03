@@ -951,11 +951,17 @@ fn expandDoseq(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: 
 // private/notes/phaseA26-doseq-for-survey.md §4 (shape a-i). cljw lacks
 // named-`fn` self-reference, so the JVM/SCI named-fn+lazy-seq shape is out;
 // the mapcat composition is the finished-form-clean equivalent. `:while`
-// immediately after a binding lowers to `take-while` on that coll (the
-// common `(for [x (range) :while p] …)` idiom). DIVERGENCE: a `:while` that
-// follows a `:let` in the same group (so its pred reads the let binding)
-// still raises `for_while_not_supported` — the let-threaded take-while pred
-// is a D-134 follow-up.
+// immediately after a binding (no preceding `:when`/`:let` in the group)
+// lowers to `take-while` on that coll (the common `(for [x (range) :while
+// p] …)` idiom). DIVERGENCE: any OTHER `:while` (after a `:when` or `:let`
+// in the same group) raises `for_while_not_supported`. clj's semantics
+// apply `:while` AFTER the `:when` filter — it breaks only on elements that
+// PASSED `:when` (e.g. `(for [a (range 5) :when (> a 0) :while (odd? a)] a)`
+// → `(1)` in clj, because a=0 is skipped by `:when` so `:while` never sees
+// it). A mapcat-of-singletons cannot express that post-filter sequential
+// short-circuit by lifting `:while` to a raw-coll `take-while` (the lift
+// would break on the skipped element). The finished-form fix is a
+// `letfn` + `lazy-seq` rewrite of `for` (both primitives now exist) — D-234.
 fn forStep(
     arena: std.mem.Allocator,
     rt: *Runtime,
@@ -993,8 +999,10 @@ fn forStep(
     // A real `bind coll` pair → (mapcat (fn [bind] <inner>) coll).
     // A `:while` modifier immediately after the binding is applied as a
     // take-while on the coll (the common `(for [x (range) :while p] …)`
-    // idiom). `:while` after a :let in the same group still reaches the
-    // keyword case above and raises — the :let-threaded pred is a follow-up.
+    // idiom). A `:while` in any other position (after a :when/:let in the
+    // group) reaches the keyword case above and raises — clj applies it
+    // post-:when-filter, which mapcat cannot express; the finished-form fix
+    // is a letfn+lazy-seq for-rewrite (D-234).
     var coll_form = v;
     var tail = rest;
     if (tail.len >= 2 and tail[0].data == .keyword and tail[0].data.keyword.ns == null and
