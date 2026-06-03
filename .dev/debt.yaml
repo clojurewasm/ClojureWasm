@@ -185,7 +185,21 @@ active:
       with minimal deps (volatiles / try_catch / data / edn) — avoid the
       generative-dep suites (data_structures/numbers `:use [clojure.test.generative
       :exclude (is)]` + need clojure.data.generators) and JVM-type suites. Also a
-      future gap for the big suites: `:use [lib :exclude (…)]` / `:only`. This
+      future gap for the big suites: `:use [lib :exclude (…)]` / `:only`.
+      **2026-06-03 batch-probe of behavioral suites** (atoms/delays/clojure_set/
+      clojure_walk/clojure_zip/fn/for/macros/math/other_functions/parse):
+      **volatiles.clj PASSES CLEAN [2 10 0 0]** (validates volatile!). The
+      **valueToForm numeric+regex literal family is now COMPLETE** (char/ratio/
+      big_int/big_decimal + regex — a macro expansion containing any literal
+      re-analyses; e2e phase15_macro_literals 6); this got `for` + other_functions
+      past their literal gaps. Remaining PARKED findings (each its own future
+      unit, mostly deferred-structural): `for` `:while` modifier (doseq has it,
+      for doesn't); `re-matcher`+`{n}` bounded-repeat regex (D-220, other_functions);
+      clojure_set hash-COLLIDING set elements (HAMT collision-node gap, a real
+      limitation); `*warn-on-reflection*` dynamic var (atoms); `macroexpand-1`
+      (D-229, macros); `clojure.math` ns (math); `map->Foo` defrecord factory in a
+      test (clojure_walk); `fails-with-cause?`/test-helper (fn); `:import` (delays/
+      parse/try_catch/data); `into-array`/Java arrays (predicates, F-004). This
       is the standing `quality-loop floor: validation-campaign` — drain
       highest-value-first, one upstream suite at a time, big-bang per suite
       (anti-drip per clj_diff_sweep.md Discipline 2). Cross-ref D-158 (infra) /

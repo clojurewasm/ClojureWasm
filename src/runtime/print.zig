@@ -481,7 +481,7 @@ fn printBigDecimal(w: *Writer, v: Value) Writer.Error!void {
     try w.writeByte('M');
 }
 
-fn writeBigDecimalDigits(w: *Writer, v: Value) Writer.Error!void {
+pub fn writeBigDecimalDigits(w: *Writer, v: Value) Writer.Error!void {
     // value = unscaled * 10^(-scale). Reproduces JVM `BigDecimal.toString`:
     // plain notation when `scale >= 0` AND the adjusted exponent
     // `(precision-1) - scale >= -6`, otherwise scientific `d.dddE±exp`.

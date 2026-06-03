@@ -55,6 +55,7 @@ const set_collection = @import("../../runtime/collection/set.zig");
 const big_int = @import("../../runtime/numeric/big_int.zig");
 const big_decimal = @import("../../runtime/numeric/big_decimal.zig");
 const ratio_mod = @import("../../runtime/numeric/ratio.zig");
+const print_mod = @import("../../runtime/print.zig");
 const regex_value = @import("../../runtime/regex/value.zig");
 const class_name = @import("../../runtime/class_name.zig");
 const type_descriptor = @import("../../runtime/type_descriptor.zig");
@@ -1015,6 +1016,20 @@ pub fn valueToForm(
             break :blk .{ .data = .{ .keyword = .{ .ns = kw.ns, .name = kw.name } }, .location = call_loc };
         },
         .string => .{ .data = .{ .string = string_collection.asString(v) }, .location = call_loc },
+        .char => .{ .data = .{ .char = v.asChar() }, .location = call_loc },
+        // Numeric literals in a macro expansion round-trip through their reader
+        // forms (e.g. a macro returning `(/ 1 2)`'s value, or a bigint literal).
+        // big_decimal is deferred (needs a print-helper export; rare in macros).
+        .ratio => blk: {
+            const r = v.decodePtr(*const ratio_mod.Ratio);
+            break :blk .{ .data = .{ .ratio_literal = try std.fmt.allocPrint(arena, "{f}/{f}", .{ r.numer.m, r.denom.m }) }, .location = call_loc };
+        },
+        .big_int => .{ .data = .{ .big_int_literal = try std.fmt.allocPrint(arena, "{f}", .{big_int.asManaged(v)}) }, .location = call_loc },
+        .big_decimal => blk: {
+            var aw: std.Io.Writer.Allocating = .init(arena);
+            print_mod.writeBigDecimalDigits(&aw.writer, v) catch return error.OutOfMemory;
+            break :blk .{ .data = .{ .big_decimal_literal = try aw.toOwnedSlice() }, .location = call_loc };
+        },
         // A regex in a macro expansion (e.g. `(is (thrown-with-msg? E #"…" …))`)
         // round-trips through its reader-literal source.
         .regex => .{ .data = .{ .regex_literal = regex_value.asRegex(v).source() }, .location = call_loc },
