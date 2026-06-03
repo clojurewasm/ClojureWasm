@@ -204,8 +204,10 @@ active:
       pass, 11 errors, the 11 being `.getAsDouble`-class JVM-atomic interop cljw
       lacks = accepted JVM-interop divergence); `macroexpand-1`/`macroexpand`
       DONE (D-229, macroexpand.zig; macros.clj then parks on with-meta-on-SYMBOL,
-      ADR-0037 metadata-less symbols = accepted); `clojure.math` ns (math);
-      `map->Foo` defrecord factory in a
+      ADR-0037 metadata-less symbols = accepted); `alias`/`ns-aliases` DONE
+      (namespace.zig over env.setAlias; ns-libs.clj then parks on a require
+      PREFIX-LIST libspec `(prefix [a b])`, a deferred require feature);
+      `clojure.math` ns (math); `map->Foo` defrecord factory in a
       test (clojure_walk); `fails-with-cause?`/test-helper (fn); `:import` (delays/
       parse/try_catch/data); `into-array`/Java arrays (predicates, F-004).
       **transients.clj**: `binding` with an EMPTY body (→ nil, clj parity — a

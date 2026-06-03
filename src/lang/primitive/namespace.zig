@@ -151,6 +151,36 @@ pub fn nsResolveFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     return Value.nil_val;
 }
 
+/// `(alias alias-sym ns-sym)` — add `alias-sym → (the-ns ns-sym)` to the current
+/// ns's alias table (the named ns must already exist). Spec: clojure.core/alias.
+pub fn aliasFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    try error_catalog.checkArity("alias", args, 2, loc);
+    if (args[0].tag() != .symbol or args[1].tag() != .symbol)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "alias requires two symbols" });
+    const target = env.findNs(symbol_mod.asSymbol(args[1]).name) orelse
+        return error_catalog.raise(.lib_not_found, loc, .{ .ns = symbol_mod.asSymbol(args[1]).name });
+    const here = env.current_ns orelse
+        return error_catalog.raise(.current_namespace_missing, loc, .{ .sym = symbol_mod.asSymbol(args[0]).name });
+    try env.setAlias(here, symbol_mod.asSymbol(args[0]).name, target);
+    return Value.nil_val;
+}
+
+/// `(ns-aliases ns)` — map of `alias-symbol → Namespace value` for the ns.
+/// Spec: clojure.core/ns-aliases.
+pub fn nsAliasesFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("ns-aliases", args, 1, loc);
+    const ns = resolveNs(env, args[0]) orelse
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-aliases on a non-namespace" });
+    var m = map_collection.empty();
+    var it = ns.aliases.iterator();
+    while (it.next()) |entry| {
+        const sym = try symbol_mod.intern(rt, null, entry.key_ptr.*);
+        m = try map_collection.assoc(rt, m, sym, Env.nsValue(entry.value_ptr.*));
+    }
+    return m;
+}
+
 const Entry = struct {
     name: []const u8,
     f: dispatch.BuiltinFn,
@@ -166,6 +196,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "ns-publics", .f = &nsPublicsFn },
     .{ .name = "ns-map", .f = &nsMapFn },
     .{ .name = "ns-resolve", .f = &nsResolveFn },
+    .{ .name = "alias", .f = &aliasFn },
+    .{ .name = "ns-aliases", .f = &nsAliasesFn },
 };
 
 /// Intern the cluster into `rt` (→ referred into user/ + clojure.core).
