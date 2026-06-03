@@ -7,19 +7,10 @@
 
 - **HEAD**: see `git log` (clj-parity campaign COMPLETE on `cw-from-scratch`).
   Gate green (Mac). debt ledger = **`.dev/debt.yaml`**.
-- **clj-parity quality loop has CONVERGED** (campaign C1..C7 + 9 floor/sweep
-  drains, all DISCHARGED this session: D-165/212/213/214/215/216/217/218/219/221).
-  8 broad `clj_diff_sweep` probes → only AD-001..009 divergences + Phase-15
-  structural gaps remain. D-210 is a STANDING `quality-loop floor: clj-parity`
-  (drain any NEW sweep DIFF). Audit clean (private/audit-2026-06-03.md).
-- **Phase 15 (concurrency) entered** — atom reference surface completed this
-  session: **D-157 / ADR-0081** add-watch/remove-watch (appended `Atom.watches`,
-  synchronous notify) + set-validator!/get-validator (appended `Atom.validator`,
-  validate-before-commit → IllegalStateException, ref unchanged).
-  delay/promise/future/atom/volatile already worked. Also landed: `pmap`/`pcalls`/
-  `pvalues` (sequential, result-identical; parallelism deferred D-224) + `doall`/
-  `dorun` + `alter-var-root` (var-root mutator, D-225). delay/promise/future/atom/
-  volatile already worked.
+- **clj-parity loop CONVERGED** (C1..C7 + floor drains, git log = SSOT); D-210 =
+  standing `quality-loop floor: clj-parity`. **Phase 15 entered**: atom watches/
+  validator (D-157/ADR-0081), pmap/pcalls/pvalues (sequential, D-224), doall/
+  dorun, alter-var-root (D-225). AD-001..011 = accepted divergences.
 - **Real-lib-compat stack COMPLETE this session** (git log = SSOT): syntax-quote
   (D-226/ADR-0082, `` ` ``/`~`/`~@`/`foo#` + symbol qualification; key fix
   valueToForm forces lazy seqs), with-redefs (D-225), Namespace-as-value + `*ns*`
@@ -32,15 +23,23 @@
   (`require_in_progress`→circular_require), `loaded_libs`-idempotent,
   `RequireResolverFn`→`{source,label}`. Verified: a disk test-ns runs its
   `deftest` suite (`[4 0]`).
-- **First action on resume — the VALIDATION campaign (D-232, standing
-  quality-loop floor)**: `:use`/`:refer :all` prerequisite DONE; run upstream
-  suites — `cljw -cp ~/Documents/OSS/clojure/test -e '(require (quote
-  clojure.test-clojure.<x>)) (clojure.test/run-tests …)'` — fix each
-  unresolved-symbol / DIFF / failure (F-011), big-bang per suite. **Immediate
-  target: `find-keyword`** (first gap, from keywords.clj), then re-run + next
-  suite. Alternatives: Phase-15 concurrency (DA-fork: STM/agent/threading) OR
-  minor residuals D-231 (Var-as-IFn) / D-228 / D-229 / deps.edn / multi-libspec
-  standalone-require / `*out*` / clojure.test use-fixtures.
+- **VALIDATION campaign (D-232, standing quality-loop floor) — 14 fixes drained
+  this session** (git log = SSOT): find-keyword, `.name`-on-ns interop, the
+  valueToForm literal family (char/ratio/big_int/big_decimal/regex),
+  thrown-with-msg?, byte/short, empty-regex `#""`, `*warn-on-reflection*`,
+  binding-empty-body, `defn-`, macroexpand-1/macroexpand (D-229), `{n}` bounded
+  regex, alias/ns-aliases, defrecord `map->X`, clojure.math ns. **volatiles.clj
+  passes CLEAN**; keywords/predicates/atoms/transients/macros/for/other_functions
+  drained to their deferred-structural or accepted-divergence floor. Run more:
+  `cljw -cp ~/Documents/OSS/clojure/test -e '(require (quote
+  clojure.test-clojure.<x>)) (clojure.test/run-tests …)'`, fix each gap (F-011),
+  big-bang per suite. D-232 catalogs every parked finding.
+- **First action on resume**: either (a) continue D-232 (next clean-dep suite OR
+  a parked item), or (b) a substantial bounded unit — **re-matcher (D-220)**: the
+  reserved `.matcher` slot 56 + a mutable Matcher value (re-matcher/re-groups);
+  depth-≥2 → needs a DA fork (like Namespace). Bigger structural: Phase-15
+  concurrency (STM/agent/threading, DA-fork, do NOT cold-seize). Minor: D-231
+  (Var-as-IFn), D-228 (nested backtick), require prefix-list, deps.edn.
 - **Phase-15 architectural pieces need a DA-fork entry** (do NOT cold-seize):
   `agent`, STM `dosync`/`ref` (§9 STM 15.1-15.4 ADR), `locking`, real threading
   (std.Io.Threaded work-pool — also activates real `pmap` parallelism D-224 +
@@ -89,3 +88,13 @@ handover → `.dev/decisions/0076_clj_parity_campaign_and_accepted_divergences.m
 open bugs D-212 + D-213 + D-214) + `.dev/decisions/0080_*` (C7 heap-Long) → CLAUDE.md
 (§ Project spirit + Autonomous Workflow + The only stop) →
 `.dev/project_facts.md` (F-002/004/005/009/010/011/012) → `.dev/principle.md`.
+
+## Stopped — user requested
+
+User instruction (2026-06-03): "コンテキストが増えてきたので、きりの良いところで、
+次のクリアセッションの準備（いつもどおり）し、その後配線と参照チェーンを監査して
+止まってください。" Stopped after the clojure.math unit landed (HEAD 210b64b5,
+pushed, gate 224/0). Wiring/reference-chain audit run + clean (FILES↔lookup 14↔14,
+3 primitives wired, 8 e2e registered, 11 corpus, zone/debt/AD/resolver-signature/
+setupCorePrefix all consistent). Resume the loop normally next session (D-232 or
+re-matcher D-220).
