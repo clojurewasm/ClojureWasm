@@ -1,0 +1,10 @@
+(let [{:keys [:a :b]} {:a 1 :b 2}] [a b])
+;;=> [1 2]
+(let [{:keys [:a/b :c/d]} {:a/b 1 :c/d 2}] [b d])
+;;=> [1 2]
+(let [{:keys [a b]} {:a 1 :b 2}] [a b])
+;;=> [1 2]
+(let [{:keys [:a :b :c] :or {c 9}} {:a 1 :b 2}] [a b c])
+;;=> [1 2 9]
+(let [{:syms [a b]} {(quote a) 1 (quote b) 2}] [a b])
+;;=> [1 2]

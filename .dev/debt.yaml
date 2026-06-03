@@ -417,6 +417,14 @@ active:
       [:a :b]} m] …)`** — `:keys` with KEYWORD entries (clj allows keyword /
       namespaced-keyword entries in :keys/:strs/:syms; cljw requires symbols) —
       next clean unit.
+      **2026-06-04 `:keys` keyword entries LANDED**: `{:keys [:a :b]}` /
+      `{:keys [:a/b]}` (keyword + namespaced-keyword entries) now bind, alongside
+      the existing symbol entries — associativeDestructure extracts (ns, name)
+      from a symbol OR keyword entry. corpus keys_keyword_entries (5). special
+      advances 36 → **line 61: `{:a/keys [b c]}`** — a NAMESPACED `:keys`/`:syms`
+      DIRECTIVE (`:ns/keys` applies ns to each entry's key, ≡ `{:keys [:ns/b
+      :ns/c]}`); cljw only recognises the unqualified `:keys`/`:strs`/`:syms`
+      directives — next clean unit.
       **2026-06-04 `defprotocol` docstrings LANDED**: an optional protocol-level
       docstring after the name (`(defprotocol P "doc" (m [a]) …)`) was rejected
       ("method signature must be a list"); now skipped. Method-level docstrings,

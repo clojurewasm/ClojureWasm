@@ -400,14 +400,18 @@ fn associativeDestructure(
                 if (v.data != .vector)
                     return error_catalog.raise(.feature_not_supported, loc, .{ .name = "destructuring `:keys`/`:strs`/`:syms` needs a symbol vector" });
                 for (v.data.vector) |s| {
-                    if (s.data != .symbol)
-                        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "destructuring `:keys`/`:strs`/`:syms` entries must be symbols" });
+                    // An entry is a symbol OR (for :keys) a keyword — clj allows
+                    // `{:keys [:a :b]}` / `{:keys [:a/b]}` (keyword entries) as
+                    // well as `{:keys [a b]}`. Extract (ns, name) from either.
+                    const sym_ns: ?[]const u8, const nm: []const u8 = switch (s.data) {
+                        .symbol => |sy| .{ sy.ns, sy.name },
+                        .keyword => |kw| .{ kw.ns, kw.name },
+                        else => return error_catalog.raise(.feature_not_supported, loc, .{ .name = "destructuring `:keys`/`:strs`/`:syms` entries must be symbols or keywords" }),
+                    };
                     // A namespaced entry `a/b` binds the LOCAL `b` (the name
                     // part) to the namespaced KEY (`:a/b` for :keys, `"a/b"`
                     // for :strs, `'a/b` for :syms) — clj parity. Plain `b`
                     // keeps the un-namespaced key.
-                    const sym_ns = s.data.symbol.ns;
-                    const nm = s.data.symbol.name;
                     const local: Form = .{ .data = .{ .symbol = .{ .ns = null, .name = nm } }, .location = loc };
                     const key_form: Form = if (std.mem.eql(u8, kn, "keys"))
                         .{ .data = .{ .keyword = .{ .ns = sym_ns, .name = nm } }, .location = loc }
