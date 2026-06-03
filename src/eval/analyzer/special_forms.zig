@@ -771,7 +771,7 @@ fn parseImportForms(
                 const elems = if (entry.data == .list) entry.data.list else entry.data.vector;
                 if (elems.len < 2 or elems[0].data != .symbol)
                     return error_catalog.raise(.feature_not_supported, entry.location, .{ .name = ":import prefix form must be (package Class …)" });
-                const pkg = symFullText(arena, elems[0].data.symbol) catch return AnalyzeError.OutOfMemory;
+                const pkg = try symFullText(arena, elems[0].data.symbol);
                 for (elems[1..]) |ce| {
                     if (ce.data != .symbol or ce.data.symbol.ns != null)
                         return error_catalog.raise(.feature_not_supported, ce.location, .{ .name = ":import class entry must be a simple symbol" });
