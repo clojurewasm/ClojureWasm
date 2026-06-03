@@ -36,7 +36,7 @@ const BARE_SYMS = std.StaticStringMap(void).initComptime(.{
     .{"var"},        .{"fn*"},      .{"let*"},   .{"letfn*"},  .{"loop*"},
     .{"recur"},      .{"binding"},  .{"try"},    .{"throw"},   .{"in-ns"},
     .{"require"},    .{"ns"},       .{"catch"},  .{"finally"}, .{"&"},
-    .{"new"},        .{"set!"},
+    .{"new"},        .{"set!"},     .{"."},
 });
 
 fn hasDot(name: []const u8) bool {

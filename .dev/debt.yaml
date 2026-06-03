@@ -9,6 +9,27 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-236"
+    status: |-
+      DISCHARGED 2026-06-03 — the `.` interop special form landed
+      (`special_forms.analyzeDot` + SPECIAL_FORMS `.`): `(. recv member)`,
+      `(. recv member args…)`, and `(. recv (member args…))` all lower to the
+      EXISTING `InteropCallNode` (static when recv is a symbol resolving to a
+      class with that method, else instance member) — so NO new Node / opcode /
+      backend plumbing (both backends already handle InteropCallNode); a
+      low-blast-radius additive analyzer arm. The `(member args)` list shape and
+      the flat shape are equivalent (clj parity). `.` added to syntax_quote
+      BARE_SYMS. clj-verified instance + static, both shapes; `(.member recv)`
+      sugar regression-checked; tree_walk + VM agree. 6 e2e (phase15_dot_form).
+      clearing.clj surfaced it (`(. field (setAccessible true))`); clearing
+      still needs reflection (Field interop), a separate gap. Cross-ref
+      ADR-0050 (interop node) / F-011.
+    category: "runtime"
+    barrier: |-
+      (DISCHARGED — see status.) The `.` special form `(. recv member …)` was
+      unsupported (`Unable to resolve symbol: '.'`); only the `(.member recv)`
+      sugar existed. Now lowers to InteropCallNode.
+    last_reviewed: "2026-06-03"
   - id: "D-235"
     status: |-
       DISCHARGED 2026-06-03 — `(:import …)` ns directive landed (additive: new

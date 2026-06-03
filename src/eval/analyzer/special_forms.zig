@@ -128,6 +128,58 @@ pub fn constructInstance(
 /// a string for eval-time `resolveJavaSurface` lookup — this allows
 /// `(deftype Foo ...)` forms to forward-declare types referenced by a
 /// later `(Foo. ...)` call within the same `do` block.
+/// `(. recv member)` / `(. recv member args…)` / `(. recv (member args…))` —
+/// the canonical interop special form that `(.member recv …)` / `(Class/m …)`
+/// sugar over. Lowers to the existing `InteropCallNode`: a static call when
+/// `recv` is a symbol naming a resolvable class with that method, else an
+/// instance member. The `(member args…)` list shape and the flat
+/// `member args…` shape are equivalent (clj parity). No new Node / backend
+/// plumbing — both backends already handle InteropCallNode.
+pub fn analyzeDot(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    items: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    if (items.len < 3)
+        return error_catalog.raise(.feature_not_supported, form.location, .{ .name = ". form needs a receiver and a member" });
+    const recv = items[1];
+    const member_form = items[2];
+    // Normalise the member name + args from either shape.
+    var member_name: []const u8 = undefined;
+    var arg_forms: []const Form = undefined;
+    switch (member_form.data) {
+        .symbol => |m| {
+            if (m.ns != null)
+                return error_catalog.raise(.feature_not_supported, member_form.location, .{ .name = ". member must be an unqualified symbol" });
+            member_name = m.name;
+            arg_forms = items[3..];
+        },
+        .list => |inner| {
+            if (items.len != 3 or inner.len == 0 or inner[0].data != .symbol or inner[0].data.symbol.ns != null)
+                return error_catalog.raise(.feature_not_supported, member_form.location, .{ .name = ". (member args) form must be (member …) with an unqualified head" });
+            member_name = inner[0].data.symbol.name;
+            arg_forms = inner[1..];
+        },
+        else => return error_catalog.raise(.feature_not_supported, member_form.location, .{ .name = ". member must be a symbol or (member …) list" }),
+    }
+    // A `.-field` style leading-dash member reads a field only.
+    const field_only = member_name.len >= 1 and member_name[0] == '-';
+    const resolved_member = if (field_only) member_name[1..] else member_name;
+    // Static when the receiver is a symbol naming a class with this method.
+    if (recv.data == .symbol and recv.data.symbol.ns == null) {
+        if (resolveJavaSurface(rt, env, recv.data.symbol.name)) |td| {
+            if (td.lookupMethod(null, resolved_member) != null) {
+                return analyzeStaticMethodCall(arena, rt, env, scope, td, resolved_member, arg_forms, form, macro_table);
+            }
+        }
+    }
+    return analyzeInstanceMember(arena, rt, env, scope, resolved_member, recv, arg_forms, form, macro_table, field_only);
+}
+
 pub fn analyzeCtorCall(
     arena: std.mem.Allocator,
     rt: *Runtime,
