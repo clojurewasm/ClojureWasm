@@ -87,13 +87,27 @@ active:
       (now landed) + var binding-frame infra. `with-redefs` is the highest-value.
     last_reviewed: "2026-06-03"
   - id: "D-227"
-    status: "blocked-by: D-230 (clojure.test clean form needs *ns*/Namespace-as-value); syntax-quote prereq now MET."
+    status: "now (UNBLOCKED 2026-06-03 — D-230 landed *ns*/Namespace-as-value + ns-reflection; syntax-quote also MET). Next unit."
     category: "scope"
     barrier: |-
       **The `clojure.test` namespace is not implemented** — `deftest`/`is`/`are`/`testing`/`run-tests`/`with-test` all unresolved. Separate ns (not clojure.core; real code does `(require [clojure.test …])`), and the densest real-bug-finder (D-158 tier 2: run real libs' own `clojure.test` suites on cljw). Needs the `clojure.test` ns + assertion macros (`is`/`are`/`testing`/`deftest`) + a test registry + `run-tests` reporter. The macros lean on syntax-quote (D-226 — now DISCHARGED, prereq met). **2026-06-03 design probe (DA fork a7b21f9): the clean finished form is a per-ns test registry keyed by ns symbol (Alt 2/3) so `(run-tests 'foo.test)` — the call every real runner makes — works; the smallest-diff global-registry Alt 1 ignores the ns arg and is the DA-flagged trap that fails D-158.** That per-ns form needs CURRENT-NS IDENTITY at the Clojure level (`*ns*` / `ns-name` / by-ns registry key), which cljw lacks — there is **no Namespace value type** (env.current_ns is an internal `*Namespace`, never a Value) and no `*ns*`/`ns-name`/`ns-interns`. So clojure.test is **blocked-by D-230** (Namespace-as-value + `*ns*` + ns-reflection), the genuine structural prerequisite. Other prereqs VERIFIED present: defmulti/defmethod (for `is`'s `assert-expr` + `report` multimethods), update-in/fnil, re-find (for `thrown-with-msg?`), var/`#'`. Deferred within clojure.test once D-230 lands: use-fixtures, `*test-out*` capture (needs `*out*`, AD-worthy), the report multimethod stays in the MVP (skipping it = Alt 1 in disguise). Pairs with `print-table` (clojure.pprint) for the report. Cross-ref D-230 (prereq) / D-158 / D-226 (met) / F-011. recall trigger: immediately after D-230 lands.
     last_reviewed: "2026-06-03"
   - id: "D-230"
-    status: "now (structural, surfaced 2026-06-03 by D-227 design probe) — no Namespace value type / *ns* / ns-reflection."
+    status: |-
+      DISCHARGED 2026-06-03 (ADR-0083, Alt 2) — Namespace is now a first-class
+      `.ns` Value (activated the reserved HeapTag slot 21; NO new F-004 slot),
+      `*ns*` is a runtime-maintained dynamic Var (`Env.setCurrentNs` updates both
+      `current_ns` and the cached `ns_var` root; 6 switch sites rerouted), and the
+      read-only ns-reflection cluster landed: `ns-name`/`the-ns`/`find-ns`/
+      `all-ns`/`create-ns`/`ns-interns`/`ns-publics`/`ns-map`/`ns-resolve`
+      (`src/lang/primitive/namespace.zig`). GC membrane: `Value.heapHeader` now
+      skips `.var_ref` + `.ns` (Env-lifetime, never GC-allocated — also closed a
+      latent `.var_ref` hole). Corpus `namespace` (12), e2e phase15_namespace
+      (11), unit test for the membrane. AD-010 (`#object[Namespace …]` print) +
+      AD-011 (clojure.core ns-publics omits rt-referred prims). Deferred: D-231
+      (Var-as-IFn), `remove-ns` (tombstone/lifetime), `*out*` (separate). Unblocks
+      D-227 (clojure.test) + D-158 (real-lib). Cross-ref ADR-0083 / D-227 / F-004.
+      ORIGINAL: now (structural, surfaced 2026-06-03 by D-227 design probe) — no Namespace value type / *ns* / ns-reflection.
     category: "scope"
     barrier: |-
       **No Namespace-as-value, no `*ns*`, no ns-reflection.** cljw holds the
@@ -118,6 +132,25 @@ active:
       runtime-coupling). Cross-ref D-227 (the blocked consumer) / D-158 / F-004
       (NaN-box slot) / handover system-var-registry note (the `*out*` half stays
       deferred). recall trigger: NOW — it is the active unit gating clojure.test.
+    last_reviewed: "2026-06-03"
+  - id: "D-231"
+    status: "now (found 2026-06-03 during D-230 sweep) — a `.var_ref` Value is not callable (Var-as-IFn missing)."
+    category: "scope"
+    barrier: |-
+      **A Var value is not callable.** `((ns-resolve 'clojure.core 'inc) 4)` /
+      `((var foo) args)` raise a type_error in cljw, where clj's Var implements
+      IFn (calling a Var derefs its root and applies). The call dispatch
+      (`higher_order.invokeCallable` + the analyzer/TreeWalk/VM call paths) has
+      no `.var_ref` arm. Discharge: add a `.var_ref` arm that derefs the Var to
+      its root value and re-dispatches the call on that (recursing through the
+      normal callable path). Distinct from D-230 ns-reflection (ns-resolve
+      correctly RETURNS the var-value `#'clojure.core/inc`; only direct
+      invocation of that value is missing). Most code uses `@v`/`(var-get v)`
+      then calls the value, so this is moderate value; clojure.test (D-227)
+      runs test vars via the `:test` var-meta fn, not by calling the var, so it
+      is not blocked. Cross-ref D-230 (surfaced it) / D-183 (var meta) / F-011.
+      recall trigger: when a real lib calls a var directly, or a quality sweep
+      hits it again.
     last_reviewed: "2026-06-03"
   - id: "D-228"
     status: "now (minor, found 2026-06-03 during D-226) — nested syntax-quote flattens instead of preserving the inner template."

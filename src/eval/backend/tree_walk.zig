@@ -406,7 +406,7 @@ pub fn eval(
 /// user code must use `(ns foo (:refer-clojure))` (which fires the
 /// widened semantic) or explicit `(refer ...)` calls.
 fn evalInNs(env: *Env, n: node_mod.InNsNode) !Value {
-    env.current_ns = try env.findOrCreateNs(n.ns_name);
+    env.setCurrentNs(try env.findOrCreateNs(n.ns_name));
     return .nil_val;
 }
 
@@ -421,7 +421,7 @@ fn evalInNs(env: *Env, n: node_mod.InNsNode) !Value {
 /// `(:refer-clojure)` directive (boot-time fan-out for user/
 /// remains in bootstrap.zig + primitive.zig + macro_transforms.zig).
 fn evalNs(rt: *Runtime, env: *Env, n: node_mod.NsNode) !Value {
-    env.current_ns = try env.findOrCreateNs(n.name);
+    env.setCurrentNs(try env.findOrCreateNs(n.name));
     if (n.refer_clojure) {
         // Row 14.7 (D-098): filters apply to both rt/ and clojure.core
         // (the two auto-refer sources). `rt/` is cw-side primitives;

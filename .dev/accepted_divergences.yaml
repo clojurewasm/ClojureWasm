@@ -120,3 +120,34 @@ accepted:
       value diverges).
     derives_from: "ADR-0059 (no-JVM: no Object.hashCode); F-011 (cljw-native internals; hash is impl-specific)"
     pin: "test/diff/clj_corpus/object_methods.txt — `(= (.hashCode \"abc\") (hash \"abc\"))` → true (delegation locked) + `(integer? (.hashCode 42))` → true; test/e2e/phase14_format.sh — `(format \"%h\" \"abc\")` produces lowercase hex (intra-cljw stable)"
+  - id: "AD-010"
+    summary: "a Namespace value prints as `#object[Namespace \"<name>\"]` (no JVM class FQN, no `0xADDR` identity hash)"
+    example: '(pr-str *ns*) => cljw "#object[Namespace \"user\"]" / clj "#object[clojure.lang.Namespace 0x5ad10c1a \"user\"]" ; (str *ns*) => "user" (matches clj)'
+    why: |-
+      ADR-0083 makes the current namespace a first-class `.ns` Value. clj's
+      pr form embeds the JVM class name (`clojure.lang.Namespace`) and an
+      identity-hash address (`0x..`); cljw is no-JVM (ADR-0059) and has no
+      identity hash to mirror (same rationale as AD-002 opaque-ref print), so
+      it emits the simple `#object[Namespace "<name>"]`. `(str *ns*)` /
+      `(name (ns-name *ns*))` are clj-faithful ("user"); only the readable
+      `#object[…]` form (pr / prn / print / println) diverges.
+    derives_from: "ADR-0059 (no-JVM: no class FQN); AD-002 (opaque-ref identity-hash not reproducible); ADR-0083"
+    pin: "test/e2e/phase15_namespace.sh — `(str *ns*)` => user + `(pr-str *ns*)` => #object[Namespace \"user\"] (the cljw form locked)"
+  - id: "AD-011"
+    summary: "`ns-interns`/`ns-publics` of `clojure.core` omit the `rt`-referred primitives (e.g. `reduce`, `+`) that clj interns directly"
+    example: '(contains? (ns-publics (the-ns (quote clojure.core))) (quote reduce)) => cljw false / clj true ; (contains? (ns-interns (the-ns (quote clojure.core))) (quote map)) => true both (map is .clj-defined)'
+    why: |-
+      cljw splits the core surface (ADR-0033 / placement.yaml): kernel
+      primitives are interned in the `rt` namespace and REFERRED into
+      clojure.core, while clojure.core's own `mappings` hold only the
+      `.clj`-defined vars (+ B2 private leaves). `ns-interns`/`ns-publics`
+      faithfully report a namespace's INTERNED vars (its `mappings`), so a
+      primitive that lives in `rt` and is merely referred (e.g. `reduce`)
+      does not appear, whereas a `.clj`-redefined var (e.g. `map`) does. This
+      diverges ONLY when introspecting clojure.core itself; for a user
+      namespace `ns-interns`/`ns-publics` are exact (a user `(def x …)` shows
+      up). `ns-map` (interns + refers) DOES include `reduce`, matching clj's
+      total visible set. The driver (clojure.test, D-227) keys on a user test
+      ns's interned `deftest` vars, which is unaffected.
+    derives_from: "ADR-0033 (rt/clojure.core placement split: primitives in rt, referred); ADR-0083"
+    pin: "test/e2e/phase15_namespace.sh — `ad011-pub` locks `(ns-publics 'clojure.core)` omitting `reduce` (false) + `ad011-map` locks `(ns-map …)` including it (true), matching clj's total visibility"

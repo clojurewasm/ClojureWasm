@@ -94,6 +94,9 @@ pub fn writeStrValue(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anye
             const canon = uuid_mod.canonicalOf(v);
             try w.writeAll(&canon);
         },
+        // `(str *ns*)` → bare "user" (clj Namespace.toString = the name), not the
+        // readable `#object[Namespace …]` form pr/prn use.
+        .ns => try w.writeAll(v.decodePtr(*const env_mod.Namespace).name),
         // `str`/`.toString` of a BigInt/BigDecimal drops the `N`/`M` reader
         // suffix that `pr`/`prn` keep — JVM `BigInteger`/`BigDecimal.toString`
         // emit plain digits (D-212). Ratio's `1/2` form is already suffix-free.
@@ -417,6 +420,7 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
         .typed_instance => try printTypedInstance(w, v),
         .type_descriptor => try printTypeDescriptor(w, v),
         .var_ref => try printVarRef(w, v),
+        .ns => try printNamespace(w, v),
         .regex => {
             // `#"<source>"` for every printer that routes through `print-method`
             // — pr / prn / print / println all show the reader form (JVM
@@ -587,6 +591,16 @@ fn printTypeDescriptor(w: *Writer, v: Value) Writer.Error!void {
 fn printVarRef(w: *Writer, v: Value) Writer.Error!void {
     const var_ptr = v.decodePtr(*const env_mod.Var);
     try w.print("#'{s}/{s}", .{ var_ptr.ns.name, var_ptr.name });
+}
+
+/// Render an `.ns` (Namespace) Value. clj prints `#object[clojure.lang.Namespace
+/// 0x.. "user"]`; cljw is no-JVM and cannot mirror the identity hash, so it
+/// emits `#object[Namespace "user"]` (AD-010, derives_from ADR-0059 + AD-002).
+/// `(str *ns*)` → bare "user" is handled by `strFn`'s special-case (like regex /
+/// uuid), so this readable form is only reached by pr / prn / print / println.
+fn printNamespace(w: *Writer, v: Value) Writer.Error!void {
+    const ns_ptr = v.decodePtr(*const env_mod.Namespace);
+    try w.print("#object[Namespace \"{s}\"]", .{ns_ptr.name});
 }
 
 /// Render an `ex-info` Value in `#error{ :message "..." :data ... }`

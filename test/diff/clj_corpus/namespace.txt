@@ -1,0 +1,24 @@
+(ns-name *ns*)
+;;=> user
+(str *ns*)
+;;=> "user"
+(ns-name (create-ns (quote my.app)))
+;;=> my.app
+(find-ns (quote nope))
+;;=> nil
+(ns-resolve (quote clojure.core) (quote map))
+;;=> #'clojure.core/map
+(= *ns* (the-ns (quote user)))
+;;=> true
+(symbol? (ns-name *ns*))
+;;=> true
+(boolean (find-ns (quote clojure.core)))
+;;=> true
+(contains? (ns-interns (the-ns (quote clojure.core))) (quote map))
+;;=> true
+(contains? (ns-map (the-ns (quote clojure.core))) (quote reduce))
+;;=> true
+(do (def zzz 7) (contains? (ns-interns *ns*) (quote zzz)))
+;;=> true
+(keyword? (ns-name *ns*))
+;;=> false

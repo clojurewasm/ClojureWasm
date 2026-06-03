@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# test/e2e/phase15_namespace.sh — Namespace-as-value + *ns* + ns-reflection
+# (D-230, ADR-0083). *ns* is a first-class .ns Value; ns-name/the-ns/find-ns/
+# all-ns/create-ns/ns-interns/ns-publics/ns-map/ns-resolve read the Env ns graph.
+# Locks AD-010 (#object[Namespace "name"] print) + AD-011 (clojure.core interns
+# omit rt-referred primitives). Layer 2.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+BIN="zig-out/bin/cljw"
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build >/dev/null
+fail() { echo "FAIL $1" >&2; exit 1; }
+assert_eq() { local n="$1" g="$2" w="$3"; [[ "$g" == "$w" ]] || fail "$n: got '$g' want '$w'"; echo "PASS $n -> $w"; }
+
+# *ns* + str/pr (AD-010). `-e` pr-prints the result value, so a bare `*ns*`
+# renders via printNamespace; a raw string needs (println …).
+assert_eq 'ns-name'   "$("$BIN" -e '(ns-name *ns*)' 2>&1 | tail -1)" 'user'
+assert_eq 'str-ns'    "$("$BIN" -e '(str *ns*)' 2>&1 | tail -1)" '"user"'
+assert_eq 'pr-ns'     "$("$BIN" -e '*ns*' 2>&1 | tail -1)" '#object[Namespace "user"]'
+# identity: same name -> same value
+assert_eq 'identity'  "$("$BIN" -e '(= *ns* (the-ns (quote user)))' 2>&1 | tail -1)" 'true'
+# find-ns / create-ns / the-ns
+assert_eq 'find-miss' "$("$BIN" -e '(find-ns (quote nope))' 2>&1 | tail -1)" 'nil'
+assert_eq 'create'    "$("$BIN" -e '(ns-name (create-ns (quote my.app)))' 2>&1 | tail -1)" 'my.app'
+# in-ns switches *ns* (the .ns Value tracks current_ns via setCurrentNs)
+assert_eq 'in-ns'     "$("$BIN" -e '(do (in-ns (quote foo.bar)) *ns*)' 2>&1 | tail -1)" '#object[Namespace "foo.bar"]'
+# ns-resolve -> var-value
+assert_eq 'resolve'   "$("$BIN" -e '(ns-resolve (quote clojure.core) (quote map))' 2>&1 | tail -1)" "#'clojure.core/map"
+# ns-interns sees a fresh def (user-ns exactness)
+assert_eq 'interns'   "$("$BIN" -e '(do (def zzz 7) (contains? (ns-interns *ns*) (quote zzz)))' 2>&1 | tail -1)" 'true'
+# AD-011: clojure.core ns-publics omits rt-referred primitive `reduce`, but ns-map includes it
+assert_eq 'ad011-pub' "$("$BIN" -e '(contains? (ns-publics (the-ns (quote clojure.core))) (quote reduce))' 2>&1 | tail -1)" 'false'
+assert_eq 'ad011-map' "$("$BIN" -e '(contains? (ns-map (the-ns (quote clojure.core))) (quote reduce))' 2>&1 | tail -1)" 'true'
+
+echo "OK — phase15_namespace (11 cases) green"

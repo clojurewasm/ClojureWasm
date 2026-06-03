@@ -489,7 +489,7 @@ fn stepOnce(
                 const name_val = chunk.constants[instr.operand];
                 if (!name_val.isString())
                     return raiseInternal("vm: op_in_ns constant is not a String");
-                env.current_ns = try env.findOrCreateNs(string_mod.asString(name_val));
+                env.setCurrentNs(try env.findOrCreateNs(string_mod.asString(name_val)));
                 if (sp >= OPERAND_STACK_MAX)
                     return raiseInternal("vm: operand stack overflow");
                 stack[sp] = Value.nil_val;
@@ -505,7 +505,7 @@ fn stepOnce(
                 const name_val = chunk.constants[instr.operand];
                 if (!name_val.isString())
                     return raiseInternal("vm: op_ns_with_refer_clojure constant is not a String");
-                env.current_ns = try env.findOrCreateNs(string_mod.asString(name_val));
+                env.setCurrentNs(try env.findOrCreateNs(string_mod.asString(name_val)));
                 if (env.findNs("rt")) |rt_ns| {
                     try env.referAll(rt_ns, env.current_ns.?);
                 }
@@ -524,7 +524,7 @@ fn stepOnce(
                 if (instr.operand >= chunk.ns_filters.len)
                     return raiseInternal("vm: op_ns_with_filter index out of range");
                 const f = chunk.ns_filters[instr.operand];
-                env.current_ns = try env.findOrCreateNs(f.name);
+                env.setCurrentNs(try env.findOrCreateNs(f.name));
                 if (env.findNs("rt")) |rt_ns| {
                     try env.referAllWithFilter(rt_ns, env.current_ns.?, f.exclude, f.only);
                 }

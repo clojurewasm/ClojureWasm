@@ -222,7 +222,14 @@ pub const Env = struct {
     /// All registered namespaces; key is the namespace name.
     namespaces: NamespaceMap = .empty,
     /// Current value of `*ns*`. Right after `init`, points at `user`.
+    /// Mutate ONLY via `setCurrentNs` so the `*ns*` Var root stays in sync
+    /// (ADR-0083).
     current_ns: ?*Namespace = null,
+    /// The interned `clojure.core/*ns*` dynamic Var, cached at bootstrap so
+    /// `setCurrentNs` can keep its root pointing at `current_ns` as an `.ns`
+    /// Value (ADR-0083). `null` until bootstrap interns it (the few pre-bootstrap
+    /// `findOrCreateNs` switches simply have no Var to update yet).
+    ns_var: ?*Var = null,
 
     /// Initialise with the three startup namespaces:
     ///   - `rt`           → kernel primitives (`+`, `=`, `count`, …)
@@ -244,6 +251,22 @@ pub const Env = struct {
         const user = try env.findOrCreateNs("user");
         env.current_ns = user;
         return env;
+    }
+
+    /// Switch the current namespace. The single mutator for `current_ns`
+    /// (ADR-0083): also re-points the cached `*ns*` Var root at `ns` as an
+    /// `.ns` Value, so `*ns*` / `(ns-name *ns*)` track the live ns. Route every
+    /// ns switch (`in-ns` / `ns` / `require` / eval-target) through this.
+    pub fn setCurrentNs(self: *Env, ns: *Namespace) void {
+        self.current_ns = ns;
+        if (self.ns_var) |nv| nv.setRoot(nsValue(ns));
+    }
+
+    /// Wrap a `*Namespace` as a first-class `.ns` Value (ADR-0083). The pointer
+    /// is Env-lifetime (not GC-allocated); `Value.heapHeader` skips `.ns` so the
+    /// GC never traces it.
+    pub fn nsValue(ns: *Namespace) Value {
+        return Value.encodeHeapPtr(.ns, ns);
     }
 
     pub fn deinit(self: *Env) void {

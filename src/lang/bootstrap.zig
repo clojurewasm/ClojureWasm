@@ -182,7 +182,7 @@ fn finalizeUserNs(env: *Env) !void {
         }
     }
     if (env.findNs("user")) |user_ns| {
-        env.current_ns = user_ns;
+        env.setCurrentNs(user_ns);
     }
 }
 
@@ -226,6 +226,18 @@ fn registerDataReaders(rt: *Runtime, env: *Env) !void {
     rt.default_data_reader_fn_var = ddrf;
 }
 
+/// Intern `clojure.core/*ns*` as a `^:dynamic` Var holding the current namespace
+/// as an `.ns` Value, and cache it on `env.ns_var` so `setCurrentNs` keeps the
+/// root in sync (ADR-0083). Called from `setupCorePrefix` BEFORE `loadCore`'s
+/// `finalizeUserNs` `referAll`, so unqualified `*ns*` is referred into `user`.
+fn registerNsVar(env: *Env) !void {
+    const core = try env.findOrCreateNs("clojure.core");
+    const cur = env.current_ns orelse core;
+    const nv = try env.intern(core, "*ns*", Env.nsValue(cur), null);
+    nv.flags.dynamic = true;
+    env.ns_var = nv;
+}
+
 /// The bootstrap prefix WITHOUT `loadCore`: install the embedded require
 /// resolver + register the kernel primitives + bootstrap macros. Splitting
 /// this out lets the AOT-bootstrap path (ADR-0056) build a fresh env to
@@ -245,6 +257,8 @@ pub fn setupCorePrefix(rt: *Runtime, env: *Env, macro_table: *macro_dispatch.Tab
     // ADR-0073: intern the data-reader dynamic vars here (before loadCore's
     // user-ns refer) so `*data-readers*` resolves unqualified in user code.
     try registerDataReaders(rt, env);
+    // ADR-0083: intern *ns* + cache on env.ns_var before the user-ns refer.
+    try registerNsVar(env);
 }
 
 /// AOT bootstrap (ADR-0056 Cycle 2b): restore `clojure.core` from the

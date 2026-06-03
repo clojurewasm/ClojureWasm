@@ -299,6 +299,15 @@ pub const Value = enum(u64) {
         const top16: u16 = @truncate(bits >> nb.NB_TAG_SHIFT);
         if (top16 < nb.NB_FLOAT_TAG_BOUNDARY) return null;        // raw f64
         if (top16 >= nb.NB_TAG_INT) return null;                  // immediate band
+        // `.var_ref` (20) and `.ns` (21) are heap-TAGGED but their payload is an
+        // Env-lifetime `*Var` / `*Namespace` with NO `HeapHeader` at offset 0 —
+        // decoding one as a header and handing it to `mark()` would corrupt the
+        // Env struct (root_set.zig: "namespace-owned pointers, not GC edges").
+        // They are never GcHeap-allocated, so the membrane skips them.
+        switch (self.tag()) {
+            .var_ref, .ns => return null,
+            else => {},
+        }
         return self.decodePtr(*HeapHeader);
     }
 };
@@ -511,6 +520,18 @@ test "Value.heapHeader returns the decoded pointer for heap-tagged Values" {
     const hdr = v.heapHeader();
     try testing.expect(hdr != null);
     try testing.expectEqual(@as(*HeapHeader, @ptrCast(&c)), hdr.?);
+}
+
+test "Value.heapHeader skips .var_ref / .ns (Env-lifetime, not GC-managed)" {
+    // ADR-0083: `.var_ref` (20) and `.ns` (21) are heap-TAGGED but point at
+    // Env-owned structs with NO HeapHeader at offset 0. The membrane must
+    // return null for them so the GC never decodes one as a header + marks it.
+    var fake_var: u64 align(8) = 0xdead;
+    var fake_ns: u64 align(8) = 0xbeef;
+    try testing.expect(Value.encodeHeapPtr(.var_ref, &fake_var).heapHeader() == null);
+    try testing.expect(Value.encodeHeapPtr(.ns, &fake_ns).heapHeader() == null);
+    // sanity: the tags still classify correctly (only the GC membrane skips).
+    try testing.expect(Value.encodeHeapPtr(.ns, &fake_ns).tag() == .ns);
 }
 
 test "F-004 inline wasm slots: funcref + externref encode through Group D" {

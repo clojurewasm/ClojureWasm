@@ -246,6 +246,13 @@ confirmed exprs into a `*.txt` corpus here via `--corpus`.
   Corpus `sorted_coll` (17). The only DIFFs are non-sorted hash-set print
   order (`#{2 3}` vs `#{3 2}`) — the documented acceptable divergence, not a
   bug (sorted colls print in order, so they match exactly).
+- **namespace reflection** (ADR-0083 / D-230) — `*ns*` as a first-class `.ns`
+  value, `ns-name`/`the-ns`/`find-ns`/`create-ns`/`ns-resolve`/`ns-interns`/
+  `ns-publics`/`ns-map` + `(= *ns* (the-ns 'user))` identity all at parity by
+  VALUE. Corpus `namespace` (12). DIFFs are accepted: AD-010 (`#object[Namespace
+  …]` print, no JVM FQN/addr) + AD-011 (`ns-publics 'clojure.core` omits
+  rt-referred primitives like `reduce`; `ns-map` includes them, matching clj's
+  total visibility). Var-as-IFn (calling a returned var) is D-231.
 
 ## Next-sweep candidates (gap-confirmed or unswept)
 

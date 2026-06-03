@@ -437,6 +437,7 @@ run_step "e2e_phase14_parallel_seq"         "bash test/e2e/phase14_parallel_seq.
 run_step "e2e_phase14_alter_var_root"       "bash test/e2e/phase14_alter_var_root.sh"
 run_step "e2e_phase14_syntax_quote"         "bash test/e2e/phase14_syntax_quote.sh"
 run_step "e2e_phase14_with_redefs"          "bash test/e2e/phase14_with_redefs.sh"
+run_step "e2e_phase15_namespace"            "bash test/e2e/phase15_namespace.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
 run_step "e2e_phase14_core_cluster"          "bash test/e2e/phase14_core_cluster.sh"
 run_step "e2e_phase14_print_family"          "bash test/e2e/phase14_print_family.sh"

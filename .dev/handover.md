@@ -28,15 +28,16 @@
   the next units**: `with-redefs` (D-225 — writable cleanly now), `clojure.test`
   (D-227 — its is/are/deftest macros lean on backtick), and real-lib loading
   (D-158). Minor syntax-quote residuals: nested backtick (D-228), `macroexpand`
-  (D-229). `with-redefs` (D-225) DONE. clojure.test (D-227) design-probed: its
-  clean form (per-ns registry keyed by ns symbol so `(run-tests 'foo.test)` works)
-  is **blocked-by D-230** — cljw has no Namespace value type / `*ns*` / ns-reflection.
-  **First action on resume — D-230**: Namespace-as-value + `*ns*` (runtime-maintained
-  dynamic var) + ns-reflection (`ns-name`/`the-ns`/`find-ns`/`all-ns`/`ns-interns`/
-  `ns-publics`) — ADR-level (DA fork: Namespace value representation + F-004 slot +
-  `*ns*` coupling). Then D-227 clojure.test on top, then real-lib load (D-158). The
-  `*out*`/print-control half of the system-var-registry stays deferred (clojure.test
-  prints to stdout, AD-worthy).
+  (D-229). `with-redefs` (D-225) DONE. **D-230 DONE (ADR-0083)**: Namespace-as-value
+  (reserved `.ns` slot 21 activated, no new F-004 slot) + `*ns*` (runtime-maintained
+  via `Env.setCurrentNs`) + ns-reflection (`ns-name`/`the-ns`/`find-ns`/`all-ns`/
+  `create-ns`/`ns-interns`/`ns-publics`/`ns-map`/`ns-resolve`); AD-010/AD-011; GC
+  membrane now skips `.var_ref`+`.ns`. **First action on resume — D-227 clojure.test**
+  (fully unblocked: backtick + `*ns*`/`ns-name`/`ns-interns` present): DA-recommended
+  per-ns registry keyed by `(ns-name *ns*)` + `is`/`are`/`testing`/`deftest`/
+  `run-tests` (`assert-expr` + `report` multimethods, dynamic `*report-counters*`
+  atom; minimal `clojure.template` for `are`). Then real-lib load (D-158). Deferred:
+  D-231 (Var-as-IFn), `remove-ns`, `*out*`/`with-out-str`.
 - **Phase-15 architectural pieces need a DA-fork entry** (do NOT cold-seize):
   `agent`, STM `dosync`/`ref` (§9 STM 15.1-15.4 ADR), `locking`, real threading
   (std.Io.Threaded work-pool — also activates real `pmap` parallelism D-224 +
