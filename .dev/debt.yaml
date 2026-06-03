@@ -230,10 +230,20 @@ active:
       (b) standalone `use`/`refer`/`refer-clojure` FUNCTIONS unresolved (cljw
       makes `require` an analyzer special form for compile-time `:as`; `use`
       as a runtime fn — test-helper's `(apply clojure.core/use …)` — is a
-      separate gap); (c) `System/getProperty "line.separator"` (+ os.name etc.)
-      blocks test-helper LOAD (line 21) → control/special/logic stay blocked
-      on it even with `:only` landed (JVM System interop; a few common props
-      worth a thin surface). This
+      separate gap); (c) **`System/getProperty` LANDED** (2026-06-03,
+      runtime/java/lang/System.zig method #3) — OS-truthful props
+      (line/file/path.separator, os.name/os.arch, file.encoding, user.dir via
+      currentPath), nil for unknown incl. `java.*` (no-JVM); 1+2-arg; bare +
+      FQCN; corpus none (e2e phase15_system_property 10). **NEW BLOCKER for
+      the test-helper cluster (20 suites)**: `(in-ns (gensym))` — `in-ns` is
+      an analyzer special form requiring a literal/quoted symbol, but
+      test-helper calls it as a RUNTIME fn on a computed symbol (line 28).
+      Same structural class as (b): `in-ns`/`use`/`refer` need a runtime-fn
+      surface (computed-symbol arg) ALONGSIDE the special form — a DA-fork
+      unit (do NOT cold-seize; touches the special-form set). Until then the
+      20 test-helper-dependent suites stay blocked at LOAD; drain the
+      test-helper-FREE suites (sequences/data_structures/vectors/string/etc.)
+      first. This
       is the standing `quality-loop floor: validation-campaign` — drain
       highest-value-first, one upstream suite at a time, big-bang per suite
       (anti-drip per clj_diff_sweep.md Discipline 2). Cross-ref D-158 (infra) /
