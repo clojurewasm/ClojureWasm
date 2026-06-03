@@ -1890,7 +1890,10 @@ fn expandDefprotocol(
         return error_catalog.raise(.defprotocol_name_invalid, args[0].location, .{});
 
     const name_form = args[0];
-    const method_sigs = args[1..];
+    // Optional protocol-level docstring after the name (clj parity):
+    // `(defprotocol P "doc" (m [a]) …)`. Skip it before reading method sigs.
+    const sig_start: usize = if (args.len > 1 and args[1].data == .string) 2 else 1;
+    const method_sigs = args[sig_start..];
 
     // Collect each method-name Symbol from `(method-name [params])`.
     const method_names = try arena.alloc(Form, method_sigs.len);
