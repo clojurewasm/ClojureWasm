@@ -458,6 +458,7 @@ run_step "e2e_phase15_defprotocol_docstring" "bash test/e2e/phase15_defprotocol_
 run_step "e2e_phase15_marker_protocol"      "bash test/e2e/phase15_marker_protocol.sh"
 run_step "e2e_phase15_ns_binding_roundtrip" "bash test/e2e/phase15_ns_binding_roundtrip.sh"
 run_step "e2e_phase15_ns_runtime_fns"       "bash test/e2e/phase15_ns_runtime_fns.sh"
+run_step "e2e_phase15_defmethod_destructure" "bash test/e2e/phase15_defmethod_destructure.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
 run_step "e2e_phase14_core_cluster"          "bash test/e2e/phase14_core_cluster.sh"
 run_step "e2e_phase14_print_family"          "bash test/e2e/phase14_print_family.sh"

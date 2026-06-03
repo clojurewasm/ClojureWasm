@@ -1821,9 +1821,11 @@ fn expandDefmethod(
         break :blk try list(arena, do_items, loc);
     };
 
-    // (fn* params_form body_form)
+    // (fn params_form body_form) — `fn` (not `fn*`) so a destructuring
+    // method param (`(defmethod m :k [a [b c]] …)`) is lowered (clj parity;
+    // clojure.test-helper's `assert-expr` methods destructure their args).
     var fn_items = try arena.alloc(Form, 3);
-    fn_items[0] = sym("fn*", loc);
+    fn_items[0] = sym("fn", loc);
     fn_items[1] = params_form;
     fn_items[2] = body_form;
     const fn_form = try list(arena, fn_items, loc);

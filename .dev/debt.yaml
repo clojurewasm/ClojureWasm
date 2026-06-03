@@ -359,6 +359,15 @@ active:
       suites — the NEXT unit (a D-076 follow-up: extend the destructure lowering
       from `let` to `fn*` params). Until it lands the cluster stays blocked at
       test-helper load, but one feature past it.
+      **2026-06-04 defmethod-param destructuring FIXED**: `defmethod` lowered its
+      body to `fn*` (raw, symbol-only params), so a destructuring method param
+      raised "fn* parameter must be a symbol". Now emits `fn` (the
+      destructure-lowering macro; plain fn-param destructuring already worked —
+      the line-168 "fn-param deferred" comment was stale). test-helper now loads
+      PAST line 48 → advances to **line 97: `(new Exception …)`** — the `(new
+      Class args)` constructor special form, which cljw lacks (it has only the
+      `(Class. args)` sugar). `new` → reuse analyzeCtorCall is the next unit.
+      e2e phase15_defmethod_destructure (3).
       **2026-06-04 `defprotocol` docstrings LANDED**: an optional protocol-level
       docstring after the name (`(defprotocol P "doc" (m [a]) …)`) was rejected
       ("method signature must be a list"); now skipped. Method-level docstrings,
