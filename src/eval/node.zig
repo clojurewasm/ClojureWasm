@@ -461,7 +461,19 @@ pub const NsNode = struct {
     /// shape and is materialised by `evalNs` after the refer-clojure
     /// step. Arena-owned.
     libspecs: []const RequireNode = &.{},
+    /// `(:import pkg.Class | [pkg C1 C2] …)` (D-235): each entry maps a
+    /// simple class name to its fully-qualified (JVM-form) name, so a bare
+    /// `(Class. …)` / `Class/method` resolves via the ns import map. Empty
+    /// when no `:import` directive is present. Arena-owned.
+    imports: []const ImportEntry = &.{},
     loc: SourceLocation = .{},
+};
+
+/// One `(:import …)` class entry: `simple` is the bare class name written in
+/// code, `fqcn` is the JVM-form fully-qualified name it resolves to.
+pub const ImportEntry = struct {
+    simple: []const u8,
+    fqcn: []const u8,
 };
 
 /// `(require 'ns.name)` / `(require '[ns.name :as a :refer [x y]])`

@@ -451,6 +451,10 @@ fn evalNs(rt: *Runtime, env: *Env, n: node_mod.NsNode) !Value {
     for (n.libspecs) |libspec| {
         _ = try evalRequire(rt, env, libspec);
     }
+    // D-235: register `(:import …)` simple-name → FQCN into the entering ns.
+    for (n.imports) |imp| {
+        try env.current_ns.?.addImport(env.alloc, imp.simple, imp.fqcn);
+    }
     return .nil_val;
 }
 

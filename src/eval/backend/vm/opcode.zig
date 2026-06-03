@@ -216,6 +216,10 @@ pub const Opcode = enum(u8) {
     /// which stays as the form's result), updates the Var's innermost thread
     /// binding or, if none active, its root.
     op_set_var = 0x24,
+    /// `(:import pkg.Class …)` — operand = index into the `import_sites`
+    /// side-table (one entry per imported class). Registers simple->fqcn into
+    /// the current ns and pushes nil. (D-235.)
+    op_ns_import = 0x25,
 
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
@@ -260,6 +264,7 @@ pub const Opcode = enum(u8) {
             .op_ns_with_filter,
             .op_letfn_patch,
             .op_set_var,
+            .op_ns_import,
             => false,
         };
     }
@@ -309,6 +314,7 @@ pub const Opcode = enum(u8) {
             .op_ns_with_filter,
             .op_letfn_patch,
             .op_set_var,
+            .op_ns_import,
             => false,
         };
     }
@@ -380,6 +386,15 @@ pub const CtorEntry = struct {
     arg_count: u16,
 };
 
+/// Per-`(:import …)`-class side-table entry (D-235). Each `op_ns_import`
+/// instruction references one by index: `simple` is the bare class name,
+/// `fqcn` the JVM-form fully-qualified name it maps to. Analyzer-arena-owned,
+/// chunk lifetime.
+pub const ImportPair = struct {
+    simple: []const u8,
+    fqcn: []const u8,
+};
+
 /// Per-`(ns …)`-filter side-table entry (D-098). Each `op_ns_with_filter`
 /// instruction references one by index. `exclude` / `only` are the
 /// `:refer-clojure` filter lists threaded into `referAllWithFilter`
@@ -412,6 +427,9 @@ pub const BytecodeChunk = struct {
     /// Side-table indexed by `op_ctor_call` operand. Empty for chunks with
     /// no `(Class. …)` constructor call.
     ctor_sites: []CtorEntry = &.{},
+    /// Side-table indexed by `op_ns_import` operand. Empty for chunks with no
+    /// `(:import …)` directive.
+    import_sites: []ImportPair = &.{},
 };
 
 test "opcode enum tags are stable u8 values" {

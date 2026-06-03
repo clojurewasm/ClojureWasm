@@ -126,6 +126,23 @@ pub const Namespace = struct {
     refers: VarMap = .empty,
     /// `(require '[other :as alias])` produces these. Wired in Phase 4.
     aliases: NsAliasMap = .empty,
+    /// `(:import pkg.Class …)` simple-name → JVM-form FQCN map (D-235).
+    /// Consulted by `resolveJavaSurface` so a bare `(Class. …)` resolves to
+    /// the imported class. Keys + values are owned by this map.
+    imports: std.StringHashMapUnmanaged([]const u8) = .empty,
+
+    /// Register `simple → fqcn` (idempotent; re-import overwrites the FQCN,
+    /// matching JVM `(import …)` last-wins). Keys/values are duplicated on
+    /// first insertion; re-import frees nothing (the map owns both).
+    pub fn addImport(self: *Namespace, alloc: std.mem.Allocator, simple: []const u8, fqcn: []const u8) !void {
+        const gop = try self.imports.getOrPut(alloc, simple);
+        if (!gop.found_existing) {
+            gop.key_ptr.* = try alloc.dupe(u8, simple);
+        } else {
+            alloc.free(gop.value_ptr.*);
+        }
+        gop.value_ptr.* = try alloc.dupe(u8, fqcn);
+    }
 
     /// Resolve `name`: own mappings first, then refers. Returns null if
     /// neither finds it (the analyzer/runtime decides whether that's a
@@ -155,6 +172,13 @@ pub const Namespace = struct {
         var ait = self.aliases.keyIterator();
         while (ait.next()) |k| alloc.free(k.*);
         self.aliases.deinit(alloc);
+        // imports owns both its keys (simple names) and values (FQCNs).
+        var iit = self.imports.iterator();
+        while (iit.next()) |entry| {
+            alloc.free(entry.key_ptr.*);
+            alloc.free(entry.value_ptr.*);
+        }
+        self.imports.deinit(alloc);
     }
 };
 

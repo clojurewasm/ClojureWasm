@@ -63,6 +63,7 @@ const CallSiteEntry = opcode_mod.CallSiteEntry;
 const LibspecEntry = opcode_mod.LibspecEntry;
 const NsFilterEntry = opcode_mod.NsFilterEntry;
 const CtorEntry = opcode_mod.CtorEntry;
+const ImportPair = opcode_mod.ImportPair;
 
 const Compiler = struct {
     rt: *Runtime,
@@ -82,6 +83,9 @@ const Compiler = struct {
     /// D-233 — per-`(Class. …)` side-table. Each `op_ctor_call` instruction's
     /// operand indexes here (class name carried full-width, not 8-bit packed).
     ctor_sites: std.ArrayList(CtorEntry),
+    /// D-235 — per-`(:import …)` side-table. Each `op_ns_import` operand
+    /// indexes here.
+    import_sites: std.ArrayList(ImportPair),
     /// Innermost enclosing `loop*` frame, or `null` outside a loop.
     /// `compileRecur` reads this to know the back-edge target IP and
     /// the slot list to rebind. Saved/restored across nested loops.
@@ -105,6 +109,7 @@ const Compiler = struct {
             .libspecs = .empty,
             .ns_filters = .empty,
             .ctor_sites = .empty,
+            .import_sites = .empty,
             .current_loop = null,
         };
     }
@@ -116,6 +121,7 @@ const Compiler = struct {
         self.libspecs.deinit(self.arena);
         self.ns_filters.deinit(self.arena);
         self.ctor_sites.deinit(self.arena);
+        self.import_sites.deinit(self.arena);
     }
 
     fn compileNode(self: *Compiler, node: *const Node) Error!void {
@@ -593,7 +599,7 @@ const Compiler = struct {
         // trailing op_pop drops the prior nil before the next push, leaving
         // exactly one nil (the ns form's value).
         const has_filter = n.refer_clojure_exclude.len > 0 or n.refer_clojure_only != null;
-        if (has_filter or n.libspecs.len > 0) {
+        if (has_filter or n.libspecs.len > 0 or n.imports.len > 0) {
             if (n.refer_clojure) {
                 if (self.ns_filters.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
                 const filter_idx: u16 = @intCast(self.ns_filters.items.len);
@@ -615,6 +621,16 @@ const Compiler = struct {
             for (n.libspecs) |libspec| {
                 try self.emit(.op_pop, 0); // drop the prior op's nil
                 try self.emitLibspec(libspec);
+            }
+            for (n.imports) |imp| {
+                try self.emit(.op_pop, 0); // drop the prior op's nil
+                if (self.import_sites.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+                const idx: u16 = @intCast(self.import_sites.items.len);
+                try self.import_sites.append(self.arena, .{
+                    .simple = try self.arena.dupe(u8, imp.simple),
+                    .fqcn = try self.arena.dupe(u8, imp.fqcn),
+                });
+                try self.emit(.op_ns_import, idx);
             }
             return;
         }
@@ -716,13 +732,14 @@ const Compiler = struct {
         const specs = try self.arena.dupe(LibspecEntry, self.libspecs.items);
         const filters = try self.arena.dupe(NsFilterEntry, self.ns_filters.items);
         const ctors = try self.arena.dupe(CtorEntry, self.ctor_sites.items);
+        const ns_imports = try self.arena.dupe(ImportPair, self.import_sites.items);
         // ADR-0047 row 13.3: peephole runs inside finalize so every
         // chunk — top-level + every fn sub-chunk built via
         // compileFnMethodBody → sub.finalize() — is optimized through
         // the same path, and the Phase-12 serializer caches the
         // optimized chunk transparently.
         const instrs = try peephole.optimize(self.arena, raw);
-        return .{ .instructions = instrs, .constants = consts, .call_sites = sites, .libspecs = specs, .ns_filters = filters, .ctor_sites = ctors };
+        return .{ .instructions = instrs, .constants = consts, .call_sites = sites, .libspecs = specs, .ns_filters = filters, .ctor_sites = ctors, .import_sites = ns_imports };
     }
 };
 

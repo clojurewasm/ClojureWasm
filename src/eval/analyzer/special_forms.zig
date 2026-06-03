@@ -63,12 +63,21 @@ const TypeDescriptor = type_descriptor_mod.TypeDescriptor;
 /// auto-import this helper handles); pass it through to keep callsites
 /// stable for that landing.
 pub fn resolveJavaSurface(rt: *Runtime, env: *Env, head: []const u8) ?*const TypeDescriptor {
-    _ = env;
     if (rt.types.get(head)) |td| return td;
     var buf: [256]u8 = undefined;
     const prefixed = std.fmt.bufPrint(&buf, "cljw.{s}", .{head}) catch return null;
     if (rt.types.get(prefixed)) |td| return td;
     if (std.mem.findScalar(u8, head, '.') == null) {
+        // A `(:import …)` simple name resolves to its FQCN first (D-235),
+        // before the always-on java.lang auto-import.
+        if (env.current_ns) |ns| {
+            if (ns.imports.get(head)) |fqcn| {
+                if (rt.types.get(fqcn)) |td| return td;
+                var ibuf: [256]u8 = undefined;
+                const iprefixed = std.fmt.bufPrint(&ibuf, "cljw.{s}", .{fqcn}) catch return null;
+                if (rt.types.get(iprefixed)) |td| return td;
+            }
+        }
         var buf2: [256]u8 = undefined;
         const auto = std.fmt.bufPrint(&buf2, "cljw.java.lang.{s}", .{head}) catch return null;
         if (rt.types.get(auto)) |td| return td;
@@ -637,6 +646,8 @@ pub fn analyzeNs(
     var refer_clojure_only: ?[]const []const u8 = null;
     var libspecs: std.ArrayList(node_mod.RequireNode) = .empty;
     defer libspecs.deinit(arena);
+    var imports: std.ArrayList(node_mod.ImportEntry) = .empty;
+    defer imports.deinit(arena);
 
     var i: usize = 2;
     while (i < items.len) : (i += 1) {
@@ -665,8 +676,10 @@ pub fn analyzeNs(
                 const ls = try parseLibspecForm(arena, libspec_form, libspec_form.location, true);
                 try libspecs.append(arena, ls);
             }
+        } else if (std.mem.eql(u8, kw.name, "import")) {
+            try parseImportForms(arena, inner[1..], &imports);
         } else {
-            return error_catalog.raise(.feature_not_supported, directive.location, .{ .name = "ns directive (only :refer-clojure / :require / :use supported; :rename / :import pending)" });
+            return error_catalog.raise(.feature_not_supported, directive.location, .{ .name = "ns directive (only :refer-clojure / :require / :use / :import supported; :rename pending)" });
         }
     }
 
@@ -677,9 +690,55 @@ pub fn analyzeNs(
         .refer_clojure_exclude = refer_clojure_exclude,
         .refer_clojure_only = refer_clojure_only,
         .libspecs = try arena.dupe(node_mod.RequireNode, libspecs.items),
+        .imports = try arena.dupe(node_mod.ImportEntry, imports.items),
         .loc = form.location,
     } };
     return n;
+}
+
+/// Parse `(:import …)` entries into `(simple, fqcn)` pairs. Two shapes per
+/// JVM Clojure: a bare qualified symbol `pkg.Class` (→ simple = the class
+/// segment, fqcn = the whole symbol text), or a prefix list/vector
+/// `[pkg C1 C2 …]` (→ each `Ci` becomes `pkg.Ci`). Arena-owned strings.
+fn parseImportForms(
+    arena: std.mem.Allocator,
+    args: []const Form,
+    out: *std.ArrayList(node_mod.ImportEntry),
+) AnalyzeError!void {
+    for (args) |entry| {
+        switch (entry.data) {
+            .symbol => |s| {
+                // `pkg.Class` reads as a single dotted name (ns=null). The
+                // simple name is the segment after the final '.'.
+                const fqcn = try symFullText(arena, s);
+                const dot = std.mem.findScalarLast(u8, fqcn, '.');
+                const simple = if (dot) |d| fqcn[d + 1 ..] else fqcn;
+                try out.append(arena, .{ .simple = try arena.dupe(u8, simple), .fqcn = fqcn });
+            },
+            .list, .vector => {
+                const elems = if (entry.data == .list) entry.data.list else entry.data.vector;
+                if (elems.len < 2 or elems[0].data != .symbol)
+                    return error_catalog.raise(.feature_not_supported, entry.location, .{ .name = ":import prefix form must be (package Class …)" });
+                const pkg = symFullText(arena, elems[0].data.symbol) catch return AnalyzeError.OutOfMemory;
+                for (elems[1..]) |ce| {
+                    if (ce.data != .symbol or ce.data.symbol.ns != null)
+                        return error_catalog.raise(.feature_not_supported, ce.location, .{ .name = ":import class entry must be a simple symbol" });
+                    const cname = ce.data.symbol.name;
+                    const fqcn = try std.fmt.allocPrint(arena, "{s}.{s}", .{ pkg, cname });
+                    try out.append(arena, .{ .simple = try arena.dupe(u8, cname), .fqcn = fqcn });
+                }
+            },
+            else => return error_catalog.raise(.feature_not_supported, entry.location, .{ .name = ":import entry must be a symbol or (package Class …) list" }),
+        }
+    }
+}
+
+/// Reconstruct a symbol's full dotted text (`ns.name`, or just `name`).
+fn symFullText(arena: std.mem.Allocator, s: form_mod.SymbolRef) ![]const u8 {
+    return if (s.ns) |prefix|
+        try std.fmt.allocPrint(arena, "{s}.{s}", .{ prefix, s.name })
+    else
+        try arena.dupe(u8, s.name);
 }
 
 /// Walk `(:refer-clojure ...args)`'s argument list, materialising

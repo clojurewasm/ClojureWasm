@@ -9,6 +9,29 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-235"
+    status: |-
+      DISCHARGED 2026-06-03 — `(:import …)` ns directive landed (additive: new
+      NsNode.imports field + op_ns_import 0x25 + import_sites side-table, all
+      default-empty so non-import ns forms are unchanged). Both `pkg.Class`
+      (single dotted symbol, simple = last segment) and `[pkg C1 C2]` (prefix)
+      forms parse to (simple, fqcn) pairs; evalNs/op_ns_import register them
+      into `Namespace.imports` (simple→fqcn map); `resolveJavaSurface` consults
+      the current ns's imports for a dot-free head BEFORE the java.lang
+      auto-import. A cljw-supported class resolves via its simple name
+      (`(:import [java.util UUID])` → `(UUID/randomUUID)` works); an
+      unsupported class loads fine and raises a clean catchable error only on
+      USE (not at the directive — not a silent no-op). Wired across analyzer +
+      Namespace + tree_walk + VM + serialize. 6 e2e (phase15_ns_import), both
+      backends verified. Unblocked the `:import`-gated suites (data/parse/
+      errors/api/clearing now load past the directive; remaining blockers are
+      separate: external libs, into-array, regex-literal-edge, dot-form).
+      Cross-ref F-009 (java surface) / ADR-0029 / ADR-0050 / F-011.
+    category: "runtime"
+    barrier: |-
+      (DISCHARGED — see status.) `(:import …)` ns directive was unsupported
+      (raised feature_not_supported), blocking data/parse/errors/api/clearing.
+    last_reviewed: "2026-06-03"
   - id: "D-234"
     status: |-
       DISCHARGED 2026-06-03 — `for` rewritten from mapcat-of-singletons to

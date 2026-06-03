@@ -40,6 +40,7 @@ const Opcode = opcode_mod.Opcode;
 const BytecodeChunk = opcode_mod.BytecodeChunk;
 const CallSiteEntry = opcode_mod.CallSiteEntry;
 const CtorEntry = opcode_mod.CtorEntry;
+const ImportPair = opcode_mod.ImportPair;
 const LibspecEntry = opcode_mod.LibspecEntry;
 const value_mod = @import("../../runtime/value/value.zig");
 const Value = value_mod.Value;
@@ -490,6 +491,11 @@ pub fn serializeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) ![]u8 
         try writeLenPrefixed(w, ct.type_name);
         try writeU16(w, ct.arg_count);
     }
+    try writeU32(w, @intCast(chunk.import_sites.len));
+    for (chunk.import_sites) |ip| {
+        try writeLenPrefixed(w, ip.simple);
+        try writeLenPrefixed(w, ip.fqcn);
+    }
     return try aw.toOwnedSlice();
 }
 
@@ -574,12 +580,25 @@ pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@impor
         ctor_sites[i] = .{ .type_name = tn_dup, .arg_count = arg_count };
     }
 
+    const import_count = try r.readU32();
+    const import_sites = try allocator.alloc(ImportPair, import_count);
+    errdefer allocator.free(import_sites);
+    i = 0;
+    while (i < import_count) : (i += 1) {
+        const simple_bytes = try r.readLenPrefixed();
+        const simple_dup = try allocator.dupe(u8, simple_bytes);
+        const fqcn_bytes = try r.readLenPrefixed();
+        const fqcn_dup = try allocator.dupe(u8, fqcn_bytes);
+        import_sites[i] = .{ .simple = simple_dup, .fqcn = fqcn_dup };
+    }
+
     return BytecodeChunk{
         .instructions = instrs,
         .constants = constants,
         .call_sites = call_sites,
         .libspecs = libspecs,
         .ctor_sites = ctor_sites,
+        .import_sites = import_sites,
     };
 }
 
@@ -634,6 +653,11 @@ pub fn freeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) void {
     allocator.free(chunk.libspecs);
     for (chunk.ctor_sites) |ct| allocator.free(ct.type_name);
     allocator.free(chunk.ctor_sites);
+    for (chunk.import_sites) |ip| {
+        allocator.free(ip.simple);
+        allocator.free(ip.fqcn);
+    }
+    allocator.free(chunk.import_sites);
 }
 
 // === Multi-chunk payload envelope (D-100(b), `cljw build`) ===

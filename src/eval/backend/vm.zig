@@ -240,6 +240,20 @@ fn stepOnce(
                 stack[sp] = var_ptr.deref();
                 sp += 1;
             },
+            .op_ns_import => {
+                // D-235: register one `(:import …)` simple->fqcn into the
+                // current ns. Pushes nil (the ns form's running value).
+                if (instr.operand >= chunk.import_sites.len)
+                    return raiseInternal("vm: op_ns_import site index out of range");
+                const imp = chunk.import_sites[instr.operand];
+                const here = env.current_ns orelse
+                    return error_catalog.raise(.current_namespace_missing, .{}, .{ .sym = imp.simple });
+                try here.addImport(env.alloc, imp.simple, imp.fqcn);
+                if (sp >= OPERAND_STACK_MAX)
+                    return raiseInternal("vm: operand stack overflow");
+                stack[sp] = Value.nil_val;
+                sp += 1;
+            },
             .op_set_var => {
                 if (instr.operand >= chunk.constants.len)
                     return raiseInternal("vm: op_set_var constant index out of range");
