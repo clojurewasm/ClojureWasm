@@ -768,6 +768,26 @@ fn setupDiffTargetNs(f: *Fixture) !void {
     _ = try f.env.intern(ns, "marker2", Value.initInteger(7), null);
 }
 
+test "diff: op_ctor_call name index survives >255 constants (D-233)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // A single top-level form whose chunk holds >255 distinct constants
+    // BEFORE the ctor-name constant. The old `(name_idx << 8)` packing
+    // truncated name_idx to 8 bits, so the VM read the wrong constant and
+    // raised an internal error; tree_walk was unaffected → the backends
+    // diverged. The side-table fix makes both agree.
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(testing.allocator);
+    try buf.appendSlice(testing.allocator, "(deftype Tb [x])\n(do ");
+    var i: usize = 0;
+    while (i < 270) : (i += 1) {
+        var nb: [8]u8 = undefined;
+        try buf.appendSlice(testing.allocator, try std.fmt.bufPrint(&nb, "{d} ", .{i}));
+    }
+    try buf.appendSlice(testing.allocator, "(.-x (Tb. 7)))");
+    try f.check(buf.items, 7);
+}
+
 test "diff: row 7.10 op_require_with_libspec — :refer single arm" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

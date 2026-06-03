@@ -668,15 +668,13 @@ fn stepOnce(
                 sp += 1;
             },
             .op_ctor_call => {
-                // operand = (name_idx << 8) | arg_count
-                const name_idx: u16 = instr.operand >> 8;
-                const arg_count: u16 = instr.operand & 0xFF;
-                if (name_idx >= chunk.constants.len)
-                    return raiseInternal("vm: op_ctor_call name index out of range");
-                const name_val = chunk.constants[name_idx];
-                if (!name_val.isString())
-                    return raiseInternal("vm: op_ctor_call name is not a String");
-                const type_name = string_mod.asString(name_val);
+                // operand = index into the ctor_sites side-table (D-233; the
+                // class name carries full width, no 8-bit name_idx packing).
+                if (instr.operand >= chunk.ctor_sites.len)
+                    return raiseInternal("vm: op_ctor_call site index out of range");
+                const ctor = chunk.ctor_sites[instr.operand];
+                const type_name = ctor.type_name;
+                const arg_count: u16 = ctor.arg_count;
                 if (sp < arg_count) return raiseInternal("vm: op_ctor_call underflow");
                 const args_slice = stack[sp - arg_count .. sp];
                 // Shared resolver/dispatcher (deftype/record + java-surface

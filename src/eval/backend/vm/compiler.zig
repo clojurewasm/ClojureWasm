@@ -62,6 +62,7 @@ pub fn compile(
 const CallSiteEntry = opcode_mod.CallSiteEntry;
 const LibspecEntry = opcode_mod.LibspecEntry;
 const NsFilterEntry = opcode_mod.NsFilterEntry;
+const CtorEntry = opcode_mod.CtorEntry;
 
 const Compiler = struct {
     rt: *Runtime,
@@ -78,6 +79,9 @@ const Compiler = struct {
     /// D-098 — per-filtered-`(ns …)` side-table. Each `op_ns_with_filter`
     /// instruction's operand indexes here.
     ns_filters: std.ArrayList(NsFilterEntry),
+    /// D-233 — per-`(Class. …)` side-table. Each `op_ctor_call` instruction's
+    /// operand indexes here (class name carried full-width, not 8-bit packed).
+    ctor_sites: std.ArrayList(CtorEntry),
     /// Innermost enclosing `loop*` frame, or `null` outside a loop.
     /// `compileRecur` reads this to know the back-edge target IP and
     /// the slot list to rebind. Saved/restored across nested loops.
@@ -100,6 +104,7 @@ const Compiler = struct {
             .call_sites = .empty,
             .libspecs = .empty,
             .ns_filters = .empty,
+            .ctor_sites = .empty,
             .current_loop = null,
         };
     }
@@ -110,6 +115,7 @@ const Compiler = struct {
         self.call_sites.deinit(self.arena);
         self.libspecs.deinit(self.arena);
         self.ns_filters.deinit(self.arena);
+        self.ctor_sites.deinit(self.arena);
     }
 
     fn compileNode(self: *Compiler, node: *const Node) Error!void {
@@ -519,11 +525,15 @@ const Compiler = struct {
         switch (n.kind) {
             .constructor => {
                 for (n.args) |*a| try self.compileNode(a);
-                const name_val = try string_mod.alloc(self.rt, n.type_name);
-                const name_idx = try self.addConstant(name_val);
-                if (n.args.len > 0xFF) return Error.TooManyCallArgs;
-                const operand: u16 = (@as(u16, name_idx) << 8) | @as(u16, @intCast(n.args.len));
-                try self.emit(.op_ctor_call, operand);
+                if (n.args.len > std.math.maxInt(u16)) return Error.TooManyCallArgs;
+                if (self.ctor_sites.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
+                const ctor_idx: u16 = @intCast(self.ctor_sites.items.len);
+                const name_dup = try self.arena.dupe(u8, n.type_name);
+                try self.ctor_sites.append(self.arena, .{
+                    .type_name = name_dup,
+                    .arg_count = @intCast(n.args.len),
+                });
+                try self.emit(.op_ctor_call, ctor_idx);
             },
             .instance_member => {
                 const target = n.target orelse @panic("compileInteropCall: target null for .instance_member (analyzer bug)");
@@ -705,13 +715,14 @@ const Compiler = struct {
         const sites = try self.arena.dupe(CallSiteEntry, self.call_sites.items);
         const specs = try self.arena.dupe(LibspecEntry, self.libspecs.items);
         const filters = try self.arena.dupe(NsFilterEntry, self.ns_filters.items);
+        const ctors = try self.arena.dupe(CtorEntry, self.ctor_sites.items);
         // ADR-0047 row 13.3: peephole runs inside finalize so every
         // chunk — top-level + every fn sub-chunk built via
         // compileFnMethodBody → sub.finalize() — is optimized through
         // the same path, and the Phase-12 serializer caches the
         // optimized chunk transparently.
         const instrs = try peephole.optimize(self.arena, raw);
-        return .{ .instructions = instrs, .constants = consts, .call_sites = sites, .libspecs = specs, .ns_filters = filters };
+        return .{ .instructions = instrs, .constants = consts, .call_sites = sites, .libspecs = specs, .ns_filters = filters, .ctor_sites = ctors };
     }
 };
 

@@ -10,24 +10,31 @@
 
 active:
   - id: "D-233"
-    status: "now (found 2026-06-03 running string.clj) — `op_ctor_call` raises an INTERNAL error (not a clean user error) when the class name is unresolved."
+    status: |-
+      DISCHARGED 2026-06-03 (root cause was NOT "unresolved class" — it was an
+      8-bit operand overflow). `op_ctor_call`'s operand packed
+      `(name_idx << 8) | arg_count`, truncating the class-name constant index
+      to 8 bits; in a chunk with > 255 constants (a large `deftest`) name_idx
+      overflowed and the VM read a NON-String constant → `raiseInternal("vm:
+      op_ctor_call name is not a String")`, aborting the whole `run-tests`
+      batch. **Fix**: route ctor calls through a `ctor_sites` side-table
+      (`CtorEntry { type_name, arg_count }`), mirroring `op_method_call`'s
+      `call_sites` — the class name now carries full width and the operand is a
+      plain side-table index. With the corruption gone, an unsupported class
+      (`StringBuffer`) now raises the normal catchable `Unable to resolve
+      symbol` so a single `is` reports an error and the suite continues (verified
+      on string.clj — it now runs through the StringBuffer cases instead of
+      dying). Wired: opcode.zig (CtorEntry + chunk.ctor_sites) + compiler.zig
+      (ctor_sites accumulator + finalize) + vm.zig (read side-table) +
+      serialize.zig (write/read/free). 1 diff regression case (>270 constants
+      then a deftype ctor — both backends must agree). tree_walk was never
+      affected (it carries the type_name directly on InteropCallNode). Cross-ref
+      D-232 / F-011 / F-012 (VM is the production default — this was a real
+      production-backend bug).
     category: "runtime"
     barrier: |-
-      **`(UnresolvedClass. args)` on the VM surfaces `internal_error [eval]
-      Internal error: vm: op_ctor_call name is not a String`** instead of a
-      clean `name_error`/`feature_not_supported`. Found running
-      `clojure.test-clojure.string` (uses `(StringBuffer. …)`): the ctor-call
-      arm resolves the class to a non-String / nil constant and `raiseInternal`s,
-      which aborts the whole eval (a `run-tests` batch dies mid-suite) rather
-      than letting the single `is` form report an error and continue. Discharge:
-      the `op_ctor_call` dispatch (src/eval/backend/vm.zig) should detect an
-      unresolved/non-class target and raise a catalog user error
-      (`class_unresolved`/`feature_not_supported` with the class name) so it is
-      catchable and non-fatal — matching how an unresolved fn call already
-      raises cleanly. The tree_walk arm should be checked for the same shape.
-      LOW-frequency in clean code but HIGH-value for the validation campaign
-      (one unresolved interop call should not nuke a whole suite run). Cross-ref
-      D-232 / F-011. recall trigger: any suite using an unsupported Java ctor.
+      (DISCHARGED — see status.) op_ctor_call 8-bit name_idx overflow corrupted
+      ctor calls in > 255-constant chunks; fixed via the ctor_sites side-table.
     last_reviewed: "2026-06-03"
   - id: "D-226"
     status: |-

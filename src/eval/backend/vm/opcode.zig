@@ -128,10 +128,10 @@ pub const Opcode = enum(u8) {
     /// (0x18 was `op_deftype`, retired by ADR-0066 when deftype became a
     /// macro lowering to `rt/__deftype!` — registration is now a
     /// backend-neutral primitive call, no dedicated opcode.)
-    /// `(Name. args)` — operand = `(name_const_idx << 8) |
-    /// arg_count`. Pops `arg_count` values, looks up descriptor via
-    /// `rt.types.get(name)`, allocates a TypedInstance via
-    /// `td_mod.allocInstance`.
+    /// `(Name. args)` — operand = index into the `ctor_sites` side-table
+    /// (D-233; was a packed `(name_idx << 8) | arg_count` that truncated
+    /// name_idx to 8 bits). Pops `arg_count` values and constructs the
+    /// instance via `special_forms.constructInstance`.
     op_ctor_call = 0x19,
     /// `(.member instance args...)` / `(.-field instance)` — operand =
     /// `call_site_idx` into `BytecodeChunk.call_sites`. Pops receiver +
@@ -369,6 +369,17 @@ pub const LibspecEntry = struct {
     exclude: []const []const u8 = &.{},
 };
 
+/// Per-`(Class. …)`-constructor side-table entry (D-233). Each
+/// `op_ctor_call` instruction references one by index. The class name lives
+/// here (not packed into the operand) so it carries full width — the old
+/// `(name_idx << 8) | arg_count` packing truncated name_idx to 8 bits and
+/// corrupted ctor calls in chunks with > 255 constants. `type_name` is
+/// analyzer-arena-owned, chunk lifetime.
+pub const CtorEntry = struct {
+    type_name: []const u8,
+    arg_count: u16,
+};
+
 /// Per-`(ns …)`-filter side-table entry (D-098). Each `op_ns_with_filter`
 /// instruction references one by index. `exclude` / `only` are the
 /// `:refer-clojure` filter lists threaded into `referAllWithFilter`
@@ -398,6 +409,9 @@ pub const BytecodeChunk = struct {
     /// Side-table indexed by `op_ns_with_filter` operand. Empty for
     /// chunks with no filtered `(ns …)` form.
     ns_filters: []NsFilterEntry = &.{},
+    /// Side-table indexed by `op_ctor_call` operand. Empty for chunks with
+    /// no `(Class. …)` constructor call.
+    ctor_sites: []CtorEntry = &.{},
 };
 
 test "opcode enum tags are stable u8 values" {

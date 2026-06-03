@@ -39,6 +39,7 @@ const Instruction = opcode_mod.Instruction;
 const Opcode = opcode_mod.Opcode;
 const BytecodeChunk = opcode_mod.BytecodeChunk;
 const CallSiteEntry = opcode_mod.CallSiteEntry;
+const CtorEntry = opcode_mod.CtorEntry;
 const LibspecEntry = opcode_mod.LibspecEntry;
 const value_mod = @import("../../runtime/value/value.zig");
 const Value = value_mod.Value;
@@ -484,6 +485,11 @@ pub fn serializeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) ![]u8 
         try writeU32(w, @intCast(ls.exclude.len));
         for (ls.exclude) |ex| try writeLenPrefixed(w, ex);
     }
+    try writeU32(w, @intCast(chunk.ctor_sites.len));
+    for (chunk.ctor_sites) |ct| {
+        try writeLenPrefixed(w, ct.type_name);
+        try writeU16(w, ct.arg_count);
+    }
     return try aw.toOwnedSlice();
 }
 
@@ -557,11 +563,23 @@ pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@impor
         libspecs[i] = .{ .ns_name = ns_dup, .alias = alias_dup, .refers = refers, .refer_all = refer_all, .exclude = exclude };
     }
 
+    const ctor_count = try r.readU32();
+    const ctor_sites = try allocator.alloc(CtorEntry, ctor_count);
+    errdefer allocator.free(ctor_sites);
+    i = 0;
+    while (i < ctor_count) : (i += 1) {
+        const tn_bytes = try r.readLenPrefixed();
+        const tn_dup = try allocator.dupe(u8, tn_bytes);
+        const arg_count = try r.readU16();
+        ctor_sites[i] = .{ .type_name = tn_dup, .arg_count = arg_count };
+    }
+
     return BytecodeChunk{
         .instructions = instrs,
         .constants = constants,
         .call_sites = call_sites,
         .libspecs = libspecs,
+        .ctor_sites = ctor_sites,
     };
 }
 
@@ -614,6 +632,8 @@ pub fn freeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) void {
         allocator.free(ls.exclude);
     }
     allocator.free(chunk.libspecs);
+    for (chunk.ctor_sites) |ct| allocator.free(ct.type_name);
+    allocator.free(chunk.ctor_sites);
 }
 
 // === Multi-chunk payload envelope (D-100(b), `cljw build`) ===
