@@ -1,0 +1,6 @@
+(do (declare q) (defn q [] 7) (q))
+;;=> 7
+(macroexpand (quote (declare a b c)))
+;;=> (do (def a) (def b) (def c))
+(do (declare even? odd?) (defn even? [n] (if (= n 0) true (odd? (dec n)))) (defn odd? [n] (if (= n 0) false (even? (dec n)))) [(even? 4) (odd? 3)])
+;;=> [true true]

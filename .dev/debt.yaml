@@ -325,6 +325,15 @@ active:
       overflow. Corpus clojure_math (38) + numeric_zero_signed (9). `(ulp 0.0)`
       print `5.0E-324` vs clj `4.9E-324` = the D-166-accepted subnormal Ryū
       divergence (value-exact), not a gap.
+      **2026-06-04 `declare` LANDED** (was entirely missing — a fundamental
+      clojure.core macro): `(declare a b)` → `(do (def a) (def b))` via
+      macro_transforms.zig (the def-family Zig macro home, beside `defn-`).
+      The standard clj defn uses `vary-meta` to tag `:declared true`, which
+      cljw cannot do (symbols metadata-less, ADR-0037) — the marker meta is
+      omitted (accepted), forward-declaration behaviour identical. corpus
+      declare (3). Surfaced by test_fixtures.clj, which then parks on
+      `use-fixtures` (clojure.test once/each fixture registration — a separate
+      clojure.test infra unit, not core).
     category: "scope"
     barrier: |-
       **The corpus-driven validation campaign (D-158 tier 2) is now runnable** —

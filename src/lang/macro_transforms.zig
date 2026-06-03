@@ -110,6 +110,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "fn", .expand = expandFn },
     .{ .name = "defn", .expand = expandDefn },
     .{ .name = "defn-", .expand = expandDefnPrivate },
+    .{ .name = "declare", .expand = expandDeclare },
     .{ .name = "defmulti", .expand = expandDefmulti },
     .{ .name = "defmethod", .expand = expandDefmethod },
     .{ .name = "prefer-method", .expand = expandPreferMethod },
@@ -132,6 +133,29 @@ const list = macro_dispatch.makeList;
 const vec = macro_dispatch.makeVector;
 const sym = macro_dispatch.makeSymbol;
 const nilForm = macro_dispatch.makeNil;
+
+/// `(declare a b ...)` → `(do (def a) (def b) ...)`. Forward-declares
+/// unbound vars. clj also tags each var `:declared true` via symbol meta;
+/// cljw symbols are metadata-less (ADR-0037), so that marker is omitted
+/// (accepted divergence) — the forward-declaration behaviour is identical.
+/// A non-symbol name is left for `def` to reject (single error source).
+fn expandDeclare(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    var items = try arena.alloc(Form, args.len + 1);
+    items[0] = sym("do", loc);
+    for (args, 0..) |name, i| {
+        const def_items = try arena.alloc(Form, 2);
+        def_items[0] = sym("def", loc);
+        def_items[1] = name;
+        items[i + 1] = try list(arena, def_items, loc);
+    }
+    return list(arena, items, loc);
+}
 
 // --- let — `let*` rename + destructuring lowering (D-076) ---
 //
