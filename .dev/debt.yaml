@@ -368,6 +368,18 @@ active:
       Class args)` constructor special form, which cljw lacks (it has only the
       `(Class. args)` sugar). `new` → reuse analyzeCtorCall is the next unit.
       e2e phase15_defmethod_destructure (3).
+      **2026-06-04 `(new Classname args)` special form LANDED**: equivalent to
+      the `(Classname. args)` sugar; `analyzeNew` lowers to the SAME constructor
+      InteropCallNode (both backends already handle it — no new Node). corpus
+      new_ctor (4) + e2e phase15_new_ctor (4). **test-helper now LOADS FULLY**
+      (the in-ns→defmethod-destructure→new blocker chain is cleared) — the ~20
+      test-helper-dependent suites are past the COMMON blocker. Each now hits its
+      OWN remaining gap (2026-06-04 probe): def→definterface, multimethods→
+      `java.util.Map` (JVM class), evaluation→`import` (standalone fn), control→
+      a macroexpand syntax_error @92, logic→into-array (F-004), special→
+      not_implemented @36, metadata→a require gap. Drain individually next;
+      definterface/JVM-class/into-array are deferred-structural, but `import`
+      (standalone) / control@92 / special@36 may be clean.
       **2026-06-04 `defprotocol` docstrings LANDED**: an optional protocol-level
       docstring after the name (`(defprotocol P "doc" (m [a]) …)`) was rejected
       ("method signature must be a list"); now skipped. Method-level docstrings,

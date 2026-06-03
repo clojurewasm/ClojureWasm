@@ -205,6 +205,28 @@ pub fn analyzeCtorCall(
     return n;
 }
 
+/// `(new Classname args...)` — the constructor special form, equivalent to the
+/// `(Classname. args...)` sugar. Lowers to the same `analyzeCtorCall`
+/// (constructor InteropCallNode). The class must be a bare symbol.
+pub fn analyzeNew(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    items: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    if (items.len < 2 or items[1].data != .symbol)
+        return error_catalog.raise(.feature_not_supported, form.location, .{ .name = "new (requires a class symbol: (new Classname args…))" });
+    const cls = items[1].data.symbol;
+    const type_name: []const u8 = if (cls.ns) |prefix|
+        try std.fmt.allocPrint(arena, "{s}/{s}", .{ prefix, cls.name })
+    else
+        cls.name;
+    return analyzeCtorCall(arena, rt, env, scope, type_name, items[2..], form, macro_table);
+}
+
 /// `(.member recv args...)` / `(.-field recv)` instance member analyzer arm
 /// (ADR-0050 am1). Builds an `InteropCallNode { .kind = .instance_member }`,
 /// consolidating the former `.instance_field` (arity 1) and

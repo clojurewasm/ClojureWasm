@@ -1,0 +1,8 @@
+(.getMessage (new Exception "boom"))
+;;=> "boom"
+(.getMessage (new RuntimeException "rt"))
+;;=> "rt"
+[(.getMessage (new Exception "x")) (.getMessage (Exception. "x"))]
+;;=> ["x" "x"]
+(instance? Exception (new Exception "e"))
+;;=> true
