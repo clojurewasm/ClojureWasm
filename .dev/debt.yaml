@@ -194,7 +194,10 @@ active:
       re-analyses; e2e phase15_macro_literals 6); this got `for` + other_functions
       past their literal gaps. Remaining PARKED findings (each its own future
       unit, mostly deferred-structural): `for` `:while` modifier (doseq has it,
-      for doesn't); `re-matcher`+`{n}` bounded-repeat regex (D-220, other_functions);
+      for doesn't); **`{n}`/`{n,}`/`{n,m}` bounded-repeat regex DONE** (compile.zig
+      parseRepeat + emit: n mandatory copies + greedy-optional/`*`; groups work;
+      corpus regex_bounded_repeat 10); `re-matcher`/`re-groups` still deferred
+      (D-220, needs the reserved `.matcher` slot-56 mutable value; other_functions);
       clojure_set hash-COLLIDING set elements (HAMT collision-node gap, a real
       limitation); `*warn-on-reflection*` DONE (core.clj no-op `^:dynamic` flag —
       cljw has no reflection; atoms.clj then RUNS 5 tests / 23 assertions → 12

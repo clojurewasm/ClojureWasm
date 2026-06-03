@@ -32,6 +32,10 @@ pub const Flags = packed struct(u8) {
 
 /// Parsed AST node. The parser produces this tree; the IR
 /// emitter walks it to populate `Program.insts`.
+/// Sentinel `max` for an unbounded `{n,}` repeat (`.repeat.max == REPEAT_INF`
+/// ⇒ `n` mandatory copies followed by `*`).
+pub const REPEAT_INF: u16 = std.math.maxInt(u16);
+
 pub const Node = union(enum) {
     /// A single literal byte (e.g. `a`).
     lit: u8,
@@ -241,12 +245,50 @@ const Parser = struct {
             '*' => .{ .star = atom },
             '+' => .{ .plus = atom },
             '?' => .{ .quest = atom },
+            // `{n}` / `{n,}` / `{n,m}` bounded repetition.
+            '{' => return try self.parseRepeat(atom),
             else => return atom,
         };
         _ = self.advance();
         const node = try self.arena.create(Node);
         node.* = wrapped;
         return node;
+    }
+
+    /// Parse a `{n}` / `{n,}` / `{n,m}` bound after `atom` (cursor at `{`).
+    fn parseRepeat(self: *Parser, atom: *Node) CompileError!*Node {
+        _ = self.advance(); // consume '{'
+        const min = try self.parseUint();
+        var max: u16 = min;
+        if (self.peek() == @as(?u8, ',')) {
+            _ = self.advance();
+            if (self.peek() == @as(?u8, '}')) {
+                max = REPEAT_INF; // `{n,}` — unbounded
+            } else {
+                max = try self.parseUint();
+            }
+        }
+        if (self.peek() != @as(?u8, '}')) return CompileError.UnexpectedToken;
+        _ = self.advance(); // consume '}'
+        if (max != REPEAT_INF and max < min) return CompileError.UnexpectedToken;
+        const node = try self.arena.create(Node);
+        node.* = .{ .repeat = .{ .child = atom, .min = min, .max = max } };
+        return node;
+    }
+
+    /// Parse one or more ASCII digits as a u16 (at least one required).
+    fn parseUint(self: *Parser) CompileError!u16 {
+        var n: u32 = 0;
+        var any = false;
+        while (self.peek()) |c| {
+            if (c < '0' or c > '9') break;
+            _ = self.advance();
+            n = n * 10 + (c - '0');
+            if (n > std.math.maxInt(u16)) return CompileError.UnexpectedToken;
+            any = true;
+        }
+        if (!any) return CompileError.UnexpectedToken;
+        return @intCast(n);
     }
 
     fn parseAtom(self: *Parser) CompileError!*Node {
@@ -456,7 +498,18 @@ fn emitNode(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, node: *const N
             try list.append(alloc, .{ .save = @as(u32, 2) * g.index + 1 });
         },
         .non_capture => |child| try emitNode(list, alloc, child),
-        else => return CompileError.NotImplemented,
+        // `{n,m}` → n mandatory copies, then (m-n) greedy-optional copies; a
+        // `{n,}` (max == REPEAT_INF) appends `*` after the n mandatory copies.
+        .repeat => |r| {
+            var i: u16 = 0;
+            while (i < r.min) : (i += 1) try emitNode(list, alloc, r.child);
+            if (r.max == REPEAT_INF) {
+                try emitStar(list, alloc, r.child);
+            } else {
+                var j: u16 = r.min;
+                while (j < r.max) : (j += 1) try emitQuest(list, alloc, r.child);
+            }
+        },
     }
 }
 

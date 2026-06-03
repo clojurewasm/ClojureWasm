@@ -1,0 +1,20 @@
+(re-find #"\d{2}" "ab12cd")
+;;=> "12"
+(re-matches #"x{3}" "xxx")
+;;=> "xxx"
+(re-matches #"x{3}" "xx")
+;;=> nil
+(re-find #"a{2,3}" "aaaa")
+;;=> "aaa"
+(re-find #"a{2,}" "aaaa")
+;;=> "aaaa"
+(re-seq #"\d{2}" "12345")
+;;=> ("12" "34")
+(re-find #"(\d{2})/(\d{2})" "12/34")
+;;=> ["12/34" "12" "34"]
+(re-matches #"[a-z]{2,4}" "abc")
+;;=> "abc"
+(re-find #"o{0,2}" "fooo")
+;;=> ""
+(boolean (re-matches #"\d{3}-\d{4}" "123-4567"))
+;;=> true
