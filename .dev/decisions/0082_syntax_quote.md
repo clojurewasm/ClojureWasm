@@ -1,8 +1,10 @@
 # ADR-0082 — Syntax-quote: reader Form nodes + analyzer expansion (hybrid)
 
-**Status**: Proposed → Accepted (2026-06-03, D-226). STAGE 1 (non-qualifying:
-`~`/`~@`/`foo#`/templates + the `valueToForm` lazy-seq-forcing fix) LANDED
-2026-06-03; STAGE 2 (symbol qualification + nested backtick) pending (D-226 open).
+**Status**: Proposed → Accepted (2026-06-03, D-226). STAGE 1 (templates/`~`/`~@`/
+`foo#` + the `valueToForm` lazy-seq-forcing fix) + STAGE 2 (symbol qualification:
+var→home-ns, `rt`→`clojure.core`, current-ns fallback, special-forms/interop/
+class bare) both LANDED 2026-06-03 — D-226 DISCHARGED. Residuals: nested backtick
+(D-228), `macroexpand` (D-229).
 
 ## Context
 

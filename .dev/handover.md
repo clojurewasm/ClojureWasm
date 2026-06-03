@@ -20,16 +20,16 @@
   `pvalues` (sequential, result-identical; parallelism deferred D-224) + `doall`/
   `dorun` + `alter-var-root` (var-root mutator, D-225). delay/promise/future/atom/
   volatile already worked.
-- **Syntax-quote STAGE 1 LANDED (D-226 PARTIAL, ADR-0082)**: `` ` ``/`~`/`~@`/
-  `foo#` work (non-qualifying); macros with backtick now run (single-ns +
-  core-symbol). Key fix: `valueToForm` now FORCES lazy seqs (fixes all lazy
-  macro expansions). **First action on resume — STAGE 2 = symbol QUALIFICATION**
-  (`` `foo ``→`current-ns/foo`, `` `+ ``→`clojure.core/+`, + qualify emitted
-  `seq`/`concat`/`list`): the analyzer expander (`syntax_quote.zig`) resolves each
-  non-special/non-`~`/non-`foo#`/non-`.` symbol to its var's ns; this is the
-  real-lib enabler (a macro referencing its own private helper needs it, D-158).
-  Then nested-backtick depth + `macroexpand-1`. After: `with-redefs` (D-225) +
-  clojure.test (D-227) become natural (their macros lean on backtick).
+- **Syntax-quote COMPLETE (D-226 DISCHARGED, ADR-0082, stage 1 + 2)**: `` ` ``/`~`/
+  `~@`/`foo#` + full symbol QUALIFICATION (`` `foo ``→user/foo, `` `+ ``→
+  clojure.core/+, special-forms/interop/class bare). Macros with backtick run,
+  incl. same-ns private helpers (the real-lib enabler). Key fix: `valueToForm`
+  now FORCES lazy seqs (fixes all lazy macro expansions). **Backtick now unblocks
+  the next units**: `with-redefs` (D-225 — writable cleanly now), `clojure.test`
+  (D-227 — its is/are/deftest macros lean on backtick), and real-lib loading
+  (D-158). Minor syntax-quote residuals: nested backtick (D-228), `macroexpand`
+  (D-229). **First action on resume — `with-redefs` (D-225) or `clojure.test`
+  (D-227)**, the highest-value now-unblocked work toward real-lib compatibility.
 - **Phase-15 architectural pieces need a DA-fork entry** (do NOT cold-seize):
   `agent`, STM `dosync`/`ref` (§9 STM 15.1-15.4 ADR), `locking`, real threading
   (std.Io.Threaded work-pool — also activates real `pmap` parallelism D-224 +

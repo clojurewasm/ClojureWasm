@@ -11,7 +11,26 @@
 active:
   - id: "D-226"
     status: |-
-      PARTIAL 2026-06-03 (STAGE 1 landed, ADR-0082) — syntax-quote `` ` ``/`~`/
+      DISCHARGED 2026-06-03 (STAGE 1 + STAGE 2 landed, ADR-0082) — syntax-quote
+      is at clj parity for the real use cases. Stage 2 (symbol QUALIFICATION, the
+      real-lib enabler): `syntax_quote.zig::qualifySym` resolves each non-special,
+      non-`~`, non-`foo#`, non-interop symbol against `env.current_ns` — a
+      referred/aliased var → its HOME ns, an unresolved name → the current ns
+      (`` `foo `` → user/foo, so a macro CAN reference its own private helper:
+      `(defmacro mh [x] `(helper ~x))` works), an unresolved Capitalized name →
+      BARE (class, AD-003 simple name). cljw's `rt` primitive ns is mapped to
+      `clojure.core` so `` `+ `` → clojure.core/+ matching clj. Special forms /
+      `catch`/`finally`/`&` / interop (`.`-containing) stay bare. clj-verified:
+      `(pr-str `(if x y z))`→"(if user/x user/y user/z)", `` `+ ``→clojure.core/+,
+      same-ns-helper macro→50, gensym try/catch macro→:caught. Corpus
+      `syntax_quote` (22); 18 e2e phase14_syntax_quote. RESIDUALS (minor, → own
+      rows): **nested backtick** flattens+evals the inner `~` (clj preserves the
+      inner template) → **D-228**; **`macroexpand`/`macroexpand-1`** still missing
+      (introspection) → **D-229**; a class symbol in QUOTED DATA is bare not FQCN
+      (AD-003-aligned). The bare-binding-in-`(catch C e …)` "must not be
+      namespace-qualified" error is clj-FAITHFUL (clj qualifies it too; use `e#`).
+      Cross-ref ADR-0082 / D-158 (real-lib goal, now unblocked) / D-228 / D-229.
+      ORIGINAL: PARTIAL 2026-06-03 (STAGE 1 landed, ADR-0082) — syntax-quote `` ` ``/`~`/
       `~@`/`foo#` now WORKS (non-qualifying). Reader emits `.syntax_quote`/
       `.unquote`/`.unquote_splicing` Form nodes (tokenizer backtick/~/~@; `#` is
       now a symbol constituent so `foo#` tokenizes); the analyzer
@@ -61,6 +80,18 @@ active:
     category: "scope"
     barrier: |-
       **The `clojure.test` namespace is not implemented** — `deftest`/`is`/`are`/`testing`/`run-tests`/`with-test` all unresolved. Separate ns (not clojure.core; real code does `(require [clojure.test …])`), and the densest real-bug-finder (D-158 tier 2: run real libs' own `clojure.test` suites on cljw). Needs the `clojure.test` ns + assertion macros (`is`/`are`/`testing`/`deftest`) + a test registry + `run-tests` reporter. The macros lean on syntax-quote (D-226) → that lands first. Pairs with `print-table` (clojure.pprint) for the report. Cross-ref D-158 / D-226 (prereq) / F-011. recall trigger: the corpus-driven / real-lib-test validation phase.
+    last_reviewed: "2026-06-03"
+  - id: "D-228"
+    status: "now (minor, found 2026-06-03 during D-226) — nested syntax-quote flattens instead of preserving the inner template."
+    category: "runtime"
+    barrier: |-
+      **Nested `` ` `` is approximated** (`syntax_quote.zig::walk`'s `.syntax_quote` arm recurses, flattening): `` `(a `(b ~(+ 1 2))) `` → cljw evaluates the inner `~` (yields `(... (b 3))`) where clj PRESERVES the inner template as data (`(… (clojure.core/seq (clojure.core/concat …)))`), because clj counts quote DEPTH — an inner `` ` `` increments depth, `~` only unquotes at depth 0. Discharge: thread a `depth` counter through `walk`; a `.syntax_quote` increments it, `.unquote`/`.unquote_splicing` decrement, and only at depth 0 does `~` actually splice (else it expands to a `(list (quote ~) …)` data form). LOW value (nested backtick is rare — mostly macro-writing macros). Cross-ref D-226 / ADR-0082 / F-011. recall trigger: when a macro-defining macro / nested-backtick parity is needed.
+    last_reviewed: "2026-06-03"
+  - id: "D-229"
+    status: "now (introspection gap, found 2026-06-03 during D-226) — `macroexpand`/`macroexpand-1` missing."
+    category: "runtime"
+    barrier: |-
+      **`macroexpand` / `macroexpand-1` are unimplemented** — `(macroexpand-1 '(when t a))` → "Unable to resolve symbol". clj expands a macro form one step (`-1`) or fully (repeatedly until the head is not a macro). Needs: resolve the head symbol to a macro Var, call its macro fn with the form's args (the `expandIfMacro` path, now exposed as a callable), return the expansion as DATA. `macroexpand` loops `macroexpand-1` to a fixed point. Useful for debugging macros + clj-parity introspection (and lets the clj-diff sweep compare expansions directly, which it can't today). MEDIUM value. Cross-ref D-226 (syntax-quote, the main macro tool) / macro_dispatch.expandIfMacro / F-011. recall trigger: macro-debugging / introspection work, or when a sweep needs to compare macroexpansions.
     last_reviewed: "2026-06-03"
   - id: "D-219"
     status: |-

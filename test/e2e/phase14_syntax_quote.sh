@@ -27,8 +27,18 @@ assert_eq 'mac_when_f' "$("$BIN" -e '(defmacro m-when [t & b] `(if ~t (do ~@b) n
 # auto-gensym foo# (consistent within one syntax-quote)
 assert_eq 'gensym'   "$("$BIN" -e '(defmacro m-dbl [x] `(let [y# ~x] (+ y# y#))) (m-dbl 21)' 2>&1 | tail -1)" '42'
 assert_eq 'gensym_swap' "$("$BIN" -e '(defmacro m-swap [a b] `(let [t# ~a] [~b t#])) (m-swap 1 2)' 2>&1 | tail -1)" '[2 1]'
+# stage 2: symbol qualification (clj hygiene)
+assert_eq 'qual_user'  "$("$BIN" -e '(pr-str `foo)')"           '"user/foo"'
+assert_eq 'qual_core'  "$("$BIN" -e '(pr-str `+)')"            '"clojure.core/+"'
+assert_eq 'qual_form'  "$("$BIN" -e "(pr-str \`(if x y z))")"  '"(if user/x user/y user/z)"'
+assert_eq 'qual_class' "$("$BIN" -e '(pr-str `Throwable)')"    '"Throwable"'
+# THE stage-2 win: a macro referencing its OWN ns private helper resolves
+assert_eq 'helper'   "$("$BIN" -e '(defn helper [x] (* x 10)) (defmacro mh [x] `(helper ~x)) (mh 5)' 2>&1 | tail -1)" '50'
+# try/catch macro with a gensym binding (bare binding is a clj-faithful error)
+assert_eq 'try_mac'  "$("$BIN" -e '(defmacro mt [x] `(try ~x (catch Throwable e# :caught))) (mt (/ 1 0))' 2>&1 | tail -1)" ':caught'
+
 # ~ outside a syntax-quote errors
 if "$BIN" -e '~x' >/dev/null 2>&1; then fail 'unquote_bare: should error'; fi
 echo 'PASS unquote_bare -> errors'
 
-echo "OK — phase14_syntax_quote (12 cases) green"
+echo "OK — phase14_syntax_quote (18 cases) green"
