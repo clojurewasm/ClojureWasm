@@ -70,6 +70,7 @@ pub const Code = enum {
     var_arg_not_symbol,
     var_unresolved,
     set_arity_invalid,
+    var_set_not_bound,
     metadata_value_invalid,
     symbol_unresolved,
     /// args: `.{ .sym = "ns/name", .ns = "ns" }` — raised when a
@@ -433,6 +434,10 @@ pub fn entry(comptime code: Code) Entry {
         .set_arity_invalid => .{
             .kind = .syntax_error, .phase = .analysis,
             .template = "set! expects 2 args, got {[got]d}",
+        },
+        .var_set_not_bound => .{
+            .kind = .value_error, .phase = .eval,
+            .template = "Can't set! var that is not thread-bound: {[var]s}",
         },
         .var_arg_not_symbol => .{
             .kind = .syntax_error, .phase = .analysis,

@@ -1186,8 +1186,39 @@ pub fn alterVarRootFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     return newroot;
 }
 
+/// `(var-get v)` — return Var `v`'s current value (thread binding if bound,
+/// else root). `v` is a `.var_ref`. Mirrors `deref` on a var.
+pub fn varGetFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("var-get", args, 1, loc);
+    if (args[0].tag() != .var_ref)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "var-get", .expected = "var", .actual = @tagName(args[0].tag()) });
+    return args[0].decodePtr(*const env_mod.Var).deref();
+}
+
+/// `(var-set v val)` — set Var `v`'s CURRENT THREAD BINDING to `val` and
+/// return `val`. `v` must be thread-bound (per clj: throws otherwise — root
+/// is `def`/`alter-var-root`'s job). Powers `with-local-vars` + binding-scoped
+/// mutation.
+pub fn varSetFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("var-set", args, 2, loc);
+    if (args[0].tag() != .var_ref)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "var-set", .expected = "var", .actual = @tagName(args[0].tag()) });
+    const v: *const env_mod.Var = args[0].decodePtr(*const env_mod.Var);
+    if (!env_mod.setBinding(v, args[1])) {
+        const full = try std.fmt.allocPrint(rt.gpa, "{s}/{s}", .{ v.ns.name, v.name });
+        defer rt.gpa.free(full);
+        return error_catalog.raise(.var_set_not_bound, loc, .{ .@"var" = full });
+    }
+    return args[1];
+}
+
 const ENTRIES = [_]Entry{
     .{ .name = "hash", .f = &hashFn },
+    .{ .name = "var-get", .f = &varGetFn },
+    .{ .name = "var-set", .f = &varSetFn },
     .{ .name = "eval", .f = &evalFn },
     .{ .name = "gensym", .f = &gensymFn },
     .{ .name = "__resolve", .f = &resolvePrim },

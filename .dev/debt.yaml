@@ -9,6 +9,27 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-237"
+    status: "now (vars.clj cluster, 2026-06-03) — `with-local-vars` needs anonymous-Var creation + a heap binding-frame primitive; var-get/var-set landed."
+    category: "runtime"
+    barrier: |-
+      **`(with-local-vars [a 1] …)` is unsupported.** `var-get`/`var-set`
+      LANDED (2026-06-03, core.zig primitives over `Var.deref` + `env.setBinding`;
+      var-set requires a thread binding, else clean `var_set_not_bound` — clj
+      parity; 6 e2e phase15_var_get_set). `with-local-vars` is the remaining
+      piece: it creates ANONYMOUS dynamic Vars, thread-binds them over the body,
+      and binds the local names to those var values. Needs (a) a `__make-local-var`
+      primitive (alloc a fresh dynamic `Var`, return a `.var_ref`), (b) a
+      heap-allocated binding-frame push/pop primitive pair (mirroring vm.zig
+      op_push/pop_binding_frame's `rt.gpa.create(BindingFrame)` lifecycle, since
+      the frame must outlive the primitive call and pop in a `finally`), and (c)
+      the `with-local-vars` macro `(let [a (__make-local-var) …]
+      (__push-local-frame a 1 …) (try body (finally (__pop-local-frame))))`. var-set/
+      var-get/`@` already operate on the resulting var values. Moderate cluster;
+      vars.clj is its consumer (with-local-vars ×2). Cross-ref D-230 (Var-as-value)
+      / set! (env.setBinding) / F-011. recall trigger: vars.clj drain or a
+      real lib using with-local-vars.
+    last_reviewed: "2026-06-03"
   - id: "D-236"
     status: |-
       DISCHARGED 2026-06-03 — the `.` interop special form landed
