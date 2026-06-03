@@ -1,0 +1,20 @@
+(if-let [[a b] (quote (1 2))] (+ a b) :no)
+;;=> 3
+(if-let [[a b] nil] :y :n)
+;;=> :n
+(when-let [[a b] (quote (3 4))] (* a b))
+;;=> 12
+(when-let [{:keys [x y]} {:x 5 :y 6}] (+ x y))
+;;=> 11
+(if-some [[a b] [7 8]] (- b a) :no)
+;;=> 1
+(if-some [[a b] nil] :y :n)
+;;=> :n
+(when-some [[a b] (quote (9 10))] (+ a b))
+;;=> 19
+(when-first [[a b] (quote ((1 2) 3))] b)
+;;=> 2
+(when-first [a [11 22]] a)
+;;=> 11
+(if-let [x 5] x :no)
+;;=> 5

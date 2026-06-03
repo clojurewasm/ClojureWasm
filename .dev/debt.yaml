@@ -396,6 +396,15 @@ active:
       via let*, symbol-only; same macro-uses-let*-not-let class as the defmethod
       fix). That + special@36 (`{:as x}`-only assoc destructure, a parse path)
       are the next clean candidates.
+      **2026-06-04 conditional-let destructuring bindings LANDED**: `if-let` /
+      `when-let` / `if-some` / `when-some` / `when-first` all required the binding
+      target to be a plain symbol and lowered the inner bind via `let*` — so a
+      destructuring binding (`(when-let [[a b] expr] …)`) raised "binding name
+      invalid". Now the inner bind uses `let` (destructure-lowering; plain symbol
+      reduces to let*, no regression) + the symbol-only check dropped. corpus
+      conditional_let_destructure (10). control.clj advances 118 → 145 → past,
+      now parks on `clojure.test-helper/*err*` (the *out*/*err* rebinding infra
+      cljw lacks — deferred, same class as with-out-str). special@36 remains.
       **2026-06-04 `defprotocol` docstrings LANDED**: an optional protocol-level
       docstring after the name (`(defprotocol P "doc" (m [a]) …)`) was rejected
       ("method signature must be a list"); now skipped. Method-level docstrings,

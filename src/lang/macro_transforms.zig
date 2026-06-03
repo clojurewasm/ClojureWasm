@@ -747,8 +747,8 @@ fn expandIfSome(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc:
     if (args[0].data != .vector or args[0].data.vector.len != 2)
         return error_catalog.raise(.if_some_bindings_invalid, args[0].location, .{});
     const binding_v = args[0].data.vector;
-    if (binding_v[0].data != .symbol or binding_v[0].data.symbol.ns != null)
-        return error_catalog.raise(.if_some_binding_name_invalid, binding_v[0].location, .{});
+    // Binding target may be a symbol OR any destructure pattern (clj parity);
+    // the nil? test is on the whole expr value, the pattern destructures in `then`.
 
     const name_form = binding_v[0];
     const expr_form = binding_v[1];
@@ -756,11 +756,16 @@ fn expandIfSome(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc:
     const else_form: Form = if (args.len == 3) args[2] else nilForm(loc);
     const gname = try rt.gensym(arena, "if_some");
 
-    // inner: (let* [name g] then)
+    // inner: (let [pattern g] then) — `let` so a destructure pattern lowers
+    // (plain symbol reduces to let*, no regression).
     const inner_binding = try arena.alloc(Form, 2);
     inner_binding[0] = name_form;
     inner_binding[1] = sym(gname, loc);
-    const inner_let = try buildLetStarBody(arena, inner_binding, then_form, loc);
+    const inner_let_items = try arena.alloc(Form, 3);
+    inner_let_items[0] = sym("let", loc);
+    inner_let_items[1] = .{ .data = .{ .vector = inner_binding }, .location = loc };
+    inner_let_items[2] = then_form;
+    const inner_let = try list(arena, inner_let_items, loc);
 
     // (nil? g)
     const nilq_items = try arena.alloc(Form, 2);
@@ -893,17 +898,22 @@ fn expandWhenFirst(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, l
     if (args[0].data != .vector or args[0].data.vector.len != 2)
         return error_catalog.raise(.when_first_bindings_invalid, args[0].location, .{});
     const bv = args[0].data.vector;
-    if (bv[0].data != .symbol or bv[0].data.symbol.ns != null)
-        return error_catalog.raise(.when_first_bindings_invalid, bv[0].location, .{});
+    // bv[0] may be a symbol OR any destructure pattern (clj parity): the
+    // pattern binds `(first coll)` in the body.
     const x_sym = bv[0];
     const coll_expr = bv[1];
     const g = sym(try rt.gensym(arena, "when_first"), loc);
 
-    // inner: (let* [x (first g)] (do body…))
+    // inner: (let [pattern (first g)] (do body…)) — `let` so a destructure
+    // pattern lowers (plain symbol reduces to let*, no regression).
     const inner_binding = try arena.alloc(Form, 2);
     inner_binding[0] = x_sym;
     inner_binding[1] = try makeCall(arena, "first", &.{g}, loc);
-    const inner_let = try buildLetStarBody(arena, inner_binding, try foldBody(arena, args[1..], loc), loc);
+    const inner_let_items = try arena.alloc(Form, 3);
+    inner_let_items[0] = sym("let", loc);
+    inner_let_items[1] = .{ .data = .{ .vector = inner_binding }, .location = loc };
+    inner_let_items[2] = try foldBody(arena, args[1..], loc);
+    const inner_let = try list(arena, inner_let_items, loc);
 
     // (when-let [g (seq coll)] inner_let)
     const wl_binding = try arena.alloc(Form, 2);
@@ -1519,8 +1529,10 @@ fn expandIfLet(
         return error_catalog.raise(.if_let_bindings_invalid, args[0].location, .{});
 
     const binding_v = args[0].data.vector;
-    if (binding_v[0].data != .symbol or binding_v[0].data.symbol.ns != null)
-        return error_catalog.raise(.if_let_binding_name_invalid, binding_v[0].location, .{});
+    // The binding target may be a plain symbol OR any destructure pattern
+    // (`(if-let [[a b] expr] …)` / `(if-let [{:keys [k]} expr] …)`, clj
+    // parity): the truthiness test is on the WHOLE expr value (the gensym),
+    // and the pattern is destructured only in the `then` branch.
 
     const name_form = binding_v[0];
     const expr_form = binding_v[1];
@@ -1529,12 +1541,13 @@ fn expandIfLet(
 
     const gname = try rt.gensym(arena, "if_let");
 
-    // Inner: (let* [name g] then)
+    // Inner: (let [pattern g] then) — `let` (not `let*`) so a destructuring
+    // pattern lowers; a plain-symbol pattern reduces to `let*` (no regression).
     const inner_binding = try arena.alloc(Form, 2);
     inner_binding[0] = name_form;
     inner_binding[1] = sym(gname, loc);
     const inner_let_items = try arena.alloc(Form, 3);
-    inner_let_items[0] = sym("let*", loc);
+    inner_let_items[0] = sym("let", loc);
     inner_let_items[1] = .{ .data = .{ .vector = inner_binding }, .location = loc };
     inner_let_items[2] = then_form;
     const inner_let = try list(arena, inner_let_items, loc);
