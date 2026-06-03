@@ -9,6 +9,34 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-238"
+    status: "imagine+record+defer (2026-06-04, D-232 frontier) — *out*/*err* dynamic streams + with-out-str; BLOCKED on an F-004 NaN-box writer-slot decision (owner-owned, do NOT cold-seize)."
+    category: "runtime"
+    barrier: |-
+      **`*out*` / `*err*` are not rebindable; `with-out-str` is impossible.**
+      print/println/pr/prn write straight to `rt.stdout`; `*out*` does not exist
+      as a var, so `(with-out-str (println "x"))` (capture to string) and
+      `(binding [*out* w] …)` cannot work. Real code + clojure.test-clojure.control
+      (with-err-string-writer) need it. Step-0 survey:
+      `private/notes/phase15-out-err-streams-survey.md`. The mechanism is mostly
+      ready: **one shared choke point** `emitToStdout` (core.zig:600) resolves the
+      target — a single redirect (`(deref *out*)` → capture buffer vs fd) covers
+      every print primitive, backend-agnostic (F-011/F-012); `pr-str` already has
+      the string-capture machinery (prStrFn IS with-out-str minus the redirect);
+      `*out*`/`*err*` intern at bootstrap mirroring `*ns*` (ADR-0083); `with-out-str`
+      is a ~4-line `.clj` macro. **STRUCTURAL BLOCKER (F-003/F-004 — owner decides):**
+      `*out*` must hold a **writer Value**, which needs a NaN-box heap tag. Group D's
+      named reserves are consumed except `box` (slot 58, enumerated, zero impl). A
+      mandatory Devil's-advocate fork must choose **(A) repurpose `box` as the writer
+      slot** (zero layout growth; `box`/clojure.lang.Box is low-value for cljw —
+      leading candidate) vs **(B) mint a fresh `io_writer` slot** — an F-004
+      reservation-table decision the handover flags as do-NOT-cold-seize. `Runtime.stdout`'s
+      docstring already pre-reserved this migration ("Superseded by `*out*` … Phase 15").
+      `with-in-str`/`*in*`/`read-line` is a SEPARATE deferred big-bang (cljw has no
+      `*in*`/read-line/string-input-reader). Cross-ref F-004 (slot) / F-003 (defer) /
+      F-011 (shared mechanism) / ADR-0083 (*ns* intern pattern). recall trigger: an
+      F-004 slot-owner session, or a real lib/with-out-str need.
+    last_reviewed: "2026-06-04"
   - id: "D-237"
     status: "now (vars.clj cluster, 2026-06-03) — `with-local-vars` needs anonymous-Var creation + a heap binding-frame primitive; var-get/var-set landed."
     category: "runtime"
