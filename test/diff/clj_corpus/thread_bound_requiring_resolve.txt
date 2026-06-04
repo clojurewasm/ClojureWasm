@@ -1,0 +1,8 @@
+(do (def ^:dynamic *tb* 1) (thread-bound? (var *tb*)))
+;;=> false
+(do (def ^:dynamic *tb* 1) (binding [*tb* 2] (thread-bound? (var *tb*))))
+;;=> true
+(= (requiring-resolve (quote clojure.set/union)) (var clojure.set/union))
+;;=> true
+(= (requiring-resolve (quote clojure.string/join)) (var clojure.string/join))
+;;=> true

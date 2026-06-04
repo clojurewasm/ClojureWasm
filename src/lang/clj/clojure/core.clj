@@ -1638,3 +1638,12 @@
                                   (. ~(bindings 0) ~'close))))
     :else (throw (ex-info "with-open only allows Symbols in bindings" {}))))
 
+
+;; `(requiring-resolve sym)` → resolve a qualified symbol, requiring its
+;; namespace first if needed. Throws on a non-qualified symbol (clj parity).
+;; Defined late: depends on qualified-symbol? / namespace / require / resolve.
+(def requiring-resolve
+  (fn* [sym]
+    (if (qualified-symbol? sym)
+      (do (require (symbol (namespace sym))) (resolve sym))
+      (throw (ex-info (str "Not a qualified symbol: " sym) {:sym sym})))))

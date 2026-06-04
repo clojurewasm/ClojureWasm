@@ -94,6 +94,22 @@ pub fn ifnQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     };
 }
 
+/// `(thread-bound? & vars)` — true iff EVERY arg Var has an active thread
+/// binding (a `binding` frame holds it). A non-Var arg raises (clj casts to
+/// Var → ClassCastException). Spec: clojure.core/thread-bound?.
+pub fn threadBoundQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    if (args.len < 1)
+        return error_catalog.raise(.arity_below_min, loc, .{ .fn_name = "thread-bound?", .got = args.len, .min = 1 });
+    for (args) |v| {
+        if (v.tag() != .var_ref)
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "thread-bound?", .expected = "var", .actual = @tagName(v.tag()) });
+        if (env_mod.findBinding(v.decodePtr(*const env_mod.Var)) == null) return .false_val;
+    }
+    return .true_val;
+}
+
 /// `(var? x)` — true iff `x` is a Var reference. Spec: clojure.core/var?.
 pub fn varQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
@@ -1282,6 +1298,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "-class-isa?", .f = &classIsaPrim },
     .{ .name = "ifn?", .f = &ifnQ },
     .{ .name = "var?", .f = &varQ },
+    .{ .name = "thread-bound?", .f = &threadBoundQ },
     .{ .name = "nil?", .f = &nilQ },
     .{ .name = "true?", .f = &trueQ },
     .{ .name = "false?", .f = &falseQ },

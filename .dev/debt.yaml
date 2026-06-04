@@ -530,6 +530,13 @@ active:
       x))`; prn-str/println-str = pr-str/print-str + "\n"; printf = `(print
       (apply format …))`. corpus print_str_family (8; printf's output can't be
       corpus-checked until with-out-str/D-238, verified directly).
+      **2026-06-04 thread-bound? / requiring-resolve LANDED**: thread-bound?
+      (findBinding-based primitive; non-Var raises like clj's cast) +
+      requiring-resolve (.clj: require the ns then resolve; throws on a
+      non-qualified symbol). corpus thread_bound_requiring_resolve (4). Still
+      needing real plumbing (not trivial wrappers): `special-symbol?` (needs the
+      special-form-set SSOT exposed to a prim), `ns-unmap`/`ns-unalias` (env
+      mapping/alias removal with owned-key freeing).
       **2026-06-04 `find-var` + `var?` LANDED**: `(find-var 'ns/name)` → the Var
       (or nil; ns must exist) via env.findNs+resolve; `(var? x)` → `.var_ref` tag.
       corpus find_var_predicate (8). NOTE `bound?`/`defonce` are DEFERRED: cljw's
