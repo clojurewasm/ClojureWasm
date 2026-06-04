@@ -141,6 +141,17 @@ fn callThunk(rt: *Runtime, env: *Env, thunk: Value, loc: SourceLocation) !Value 
 /// the fault-driven retry.)
 pub fn doGet(tx: *LockingTransaction, ref: *Ref) Value {
     if (tx.vals.get(ref)) |v| return v;
+    // Read the committed value UNDER the Ref's lock. An unsynchronized read of
+    // `ref.tvals` can, under relaxed memory ordering, miss a commit that is
+    // already in this transaction's snapshot (its `point` <= our read_point) —
+    // the commit-time conflict check then sees no conflict, so we write back a
+    // value derived from a stale read = a lost update (a serializability break
+    // observed as 399/400 under contention in ReleaseSafe). The lock acquire
+    // synchronizes-with the last committer's release, so we read the value the
+    // conflict check validates against. (A write-set ref is already in `vals`
+    // above, so commit-time replay never re-locks a held ref here.)
+    while (!ref.lock.tryLock()) std.atomic.spinLoopHint();
+    defer ref.lock.unlock();
     return ref.tvals.val;
 }
 
