@@ -115,6 +115,7 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "clojure.lang.IPersistentSet", "IPersistentSet" },
     .{ "clojure.lang.IPersistentCollection", "IPersistentCollection" },
     .{ "clojure.lang.IEditableCollection", "IEditableCollection" },
+    .{ "java.lang.Iterable", "Iterable" },
 });
 
 /// Normalise FQCN inputs to simple names. Falls back to `host_class`
@@ -176,7 +177,8 @@ fn isInterfaceName(simple: []const u8) bool {
         std.mem.eql(u8, simple, "IPersistentMap") or
         std.mem.eql(u8, simple, "IPersistentSet") or
         std.mem.eql(u8, simple, "IPersistentCollection") or
-        std.mem.eql(u8, simple, "IEditableCollection");
+        std.mem.eql(u8, simple, "IEditableCollection") or
+        std.mem.eql(u8, simple, "Iterable");
 }
 
 /// `(instance? Class v)` predicate. Returns true iff `v` is a
@@ -268,6 +270,14 @@ fn matchInterface(v: Value, simple: []const u8) bool {
             else => false,
         };
     }
+    // `java.lang.Iterable` — every cljw collection + seq (the `coll?` set);
+    // scalars, strings, and nil are NOT Iterable (clj-verified).
+    if (std.mem.eql(u8, simple, "Iterable")) {
+        return switch (t) {
+            .list, .cons, .lazy_seq, .chunked_cons, .vector, .array_map, .hash_map, .sorted_map, .hash_set, .sorted_set, .persistent_queue, .range, .string_seq, .array_seq, .map_entry => true,
+            else => false,
+        };
+    }
     return false;
 }
 
@@ -307,6 +317,8 @@ test "isKnown accepts interface names" {
     try testing.expect(isKnown("IPersistentCollection"));
     try testing.expect(isKnown("IEditableCollection"));
     try testing.expect(isKnown("clojure.lang.IEditableCollection"));
+    try testing.expect(isKnown("Iterable"));
+    try testing.expect(isKnown("java.lang.Iterable"));
 }
 
 test "isKnown delegates Throwable hierarchy to host_class" {

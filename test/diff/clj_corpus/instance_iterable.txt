@@ -1,0 +1,26 @@
+(instance? java.lang.Iterable [])
+;;=> true
+(instance? java.lang.Iterable (list 1))
+;;=> true
+(instance? java.lang.Iterable {})
+;;=> true
+(instance? java.lang.Iterable #{})
+;;=> true
+(instance? java.lang.Iterable (map inc [1]))
+;;=> true
+(instance? java.lang.Iterable (range 3))
+;;=> true
+(instance? java.lang.Iterable (sorted-map :a 1))
+;;=> true
+(instance? java.lang.Iterable (cons 1 nil))
+;;=> true
+(instance? java.lang.Iterable (first {:a 1}))
+;;=> true
+(instance? java.lang.Iterable "str")
+;;=> false
+(instance? java.lang.Iterable nil)
+;;=> false
+(instance? java.lang.Iterable 5)
+;;=> false
+(instance? java.lang.Iterable :kw)
+;;=> false

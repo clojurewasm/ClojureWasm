@@ -671,6 +671,14 @@ active:
       readValue; readReaderConditionalSplice returns the elements. 4 e2e + 1 reader
       unit (no clj corpus — `clj -e` rejects `#?@` without :read-cond). Unblocks
       aero.core + defun.core past `#?@` (→ next walls PersistentQueue / core.match).
+      **2026-06-04 `instance? java.lang.Iterable` ADDED** (+ data.csv confirmed
+      fully working: read-csv round-trips). `Iterable` true for every cljw
+      collection + seq (the coll? tag set), false for string/scalar/nil — all
+      clj-verified. Added to class_name FQCN_MAP + interface table (same shape as
+      IEditableCollection). corpus instance_iterable (13) + class_name unit.
+      core.unify advances past it → `.isArray` reflection on a Class (arrays/F-004,
+      deferred). Recurring deep walls now dominate: PersistentQueue (medley/aero),
+      `&env`/`&form` macro args (D-099-followup, meander), arrays/F-004, deftype.
       **2026-06-04 `find-var` + `var?` LANDED**: `(find-var 'ns/name)` → the Var
       (or nil; ns must exist) via env.findNs+resolve; `(var? x)` → `.var_ref` tag.
       corpus find_var_predicate (8). NOTE `bound?`/`defonce` are DEFERRED: cljw's
