@@ -650,6 +650,17 @@ active:
       clojure_version_vars (8 clj-matching invariants incl :minor=12) + 4 e2e.
       tools.reader.edn advances → with-local-vars (D-237); data.avl → APersistentMap
       (deftype, deep). Both next walls are deferred-structural.
+      **2026-06-04 probe landscape note (no cold-seize)**: clojure.instant loads
+      upstream source but hits the **regex 8-capture-group cap** (its RFC3339 regex
+      has ~10 groups; `MAX_SLOTS_INLINE=16` = 8 groups). This is **D-051 cycle-3
+      regex work** ("wider patterns fall back to a heap-allocated slot array in
+      cycle 3" + named groups + `(?i)`), a tracked deferred-structural unit — NOT
+      cold-seized; clojure.instant is recorded here as a concrete cycle-3 consumer.
+      data.xml needs the **prefix-list `:require` form** (`[prefix [sub :as x] …]`,
+      namespace.zig:398 rejects non-symbol/vector libspecs) but is also javax.xml-
+      heavy → low ROI. The clean generic clojure.core gaps are thinning; remaining
+      drain hits are mostly deferred-structural (regex cycle 3, with-local-vars
+      D-237, deftype-heavy libs, JVM classes, *out* D-238, PersistentQueue).
       **2026-06-04 `find-var` + `var?` LANDED**: `(find-var 'ns/name)` → the Var
       (or nil; ns must exist) via env.findNs+resolve; `(var? x)` → `.var_ref` tag.
       corpus find_var_predicate (8). NOTE `bound?`/`defonce` are DEFERRED: cljw's
