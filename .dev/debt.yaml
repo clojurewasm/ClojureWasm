@@ -758,6 +758,14 @@ active:
       clj-verified) + 3 compile unit tests. REMAINING regex gaps: `(?i:…)` scoped
       / mid-pattern flags, `\b` (word boundary — Anchor exists, parser TODO),
       lookaround (D-058), backreferences.
+      **2026-06-04 `java.util.UUID/fromString` + medley FULLY LOADS** (milestone).
+      Added the `fromString` static to the UUID surface (= parse-uuid; shares
+      `uuid.parse`; throws on malformed like clj, AD-007). **weavejester/medley —
+      the first lib drained this session — now fully loads + runs** (find-first/
+      index-by/queue/uuid) after the cumulative chain: reader conditionals →
+      named fn → #_/#? boundary → multi-arity defmacro → IEditableCollection →
+      PersistentQueue → empty-body arity → fromString. corpus uuid_from_string
+      (3) + 3 e2e (phase14_uuid_literal → 19).
       **2026-06-04 instance? interface-membership SWEEP** (big-bang, the Iterable/
       IEditableCollection pattern completed). FIXED too-narrow arms:
       IPersistentMap (+sorted_map), IPersistentSet (+sorted_set),

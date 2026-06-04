@@ -29,6 +29,7 @@ const Env = @import("../../env.zig").Env;
 const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const uuid = @import("../../uuid.zig");
+const string_collection = @import("../../collection/string.zig");
 
 /// Implements `(java.util.UUID/randomUUID)`.
 /// Spec: returns a UUID v4 `.uuid` value (ADR-0074; was a canonical String
@@ -42,15 +43,35 @@ fn randomUUID(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     return try uuid.alloc(rt, uuid.generateV4(rt.io));
 }
 
+/// Implements `(java.util.UUID/fromString s)` — parse a canonical UUID string
+/// to a `.uuid` value. JVM throws IllegalArgumentException on a malformed
+/// string; cljw raises `uuid_string_invalid` (same as `#uuid`, AD-007). Shares
+/// `uuid.parse` with `parse-uuid` / `#uuid` (F-009). JVM ref: java.util.UUID#
+/// fromString.
+fn fromString(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.util.UUID/fromString", args, 1, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "java.util.UUID/fromString", .actual = @tagName(args[0].tag()) });
+    const s = string_collection.asString(args[0]);
+    const bytes = uuid.parse(s) catch return error_catalog.raise(.uuid_string_invalid, loc, .{ .s = s });
+    return try uuid.alloc(rt, bytes);
+}
+
 const std = @import("std");
 
 fn initUUID(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent re-run
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 1);
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 2);
     entries[0] = .{
         .protocol_name = "",
         .method_name = try gpa.dupe(u8, "randomUUID"),
         .method_val = Value.initBuiltinFn(&randomUUID),
+    };
+    entries[1] = .{
+        .protocol_name = "",
+        .method_name = try gpa.dupe(u8, "fromString"),
+        .method_val = Value.initBuiltinFn(&fromString),
     };
     td.method_table = entries;
 }

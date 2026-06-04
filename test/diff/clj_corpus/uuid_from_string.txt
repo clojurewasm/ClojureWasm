@@ -1,0 +1,6 @@
+(str (java.util.UUID/fromString "12345678-1234-5678-1234-567812345678"))
+;;=> "12345678-1234-5678-1234-567812345678"
+(uuid? (java.util.UUID/fromString "00000000-0000-0000-0000-000000000000"))
+;;=> true
+(= (java.util.UUID/fromString "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11") (java.util.UUID/fromString "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"))
+;;=> true

@@ -77,4 +77,9 @@ assert_eq 'uuid_map_key'  "$("$BIN" -e "(get {#uuid \"$U\" :v} #uuid \"$U\")")" 
 assert_eq 'uuid_set_elem' "$("$BIN" -e "(contains? #{#uuid \"$U\"} #uuid \"$U\")")" 'true'
 assert_eq 'uuid_distinct' "$("$BIN" -e "(count (distinct [#uuid \"$U\" #uuid \"$U\" #uuid \"00000000-0000-0000-0000-000000000000\"]))")" '2'
 
-echo "OK — phase14_uuid_literal (16 cases) green"
+# --- java.util.UUID/fromString static (= parse-uuid; throws on malformed) ---
+assert_eq 'from_string'   "$("$BIN" -e "(uuid? (java.util.UUID/fromString \"$U\"))")" 'true'
+assert_eq 'from_str_eq'   "$("$BIN" -e "(= (java.util.UUID/fromString \"$U\") #uuid \"$U\")")" 'true'
+out="$("$BIN" -e '(java.util.UUID/fromString "not-a-uuid")' 2>&1 || true)"; case "$out" in *uuid*|*UUID*) echo "PASS from_str_bad -> err" ;; *) fail "from_str_bad: $out" ;; esac
+
+echo "OK — phase14_uuid_literal (19 cases) green"
