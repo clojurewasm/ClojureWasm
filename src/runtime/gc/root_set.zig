@@ -80,6 +80,79 @@ pub const RootSource = enum {
 /// now and avoids a Phase B surface change.
 pub threadlocal var macro_root_slot: ?Value = null;
 
+// =====================================================================
+// Worker-thread GC-root registry (ADR-0090 "D-244 decision", Alt B).
+//
+// A Phase-B `future`/`pmap`/`agent` WORKER thread registers a
+// `ThreadGcContext` pointing at its own `env.current_frame` +
+// `macro_root_slot` threadlocal slots (and, at #3b, its VM operand-stack
+// frame chain), so a `collect()` running on ANOTHER thread can walk the
+// UNION of every live thread's roots — not just the collecting thread's.
+// The collecting/main thread reads its own TLS directly (see
+// `nextCurrentFrame`/`nextMacroRoot`) and does NOT register, so there is
+// no double-walk. Runtime-inert until real threads land (#4): with an
+// empty registry the walk is byte-identical to today's single-thread
+// behaviour. The registry lives HERE (not a separate `concurrency/
+// gc_thread.zig`) because it must reference `macro_root_slot`, which this
+// module owns — a separate module would import root_set while root_set
+// imports it (cycle). A fixed array (not an ArrayList) keeps it
+// allocator-free and immune to resize-during-walk.
+// =====================================================================
+
+const io_default = @import("../concurrency/io_default.zig");
+
+/// Max concurrently-registered worker threads. Phase-B `pmap`/`agent`
+/// pools are CPU-bounded; 64 is generous headroom.
+pub const MAX_GC_THREADS = 64;
+
+/// One worker thread's published GC roots. `frame_slot` / `macro_slot`
+/// point at that thread's `env.current_frame` / `macro_root_slot` TLS so
+/// the collector reads each worker's CURRENT roots through the pointers.
+pub const ThreadGcContext = struct {
+    frame_slot: *const ?*env_mod.BindingFrame,
+    macro_slot: *const ?Value,
+};
+
+var thread_registry: [MAX_GC_THREADS]?*ThreadGcContext = @splat(null);
+var registry_mutex: std.Io.Mutex = .init;
+
+/// Register a worker thread's published roots. Locked (workers register
+/// at `Thread.spawn`). Returns `error.TooManyThreads` past the cap.
+pub fn registerThread(ctx: *ThreadGcContext) error{TooManyThreads}!void {
+    io_default.lockMutex(&registry_mutex);
+    defer io_default.unlockMutex(&registry_mutex);
+    for (&thread_registry) |*slot| {
+        if (slot.* == null) {
+            slot.* = ctx;
+            return;
+        }
+    }
+    return error.TooManyThreads;
+}
+
+/// Deregister a worker thread's context (at `Thread.join`). No-op if absent.
+pub fn unregisterThread(ctx: *ThreadGcContext) void {
+    io_default.lockMutex(&registry_mutex);
+    defer io_default.unlockMutex(&registry_mutex);
+    for (&thread_registry) |*slot| {
+        if (slot.* == ctx) {
+            slot.* = null;
+            return;
+        }
+    }
+}
+
+/// Count of currently-registered worker contexts (test/introspection).
+pub fn registeredThreadCount() usize {
+    io_default.lockMutex(&registry_mutex);
+    defer io_default.unlockMutex(&registry_mutex);
+    var n: usize = 0;
+    for (thread_registry) |slot| {
+        if (slot != null) n += 1;
+    }
+    return n;
+}
+
 /// Explicit context passed to `enumerate()`. The walker discovers
 /// Envs through a caller-supplied slice rather than a `Runtime.envs`
 /// auto-registry (there is no such registry in cw v1). `gc` carries
@@ -411,4 +484,25 @@ test "current_frame walker yields heap Values across nested binding frames" {
     }
     try testing.expect(found_x);
     try testing.expect(found_y);
+}
+
+test "thread GC registry: register / count / unregister / no-op-absent (D-244 #3a)" {
+    // Two contexts pointing at this thread's TLS slots (the values are
+    // irrelevant here — #3a's cursor fold consumes them; this asserts the
+    // registry lifecycle). Ends at count 0 so it does not pollute other tests.
+    var ctx_a: ThreadGcContext = .{ .frame_slot = &env_mod.current_frame, .macro_slot = &macro_root_slot };
+    var ctx_b: ThreadGcContext = .{ .frame_slot = &env_mod.current_frame, .macro_slot = &macro_root_slot };
+
+    try testing.expectEqual(@as(usize, 0), registeredThreadCount());
+    try registerThread(&ctx_a);
+    try registerThread(&ctx_b);
+    try testing.expectEqual(@as(usize, 2), registeredThreadCount());
+
+    unregisterThread(&ctx_a);
+    try testing.expectEqual(@as(usize, 1), registeredThreadCount());
+    unregisterThread(&ctx_a); // absent now → no-op
+    try testing.expectEqual(@as(usize, 1), registeredThreadCount());
+
+    unregisterThread(&ctx_b);
+    try testing.expectEqual(@as(usize, 0), registeredThreadCount());
 }
