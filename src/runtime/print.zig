@@ -209,6 +209,14 @@ fn realizeSeqWalk(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
     defer items.deinit(rt.gpa);
     var cur = v;
     while (true) {
+        // *print-length* (D-222 b): bound realization to limit+1 items so an
+        // INFINITE lazy seq terminates under `*print-length*` (the +1 lets the
+        // printer still emit "..." for "there is more"). Unbounded otherwise
+        // (clj realizes the whole finite seq). Applies per seq, so nested seqs
+        // are each bounded — matching clj's per-collection length.
+        if (print_length_limit) |lim| {
+            if (items.items.len > lim) break;
+        }
         const s = try lazy_seq_mod.seq(rt, env, cur);
         if (s.tag() == .nil) break;
         try items.append(rt.gpa, try deepRealize(rt, env, try lazy_seq_mod.first(rt, env, s)));

@@ -1,0 +1,20 @@
+(binding [*print-length* 3] (pr-str (iterate inc 0)))
+;;=> "(0 1 2 ...)"
+(binding [*print-length* 0] (pr-str (repeat 1)))
+;;=> "(...)"
+(binding [*print-length* 5] (pr-str (range)))
+;;=> "(0 1 2 3 4 ...)"
+(binding [*print-length* 2] (pr-str (map inc (range))))
+;;=> "(1 2 ...)"
+(binding [*print-length* 3] (pr-str (cycle [:a :b])))
+;;=> "(:a :b :a ...)"
+(binding [*print-length* 2] (pr-str (map inc [1 2 3 4 5])))
+;;=> "(2 3 ...)"
+(pr-str (map inc [1 2 3]))
+;;=> "(2 3 4)"
+(binding [*print-length* 4] (pr-str (filter even? (range 100))))
+;;=> "(0 2 4 6 ...)"
+(binding [*print-length* 3] (pr-str [(range) (range)]))
+;;=> "[(0 1 2 ...) (0 1 2 ...)]"
+(binding [*print-length* 10] (pr-str (take 3 (iterate inc 0))))
+;;=> "(0 1 2)"

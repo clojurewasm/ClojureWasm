@@ -1083,7 +1083,7 @@ active:
       **The `atom` constructor ignores `:validator` / `:meta` kwargs** — `(atom 0 :validator pos?)` → cljw arity error / clj builds an atom with that validator (and validates the initial value, throwing IllegalStateException if it fails). `atomFn` is arity-1; the explicit `set-validator!` API (D-157, landed) is the primary validator surface, so this is the lower-frequency constructor sugar. Discharge: make `atomFn` variadic, parse `:validator` (→ `atom_mod.allocWith`, validate `init`, throw IllegalStateException on failure) + `:meta` (needs an atom `meta` field — another extern-struct append per ADR-0081's pattern, OR raise unsupported if atom-meta is out of scope). clj-grounded: `(atom -1 :validator pos?)` throws; `(meta (atom 0 :meta {:x 1}))` → {:x 1}. LOW value. Cross-ref D-157 / ADR-0081 / F-011. recall trigger: when atom-meta or the constructor-kwarg form is needed.
     last_reviewed: "2026-06-03"
   - id: "D-222"
-    status: "now (PARTIAL: *print-length*/*print-level*/*print-namespace-maps*/*print-readably* landed bindable via ADR-0088 2026-06-04; residual = print-readably true-shadow-around-print edge + infinite-lazy-seq+length termination + sibling vars)"
+    status: "now (PARTIAL: *print-length*/*print-level*/*print-namespace-maps*/*print-readably*/*print-meta* landed bindable via ADR-0088 2026-06-04; infinite-seq+*print-length* now TERMINATES; residual = readably true-shadow-around-print edge + *print-dup*/*flush-on-newline*)"
     category: "runtime"
     barrier: |-
       **cljw's print flags were Zig threadlocals, not bindable `^:dynamic`
@@ -1103,14 +1103,19 @@ active:
       push a print-mode nil-frame (that is hot-path rework for a pathological case
       — binding readably true around print is pointless). Discharge: rewrite the
       pr/print surface to push a real `*print-readably*` frame. LOW value.
-      (b) **infinite-lazy-seq + `*print-length*` termination**: `printResult`
-      deep-realizes lazy seqs BEFORE printing, so `(binding [*print-length* 3]
-      (prn (iterate inc 0)))` still hangs in realization (clj prints `(0 1 2 ...)`
-      and returns). The print-loop length guard only saves finite collections +
-      the compact `.range` type; the fix is print-while-forcing (an `rt`-carrying
-      printer, entangled with D-164 seq realization) — pin case: the clj-`(0 1 2
-      ...)`-terminates form. (c) sibling vars `*print-dup*` / `*print-meta*` /
-      `*flush-on-newline*` unimplemented. A no-op var is the silent-default-shift
+      (b) **infinite-lazy-seq + `*print-length*` — FIXED 2026-06-04**:
+      `realizeSeqWalk` now bounds realization to `*print-length*`+1 items, so
+      `(binding [*print-length* 3] (prn (iterate inc 0)))` → "(0 1 2 ...)" and
+      RETURNS (corpus print_length_lazy, 10 — incl. iterate/repeat/range/cycle/
+      map-over-range + nested `[(range) (range)]`). NOT a residual: `*print-level*`
+      ALONE on a FLAT infinite seq (no `*print-length*`) still does not terminate,
+      but clj-VERIFIED this is PARITY — clj also hangs (`(binding [*print-level* 2]
+      (prn (iterate inc 0)))` prints "(0 1 2 3 …" forever in both), because a flat
+      seq's scalar elements never hit the level limit. Only infinite-DEPTH (a
+      self-nesting collection) would let level bound it — pathological / not
+      constructible from a literal, so out of scope. (c) sibling vars `*print-dup*` (no cljw
+      print-dup path — moot) / `*flush-on-newline*` unimplemented (`*print-meta*`
+      LANDED 2026-06-04). A no-op var is the silent-default-shift
       smell (forbidden), so unimplemented ones stay unresolved, not stubbed.
       ADR-0088 also recorded a `PrintCtx`-revisit note: if Phase 15 introduces
       concurrent or eval-during printing, revisit the value-threaded ctx the DA
