@@ -7,24 +7,29 @@
 
 - **HEAD**: see `git log` (`cw-from-scratch`). Gate green 247/0 (Mac, serial-e2e).
   debt ledger = `.dev/debt.yaml`. Active plan = **ADR-0089 re-cut (A→B→C)**.
-- **First commit on resume MUST be**: open **Phase B entry (D-242)** — Phase A
-  consolidation is COMPLETE (see Phase A work items). Phase B = the project's
-  hardest unit (real concurrency in Zig 0.16). Entry ceremony, in order:
-  Step 0 survey (concurrency: cw v0 `future`/STM/`agent`, Clojure JVM
-  `LockingTransaction`/Agent, Zig 0.16 `std.Io`/`std.atomic`, Babashka) →
-  Step 0.6 re-lay → **§7-redesign ADR** (Supersedes the pre-0.16 §7.1 mapping)
-  with mandatory **DA-fork** + **Structural-imagination** + a throwaway
-  **Zig-0.16 concurrency spike** in `private/` (validate the primitive BEFORE
-  the ADR shape, principle.md). North star = user-observable parity, internals
-  free (F-011 §2 + no_jvm). Phase B source work takes the full `--serial-e2e`
-  gate per commit (gate-cadence hook).
-- **Forbidden this session**: cold-seizing **Phase B** (D-242, concurrency-led
-  core) without its §7-redesign ADR + Structural-imagination + DA-fork at entry
-  (spike the Zig-0.16 primitive first, principle.md). Also forbidden: minting a
-  new F-NNN to restate F-011 (the F-013 idea was DROPPED — ADR-0089); adding a
-  new rule/skill/audit-section where folding into an existing home works
-  (compress-guards); "fixing" an AD-001..012 accepted divergence; re-opening
-  landed work (git log = SSOT); perf without a Release `scripts/perf.sh` number.
+- **First commit on resume MUST be**: continue **Phase B IMPLEMENTATION (D-242)**
+  — Phase A + the Phase B entry ceremony are COMPLETE; the §7-redesign is
+  **ADR-0090** (6595b6c7): io_default-singleton `std.Io` sync + `ThreadGcContext`
+  root-publication GC handshake + MVCC retry-only STM, spike-validated on pinned
+  0.16. Build order per ADR-0090 §1-7 (**GC handshake lands FIRST — prereq for any
+  real-threading primitive**): (1) re-derive `runtime/concurrency/io_default.zig`
+  (the `std.Io.Mutex`/`Condition` singleton + `lockMutex`/`unlockMutex` wrappers,
+  cljw-clean per `no_copy_from_v1` — v0's `io_default.zig` is the reference) →
+  (2) global heap `Io.Mutex` on the GC allocator via the singleton → (3)
+  `ThreadGcContext` registry + union root walk → (4) real `future`/`promise`/
+  `delay` bodies + binding-conveyor → (5) STM transaction engine (`lock_tx.zig`)
+  → (6) `agent`/`locking`. rework-OK + test guards (F-002); each src commit takes
+  the full `--serial-e2e` gate (gate-cadence hook); concurrency stress test +
+  dual-backend (F-012). Spike: `private/spike_concurrency_0.16.zig` (gitignored).
+- **Forbidden this session**: minting a new F-NNN to restate F-011 (the F-013 idea
+  was DROPPED — ADR-0089); minting **AD-013 in the ledger before its pin test
+  exists** (`check_accepted_divergences.sh` enforces pin-existence — AD-013 lands
+  WITH the Phase B STM concurrent test); adding a new rule/skill/audit-section
+  where folding works (compress-guards); editing `.claude/rules/*` (permission
+  classifier blocks it as self-mod — surface to user, see memory); "fixing" an
+  AD-001..012 accepted divergence; re-opening landed work (git log = SSOT); perf
+  without a Release `scripts/perf.sh` number; trusting `~/Documents/OSS/zig` for
+  0.16 API (post-0.16 master — wrong tree; use pinned nix-store std / cw v0).
 
 ## Active plan — ADR-0089 post-M re-cut (2026-06-04)
 
