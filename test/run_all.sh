@@ -237,6 +237,7 @@ run_step "feature_keyword"      "bash scripts/check_feature_keyword.sh --gate"
 # discovery via @import" + scripts/check_test_reach.sh.
 run_step "test_reach"           "bash scripts/check_test_reach.sh --gate"
 run_step "e2e_reach"            "bash scripts/check_e2e_reach.sh --gate"
+run_step "e2e_dup"              "bash scripts/check_e2e_dup.sh"
 # Informational (no --gate): every D-NNN cited in source/docs must resolve
 # to a debt.yaml row (kills phantom IDs), + prints the quality-loop-floor
 # backlog so the F-010 loop sees it. Tech-debt consolidation 2026-05-31 /
