@@ -95,5 +95,16 @@ case "$diag" in
         echo "SKIP defmacro_non_fn_root_raises -> ^:macro reader path not yet landed (D-075)" ;;
 esac
 
+# --- Case 8: multi-arity defmacro with docstring + attr-map (potpuri shape) ---
+got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
+(defmacro my-if
+  "doc" {:added "0.1"}
+  ([t then] (cons 'if (cons t (cons then (cons nil nil)))))
+  ([t then else] (cons 'if (cons t (cons then (cons else nil))))))
+[(my-if true :y) (my-if false :y :n) (:arglists (meta #'my-if)) (:doc (meta #'my-if))]
+EOF
+)
+assert_eq 'defmacro_multi_arity_doc' "$got" '[:y :n ([t then] [t then else]) "doc"]'
+
 echo
 echo "Phase 14 row 14.6 defmacro user-dispatch e2e: all green."

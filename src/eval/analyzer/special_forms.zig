@@ -339,8 +339,11 @@ pub fn analyzeDefmacro(
         attr_form = items[head];
         head += 1;
     }
-    if (head >= items.len or items[head].data != .vector)
+    // Single-arity `[params] body…` (vector head) or multi-arity
+    // `([a] …) ([a b] …)` (list heads), mirroring defn's two body shapes.
+    if (head >= items.len or (items[head].data != .vector and items[head].data != .list))
         return error_catalog.raise(.defmacro_params_not_vector, form.location, .{});
+    const multi_arity = items[head].data == .list;
 
     // Pre-register the macro Var with `flags.macro_ = true` so the
     // analyzer's `expandIfMacro` can see the macro flag before the
@@ -364,22 +367,44 @@ pub fn analyzeDefmacro(
             try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location });
             try meta_items.append(arena, d);
         }
-        const arglists_inner = try arena.alloc(Form, 1);
-        arglists_inner[0] = items[head];
+        // :arglists is the list of param vectors: `([params])` for single
+        // arity, `([a] [a b] …)` for multi-arity (each clause's vector).
+        const arglists_inner = if (multi_arity) blk: {
+            const clauses = items[head..];
+            const av = try arena.alloc(Form, clauses.len);
+            for (clauses, 0..) |c, j| {
+                if (c.data != .list or c.data.list.len == 0 or c.data.list[0].data != .vector)
+                    return error_catalog.raise(.defmacro_params_not_vector, c.location, .{});
+                av[j] = c.data.list[0];
+            }
+            break :blk av;
+        } else blk: {
+            const av = try arena.alloc(Form, 1);
+            av[0] = items[head];
+            break :blk av;
+        };
         try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "arglists" } }, .location = form.location });
         try meta_items.append(arena, .{ .data = .{ .list = arglists_inner }, .location = form.location });
         const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
         placeholder_var.meta = try analyzer_mod.formToValue(rt, env, meta_map);
     }
 
-    // Build the synthetic `(fn* [PARAMS] BODY...)` Form, then analyse
-    // it through the regular path so multi-arity / closure / arg
-    // checks all ride existing FnNode infrastructure.
-    var fn_items = try arena.alloc(Form, 2 + (items.len - head - 1));
-    fn_items[0] = macro_dispatch.makeSymbol("fn*", form.location);
-    fn_items[1] = items[head]; // params vector
-    @memcpy(fn_items[2..], items[head + 1 ..]);
-    const fn_form: Form = .{ .data = .{ .list = fn_items }, .location = form.location };
+    // Build the synthetic fn* Form, then analyse it through the regular path
+    // so multi-arity / closure / arg checks all ride existing FnNode
+    // infrastructure. Single arity → `(fn* [PARAMS] BODY…)`; multi-arity →
+    // `(fn* ([a] …) ([a b] …))` (the clause lists passed straight through).
+    const fn_form: Form = if (multi_arity) blk: {
+        const fn_items = try arena.alloc(Form, 1 + (items.len - head));
+        fn_items[0] = macro_dispatch.makeSymbol("fn*", form.location);
+        @memcpy(fn_items[1..], items[head..]);
+        break :blk .{ .data = .{ .list = fn_items }, .location = form.location };
+    } else blk: {
+        const fn_items = try arena.alloc(Form, 2 + (items.len - head - 1));
+        fn_items[0] = macro_dispatch.makeSymbol("fn*", form.location);
+        fn_items[1] = items[head]; // params vector
+        @memcpy(fn_items[2..], items[head + 1 ..]);
+        break :blk .{ .data = .{ .list = fn_items }, .location = form.location };
+    };
     const value_node = try analyzer_mod.analyze(arena, rt, env, scope, fn_form, macro_table);
 
     const n = try arena.create(Node);
