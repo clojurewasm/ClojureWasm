@@ -251,3 +251,78 @@ test "safepoint: a parked worker's published EvalFrame survives a real collect d
     try testing.expectEqual(@as(usize, 1), gc.allocations.items.len); // garbage swept, rooted survived
     try testing.expectEqual(@as(*HeapHeader, @ptrCast(rooted)), gc.allocations.items[0].header);
 }
+
+test "collectStopTheWorld with no other registered worker is a fenced collect (D-244 #4)" {
+    // Single-threaded: target = registeredThreadCount() = 0, so stopWorld returns
+    // immediately and this is `collect` plus a no-op resume broadcast.
+    var gc = GcHeap.init(testing.allocator);
+    defer gc.deinit();
+    const garbage = try gc.alloc(Cell);
+    garbage.* = .{ .header = HeapHeader.init(.vector) };
+    try testing.expectEqual(@as(usize, 1), gc.allocations.items.len);
+
+    mark_sweep.collectStopTheWorld(&gc, .{ .envs = &.{}, .gc = &gc }, false);
+
+    try testing.expectEqual(@as(usize, 0), gc.allocations.items.len); // garbage swept
+    try testing.expectEqual(@as(u64, 1), gc.stats.collect_count);
+    try testing.expect(!gc_requested.load(.acquire));
+}
+
+test "collectStopTheWorld parks real workers allocating through gc.alloc, then resumes them (D-244 #4)" {
+    var tio: ThreadedIo = .{};
+    tio.start();
+    defer tio.deinit();
+
+    var gc = GcHeap.init(testing.allocator);
+    defer gc.deinit();
+
+    const N = 4;
+    const Shared = struct {
+        var gc_ptr: *GcHeap = undefined;
+        var ready: std.atomic.Value(u32) = .init(0);
+        var allocs: std.atomic.Value(u64) = .init(0);
+        var done: std.atomic.Value(bool) = .init(false);
+
+        fn worker() void {
+            var ctx: root_set.ThreadGcContext = .{
+                .frame_slot = &env_mod.current_frame,
+                .macro_slot = &root_set.macro_root_slot,
+                .eval_frame_slot = &root_set.eval_frame_head,
+                .self_guard_slot = &root_set.gc_self_guard,
+            };
+            root_set.registerThread(&ctx) catch return;
+            defer root_set.unregisterThread(&ctx);
+            _ = ready.fetchAdd(1, .monotonic);
+            // Allocate (discarding) until told to stop. The alloc-prologue park
+            // (gc_heap.zig) is the safe point: when the collector arms the flag,
+            // the next alloc parks here BEFORE taking gc_mutex.
+            while (!done.load(.acquire)) {
+                const c = gc_ptr.alloc(Cell) catch return;
+                c.* = .{ .header = HeapHeader.init(.vector) };
+                _ = allocs.fetchAdd(1, .monotonic);
+            }
+        }
+    };
+    Shared.gc_ptr = &gc;
+    Shared.ready.store(0, .monotonic);
+    Shared.allocs.store(0, .monotonic);
+    Shared.done.store(false, .monotonic);
+
+    var threads: [N]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, Shared.worker, .{});
+    while (Shared.ready.load(.acquire) < N) std.atomic.spinLoopHint();
+
+    // Collector (main, unregistered): pauses all N allocating workers at their
+    // alloc-prologue park, collects, resumes. No deadlock: each worker releases
+    // gc_mutex after its in-flight alloc, then parks at the next prologue (on
+    // sp_mutex, not gc_mutex), so the collector's gc_mutex-taking collect runs
+    // while they wait.
+    mark_sweep.collectStopTheWorld(&gc, .{ .envs = &.{}, .gc = &gc }, false);
+    try testing.expectEqual(@as(u64, 1), gc.stats.collect_count);
+    try testing.expect(!gc_requested.load(.acquire));
+
+    Shared.done.store(true, .release);
+    for (&threads) |t| t.join();
+    try testing.expect(Shared.allocs.load(.acquire) > 0); // workers really ran
+    try testing.expectEqual(@as(u32, 0), parkedCountForTest()); // all resumed cleanly
+}

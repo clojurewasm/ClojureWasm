@@ -29,6 +29,7 @@ const tag_ops = @import("tag_ops.zig");
 const free_pool_mod = @import("free_pool.zig");
 const root_set_mod = @import("root_set.zig");
 const io_default = @import("../concurrency/io_default.zig");
+const safepoint = @import("../concurrency/safepoint.zig");
 
 const GcHeap = gc_heap_mod.GcHeap;
 const HeapHeader = heap_header.HeapHeader;
@@ -140,6 +141,28 @@ pub fn collect(gc: *GcHeap, ctx: root_set_mod.WalkContext) void {
     );
     gc.bytes_since_last_gc = 0;
     gc.stats.collect_count += 1;
+}
+
+/// Stop-the-world collect (ADR-0090 Alt B / D-244 #4): pause every other
+/// registered worker at a safe point (its `alloc`-prologue park or the VM
+/// back-edge poll), run a full `collect` over the union root set (every parked
+/// worker's published roots are quiescent), then resume the workers. This is
+/// the entry point a real-threading collector calls instead of bare `collect`.
+///
+/// The caller MUST NOT hold `gc_mutex`: `collect` re-takes it (`Io.Mutex` is
+/// not reentrant), so a holder would self-deadlock. At the VM safe point that
+/// triggers a collection, `gc_mutex` is free — `alloc` releases it before the
+/// trigger runs (#4 wire-up). `self_registered` excludes the calling thread
+/// from the park target (true when the collector is itself a registered worker
+/// that crossed the threshold, false for the main / unregistered collector).
+///
+/// With no other registered workers (single-threaded, or every peer already at
+/// a safe point) `stopWorld` returns immediately and this is just `collect`
+/// with a no-op fence — so it is correct (if heavier) even single-threaded.
+pub fn collectStopTheWorld(gc: *GcHeap, ctx: root_set_mod.WalkContext, self_registered: bool) void {
+    safepoint.stopWorld(self_registered);
+    collect(gc, ctx);
+    safepoint.resumeWorld();
 }
 
 // --- tests ---

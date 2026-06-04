@@ -39,6 +39,7 @@ const heap_header = @import("../value/heap_header.zig");
 const free_pool_mod = @import("free_pool.zig");
 const value_mod = @import("../value/value.zig");
 const io_default = @import("../concurrency/io_default.zig");
+const safepoint = @import("../concurrency/safepoint.zig");
 
 const HeapHeader = heap_header.HeapHeader;
 const FreePoolMap = free_pool_mod.FreePoolMap;
@@ -228,6 +229,15 @@ pub const GcHeap = struct {
     /// list mis-link can land.
     pub fn alloc(self: *GcHeap, comptime T: type) !*T {
         comptime assertHeaderAtOffsetZero(T);
+        // Worker safe point (ADR-0090 Alt B / D-244 #4): if a peer is collecting,
+        // park HERE — BEFORE contending on `gc_mutex` — so the collector counts
+        // us parked. A thread that blocked on `gc_mutex` first would never be
+        // counted (`stopWorld` would hang waiting for it). At this point our live
+        // Values are already published (operand stack / eval frames / bindings /
+        // gc_self_guard) and the about-to-be-allocated obj does not exist yet, so
+        // the collection sees this thread's roots quiescent. Runtime-inert until
+        // a collector arms `gc_requested` (#4 wires the VM-safe-point trigger).
+        if (safepoint.gc_requested.load(.acquire)) safepoint.park();
         io_default.lockMutex(&self.gc_mutex);
         defer io_default.unlockMutex(&self.gc_mutex);
         const align_t: std.mem.Alignment = .fromByteUnits(@alignOf(T));
