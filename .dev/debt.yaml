@@ -91,6 +91,31 @@ active:
       E2.8 would prevent recurrence. recall trigger: Phase C entry, or any
       library needing java.time / net / crypto / regex-lookahead.
     last_reviewed: "2026-06-04"
+  - id: "D-244"
+    status: "Phase B #3 gating design step (found 2026-06-04 designing the GC handshake) — ADR-0090 §2 GC-safety mechanism gap; re-analyse with a DA-fork BEFORE the handshake code."
+    category: "concurrency"
+    quality_floor: "Phase B: GC-safety mechanism (collect must root every live thread's eval state, not just quiescent-point roots)"
+    barrier: |-
+      **ADR-0090 §2's Alt-2 root-publication handshake is insufficient for a
+      mid-`eval` worker thread.** `runtime/gc/root_set.zig` roots only `ns_vars` /
+      `current_frame` (dynamic-binding) / `macro_root_slot` / `permanent_roots` —
+      NOT the VM operand stack (`vm.zig` `stack` / `locals`) nor tree_walk's
+      native-Zig-stack intermediates. Safe today only because `collect()` runs at
+      quiescent explicit call points (no auto-collect; `alloc` never calls
+      `collect`). For Phase B real threads (#4 future/pmap), a worker mid-`eval`
+      holds live operand/native-stack Values that are un-rooted → a concurrent
+      `collect()` sweeps them → use-after-free. Plus a `pushFrame`/`popFrame`
+      read-during-write race on the dynamic-binding chain during another thread's
+      root walk. Re-analyse the GC-safety mechanism with a **DA-fork** BEFORE
+      writing the #3 handshake: (a) **safepoint (ADR-0090 Alt 1)** — collect only
+      when every thread is quiescent (operand stacks empty/saved between bytecode
+      steps); vs (b) **publish the VM operand stack as a per-`ThreadGcContext`
+      root** + forbid tree_walk workers (native-stack intermediates are
+      un-enumerable) running during collect. Increments #1 (io_default) + #2
+      (global alloc lock) are correct and stand under either mechanism. Landed as
+      ADR-0090 Revision history 2026-06-04. recall trigger: Phase B #3 entry (this
+      is its gating design step).
+    last_reviewed: "2026-06-04"
   - id: "D-241"
     status: "now (found 2026-06-04 while landing bound-fn/with-bindings) — no clojure.main baseline binding frame, so get-thread-bindings captures only explicitly-bound vars."
     category: "runtime"

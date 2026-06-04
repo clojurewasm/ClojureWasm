@@ -352,3 +352,35 @@ written.** The main loop adopted this correction (Decision §2).
   `src/runtime/{future,promise,delay,atom,volatile}.zig` (real bodies),
   `src/runtime/{agent,locking}.zig` (new), `src/runtime/stm/*` (transaction
   engine), `src/runtime/env.zig` (binding-frame conveyance).
+
+## Revision history
+
+- **2026-06-04 — GC-safety gap surfaced at #3 implementation (D-244).** While
+  designing increment #3 (the `ThreadGcContext` root-publication handshake), the
+  root-set walker (`runtime/gc/root_set.zig`) was found to enumerate only
+  `ns_vars` / `current_frame` (dynamic-binding) / `macro_root_slot` /
+  `permanent_roots` — it does **NOT** root the **VM operand stack**
+  (`vm.zig` `stack: [OPERAND_STACK_MAX]Value`, a Zig local array in the run loop)
+  nor tree_walk's native-Zig-stack intermediates. This is safe TODAY only because
+  `collect()` runs exclusively at **quiescent explicit call points** (no
+  auto-collect; `alloc` never calls `collect`), where no operand stack is live.
+  **For Phase B real threads (#4), this breaks**: a worker thread mid-`eval`
+  holds live Values on its VM operand stack / native stack that are NOT a root
+  source, so a `collect()` triggered on another thread would sweep them →
+  use-after-free. Additionally, a non-allocating worker mutating its
+  dynamic-binding frame chain (`pushFrame`/`popFrame`) DURING another thread's
+  root walk is a read-during-write race on the chain.
+  **Consequence for the Decision**: Alternative 2's "no safepoint needed"
+  argument (install-window collection-free) covers *allocation* but is
+  **insufficient for a mid-`eval` worker** — its un-rooted operand/native-stack
+  Values are the gap. The GC-safety mechanism must be re-analysed: a **safepoint
+  (Alternative 1)** where collection runs only when every thread is quiescent
+  (operand stacks empty/saved), OR making the **VM operand stack a published
+  root** (per-`ThreadGcContext`) plus a rule that tree_walk workers (native-stack
+  intermediates, un-enumerable) do not run during collect. This re-analysis +
+  its own **DA-fork** is the FIRST step of increment #3, **before** the handshake
+  code lands (tracked: **D-244**). The §1-2 / §5-7 spine (threads, alloc-lock,
+  STM, agent, conveyance) is unaffected; only §2's collection-safety mechanism
+  (the Alt-1-vs-Alt-2 choice) is re-opened. Increments #1 (io_default) + #2
+  (global alloc lock) are correct and land regardless (the alloc lock is needed
+  by every candidate mechanism).
