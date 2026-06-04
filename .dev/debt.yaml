@@ -691,12 +691,12 @@ active:
       array_seq untested), IObj/IMeta (entangled with ADR-0037 metadata-less
       symbols — symbol is IObj in clj but cljw symbols can't carry meta; needs an
       AD decision). class_name unit tests extended.
-      CONSISTENCY FOLLOW-UP (immediate next): the existing `sequential?` predicate
-      (core.zig:432) includes `persistent_queue` but the new Sequential instance?
-      arm omitted it — unobservable today (no queue VALUES exist, slot 45 reserved)
-      but the two "is sequential" definitions must agree. Align the Sequential arm
-      (+ verify clj queue membership for Sequential/ISeq/IPersistentStack) so the
-      instance? arms and the predicate fns are consistent when PersistentQueue lands.
+      CONSISTENCY FOLLOW-UP RESOLVED: clj-verified PersistentQueue membership
+      (Seqable/Sequential/IPersistentStack/IPersistentCollection/IPersistentList =
+      true; ISeq = false). Aligned the Sequential arm (+persistent_queue, matching
+      the `sequential?` predicate core.zig:432) and the IPersistentList arm
+      (+persistent_queue, clj: a queue is an IPersistentList). Unobservable until
+      queue VALUES land (slot 45) but forward-consistent with clj + the predicate fns.
       **2026-06-04 `find-var` + `var?` LANDED**: `(find-var 'ns/name)` → the Var
       (or nil; ns must exist) via env.findNs+resolve; `(var? x)` → `.var_ref` tag.
       corpus find_var_predicate (8). NOTE `bound?`/`defonce` are DEFERRED: cljw's

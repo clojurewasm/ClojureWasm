@@ -288,10 +288,12 @@ fn matchInterface(v: Value, simple: []const u8) bool {
             else => false,
         };
     }
-    // Ordered collections + seqs (NOT maps / sets). map_entry is vector-like.
+    // Ordered collections + seqs (NOT maps / sets). map_entry is vector-like;
+    // a queue is Sequential (clj-verified) — kept in sync with the
+    // `sequential?` predicate (lang/primitive/core.zig).
     if (std.mem.eql(u8, simple, "Sequential")) {
         return switch (t) {
-            .vector, .map_entry, .list, .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq => true,
+            .vector, .map_entry, .list, .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq, .persistent_queue => true,
             else => false,
         };
     }
@@ -316,8 +318,9 @@ fn matchInterface(v: Value, simple: []const u8) bool {
     if (std.mem.eql(u8, simple, "Indexed") or std.mem.eql(u8, simple, "IPersistentVector")) {
         return t == .vector or t == .map_entry;
     }
+    // A PersistentQueue is an IPersistentList in clj (clj-verified).
     if (std.mem.eql(u8, simple, "IPersistentList")) {
-        return t == .list or t == .cons;
+        return t == .list or t == .cons or t == .persistent_queue;
     }
     // Stack ops (peek/pop): list, vector, queue, cons, map_entry.
     if (std.mem.eql(u8, simple, "IPersistentStack")) {
