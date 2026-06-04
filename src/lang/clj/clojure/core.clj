@@ -1703,6 +1703,33 @@
                              (take-nth 2 (rest bindings))))
      (fn* [] ~@body)))
 
+;; `(with-bindings* binding-map f & args)` — push thread bindings (keys are Vars,
+;; `#'name`) for the dynamic extent of `(apply f args)`, popping in a finally.
+;; The Zig push/pop-thread-bindings primitives install/remove one BindingFrame so
+;; `Var.deref` (and the renderer's *print-* reads) see the bound values.
+(defn with-bindings* [binding-map f & args]
+  (push-thread-bindings binding-map)
+  (try
+    (apply f args)
+    (finally
+      (pop-thread-bindings))))
+
+;; `(with-bindings binding-map body…)` — macro form over `with-bindings*`.
+(defmacro with-bindings [binding-map & body]
+  `(with-bindings* ~binding-map (fn* [] ~@body)))
+
+;; `(bound-fn* f)` — capture the current thread bindings; the returned fn
+;; re-establishes them around each call to `f`, so a fn handed to another thread
+;; / callback sees the dynamic environment of its creation (clj parity).
+(defn bound-fn* [f]
+  (let [bindings (get-thread-bindings)]
+    (fn* [& args]
+      (apply with-bindings* bindings f args))))
+
+;; `(bound-fn body…)` — sugar for `(bound-fn* (fn body…))`.
+(defmacro bound-fn [& fntail]
+  `(bound-fn* (fn* ~@fntail)))
+
 (defmacro with-open
   "bindings => [name init ...]. Evaluates body in a try expression with
   names bound to the values of the inits, and a finally clause that calls

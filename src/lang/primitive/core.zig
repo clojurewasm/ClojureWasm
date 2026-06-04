@@ -26,6 +26,7 @@ const equal_mod = @import("../../runtime/equal.zig");
 const hash_mod = @import("../../runtime/hash.zig");
 const sequence = @import("sequence.zig");
 const list = @import("../../runtime/collection/list.zig");
+const map = @import("../../runtime/collection/map.zig");
 const print_mod = @import("../../runtime/print.zig");
 const charset_mod = @import("../../runtime/charset.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
@@ -1360,8 +1361,84 @@ pub fn varSetFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return args[1];
 }
 
+/// `(get-thread-bindings)` — a map of every currently thread-bound dynamic Var
+/// (as a `.var_ref`) to its effective (innermost) value. The capture half of
+/// `bound-fn*` / `with-bindings`. Walks the BindingFrame chain innermost-first,
+/// deduping via a Zig-side set so the closest binding wins (and a nil-valued
+/// binding is preserved — a get-based contains check could not distinguish it).
+pub fn getThreadBindingsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("get-thread-bindings", args, 0, loc);
+    var seen: std.AutoHashMapUnmanaged(*const env_mod.Var, void) = .empty;
+    defer seen.deinit(rt.gpa);
+    var result = map.empty();
+    var f = env_mod.current_frame;
+    while (f) |frame| : (f = frame.parent) {
+        var it = frame.bindings.iterator();
+        while (it.next()) |e| {
+            const vp = e.key_ptr.*;
+            if (seen.contains(vp)) continue;
+            try seen.put(rt.gpa, vp, {});
+            result = try map.assoc(rt, result, Value.encodeHeapPtr(.var_ref, vp), e.value_ptr.*);
+        }
+    }
+    return result;
+}
+
+/// `(push-thread-bindings m)` — install one BindingFrame binding each dynamic
+/// Var key of `m` to its value for the current thread until a matching
+/// `pop-thread-bindings`. Mirrors the VM `op_push_binding_frame` lifetime (heap
+/// frame on `rt.gpa`, freed at pop); the frame is flagged `user_pushed` so pop
+/// frees exactly these. Non-`.var_ref` keys / non-dynamic vars raise.
+pub fn pushThreadBindingsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("push-thread-bindings", args, 1, loc);
+    const m = args[0];
+    const frame = try rt.gpa.create(env_mod.BindingFrame);
+    frame.* = .{ .user_pushed = true };
+    errdefer {
+        frame.bindings.deinit(rt.gpa);
+        rt.gpa.destroy(frame);
+    }
+    var ks = if (m.isNil()) Value.nil_val else try map.keys(rt, m);
+    while (ks.tag() == .list and list.countOf(ks) > 0) {
+        const k = list.first(ks);
+        if (k.tag() != .var_ref)
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "push-thread-bindings", .expected = "var", .actual = @tagName(k.tag()) });
+        const vp = k.decodePtr(*const env_mod.Var);
+        if (!vp.flags.dynamic) {
+            const full = try std.fmt.allocPrint(rt.gpa, "{s}/{s}", .{ vp.ns.name, vp.name });
+            defer rt.gpa.free(full);
+            return error_catalog.raise(.binding_target_not_dynamic, loc, .{ .@"var" = full });
+        }
+        try frame.bindings.put(rt.gpa, vp, try map.get(m, k));
+        ks = list.rest(ks);
+    }
+    env_mod.pushFrame(frame);
+    env.refreshCurrentNs(); // a frame may rebind *ns* (ADR-0085 materialised view)
+    return Value.nil_val;
+}
+
+/// `(pop-thread-bindings)` — pop and free the innermost `push-thread-bindings`
+/// frame. Raises if the top frame is not one (empty stack, or a `binding`-form
+/// frame whose memory this primitive must NOT free).
+pub fn popThreadBindingsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("pop-thread-bindings", args, 0, loc);
+    const f = env_mod.current_frame orelse
+        return error_catalog.raise(.pop_thread_bindings_unmatched, loc, .{});
+    if (!f.user_pushed)
+        return error_catalog.raise(.pop_thread_bindings_unmatched, loc, .{});
+    env_mod.popFrame();
+    f.bindings.deinit(rt.gpa);
+    rt.gpa.destroy(f);
+    env.refreshCurrentNs();
+    return Value.nil_val;
+}
+
 const ENTRIES = [_]Entry{
     .{ .name = "hash", .f = &hashFn },
+    .{ .name = "get-thread-bindings", .f = &getThreadBindingsFn },
+    .{ .name = "push-thread-bindings", .f = &pushThreadBindingsFn },
+    .{ .name = "pop-thread-bindings", .f = &popThreadBindingsFn },
     .{ .name = "mix-collection-hash", .f = &mixCollectionHashFn },
     .{ .name = "hash-ordered-coll", .f = &hashOrderedCollFn },
     .{ .name = "hash-unordered-coll", .f = &hashUnorderedCollFn },

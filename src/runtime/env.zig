@@ -197,6 +197,10 @@ pub const BindingMap = std.AutoHashMapUnmanaged(*const Var, Value);
 pub const BindingFrame = struct {
     parent: ?*BindingFrame = null,
     bindings: BindingMap = .empty,
+    /// True only for frames `push-thread-bindings` heap-allocated, so
+    /// `pop-thread-bindings` frees exactly those and never a form's
+    /// `binding` frame (stack-allocated in TreeWalk, VM-owned in the VM).
+    user_pushed: bool = false,
 };
 
 /// Top of this thread's dynamic-binding stack. `null` when no

@@ -1,0 +1,14 @@
+(with-bindings {#'*print-length* 2} (pr-str (range 9)))
+;;=> "(0 1 ...)"
+(with-bindings {#'*print-length* 3 #'*print-level* 1} (pr-str [[1 2 3 4]]))
+;;=> "[#]"
+(let [f (binding [*print-length* 2] (bound-fn [] (pr-str (range 9))))] (f))
+;;=> "(0 1 ...)"
+(with-bindings* {#'*print-length* 1} (fn [x] (pr-str x)) [9 9 9])
+;;=> "[9 ...]"
+(map? (get-thread-bindings))
+;;=> true
+(binding [*print-length* 5] (get (get-thread-bindings) #'*print-length*))
+;;=> 5
+(with-bindings {} (pr-str (range 3)))
+;;=> "(0 1 2)"

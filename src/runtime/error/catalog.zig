@@ -90,6 +90,9 @@ pub const Code = enum {
     /// `(binding [v ...])` targeted a Var that is not `^:dynamic`.
     /// args: `.{ .var = "ns/name" }`
     binding_target_not_dynamic,
+    /// `(pop-thread-bindings)` with no matching `push-thread-bindings` on top
+    /// (the binding stack is empty or its top is a `binding`-form frame).
+    pop_thread_bindings_unmatched,
     /// `(set! v ...)` targeted a Var that is not `^:dynamic`.
     /// args: `.{ .var = "ns/name" }`
     set_target_not_dynamic,
@@ -557,6 +560,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .value_error,
             .phase = .eval,
             .template = "Can't set! non-dynamic var: {[var]s}",
+        },
+        .pop_thread_bindings_unmatched => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "pop-thread-bindings without matching push-thread-bindings",
         },
         .arity_too_large => .{
             .kind = .not_implemented,

@@ -9,6 +9,26 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-241"
+    status: "now (found 2026-06-04 while landing bound-fn/with-bindings) — no clojure.main baseline binding frame, so get-thread-bindings captures only explicitly-bound vars."
+    category: "runtime"
+    barrier: |-
+      **cljw has no `clojure.main`-style baseline thread-binding frame.** clj's
+      REPL/main pushes a frame binding the standard dynamic vars (`*print-length*`,
+      `*print-level*`, `*out*`, `*warn-on-reflection*`, …) to their defaults, so
+      `(get-thread-bindings)` at top level returns them ALL and `bound-fn` captures
+      + replays them (shadowing the call site). cljw's `-e`/runtime leaves those at
+      ROOT (not thread-bound), so `(get-thread-bindings)` at top level is empty and
+      a `bound-fn` created outside any `binding` does NOT shadow a later call-site
+      `binding`. Divergence: `(let [f (bound-fn [] (pr-str (range 9)))] (binding
+      [*print-length* 2] (f)))` → cljw "(0 1 ...)" / clj "(0 1 2 …8)". The bound-fn
+      LOGIC is correct (an EXPLICIT creation-time binding IS captured + replayed —
+      corpus thread_bindings case 3). Convergeable: push a baseline binding frame
+      for the standard dynamic vars at startup (a clojure.main-equivalent), then the
+      capture set matches clj. LOW value now (cljw is single-threaded pre-Phase 15;
+      bound-fn's thread-handoff use is limited). Cross-ref ADR-0088 (print vars) /
+      F-011 / bound-fn*. recall trigger: when a clojure.main baseline / Phase-15
+      concurrency makes the standard-var capture set matter.
   - id: "D-240"
     status: "now (pre-existing, surfaced by ADR-0087 queue diff attempt)"
     category: "tests"
