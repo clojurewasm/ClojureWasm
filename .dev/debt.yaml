@@ -9,6 +9,22 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-239"
+    status: "now (PARTIAL: var + atom landed 2026-06-04; ns/ref/agent deferred)"
+    category: "runtime"
+    quality_floor: "metadata: alter-meta!/reset-meta! on namespace / ref / agent refs"
+    barrier: |-
+      **`alter-meta!` / `reset-meta!` only cover Var + atom refs.** The Zig
+      primitive `reset-meta!` mutates a Var's `.meta` field or an atom's `.meta`
+      slot; `alter-meta!` is a core.clj defn over it. clj also supports these on
+      **namespaces, refs, and agents** — cljw has no meta slot on Namespace (it is
+      not yet a first-class Value-with-meta; see ADR-0085 namespace-as-value), and
+      ref/agent are Phase-15 concurrency types. A `(reset-meta! <ns-or-ref> …)`
+      raises `reset_meta_target_not_ref`. Barrier dissolves when (a) Namespace gains
+      a meta slot reachable through a namespace Value (ADR-0085 follow-on), and
+      (b) Phase 15 lands ref/agent. potemkin's `namespaces.clj` alter-meta! on a
+      namespace is the first real consumer. corpus alter_meta (8) covers the
+      var/atom surface.
   - id: "D-238"
     status: "imagine+record+defer (2026-06-04, D-232 frontier) — *out*/*err* dynamic streams + with-out-str; BLOCKED on an F-004 NaN-box writer-slot decision (owner-owned, do NOT cold-seize)."
     category: "runtime"

@@ -1490,6 +1490,13 @@
   (fn* [obj f & args]
     (with-meta obj (apply f (meta obj) args))))
 
+;; `(alter-meta! iref f & args)` — atomically set a mutable ref's metadata to
+;; `(apply f current-meta args)`, returning the new metadata. `reset-meta!` is
+;; the primitive that mutates the ref's meta slot (var / atom).
+(def alter-meta!
+  (fn* [iref f & args]
+    (reset-meta! iref (apply f (meta iref) args))))
+
 ;; `(re-seq re s)` — seq of successive non-overlapping match strings of `re`
 ;; in `s` via the `re-find-from` primitive (loop/recur, advancing past each
 ;; match's end; +1 on an empty match to avoid looping). Capture-group vectors

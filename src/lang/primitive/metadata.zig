@@ -4,8 +4,9 @@
 //! list / lazy_seq); `meta` reads it, `with-meta` shallow-copies the
 //! collection (sharing internals) with the new meta. `vary-meta` is a
 //! core.clj defn over these. Same-type ops (assoc/conj/dissoc) already
-//! thread `.meta` so metadata is preserved. Reader `^meta`, alter-meta! /
-//! reset-meta! (mutable ref meta), and symbol/keyword meta are deferred.
+//! thread `.meta` so metadata is preserved. `reset-meta!` (here) +
+//! `alter-meta!` (core.clj) mutate a Var's / atom's meta slot; namespace /
+//! ref / agent meta and symbol/keyword meta are deferred (D-239).
 //! Metadata cycle 2026-05-30; discharges D-075.
 
 const Value = @import("../../runtime/value/value.zig").Value;
@@ -21,6 +22,7 @@ const map = @import("../../runtime/collection/map.zig");
 const set = @import("../../runtime/collection/set.zig");
 const list = @import("../../runtime/collection/list.zig");
 const lazy_seq = @import("../../runtime/lazy_seq.zig");
+const atom = @import("../../runtime/atom.zig");
 
 /// `(meta obj)` — obj's metadata map, or nil for a non-IObj / no-meta value.
 pub fn metaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -37,8 +39,33 @@ pub fn metaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         // D-183: `(meta #'x)` reads the Var's `.meta` Clojure-map slot,
         // populated by `analyzeDef` from a `^meta` def target.
         .var_ref => v.decodePtr(*const env_mod.Var).meta orelse Value.nil_val,
+        .atom => atom.metaOf(v),
         else => Value.nil_val,
     };
+}
+
+/// `(reset-meta! iref metadata-map)` — set the metadata of a mutable
+/// reference (Var or atom) to `metadata-map` (a map or nil), returning
+/// the new metadata. `alter-meta!` (core.clj) is `(reset-meta! r (apply f
+/// (meta r) args))`. Namespace / ref / agent targets are deferred (their
+/// meta slot does not exist yet — D-239).
+pub fn resetMetaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("reset-meta!", args, 2, loc);
+    const r = args[0];
+    const m = args[1];
+    if (!(m.isNil() or m.tag() == .array_map or m.tag() == .hash_map))
+        return error_catalog.raise(.reset_meta_meta_not_map, loc, .{ .actual = @tagName(m.tag()) });
+    switch (r.tag()) {
+        .var_ref => {
+            const vr: *env_mod.Var = @constCast(r.decodePtr(*const env_mod.Var));
+            vr.meta = if (m.isNil()) null else m;
+        },
+        .atom => atom.setMeta(r, m),
+        else => return error_catalog.raise(.reset_meta_target_not_ref, loc, .{ .actual = @tagName(r.tag()) }),
+    }
+    return m;
 }
 
 /// `(with-meta obj m)` — a new obj with the same VALUE but metadata = m
@@ -71,6 +98,7 @@ const Entry = struct {
 const ENTRIES = [_]Entry{
     .{ .name = "meta", .f = &metaFn },
     .{ .name = "with-meta", .f = &withMetaFn },
+    .{ .name = "reset-meta!", .f = &resetMetaFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {

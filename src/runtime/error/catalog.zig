@@ -260,6 +260,8 @@ pub const Code = enum {
     // --- Metadata (with-meta) ---
     /// `with-meta`'s metadata arg was not a map or nil. args: `.{ .actual = "..." }`.
     with_meta_meta_not_map,
+    reset_meta_target_not_ref,
+    reset_meta_meta_not_map,
     /// `with-meta` target is not an IObj (cannot carry metadata). args: `.{ .actual = "..." }`.
     with_meta_target_not_iobj,
 
@@ -366,720 +368,894 @@ pub fn entry(comptime code: Code) Entry {
     return switch (code) {
         // --- Parse / read ---
         .delimiter_unexpected => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Unexpected delimiter '{[delim]s}'",
         },
         .eof_unexpected => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Unexpected EOF while reading form",
         },
         .token_invalid => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Invalid token '{[token]s}'",
         },
         .reader_tag_unknown => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "No reader function for tag {[tag]s}",
         },
         .uuid_string_invalid => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Invalid UUID string: {[s]s}",
         },
         .inst_string_invalid => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Invalid instant (#inst) string: {[s]s}",
         },
         .integer_literal_invalid => .{
-            .kind = .number_error, .phase = .parse,
+            .kind = .number_error,
+            .phase = .parse,
             .template = "Invalid integer literal '{[text]s}'",
         },
         .float_literal_invalid => .{
-            .kind = .number_error, .phase = .parse,
+            .kind = .number_error,
+            .phase = .parse,
             .template = "Invalid float literal '{[text]s}'",
         },
         .string_unterminated => .{
-            .kind = .string_error, .phase = .parse,
+            .kind = .string_error,
+            .phase = .parse,
             .template = "Unterminated string literal",
         },
         .map_literal_arity_odd => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Map literal must contain an even number of forms",
         },
 
         // --- Analysis ---
         .def_arity_invalid => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "def expects 1 or 2 args, got {[got]d}",
         },
         .def_name_not_symbol => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "First argument to def must be a symbol",
         },
         .def_name_namespace_qualified => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "def name must not be namespace-qualified: '{[ns]s}/{[name]s}'",
         },
         .if_arity_invalid => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "if expects 2 or 3 args, got {[got]d}",
         },
         .quote_arity_invalid => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "quote expects 1 arg, got {[got]d}",
         },
         .var_arity_invalid => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "var expects 1 arg, got {[got]d}",
         },
         .set_arity_invalid => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "set! expects 2 args, got {[got]d}",
         },
         .var_set_not_bound => .{
-            .kind = .value_error, .phase = .eval,
+            .kind = .value_error,
+            .phase = .eval,
             .template = "Can't set! var that is not thread-bound: {[var]s}",
         },
         .var_arg_not_symbol => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "var expects a symbol, got {[actual]s}",
         },
         .var_unresolved => .{
-            .kind = .name_error, .phase = .analysis,
+            .kind = .name_error,
+            .phase = .analysis,
             .template = "Unable to resolve var: '{[sym]s}' in this context",
         },
         .metadata_value_invalid => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Metadata must be Symbol, Keyword, String or Map",
         },
         .symbol_unresolved => .{
-            .kind = .name_error, .phase = .analysis,
+            .kind = .name_error,
+            .phase = .analysis,
             .template = "Unable to resolve symbol: '{[sym]s}'",
         },
         .private_access_error => .{
-            .kind = .name_error, .phase = .analysis,
+            .kind = .name_error,
+            .phase = .analysis,
             .template = "Var '{[sym]s}' is private to namespace '{[ns]s}'",
         },
         .circular_require => .{
-            .kind = .name_error, .phase = .analysis,
+            .kind = .name_error,
+            .phase = .analysis,
             .template = "Cyclic load dependency: {[chain]s}",
         },
         .lib_not_found => .{
-            .kind = .name_error, .phase = .analysis,
+            .kind = .name_error,
+            .phase = .analysis,
             .template = "Could not locate '{[ns]s}' on the require resolver",
         },
         .lib_load_failed => .{
-            .kind = .io_error, .phase = .eval,
+            .kind = .io_error,
+            .phase = .eval,
             .template = "Failed to load '{[ns]s}': {[detail]s}",
         },
         .protocol_no_satisfies => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "No implementation of method '{[method]s}' on protocol '{[protocol]s}' for type '{[type_name]s}'",
         },
         .multimethod_no_method => .{
-            .kind = .value_error, .phase = .eval,
+            .kind = .value_error,
+            .phase = .eval,
             .template = "No method in multimethod '{[name]s}' for dispatch value",
         },
         .multimethod_ambiguous_dispatch => .{
-            .kind = .value_error, .phase = .eval,
+            .kind = .value_error,
+            .phase = .eval,
             .template = "Multiple methods in multimethod '{[name]s}' match dispatch value and neither is preferred",
         },
         .number_format_invalid => .{
-            .kind = .number_error, .phase = .eval,
+            .kind = .number_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: invalid number '{[text]s}'",
         },
         .bindings_form_incomplete => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "{[form]s} requires a binding vector and a body",
         },
         .bindings_not_vector => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "{[form]s} bindings must be a vector",
         },
         .bindings_arity_odd => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "{[form]s} bindings must have an even number of forms",
         },
         .binding_name_not_symbol => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "{[form]s} binding name must be a symbol",
         },
         .binding_name_namespace_qualified => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "{[form]s} binding name must not be namespace-qualified",
         },
         .binding_target_not_dynamic => .{
-            .kind = .value_error, .phase = .eval,
+            .kind = .value_error,
+            .phase = .eval,
             .template = "Can't dynamically bind non-dynamic var: {[var]s}",
         },
         .set_target_not_dynamic => .{
-            .kind = .value_error, .phase = .eval,
+            .kind = .value_error,
+            .phase = .eval,
             .template = "Can't set! non-dynamic var: {[var]s}",
         },
         .arity_too_large => .{
-            .kind = .not_implemented, .phase = .analysis,
+            .kind = .not_implemented,
+            .phase = .analysis,
             .template = "{[form]s} arity {[got]d} exceeds the limit of 65535",
         },
         .namespace_unknown => .{
-            .kind = .name_error, .phase = .analysis,
+            .kind = .name_error,
+            .phase = .analysis,
             .template = "No namespace: '{[ns]s}'",
         },
         .current_namespace_missing => .{
-            .kind = .name_error, .phase = .analysis,
+            .kind = .name_error,
+            .phase = .analysis,
             .template = "No current namespace; cannot resolve '{[sym]s}'",
         },
         .in_ns_arity_invalid => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "in-ns expects 1 arg, got {[got]d}",
         },
         .in_ns_arg_not_symbol => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "in-ns arg must be a symbol or (quote sym), got {[actual]s}",
         },
 
         // --- Analysis (fn*) ---
         .fn_star_form_incomplete => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "fn* requires a parameter vector and a body",
         },
         .fn_star_params_not_vector => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "fn* parameter list must be a vector",
         },
         .fn_star_param_not_symbol => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "fn* parameter must be a symbol",
         },
         .fn_star_param_namespace_qualified => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "fn* parameter must not be namespace-qualified",
         },
         .fn_star_rest_missing => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "fn* '&' must be followed by a rest-parameter symbol",
         },
         .fn_star_rest_not_symbol => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "fn* rest-parameter must be a symbol",
         },
         .fn_named_not_supported => .{
-            .kind = .not_implemented, .phase = .macroexpand,
+            .kind = .not_implemented,
+            .phase = .macroexpand,
             .template = "fn with a name (self-reference) is not yet supported; use defn for a named function",
         },
         .fn_star_arity_duplicate => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "fn*: can't have two overloads with same arity ({[arity]d})",
         },
         .fn_star_variadic_duplicate => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "fn*: can't have more than 1 variadic overload",
         },
         .fn_star_fixed_exceeds_variadic => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "fn*: can't have fixed arity ({[fixed]d}) with more params than variadic ({[variadic]d})",
         },
 
         // --- Analysis (recur / throw / try / catch) ---
         .recur_outside_target => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "recur is only valid inside a loop* or fn*",
         },
         .recur_arity_mismatch => .{
-            .kind = .arity_error, .phase = .analysis,
+            .kind = .arity_error,
+            .phase = .analysis,
             .template = "recur of {[target]s}: expected {[expected]d} arg(s), got {[got]d}",
         },
         .throw_arity_invalid => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "throw expects 1 arg, got {[got]d}",
         },
         .try_clause_after_finally => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "try: clauses must not appear after `finally`",
         },
         .catch_form_incomplete => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "catch requires (catch <Class> <binding> <body>...)",
         },
         .catch_head_invalid => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "catch head must be a symbol (class name) or a keyword (ex-info :type)",
         },
         .macro_return_not_data => .{
-            .kind = .type_error, .phase = .macroexpand,
+            .kind = .type_error,
+            .phase = .macroexpand,
             .template = "macro return value of tag '{[tag]s}' cannot be re-analysed as a form",
         },
         .defmacro_name_not_symbol => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "defmacro: first argument must be a symbol",
         },
         .defmacro_params_not_vector => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "defmacro: parameter list must be a vector",
         },
         .defmacro_arity_invalid => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "defmacro requires (defmacro <name> [<params>...] <body>...)",
         },
         .macro_var_not_callable => .{
-            .kind = .type_error, .phase = .macroexpand,
+            .kind = .type_error,
+            .phase = .macroexpand,
             .template = "macro Var '{[name]s}' root binding is not callable",
         },
         .promise_undelivered_error => .{
-            .kind = .not_implemented, .phase = .eval,
+            .kind = .not_implemented,
+            .phase = .eval,
             .template = "deref of an undelivered promise would block forever on the single-thread runtime (Phase 15.1 lands the blocking variant)",
         },
         .future_thunk_failed => .{
-            .kind = .not_implemented, .phase = .eval,
+            .kind = .not_implemented,
+            .phase = .eval,
             .template = "deref of a future whose body raised — the original error is not yet re-raised at deref time (Phase 15.1 / D-115)",
         },
         .catch_class_unknown => .{
-            .kind = .name_error, .phase = .analysis,
+            .kind = .name_error,
+            .phase = .analysis,
             .template = "catch class '{[name]s}' is not a known exception type",
         },
         .class_name_unknown => .{
-            .kind = .name_error, .phase = .eval,
+            .kind = .name_error,
+            .phase = .eval,
             .template = "class '{[name]s}' is not a known class name",
         },
         .catch_binding_not_symbol => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "catch binding must be a symbol",
         },
         .catch_binding_namespace_qualified => .{
-            .kind = .syntax_error, .phase = .analysis,
+            .kind = .syntax_error,
+            .phase = .analysis,
             .template = "catch binding must not be namespace-qualified",
         },
 
         // --- Eval (tree-walk runtime) ---
         .slot_out_of_range => .{
-            .kind = .index_error, .phase = .eval,
+            .kind = .index_error,
+            .phase = .eval,
             .template = "{[form]s} slot {[index]d} out of range (max {[max]d})",
         },
         // ADR-0060: a user `(nth …)` index error is an index_error Kind so
         // it maps to IndexOutOfBoundsException (matching real Clojure),
         // not type_error/ClassCastException.
         .index_out_of_range => .{
-            .kind = .index_error, .phase = .eval,
+            .kind = .index_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: index out of range",
         },
         .recur_args_exceed_buffer => .{
-            .kind = .not_implemented, .phase = .eval,
+            .kind = .not_implemented,
+            .phase = .eval,
             .template = "recur with {[got]d} args exceeds buffer ({[max]d})",
         },
         .call_args_exceed_max_locals => .{
-            .kind = .not_implemented, .phase = .eval,
+            .kind = .not_implemented,
+            .phase = .eval,
             .template = "Call with {[got]d} args exceeds the limit of {[max]d}",
         },
         .fn_frame_exceeds_max_locals => .{
-            .kind = .not_implemented, .phase = .eval,
+            .kind = .not_implemented,
+            .phase = .eval,
             .template = "fn frame ({[base]d}+{[arity]d}) exceeds the limit of {[max]d}",
         },
 
         // --- Reader macros / nesting / escapes ---
         .form_nesting_too_deep => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Form nesting exceeds max depth ({[max]d})",
         },
         .delimiter_unmatched_at_eof => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Unmatched delimiter; reached EOF before '{[delim]s}'",
         },
         .quote_reader_macro_incomplete => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Quote ' has no following form",
         },
         .symbolic_value_incomplete => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Symbolic value '##' has no following name",
         },
         .symbolic_value_unknown => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Unknown symbolic value '##{[name]s}'",
         },
         .discard_reader_macro_incomplete => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Discard '#_' has no following form",
         },
         .fn_lit_nested => .{
-            .kind = .syntax_error, .phase = .parse,
+            .kind = .syntax_error,
+            .phase = .parse,
             .template = "Nested #() anonymous functions are not allowed",
         },
         .string_escape_trailing_backslash => .{
-            .kind = .string_error, .phase = .parse,
+            .kind = .string_error,
+            .phase = .parse,
             .template = "Trailing '\\' in string literal",
         },
         .unicode_escape_truncated => .{
-            .kind = .string_error, .phase = .parse,
+            .kind = .string_error,
+            .phase = .parse,
             .template = "Truncated \\u escape sequence",
         },
         .unicode_escape_invalid_hex => .{
-            .kind = .string_error, .phase = .parse,
+            .kind = .string_error,
+            .phase = .parse,
             .template = "Invalid hex in \\u escape: '{[hex]s}'",
         },
         .unicode_codepoint_invalid => .{
-            .kind = .string_error, .phase = .parse,
+            .kind = .string_error,
+            .phase = .parse,
             .template = "Codepoint U+{[hex]s} is not a valid Unicode scalar",
         },
         .string_escape_unknown => .{
-            .kind = .string_error, .phase = .parse,
+            .kind = .string_error,
+            .phase = .parse,
             .template = "Unknown escape sequence '\\{[escape]c}'",
         },
 
         // --- Macroexpand ---
         .let_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "let requires bindings vector and at least one body form",
         },
         .cond_clauses_arity_odd => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "cond requires an even number of forms (got {[got]d})",
         },
         .when_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "when requires a test and at least one body form",
         },
         .thread_macro_arity_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "{[op]s} requires at least one argument",
         },
         .thread_macro_step_invalid_type => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "thread macro step must be a list or symbol, got {[actual]s}",
         },
         .thread_macro_step_empty_list => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "thread macro step must not be an empty list",
         },
         .if_let_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "if-let requires [name expr] and a then form (else optional)",
         },
         .if_let_bindings_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "if-let bindings must be a vector of [name expr]",
         },
         .if_let_binding_name_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "if-let binding name must be an unqualified symbol",
         },
         .if_some_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "if-some requires [name expr] and a then form (else optional)",
         },
         .if_some_bindings_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "if-some bindings must be a vector of [name expr]",
         },
         .if_some_binding_name_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "if-some binding name must be an unqualified symbol",
         },
         .when_some_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "when-some requires [name expr] and at least one body form",
         },
         .doto_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "doto requires an expression to thread through the forms",
         },
         .dotimes_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "dotimes requires a [name count] binding form",
         },
         .dotimes_bindings_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "dotimes bindings must be a vector of [name count] with an unqualified symbol name",
         },
         .doseq_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "doseq requires a binding vector",
         },
         .doseq_bindings_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "doseq bindings must be an even-length vector of binding pairs with optional :let / :when / :while modifiers",
         },
         .for_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "for requires a binding vector and a body expression",
         },
         .for_bindings_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "for bindings must be an even-length vector of binding pairs with optional :let / :when / :while modifiers",
         },
         .format_spec_invalid => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "format: unsupported directive '{[spec]s}' (supported: %s %d %f %.Nf %x %% %n; no width/flags yet)",
         },
         .format_args_insufficient => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "format: not enough arguments for the format string",
         },
         .while_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "while requires a test expression",
         },
         .when_first_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "when-first requires [name coll] and at least one body form",
         },
         .when_first_bindings_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "when-first bindings must be a vector of [name coll] with an unqualified symbol name",
         },
         .case_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "case requires a test expression and at least one clause or default",
         },
         .condp_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "condp requires a predicate and an expression",
         },
         .if_not_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "if-not requires a test and a then form (else optional)",
         },
         .when_not_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "when-not requires a test and at least one body form",
         },
         .assert_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "assert requires an expression (message optional)",
         },
         .defn_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defn requires a name, parameter vector, and at least one body form",
         },
         .defn_name_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defn name must be an unqualified symbol",
         },
         .defn_params_not_vector => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defn parameter list must be a vector",
         },
         .defmulti_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defmulti requires a name and a dispatch function",
         },
         .defmulti_name_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defmulti name must be an unqualified symbol",
         },
         .defmethod_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defmethod requires multifn, dispatch-val, params vector, and body",
         },
         .defmethod_params_not_vector => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defmethod parameter list must be a vector",
         },
         .prefer_method_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "prefer-method requires multifn, x, y",
         },
         .defprotocol_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defprotocol requires a name",
         },
         .defprotocol_name_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defprotocol name must be an unqualified symbol",
         },
         .defprotocol_method_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defprotocol method signature must be a list `(method-name [params...])`",
         },
         .defrecord_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defrecord requires a name and a field vector",
         },
         .defrecord_name_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defrecord name must be an unqualified symbol",
         },
         .defrecord_fields_not_vector => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defrecord fields must be a vector",
         },
         .defrecord_field_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "defrecord field must be an unqualified symbol",
         },
         .defrecord_assoc_undeclared_key => .{
-            .kind = .not_implemented, .phase = .eval,
+            .kind = .not_implemented,
+            .phase = .eval,
             .template = "assoc on defrecord with non-declared key '{[name]s}' is not yet supported",
         },
         .letfn_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "letfn requires a vector of fn-specs and at least one body form",
         },
         .letfn_spec_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "letfn fn-spec must be a list `(name [params...] body)`",
         },
         .reify_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "reify requires at least one protocol symbol and one method implementation",
         },
         .reify_section_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "reify section must lead with a protocol symbol followed by one or more method-impl lists",
         },
         .reify_method_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "reify method implementation must be a list `(method-name [params...] body)`",
         },
         .extend_type_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "extend-type requires a target, a protocol, and at least one method implementation",
         },
         .extend_type_method_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "extend-type method implementation must be a list `(method-name [params...] body...)`",
         },
         .extend_protocol_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "extend-protocol requires a protocol and at least one (type method...) section",
         },
         .extend_protocol_section_invalid => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "extend-protocol section must lead with a type symbol followed by one or more method-impl lists",
         },
         .when_let_form_incomplete => .{
-            .kind = .syntax_error, .phase = .macroexpand,
+            .kind = .syntax_error,
+            .phase = .macroexpand,
             .template = "when-let requires [name expr] and at least one body form",
         },
 
         // --- Eval (type) ---
         .type_arg_not_number => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: expected number, got {[actual]s}",
         },
         .type_arg_not_integer => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: expected integer, got {[actual]s}",
         },
         .type_arg_not_boolean => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: expected boolean, got {[actual]s}",
         },
         .type_arg_not_string => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: expected string, got {[actual]s}",
         },
         .type_arg_not_ratio => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: expected ratio, got {[actual]s}",
         },
         .type_arg_invalid => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: expected {[expected]s}, got {[actual]s}",
         },
         .value_not_callable => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "Cannot call value of type '{[actual]s}'",
         },
         .with_meta_meta_not_map => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "with-meta: metadata must be a map or nil, got {[actual]s}",
         },
         .with_meta_target_not_iobj => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "with-meta: cannot attach metadata to {[actual]s}",
+        },
+        .reset_meta_target_not_ref => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "reset-meta!: expected a var or atom, got {[actual]s}",
+        },
+        .reset_meta_meta_not_map => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "reset-meta!: metadata must be a map or nil, got {[actual]s}",
         },
 
         // --- Eval (arithmetic) ---
         .divide_by_zero => .{
-            .kind = .arithmetic_error, .phase = .eval,
+            .kind = .arithmetic_error,
+            .phase = .eval,
             .template = "Divide by zero",
         },
         .integer_overflow => .{
-            .kind = .arithmetic_error, .phase = .eval,
+            .kind = .arithmetic_error,
+            .phase = .eval,
             .template = "integer overflow",
         },
         .non_terminating_decimal => .{
-            .kind = .arithmetic_error, .phase = .eval,
+            .kind = .arithmetic_error,
+            .phase = .eval,
             .template = "Non-terminating decimal expansion; no exact representable decimal result.",
         },
 
         // --- Eval (arity) ---
         .arity_below_min => .{
-            .kind = .arity_error, .phase = .eval,
+            .kind = .arity_error,
+            .phase = .eval,
             .template = "Wrong number of args ({[got]d}) passed to {[fn_name]s}, expected at least {[min]d}",
         },
         .arity_out_of_range => .{
-            .kind = .arity_error, .phase = .eval,
+            .kind = .arity_error,
+            .phase = .eval,
             .template = "Wrong number of args ({[got]d}) passed to {[fn_name]s}, expected {[min]d} to {[max]d}",
         },
         .arity_not_expected => .{
-            .kind = .arity_error, .phase = .eval,
+            .kind = .arity_error,
+            .phase = .eval,
             .template = "Wrong number of args ({[got]d}) passed to {[fn_name]s}, expected {[expected]d}",
         },
         .arity_not_expected_multi => .{
-            .kind = .arity_error, .phase = .eval,
+            .kind = .arity_error,
+            .phase = .eval,
             .template = "Wrong number of args ({[got]d}) passed to {[fn_name]s}, expected one of: {[arities]s}",
         },
 
         // --- Unsupported / Tier ---
         .feature_not_supported => .{
-            .kind = .not_implemented, .phase = .eval,
+            .kind = .not_implemented,
+            .phase = .eval,
             .template = "{[name]s} is not supported in ClojureWasm",
         },
         .feature_not_supported_unsupported_var => .{
-            .kind = .not_implemented, .phase = .analysis,
+            .kind = .not_implemented,
+            .phase = .analysis,
             .template = "'{[sym]s}' is declared but not yet supported in ClojureWasm",
         },
         .transient_used_after_persistent => .{
-            .kind = .value_error, .phase = .eval,
+            .kind = .value_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: Transient used after persistent! call",
         },
         .transient_kind_mismatch => .{
-            .kind = .type_error, .phase = .eval,
+            .kind = .type_error,
+            .phase = .eval,
             .template = "{[fn_name]s}: expected {[expected]s}, got {[actual]s}",
         },
 
         .tier_d_gen_class => .{
-            .kind = .not_implemented, .phase = .analysis,
-            .template =
-                "gen-class is not part of ClojureWasm. " ++
+            .kind = .not_implemented,
+            .phase = .analysis,
+            .template = "gen-class is not part of ClojureWasm. " ++
                 "gen-class emits JVM bytecode classes, which are not produced by the cw runtime. " ++
                 "Use deftype + defprotocol for cw-native type definitions.",
         },
         .tier_d_gen_interface => .{
-            .kind = .not_implemented, .phase = .analysis,
-            .template =
-                "gen-interface is not part of ClojureWasm. " ++
+            .kind = .not_implemented,
+            .phase = .analysis,
+            .template = "gen-interface is not part of ClojureWasm. " ++
                 "gen-interface emits JVM bytecode interfaces, which are not produced by the cw runtime. " ++
                 "Use defprotocol to declare an interface in cw.",
         },
         .tier_d_compile => .{
-            .kind = .not_implemented, .phase = .analysis,
-            .template =
-                "compile is not part of ClojureWasm. " ++
+            .kind = .not_implemented,
+            .phase = .analysis,
+            .template = "compile is not part of ClojureWasm. " ++
                 "compile triggers JVM bytecode emission to ahead-of-time .class files. " ++
                 "cw binaries are produced by `cljw build` from source; per-namespace AOT is not on the roadmap.",
         },
         .tier_d_proxy_deep => .{
-            .kind = .not_implemented, .phase = .analysis,
-            .template =
-                "proxy against this base class is not part of ClojureWasm. " ++
+            .kind = .not_implemented,
+            .phase = .analysis,
+            .template = "proxy against this base class is not part of ClojureWasm. " ++
                 "proxy targeting AWT, Swing, Apache HttpComponents, or java.util.logging requires deep JVM class extension. " ++
                 "Use reify against cw-native protocols for anonymous instances; GUI, HTTP, and logging have cw-native replacements.",
         },
         .tier_d_bean_deep => .{
-            .kind = .not_implemented, .phase = .analysis,
-            .template =
-                "bean's deep reflection is not part of ClojureWasm. " ++
+            .kind = .not_implemented,
+            .phase = .analysis,
+            .template = "bean's deep reflection is not part of ClojureWasm. " ++
                 "Reflecting JVM property names beyond what TypeDescriptor exposes is not supported. " ++
                 "Use explicit :keys destructuring on records and hash-maps; basic field walk via TypeDescriptor stays available.",
         },
 
         // --- System ---
         .out_of_memory => .{
-            .kind = .out_of_memory, .phase = .eval,
+            .kind = .out_of_memory,
+            .phase = .eval,
             .template = "Out of memory",
         },
         .internal_error => .{
-            .kind = .internal_error, .phase = .eval,
+            .kind = .internal_error,
+            .phase = .eval,
             .template = "Internal error: {[detail]s}",
         },
     };

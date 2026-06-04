@@ -51,4 +51,9 @@ assert_last 'coll_set'     '(:foo (meta ^:foo #{1 2}))'        'true'
 assert_last 'coll_eval'    '(:a (meta ^{:a (+ 1 2)} [1]))'     '3'
 assert_last 'coll_value'   '(conj ^:foo [1 2] 3)'              '[1 2 3]'
 
+# --- D-239: alter-meta! / reset-meta! on a Var (key extraction; cljw does
+# not synthesize JVM :name/:ns/:line so full-map equality would diverge) ---
+assert_last 'alter_var'    '(def av 1) (alter-meta! (var av) assoc :p 7) (:p (meta (var av)))' '7'
+assert_last 'reset_var'    '(def rv 1) (reset-meta! (var rv) {:q 8}) (:q (meta (var rv)))'     '8'
+
 echo "ALL phase14_var_metadata PASS"

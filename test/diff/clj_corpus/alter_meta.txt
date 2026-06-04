@@ -1,0 +1,16 @@
+(let [a (atom 0)] (alter-meta! a assoc :x 1) (meta a))
+;;=> {:x 1}
+(let [a (atom 0)] (reset-meta! a {:y 2}) (meta a))
+;;=> {:y 2}
+(let [a (atom 0)] (alter-meta! a assoc :x 1 :y 2) (meta a))
+;;=> {:x 1, :y 2}
+(reset-meta! (atom 0) {:k 5})
+;;=> {:k 5}
+(let [a (atom 0)] (alter-meta! a assoc :n 3))
+;;=> {:n 3}
+(let [a (atom 0)] (alter-meta! a merge {:a 1}) (alter-meta! a merge {:b 2}) (meta a))
+;;=> {:a 1, :b 2}
+(meta (atom 0))
+;;=> nil
+(let [a (atom 0)] (reset-meta! a nil) (meta a))
+;;=> nil

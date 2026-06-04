@@ -37,6 +37,8 @@ pub const Atom = extern struct {
     current: Value,
     watches: Value,
     validator: Value,
+    /// `^meta` / `reset-meta!` / `alter-meta!` metadata (nil or a map).
+    meta: Value = Value.nil_val,
 
     comptime {
         std.debug.assert(@alignOf(Atom) >= 8);
@@ -96,6 +98,17 @@ pub fn setCurrent(v: Value, newval: Value) void {
     a.current = newval;
 }
 
+/// The atom's metadata (`nil` or a map). `meta` / `reset-meta!`.
+pub fn metaOf(v: Value) Value {
+    return v.decodePtr(*const Atom).meta;
+}
+
+/// Replace the atom's metadata (`reset-meta!` / `alter-meta!`).
+pub fn setMeta(v: Value, m: Value) void {
+    const a: *Atom = @constCast(v.decodePtr(*const Atom));
+    a.meta = m;
+}
+
 /// Per-tag trace fn — the atom owns one Value (`current`) the GC must
 /// walk during the mark phase. A reassigned-away old value becomes
 /// unreachable through the atom and is reclaimed normally.
@@ -103,10 +116,11 @@ pub fn traceGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
     const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
     const a: *Atom = @ptrCast(@alignCast(header));
     if (a.current.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
-    // The watches map (+ keys/fns) and the validator fn are reachable only
-    // through the atom.
+    // The watches map (+ keys/fns), the validator fn, and the metadata map
+    // are reachable only through the atom.
     if (a.watches.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
     if (a.validator.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
+    if (a.meta.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
 }
 
 /// Register the atom trace fn at `.atom`. Idempotent.
