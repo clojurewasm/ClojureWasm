@@ -8,24 +8,25 @@
 - **HEAD**: see `git log` (`cw-from-scratch`). Gate green 247/0 (Mac, serial-e2e).
   debt ledger = `.dev/debt.yaml`. Active plan = **ADR-0089 re-cut (A→B→C)**.
 - **First commit on resume MUST be**: continue **Phase B IMPLEMENTATION (D-242)**.
-  Phase A + the Phase B entry ceremony + the GC-safety re-analysis are COMPLETE
-  (the entire Phase B *design* is decided + DA-fork-validated). Build order per
-  ADR-0090: ✅(1) `runtime/concurrency/io_default.zig` (a68398b7) · ✅(2) global heap
-  `Io.Mutex` on the GC allocator (3200181b) · **➡(3) GC root-publication
-  handshake — NEXT, design DECIDED**. ADR-0090's "no-safepoint" was found
-  insufficient for mid-`eval` workers (operand stack un-rooted); **D-244 decided
-  Alternative B** (ADR-0090 "D-244 decision" section + DA-fork): alloc-boundary
-  safepoint + per-eval-frame chain publication + force-VM worker thunks
-  (`evalChunkErased`) + collecting-thread self-guard. **Implement #3a first** per
-  the D-244 barrier checklist (registry IN `root_set.zig` — NOT a separate module,
-  cycle; `ThreadGcContext{frame_slot,macro_slot}`; only WORKER threads register,
-  main reads own TLS; FOLD the registry pass into the current_frame/macro_root_slot
-  cursors, do NOT add an 11th `RootSource` — ADR-0028 §5). #3a is runtime-inert
-  today (empty registry = current behaviour). Then ➡(3b) safepoint + operand-frame
-  publication → (4) real `future`/`promise`/`delay` + binding-conveyor → (5) STM
-  engine (`lock_tx.zig`) → (6) `agent`/`locking`. rework-OK + test guards (F-002);
-  each src commit takes the full `--serial-e2e` gate (additive may batch ≤5 per
-  gate-cadence). Spike: `private/spike_concurrency_0.16.zig` (gitignored).
+  The entire Phase B *design* is decided + DA-fork-validated (ADR-0090 + its
+  "D-244 decision" section = **Alt B**). GC-handshake build order: ✅(1)
+  `runtime/concurrency/io_default.zig` (a68398b7) · ✅(2) GC global-heap `Io.Mutex`
+  via the singleton (3200181b) · ✅(3a) `ThreadGcContext` registry IN `root_set.zig`
+  + root-walker UNION over registered worker contexts for the dynamic-binding +
+  macro sources, folded into the cursors not an 11th `RootSource` (cc6881b5 +
+  6ca347ae + stress test eeeb142e; runtime-inert today, empty registry == current
+  behaviour) · **➡(3b) NEXT = the operand-stack half + the safepoint**: each
+  `vm.eval` registers its `{&stack,&sp,locals}` frame on the thread's chain
+  (per-call push/defer-pop) so collect walks live operand Values; + the
+  alloc-boundary SAFEPOINT (a `gc_requested` flag: a thread parks at its own
+  `alloc` entry; the collector waits for all to park, walks the union, broadcasts)
+  + a liveness-only back-edge poll in `vm.eval`'s `while(true)` + the
+  collecting-thread self-guard for its in-flight alloc partial. **#3b is atomic
+  with #4** (only worker threads make it live; full design = D-244 barrier "#3b" +
+  ADR-0090 "D-244 decision"). Then (4) force-VM `future`/`promise`/`delay` workers
+  (`evalChunkErased`) + binding-conveyor → (5) STM engine `lock_tx.zig` → (6)
+  `agent`/`locking`. rework-OK + test guards (F-002); src commits gate
+  `--serial-e2e` (additive batch ≤5). Spike: `private/spike_concurrency_0.16.zig`.
 - **Forbidden this session**: minting a new F-NNN to restate F-011 (the F-013 idea
   was DROPPED — ADR-0089); minting **AD-013 in the ledger before its pin test
   exists** (`check_accepted_divergences.sh` enforces pin-existence — AD-013 lands
@@ -49,36 +50,23 @@ Phase C  Library-driven gap-hunt (was the quality loop) on the concurrency base;
          workaround remediation folds in here.
 ```
 
-Restores §9.2.R's Phase-15-first intent (the session had drifted by running the
-quality loop pre-Phase-15). The clean-bounded clj-parity frontier is drained.
+## Recently landed (git log = SSOT)
 
-## Phase A work items — COMPLETE (git log = SSOT)
+Phase A consolidation: comment-drift sweep (121 files, db3932e7), discharged-audit
+→ **D-243** (8 fired-trigger deferrals re-opened), §9.7 stale-checkbox fix, ROADMAP
+archive-extract (→ `ROADMAP_archive_phases_1-13.md`, 2651→1922), guard pass +
+`check_e2e_dup`. Phase B: ADR-0090 (§7 redesign + D-244 GC-safety decision, two
+DA-forks) + impl #1 io_default + #2 GC alloc-lock + #3a registry/root-walker union.
 
-- Comment-drift fan-out (12 subagents): 121 files comment-only re-cut to
-  finished form (db3932e7). (b) inventory → D-242; (c) fixed.
-- Discharged-section audit (fecdd248): 141 rows → **8 fired-but-unbuilt**
-  re-opened under **D-243** (D-048/104/105/106 HARD = Phase C host-surface+bench;
-  D-054/056/057 soft; D-049 user-owned F-NNN). No false-discharge lies.
-- §9.7 Phase 5 expanded list flipped PENDING→DONE (05a8526e, stale checkbox).
-- ROADMAP archive-extract: §9.3-9.15 (Phases 1-13) → `ROADMAP_archive_phases_1-13.md`,
-  2651→1922 lines, anchor-preserving stubs (8e4eafdd).
-- Guard pass: clean (0 dead rules / 0 orphaned-superseded ADRs); wired the dormant
-  `check_e2e_dup.sh` guard (f5e4d5b5, gate 247/0).
-- **Two carry-overs**: (1) 3 rules carry a stale `src/runtime/host/**` glob
-  (→ `runtime/java/**` per ADR-0029) — cleanup edit **declined by the permission
-  classifier as agent-config self-modification; awaits user authorization**
-  (harmless — rules still load via other globs). (2) debt discharged-in-active
-  compaction stays LOW/clutter-only (D-243 took the actionable rows; watch
-  D-210 standing-floor false-positive).
+## Open carry-overs (actionable)
 
-## Landed before the re-cut (git log = SSOT; one summary)
-
-Post-M quality stream: random-sample · partitionv · the print-control var cluster
-(`*print-length*`/`*print-level*`/`*print-namespace-maps*`/`*print-readably*`/
-`*print-meta*` all bindable, ADR-0088 + DA-fork; deepRealize meta-preserve fix;
-infinite-seq×*print-length* termination D-222 b) · regex `\p{}` POSIX classes +
-`\s` \x0B fix + scoped `(?i:)`/`(?s)`/`(?m)` flags · thread-binding machinery
-(`with-bindings`/`bound-fn`, D-241) · debt quality_floor hygiene.
+- **3 rules** carry a stale `src/runtime/host/**` glob (→ `runtime/java/**`, ADR-0029);
+  the cleanup Edit was **declined by the permission classifier as agent-config
+  self-mod — awaits user authorization** (harmless; rules still load via other
+  globs). Memory `claude-rules-edit-permission-block`.
+- **D-243** = 8 re-opened deferrals: host-surface impls D-048/105/106 (Phase C) ·
+  bench D-104 · regex/string D-054/056/057 · D-049 (user-owned F-NNN).
+- debt discharged-in-active compaction: LOW/clutter (watch D-210 standing-floor).
 
 ## Process discipline (SSOT = memory + rules; do NOT re-expand here)
 
@@ -92,7 +80,21 @@ infinite-seq×*print-length* termination D-222 b) · regex `\p{}` POSIX classes 
 
 ## Cold-start reading order (tracked-only)
 
-handover → `.dev/decisions/0089_recut_concurrency_and_drift_methods.md` (the active
-plan) → ROADMAP §9.2.R/§7 → `.dev/debt.yaml` (D-242 Phase-B anchor + D-238/D-239/
-D-241) → CLAUDE.md (§ Project spirit + Autonomous Workflow + The only stop) →
-`.dev/project_facts.md` (F-002/004/005/009/011/012) → `.dev/principle.md`.
+handover → **`.dev/decisions/0090_phase_b_concurrency_redesign.md`** (the §7
+redesign + its "D-244 decision" section = the active **#3b** design) →
+**`.dev/debt.yaml` D-244** (the #3 implementation checklist) + D-242 (Phase-B
+anchor) + D-238/D-241 → `.dev/decisions/0089_recut_concurrency_and_drift_methods.md`
+(the A→B→C re-cut) → ROADMAP §9.2.R/§7 → CLAUDE.md (§ Project spirit + Autonomous
+Workflow + The only stop) → `.dev/project_facts.md`
+(F-002/004/005/006/009/011/012) → `.dev/principle.md`.
+
+## Stopped — user requested
+
+User instruction (2026-06-05): 「起きていますが、クリアセッションから当初予定を
+遂行できるように配線・参照チェーンを監査したら止めてください」. The resume wiring
+was audited at this stop and two gaps fixed: (a) the Resume contract said "implement
+#3a first" but #3a is DONE — corrected to point at **#3b**; (b) the cold-start order
+omitted ADR-0090 + D-244 (the active #3b design) — now led by them. A clear session
+resumes at Phase B **#3b** (operand-stack publication + safepoint, atomic with #4)
+via the Resume contract + cold-start order above. Per-task note:
+`private/notes/phaseB-3a-gc-handshake.md`.
