@@ -35,11 +35,61 @@ active:
       Existing per-item rows this anchor sequences (do NOT re-mint): D-238
       (`*out*`/`*err*`/`with-out-str`), D-239 (alter-meta ns/ref/agent), the
       `into-array`/`make-array`/`aget`/`aset` F-004-slot rows, the reflection
-      (Field/Method/`bean`) rows. **Phase B entry discipline (ADR-0089)**: open
+      (Field/Method/`bean`) rows. **Comment-drift sweep verified inventory
+      (2026-06-04, `private/comment-drift-2026-06-04/10`)** — exact provisional
+      anchors Phase B reworks: `future.zig:2-12` / `promise.zig:9-14` /
+      `delay.zig:9-52` (synchronous/eager-inline; deref-of-unfulfilled raises
+      instead of blocking; exception-caching deferred) · `stm/ref.zig:2-28` +
+      `stm/tval.zig:19-22` (Ref/TVal MVCC ring built, NO commit/alter/commute/
+      ensure/ref-set/dosync path) · `lazy_seq.zig:12-23` (unguarded concurrent
+      realisation — NOT previously listed in this anchor) · `volatile.zig:2-7` ·
+      `arena.zig:13-17` + `gc_heap.zig` (GC single-threaded; no `gc_mutex`) ·
+      atom CAS-under-contention. The §7.1 removed-Zig-0.16-API plans
+      (`std.Thread.Pool`/`Mutex`/`Condition`/`Semaphore`; `std.Io.Mutex` vs
+      `std.atomic.Mutex`) are now softened in-comment to "primitive chosen at
+      Phase B entry". **Phase B entry discipline (ADR-0089)**: open
       with a §7-redesign ADR + Structural-imagination + DA-fork; spike the Zig
       0.16 primitive first (principle.md). North star = user-observable parity,
       internals free (F-011 §2 + no_jvm). recall trigger: Phase B entry, or any
       library that needs STM/agents/threads/arrays/IO-redirect.
+    last_reviewed: "2026-06-04"
+  - id: "D-243"
+    status: "RE-OPENED tracking anchor (Phase A discharged-audit, 2026-06-04) — 8 parked-deferral rows in discharged: whose recall trigger FIRED but work is genuinely unbuilt; surfaced by the comment-drift sweep, were invisible to Step-0.5 (they sit in discharged:). This anchor makes them sweep-visible; detail stays in each discharged row (flagged RE-OPENED)."
+    category: "debt-hygiene"
+    quality_floor: "Phase A/C: re-opened parked deferrals — due work mis-filed as discharged"
+    barrier: |-
+      The 2026-06-04 discharged-section audit (`private/comment-drift-2026-06-04/
+      discharged-audit.md`: 141 rows = 86 resolved / 47 correctly-parked / 8
+      fired-undone) found these 8 parked deferrals whose trigger fired (Phases
+      1-14 + M DONE; host-class count 24 > 20) but whose planned work is unbuilt.
+      No false-discharge LIES — the resolution text honestly reads as a PLAN; the
+      defect is Defer-to-amnesia (a fired trigger that nothing re-swept). Re-open:
+      - **D-048** (interop, HARD) — `.host_instance` Value carrier unbuilt; 2 live
+        PROVISIONAL markers self-cite (`error/host_class.zig:222`,
+        `class_name.zig:246`). Widen `Extension.init` + land the carrier so
+        catch-by-host-class works. Fold D-050(b) (`Extension.cljw_ns` union) in.
+      - **D-105** (interop, HARD) — `runtime/time/{local_date_time,duration,
+        zoned_date_time}.zig` impls + method_tables unbuilt (~400 LOC).
+      - **D-106** (interop, HARD) — `runtime/net/socket.zig` +
+        `runtime/crypto/message_digest.zig` impls + method_tables unbuilt (~300 LOC).
+      - **D-104** (tests, HARD) — v0 24C.10 5-canonical bench parity: 4 of 5
+        fixtures unported (needs `loop` macro bootstrap first).
+      - **D-054** (tests, soft) — Layer-5 regex conformance port absent (informal
+        corpus coverage exists); port OR record corpus-satisfies decision.
+      - **D-056** (regex, soft) — lookahead `(?=...)` unimplemented + honey/sql
+        compat-tier de-scope decision unrecorded; implement OR record de-scope.
+      - **D-057** (regex/string, soft) — Unicode case-fold ASCII-only; land the
+        fold table OR record an accepted divergence (AD-NNN).
+      - **D-049** (structure, USER-OWNED) — ADR-0029 layout-lock F-NNN promotion;
+        minting an F-NNN is user-owned (project_facts amendment rule) — do NOT
+        auto-mint; awaits user decision.
+      HARD rows (D-048/104/105/106) are Phase C / host-surface + bench work.
+      Structural follow-up (deferred to owner, NOT seized here per F-003): the
+      discharged: section holds 47 correctly-parked deferrals by design, but
+      nothing re-checks their triggers — folding a "re-sweep discharged
+      parked-deferral triggers at Phase boundary" step into audit_scaffolding
+      E2.8 would prevent recurrence. recall trigger: Phase C entry, or any
+      library needing java.time / net / crypto / regex-lookahead.
     last_reviewed: "2026-06-04"
   - id: "D-241"
     status: "now (found 2026-06-04 while landing bound-fn/with-bindings) — no clojure.main baseline binding frame, so get-thread-bindings captures only explicitly-bound vars."
@@ -1875,11 +1925,11 @@ discharged:
     resolution: |-
       Sequential marker protocol drives seq-print + `sequential?`; record map-style print. Introduced `(defprotocol Sequential)` (defprotocol now accepts zero-method markers; marker protocols work end-to-end on deftype via `addProtocolImpl` recording `protocol_impls` + macro zero-impl-section allowance). `deepRealize` coerces a Sequential typed_instance via `Seqable -seq` (`dispatchOrNull`) → `(eduction (map inc) [1 2 3])` prints `(2 3 4)`, `(sequential? eduction)`→`true`. `printTypedInstance` renders records map-style `#Name{:k v}`. Shared `TypeDescriptor.declaresProtocol` SSOT for print + predicate. Deferred: user-extensible `print-method` multimethod (the 3 pieces become its method bodies). Residuals: record ns-prefix (`#Pt` vs `#user.Pt`, D-058/079); marker `satisfies?` (method_table-based) still `false`. DA-fork ran (3 alts in ADR).
   - id: "D-048"
-    discharged_at: "Opportunistic — when a second host extension Class registers"
+    discharged_at: "RE-OPENED 2026-06-04 (D-243) — trigger fired, work unbuilt. Was: Opportunistic — when a second host extension Class registers"
     resolution: |-
       structure | `runtime/java/_host_api.zig::Extension.init: ?*const fn () anyerror!void` takes no Runtime handle. F-006 (3-layer allocator) + ADR-0008 protocol dispatch (Phase 7) make it near-certain that the first real host class will need Runtime access (to register protocol impls, intern strings against the GC allocator, etc.). Changing the signature later breaks every surface that has already exported `___HOST_EXTENSION`. Resolve at Phase 6 entry **before the first `runtime/java/<pkg>/<Class>.zig` lands**: either (a) widen to `init: ?*const fn (rt: *Runtime) anyerror!void` directly (cleaner; requires deciding the `_host_api.zig` ↔ `runtime.zig` import direction within zone-0), or (b) `init: ?*const fn (rt: *anyopaque) anyerror!void` with `@ptrCast(@alignCast(rt))` at the call site (avoids new intra-zone import, weaker invariant). Source: type-design review of ADR-0029 cluster (2026-05-24). **Dependent PROVISIONAL marker sites (added 2026-05-27)**: `runtime/error/host_class.zig::matches` (host_instance arm) + `runtime/class_name.zig::isThrowableTag` (host_instance not yet in throwable carrier set) — both discharge in the same commit when D-048 lands the `.host_instance` Value carrier. Tracked via `feature_deps.yaml#runtime/error/catch_class_host_instance_arm`. | Phase 6 entry — first real host class landing | 2026-05-28
   - id: "D-049"
-    discharged_at: "Phase 12+ (host class count > 20)"
+    discharged_at: "RE-OPENED 2026-06-04 (D-243, USER-OWNED) — trigger fired (count 24 > 20); F-NNN mint is user-owned, do not auto-mint. Was: Phase 12+ (host class count > 20)"
     resolution: |-
       structure | Promote ADR-0029 cluster from ADR + rules to F-NNN candidate (F-010) when host-class count crosses ~20. F-009 already locks feature-implementation neutrality; F-010 would lock the `runtime/java/<pkg>/<Class>.zig` + `runtime/cljw/<area>/<Item>.zig` directory layout itself so the Devil's-advocate subagent rejects "collapse the surface tree" alternatives automatically. Today (Phase 5 end, 1 file under java/) the structural drift risk is small; at 20+ files, the smallest-diff bias gets real teeth. ADR-0029 § F-NNN judgement explicitly defers this to Phase 12+; this row is the recall trigger. | Phase 12+ — host class count > 20 | 2026-05-24
   - id: "D-050"
@@ -1899,7 +1949,7 @@ discharged:
     resolution: |-
       runtime | `runtime/clock.zig` + `runtime/time/instant.zig` referenced `std.time.nanoTimestamp` (removed in Zig 0.16; clock API moved under `std.Io.Clock`). Surfaced 2026-05-25 by the silent-skip surgery (the broken code sat hidden behind the lazy-decl-analysis trap). Ported both files to `std.Io.Clock.real.now(io).toMilliseconds()` / `.awake.now(io).toNanoseconds()` patterns and threaded `io: std.Io` through the test bodies; re-enabled in `src/main.zig`'s test{} aggregator and promoted `scripts/check_test_reach.sh` to `--gate` so any future drift fails the gate. | (none — Phase 6 D-053) | 2026-05-25
   - id: "D-054"
-    discharged_at: "per-cycle exit (cycles 2-5) + Phase 11 entry"
+    discharged_at: "RE-OPENED 2026-06-04 (D-243, soft) — Phase 11 done, Layer-5 port absent (corpus covers informally). Was: per-cycle exit (cycles 2-5) + Phase 11 entry"
     resolution: |-
       tests | Regex conformance absorption plan. **Amended 2026-05-25** by re-investigation at `private/notes/cw_v0_regex_indirect_coverage.md` (deep dive, 775 lines): earlier survey at `cw_v0_regex_test_corpus_survey.md` undercounted (~70 vs ~121 verified explicit + 21 stripped `thrown-with-msg?` blocks + ~400 indirect via honey/sql) AND was wrong about the source-of-truth — **`~/Documents/OSS/clojure/test/clojure/test_clojure/regex.clj` does NOT exist** (`find ... -name 'regex*'` returns zero hits). cw v0's `test/upstream/clojure/test_clojure/regex.clj` (54 LOC) is a `CLJW-ADD` cw-v0-invented file, not a JVM upstream port. Corrected plan: (a) cycles 2-5 — at each cycle exit add `test/e2e/regex/phase6_<cycle>.sh` (Layer 2) sourced from the **cw v0 regex.clj** (54 LOC, the cw lineage SSOT — per `no_copy_from_v1.md` re-derive in Zig idiom, do not verbatim copy) + regex assertions scattered across JVM upstream's `string.clj` / `other_functions.clj` / `test.clj` (~50 across 11 files); cycle 3 first port = `test/e2e/regex/phase6_captures.sh` covering captures + `re-groups`. (b) Phase 11 entry — port cw v0's `test/upstream/.../regex.clj` into `test/clj/clojure/test_clojure/regex.clj` per ADR-0021 Layer 5, supplement with JDK `RegExTest.java` semantic translation for completeness gaps. Aspirational targets per cycle/phase live in the re-investigation note §4. | each cycle 2-5 exit + Phase 11 entry | 2026-05-25
   - id: "D-055"
@@ -1907,11 +1957,11 @@ discharged:
     resolution: |-
       tests | zwasm v2 reciprocal observation (`private/notes/zwasm_v2_reciprocal_observations.md`) note (1) acted on 2026-05-25: `scripts/check_test_reach.sh` extended with a `test_roots` array + sanity warning when `build.zig`'s `addTest()` count exceeds the configured root list. cw v1 today has 1 `addTest()` so no active blind spot. **Recall trigger**: when a second test exe lands (spec runner, fuzz harness, etc.), the gate prints a WARNING to stderr — that's the signal to append the new exe's `root_source_file` path to `test_roots` in the same commit. Auto-parsing `build.zig` is a future improvement; manual list stays obvious in `git diff` at cw v1's scale. Companion broader-framing landed in `.claude/rules/zig_tips.md` "phase-deferred scaffolds lose their homing path" (reciprocal note (2)). Reciprocal note (3) `comptime { _ = @import(...); }` for C ABI symbol export is N/A — cw v1 has no `pub export fn` surface (verified 2026-05-25, grep returns zero hits). | when build.zig adds a second addTest() | 2026-05-25
   - id: "D-056"
-    discharged_at: "Phase 11+ entry (honey/sql compat tier evaluation)"
+    discharged_at: "RE-OPENED 2026-06-04 (D-243, soft) — Phase 11 done, lookahead unimpl + de-scope decision unrecorded. Was: Phase 11+ entry (honey/sql compat tier evaluation)"
     resolution: |-
       scope | **Lookahead `(?=...)` is implicitly required by cw v0's compat tier**. Discovered 2026-05-25 via the regex indirect-coverage deep dive (`private/notes/cw_v0_regex_indirect_coverage.md`): `/Users/shota.508/Documents/MyProducts/ClojureWasm/test/compat/honey/sql.cljc` L238 uses `#"(\w)-(?=\w)"` inside the `dehyphen` helper; honey/sql_test invokes it hundreds of times per gate via column-name conversions, and cw v0 currently passes. **Implication for ADR-0031**: lookahead was framed as "Phase 4+ debt or never" in the original cycle plan (D-051 covers cycle 2-5 = lazy DFA / captures / `(?i)` / errors but NOT lookaround). Honey/sql being on the cw v1 compat tier list would pull lookahead forward into cycle 4 or 5. Pre-Phase-11 entry the owner must: (1) confirm whether honey/sql remains on cw v1's compat tier; (2) if yes, amend D-051 to include lookahead in cycle 4 or 5 + open an ADR-0031 revision history entry; (3) if no, record the de-scoping decision so the assumption is not re-litigated. Note: the cw v0 `pprint.clj` internal `param-pattern` (`#"^([vV]|#|('.)|([+-]?\d+)|(?=,))"` at L40, alternation + capture + lookahead) is the same shape — cl-format coverage at Phase 11+ would also force lookahead. | Phase 11 compat-tier evaluation | 2026-05-25
   - id: "D-057"
-    discharged_at: "Phase 11 conformance (clojure.string Unicode case)"
+    discharged_at: "RE-OPENED 2026-06-04 (D-243, soft) — Phase 11 done, Unicode fold ASCII-only; land table OR AD-NNN. Was: Phase 11 conformance (clojure.string Unicode case)"
     resolution: |-
       runtime | `runtime/charset.zig::{upperCaseAlloc,lowerCaseAlloc}` ship ASCII case-fold only at Phase 6.9 cycle 1; non-ASCII codepoints pass through unchanged. JVM Clojure's `clojure.string/upper-case` delegates to `String.toUpperCase()` which handles Latin Extended / Greek / Cyrillic / Turkish-locale dotted-I etc. cw v1 inherits the partial behaviour: `(clojure.string/upper-case "café")` → `"CAFé"` (only ASCII chars folded). This is a known gap — the alternative (raise on non-ASCII input) would break realistic Japanese-mixed Clojure code that contains incidental Latin punctuation. **Phase 11 entry** loads `~/Documents/OSS/clojure/src/clj/clojure/string.clj` conformance corpus; the Unicode case-fold table (CaseFolding.txt from Unicode 15.1 / 16.0) drives the production impl. Estimated 200-300 LOC for the fold-table + iterator integration. Source: ADR-0032 + Phase 6.9 cycle 1 commit (TBD). | Phase 11 conformance scope | 2026-05-25
   - id: "D-058"
@@ -2091,15 +2141,15 @@ discharged:
     resolution: |-
       structure | **Bytecode-cache version scope must include the peephole rule set (ADR-0047 finding e)**: the Phase-12 serializer (`src/eval/bytecode/serialize.zig`, magic + u16 version) caches the **optimized** `BytecodeChunk` because peephole runs inside `compiler.compile` (ADR-0047 D2). If a future peephole rule is added/changed without bumping the bytecode version, a stale on-disk cache serves bytecode optimized under the OLD rule set — silently divergent from a fresh compile. Discharge: document that the version field's scope = opcode layout AND peephole rule set, and add a version bump + a cache-reject test when the second peephole rule (or any rule change) lands after a real cache format ships (the cache `cljw build` artifact path is D-100 (b), not yet shipped — so this is latent until both D-100 (b) and a second peephole rule exist). | Phase 13.3+ — second peephole rule OR D-100 (b) cache artifact ships, whichever forces a version-scope decision | 2026-05-28
   - id: "D-104"
-    discharged_at: "Phase 13.4 follow-up — focused bench-parity porting cycle"
+    discharged_at: "RE-OPENED 2026-06-04 (D-243, HARD) — Phase 13 done, 4 of 5 v0-parity fixtures unported. Was: Phase 13.4 follow-up — focused bench-parity porting cycle"
     resolution: |-
       tests | **v0 24C.10 5-canonical workload-matched parity (4 of 5 deferred)**: Phase 13 row 13.4 (2026-05-28) defined the 5-canonical = cw v0 headline 5 (fib_recursive / map_filter_reduce / sieve / lazy_chain / multimethod_dispatch) and locked their v0 24C.10 ms-warm-ReleaseSafe-M4-Pro reference numbers (24/17/16/16/15). fib_recursive(25) verified at cljw 20 ms warm = 83% (✓ within 110%). The remaining 4 require form-translation porting from v0's `.clj` source — at minimum `loop` (Clojure macro, NOT yet bootstrapped in cljw — only `loop*` special form is in scope) needs to be added, and each fixture needs measurement + comparison. Source paths: `~/Documents/MyProducts/ClojureWasm/bench/benchmarks/{05_map_filter_reduce,09_sieve}/bench.clj` (lazy_chain + multimethod_dispatch fixtures need locating in v0 tree). Discharge: port 4 fixtures into `bench/fixtures/v0_parity/` (or similar), add a v0-parity measurement helper, run each, verify within 110% or file gap measurement per row 13.4 wording. | Phase 13.4 follow-up focused session | 2026-05-28
   - id: "D-105"
-    discharged_at: "Phase 14 follow-up — focused runtime/time/ landing cycle"
+    discharged_at: "RE-OPENED 2026-06-04 (D-243, HARD) — Phase 14 done, runtime/time/ impls + method_tables unbuilt. Was: Phase 14 follow-up — focused runtime/time/ landing cycle"
     resolution: |-
       runtime | **`runtime/time/{local_date_time,duration,zoned_date_time}.zig` backing impls** are not yet landed. Phase 14 row 14.2 (D-097) shipped the **TypeDescriptor reservations** for `java.time.LocalDateTime` / `Duration` / `ZonedDateTime` per ADR-0029 D5 — the cljw_ns + TypeDescriptor pairs are reachable via `rt.types.get(...)` and the aggregator registers them at startup, but `(java.time.LocalDateTime/now)` and similar method invocations raise until the backing impl + method-table population land. Discharge: write the 3 impls under `runtime/time/` (mirroring `runtime/time/instant.zig`); populate each surface's `method_table` (`now` / `parse` / `plus` / `minus` / `getYear` / `format` / `toInstant` etc.); add e2e cases per surface. Estimated ~400 LOC across the 3 impls. | Phase 14 focused follow-up (post row 14.5 ex-info / row 14.6 defmacro — both unblock test corpora that exercise time) | 2026-05-28
   - id: "D-106"
-    discharged_at: "Phase 14 follow-up — focused runtime/net/ + runtime/crypto/ landing"
+    discharged_at: "RE-OPENED 2026-06-04 (D-243, HARD) — Phase 14 done, runtime/net/ + runtime/crypto/ impls unbuilt. Was: Phase 14 follow-up — focused runtime/net/ + runtime/crypto/ landing"
     resolution: |-
       runtime | **`runtime/net/socket.zig` + `runtime/crypto/message_digest.zig` backing impls** are not yet landed. Phase 14 row 14.3 (D-097 third wave) shipped the **TypeDescriptor reservations** for `java.net.Socket` + `java.security.MessageDigest` per ADR-0029 D5. Discharge: write `runtime/net/socket.zig` (Zig std.net TCP client / server primitives), `runtime/crypto/message_digest.zig` (SHA-256 / SHA-1 / MD5 via std.crypto.hash) + populate each surface's `method_table` (`connect` / `read` / `write` for Socket; `getInstance` / `update` / `digest` for MessageDigest) + e2e cases. Estimated ~300 LOC + tests. | Phase 14 focused follow-up — network or crypto exercise from a test corpus forces the surface | 2026-05-28
   - id: "D-107"
