@@ -28,6 +28,7 @@ const heap_header = @import("../value/heap_header.zig");
 const tag_ops = @import("tag_ops.zig");
 const free_pool_mod = @import("free_pool.zig");
 const root_set_mod = @import("root_set.zig");
+const io_default = @import("../concurrency/io_default.zig");
 
 const GcHeap = gc_heap_mod.GcHeap;
 const HeapHeader = heap_header.HeapHeader;
@@ -123,6 +124,11 @@ pub fn sweep(gc: *GcHeap) void {
 /// growth cycle. Prevents the "first def triggers a full GC mid-
 /// load on a 4 MiB Clojure source" failure mode.
 pub fn collect(gc: *GcHeap, ctx: root_set_mod.WalkContext) void {
+    // Whole collection runs under the global heap lock (ADR-0090 §2): no
+    // mutator can allocate while mark+sweep run. Not reentrant — mark/sweep
+    // never allocate, so they do not re-take `gc_mutex`.
+    io_default.lockMutex(&gc.gc_mutex);
+    defer io_default.unlockMutex(&gc.gc_mutex);
     var it = root_set_mod.enumerate(ctx);
     while (it.next()) |root_header| {
         mark(gc, root_header);

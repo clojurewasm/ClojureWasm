@@ -22,9 +22,15 @@
 //! import graph acyclic (it reaches `root_set.zig`, which imports this
 //! file).
 //!
-//! Thread-safety: the GC is single-threaded today. Wiring a lock
-//! bracket around alloc / collect is deferred to Phase B (concurrency),
-//! per ADR-0028 §1 concurrency paragraph.
+//! Thread-safety (ADR-0090 §2, F-006): `gc_mutex` (a `std.Io.Mutex`,
+//! locked through the `io_default` singleton because the allocator API
+//! takes no `io` arg) serializes `alloc` / `pin` / `unpin` and the whole
+//! `collect()` cycle (the latter brackets in `mark_sweep.collect`). It is
+//! uncontended today (real threads arrive with `future` / `pmap`); the
+//! global alloc lock is the foundation the `ThreadGcContext`
+//! root-publication handshake (ADR-0090) builds on for collection safety.
+//! Not reentrant: `alloc` never calls `collect`, and `collect` never
+//! allocates, so the two lock-takers never nest.
 
 const std = @import("std");
 const testing = std.testing;
@@ -32,6 +38,7 @@ const testing = std.testing;
 const heap_header = @import("../value/heap_header.zig");
 const free_pool_mod = @import("free_pool.zig");
 const value_mod = @import("../value/value.zig");
+const io_default = @import("../concurrency/io_default.zig");
 
 const HeapHeader = heap_header.HeapHeader;
 const FreePoolMap = free_pool_mod.FreePoolMap;
@@ -142,6 +149,12 @@ pub const GcHeap = struct {
     /// Bytes allocated since the last `collect()` invocation. Trips
     /// collection when it exceeds `threshold_bytes`.
     bytes_since_last_gc: usize = 0,
+    /// Global heap lock (ADR-0090 §2). Serializes `alloc` / `pin` /
+    /// `unpin` and the whole `collect()` cycle so allocation is
+    /// thread-safe under F-006. Locked via the `io_default` singleton
+    /// (the allocator API has no `io` arg). Uncontended until real
+    /// threads land (`future` / `pmap`).
+    gc_mutex: std.Io.Mutex = .init,
 
     pub fn init(infra: std.mem.Allocator) GcHeap {
         var g = GcHeap{ .infra = infra };
@@ -174,6 +187,8 @@ pub const GcHeap = struct {
     /// must pair every `pin` with an `unpin` to avoid steady-state
     /// leaks. Immediates can be pinned too — the walker filters them.
     pub fn pin(self: *GcHeap, v: Value) !void {
+        io_default.lockMutex(&self.gc_mutex);
+        defer io_default.unlockMutex(&self.gc_mutex);
         try self.permanent_roots.append(self.infra, v);
     }
 
@@ -181,6 +196,8 @@ pub const GcHeap = struct {
     /// `false` if the Value was not pinned (treated as a programming
     /// error by callers — typically wrapped in `std.debug.assert`).
     pub fn unpin(self: *GcHeap, v: Value) bool {
+        io_default.lockMutex(&self.gc_mutex);
+        defer io_default.unlockMutex(&self.gc_mutex);
         for (self.permanent_roots.items, 0..) |entry, i| {
             if (entry == v) {
                 _ = self.permanent_roots.swapRemove(i);
@@ -211,6 +228,8 @@ pub const GcHeap = struct {
     /// list mis-link can land.
     pub fn alloc(self: *GcHeap, comptime T: type) !*T {
         comptime assertHeaderAtOffsetZero(T);
+        io_default.lockMutex(&self.gc_mutex);
+        defer io_default.unlockMutex(&self.gc_mutex);
         const align_t: std.mem.Alignment = .fromByteUnits(@alignOf(T));
         const effective_size: usize = @max(@sizeOf(T), min_alloc_bytes);
         const key = free_pool_mod.FreePoolKey{ .size = effective_size, .alignment = align_t };
@@ -293,6 +312,43 @@ test "GcHeap.alloc tracks bytes + count + bytes_since_last_gc" {
     try testing.expectEqual(@as(usize, 2), gc.allocations.items.len);
     try testing.expectEqual(@as(usize, 2 * @sizeOf(Cell)), gc.stats.bytes_allocated);
     try testing.expectEqual(@as(u64, 2), gc.stats.alloc_count);
+}
+
+test "concurrent alloc through the global heap lock is race-free (ADR-0090 §2)" {
+    // The gc_mutex (locked via io_default) must serialize alloc across real
+    // OS threads so the `allocations` ArrayList append + `infra` rawAlloc
+    // never race. Set io_default to a THREADED io for real mutex blocking,
+    // then restore it (the singleton is process-wide; tests run serially).
+    const Cell = extern struct { header: HeapHeader, payload: u64 = 0 };
+    const per_thread = 500;
+    const n_threads = 4;
+
+    const saved_io = io_default.get();
+    var threaded = std.Io.Threaded.init(testing.allocator, .{});
+    defer threaded.deinit();
+    defer io_default.set(saved_io); // runs before threaded.deinit (LIFO)
+    io_default.set(threaded.io());
+
+    var gc = GcHeap.init(testing.allocator);
+    defer gc.deinit();
+
+    const Worker = struct {
+        fn run(g: *GcHeap) void {
+            var i: usize = 0;
+            while (i < per_thread) : (i += 1) {
+                const c = g.alloc(Cell) catch return;
+                c.* = .{ .header = HeapHeader.init(.string) };
+            }
+        }
+    };
+
+    var threads: [n_threads]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, Worker.run, .{&gc});
+    for (&threads) |t| t.join();
+
+    // Every alloc landed exactly once — no lost append, no double-count.
+    try testing.expectEqual(@as(usize, n_threads * per_thread), gc.allocations.items.len);
+    try testing.expectEqual(@as(u64, n_threads * per_thread), gc.stats.alloc_count);
 }
 
 test "GcHeap.alloc returned pointer aliases the live-list HeapHeader" {
