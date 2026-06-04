@@ -100,5 +100,9 @@ assert_eq 'agent_error_mode_default' "$got" ':fail'
 got=$("$BIN" -e '(let [a (agent 0)] (send a (fn [s] (send a inc) (inc s))) (await a) @a)' 2>/dev/null | last_line)
 assert_eq 'agent_nested_send' "$got" '2'
 
+# agent? predicate.
+got=$("$BIN" -e '[(agent? (agent 0)) (agent? 5) (agent? (atom 0))]' 2>/dev/null | last_line)
+assert_eq 'agent_predicate' "$got" '[true false false]'
+
 echo
 echo "Phase B #6 agent (first slice + error modes) e2e: all green."

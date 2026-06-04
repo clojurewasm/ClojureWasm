@@ -99,5 +99,12 @@ assert_eq 'promise_retry_deliver_nil_preserves' "$got" '[nil :first]'
 got=$("$BIN" -e '(let [p (promise)] (future (deliver p 42)) (deref p))' 2>/dev/null | last_line)
 assert_eq 'promise_blocks_until_delivered' "$got" '42'
 
+# Predicates (Phase B): future? / future-done? (the latter after a deref so it is
+# deterministically realised).
+got=$("$BIN" -e '[(future? (future 1)) (future? 5)]' 2>/dev/null | last_line)
+assert_eq 'future_predicate' "$got" '[true false]'
+got=$("$BIN" -e '(let [f (future 1)] @f (future-done? f))' 2>/dev/null | last_line)
+assert_eq 'future_done_after_deref' "$got" 'true'
+
 echo
 echo "Phase 14 row 14.8 future/promise/delay e2e: all green."

@@ -140,6 +140,33 @@ pub fn delayQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return if (args[0].tag() == .delay) Value.true_val else Value.false_val;
 }
 
+/// `(future? x)` — true iff x is a future.
+pub fn futureQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("future?", args, 1, loc);
+    return if (future_mod.isFuture(args[0])) Value.true_val else Value.false_val;
+}
+
+/// `(agent? x)` — true iff x is an agent.
+pub fn agentQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("agent?", args, 1, loc);
+    return if (agent_mod.isAgent(args[0])) Value.true_val else Value.false_val;
+}
+
+/// `(future-done? f)` — true iff the future has completed (value or error). clj
+/// `(.isDone f)`; requires a future (a non-future is a type error).
+pub fn futureDoneQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("future-done?", args, 1, loc);
+    if (!future_mod.isFuture(args[0]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "future-done?", .expected = "future", .actual = @tagName(args[0].tag()) });
+    return if (future_mod.isRealised(args[0])) Value.true_val else Value.false_val;
+}
+
 fn requireRef(name: []const u8, v: Value, loc: SourceLocation) !void {
     if (!ref_mod.isRef(v)) {
         return error_catalog.raise(.type_arg_invalid, loc, .{
@@ -230,6 +257,9 @@ const ENTRIES = [_]Entry{
     .{ .name = "realized?", .f = &realizedQFn },
     .{ .name = "force", .f = &forceFn },
     .{ .name = "delay?", .f = &delayQFn },
+    .{ .name = "future?", .f = &futureQFn },
+    .{ .name = "agent?", .f = &agentQFn },
+    .{ .name = "future-done?", .f = &futureDoneQFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
