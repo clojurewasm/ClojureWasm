@@ -29,6 +29,7 @@ const map_mod = @import("../../runtime/collection/map.zig");
 const set_mod = @import("../../runtime/collection/set.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
 const root_set = @import("../../runtime/gc/root_set.zig");
+const safepoint = @import("../../runtime/concurrency/safepoint.zig");
 const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const host_class = @import("../../runtime/error/host_class.zig");
@@ -105,6 +106,14 @@ pub fn eval(
     defer root_set.eval_frame_head = gc_frame.parent;
 
     while (true) {
+        // Liveness-only back-edge safe point (ADR-0090 Alt B / D-244 #3b-step2):
+        // a worker spinning in a non-allocating loop never hits the alloc-prologue
+        // park, so it must poll here to notice a pending collection and park
+        // (its operand-stack frame above is published, so the collector walks it).
+        // Relaxed load — correctness of the roots is fenced by `park`'s acquire;
+        // this poll only needs to eventually observe the flag. One predicted-not-
+        // taken branch; inert until a Phase-B worker arms `gc_requested` (#4).
+        if (safepoint.gc_requested.load(.monotonic)) safepoint.park();
         const step_result = stepOnce(rt, env, locals, chunk, &stack, &sp, &ip, &handlers, &handler_count);
         if (step_result) |maybe_return| {
             if (maybe_return) |v| return v;
@@ -1362,4 +1371,64 @@ test "op_match_class returns false for unknown class names" {
     const chunk: BytecodeChunk = .{ .instructions = &instrs, .constants = &constants };
 
     try testing.expectEqual(Value.false_val, try f.run(&chunk));
+}
+
+test "vm.eval back-edge poll parks a worker mid-eval during a stop-the-world (D-244 #4)" {
+    const io_default = @import("../../runtime/concurrency/io_default.zig");
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // Route the safepoint sync through the same threaded io as the runtime so the
+    // Io.Mutex/Condition block for real across threads (restored LIFO).
+    const saved_io = io_default.get();
+    defer io_default.set(saved_io);
+    io_default.set(f.threaded.io());
+
+    // A trivial alloc-free chunk the worker re-evaluates in a tight loop, so the
+    // ONLY safe point it can reach is the back-edge poll (no alloc-prologue park).
+    const instrs = [_]Instruction{ .{ .opcode = .op_const, .operand = 0 }, .{ .opcode = .op_ret } };
+    const constants = [_]Value{Value.true_val};
+    const chunk: BytecodeChunk = .{ .instructions = &instrs, .constants = &constants };
+
+    const Shared = struct {
+        var rt: *Runtime = undefined;
+        var env: *Env = undefined;
+        var chunk_ptr: *const BytecodeChunk = undefined;
+        var ready: std.atomic.Value(bool) = .init(false);
+        var done: std.atomic.Value(bool) = .init(false);
+
+        fn worker() void {
+            var ctx: root_set.ThreadGcContext = .{
+                .frame_slot = &env_mod.current_frame,
+                .macro_slot = &root_set.macro_root_slot,
+                .eval_frame_slot = &root_set.eval_frame_head,
+                .self_guard_slot = &root_set.gc_self_guard,
+            };
+            root_set.registerThread(&ctx) catch return;
+            defer root_set.unregisterThread(&ctx);
+            var locals: [256]Value = [_]Value{.nil_val} ** 256;
+            ready.store(true, .release);
+            // Continuously in `eval`, so the back-edge poll is always being checked
+            // — arming `gc_requested` deterministically catches the worker mid-eval.
+            while (!done.load(.acquire)) {
+                _ = eval(rt, env, &locals, chunk_ptr) catch break;
+            }
+        }
+    };
+    Shared.rt = &f.rt;
+    Shared.env = &f.env;
+    Shared.chunk_ptr = &chunk;
+    Shared.ready.store(false, .monotonic);
+    Shared.done.store(false, .monotonic);
+
+    var t = try std.Thread.spawn(.{}, Shared.worker, .{});
+    while (!Shared.ready.load(.acquire)) std.atomic.spinLoopHint();
+
+    // stopWorld returns ONLY once the worker has parked at the back-edge poll
+    // (target = registeredThreadCount() = 1). If the poll were broken the worker
+    // would never park and this would hang (caught by the gate timeout).
+    safepoint.stopWorld(false);
+    safepoint.resumeWorld();
+    Shared.done.store(true, .release);
+    t.join();
+    try testing.expect(!safepoint.gc_requested.load(.acquire));
 }
