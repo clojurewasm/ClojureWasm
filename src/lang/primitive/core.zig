@@ -23,6 +23,9 @@ const keyword_mod = @import("../../runtime/keyword.zig");
 const symbol_mod = @import("../../runtime/symbol.zig");
 const string_mod = @import("../../runtime/collection/string.zig");
 const equal_mod = @import("../../runtime/equal.zig");
+const hash_mod = @import("../../runtime/hash.zig");
+const sequence = @import("sequence.zig");
+const list = @import("../../runtime/collection/list.zig");
 const print_mod = @import("../../runtime/print.zig");
 const charset_mod = @import("../../runtime/charset.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
@@ -1207,6 +1210,45 @@ pub fn hashFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     return Value.initInteger(@as(i32, @bitCast(equal_mod.valueHash(args[0]))));
 }
 
+/// `(mix-collection-hash hash-basis count)` — the Murmur3 collection-hash
+/// finaliser (clojure.core, used by custom hashers). Both args are 32-bit
+/// ints; the result is a 32-bit int.
+pub fn mixCollectionHashFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("mix-collection-hash", args, 2, loc);
+    const basis: u32 = @bitCast(@as(i32, @truncate(try error_catalog.expectInteger(args[0], "mix-collection-hash", loc))));
+    const cnt: u32 = @bitCast(@as(i32, @truncate(try error_catalog.expectInteger(args[1], "mix-collection-hash", loc))));
+    return Value.initInteger(@as(i32, @bitCast(hash_mod.mixCollHash(basis, cnt))));
+}
+
+/// `(hash-ordered-coll coll)` / `(hash-unordered-coll coll)` — clojure.core
+/// collection-hash combinators (used by custom collection `hashCode`/`hasheq`).
+/// Computed with cljw's internal 32-bit-wrapping Murmur algorithm (not Clojure
+/// arithmetic, which auto-promotes per F-005). Iterate the coll's seq, hashing
+/// each element via the same `valueHash` the HAMT uses.
+fn collHash(rt: *Runtime, env: *Env, name: []const u8, args: []const Value, loc: SourceLocation, ordered: bool) anyerror!Value {
+    try error_catalog.checkArity(name, args, 1, loc);
+    var h: u32 = if (ordered) 1 else 0;
+    var n: u32 = 0;
+    var cur = try sequence.seqFn(rt, env, args[0..1], loc);
+    while (cur.tag() == .list and list.countOf(cur) > 0) {
+        const eh = equal_mod.valueHash(list.first(cur));
+        h = if (ordered) h *% 31 +% eh else h +% eh;
+        n +%= 1;
+        cur = list.rest(cur);
+    }
+    return Value.initInteger(@as(i32, @bitCast(hash_mod.mixCollHash(h, n))));
+}
+
+pub fn hashOrderedCollFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    return collHash(rt, env, "hash-ordered-coll", args, loc, true);
+}
+
+pub fn hashUnorderedCollFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    return collHash(rt, env, "hash-unordered-coll", args, loc, false);
+}
+
 /// `(gensym)` / `(gensym prefix)` — a fresh unguessable symbol
 /// `<prefix><n>` (default prefix `G__`). Uses the runtime gensym counter
 /// directly (the `__auto__`-suffixed `rt.gensym` is the syntax-quote `x#`
@@ -1306,6 +1348,9 @@ pub fn varSetFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 
 const ENTRIES = [_]Entry{
     .{ .name = "hash", .f = &hashFn },
+    .{ .name = "mix-collection-hash", .f = &mixCollectionHashFn },
+    .{ .name = "hash-ordered-coll", .f = &hashOrderedCollFn },
+    .{ .name = "hash-unordered-coll", .f = &hashUnorderedCollFn },
     .{ .name = "var-get", .f = &varGetFn },
     .{ .name = "var-set", .f = &varSetFn },
     .{ .name = "eval", .f = &evalFn },

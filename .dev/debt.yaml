@@ -795,6 +795,16 @@ active:
       keys unaffected (identity). corpus float_special_str_nan (13) + diff case.
       Remaining coresweep9 DIFFs are intentional (float→f32 = F-005; char 0x1F600
       = cljw full-codepoint vs clj 16-bit; `%c` errors in both).
+      **2026-06-04 `hash-ordered-coll`/`hash-unordered-coll`/`mix-collection-hash`
+      ADDED** (sweep coresweep11; were missing clojure.core fns). Primitives over
+      cljw's internal 32-bit-wrapping Murmur (`hash.zig` mixCollHash + valueHash) —
+      NOT Clojure arithmetic (which auto-promotes per F-005, breaking the 32-bit
+      wrap). hash-ordered (31*h+) / hash-unordered (sum, no dedup) match clj for
+      AD-009-stable element types (integers) + are intra-cljw consistent for all
+      (`(= (hash-ordered-coll [:a]) (hash [:a]))`→true). corpus
+      hash_coll_combinators (17). Keyword/string ABSOLUTE values differ per AD-009
+      (cljw-native hash) — not a new bug. The namespace/var/symbol sweep was
+      otherwise clean.
       **2026-06-04 instance? interface-membership SWEEP** (big-bang, the Iterable/
       IEditableCollection pattern completed). FIXED too-narrow arms:
       IPersistentMap (+sorted_map), IPersistentSet (+sorted_set),
