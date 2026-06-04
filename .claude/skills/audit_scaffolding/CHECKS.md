@@ -363,23 +363,31 @@ rg --no-heading -n 'Phase \d+ entry: informational|until Phase \d+|Phase \d+\+? 
 Severity: **soon** when a referenced Phase has DONE-flipped in
 ROADMAP §9. The cite ages into a lie — refresh wording or remove.
 
-### E2.7 telltale-pattern provisional sweep
+### E2.7 telltale-pattern provisional + comment-drift sweep
 
-Find candidate **unmarked** provisional behaviour in source. The
-`.claude/rules/framework_completion.md` discovery-criterion shape
-this implements:
+Find candidate **unmarked** provisional behaviour AND "drift from finished-form"
+encoded in comments (ADR-0089: doc/debt sweeps only catch *written-down* debt;
+code comments encode much more — `stub` / `single-threaded so fine` /
+`eager-inline` that were never promoted to `debt.yaml`). The
+`.claude/rules/framework_completion.md` discovery-criterion shape this implements.
+For an EXHAUSTIVE pass over the (large) tree, fan out read-only subagents by
+module subtree (each fresh-context) to classify *every* comment; the grep below
+is the candidate-finder seed.
 
 ```sh
-# Telltale patterns that hint at intermediate state. Each hit needs
-# classification: provisional / tier-staging / skeleton / stale-doc /
-# false-positive.
-# Note: alternation pipes are ripgrep / Rust-regex literal `|`, NOT
-# `\|` (the latter would be the literal substring "\|" and match
-# nothing — verified by Wave-16 self-review).
-rg --no-heading -in 'until Phase \d+|stands in for|for now|substitute|temporarily|placeholder|TBD' \
+# Telltale patterns that hint at intermediate / not-finished-form state. Each
+# hit needs classification: provisional / tier-staging / skeleton / stale-doc /
+# false-positive. Widened 2026-06-04 (ADR-0089) with the comment-drift tokens
+# (stub / single-threaded / eager-inline / skeleton) the doc/debt sweep misses.
+# Note: alternation pipes are ripgrep / Rust-regex literal `|`, NOT `\|`.
+rg --no-heading -in 'until Phase \d+|stands in for|for now|substitute|temporarily|placeholder|TBD|stub|single-threaded|eager-inline|skeleton|not yet (impl|support|wired)|will (land|swap)' \
   src/ test/e2e/ 2>/dev/null \
   | grep -v 'PROVISIONAL:' \
   | grep -v '^\s*//.*PROVISIONAL'
+# Stale-API drift (Zig 0.16 removals referenced in comments/plans — the §7.1
+# class of finding; cross-ref `.claude/rules/zig_tips.md`):
+rg --no-heading -in 'std\.Thread\.(Pool|Mutex|Condition|Semaphore)|std\.io\.|binding_stack\.zig' \
+  src/ 2>/dev/null | grep -v 'gone in\|removed in\|0\.16'
 
 # Cross-check: any feature_not_supported raise that points at a future
 # Phase but lacks a corresponding debt row?

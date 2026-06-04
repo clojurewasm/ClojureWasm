@@ -319,6 +319,14 @@ I'm here"; the structural imagination phase says "the owner
 has the context, I have the foresight — give the owner the
 foresight, don't seize the decision".
 
+**Spike the primitive before the structural ADR (ADR-0089).** When the
+structural decision rides an unfamiliar host capability — chiefly Phase B
+concurrency on Zig 0.16 (atomics, `std.Io.*` threading, GC thread-safety) —
+validate the *Clojure-equivalent, internals-free* shape (F-011 §2 +
+`no_jvm_specific_assumption`) in a throwaway spike first (web search + the Zig
+0.16 source are fair game; spike code lives in `private/`, no gate). The spike
+de-risks the ADR; it does not replace the DA-fork or the imagination pass.
+
 ## How this file is maintained
 
 - Keep it short. Detail belongs in ROADMAP / ADR / rules.

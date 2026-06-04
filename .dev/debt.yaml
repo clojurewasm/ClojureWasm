@@ -9,6 +9,38 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-242"
+    status: "Phase B anchor (re-cut ADR-0089, 2026-06-04) — KNOWN-unimplemented CORE, concurrency-led; redesign §7 against Zig 0.16 FIRST, then implement. finished-form, rework-OK with test guards."
+    category: "concurrency"
+    quality_floor: "Phase B: core-unimplemented (concurrency-led) — libraries fail en masse without it"
+    barrier: |-
+      **The CORE-unimplemented tier that real libraries depend on (ADR-0089 Phase
+      B). Single consolidated anchor — does NOT duplicate the existing per-item
+      rows; it sequences + scopes them.** Verified 2026-06-04:
+      - **STM transactions** — `dosync`/`alter`/`commute`/`ensure`/`ref-set`
+        UNIMPLEMENTED (only the `ref` shell exists). ROADMAP §7.2 previously
+        claimed "STM is implemented" (false; corrected by ADR-0089). Design =
+        MVCC per ADR-0010, but the §7.1 Zig mapping is pre-0.16 and must be
+        redesigned.
+      - **agent** / `send` / `send-off` / `await` / `agent-error` — entirely
+        missing.
+      - **locking** — missing.
+      - **real threading** — `future`/`promise`/`delay`/`pmap`/`pcalls` run
+        SYNCHRONOUSLY today (`future.zig` eager-inline); real parallelism +
+        `Thread` interop (`Thread/sleep`, `Thread/currentThread`) are Phase B.
+      - **GC thread-safety** — `arena.zig` is single-threaded; real concurrency
+        forces a thread-safe-GC / shared-heap design + atom/ref CAS atomicity +
+        threadlocal-binding conveyance to spawned threads (cross-ref D-241
+        baseline-frame, `bound-fn`).
+      Existing per-item rows this anchor sequences (do NOT re-mint): D-238
+      (`*out*`/`*err*`/`with-out-str`), D-239 (alter-meta ns/ref/agent), the
+      `into-array`/`make-array`/`aget`/`aset` F-004-slot rows, the reflection
+      (Field/Method/`bean`) rows. **Phase B entry discipline (ADR-0089)**: open
+      with a §7-redesign ADR + Structural-imagination + DA-fork; spike the Zig
+      0.16 primitive first (principle.md). North star = user-observable parity,
+      internals free (F-011 §2 + no_jvm). recall trigger: Phase B entry, or any
+      library that needs STM/agents/threads/arrays/IO-redirect.
+    last_reviewed: "2026-06-04"
   - id: "D-241"
     status: "now (found 2026-06-04 while landing bound-fn/with-bindings) — no clojure.main baseline binding frame, so get-thread-bindings captures only explicitly-bound vars."
     category: "runtime"
