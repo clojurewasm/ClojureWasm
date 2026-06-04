@@ -1,0 +1,24 @@
+(re-seq #"\p{Alpha}+" "ab12cd")
+;;=> ("ab" "cd")
+(re-matches #"\p{Digit}+" "12345")
+;;=> "12345"
+(boolean (re-matches #"\p{Punct}+" "!@#$%"))
+;;=> true
+(boolean (re-find #"\p{Upper}" "abC"))
+;;=> true
+(re-seq #"[\p{Alpha}_]+" "a_b 12 c")
+;;=> ("a_b" "c")
+(boolean (re-find #"\P{Digit}" "123a"))
+;;=> true
+(boolean (re-find #"\s" (str (char 11))))
+;;=> true
+(boolean (re-find #"\p{Space}" (str (char 11))))
+;;=> true
+(re-matches #"\p{Alnum}+" "abc123")
+;;=> "abc123"
+(boolean (re-matches #"\p{Lower}+" "abc"))
+;;=> true
+(boolean (re-matches #"\p{XDigit}+" "1a2F"))
+;;=> true
+(vec (re-seq #"\p{Digit}+" "a1b22c333"))
+;;=> ["1" "22" "333"]

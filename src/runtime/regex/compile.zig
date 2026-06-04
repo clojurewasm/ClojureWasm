@@ -475,11 +475,70 @@ const Parser = struct {
             'f' => .{ .lit = 12 },
             'b' => .{ .anchor = .word_boundary },
             'B' => .{ .anchor = .non_word_boundary },
+            // POSIX named classes `\p{Alpha}` / negated `\P{Alpha}` (ASCII —
+            // Java's POSIX `\p{…}` set is ASCII by definition, so exact parity).
+            // Routed through here so they also work inside `[…]` (parseCharClass
+            // ORs the `.class` payload). Unicode category names (`\p{L}`, scripts)
+            // stay NotImplemented — honest staging, not a silent ASCII fallback.
+            'p' => .{ .class = try self.parsePosixClass(false) },
+            'P' => .{ .class = try self.parsePosixClass(true) },
             '.', '*', '+', '?', '(', ')', '[', ']', '|', '\\', '^', '$', '{', '}', '/' => .{ .lit = c },
             else => CompileError.InvalidEscape,
         };
     }
+
+    /// Parse the `{Name}` after `\p` / `\P` and return the matching POSIX
+    /// character class (negated when `negate`). Unknown / Unicode-only names
+    /// raise NotImplemented (kept unsupported rather than silently wrong).
+    fn parsePosixClass(self: *Parser, negate: bool) CompileError!CharClass {
+        if ((self.advance() orelse return CompileError.InvalidEscape) != '{') return CompileError.InvalidEscape;
+        const start = self.pos;
+        while (true) {
+            const ch = self.advance() orelse return CompileError.UnexpectedToken;
+            if (ch == '}') break;
+        }
+        const name = self.src[start .. self.pos - 1];
+        const cls = posixClass(name) orelse return CompileError.NotImplemented;
+        return if (negate) negateClass(cls) else cls;
+    }
 };
+
+/// Build a CharClass from a list of inclusive `[lo, hi]` byte ranges.
+fn classRanges(ranges: []const [2]u8) CharClass {
+    var cls: CharClass = .{};
+    for (ranges) |r| {
+        var b: u16 = r[0];
+        while (b <= r[1]) : (b += 1) cls.set(@intCast(b));
+    }
+    return cls;
+}
+
+/// Java `\p{Punct}` — the ASCII punctuation set (`!"#$%&'()*+,-./:;<=>?@[\]^_` +
+/// "`{|}~"`), expressed as four contiguous ASCII ranges.
+fn punctClass() CharClass {
+    return classRanges(&.{ .{ 0x21, 0x2F }, .{ 0x3A, 0x40 }, .{ 0x5B, 0x60 }, .{ 0x7B, 0x7E } });
+}
+
+/// POSIX class name → ASCII CharClass (Java `java.util.regex` POSIX subset).
+/// Returns null for unknown / Unicode-only names (e.g. `L`, `IsAlphabetic`).
+fn posixClass(name: []const u8) ?CharClass {
+    const eql = std.mem.eql;
+    if (eql(u8, name, "Alpha")) return classRanges(&.{ .{ 'a', 'z' }, .{ 'A', 'Z' } });
+    if (eql(u8, name, "Digit")) return classRanges(&.{.{ '0', '9' }});
+    if (eql(u8, name, "Alnum")) return classRanges(&.{ .{ 'a', 'z' }, .{ 'A', 'Z' }, .{ '0', '9' } });
+    if (eql(u8, name, "Upper")) return classRanges(&.{.{ 'A', 'Z' }});
+    if (eql(u8, name, "Lower")) return classRanges(&.{.{ 'a', 'z' }});
+    if (eql(u8, name, "XDigit")) return classRanges(&.{ .{ '0', '9' }, .{ 'a', 'f' }, .{ 'A', 'F' } });
+    // Java `\p{Space}` = `[ \t\n\x0B\f\r]` = space + bytes 9..13.
+    if (eql(u8, name, "Space")) return classRanges(&.{ .{ ' ', ' ' }, .{ 9, 13 } });
+    if (eql(u8, name, "Blank")) return classRanges(&.{ .{ ' ', ' ' }, .{ '\t', '\t' } });
+    if (eql(u8, name, "Cntrl")) return classRanges(&.{ .{ 0, 0x1F }, .{ 0x7F, 0x7F } });
+    if (eql(u8, name, "Print")) return classRanges(&.{.{ 0x20, 0x7E }});
+    if (eql(u8, name, "Graph")) return classRanges(&.{.{ 0x21, 0x7E }});
+    if (eql(u8, name, "Punct")) return punctClass();
+    if (eql(u8, name, "ASCII")) return classRanges(&.{.{ 0, 0x7F }});
+    return null;
+}
 
 fn digitClass() CharClass {
     var cls: CharClass = .{};
@@ -503,6 +562,7 @@ fn whitespaceClass() CharClass {
     cls.set(' ');
     cls.set('\t');
     cls.set('\n');
+    cls.set(11); // vertical tab — Java `\s` is `[ \t\n\x0B\f\r]` (was omitted)
     cls.set('\r');
     cls.set(12); // form feed
     return cls;
@@ -882,6 +942,39 @@ test "CharClass set / contains is bit-exact" {
     try testing.expect(!cls.contains('b'));
     try testing.expect(!cls.contains(0));
     try testing.expect(!cls.contains(255));
+}
+
+test "posixClass builds ASCII bitmaps (Alpha/Digit/Space/Punct)" {
+    const alpha = posixClass("Alpha").?;
+    try testing.expect(alpha.contains('a') and alpha.contains('Z') and !alpha.contains('0'));
+    const digit = posixClass("Digit").?;
+    try testing.expect(digit.contains('5') and !digit.contains('a'));
+    // Space includes the vertical tab (0x0B) — Java `\p{Space}` / `\s`.
+    const space = posixClass("Space").?;
+    try testing.expect(space.contains(' ') and space.contains(11) and space.contains('\t') and !space.contains('x'));
+    const punct = posixClass("Punct").?;
+    try testing.expect(punct.contains('!') and punct.contains('~') and !punct.contains('a') and !punct.contains('0'));
+    // Unicode / unknown names are not POSIX → null (kept unsupported upstream).
+    try testing.expect(posixClass("L") == null);
+    try testing.expect(posixClass("Bogus") == null);
+}
+
+test "compile \\p{Alpha} ok; \\P negates; Unicode name → NotImplemented" {
+    const alloc = testing.allocator;
+    {
+        var prog = try compile(alloc, "\\p{Alpha}+", .{});
+        defer prog.deinit(alloc);
+    }
+    {
+        var prog = try compile(alloc, "[\\p{Digit}_]", .{}); // works inside a class
+        defer prog.deinit(alloc);
+    }
+    try testing.expectError(CompileError.NotImplemented, compile(alloc, "\\p{L}", .{}));
+}
+
+test "\\s whitespace class includes vertical tab (0x0B)" {
+    const ws = whitespaceClass();
+    try testing.expect(ws.contains(' ') and ws.contains('\t') and ws.contains('\n') and ws.contains(11) and ws.contains('\r') and ws.contains(12));
 }
 
 test "(?i) leading flag folds literal + class to case-insensitive" {
