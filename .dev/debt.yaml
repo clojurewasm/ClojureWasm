@@ -114,7 +114,29 @@ active:
       un-enumerable) running during collect. Increments #1 (io_default) + #2
       (global alloc lock) are correct and stand under either mechanism. Landed as
       ADR-0090 Revision history 2026-06-04. recall trigger: Phase B #3 entry (this
-      is its gating design step).
+      is its gating design step). **DECIDED = Alt B (ADR-0090 D-244 decision
+      section).** #3 implementation checklist (worked 2026-06-04; the impl is
+      delicate — the GC root walker is the most correctness-critical module, so
+      proceed in the smallest tested steps): **#3a (registry + union walk,
+      runtime-inert today):** (i) put `ThreadGcContext` + the registry IN
+      `root_set.zig` (NOT a separate `concurrency/gc_thread.zig` — that would
+      import root_set for `macro_root_slot` while root_set imports it → cycle).
+      (ii) `ThreadGcContext = { frame_slot: *?*env.BindingFrame, macro_slot:
+      *?Value }` (pointers to a WORKER thread's `current_frame` + `macro_root_slot`
+      TLS). (iii) Only WORKER threads register (the collecting/main thread reads
+      its own TLS directly → no double-walk, existing single-thread tests stay
+      green, empty registry = current behaviour). (iv) The walker adds a pass over
+      registered contexts IN ADDITION to the calling thread's direct sources —
+      FOLD it into the `current_frame`/`macro_root_slot` cursors (a registry-index
+      dimension after the self-TLS chain) rather than add an 11th `RootSource`
+      (the `RootSource` enum's 10-source count is asserted by a test + ADR-0028 §5;
+      adding a source needs an ADR-0028 amendment — folding avoids it). (v)
+      registry mutations lock via `io_default`. **#3b (the safepoint + per-eval-
+      frame operand-stack publication, needed for #4 mid-eval workers):** the
+      alloc-boundary safe point + the liveness back-edge poll in `vm.eval` + each
+      `eval` invocation registering its `{stack_base, *sp, locals}` frame on the
+      thread's chain + the collecting-thread self-guard. #3a is the bounded first
+      step; #3b couples to #4 (force-VM worker thunks via `evalChunkErased`).
     last_reviewed: "2026-06-04"
   - id: "D-241"
     status: "now (found 2026-06-04 while landing bound-fn/with-bindings) — no clojure.main baseline binding frame, so get-thread-bindings captures only explicitly-bound vars."
