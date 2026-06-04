@@ -92,7 +92,7 @@ active:
       library needing java.time / net / crypto / regex-lookahead.
     last_reviewed: "2026-06-04"
   - id: "D-244"
-    status: "Phase B #3 gating design step (found 2026-06-04 designing the GC handshake) — ADR-0090 §2 GC-safety mechanism gap; re-analyse with a DA-fork BEFORE the handshake code."
+    status: "DECIDED 2026-06-04 (Alt B; ADR-0090 'D-244 decision' section + DA-fork) — alloc-boundary safepoint + per-frame ThreadGcContext chain publication + per-thread binding-frame-head + force-VM worker thunks (evalChunkErased) + collecting-thread self-guard. Survey found cw v0 has the same latent bug (no working ref). Implementation pending = the #3 handshake code; the barrier below is the impl checklist."
     category: "concurrency"
     quality_floor: "Phase B: GC-safety mechanism (collect must root every live thread's eval state, not just quiescent-point roots)"
     barrier: |-

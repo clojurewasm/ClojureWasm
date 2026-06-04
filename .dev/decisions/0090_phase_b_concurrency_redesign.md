@@ -383,4 +383,91 @@ written.** The main loop adopted this correction (Decision §2).
   STM, agent, conveyance) is unaffected; only §2's collection-safety mechanism
   (the Alt-1-vs-Alt-2 choice) is re-opened. Increments #1 (io_default) + #2
   (global alloc lock) are correct and land regardless (the alloc lock is needed
-  by every candidate mechanism).
+  by every candidate mechanism). **DECIDED 2026-06-04 — see the D-244 decision
+  section below.**
+
+- **2026-06-04 — D-244 DECIDED: Alternative B (alloc-boundary safepoint).** A
+  Step-0 survey (`private/notes/D244-gc-safety-survey.md`) + a mandatory DA-fork
+  resolved the GC-safety mechanism. Survey verdict: **cw v0 has the same latent
+  bug** (its `ThreadRegistry` is a vestigial counter; "safepoint comes in 48.3"
+  never landed) — no working mechanism to re-derive; the global alloc lock
+  (increment #2) is the one correct, necessary-not-sufficient piece. **Decision =
+  Alternative B** (the DA's recommendation, correcting the originally-proposed
+  C2a on three points):
+  1. **Worker eval runs on the VM backend only** (F-012; `build.zig` already
+     defaults to `.vm` since D-196's in-place discharge). `future`/`pmap`/`agent`
+     thunks are **force-compiled to a chunk and run via the VM `evalChunkErased`
+     vtable slot** regardless of the build's `-Dbackend` (so the tree_walk oracle
+     build can still exercise them single-threaded; tree_walk's un-enumerable
+     native intermediates never run on a worker). This decouples D-244 from any
+     backend-default question — Q2's "tree_walk-default fork" does NOT fire.
+  2. **The safe point is the ALLOCATION BOUNDARY, not the bytecode back-edge.**
+     Q1 is real and non-empty: `op_vector_literal`/`op_map_literal`/`op_set_literal`
+     + `callMethodImpl`'s rest-list cons-wrap loop hold a fresh accumulator in a
+     Zig local *across the next allocation*, un-installed on any operand slot — a
+     back-edge poll (C2a) does NOT cover this intra-`stepOnce` window. A thread
+     parks at *its own* `alloc` entry (where its live Values are installed on
+     published frames); the collecting thread **self-guards its own in-flight
+     allocation partial** (a single, enumerable, self-scoped spot — NOT a
+     guard-list discipline at every fabrication site, which would be an F-011
+     hazard). A **liveness-only** back-edge poll survives (re-scoped from
+     correctness to: park a non-allocating loop + quiesce the binding-frame chain
+     for Q3), costing the same single branch C2a would.
+  3. **Publication is a per-thread CHAIN of operand-stack frames, not one stack.**
+     `vm.eval` recurses (`op_call → callFn → callMethodImpl → eval`), each
+     invocation a fresh `stack`/`locals` Zig-local array; a `ThreadGcContext` must
+     register each `eval` frame on entry / pop on return, plus the thread's
+     binding-frame head. `collect()` walks the union of all threads' frame chains
+     + binding-frame heads + ns_vars + macro_root_slot + permanent_roots.
+  Q3 (the `pushFrame`/`popFrame` race) is closed by the STW-at-safepoint: parked
+  workers don't mutate the chain during the walk; the collector reads each
+  thread's `current_frame` head with the park/broadcast as the acquire fence.
+  **No F-NNN amendment needed** — the F-006 envelope (coordination-point STW,
+  precise roots by owning the operand-stack representation, no write barrier) is
+  exactly expressive enough; B forecloses concurrent/incremental mark without a
+  write barrier, which F-006 already defers to §89.2. **Alternative C**
+  (arena-isolated data-parallel workers with copy-out) is REJECTED for the spine
+  (shared-mutable `atom`/`agent`/`ref` identity → F-011 divergence on
+  `(let [a (atom 0)] @(future (swap! a inc)) @a)`) but retained as a future
+  detected-pure `pmap` fan-out optimization (Phase 15+/zwasm async). The #3
+  implementation (the safepoint machinery + per-frame `ThreadGcContext` chain +
+  force-VM worker thunks + the collecting-thread self-guard) now proceeds from
+  this decision; D-244's barrier is the implementation checklist.
+
+### Alternatives considered (D-244 decision, DA-fork fresh-context, verbatim)
+
+Briefed with F-006 (single-gen mark-sweep, no write barrier, generational/
+concurrent GC OUT → §89.2), F-011 §2, F-012 (VM = production since D-196 discharge;
+tree_walk = single-threaded oracle). Grounded in `vm.zig` (`eval`/`stepOnce`),
+`tree_walk.zig` `callMethodImpl`, `gc_heap.zig` (alloc lock landed), `root_set.zig`,
+D-244/D-196.
+
+**Leading finding:** C2a's published-root model is structurally under-specified —
+a worker holds a CHAIN of operand-stack frames (`vm.eval` recurses via
+`op_call → callFn → callMethodImpl → eval`, each a fresh Zig-local `stack`/`locals`),
+not one; every C2 variant must publish a per-thread *stack of frames*. No
+finished-form-clean option requires violating an F-NNN.
+
+**Alternative A — smallest-diff: alloc-point-only collection, no poll (C2b), per-frame publication.** Collection fires only inside `alloc` (lock held); each `eval` frame registers on a per-thread list; no `gc_requested` flag/poll/parking.
+- Better: zero hot-loop tax; reuses the landed lock; cleanest for non-allocating leaf loops; closest to ADR-0090 §2's original intent.
+- Breaks: **Q1 is fatal.** `op_vector_literal`/`op_map_literal`/`op_set_literal` build via a `conj`/`assoc` loop holding the partial accumulator in a Zig local across the next alloc; `callMethodImpl`'s rest-list cons-wrap loop likewise. A collect triggered by the next iteration's alloc sweeps the un-published partial → UAF. Only fixable by a guard-list discipline at every fabrication site — uncheckable, an F-011 hazard. Q3's `op_pop_binding_frame` (non-allocating chain edit) also races a concurrent walk with no coordination point.
+- F-NNN: F-006 ✓; F-011 ⚠ (correct only if guard discipline complete — silent UAF otherwise); F-012 ✓✓.
+
+**Alternative B — finished-form-clean: alloc-boundary safepoint + per-frame publication (RECOMMENDED).** The collection point is the allocation slow path made a true safe point: a thread crossing the threshold sets `gc_requested`, waits for every other thread to reach a safe point (alloc entry, or a liveness back-edge poll), walks the union of frame chains + binding heads, marks, sweeps, broadcasts. The safe point is *before* the fabricating allocation, so at it every live Value is installed on a published frame — Q1's window closed by construction; the collecting thread self-guards its own current partial.
+- Better than C2a/A: closes Q1 correctly (C2a's back-edge poll misses the intra-`stepOnce` accumulator window — a worker 50 iterations into `(into [] (range 1e7))` holds an un-published partial between back-edges); no fragile per-site guard discipline (the obligation moves to "every unbounded non-allocating loop must poll" — a small enumerable set: VM dispatch + `recur`).
+- Costs: **liveness** — a non-allocating loop never hits the alloc poll, so ONE back-edge liveness poll is still needed (rare-taken relaxed-atomic load + predicted-not-taken branch); a long native primitive bounds time-to-safepoint (HotSpot-like, acceptable). More upfront design (frame registry + handshake).
+- F-NNN: F-006 ✓✓ (safepoint+publication is coordination; single-gen; no write barrier — mutation-under-sweep safe because fully STW-at-safepoint, never concurrent mark); F-011 ✓✓ (correct by construction); F-012 ✓✓ (one back-edge poll is VM-only; tree_walk never runs on a worker).
+
+**Alternative C — wildcard: single-threaded heap + arena-isolated data-parallel workers with copy-out.** Workers run against a per-worker arena (no shared-heap alloc, no lock, no collection); result copied/realized back on the owning thread. Shared GC heap stays literally single-threaded → `collect()` unchanged, zero GC changes.
+- Better: GC byte-identical to single-threaded; real parallelism for pure computation; sidesteps tree_walk-native-stack entirely; friendly to zwasm-v2 linear-memory instances.
+- Breaks (disqualifying for the spine): Clojure `future`/`agent` bodies share mutable references — `(let [a (atom 0)] @(future (swap! a inc)) @a)` must observe `1`, but an arena worker swaps its *copy*; deep-copy breaks `identical?`. Preserving these means reaching into the shared heap = back to needing B's safepoint. So C only works for a pure subset → F-011 violation for the general contract. Conflicts with §6 binding conveyance (conveyed frame references shared Vars).
+- F-NNN: F-006 ✓✓✓ (GC unchanged); F-011 ✗ for the general contract (disqualifying); F-012 ✓.
+- Verdict: rejected for the Phase-B spine; retained as a future detected-pure `pmap` fan-out optimization (Phase 15+/zwasm async).
+
+**Q1 (fresh-uninstalled-local window):** YES, real, non-empty — vector/map/set-literal accumulator loops + the rest-list cons-wrap loop hold a fresh partial in a Zig local across the next alloc, NOT on any `stack[0..sp]` slot. The back-edge poll does NOT close it (the window is between back-edges, inside `stepOnce`); the **allocation boundary** is the safe point; the collecting thread self-guards its own current partial (a single self-scoped spot, not a per-site discipline).
+
+**Q2 (enforce VM-only workers):** the survey's "tree_walk-default" premise is **STALE** — D-196 is discharged and `build.zig` already reads `orelse .vm` (line 37). Force-compile worker thunks to a chunk and run via the VM `evalChunkErased` slot (already wired) regardless of `-Dbackend`, so the invariant is runtime-enforced independent of the build flag; the oracle build can still exercise `future` single-threaded. The "tree_walk workers → C1/C3 fork" never fires.
+
+**Q3 (pushFrame/popFrame race):** closed under B's STW-at-safepoint (parked workers don't mutate the chain during the walk; `op_pop_binding_frame`'s unlink+destroy is the thread's own, post-resume, on a frame the collector already saw as unreachable). The collector reads each thread's `current_frame` head with the park/broadcast as the acquire fence. NOT closed under a pollless model (mid-`popFrame` torn read) — confirming D-244's "this alone may force a coordination point."
+
+**Recommendation: Alternative B**, force-VM workers (Q2), per-frame chain publication, alloc-boundary safe point + liveness-only back-edge poll, collecting-thread self-guard. C2a corrected on the three points above. No F-NNN amendment required.
