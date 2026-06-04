@@ -537,6 +537,18 @@ active:
       needing real plumbing (not trivial wrappers): `special-symbol?` (needs the
       special-form-set SSOT exposed to a prim), `ns-unmap`/`ns-unalias` (env
       mapping/alias removal with owned-key freeing).
+      **2026-06-04 unbound sentinel + bound? + defonce LANDED** (the moderate-
+      structural unit): `Var.bound: bool` (env.intern sets true; the no-init
+      `(def x)` path uses `internDeclare` — unbound placeholder, no-clobber).
+      `DefNode.has_init` (analyzeDef from items.len); evalDef branches
+      intern-vs-internDeclare; VM gets a new `op_def_unbound` opcode (op_def's
+      u16 is full) compiled for no-init def, with its own dispatch arm. `bound?`
+      prim = findBinding(v)!=null OR v.bound (clj thread-bound-or-hasRoot). `defonce`
+      macro = `(when-not (bound? (def name)) (def name expr))` — the inner no-init
+      `(def name)` ensures the Var exists + returns it (clj's `(let [v (def name)]
+      …)` shape); bound? checks the flag so the analyze-time def-intern doesn't
+      poison it. Both backends + clj-grounded (corpus defonce_bound 5 + a
+      diff_test op_def_unbound case). `(def x 1) (def x)` keeps x=1 (no-clobber).
       **2026-06-04 `find-var` + `var?` LANDED**: `(find-var 'ns/name)` → the Var
       (or nil; ns must exist) via env.findNs+resolve; `(var? x)` → `.var_ref` tag.
       corpus find_var_predicate (8). NOTE `bound?`/`defonce` are DEFERRED: cljw's

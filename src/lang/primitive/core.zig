@@ -110,6 +110,24 @@ pub fn threadBoundQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     return .true_val;
 }
 
+/// `(bound? & vars)` — true iff EVERY arg Var has a value: an active thread
+/// binding OR a root assigned via `(def x v)` (the `Var.bound` flag — a no-init
+/// `(def x)` is NOT bound). A non-Var arg raises (clj casts). Spec:
+/// clojure.core/bound?.
+pub fn boundQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    if (args.len < 1)
+        return error_catalog.raise(.arity_below_min, loc, .{ .fn_name = "bound?", .got = args.len, .min = 1 });
+    for (args) |v| {
+        if (v.tag() != .var_ref)
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bound?", .expected = "var", .actual = @tagName(v.tag()) });
+        const var_ptr = v.decodePtr(*const env_mod.Var);
+        if (env_mod.findBinding(var_ptr) == null and !var_ptr.bound) return .false_val;
+    }
+    return .true_val;
+}
+
 /// `(var? x)` — true iff `x` is a Var reference. Spec: clojure.core/var?.
 pub fn varQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
@@ -1299,6 +1317,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "ifn?", .f = &ifnQ },
     .{ .name = "var?", .f = &varQ },
     .{ .name = "thread-bound?", .f = &threadBoundQ },
+    .{ .name = "bound?", .f = &boundQ },
     .{ .name = "nil?", .f = &nilQ },
     .{ .name = "true?", .f = &trueQ },
     .{ .name = "false?", .f = &falseQ },

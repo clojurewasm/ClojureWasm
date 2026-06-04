@@ -230,6 +230,26 @@ fn stepOnce(
             stack[sp] = Value.encodeHeapPtr(.var_ref, var_ptr);
             sp += 1;
         },
+        .op_def_unbound => {
+            // No-init `(def x)`: intern an UNBOUND placeholder (no stack value,
+            // does not clobber an existing root, Var.bound stays false).
+            const name_idx = instr.operand & opcode_mod.DEF_NAME_IDX_MASK;
+            if (name_idx >= chunk.constants.len)
+                return raiseInternal("vm: op_def_unbound name index out of range");
+            const name_val = chunk.constants[name_idx];
+            if (!name_val.isString())
+                return raiseInternal("vm: op_def_unbound constant is not a String");
+            const ns = env.current_ns orelse
+                return error_catalog.raiseInternal(.{}, "def: no current namespace");
+            const var_ptr = try env.internDeclare(ns, string_mod.asString(name_val));
+            var_ptr.flags.dynamic = (instr.operand & opcode_mod.DEF_FLAG_DYNAMIC) != 0;
+            var_ptr.flags.macro_ = (instr.operand & opcode_mod.DEF_FLAG_MACRO) != 0;
+            var_ptr.flags.private = (instr.operand & opcode_mod.DEF_FLAG_PRIVATE) != 0;
+            if (sp >= OPERAND_STACK_MAX)
+                return raiseInternal("vm: operand stack overflow");
+            stack[sp] = Value.encodeHeapPtr(.var_ref, var_ptr);
+            sp += 1;
+        },
         .op_get_var => {
             if (instr.operand >= chunk.constants.len)
                 return raiseInternal("vm: op_get_var constant index out of range");

@@ -685,7 +685,9 @@ const Compiler = struct {
         // (see `opcode.zig` for the layout). The constant-pool ceiling
         // shrinks from u16 to `DEF_NAME_IDX_MAX` only for def name
         // slots — call / let / get_var indices keep the full u16.
-        try self.compileNode(n.value_expr);
+        // A no-init `(def x)` emits no value and uses op_def_unbound (unbound
+        // placeholder, no-clobber); `(def x v)` compiles the value then op_def.
+        if (n.has_init) try self.compileNode(n.value_expr);
         const name_val = try string_mod.alloc(self.rt, n.name);
         const idx = try self.addConstant(name_val);
         if (idx > opcode_mod.DEF_NAME_IDX_MAX) return error.TooManyConstants;
@@ -693,7 +695,7 @@ const Compiler = struct {
         if (n.is_dynamic) packed_operand |= opcode_mod.DEF_FLAG_DYNAMIC;
         if (n.is_macro) packed_operand |= opcode_mod.DEF_FLAG_MACRO;
         if (n.is_private) packed_operand |= opcode_mod.DEF_FLAG_PRIVATE;
-        try self.emit(.op_def, packed_operand);
+        try self.emit(if (n.has_init) .op_def else .op_def_unbound, packed_operand);
     }
 
     /// Emit a jump opcode with a placeholder operand and return the

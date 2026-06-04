@@ -444,6 +444,7 @@ pub fn analyzeDef(
         .value_expr = value_node,
         .is_dynamic = is_dynamic,
         .is_private = is_private,
+        .has_init = items.len == 3,
         .loc = form.location,
     } };
     return n;

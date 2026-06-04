@@ -141,6 +141,10 @@ pub const DefNode = struct {
     is_dynamic: bool = false,
     is_macro: bool = false,
     is_private: bool = false,
+    /// `(def x v)` (true) vs the no-init `(def x)` (false). A no-init def
+    /// interns an UNBOUND placeholder (`internDeclare`) — it must not clobber
+    /// an existing root (clj parity) and leaves `Var.bound` false for `bound?`.
+    has_init: bool = true,
     loc: SourceLocation = .{},
 };
 

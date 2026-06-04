@@ -1,0 +1,10 @@
+(do (defonce dz 1) (defonce dz 2) dz)
+;;=> 1
+(do (def bx 1) (bound? (var bx)))
+;;=> true
+(do (def by) (bound? (var by)))
+;;=> false
+(do (defonce ds (atom 0)) (swap! ds inc) (defonce ds (atom 99)) (deref ds))
+;;=> 1
+(do (defonce qq 7) qq)
+;;=> 7

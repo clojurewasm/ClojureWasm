@@ -91,6 +91,15 @@ test "diff: fn* immediate invocation" {
     try f.check("((fn* [x y] (+ x y)) 3 4)", 7);
 }
 
+test "diff: no-init def is unbound, valued def is bound (op_def_unbound)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // `(def x)` → op_def_unbound: the Var exists but `bound?` is false.
+    try f.check("(do (def dfu1) (if (bound? (var dfu1)) 1 2))", 2);
+    // `(def x v)` → op_def: `bound?` is true.
+    try f.check("(do (def dfu2 5) (if (bound? (var dfu2)) 1 2))", 1);
+}
+
 test "diff: variadic single seq-shaped rest arg cons-wraps (ADR-0042 am1)" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
@@ -711,7 +720,6 @@ test "diff: map string-key lookup both backends" {
 // harness (D-152) — though both backends compute it correctly in real
 // whole-program runs (verified: tree-walk e2e + a VM-direct run both → 3).
 // e2e phase14_comp_juxt_partition is the coverage.
-
 
 // Row 7.10 cycle 2 (D-073 diff_test descriptor cleanup): the 2
 // previously-deferred ADR-0040 op_method_call diff cases now land.

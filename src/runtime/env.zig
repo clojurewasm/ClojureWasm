@@ -84,6 +84,11 @@ pub const Var = struct {
     /// Global root binding (set by `def`). Visible whenever no dynamic
     /// binding is on the threadlocal chain.
     root: Value = .nil_val,
+    /// True once a root VALUE has been assigned (`intern` with a value /
+    /// `(def x v)`). A no-init `(def x)` / `internDeclare` placeholder leaves
+    /// it false — the unbound sentinel `Var.root = nil` cannot distinguish.
+    /// Powers `bound?` / `defonce` (clj's `.hasRoot`).
+    bound: bool = false,
     /// `^{...}` metadata. Phase 3+ wires this; Phase 2 just stores it.
     meta: ?Value = null,
     /// dynamic / macro / private / zig_leaf / unsupported flags.
@@ -470,6 +475,7 @@ pub const Env = struct {
     ) !*Var {
         if (ns.mappings.get(name)) |existing| {
             existing.root = root;
+            existing.bound = true; // a value was assigned
             if (meta) |m| applyMetadata(existing, m);
             return existing;
         }
@@ -477,7 +483,7 @@ pub const Env = struct {
         errdefer self.alloc.free(owned_name);
         const v = try self.alloc.create(Var);
         errdefer self.alloc.destroy(v);
-        v.* = .{ .ns = ns, .name = owned_name, .root = root };
+        v.* = .{ .ns = ns, .name = owned_name, .root = root, .bound = true };
         if (meta) |m| applyMetadata(v, m);
         try ns.mappings.put(self.alloc, owned_name, v);
         return v;

@@ -221,6 +221,13 @@ pub const Opcode = enum(u8) {
     /// the current ns and pushes nil. (D-235.)
     op_ns_import = 0x25,
 
+    /// `(def x)` no-init: intern an UNBOUND placeholder (operand layout = op_def:
+    /// name-idx + flag bits, but consumes NO stack value). Leaves an existing
+    /// root intact and `Var.bound` false (the unbound sentinel for `bound?` /
+    /// `defonce`). Pushes the Var ref. Distinct opcode because op_def's u16 is
+    /// full (13-bit name-idx + 3 flag bits, no spare bit for has_init).
+    op_def_unbound = 0x26,
+
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
     /// (vm.zig:188-201 + :317 `applyJump`). Peephole's IP-remap pass
@@ -236,6 +243,7 @@ pub const Opcode = enum(u8) {
             .op_load_local,
             .op_store_local,
             .op_def,
+            .op_def_unbound,
             .op_get_var,
             .op_call,
             .op_ret,
@@ -282,6 +290,7 @@ pub const Opcode = enum(u8) {
             .op_const, .op_load_local => true,
             .op_store_local,
             .op_def,
+            .op_def_unbound,
             .op_get_var,
             .op_jump,
             .op_jump_if_false,

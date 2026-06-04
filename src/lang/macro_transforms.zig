@@ -111,6 +111,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "defn", .expand = expandDefn },
     .{ .name = "defn-", .expand = expandDefnPrivate },
     .{ .name = "declare", .expand = expandDeclare },
+    .{ .name = "defonce", .expand = expandDefonce },
     .{ .name = "import", .expand = expandImport },
     .{ .name = "defmulti", .expand = expandDefmulti },
     .{ .name = "defmethod", .expand = expandDefmethod },
@@ -192,6 +193,40 @@ fn expandImport(
         }
     }
     return list(arena, items.items, loc);
+}
+
+/// `(defonce name expr)` → `(when-not (bound? (def name)) (def name expr))`:
+/// define `name` only if not already bound (clj `.hasRoot`). The inner no-init
+/// `(def name)` ENSURES the Var exists (unbound placeholder via internDeclare,
+/// no-clobber if already defined) and returns it — mirroring clj's
+/// `(let [v (def name)] (when-not (.hasRoot v) (def name expr)))`. `bound?`
+/// checks `Var.bound` (false until a real init), so a fresh defonce runs and a
+/// repeat skips; the analyze-time interning of `def` does not poison it.
+fn expandDefonce(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len != 2 or args[0].data != .symbol)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "defonce needs a symbol name and an init expr" });
+    const name = args[0];
+    var declform = try arena.alloc(Form, 2); // (def name)  — no-init, ensures existence
+    declform[0] = sym("def", loc);
+    declform[1] = name;
+    var bform = try arena.alloc(Form, 2); // (bound? (def name))
+    bform[0] = sym("bound?", loc);
+    bform[1] = try list(arena, declform, loc);
+    var dform = try arena.alloc(Form, 3); // (def name expr)
+    dform[0] = sym("def", loc);
+    dform[1] = name;
+    dform[2] = args[1];
+    var wform = try arena.alloc(Form, 3);
+    wform[0] = sym("when-not", loc);
+    wform[1] = try list(arena, bform, loc);
+    wform[2] = try list(arena, dform, loc);
+    return list(arena, wform, loc);
 }
 
 /// `(declare a b ...)` → `(do (def a) (def b) ...)`. Forward-declares
