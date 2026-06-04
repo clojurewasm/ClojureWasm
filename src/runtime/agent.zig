@@ -51,6 +51,9 @@ const tag_ops = @import("gc/tag_ops.zig");
 const gc_heap_mod = @import("gc/gc_heap.zig");
 const mark_sweep = @import("gc/mark_sweep.zig");
 const vector = @import("collection/vector.zig");
+const dispatch = @import("dispatch.zig");
+const error_mod = @import("error/info.zig");
+const ex_info = @import("collection/ex_info.zig");
 
 /// Off-heap control block: the queue mutex, the single-drainer flag, and the
 /// pending actions. Held on `rt.gpa` (stable address), freed by the finaliser.
@@ -61,6 +64,10 @@ const AgentCell = struct {
     draining: bool = false,
     actions: std.ArrayList(Value) = .empty,
     head: usize = 0,
+    /// Error mode: true = `:fail` (a thrown action halts the agent until
+    /// `restart-agent`), false = `:continue` (a thrown action is dropped + the
+    /// agent keeps draining). clj's default with no error-handler is `:fail`.
+    fail_mode: bool = true,
 };
 
 pub const Agent = extern struct {
@@ -68,6 +75,10 @@ pub const Agent = extern struct {
     /// Current state. Read (`deref`) / written (drainer) atomically — the drainer
     /// is the sole writer (one per agent at a time), `@agent` the reader.
     state: Value = .nil_val,
+    /// The error that failed the agent (`:fail` mode), or nil. Non-nil = FAILED:
+    /// further `send`s throw until `restart-agent` clears it. Written by the
+    /// drainer / `restart` under `cell.mutex`; read by `agent-error` under it.
+    error_val: Value = .nil_val,
     rt: *Runtime,
     env: *Env,
     cell: *AgentCell,
@@ -106,6 +117,11 @@ pub fn current(v: Value) Value {
 pub fn send(rt: *Runtime, agent_val: Value, action: Value) !void {
     const a = agent_val.decodePtr(*Agent);
     io_default.lockMutex(&a.cell.mutex);
+    if (!a.error_val.isNil()) {
+        // Agent is in the failed state (`:fail` mode) — reject until restarted.
+        io_default.unlockMutex(&a.cell.mutex);
+        return error.AgentFailed;
+    }
     a.cell.actions.append(rt.gpa, action) catch |e| {
         io_default.unlockMutex(&a.cell.mutex);
         return e;
@@ -160,11 +176,46 @@ fn drainer(a: *Agent) void {
         a.cell.head += 1;
         io_default.unlockMutex(&a.cell.mutex);
 
-        // Run the action OUTSIDE the lock: (apply f state args...). A throwing
-        // action leaves the state unchanged and draining continues (clj
-        // :continue mode — configurable :fail / agent-error is a later slice).
-        runAction(a, action) catch {};
+        // Clear the threadlocal error state so a stale throw from a prior action
+        // is not misread as this action's error (op_throw sets
+        // `last_thrown_exception`; a catalog raise sets `last_error`).
+        dispatch.last_thrown_exception = null;
+        dispatch.last_thrown_context = null;
+        error_mod.clearLastError();
+
+        // Run the action OUTSIDE the lock: (apply f state args...).
+        runAction(a, action) catch {
+            const thrown = captureThrown(a);
+            io_default.lockMutex(&a.cell.mutex);
+            const fail = a.cell.fail_mode;
+            if (fail) {
+                // :fail — record the error + HALT draining (the queue stays for
+                // restart-agent). Cleared in ONE critical section so a peer send
+                // sees the failed state under the same mutex.
+                a.error_val = thrown;
+                a.cell.draining = false;
+            }
+            io_default.unlockMutex(&a.cell.mutex);
+            if (fail) {
+                _ = a.rt.gc.unpin(agent_val);
+                return;
+            }
+            // :continue — state unchanged, keep draining (handler is a follow-up).
+        };
     }
+}
+
+/// Capture the action's error as a Value on the drainer's own thread. The
+/// threadlocal error state was cleared before the action ran, so a non-null
+/// `last_thrown_exception` is THIS action's explicit `(throw v)` / ex-info value;
+/// otherwise synthesize an exception from the catalog Info the raise just set.
+/// (Precise cross-thread error identity beyond this is the future-shared D-115.)
+fn captureThrown(a: *Agent) Value {
+    if (dispatch.last_thrown_exception) |tv| return tv;
+    if (error_mod.peekLastError()) |info| {
+        return ex_info.allocException(a.rt, info.message, "clojure.lang.ExceptionInfo") catch Value.nil_val;
+    }
+    return Value.nil_val;
 }
 
 /// `(apply f state args...)` and store the new state. `action` is `[f & args]`.
@@ -184,12 +235,66 @@ fn runAction(a: *Agent, action: Value) !void {
     @atomicStore(Value, &a.state, newstate, .release);
 }
 
+/// `(agent-error a)` — the error that failed the agent (`:fail` mode), or nil.
+pub fn agentError(v: Value) Value {
+    const a = v.decodePtr(*const Agent);
+    io_default.lockMutex(&a.cell.mutex);
+    defer io_default.unlockMutex(&a.cell.mutex);
+    return a.error_val;
+}
+
+/// `(restart-agent a new-state)` — clear the failure, set the state, and resume
+/// draining any pending actions (`clear_actions` drops them instead, clj's
+/// `:clear-actions true`).
+pub fn restart(rt: *Runtime, agent_val: Value, new_state: Value, clear_actions: bool) !void {
+    const a = agent_val.decodePtr(*Agent);
+    io_default.lockMutex(&a.cell.mutex);
+    a.error_val = .nil_val;
+    @atomicStore(Value, &a.state, new_state, .release);
+    if (clear_actions) {
+        a.cell.actions.clearRetainingCapacity();
+        a.cell.head = 0;
+    }
+    const need_spawn = (a.cell.head < a.cell.actions.items.len) and !a.cell.draining;
+    if (need_spawn) a.cell.draining = true;
+    io_default.unlockMutex(&a.cell.mutex);
+
+    if (need_spawn) {
+        try rt.gc.pin(agent_val);
+        var t = std.Thread.spawn(.{}, drainer, .{a}) catch |e| {
+            io_default.lockMutex(&a.cell.mutex);
+            a.cell.draining = false;
+            io_default.unlockMutex(&a.cell.mutex);
+            _ = rt.gc.unpin(agent_val);
+            return e;
+        };
+        t.detach();
+    }
+}
+
+/// `(set-error-mode! a mode)` — true = `:fail`, false = `:continue`.
+pub fn setFailMode(v: Value, fail: bool) void {
+    const a = v.decodePtr(*Agent);
+    io_default.lockMutex(&a.cell.mutex);
+    defer io_default.unlockMutex(&a.cell.mutex);
+    a.cell.fail_mode = fail;
+}
+
+/// `(error-mode a)` — true = `:fail`, false = `:continue`.
+pub fn failMode(v: Value) bool {
+    const a = v.decodePtr(*const Agent);
+    io_default.lockMutex(&a.cell.mutex);
+    defer io_default.unlockMutex(&a.cell.mutex);
+    return a.cell.fail_mode;
+}
+
 pub fn traceGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
     const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
     const a: *Agent = @ptrCast(@alignCast(header));
-    // Mutators are parked during a collect, so the state + the off-heap action
-    // list are quiescent here (no concurrent send/drain).
+    // Mutators are parked during a collect, so the state + error + the off-heap
+    // action list are quiescent here (no concurrent send/drain).
     if (a.state.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
+    if (a.error_val.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
     for (a.cell.actions.items[a.cell.head..]) |action| {
         if (action.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
     }

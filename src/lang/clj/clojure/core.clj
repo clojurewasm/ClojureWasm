@@ -803,6 +803,16 @@
                    agents)]
       (dorun (map deref ps)))))
 
+;; agent error mode — the :fail/:continue keyword over the internal flag.
+;; :fail (the default with no error-handler) halts the agent on a thrown action
+;; (agent-error returns it, sends throw, restart-agent recovers); :continue drops
+;; the error and keeps draining. (error-handler / set-error-handler! is a later
+;; slice.)
+(def set-error-mode!
+  (fn* [a mode] (__agent-set-fail-mode a (= mode :fail)) a))
+(def error-mode
+  (fn* [a] (if (__agent-fail-mode? a) :fail :continue)))
+
 ;; `(filterv pred coll)` — eager `filter` returning a vector.
 (def filterv
   (fn* [pred coll]

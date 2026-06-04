@@ -147,6 +147,7 @@ pub const Code = enum {
     locking_needs_object,
     locking_nest_overflow,
     agent_options_unsupported,
+    agent_failed,
     catch_class_unknown,
     class_name_unknown,
     catch_binding_not_symbol,
@@ -734,6 +735,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .not_implemented,
             .phase = .eval,
             .template = "agent option arguments (:meta / :validator / :error-handler / :error-mode) are not yet supported",
+        },
+        .agent_failed => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "agent is failed (an action threw in :fail error mode) — restart-agent it to send again",
         },
         .catch_class_unknown => .{
             .kind = .name_error,

@@ -50,8 +50,50 @@ pub fn sendFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     try items.appendSlice(rt.gpa, args[2..]); // & args
     const action = try vector.fromSlice(rt, items.items);
 
-    try agent_mod.send(rt, args[0], action);
+    agent_mod.send(rt, args[0], action) catch |e| switch (e) {
+        error.AgentFailed => return error_catalog.raise(.agent_failed, loc, .{}),
+        else => return e,
+    };
     return args[0];
+}
+
+/// `(agent-error a)` — the error that failed the agent (`:fail` mode), or nil.
+pub fn agentErrorFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("agent-error", args, 1, loc);
+    try requireAgent("agent-error", args[0], loc);
+    return agent_mod.agentError(args[0]);
+}
+
+/// `(restart-agent a new-state)` — clear the failure, set the state, resume
+/// draining pending actions. Returns the new state. (clj's `:clear-actions`
+/// option is a later slice; extra args are rejected rather than ignored.)
+pub fn restartFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("restart-agent", args, 2, loc);
+    try requireAgent("restart-agent", args[0], loc);
+    try agent_mod.restart(rt, args[0], args[1], false);
+    return args[1];
+}
+
+/// `(__agent-set-fail-mode a fail?)` — true = `:fail`, false = `:continue`.
+pub fn setFailModeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("set-error-mode!", args, 2, loc);
+    try requireAgent("set-error-mode!", args[0], loc);
+    agent_mod.setFailMode(args[0], args[1].isTruthy());
+    return args[0];
+}
+
+/// `(__agent-fail-mode? a)` — true iff the error mode is `:fail`.
+pub fn failModeQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("error-mode", args, 1, loc);
+    try requireAgent("error-mode", args[0], loc);
+    return Value.initBoolean(agent_mod.failMode(args[0]));
 }
 
 const Entry = struct {
@@ -63,6 +105,10 @@ const ENTRIES = [_]Entry{
     .{ .name = "agent", .f = &agentFn },
     .{ .name = "send", .f = &sendFn },
     .{ .name = "send-off", .f = &sendFn },
+    .{ .name = "agent-error", .f = &agentErrorFn },
+    .{ .name = "restart-agent", .f = &restartFn },
+    .{ .name = "__agent-set-fail-mode", .f = &setFailModeFn },
+    .{ .name = "__agent-fail-mode?", .f = &failModeQFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {

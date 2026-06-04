@@ -69,5 +69,30 @@ case "$diag" in
         fail "agent_send_nonagent_error: expected an agent type error, got '$diag'" ;;
 esac
 
+# --- error modes (slice 2) ---
+# A poll-until-failed loop synchronises with the async drainer (no Thread/sleep).
+
+# :fail is the default (no error-handler) — a thrown action FAILS the agent, so
+# agent-error returns the error (closing the prior silent-:continue F-011 gap).
+got=$("$BIN" -e '(let [a (agent 0)] (send a (fn [_] (throw (ex-info "boom" {})))) (loop [i 0] (when (and (nil? (agent-error a)) (< i 500000)) (recur (inc i)))) (some? (agent-error a)))' 2>/dev/null | last_line)
+assert_eq 'agent_fail_default' "$got" 'true'
+
+# A send to a failed agent throws (until restart-agent).
+got=$("$BIN" -e '(let [a (agent 0)] (send a (fn [_] (throw (ex-info "boom" {})))) (loop [i 0] (when (and (nil? (agent-error a)) (< i 500000)) (recur (inc i)))) (try (send a inc) :no-throw (catch Throwable e :threw)))' 2>/dev/null | last_line)
+assert_eq 'agent_send_to_failed_throws' "$got" ':threw'
+
+# restart-agent clears the error + sets state; the agent works again.
+got=$("$BIN" -e '(let [a (agent 0)] (send a (fn [_] (throw (ex-info "boom" {})))) (loop [i 0] (when (and (nil? (agent-error a)) (< i 500000)) (recur (inc i)))) (restart-agent a 10) (send a inc) (await a) [@a (agent-error a)])' 2>/dev/null | last_line)
+assert_eq 'agent_restart' "$got" '[11 nil]'
+
+# :continue mode — a thrown action is dropped, the agent does NOT fail, later
+# actions still run.
+got=$("$BIN" -e '(let [a (agent 0)] (set-error-mode! a :continue) (send a (fn [_] (throw (ex-info "boom" {})))) (send a inc) (await a) [@a (agent-error a) (error-mode a)])' 2>/dev/null | last_line)
+assert_eq 'agent_continue_mode' "$got" '[1 nil :continue]'
+
+# error-mode default is :fail.
+got=$("$BIN" -e '(error-mode (agent 0))' 2>/dev/null | last_line)
+assert_eq 'agent_error_mode_default' "$got" ':fail'
+
 echo
-echo "Phase B #6 agent (first slice) e2e: all green."
+echo "Phase B #6 agent (first slice + error modes) e2e: all green."
