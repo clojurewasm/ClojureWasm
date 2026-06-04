@@ -111,6 +111,12 @@ pub fn registerAll(env: *Env) !void {
     // ADR-0029 D5 aggregator; F-009 thin-wrapper invariant.
     try @import("../runtime/java/_host_api.zig").installAll(env);
 
+    // ADR-0087: register the clojure.lang.PersistentQueue surface descriptor
+    // (carries the EMPTY static field) directly — it is not a java/ surface
+    // file (zone: collection/ cannot import java/_host_api), so it registers
+    // its own rt.types entry here.
+    try @import("../runtime/collection/persistent_queue.zig").registerType(env.rt);
+
     // ADR-0050 am1: populate native-type instance method tables (String, …)
     // on the per-Runtime native descriptors. Distinct from installAll's
     // static `rt.types` descriptors — `(.toUpperCase s)` dispatches on the

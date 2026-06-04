@@ -466,6 +466,7 @@ run_step "e2e_phase15_class_as_value"       "bash test/e2e/phase15_class_as_valu
 run_step "e2e_phase15_pr_newline"           "bash test/e2e/phase15_pr_newline.sh"
 run_step "e2e_phase15_ns_docstring"         "bash test/e2e/phase15_ns_docstring.sh"
 run_step "e2e_phase15_reader_conditional"   "bash test/e2e/phase15_reader_conditional.sh"
+run_step "e2e_phase15_persistent_queue"     "bash test/e2e/phase15_persistent_queue.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
 run_step "e2e_phase14_core_cluster"          "bash test/e2e/phase14_core_cluster.sh"
 run_step "e2e_phase14_print_family"          "bash test/e2e/phase14_print_family.sh"

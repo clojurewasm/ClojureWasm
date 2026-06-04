@@ -353,6 +353,18 @@ test "diff: nested if branches" {
 // require libspec / ns refer-clojure filter) do not yet land diff
 // cases — those join when the markers discharge.
 
+// NOTE (ADR-0087): no PersistentQueue diff case here. A queue adds no new
+// analyzer Node / VM opcode (it is reached via `conj` + the `EMPTY` static
+// constant — well-trodden constant + primitive-call paths), so ADR-0036 does
+// not mandate diff coverage. The only way to construct a queue is the
+// `clojure.lang.PersistentQueue/EMPTY` static field, and this primitive-only
+// Fixture does not resolve `Class/FIELD` static fields (it skips the java/
+// surface install path — verified: `Long/MIN_VALUE` fails here too, a
+// pre-existing Fixture limitation). Dual-backend parity was confirmed via the
+// CLI (both `-Dbackend=tree_walk` and `-Dbackend=vm` give equal results) and
+// the e2e + corpus (test/e2e/phase15_persistent_queue.sh +
+// test/diff/clj_corpus/persistent_queue.txt).
+
 test "diff: def_node" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

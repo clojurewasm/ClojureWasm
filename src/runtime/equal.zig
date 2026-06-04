@@ -32,6 +32,7 @@ const tagged_literal_mod = @import("tagged_literal.zig");
 const vector = @import("collection/vector.zig");
 const list = @import("collection/list.zig");
 const range = @import("collection/range.zig");
+const persistent_queue = @import("collection/persistent_queue.zig");
 const map = @import("collection/map.zig");
 const map_entry_mod = @import("collection/map_entry.zig");
 const set = @import("collection/set.zig");
@@ -56,7 +57,8 @@ fn numCat(v: Value) NumCat {
 fn isSequential(v: Value) bool {
     const t = v.tag();
     // A MapEntry is a 2-vector (D-209), so `(= (first {:a 1}) [:a 1])`→true.
-    return t == .vector or t == .list or t == .lazy_seq or t == .range or t == .map_entry;
+    // A queue is Sequential, so `(= (conj EMPTY 1 2) [1 2])`→true (ADR-0087).
+    return t == .vector or t == .list or t == .lazy_seq or t == .range or t == .map_entry or t == .persistent_queue;
 }
 
 /// O(1)-countable sequentials (length short-circuit eligible). A
@@ -64,7 +66,7 @@ fn isSequential(v: Value) bool {
 /// lazy seq walks element-by-element instead of comparing lengths.
 fn isCountable(v: Value) bool {
     const t = v.tag();
-    return t == .vector or t == .list or t == .map_entry;
+    return t == .vector or t == .list or t == .map_entry or t == .persistent_queue;
 }
 
 fn seqLen(v: Value) u32 {
@@ -72,6 +74,7 @@ fn seqLen(v: Value) u32 {
         .vector => vector.count(v),
         .list => list.countOf(v),
         .map_entry => 2,
+        .persistent_queue => @intCast(persistent_queue.count(v)),
         else => 0,
     };
 }
@@ -85,6 +88,8 @@ const Cursor = union(enum) {
     rng: struct { v: Value, i: i64, n: i64 },
     /// A MapEntry walked as the 2-vector `[key val]` (D-209).
     ment: struct { v: Value, i: u32 },
+    /// A PersistentQueue walked front-list then rear-vector (ADR-0087).
+    q: struct { front: Value, rear: Value, ri: u32 },
     lst: Value,
     /// A (possibly lazy) seq walked via the lazy_seq force protocol —
     /// handles `.lazy_seq` layers + the realized `.list` cons chain
@@ -96,6 +101,7 @@ const Cursor = union(enum) {
             .vector => .{ .vec = .{ .v = v, .i = 0, .n = vector.count(v) } },
             .range => .{ .rng = .{ .v = v, .i = 0, .n = range.countOf(v) } },
             .map_entry => .{ .ment = .{ .v = v, .i = 0 } },
+            .persistent_queue => .{ .q = .{ .front = persistent_queue.frontOf(v), .rear = persistent_queue.rearOf(v), .ri = 0 } },
             .list => .{ .lst = v },
             else => .{ .lzy = v },
         };
@@ -120,6 +126,19 @@ const Cursor = union(enum) {
                 const e = map_entry_mod.nth(s.v, s.i);
                 s.i += 1;
                 return e;
+            },
+            .q => |*s| {
+                if (s.front.tag() == .list and list.countOf(s.front) > 0) {
+                    const e = list.first(s.front);
+                    s.front = list.rest(s.front);
+                    return e;
+                }
+                if (!s.rear.isNil() and s.ri < vector.count(s.rear)) {
+                    const e = vector.nth(s.rear, s.ri);
+                    s.ri += 1;
+                    return e;
+                }
+                return null;
             },
             .lst => |*node| {
                 if (node.tag() != .list or list.countOf(node.*) == 0) return null;
@@ -332,7 +351,7 @@ pub fn valueHash(v: Value) u32 {
         // recursive, via the SAME formula so an equal vector and list
         // collide into one bucket (Clojure's sequential =). Partner of
         // seqKeyEq (D-092).
-        .vector, .list, .map_entry => seqHash(v),
+        .vector, .list, .map_entry, .persistent_queue => seqHash(v),
         // Map / set keys hash by content (order-independent), rt-free via
         // the collection module's structure walk (D-092). Partner of
         // map.contentEq / set.contentEq.
@@ -395,12 +414,15 @@ const SeqKeyCursor = union(enum) {
     vec: struct { v: Value, i: u32, n: u32 },
     /// A MapEntry walked as the 2-vector `[key val]` (D-209) — rt-free.
     ment: struct { v: Value, i: u32 },
+    /// A PersistentQueue walked front-list then rear-vector (ADR-0087).
+    q: struct { front: Value, rear: Value, ri: u32 },
     lst: Value,
 
     fn init(v: Value) SeqKeyCursor {
         return switch (v.tag()) {
             .vector => .{ .vec = .{ .v = v, .i = 0, .n = vector.count(v) } },
             .map_entry => .{ .ment = .{ .v = v, .i = 0 } },
+            .persistent_queue => .{ .q = .{ .front = persistent_queue.frontOf(v), .rear = persistent_queue.rearOf(v), .ri = 0 } },
             else => .{ .lst = v },
         };
     }
@@ -418,6 +440,19 @@ const SeqKeyCursor = union(enum) {
                 const e = map_entry_mod.nth(s.v, s.i);
                 s.i += 1;
                 return e;
+            },
+            .q => |*s| {
+                if (s.front.tag() == .list and list.countOf(s.front) > 0) {
+                    const e = list.first(s.front);
+                    s.front = list.rest(s.front);
+                    return e;
+                }
+                if (!s.rear.isNil() and s.ri < vector.count(s.rear)) {
+                    const e = vector.nth(s.rear, s.ri);
+                    s.ri += 1;
+                    return e;
+                }
+                return null;
             },
             .lst => |*node| {
                 if (node.tag() != .list or list.countOf(node.*) == 0) return null;

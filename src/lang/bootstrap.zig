@@ -225,6 +225,10 @@ fn registerDataReaders(rt: *Runtime, env: *Env) !void {
     var root_readers = try map_collection.assoc(rt, map_collection.empty(), sym_uuid, Value.initBuiltinFn(&uuid_prim.uuidReader));
     const sym_inst = try symbol_mod.intern(rt, null, "inst");
     root_readers = try map_collection.assoc(rt, root_readers, sym_inst, Value.initBuiltinFn(&inst_prim.instReader));
+    // `#queue (…)` — cljw extension (ADR-0087) so the queue print form
+    // round-trips (clj has no `#queue` reader).
+    const sym_queue = try symbol_mod.intern(rt, null, "queue");
+    root_readers = try map_collection.assoc(rt, root_readers, sym_queue, Value.initBuiltinFn(&@import("primitive/collection.zig").queueReader));
     const dr = try env.intern(core, "*data-readers*", root_readers, null);
     dr.flags.dynamic = true;
     rt.data_readers_var = dr;

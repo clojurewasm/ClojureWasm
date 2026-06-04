@@ -52,6 +52,7 @@ const vector = @import("../../runtime/collection/vector.zig");
 const list = @import("../../runtime/collection/list.zig");
 const map = @import("../../runtime/collection/map.zig");
 const map_entry = @import("../../runtime/collection/map_entry.zig");
+const persistent_queue = @import("../../runtime/collection/persistent_queue.zig");
 const string = @import("../../runtime/collection/string.zig");
 const set = @import("../../runtime/collection/set.zig");
 const sorted = @import("../../runtime/collection/sorted.zig");
@@ -102,6 +103,8 @@ fn conjOne(rt: *Runtime, env: *Env, coll: Value, x: Value, loc: SourceLocation) 
         // single-sourced (F-011) instead of being re-encoded here.
         .list, .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq => try sequence.consFn(rt, env, &.{ x, coll }, loc),
         .hash_set => try set.conj(rt, coll, x),
+        // conj on a queue appends to the rear (FIFO, ADR-0087).
+        .persistent_queue => try persistent_queue.conj(rt, coll, x),
         .sorted_set => try sorted.conjSet(rt, env, coll, x, loc),
         .sorted_map => sortedMapConj(rt, env, coll, x, loc),
         .array_map, .hash_map => mapConj(rt, coll, x, loc),
@@ -758,8 +761,43 @@ const Entry = struct {
     f: dispatch.BuiltinFn,
 };
 
+/// `(queue? x)` — true iff `x` is a PersistentQueue (ADR-0087). Used by
+/// core.clj's `peek`/`pop` to route to the queue stack ops.
+pub fn queueQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("queue?", args, 1, loc);
+    return if (args[0].tag() == .persistent_queue) .true_val else .false_val;
+}
+
+/// `(-queue-pop q)` — drop the oldest element (ADR-0087). The Clojure-level
+/// `pop` routes a queue here; pop of empty returns the empty queue (no throw).
+pub fn queuePopFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("-queue-pop", args, 1, loc);
+    if (args[0].tag() != .persistent_queue)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "-queue-pop", .expected = "a queue", .actual = @tagName(args[0].tag()) });
+    return persistent_queue.pop(rt, args[0]);
+}
+
+/// `#queue (e1 e2 …)` data-reader (ADR-0087): build a queue by conj-ing the
+/// form's elements in order. cljw extension (clj has no `#queue` reader); makes
+/// the cljw print form reader-round-trippable.
+pub fn queueReader(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("#queue", args, 1, loc);
+    var q = try persistent_queue.emptyQueue(rt);
+    var cur = try sequence.seqFn(rt, env, args[0..1], loc);
+    while (cur.tag() == .list and list.countOf(cur) > 0) {
+        q = try persistent_queue.conj(rt, q, list.first(cur));
+        cur = list.rest(cur);
+    }
+    return q;
+}
+
 const ENTRIES = [_]Entry{
     .{ .name = "conj", .f = &conjFn },
+    .{ .name = "queue?", .f = &queueQFn },
+    .{ .name = "-queue-pop", .f = &queuePopFn },
     .{ .name = "disj", .f = &disjFn },
     .{ .name = "contains?", .f = &containsQFn },
     .{ .name = "get", .f = &getFn },

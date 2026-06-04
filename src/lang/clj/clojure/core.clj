@@ -523,28 +523,34 @@
 ;; IPersistentStack). A non-stack seqable (string, lazy seq, range) throws in
 ;; clj (ClassCastException), so cljw must NOT silently fall through to first/
 ;; rest there (D-218). nil → nil for both (clj parity).
+;; A PersistentQueue is also IPersistentStack: peek = front (oldest), pop =
+;; drop the front (ADR-0087); pop of empty returns the empty queue (no throw).
 (def peek
   (fn* [coll]
     (if (nil? coll)
       nil
-      (if (vector? coll)
-        (if (pos? (count coll)) (nth coll (dec (count coll))) nil)
-        (if (list? coll)
-          (first coll)
-          (throw (ex-info "Can't peek: not a stack (list, vector)" {:value coll})))))))
+      (if (queue? coll)
+        (first coll)
+        (if (vector? coll)
+          (if (pos? (count coll)) (nth coll (dec (count coll))) nil)
+          (if (list? coll)
+            (first coll)
+            (throw (ex-info "Can't peek: not a stack (list, vector)" {:value coll}))))))))
 (def pop
   (fn* [coll]
     (if (nil? coll)
       nil
-      (if (vector? coll)
-        (if (pos? (count coll))
-          (into [] (take (dec (count coll)) coll))
-          (throw (ex-info "Can't pop empty vector" {})))
-        (if (list? coll)
-          (if (seq coll)
-            (rest coll)
-            (throw (ex-info "Can't pop empty list" {})))
-          (throw (ex-info "Can't pop: not a stack (list, vector)" {:value coll})))))))
+      (if (queue? coll)
+        (-queue-pop coll)
+        (if (vector? coll)
+          (if (pos? (count coll))
+            (into [] (take (dec (count coll)) coll))
+            (throw (ex-info "Can't pop empty vector" {})))
+          (if (list? coll)
+            (if (seq coll)
+              (rest coll)
+              (throw (ex-info "Can't pop empty list" {})))
+            (throw (ex-info "Can't pop: not a stack (list, vector)" {:value coll}))))))))
 
 ;; `(find m k)` — the map entry `[k v]` for key k if present, else nil
 ;; (distinguishes "absent" from "present with nil value" via contains?).

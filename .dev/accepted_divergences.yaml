@@ -151,3 +151,19 @@ accepted:
       ns's interned `deftest` vars, which is unaffected.
     derives_from: "ADR-0033 (rt/clojure.core placement split: primitives in rt, referred); ADR-0083"
     pin: "test/e2e/phase15_namespace.sh — `ad011-pub` locks `(ns-publics 'clojure.core)` omitting `reduce` (false) + `ad011-map` locks `(ns-map …)` including it (true), matching clj's total visibility"
+
+  - id: "AD-012"
+    summary: "A PersistentQueue prints as a readable `#queue (…)` (cljw) instead of clj's opaque `#object[clojure.lang.PersistentQueue 0x… \"…@hash\"]`"
+    example: '(pr-str (conj clojure.lang.PersistentQueue/EMPTY 1 2 3)) => cljw "#queue (1 2 3)" / clj "#object[clojure.lang.PersistentQueue 0x… \"clojure.lang.PersistentQueue@…\"]"'
+    why: |-
+      clj has no `print-method` for PersistentQueue, so it prints the opaque
+      `#object[…]` wrapper embedding a JVM identity hash that cljw cannot and
+      should not reproduce (no-JVM, ADR-0059) — the same non-reproducible-ref
+      class as opaque refs. `(str q)` and `(pr-str q)` differ in clj only in
+      that wrapper, both non-reproducible. cljw instead prints a READABLE,
+      reader-round-trippable `#queue (e1 e2 …)` form and ships a matching
+      `queue` data-reader (`*data-readers*`), so the printed form is honest
+      EDN within cljw (clj's own form does not round-trip either). cljw's
+      `str` and `pr-str` of a queue are intentionally identical. ADR-0087.
+    derives_from: "ADR-0059 (no-JVM identity hash); ADR-0087 (PersistentQueue)"
+    pin: "test/e2e/phase15_persistent_queue.sh — locks `(pr-str (conj EMPTY 1 2 3))` => `#queue (1 2 3)`, empty => `#queue ()`, and the `#queue` reader round-trip"

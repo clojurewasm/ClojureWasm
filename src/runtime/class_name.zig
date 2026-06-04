@@ -78,6 +78,7 @@ const NATIVE_ENTRIES = [_]NativeEntry{
     .{ .name = "PersistentArrayMap", .tag = .array_map },
     .{ .name = "PersistentHashMap", .tag = .hash_map },
     .{ .name = "PersistentHashSet", .tag = .hash_set },
+    .{ .name = "PersistentQueue", .tag = .persistent_queue },
     .{ .name = "Pattern", .tag = .regex },
     .{ .name = "UUID", .tag = .uuid },
     .{ .name = "BigInt", .tag = .big_int },
@@ -110,6 +111,7 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "clojure.lang.PersistentArrayMap", "PersistentArrayMap" },
     .{ "clojure.lang.PersistentHashMap", "PersistentHashMap" },
     .{ "clojure.lang.PersistentHashSet", "PersistentHashSet" },
+    .{ "clojure.lang.PersistentQueue", "PersistentQueue" },
     .{ "clojure.lang.IFn", "IFn" },
     .{ "clojure.lang.IPersistentMap", "IPersistentMap" },
     .{ "clojure.lang.IPersistentSet", "IPersistentSet" },
@@ -427,7 +429,8 @@ test "isKnown delegates Throwable hierarchy to host_class" {
 }
 
 test "isKnown rejects unknown classes (no silent-default-shift)" {
-    try testing.expect(!isKnown("PersistentQueue"));
+    // PersistentQueue became known with ADR-0087 (it was the placeholder
+    // "unknown" example before the queue landed).
     try testing.expect(!isKnown("java.lang.Object"));
     try testing.expect(!isKnown("FooBarException"));
     try testing.expect(!isKnown(""));

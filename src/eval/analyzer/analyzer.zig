@@ -501,6 +501,12 @@ fn analyzeSymbol(
                     .int => |i| try integerLiteralToValue(env.rt, i),
                     .float => |f| Value.initFloat(f),
                     .bool => |b| Value.initBoolean(b),
+                    // ADR-0087: a heap-singleton static field (e.g.
+                    // PersistentQueue/EMPTY) resolves to the live per-Runtime
+                    // value at analyze time.
+                    .singleton => |s| switch (s) {
+                        .empty_queue => try @import("../../runtime/collection/persistent_queue.zig").emptyQueue(env.rt),
+                    },
                 };
                 return try makeConstant(arena, fv, form);
             }

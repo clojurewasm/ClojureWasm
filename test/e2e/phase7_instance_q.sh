@@ -72,10 +72,11 @@ assert_eq 'exception_parent_walk' "$got" 'true'
 got=$("$BIN" -e '(instance? java.lang.Long 42)' 2>/dev/null)
 assert_eq 'fqcn_long' "$got" 'true'
 
-# --- Case 7: Unknown class raises loud (no silent false) ---
-diag=$("$BIN" -e '(instance? PersistentQueue 42)' 2>&1 || true)
+# --- Case 7: Unknown class raises loud (no silent false). NOTE: PersistentQueue
+# became a KNOWN class with ADR-0087, so use a genuinely-unknown name here. ---
+diag=$("$BIN" -e '(instance? NoSuchClassXyz 42)' 2>&1 || true)
 case "$diag" in
-    *"class 'PersistentQueue' is not a known class name"*)
+    *"class 'NoSuchClassXyz' is not a known class name"*)
         echo "PASS unknown_class_raises -> diagnostic" ;;
     *)
         fail "unknown_class_raises: missing diagnostic ($diag)" ;;

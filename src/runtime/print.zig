@@ -44,6 +44,7 @@ const vector_collection = @import("collection/vector.zig");
 const set_collection = @import("collection/set.zig");
 const map_collection = @import("collection/map.zig");
 const map_entry_collection = @import("collection/map_entry.zig");
+const persistent_queue = @import("collection/persistent_queue.zig");
 const sorted_collection = @import("collection/sorted.zig");
 const ex_info_collection = @import("collection/ex_info.zig");
 const big_int_mod = @import("numeric/big_int.zig");
@@ -409,6 +410,7 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
             try printValue(w, map_entry_collection.valOf(v));
             try w.writeByte(']');
         },
+        .persistent_queue => try printQueue(w, v),
         .hash_set => try printSet(w, v),
         .sorted_set => try printSortedSet(w, v),
         .sorted_map => try printSortedMap(w, v),
@@ -623,6 +625,32 @@ pub fn printExInfo(w: *Writer, v: Value) Writer.Error!void {
 /// Render a heap List in `(a b c)` form. Empty list (a List Value
 /// whose count is 0) prints as `()`. Walks via `list_collection`'s
 /// `first` / `rest` so this stays decoupled from the Cons internals.
+/// `#queue (e1 e2 …)` — a reader-round-trippable form (ADR-0087). clj prints
+/// the opaque non-reproducible `#object[…@hash]`; cljw ships a readable form +
+/// a matching `queue` data-reader. Walks front (list) then rear (vector).
+pub fn printQueue(w: *Writer, v: Value) Writer.Error!void {
+    try w.writeAll("#queue (");
+    var first_iter = true;
+    var cur = persistent_queue.frontOf(v);
+    while (cur.tag() == .list and list_collection.countOf(cur) > 0) {
+        if (!first_iter) try w.writeByte(' ');
+        first_iter = false;
+        try printValue(w, list_collection.first(cur));
+        cur = list_collection.rest(cur);
+    }
+    const rear = persistent_queue.rearOf(v);
+    if (!rear.isNil()) {
+        var i: u32 = 0;
+        const n = vector_collection.count(rear);
+        while (i < n) : (i += 1) {
+            if (!first_iter) try w.writeByte(' ');
+            first_iter = false;
+            try printValue(w, vector_collection.nth(rear, i));
+        }
+    }
+    try w.writeByte(')');
+}
+
 pub fn printList(w: *Writer, v: Value) Writer.Error!void {
     try w.writeByte('(');
     var cur = v;
@@ -881,10 +909,8 @@ test "list: empty and nested" {
     try testing.expectEqualStrings("(1 2 3)", try renderToBuf(&buf, flat));
 
     // Build (1 (2 3))
-    const inner = try list_collection.consHeap(&rt, Value.initInteger(2),
-        try list_collection.consHeap(&rt, Value.initInteger(3), .nil_val));
-    const nested = try list_collection.consHeap(&rt, Value.initInteger(1),
-        try list_collection.consHeap(&rt, inner, .nil_val));
+    const inner = try list_collection.consHeap(&rt, Value.initInteger(2), try list_collection.consHeap(&rt, Value.initInteger(3), .nil_val));
+    const nested = try list_collection.consHeap(&rt, Value.initInteger(1), try list_collection.consHeap(&rt, inner, .nil_val));
     try testing.expectEqualStrings("(1 (2 3))", try renderToBuf(&buf, nested));
 }
 

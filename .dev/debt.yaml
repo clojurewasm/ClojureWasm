@@ -9,6 +9,23 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-240"
+    status: "now (pre-existing, surfaced by ADR-0087 queue diff attempt)"
+    category: "tests"
+    barrier: |-
+      **The dual-backend diff Fixture (`src/lang/diff_test.zig` /
+      `evaluator.zig`) crashes on any analyze-time `Class/FIELD` static-field
+      resolution** (e.g. `Long/MIN_VALUE`, `clojure.lang.PersistentQueue/
+      EMPTY`). The primitive-only Fixture skips the java-surface install (or
+      raising `namespace_unknown` in that minimal rt hits an alignment panic in
+      the error path) — so no diff case can exercise a static field. No existing
+      diff test used `Class/FIELD`, so it was never hit. Impact: ADR-0087's
+      PersistentQueue diff coverage had to fall back to CLI dual-backend
+      verification + e2e + corpus (the queue adds no new Node/opcode, so
+      ADR-0036 does not mandate a diff case). Fix: either install java surfaces
+      in the Fixture, or make the minimal-rt error-raise path alignment-safe.
+      LOW priority (only blocks static-field diff cases). recall trigger: when a
+      future diff case needs a `Class/FIELD` static field.
   - id: "D-239"
     status: "now (PARTIAL: var + atom landed 2026-06-04; ns/ref/agent deferred)"
     category: "runtime"
@@ -679,6 +696,17 @@ active:
       core.unify advances past it → `.isArray` reflection on a Class (arrays/F-004,
       deferred). Recurring deep walls now dominate: PersistentQueue (medley/aero),
       `&env`/`&form` macro args (D-099-followup, meander), arrays/F-004, deftype.
+      **2026-06-04 `&form`/`&env` (ADR-0086, D-111) + PersistentQueue (ADR-0087)
+      LANDED**. PersistentQueue: a real FIFO collection on the reserved slot 45
+      (Okasaki front-list+rear-vector, `persistent_queue.zig`); conj/peek/pop/
+      seq/count/empty/first/rest/next + `=`(to any Sequential)/hash via the
+      shared seq paths + `clojure.lang.PersistentQueue/EMPTY` (StaticFieldValue
+      `.singleton` enum) + `(class q)`→PersistentQueue + instance?/queue? +
+      `#queue (…)` print + a `queue` data-reader (round-trippable; AD-012 — clj's
+      `#object` is non-reproducible). corpus persistent_queue (18 clj-verified) +
+      e2e (6) + D-240 (fixture can't diff static fields → CLI-verified instead).
+      Both DA forks corrected real errors via the oracle (queue `=` vs vector;
+      `&env` nil-for-no-locals). medley/aero advance past their queue walls.
       **2026-06-04 instance? interface-membership SWEEP** (big-bang, the Iterable/
       IEditableCollection pattern completed). FIXED too-narrow arms:
       IPersistentMap (+sorted_map), IPersistentSet (+sorted_set),

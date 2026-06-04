@@ -46,6 +46,7 @@ const list = @import("../../runtime/collection/list.zig");
 const vector = @import("../../runtime/collection/vector.zig");
 const map = @import("../../runtime/collection/map.zig");
 const map_entry = @import("../../runtime/collection/map_entry.zig");
+const persistent_queue = @import("../../runtime/collection/persistent_queue.zig");
 const sorted = @import("../../runtime/collection/sorted.zig");
 const set = @import("../../runtime/collection/set.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
@@ -98,6 +99,7 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         .map_entry => Value.initInteger(2), // a MapEntry is a 2-vector (D-209)
         .array_map, .hash_map => Value.initInteger(@intCast(map.count(coll))),
         .sorted_map, .sorted_set => Value.initInteger(@intCast(sorted.count(coll))),
+        .persistent_queue => Value.initInteger(@intCast(persistent_queue.count(coll))),
         .hash_set => Value.initInteger(@intCast(set.count(coll))),
         // A live transient is a first-class read target (clj parity): count
         // reads its element/entry count without realising it (D-199).
@@ -189,6 +191,7 @@ pub fn seqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         .map_entry => try list.consHeap(rt, map_entry.keyOf(coll), try list.consHeap(rt, map_entry.valOf(coll), .nil_val)),
         .array_map, .hash_map => if (map.count(coll) > 0) try map.seq(rt, coll) else .nil_val,
         .sorted_map, .sorted_set => if (sorted.count(coll) > 0) try sorted.seq(rt, coll) else .nil_val,
+        .persistent_queue => try persistent_queue.seqOf(rt, coll),
         .hash_set => if (set.count(coll) > 0) try set.seq(rt, coll) else .nil_val,
         .chunked_cons => coll,
         // A range's seq view is a chunked_cons (≤32 materialised + a smaller
@@ -259,6 +262,7 @@ pub fn firstFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         else
             .nil_val,
         .map_entry => map_entry.keyOf(coll), // first of `[k v]` is k (D-209)
+        .persistent_queue => persistent_queue.peek(coll), // first = oldest = peek
         .chunked_cons => chunked_cons.first(coll),
         // PERF: O(1) head (start), no chunk materialised for just first [refs: O-001]
         .range => range.first(coll),
@@ -305,6 +309,10 @@ pub fn restFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         .list, .cons => list.rest(coll),
         .vector => if (vector.count(coll) > 1) try vectorTailAsList(rt, coll, 1) else .nil_val,
         .map_entry => try list.consHeap(rt, map_entry.valOf(coll), .nil_val), // (rest [k v]) → (v)
+        .persistent_queue => blk: {
+            const s = try persistent_queue.seqOf(rt, coll);
+            break :blk if (s.isNil()) .nil_val else list.rest(s);
+        },
         .chunked_cons => try chunked_cons.rest(rt, coll),
         .lazy_seq => try lazy_seq.rest(rt, env, coll),
         // A string seqs to a char list (codepoints, not a substring): D-174
@@ -354,6 +362,12 @@ pub fn nextFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         },
         .vector => if (vector.count(coll) > 1) try vectorTailAsList(rt, coll, 1) else .nil_val,
         .map_entry => try list.consHeap(rt, map_entry.valOf(coll), .nil_val), // (next [k v]) → (v)
+        .persistent_queue => blk: {
+            const s = try persistent_queue.seqOf(rt, coll);
+            if (s.isNil()) break :blk .nil_val;
+            const r = list.rest(s);
+            break :blk if (list.isEmpty(r)) .nil_val else r;
+        },
         .chunked_cons => blk: {
             const r = try chunked_cons.rest(rt, coll);
             // Match JVM next: nil for empty rest. seq the tail so a
@@ -446,6 +460,7 @@ pub fn emptyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         .vector => vector.empty(),
         .array_map, .hash_map => map.empty(),
         .hash_set => set.empty(),
+        .persistent_queue => try persistent_queue.emptyQueue(rt), // (empty q) → EMPTY
         .list, .cons => try list.emptyList(rt), // (empty '(1 2)) → () (D-164)
         // JVM Clojure: (empty "hi") → nil (String is not a Clojure
         // collection per IPersistentCollection contract). cw v1

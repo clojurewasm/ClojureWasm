@@ -159,6 +159,11 @@ pub const Runtime = struct {
     /// list module).
     empty_list: @import("value/value.zig").Value = .nil_val,
 
+    /// The `clojure.lang.PersistentQueue/EMPTY` singleton (ADR-0087), built
+    /// on `gc.infra` by `collection/persistent_queue.zig::emptyQueue`; `nil`
+    /// until first use. Same process-lifetime discipline as `empty_list`.
+    empty_queue: @import("value/value.zig").Value = .nil_val,
+
     /// User type registry per ADR-0007 + ROADMAP §9.7 / 5.11. Maps
     /// the fully-qualified class name (e.g. `user.Point`) to a
     /// process-lifetime TypeDescriptor allocated on `gpa`. Populated
@@ -343,6 +348,7 @@ pub const Runtime = struct {
         @import("collection/vector.zig").registerGcHooks();
         @import("collection/map.zig").registerGcHooks();
         @import("collection/map_entry.zig").registerGcHooks();
+        @import("collection/persistent_queue.zig").registerGcHooks();
         @import("collection/set.zig").registerGcHooks();
         @import("lazy_seq.zig").registerGcHooks();
         @import("collection/chunked_cons.zig").registerGcHooks();
@@ -380,6 +386,7 @@ pub const Runtime = struct {
         // Free the interned empty-list singleton (gc.infra-allocated, not
         // GC-swept — D-164). Idempotent / no-op if never materialised.
         @import("collection/list.zig").deinitEmptyList(self);
+        @import("collection/persistent_queue.zig").deinitEmptyQueue(self);
         // Free the per-Runtime Date descriptor (gc.infra — D-200/ADR-0079).
         @import("time/date.zig").deinitDescriptor(self);
 

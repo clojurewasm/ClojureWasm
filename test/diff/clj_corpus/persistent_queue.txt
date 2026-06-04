@@ -1,0 +1,36 @@
+(seq (conj clojure.lang.PersistentQueue/EMPTY 1 2 3))
+;;=> (1 2 3)
+(peek (conj clojure.lang.PersistentQueue/EMPTY 1 2 3))
+;;=> 1
+(seq (pop (conj clojure.lang.PersistentQueue/EMPTY 1 2 3)))
+;;=> (2 3)
+(count (conj clojure.lang.PersistentQueue/EMPTY 1 2 3))
+;;=> 3
+(= (conj clojure.lang.PersistentQueue/EMPTY 1 2 3) [1 2 3])
+;;=> true
+(= (conj clojure.lang.PersistentQueue/EMPTY 1 2) (list 1 2))
+;;=> true
+(= clojure.lang.PersistentQueue/EMPTY [])
+;;=> true
+(= clojure.lang.PersistentQueue/EMPTY nil)
+;;=> false
+(= clojure.lang.PersistentQueue/EMPTY #{})
+;;=> false
+(vec (into clojure.lang.PersistentQueue/EMPTY [1 2 3 4 5]))
+;;=> [1 2 3 4 5]
+(peek (pop (pop (into clojure.lang.PersistentQueue/EMPTY [1 2 3]))))
+;;=> 3
+(empty? clojure.lang.PersistentQueue/EMPTY)
+;;=> true
+(first (conj clojure.lang.PersistentQueue/EMPTY :a :b))
+;;=> :a
+(= (hash (conj clojure.lang.PersistentQueue/EMPTY 1 2 3)) (hash [1 2 3]))
+;;=> true
+(instance? clojure.lang.PersistentQueue (conj clojure.lang.PersistentQueue/EMPTY 1))
+;;=> true
+(sequential? (conj clojure.lang.PersistentQueue/EMPTY 1))
+;;=> true
+(seq (pop clojure.lang.PersistentQueue/EMPTY))
+;;=> nil
+(count (pop clojure.lang.PersistentQueue/EMPTY))
+;;=> 0

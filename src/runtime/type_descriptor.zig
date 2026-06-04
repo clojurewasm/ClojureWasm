@@ -122,13 +122,21 @@ pub const TypeDescriptor = struct {
         value: StaticFieldValue,
     };
 
-    /// The two scalar shapes a static field can carry. `int` lifts via
-    /// `integerLiteralToValue` (i48 → Long, beyond → BigInt); `float`
-    /// via `Value.initFloat`.
+    /// A heap singleton a static field resolves to at analyze time. The
+    /// pointer cannot be baked at module-comptime (it lives on a specific
+    /// Runtime), so the field carries the enum tag and the resolver maps it
+    /// to the live singleton (ADR-0087).
+    pub const Singleton = enum { empty_queue };
+
+    /// The shapes a static field can carry. `int` lifts via
+    /// `integerLiteralToValue` (i48 → Long, beyond → BigInt); `float` via
+    /// `Value.initFloat`; `singleton` resolves to a per-Runtime heap value
+    /// (e.g. `clojure.lang.PersistentQueue/EMPTY`).
     pub const StaticFieldValue = union(enum) {
         int: i64,
         float: f64,
         bool: bool, // Boolean/TRUE, Boolean/FALSE (ADR-0061 am 2026-05-31)
+        singleton: Singleton,
     };
 
     /// Find a static field by name (ADR-0061). Linear — field tables are
