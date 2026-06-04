@@ -296,7 +296,10 @@ fn registerPrintLimitVars(rt: *Runtime, env: *Env) !void {
     // the raw (print-style) form (D-222 residual a).
     const readably_v = try env.intern(core, "*print-readably*", Value.true_val, null);
     readably_v.flags.dynamic = true;
-    print_mod.initPrintLimitVars(len_v, lvl_v, nsmaps_v, readably_v);
+    // *print-meta* root false; a truthy binding prefixes metadata-bearing values.
+    const meta_v = try env.intern(core, "*print-meta*", Value.false_val, null);
+    meta_v.flags.dynamic = true;
+    print_mod.initPrintLimitVars(len_v, lvl_v, nsmaps_v, readably_v, meta_v);
 }
 
 /// AOT bootstrap (ADR-0056 Cycle 2b): restore `clojure.core` from the

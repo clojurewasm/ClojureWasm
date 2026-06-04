@@ -183,7 +183,10 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
             while (i < n) : (i += 1) {
                 out = try vector_collection.conj(rt, out, try deepRealize(rt, env, vector_collection.nth(v, i)));
             }
-            return out;
+            // Carry metadata through the rebuild so `*print-meta*` sees it
+            // (the realize pass must not strip `^meta`).
+            const m = vector_collection.metaOf(v);
+            return if (m.isNil()) out else try vector_collection.withMeta(rt, out, m);
         },
         // A MapEntry realizes its key/val (which may hold lazy seqs) while
         // staying a MapEntry (D-209), so it still prints `[k v]`.
@@ -211,7 +214,15 @@ fn realizeSeqWalk(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
         try items.append(rt.gpa, try deepRealize(rt, env, try lazy_seq_mod.first(rt, env, s)));
         cur = try lazy_seq_mod.rest(rt, env, s);
     }
-    return listFromItems(rt, items.items);
+    const realized = try listFromItems(rt, items.items);
+    // Carry the original collection's metadata onto the realized list so
+    // `*print-meta*` sees a `^meta` list/seq (the realize must not strip it).
+    const m = switch (v.tag()) {
+        .list => list_collection.metaOf(v),
+        .lazy_seq => lazy_seq_mod.metaOf(v),
+        else => Value.nil_val,
+    };
+    return if (m.isNil() or realized.tag() != .list) realized else try list_collection.withMeta(rt, realized, m);
 }
 
 /// True iff a `.typed_instance`'s descriptor declares the `Sequential`
@@ -368,13 +379,33 @@ var print_namespace_maps_var: ?*const env_mod.Var = null;
 /// snapshot only overrides `print_readably` when the var is EXPLICITLY thread-
 /// bound — leaving the surface's pr-vs-print choice intact by default.
 var print_readably_var: ?*const env_mod.Var = null;
+/// `*print-meta*` cached Var — when truthy, every value carrying non-empty
+/// metadata prints with a `^{meta} ` prefix. Pure snapshot (no surface set).
+var print_meta_var: ?*const env_mod.Var = null;
 
 /// Install the cached print-control Var pointers (called once at bootstrap).
-pub fn initPrintLimitVars(len_v: ?*const env_mod.Var, lvl_v: ?*const env_mod.Var, nsmaps_v: ?*const env_mod.Var, readably_v: ?*const env_mod.Var) void {
+pub fn initPrintLimitVars(len_v: ?*const env_mod.Var, lvl_v: ?*const env_mod.Var, nsmaps_v: ?*const env_mod.Var, readably_v: ?*const env_mod.Var, meta_v: ?*const env_mod.Var) void {
     print_length_var = len_v;
     print_level_var = lvl_v;
     print_namespace_maps_var = nsmaps_v;
     print_readably_var = readably_v;
+    print_meta_var = meta_v;
+}
+
+/// `*print-meta*` snapshot for the current top-level print (false default).
+threadlocal var print_meta: bool = false;
+
+/// The metadata map of `v` for `*print-meta*` printing, or nil when `v` carries
+/// none / is not a meta-bearing type. Mirrors `metaFn`'s collection arms (cljw
+/// symbols are not meta-bearing, so only collections matter here).
+fn metaForPrint(v: Value) Value {
+    return switch (v.tag()) {
+        .vector => vector_collection.metaOf(v),
+        .array_map, .hash_map => map_collection.metaOf(v),
+        .hash_set => set_collection.metaOf(v),
+        .list => list_collection.metaOf(v),
+        else => Value.nil_val,
+    };
 }
 
 /// Snapshot of the two limits for the duration of one top-level print
@@ -413,6 +444,12 @@ fn snapshotPrintLimits() void {
         if (env_mod.findBinding(v)) |bv| {
             print_readably = !(bv.isNil() or (bv.tag() == .boolean and !bv.asBoolean()));
         }
+    }
+    // *print-meta* (default false): truthy → prefix metadata-bearing values.
+    print_meta = false;
+    if (print_meta_var) |v| {
+        const d = v.deref();
+        print_meta = !(d.isNil() or (d.tag() == .boolean and !d.asBoolean()));
     }
 }
 
@@ -495,6 +532,17 @@ pub fn printValue(w: *Writer, v: Value) Writer.Error!void {
     defer if (is_coll) {
         print_depth -= 1;
     };
+    // *print-meta* (ADR-0088 family): emit a `^{meta} ` prefix for any value
+    // carrying non-empty metadata. The `if (print_meta)` guard short-circuits by
+    // default so the common path is unchanged.
+    if (print_meta) {
+        const m = metaForPrint(v);
+        if (!m.isNil() and map_collection.count(m) > 0) {
+            try w.writeByte('^');
+            try printValue(w, m);
+            try w.writeByte(' ');
+        }
+    }
     switch (vtag) {
         .nil => try w.writeAll("nil"),
         .boolean => try w.writeAll(if (v.asBoolean()) "true" else "false"),
