@@ -101,6 +101,7 @@ test {
     _ = @import("runtime/concurrency/safepoint.zig");
     _ = @import("runtime/concurrency/lock_tx.zig");
     _ = @import("runtime/concurrency/object_monitor.zig");
+    _ = @import("runtime/agent.zig");
     _ = @import("runtime/value/heap_tag.zig");
     _ = @import("runtime/value/heap_header.zig");
     _ = @import("runtime/value/nan_box.zig");

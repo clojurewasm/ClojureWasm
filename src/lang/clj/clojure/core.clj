@@ -787,6 +787,22 @@
        ([f c1 c2] (vec (map f c1 c2)))
        ([f c1 c2 c3] (vec (map f c1 c2 c3)))))
 
+;; `(await & agents)` — block until all actions dispatched to each agent SO FAR
+;; have run. Sends a sentinel action that delivers a promise to every agent (so
+;; the agents drain concurrently), then blocks on each promise. The sentinel
+;; returns state unchanged. clj uses a per-agent CountDownLatch; a promise is
+;; cljw's cross-thread latch, held alive by the action sitting in the agent's
+;; queue. (await-for + the in-transaction / in-action illegality check are a
+;; later slice.)
+(def await
+  (fn* [& agents]
+    (let [ps (mapv (fn* [a]
+                     (let [p (promise)]
+                       (send a (fn* [s] (deliver p s) s))
+                       p))
+                   agents)]
+      (dorun (map deref ps)))))
+
 ;; `(filterv pred coll)` — eager `filter` returning a vector.
 (def filterv
   (fn* [pred coll]

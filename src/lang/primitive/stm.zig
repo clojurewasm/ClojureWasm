@@ -24,6 +24,7 @@ const promise_mod = @import("../../runtime/promise.zig");
 const future_mod = @import("../../runtime/future.zig");
 const lazy_seq_mod = @import("../../runtime/lazy_seq.zig");
 const atom_mod = @import("../../runtime/atom.zig");
+const agent_mod = @import("../../runtime/agent.zig");
 const volatile_mod = @import("../../runtime/volatile.zig");
 const reduced_mod = @import("../../runtime/collection/reduced.zig");
 
@@ -45,6 +46,7 @@ pub fn derefFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     const v = args[0];
     return switch (v.tag()) {
         .atom => atom_mod.current(v),
+        .agent => agent_mod.current(v),
         .@"volatile" => volatile_mod.current(v),
         // In a transaction, a Ref reads through the in-txn cache (the txn sees
         // its own writes); outside, it reads the current committed value.
