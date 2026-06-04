@@ -91,9 +91,15 @@ pub fn isRef(v: Value) bool {
 }
 
 /// Current committed value of a Ref (`deref` outside a transaction).
-/// Reads the ring head's `val`. Caller guarantees `v` is a Ref.
+/// Reads the ring head's `val` UNDER the commit lock so the read synchronizes-
+/// with the last committer's release (an unsynchronized read can see a stale
+/// ring head under relaxed ordering, or a node mid-recycle). Caller guarantees
+/// `v` is a Ref. Mirrors the in-transaction `lock_tx.doGet` read discipline.
 pub fn current(v: Value) Value {
-    return v.decodePtr(*const Ref).tvals.val;
+    const r: *Ref = @constCast(v.decodePtr(*const Ref));
+    while (!r.lock.tryLock()) std.atomic.spinLoopHint();
+    defer r.lock.unlock();
+    return r.tvals.val;
 }
 
 /// Per-tag trace fn — Ref owns the ring head pointer. The ring

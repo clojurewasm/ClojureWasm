@@ -98,16 +98,24 @@ pub fn swapFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     try requireAtom("swap!", args[0], loc);
     const a = args[0];
     const f = args[1];
-    var call_args: std.ArrayList(Value) = .empty;
-    defer call_args.deinit(rt.gpa);
-    const old = atom_mod.current(a);
-    try call_args.append(rt.gpa, old);
-    try call_args.appendSlice(rt.gpa, args[2..]);
-    const newval = try higher_order.invokeCallable(rt, env, f, call_args.items, loc);
-    try validateOrThrow(rt, env, a, newval, loc);
-    atom_mod.setCurrent(a, newval);
-    try notifyWatches(rt, env, a, old, newval, loc);
-    return newval;
+    // CAS-retry (JVM Atom.swap): read current, compute (f current args...),
+    // install iff current is still unchanged, else retry with a fresh read. f
+    // may run more than once under contention — the documented swap! contract
+    // (f must be side-effect-free). Without the CAS, concurrent swaps lose
+    // updates wholesale (4×100 increments landing ~250 instead of 400).
+    while (true) {
+        const old = atom_mod.current(a);
+        var call_args: std.ArrayList(Value) = .empty;
+        defer call_args.deinit(rt.gpa);
+        try call_args.append(rt.gpa, old);
+        try call_args.appendSlice(rt.gpa, args[2..]);
+        const newval = try higher_order.invokeCallable(rt, env, f, call_args.items, loc);
+        try validateOrThrow(rt, env, a, newval, loc);
+        if (atom_mod.compareAndSet(a, old, newval)) {
+            try notifyWatches(rt, env, a, old, newval, loc);
+            return newval;
+        }
+    }
 }
 
 /// `(compare-and-set! a old new)` — set to new iff current is IDENTICAL
@@ -116,11 +124,11 @@ pub fn swapFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 pub fn compareAndSetFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("compare-and-set!", args, 3, loc);
     try requireAtom("compare-and-set!", args[0], loc);
-    const cur = atom_mod.current(args[0]);
-    if (@intFromEnum(cur) == @intFromEnum(args[1])) {
-        try validateOrThrow(rt, env, args[0], args[2], loc);
-        atom_mod.setCurrent(args[0], args[2]);
-        try notifyWatches(rt, env, args[0], cur, args[2], loc);
+    // Validate the candidate before the CAS (JVM validates `new` regardless of
+    // whether the swap lands), then a single atomic compare-and-set by identity.
+    try validateOrThrow(rt, env, args[0], args[2], loc);
+    if (atom_mod.compareAndSet(args[0], args[1], args[2])) {
+        try notifyWatches(rt, env, args[0], args[1], args[2], loc);
         return Value.true_val;
     }
     return Value.false_val;

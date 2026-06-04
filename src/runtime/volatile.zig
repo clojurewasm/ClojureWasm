@@ -42,14 +42,20 @@ pub fn isVolatile(v: Value) bool {
 }
 
 /// Current held value (`deref` / `@`). Caller guarantees `v` is a volatile.
+/// Atomic-acquire for cross-thread VISIBILITY (a volatile is JMM-volatile: a
+/// write on one thread is visible on another). Volatiles give visibility, NOT
+/// atomic compound updates — `vswap!` is intentionally a plain read-modify-write
+/// per clj (use an atom when you need atomic compound mutation).
 pub fn current(v: Value) Value {
-    return v.decodePtr(*const Volatile).current;
+    const cell = v.decodePtr(*const Volatile);
+    return @atomicLoad(Value, &cell.current, .acquire);
 }
 
-/// Mutate the held value in place (`vreset!` / `vswap!`).
+/// Mutate the held value in place (`vreset!` / `vswap!`), atomic-release for
+/// cross-thread visibility (not an atomic compound op — see `current`).
 pub fn setCurrent(v: Value, newval: Value) void {
     const cell: *Volatile = @constCast(v.decodePtr(*const Volatile));
-    cell.current = newval;
+    @atomicStore(Value, &cell.current, newval, .release);
 }
 
 /// Per-tag trace fn — the volatile owns one Value (`current`).

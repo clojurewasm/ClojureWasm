@@ -381,18 +381,26 @@
 (def constantly
   (fn* [x] (fn* [& _] x)))
 
-;; `(swap-vals! a f & args)` / `(reset-vals! a v)` return `[old new]`. cw v1 is
-;; single-threaded, so capturing `@a` then applying `swap!`/`reset!` is the
-;; atomic old↔new pair (no CAS retry needed; JVM returns the same shape).
+;; `(swap-vals! a f & args)` / `(reset-vals! a v)` return the atomic `[old new]`
+;; pair. A CAS-retry over the now-atomic `compare-and-set!` so the returned `old`
+;; is exactly the value the successful swap replaced — capturing `@a` separately
+;; would, under concurrency, pair a stale `old` with a `new` from a different
+;; swap. `f` may run more than once (the swap! contract).
 (def swap-vals!
   (fn* [a f & args]
-    (let [old @a]
-      [old (apply swap! a f args)])))
+    (loop []
+      (let [old @a
+            new (apply f old args)]
+        (if (compare-and-set! a old new)
+          [old new]
+          (recur))))))
 (def reset-vals!
   (fn* [a v]
-    (let [old @a]
-      (reset! a v)
-      [old v])))
+    (loop []
+      (let [old @a]
+        (if (compare-and-set! a old v)
+          [old v]
+          (recur))))))
 
 ;; `(pmap f & colls)` / `(pcalls & fns)` — clj's parallel map / parallel calls.
 ;; cw v1 is single-threaded, so these run SEQUENTIALLY: the RESULT is identical

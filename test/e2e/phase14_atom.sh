@@ -30,4 +30,10 @@ assert_eq 'identity'  "$("$BIN" -e '(let [a (atom 0)] (swap! a inc) (identical? 
 assert_eq 'swap_vals'  "$("$BIN" -e '(let [a (atom 1)] (swap-vals! a inc))')"          '[1 2]'
 assert_eq 'swap_vals_args' "$("$BIN" -e '(let [a (atom 1)] (swap-vals! a + 10 20))')"  '[1 31]'
 assert_eq 'reset_vals' "$("$BIN" -e '(let [a (atom 5)] (reset-vals! a 9))')"            '[5 9]'
-echo "OK — phase14_atom smoke (16 cases) green"
+# Concurrency: swap! / compare-and-set! are atomic (CAS-retry). 4 threads × 100
+# (swap! a inc) on the SAME atom must land every increment = 400. A non-atomic
+# read-modify-write loses updates wholesale (~250). Regression guard for the atom
+# CAS fix; verified deterministic across many ReleaseSafe runs.
+assert_eq 'swap_concurrent' "$("$BIN" -e '(let [a (atom 0)] (run! deref (mapv (fn [_] (future (dotimes [_ 100] (swap! a inc)))) (range 4))) @a)')" '400'
+assert_eq 'cas_concurrent'  "$("$BIN" -e '(let [a (atom 0)] (run! deref (mapv (fn [_] (future (dotimes [_ 100] (loop [] (let [o @a] (when-not (compare-and-set! a o (inc o)) (recur))))))) (range 4))) @a)')" '400'
+echo "OK — phase14_atom smoke (18 cases) green"

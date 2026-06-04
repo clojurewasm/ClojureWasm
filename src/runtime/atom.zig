@@ -87,15 +87,28 @@ pub fn isAtom(v: Value) bool {
 }
 
 /// Current held value (`deref` / `@`). Caller guarantees `v` is an atom.
+/// Atomic-acquire so a concurrent `swap!`/`reset!`/`compare-and-set!` write is
+/// visible (an atom is a coordinated cross-thread reference — JVM `Atom` holds
+/// its state in an `AtomicReference`).
 pub fn current(v: Value) Value {
-    return v.decodePtr(*const Atom).current;
+    const a = v.decodePtr(*const Atom);
+    return @atomicLoad(Value, &a.current, .acquire);
 }
 
-/// Mutate the held value in place (`reset!` / `swap!`). Atom identity is
-/// preserved — the heap cell is the same, only `current` changes.
+/// Unconditionally set the held value (`reset!`), atomic-release. Atom identity
+/// is preserved — the heap cell is the same, only `current` changes.
 pub fn setCurrent(v: Value, newval: Value) void {
     const a: *Atom = @constCast(v.decodePtr(*const Atom));
-    a.current = newval;
+    @atomicStore(Value, &a.current, newval, .release);
+}
+
+/// Atomic compare-and-set on the held value by reference identity (JVM
+/// `AtomicReference.compareAndSet`). Returns true iff `current` was `old` and is
+/// now `new`. `swap!` is a CAS-retry loop over this; `compare-and-set!` is it
+/// directly. Value is an `enum(u64)`, so the CAS is a single word op.
+pub fn compareAndSet(v: Value, old: Value, new: Value) bool {
+    const a: *Atom = @constCast(v.decodePtr(*const Atom));
+    return @cmpxchgStrong(Value, &a.current, old, new, .acq_rel, .acquire) == null;
 }
 
 /// The atom's metadata (`nil` or a map). `meta` / `reset-meta!`.
