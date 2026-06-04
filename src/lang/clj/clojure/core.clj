@@ -580,6 +580,13 @@
 (def rand-nth
   (fn* [coll] (nth coll (rand-int (count coll)))))
 
+;; `(random-sample prob)` / `(random-sample prob coll)` — keep each element of
+;; coll independently with probability prob (Bernoulli per element). 1-arity is
+;; a stateless transducer. JVM parity: clojure.core/random-sample.
+(def random-sample
+  (fn* ([prob] (filter (fn* [_] (< (rand) prob))))
+       ([prob coll] (filter (fn* [_] (< (rand) prob)) coll))))
+
 ;; ----------------------------------------------------------------
 ;; Phase 6.16.b-3 helpers — used by clojure.set Group C (project /
 ;; rename / index / join). Pattern A composition; no Zig leaves.

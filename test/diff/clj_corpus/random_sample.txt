@@ -1,0 +1,12 @@
+(vec (random-sample 1.0 [1 2 3]))
+;;=> [1 2 3]
+(vec (random-sample 0.0 (range 10)))
+;;=> []
+(count (random-sample 1.0 (range 50)))
+;;=> 50
+(fn? (random-sample 0.5))
+;;=> true
+(into [] (random-sample 1.0) [:a :b])
+;;=> [:a :b]
+(into [] (random-sample 0.0) (range 5))
+;;=> []
