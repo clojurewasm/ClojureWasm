@@ -27,7 +27,10 @@ const std = @import("std");
 /// 4); the runtime sees only the folded form.
 pub const Flags = packed struct(u8) {
     case_insensitive: bool = false,
-    _pad: u7 = 0,
+    /// `(?s)` DOTALL — `.` matches every byte incl. `\n`/`\r`. Default off:
+    /// `.` excludes `\n`/`\r` (Java line terminators), built at parse time.
+    dotall: bool = false,
+    _pad: u6 = 0,
 };
 
 /// Parsed AST node. The parser produces this tree; the IR
@@ -138,13 +141,31 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) Comp
     defer arena.deinit();
     var f = flags;
     var pat = pattern;
-    // Leading `(?i)` inline flag — clj applies it to the whole pattern (cycle 4:
-    // compile-time case-folding). Strip it + set the flag; `foldCI` then rewrites
-    // literal letters / char classes to case-insensitive form. Scoped `(?i:…)`
-    // and mid-pattern flags stay unsupported (rare; clean parse error).
-    if (pat.len >= 4 and pat[0] == '(' and pat[1] == '?' and pat[2] == 'i' and pat[3] == ')') {
-        f.case_insensitive = true;
-        pat = pat[4..];
+    // Leading `(?flags)` (flags ⊆ {i,s}) — clj applies them to the whole pattern.
+    // `i` → compile-time case-fold (foldCI); `s` → DOTALL (parse-time `.` build).
+    // A `:` before `)` means a scoped group `(?i:…)`, NOT a leading flag — leave
+    // it for the group parser. Other flags (m/x) and mid-pattern flags stay
+    // unsupported (clean parse error).
+    if (pat.len >= 4 and pat[0] == '(' and pat[1] == '?') {
+        var j: usize = 2;
+        var ci = false;
+        var da = false;
+        var only_flags = true;
+        while (j < pat.len and pat[j] != ')' and pat[j] != ':') : (j += 1) {
+            switch (pat[j]) {
+                'i' => ci = true,
+                's' => da = true,
+                else => {
+                    only_flags = false;
+                    break;
+                },
+            }
+        }
+        if (only_flags and j > 2 and j < pat.len and pat[j] == ')') {
+            f.case_insensitive = f.case_insensitive or ci;
+            f.dotall = f.dotall or da;
+            pat = pat[j + 1 ..];
+        }
     }
     var group_count: u16 = 0;
     const node = try parsePattern(arena.allocator(), pat, f, &group_count);
@@ -211,7 +232,6 @@ fn foldCI(node: *Node) void {
 /// escape  := '\' ('d'|'D'|'w'|'W'|'s'|'S'|'t'|'n'|'r'|'f'|meta_byte)
 /// ```
 pub fn parsePattern(arena: std.mem.Allocator, pattern: []const u8, flags: Flags, group_count_out: *u16) CompileError!*const Node {
-    _ = flags;
     if (pattern.len == 0) {
         // `#""` / `(re-pattern "")` — an empty pattern matches the empty string
         // at every position (clj parity). An empty `.concat` emits no insts, so
@@ -221,7 +241,7 @@ pub fn parsePattern(arena: std.mem.Allocator, pattern: []const u8, flags: Flags,
         group_count_out.* = 0;
         return node;
     }
-    var parser: Parser = .{ .src = pattern, .pos = 0, .arena = arena };
+    var parser: Parser = .{ .src = pattern, .pos = 0, .arena = arena, .dotall = flags.dotall };
     const node = try parser.parseAlt();
     if (!parser.atEnd()) return CompileError.UnexpectedToken;
     group_count_out.* = parser.group_count;
@@ -235,6 +255,8 @@ const Parser = struct {
     /// Next capturing-group index to assign (1-based; group 0 is the whole
     /// match, carried by MatchResult.start/end, not a slot pair).
     group_count: u16 = 0,
+    /// DOTALL scope (`(?s)` / `(?s:…)`): when true, `.` matches `\n`/`\r` too.
+    dotall: bool = false,
 
     fn atEnd(self: Parser) bool {
         return self.pos >= self.src.len;
@@ -349,7 +371,7 @@ const Parser = struct {
         const c = self.advance() orelse return CompileError.UnexpectedToken;
         const node = try self.arena.create(Node);
         if (c == '.') {
-            node.* = atomFor('.');
+            node.* = atomFor('.', self.dotall);
             return node;
         }
         if (c == '[') {
@@ -385,28 +407,31 @@ const Parser = struct {
             return node;
         }
         if (c == '(') {
-            // `(?:e)` non-capturing, `(?i:e)` scoped case-insensitive, `(e)`
-            // capturing. Lookaround / named groups / other inline flags (s/m/x)
-            // and the flag-only `(?i)` form stay NotImplemented.
+            // `(?:e)` non-capturing, `(?is:e)` scoped case-insensitive / DOTALL,
+            // `(e)` capturing. Lookaround / named groups / other inline flags
+            // (m/x) and the flag-only mid-pattern `(?i)` form stay NotImplemented.
             var capturing = true;
             var idx: u16 = 0;
             var fold_i = false;
+            var scoped_dotall = false;
             if (self.peek() == @as(?u8, '?')) {
                 _ = self.advance(); // consume '?'
                 capturing = false;
                 if (self.peek() == @as(?u8, ':')) {
                     _ = self.advance();
                 } else {
-                    // Inline-flag group `(?i:…)`: flags run until ':' — only `i`
-                    // (folded into the subtree via foldCI). Reuses the same
-                    // compile-time fold as the leading `(?i)` global flag, but
-                    // scoped to this child instead of the whole program.
+                    // Inline-flag group `(?is:…)`: flags run until ':'. `i` folds
+                    // the subtree case-insensitive (foldCI); `s` sets DOTALL for
+                    // the subtree (`.` matches `\n`/`\r`). Both reuse the leading-
+                    // flag machinery, scoped to this child. m/x stay unsupported.
                     while (true) {
                         const f = self.advance() orelse return CompileError.NotImplemented;
                         if (f == ':') break;
-                        if (f == 'i') {
-                            fold_i = true;
-                        } else return CompileError.NotImplemented;
+                        switch (f) {
+                            'i' => fold_i = true,
+                            's' => scoped_dotall = true,
+                            else => return CompileError.NotImplemented,
+                        }
                     }
                 }
             } else {
@@ -414,7 +439,12 @@ const Parser = struct {
                 idx = self.group_count;
                 if (idx >= 8) return CompileError.NotImplemented; // MAX_SLOTS_INLINE/2
             }
+            // DOTALL is parse-time (the `.` bitmap is built during the child
+            // parse), so set it for the child and restore — scoped to this group.
+            const saved_dotall = self.dotall;
+            if (scoped_dotall) self.dotall = true;
             const child = try self.parseAlt();
+            self.dotall = saved_dotall;
             if (self.advance() != @as(?u8, ')')) return CompileError.UnclosedGroup;
             if (fold_i) foldCI(child);
             node.* = if (capturing) .{ .group = .{ .child = child, .index = idx } } else .{ .non_capture = child };
@@ -591,14 +621,17 @@ fn negateClass(c: CharClass) CharClass {
     return out;
 }
 
-/// Cycle-1 atom builder: literal byte, or `.` → all-set
-/// character class (cycle-1 simplification — JVM `.` excludes
-/// `\n`; the line-ending exclusion lands with the `(?s)` flag
-/// in cycle 4).
-fn atomFor(c: u8) Node {
+/// Atom builder: literal byte, or `.` -> character class. JVM `.` excludes the
+/// line terminators `\n`/`\r` by default; `(?s)` DOTALL (`dotall=true`) makes it
+/// match every byte. (Java also excludes U+0085 / U+2028 / U+2029, non-ASCII and
+/// out of scope for this byte-level engine.)
+fn atomFor(c: u8, dotall: bool) Node {
     if (c == '.') {
         var cls: CharClass = .{};
-        for (0..256) |b| cls.set(@intCast(b));
+        for (0..256) |b| {
+            if (!dotall and (b == '\n' or b == '\r')) continue;
+            cls.set(@intCast(b));
+        }
         return .{ .class = cls };
     }
     return .{ .lit = c };
@@ -1007,9 +1040,30 @@ test "(?i:...) scoped flag folds only the subtree; surrounding stays sensitive" 
         var prog = try compile(alloc, "(?:ab)c", .{});
         defer prog.deinit(alloc);
     }
-    // Unsupported inline flags / mid-pattern flag-only stay NotImplemented.
-    try testing.expectError(CompileError.NotImplemented, compile(alloc, "(?s:ab)", .{}));
+    // Unsupported inline flags (m/x) / mid-pattern flag-only stay NotImplemented.
+    // (`(?s:…)` is now supported — see the DOTALL test below.)
+    try testing.expectError(CompileError.NotImplemented, compile(alloc, "(?x:ab)", .{}));
     try testing.expectError(CompileError.NotImplemented, compile(alloc, "a(?i)b", .{}));
+}
+
+test "dot excludes newline/CR by default; (?s) DOTALL includes them" {
+    const alloc = testing.allocator;
+    // Default `.` class: every byte EXCEPT \n (10) and \r (13).
+    {
+        const dot = atomFor('.', false).class;
+        try testing.expect(dot.contains('a') and dot.contains(11) and dot.contains(12));
+        try testing.expect(!dot.contains('\n') and !dot.contains('\r'));
+    }
+    // DOTALL `.`: every byte.
+    {
+        const dot = atomFor('.', true).class;
+        try testing.expect(dot.contains('\n') and dot.contains('\r') and dot.contains('a'));
+    }
+    // Leading `(?s)` and scoped `(?s:…)` both compile; `(?si)`/`(?is)` combine.
+    inline for (.{ "(?s)a.b", "a(?s:.)b", "(?is:A.B)" }) |p| {
+        var prog = try compile(alloc, p, .{});
+        defer prog.deinit(alloc);
+    }
 }
 
 test "(?i) leading flag folds literal + class to case-insensitive" {

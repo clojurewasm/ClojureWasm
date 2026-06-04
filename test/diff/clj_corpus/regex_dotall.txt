@@ -1,0 +1,24 @@
+(boolean (re-find #"a.b" "a\nb"))
+;;=> false
+(boolean (re-find #"a.b" "a\rb"))
+;;=> false
+(boolean (re-find #"a.b" "axb"))
+;;=> true
+(boolean (re-find #"(?s)a.b" "a\nb"))
+;;=> true
+(boolean (re-find #"(?s)a.b" "a\rb"))
+;;=> true
+(boolean (re-find #"a(?s:.)b" "a\nb"))
+;;=> true
+(boolean (re-find #"a(?s:.)b" "a\rb"))
+;;=> true
+(boolean (re-matches #"(?s).*" "x\ny\nz"))
+;;=> true
+(boolean (re-matches #".*" "x\ny"))
+;;=> false
+(re-seq #"." "a\nb")
+;;=> ("a" "b")
+(boolean (re-find #"(?is:A.B)" "a\nb"))
+;;=> true
+(boolean (re-find #"a.b" (str "a" (char 11) "b")))
+;;=> true
