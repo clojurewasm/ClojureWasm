@@ -641,6 +641,15 @@ active:
       cljw's built-in `parse-opts` (cli.zig) is a 3-elem-only MVP that rejects
       tools.cli's 2-elem `["-v" "--verbose"]` specs (ADR-level: MVP vs load real
       tools.cli — deferred, low ROI vs deep features).
+      **2026-06-04 `*clojure-version*` / `clojure-version` / `*unchecked-math*`
+      ADDED** (missing standard core vars surfaced probing tools.reader.edn +
+      data.avl). `*clojure-version*` = `{:major 1 :minor 12 :incremental 0
+      :qualifier nil}` (cljw targets the 1.12 surface; oracle is 1.12.x per F-011);
+      `(clojure-version)` → "1.12.0"; `*unchecked-math*` = false (no-op flag like
+      *warn-on-reflection* — cljw auto-promotes per F-005). corpus
+      clojure_version_vars (8 clj-matching invariants incl :minor=12) + 4 e2e.
+      tools.reader.edn advances → with-local-vars (D-237); data.avl → APersistentMap
+      (deftype, deep). Both next walls are deferred-structural.
       **2026-06-04 `find-var` + `var?` LANDED**: `(find-var 'ns/name)` → the Var
       (or nil; ns must exist) via env.findNs+resolve; `(var? x)` → `.var_ref` tag.
       corpus find_var_predicate (8). NOTE `bound?`/`defonce` are DEFERRED: cljw's

@@ -17,4 +17,11 @@ assert_eq 'fn-sees' "$("$BIN" -e '(do (def ^:dynamic *a* :root) (defn pa [] *a*)
 # non-dynamic var still rejects binding (the guard still fires)
 assert_eq 'guard'   "$("$BIN" -e '(do (def plain 1) (binding [plain 2] plain))' 2>&1 | grep -c 'non-dynamic')" '1'
 
-echo "OK — phase15_dynamic_var (5 cases) green"
+# --- standard core version / flag vars (cljw targets the 1.12 surface) ---
+assert_eq 'cv_minor'  "$("$BIN" -e '(:minor *clojure-version*)' 2>&1 | tail -1)"      '12'
+assert_eq 'cv_string' "$("$BIN" -e '(clojure-version)' 2>&1 | tail -1)"               '"1.12.0"'
+assert_eq 'unchecked' "$("$BIN" -e '*unchecked-math*' 2>&1 | tail -1)"                'false'
+# *unchecked-math* is ^:dynamic — libs set! / binding it (a no-op flag in cljw)
+assert_eq 'um_bind'   "$("$BIN" -e '(binding [*unchecked-math* true] *unchecked-math*)' 2>&1 | tail -1)" 'true'
+
+echo "OK — phase15_dynamic_var (9 cases) green"

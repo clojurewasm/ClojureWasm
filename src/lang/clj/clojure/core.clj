@@ -18,6 +18,26 @@
 ;; suites toggle it). D-232.
 (def ^:dynamic *warn-on-reflection* false)
 
+;; `*unchecked-math*` — a JVM compiler flag selecting wrapping (unchecked)
+;; integer ops. cljw's numeric tower auto-promotes (F-005), so this is a no-op
+;; flag like *warn-on-reflection*; defined so code that toggles it loads
+;; (clojure.data.avl and other libs set! it at the top of a file).
+(def ^:dynamic *unchecked-math* false)
+
+;; `*clojure-version*` / `(clojure-version)` — the Clojure language version cljw
+;; targets (the 1.12 surface; the clj oracle is 1.12.x per F-011). Real libs gate
+;; features on (:minor *clojure-version*) and print (clojure-version).
+(def *clojure-version* {:major 1 :minor 12 :incremental 0 :qualifier nil})
+
+(def clojure-version
+  (fn* []
+    (let* [v   *clojure-version*
+           inc (:incremental v)
+           q   (:qualifier v)]
+      (str (:major v) "." (:minor v)
+           (if inc (str "." inc) "")
+           (if q (str "-" q) "")))))
+
 ;; `(list & items)` — construct a list of the args. The variadic
 ;; rest-binding yields a `.list` for ≥1 arg, but nil for zero args
 ;; (`& xs` binds nil when empty, matching JVM `((fn [& xs] xs))` → nil).

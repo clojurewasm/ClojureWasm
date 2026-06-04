@@ -1,0 +1,16 @@
+(:major *clojure-version*)
+;;=> 1
+(:minor *clojure-version*)
+;;=> 12
+(map? *clojure-version*)
+;;=> true
+(contains? *clojure-version* :incremental)
+;;=> true
+(contains? *clojure-version* :qualifier)
+;;=> true
+*unchecked-math*
+;;=> false
+(string? (clojure-version))
+;;=> true
+(<= 1 (:major *clojure-version*))
+;;=> true
