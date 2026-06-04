@@ -49,6 +49,19 @@ fn nextPoint() i64 {
     return last_point.fetchAdd(1, .monotonic) + 1;
 }
 
+/// Inline arg cap for a single `commute` call (`(commute r f & args)`); commute
+/// args are nearly always 0-2. A wider call raises (rare, refinement-able).
+const MAX_COMMUTE_ARGS = 7;
+
+/// One recorded `commute` for replay at commit time. Args are held inline (no
+/// arena), so the whole transaction's scratch is gpa-clearable per retry.
+const CommuteEntry = struct {
+    ref: *Ref,
+    func: Value,
+    args: [MAX_COMMUTE_ARGS]Value = undefined,
+    args_len: u8 = 0,
+};
+
 pub const LockingTransaction = struct {
     read_point: i64,
     /// In-transaction value cache: a Ref's value AS SEEN by this transaction
@@ -56,6 +69,9 @@ pub const LockingTransaction = struct {
     vals: std.AutoHashMapUnmanaged(*Ref, Value) = .empty,
     /// Refs explicitly written (`ref-set`/`alter`) — the commit write set.
     sets: std.AutoHashMapUnmanaged(*Ref, void) = .empty,
+    /// Recorded `commute`s, replayed against the committed value at commit
+    /// (order-independent) so a commuted ref never conflicts/retries.
+    commutes: std.ArrayList(CommuteEntry) = .empty,
     gpa: std.mem.Allocator,
 };
 
@@ -81,6 +97,7 @@ pub fn runInTransaction(rt: *Runtime, env: *Env, thunk: Value, loc: SourceLocati
     var tx: LockingTransaction = .{ .read_point = 0, .gpa = rt.gpa };
     defer tx.vals.deinit(rt.gpa);
     defer tx.sets.deinit(rt.gpa);
+    defer tx.commutes.deinit(rt.gpa);
     current_tx = &tx;
     defer current_tx = null;
 
@@ -93,11 +110,12 @@ pub fn runInTransaction(rt: *Runtime, env: *Env, thunk: Value, loc: SourceLocati
         tx.read_point = nextPoint();
         tx.vals.clearRetainingCapacity();
         tx.sets.clearRetainingCapacity();
+        tx.commutes.clearRetainingCapacity();
         const ret = callThunk(rt, env, thunk, loc) catch |e| {
             if (e == error.StmRetry) continue;
             return e; // a real user error propagates out of the transaction
         };
-        commit(rt, &tx) catch |e| {
+        commit(rt, env, &tx, loc) catch |e| {
             if (e == error.StmRetry) continue;
             return e;
         };
@@ -128,6 +146,31 @@ pub fn doSet(tx: *LockingTransaction, ref: *Ref, val: Value) !Value {
     return val;
 }
 
+/// `(commute r f & args)` — record the commute for replay at commit, then apply
+/// `f` optimistically against the in-txn value and return that. The recorded
+/// `f` is re-applied against the COMMITTED value at commit time, so a commuted
+/// ref never conflicts (no retry under contention — `f` must be commutative,
+/// the user's contract). Returns the optimistic value (clj `Ref.commute`).
+pub fn doCommute(rt: *Runtime, env: *Env, tx: *LockingTransaction, ref: *Ref, func: Value, args: []const Value, loc: SourceLocation) !Value {
+    if (args.len > MAX_COMMUTE_ARGS)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "commute with more than 7 extra args" });
+    var entry: CommuteEntry = .{ .ref = ref, .func = func, .args_len = @intCast(args.len) };
+    @memcpy(entry.args[0..args.len], args);
+    try tx.commutes.append(tx.gpa, entry);
+    const newval = try invokeCommute(rt, env, func, doGet(tx, ref), args, loc);
+    try tx.vals.put(tx.gpa, ref, newval);
+    return newval;
+}
+
+/// Call `(func cur & args)`.
+fn invokeCommute(rt: *Runtime, env: *Env, func: Value, cur: Value, args: []const Value, loc: SourceLocation) !Value {
+    const vtable = rt.vtable orelse return error.InternalError;
+    var buf: [MAX_COMMUTE_ARGS + 1]Value = undefined;
+    buf[0] = cur;
+    @memcpy(buf[1 .. 1 + args.len], args);
+    return vtable.callFn(rt, env, func, buf[0 .. 1 + args.len], loc);
+}
+
 /// Commit (#5-ii — multi-ref atomic): acquire EVERY written Ref's lock in
 /// ascending-id order (a total order → concurrent multi-ref transactions can
 /// never deadlock), check each ref's read-point conflict under its lock, then —
@@ -135,13 +178,21 @@ pub fn doSet(tx: *LockingTransaction, ref: *Ref, val: Value) !Value {
 /// every TVal, releasing all locks (LIFO) on exit. A conflict (a peer committed
 /// a newer version after our snapshot) returns `error.StmRetry` to re-run the
 /// whole transaction (retry-only, no barge — AD-013).
-fn commit(rt: *Runtime, tx: *LockingTransaction) !void {
+fn commit(rt: *Runtime, env: *Env, tx: *LockingTransaction, loc: SourceLocation) !void {
+    // Lock set = written refs (`sets`) ∪ commuted refs, DISTINCT.
     var locked: std.ArrayList(*Ref) = .empty;
     defer locked.deinit(tx.gpa);
-    var it = tx.sets.keyIterator();
-    while (it.next()) |ref_ptr| try locked.append(tx.gpa, ref_ptr.*);
+    var sit = tx.sets.keyIterator();
+    while (sit.next()) |rp| try locked.append(tx.gpa, rp.*);
+    for (tx.commutes.items) |c| {
+        if (!tx.sets.contains(c.ref) and !containsRef(locked.items, c.ref))
+            try locked.append(tx.gpa, c.ref);
+    }
     std.mem.sort(*Ref, locked.items, {}, refIdLess);
 
+    // Acquire all locks in id order (deadlock-free). Conflict-check the WRITTEN
+    // refs only — a commuted ref re-applies against the committed value below,
+    // so it never conflicts (and never forces a retry under contention).
     var held: usize = 0;
     defer {
         while (held > 0) {
@@ -152,13 +203,27 @@ fn commit(rt: *Runtime, tx: *LockingTransaction) !void {
     for (locked.items) |ref| {
         while (!ref.lock.tryLock()) std.atomic.spinLoopHint();
         held += 1;
-        if (ref.tvals.point > tx.read_point) return error.StmRetry;
+        if (tx.sets.contains(ref) and ref.tvals.point > tx.read_point) return error.StmRetry;
     }
 
+    // Replay commutes against the now-locked COMMITTED values (order-independent):
+    // re-seed each commuted ref to its committed value, then chain its fns.
+    for (tx.commutes.items) |c| try tx.vals.put(tx.gpa, c.ref, c.ref.tvals.val);
+    for (tx.commutes.items) |c| {
+        const newval = try invokeCommute(rt, env, c.func, tx.vals.get(c.ref).?, c.args[0..c.args_len], loc);
+        try tx.vals.put(tx.gpa, c.ref, newval);
+    }
+
+    // All locked + validated + replayed → write every ref under one commit-point.
     const commit_point = nextPoint();
     for (locked.items) |ref| {
         try spliceCommit(rt, ref, tx.vals.get(ref).?, commit_point);
     }
+}
+
+fn containsRef(items: []const *Ref, ref: *Ref) bool {
+    for (items) |r| if (r == ref) return true;
+    return false;
 }
 
 fn refIdLess(_: void, a: *Ref, b: *Ref) bool {
@@ -226,12 +291,15 @@ test "doSet caches + doGet reads the in-txn write; commit recycles the ring head
     defer th.deinit();
     var rt = Runtime.init(th.io(), testing.allocator);
     defer rt.deinit();
+    var env = try Env.init(&rt);
+    defer env.deinit();
     const rv = try ref_mod.alloc(&rt, Value.initInteger(0));
     const ref: *Ref = @constCast(rv.decodePtr(*const Ref));
 
     var tx: LockingTransaction = .{ .read_point = nextPoint(), .gpa = rt.gpa };
     defer tx.vals.deinit(rt.gpa);
     defer tx.sets.deinit(rt.gpa);
+    defer tx.commutes.deinit(rt.gpa);
 
     // Before any write, doGet reads the committed value.
     try testing.expectEqual(@as(i64, 0), doGet(&tx, ref).asInteger());
@@ -241,7 +309,7 @@ test "doSet caches + doGet reads the in-txn write; commit recycles the ring head
     // Not yet committed — the ring head is unchanged.
     try testing.expectEqual(@as(i64, 0), ref.tvals.val.asInteger());
 
-    try commit(&rt, &tx);
+    try commit(&rt, &env, &tx, .{});
     // min_history==0 → recycled in place; the ring stays 1-node with the new value.
     try testing.expectEqual(@as(i64, 42), ref.tvals.val.asInteger());
     try testing.expectEqual(@as(u32, 1), ringCount(ref.tvals));

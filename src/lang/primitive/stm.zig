@@ -183,6 +183,17 @@ pub fn alterFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return lock_tx.doSet(tx, ref, newval);
 }
 
+/// `(commute r f & args)` — like `alter`, but `f` is re-applied against the
+/// committed value at commit (order-independent), so a commuted ref never
+/// conflicts/retries. `f` must be commutative (the user's contract).
+pub fn commuteFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArityMin("commute", args, 2, loc);
+    try requireRef("commute", args[0], loc);
+    const tx = lock_tx.current_tx orelse
+        return error_catalog.raise(.stm_no_transaction, loc, .{ .name = "commute" });
+    return lock_tx.doCommute(rt, env, tx, args[0].decodePtr(*ref_mod.Ref), args[1], args[2..], loc);
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -196,6 +207,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "__run-in-transaction", .f = &runInTransactionFn },
     .{ .name = "ref-set", .f = &refSetFn },
     .{ .name = "alter", .f = &alterFn },
+    .{ .name = "commute", .f = &commuteFn },
     .{ .name = "__delay-create", .f = &delayCreateFn },
     .{ .name = "__future-call", .f = &futureCallFn },
     .{ .name = "promise", .f = &promiseFn },

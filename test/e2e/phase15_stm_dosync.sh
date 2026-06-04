@@ -46,6 +46,13 @@ assert_eq 'dosync_nested' "$got" '2'
 got=$("$BIN" -e '(let [a (ref 1) b (ref 2)] (dosync (ref-set a 10) (ref-set b 20)) [@a @b])' 2>/dev/null | last_line)
 assert_eq 'dosync_multi_ref' "$got" '[10 20]'
 
+# commute: order-independent in-transaction update (#5-iv). Single-thread it
+# behaves like alter; mixed with alter both commit.
+got=$("$BIN" -e '(let [r (ref 0)] (dosync (commute r + 5)) @r)' 2>/dev/null | last_line)
+assert_eq 'dosync_commute' "$got" '5'
+got=$("$BIN" -e '(let [a (ref 1) b (ref 10)] (dosync (alter a inc) (commute b + 5)) [@a @b])' 2>/dev/null | last_line)
+assert_eq 'dosync_alter_plus_commute' "$got" '[2 15]'
+
 # --- Concurrency: serializability under contention (#5-iii, AD-013 pin) ---
 # 4 future threads each run 100 (dosync (alter c inc)) on the SAME ref. With
 # retry-on-conflict (no barge — AD-013), every increment lands: no lost updates,
@@ -60,6 +67,11 @@ assert_eq 'dosync_concurrent_serializable' "$got" '400'
 # (sum still 100). A lost update or a torn commit would break the invariant.
 got=$("$BIN" -e '(let [a (ref 100) b (ref 0)] (run! deref (mapv (fn [_] (future (dotimes [_ 50] (dosync (alter a dec) (alter b inc))))) (range 4))) [@a @b])' 2>/dev/null | last_line)
 assert_eq 'dosync_concurrent_multi_ref_transfer' "$got" '[-100 200]'
+
+# Concurrent commute: re-applied against the committed value at commit, so a
+# commuted counter serializes WITHOUT retrying under contention — still 400.
+got=$("$BIN" -e '(let [c (ref 0)] (run! deref (mapv (fn [_] (future (dotimes [_ 100] (dosync (commute c inc))))) (range 4))) @c)' 2>/dev/null | last_line)
+assert_eq 'dosync_concurrent_commute' "$got" '400'
 
 # alter / ref-set outside a transaction is a clean error, not a crash.
 diag=$("$BIN" -e '(alter (ref 0) inc)' 2>&1 || true)
