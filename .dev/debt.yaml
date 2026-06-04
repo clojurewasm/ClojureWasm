@@ -713,6 +713,18 @@ active:
       expandDefn (single+multi); `analyzeBody`/`wrapBodyInDo` of an empty slice
       already yield `(do)` → nil. corpus empty_body_arity (7) + diff + 3 e2e.
       medley advances 273 → 695 (`java.util.UUID` static, deep).
+      **2026-06-04 clojure.core differential sweep + `split` empty-pattern FIX**.
+      Swept ~70 core idioms (seq/string/math/bits) vs clj: 3 DIFFs, 2 are F-005
+      intentional (`(* 1/3 3)`→cljw `1`/clj `1N` ratio-reduction; `(* big big)`→
+      cljw auto-promotes/clj throws overflow). 1 REAL bug FIXED:
+      **`(clojure.string/split "abc" #"")` → cljw `[]` / clj `["a" "b" "c"]`**.
+      `splitToVector` used the advanced search cursor as the piece boundary +
+      emitted a leading empty for a zero-width start match. Rewrote JVM-faithful:
+      piece = `[prev-match-end .. match.start]`, cursor advances separately for
+      zero-width, leading zero-width skipped. corpus string_split +12 (empty/
+      limit/normal, clj-verified). The clean lib-loading gaps are exhausted;
+      remaining are deep (clojure.core.protocols/IKVReduce, clojure.java.io,
+      java.util.UUID statics, arrays/F-004, deftype, with-meta-on-symbols).
       **2026-06-04 instance? interface-membership SWEEP** (big-bang, the Iterable/
       IEditableCollection pattern completed). FIXED too-narrow arms:
       IPersistentMap (+sorted_map), IPersistentSet (+sorted_set),

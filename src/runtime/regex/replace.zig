@@ -112,32 +112,37 @@ pub fn splitToVector(
     if (haystack.len == 0) {
         try parts.append(rt.gpa, try string_collection.alloc(rt, ""));
     } else {
-        var pos: u32 = 0;
+        // JVM `Pattern.split`: a piece spans `[index .. match.start]` where
+        // `index` is the PREVIOUS match's end (NOT the search cursor). For a
+        // zero-width match the cursor advances one codepoint to make progress,
+        // but the piece boundary stays at the match positions — so
+        // `(split "abc" #"")` → `["a" "b" "c"]`, not empties. A zero-width
+        // match at the very start (index 0) yields no leading empty. The
+        // remainder `[index ..]` is appended once after the loop.
+        var index: u32 = 0; // start of the current piece (prev match end)
+        var cursor: u32 = 0; // next search position
         var nsplits: i64 = 0;
         var matched = false;
         while (true) {
-            if (limit > 0 and nsplits >= limit - 1) {
-                try parts.append(rt.gpa, try string_collection.alloc(rt, haystack[pos..]));
-                break;
+            if (limit > 0 and nsplits >= limit - 1) break;
+            const match = (try regex_match.findFrom(rt.gpa, program, haystack, cursor)) orelse break;
+            if (index == 0 and match.start == 0 and match.end == 0) {
+                if (match.end >= haystack.len) break;
+                cursor = match.end + 1;
+                continue;
             }
-            const match = (try regex_match.findFrom(rt.gpa, program, haystack, pos)) orelse {
-                try parts.append(rt.gpa, try string_collection.alloc(rt, haystack[pos..]));
-                break;
-            };
             matched = true;
             nsplits += 1;
-            try parts.append(rt.gpa, try string_collection.alloc(rt, haystack[pos..match.start]));
+            try parts.append(rt.gpa, try string_collection.alloc(rt, haystack[index..match.start]));
+            index = match.end;
             if (match.end == match.start) {
                 if (match.end >= haystack.len) break;
-                pos = match.end + 1;
+                cursor = match.end + 1;
             } else {
-                pos = match.end;
-            }
-            if (pos >= haystack.len) {
-                try parts.append(rt.gpa, try string_collection.alloc(rt, haystack[pos..]));
-                break;
+                cursor = match.end;
             }
         }
+        try parts.append(rt.gpa, try string_collection.alloc(rt, haystack[index..]));
         // limit == 0: strip trailing empty strings, but only once a match was
         // consumed (a no-match `[haystack]` keeps its single element).
         if (limit == 0 and matched) {

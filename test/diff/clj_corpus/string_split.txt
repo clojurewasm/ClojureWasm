@@ -1,0 +1,24 @@
+(clojure.string/split "abc" #"")
+;;=> ["a" "b" "c"]
+(clojure.string/split "abc" #"" 2)
+;;=> ["a" "bc"]
+(clojure.string/split "" #"")
+;;=> [""]
+(clojure.string/split "x" #"")
+;;=> ["x"]
+(clojure.string/split "a,b,,c" #",")
+;;=> ["a" "b" "" "c"]
+(clojure.string/split "a,b,,c," #",")
+;;=> ["a" "b" "" "c"]
+(clojure.string/split "a,b,c" #"," 2)
+;;=> ["a" "b,c"]
+(clojure.string/split "aab" #"a+")
+;;=> ["" "b"]
+(clojure.string/split "abc" #"x")
+;;=> ["abc"]
+(clojure.string/split "a.b.c" #"\.")
+;;=> ["a" "b" "c"]
+(clojure.string/split "1, 2, 3" #",\s*")
+;;=> ["1" "2" "3"]
+(clojure.string/split "hello world" #"\s")
+;;=> ["hello" "world"]
