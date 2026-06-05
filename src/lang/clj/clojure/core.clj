@@ -1770,6 +1770,18 @@
                                   (. ~(bindings 0) ~'close))))
     :else (throw (ex-info "with-open only allows Symbols in bindings" {}))))
 
+;; `(with-local-vars [x init ...] body…)` — bind each name to a FRESH anonymous
+;; dynamic Var (ADR-0097 / D-237) thread-bound to its init for the body's extent,
+;; popped in a finally. `var-get`/`var-set`/`@` operate on them inside the body.
+;; The anon Var is gpa-owned + intentionally never freed (escape-safe; D-255
+;; reclamation), minted by the `-create-local-var` primitive.
+(defmacro with-local-vars [bindings & body]
+  (let [names (take-nth 2 bindings)
+        inits (take-nth 2 (rest bindings))]
+    `(let [~@(interleave names (map (fn* [_] (list (quote -create-local-var))) names))]
+       (push-thread-bindings (hash-map ~@(interleave names inits)))
+       (try ~@body (finally (pop-thread-bindings))))))
+
 
 ;; `(requiring-resolve sym)` → resolve a qualified symbol, requiring its
 ;; namespace first if needed. Throws on a non-qualified symbol (clj parity).

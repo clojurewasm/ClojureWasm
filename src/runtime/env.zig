@@ -297,6 +297,16 @@ pub const Env = struct {
     /// `findOrCreateNs` switches simply have no Var to update yet).
     ns_var: ?*Var = null,
 
+    /// `with-local-vars` anonymous-Var support (ADR-0097). `local_var_ns` is a
+    /// sentinel `__local` Namespace (NOT in `namespaces`, so never walked /
+    /// printed as a real ns) that anon Vars point `.ns` at; `local_vars` owns
+    /// every anon Var minted by `-create-local-var`. The Vars are NOT freed at
+    /// their `with-local-vars` extent (an escaped `var_ref` must stay deref-safe
+    /// — ADR-0097 Alt C); instead the session owns them and frees the lot in
+    /// `deinit`. D-255 = per-extent reclamation (a generation-handle slotmap).
+    local_var_ns: ?*Namespace = null,
+    local_vars: std.ArrayList(*Var) = .empty,
+
     /// Initialise with the three startup namespaces:
     ///   - `rt`           → kernel primitives (`+`, `=`, `count`, …)
     ///   - `clojure.core` → public Clojure surface + private leaves
@@ -369,6 +379,13 @@ pub const Env = struct {
         // using test. Null it here (no deref) so the frame chain never points
         // at freed arena memory across sessions.
         current_frame = null;
+        // ADR-0097: free the session's `with-local-vars` anonymous Vars + the
+        // sentinel ns (neither lives in `namespaces`, so the loop below misses
+        // them). Freeing at session end (not at each extent) keeps an escaped
+        // local var deref-safe for the whole session.
+        for (self.local_vars.items) |v| self.alloc.destroy(v);
+        self.local_vars.deinit(self.alloc);
+        if (self.local_var_ns) |ns| self.alloc.destroy(ns);
         var it = self.namespaces.iterator();
         while (it.next()) |entry| {
             self.alloc.free(entry.key_ptr.*);

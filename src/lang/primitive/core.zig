@@ -1363,6 +1363,34 @@ pub fn alterVarRootFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     return newroot;
 }
 
+/// `(-create-local-var)` — mint a fresh anonymous dynamic Var for the
+/// `with-local-vars` macro (ADR-0097). The Var is gpa-owned on the process-
+/// global `__local` sentinel Namespace (NOT registered in `env.namespaces`),
+/// `dynamic` so `push-thread-bindings` accepts it, root nil. The macro binds it
+/// to its init via a thread-binding frame; the bound value is GC-rooted by the
+/// existing binding-frame walk. The Var struct is INTENTIONALLY never freed: an
+/// escaped `var_ref` must stay deref-safe (freeing would UAF on escape), so the
+/// extent-end teardown only pops the frame. Reclamation (a generation-handle
+/// slotmap) is deferred — see the marker below.
+pub fn createLocalVarFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    try error_catalog.checkArity("-create-local-var", args, 0, loc);
+    const sentinel: *env_mod.Namespace = env.local_var_ns orelse blk: {
+        const ns = try env.alloc.create(env_mod.Namespace);
+        ns.* = .{ .name = "__local" };
+        env.local_var_ns = ns;
+        break :blk ns;
+    };
+    const v = try env.alloc.create(env_mod.Var);
+    v.* = .{ .ns = sentinel, .name = "--unnamed--", .flags = .{ .dynamic = true } };
+    // D-255: the Var is NOT freed at its with-local-vars extent (an escaped
+    // var_ref must stay deref-safe — ADR-0097 Alt C); the session owns it
+    // (`env.local_vars`) and frees the lot in `Env.deinit`. Per-extent
+    // reclamation (a generation-handle slotmap) is the deferred upgrade.
+    try env.local_vars.append(env.alloc, v);
+    return Value.encodeHeapPtr(.var_ref, v);
+}
+
 /// `(var-get v)` — return Var `v`'s current value (thread binding if bound,
 /// else root). `v` is a `.var_ref`. Mirrors `deref` on a var.
 pub fn varGetFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -1473,6 +1501,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "mix-collection-hash", .f = &mixCollectionHashFn },
     .{ .name = "hash-ordered-coll", .f = &hashOrderedCollFn },
     .{ .name = "hash-unordered-coll", .f = &hashUnorderedCollFn },
+    .{ .name = "-create-local-var", .f = &createLocalVarFn },
     .{ .name = "var-get", .f = &varGetFn },
     .{ .name = "var-set", .f = &varSetFn },
     .{ .name = "eval", .f = &evalFn },
