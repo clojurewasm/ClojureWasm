@@ -9,6 +9,50 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-258"
+    status: "recorded (2026-06-06) — `phase16_gc_torture` agent_conj flaked ONCE under gate load (`[#builtin 2]` vs `[1 2]`); standalone 3/3 deterministic PASS → load-induced, not a regression. Confirms the dormant multi-thread-torture race (D-244 #4)."
+    category: "concurrency"
+    barrier: |-
+      During the cljw.http.server gate (2026-06-06, `--serial-e2e`), the
+      `agent_conj` torture case failed once with `[#builtin 2]` (a builtin_fn
+      leaked into the agent's `[1 2]` value) — a GC-rooting corruption when an
+      agent WORKER thread's torture-mode STW collect rendezvous loses under host
+      CPU contention. Re-run + 3/3 standalone runs all PASS deterministically, so
+      it is **load-flaky, not deterministic** (a compiler/codegen bug would be
+      deterministic; this is a race). It is the **dormant D-244 #4 multi-thread-STW
+      torture hazard** (handover caveat + memory `gate_parallel_e2e_timeout`)
+      surfacing under the gate's concurrent load — NOT introduced by the HTTP
+      server change (which touches no agent/GC/threading code). Disposition: fold
+      into the D-244 #4 capstone (worker-initiated-collect rooting); until then,
+      on a gate flake here, re-run (it is intermittent). No standalone-reproducible
+      defect. Cross-ref D-244 / D-253 / memory gate_parallel_e2e_timeout.
+    last_reviewed: "2026-06-06"
+  - id: "D-257"
+    status: "now (opened 2026-06-06, ADR-0098) — cljw.http.server cycle-2 follow-ons. The server is a blocking serial loop with keep-alive FORCED OFF + a minimal Ring request map (method+uri only)."
+    category: "runtime"
+    barrier: |-
+      **`cljw.http.server` (ADR-0098) shipped as a deliberate minimal first cut.**
+      Follow-ons to close before it is a general-purpose server:
+      (a) **keep-alive forced OFF** — every `req.respond(…, .{ .keep_alive = false })`
+      because std.http.Server's `discardBody` ASSERTS
+      `transfer_encoding != .none or content_length != null` for any
+      `requestHasBody()` method (POST/PUT) and PANICS (process-wide) on a body-less
+      POST that sends no content-length. Forcing keep-alive off skips the
+      discard-body path entirely (connection closes per request). Proper fix: drain
+      the request body explicitly (readerExpectNone + discardRemaining, copying
+      head strings first since it invalidates them) so keep-alive can be re-enabled.
+      (b) **request :headers / :body absent** — the Ring map is `{:request-method
+      :uri}` only; add `:headers` (iterateHeaders) + `:body` (the drained body from
+      (a)) + `:query-string`. (c) **serial blocking loop** — one request at a time;
+      add per-connection threading (cljw has the Thread base) + a non-blocking
+      `run-server` returning a stop handle (http-kit shape) so it is testable
+      in-process + usable as a library. (d) **per-request GC rooting** — the
+      freshly-built request map + interned keywords/strings are built then
+      immediately passed to the handler; safe TODAY because auto-collect is off,
+      but under auto-collect a collect mid-handler could sweep them — root the
+      request map (EvalFrame) for torture-safety. (e) **cljw.http.client** is a
+      placeholder stub (feature_not_supported). Cross-ref ADR-0098.
+    last_reviewed: "2026-06-06"
   - id: "D-256"
     status: "TRIGGER — TOP PRIORITY (user 2026-06-06): the Clojure/conj 2026 CFP campaign. The next clean session's loop MUST start here. **Read `private/clojure_conj_2026_cfp/PRIORITY.md` AND `private/clojure_conj_2026_cfp/CFP_v2.md` TOGETHER**, then begin investigation / planning / work per PRIORITY.md (fully sequential P0->P9, no branching — work top-down one at a time). Deadline-driven."
     category: "scope"
