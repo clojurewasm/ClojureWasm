@@ -27,6 +27,7 @@ const vector_collection = @import("../../runtime/collection/vector.zig");
 const list_collection = @import("../../runtime/collection/list.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
 const set_collection = @import("../../runtime/collection/set.zig");
+const root_set = @import("../../runtime/gc/root_set.zig");
 
 fn callOne(rt: *Runtime, env: *Env, fn_val: Value, arg: Value, loc: SourceLocation) anyerror!Value {
     if (fn_val.tag() != .fn_val and fn_val.tag() != .builtin_fn)
@@ -54,7 +55,17 @@ fn rebuildList(
     var buf: std.ArrayList(Value) = .empty;
     defer buf.deinit(rt.gc.infra);
     var cur = form;
+    // GC-ROOT: C6 — root the source cursor (stack) + the transformed-so-far gpa
+    // accumulator (locals = buf.items) across transform_child (D-252) [ref:
+    // .dev/gc_rooting.md §C]. buf.items is refreshed each iter (append may realloc).
+    var src_root: [1]Value = .{cur};
+    var src_sp: u16 = 1;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &src_root, .sp = &src_sp, .locals = buf.items, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
     while (cur.tag() == .list and list_collection.countOf(cur) > 0) {
+        src_root[0] = cur;
+        gc_frame.locals = buf.items;
         const child = list_collection.first(cur);
         const t = try transform_child(rt, env, ctx, child, loc);
         try buf.append(rt.gc.infra, t);
@@ -79,8 +90,18 @@ fn rebuildVector(
 ) anyerror!Value {
     const n = vector_collection.count(form);
     var result = vector_collection.empty();
+    // GC-ROOT: C6 — root the source + the in-progress accumulator across the
+    // reentrant transform_child (vt.callFn re-enters the VM) [ref: .dev/gc_rooting.md §C].
+    // Without it a torture collect sweeps `result`; the next conj memcpy's a
+    // garbage tail (D-252).
+    var gc_roots: [2]Value = .{ form, result };
+    var gc_sp: u16 = 2;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &gc_roots, .sp = &gc_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
     var i: u32 = 0;
     while (i < n) : (i += 1) {
+        gc_roots[1] = result;
         const child = vector_collection.nth(form, i);
         const t = try transform_child(rt, env, ctx, child, loc);
         result = try vector_collection.conj(rt, result, t);
@@ -98,7 +119,15 @@ fn rebuildSet(
 ) anyerror!Value {
     var result = set_collection.empty();
     var seq_v = try set_collection.seq(rt, form);
+    // GC-ROOT: C6 — root the source cursor + accumulator across transform_child (D-252) [ref: .dev/gc_rooting.md §C]
+    var gc_roots: [2]Value = .{ seq_v, result };
+    var gc_sp: u16 = 2;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &gc_roots, .sp = &gc_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
     while (seq_v.tag() == .list and list_collection.countOf(seq_v) > 0) {
+        gc_roots[0] = seq_v;
+        gc_roots[1] = result;
         const child = list_collection.first(seq_v);
         const t = try transform_child(rt, env, ctx, child, loc);
         result = try set_collection.conj(rt, result, t);
@@ -122,12 +151,21 @@ fn rebuildArrayMap(
 ) anyerror!Value {
     var result = map_collection.empty();
     const am = form.decodePtr(*const map_collection.ArrayMap);
+    // GC-ROOT: C6 — root the source map + accumulator + the in-flight [k v] entry
+    // across transform_child (D-252) [ref: .dev/gc_rooting.md §C].
+    var gc_roots: [3]Value = .{ form, result, .nil_val };
+    var gc_sp: u16 = 3;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &gc_roots, .sp = &gc_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
     var i: u32 = 0;
     while (i < am.count) : (i += 1) {
         // Synthesize the [k v] 2-vector.
         var entry = vector_collection.empty();
         entry = try vector_collection.conj(rt, entry, am.entries[2 * i]);
         entry = try vector_collection.conj(rt, entry, am.entries[2 * i + 1]);
+        gc_roots[1] = result;
+        gc_roots[2] = entry;
         const transformed = try transform_child(rt, env, ctx, entry, loc);
         // Expect transformed back to a 2-vector.
         if (transformed.tag() != .vector or vector_collection.count(transformed) != 2)

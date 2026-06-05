@@ -77,5 +77,11 @@ assert_eq 'print_lazy'   "$("$BIN" -e '(filter even? (range 1 20))')"           
 # eval (EvalFrame, like reduceFn); over a LAZY-MAP source the cursor was swept.
 assert_eq 'some_lazy'    "$("$BIN" -e '(some (fn [x] (when (> x 150) x)) (map inc (range 1 200)))')" '151'
 assert_eq 'every_lazy'   "$("$BIN" -e '(every? (fn [x] (< x 500)) (map inc (range 1 200)))')"        'true'
+# D-252 C6 — clojure.walk rebuild fns (list/vector/set/array_map) root the
+# in-progress accumulator + source across the inner fn's reentrant eval; under
+# torture the accumulator was swept (set -> #{5 nil}, vector -> @memcpy panic).
+assert_eq 'walk_vec'     "$("$BIN" -e '(clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) [1 2 3 [4 5 [6 7]]])')" '[2 3 4 [5 6 [7 8]]]'
+assert_eq 'walk_map'     "$("$BIN" -e '(clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) {:a 1 :b 2 :c 3})')" '{:a 2, :b 3, :c 4}'
+assert_eq 'walk_set'     "$("$BIN" -e '(count (clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) (set (range 1 60))))')" '59'
 
 echo "ALL phase16_gc_torture PASS"
