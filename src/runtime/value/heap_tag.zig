@@ -116,3 +116,29 @@ pub const HeapTag = enum(u8) {
     hash_collision_map_node = 62, // D14 — PersistentHashMap collision bucket (5.5.c, declared here)
     tval = 63, // D15 — STM Ref history-ring node (Phase 14 row 14.11.5, ADR-0010 amendment 4)
 };
+
+/// GC-managed membrane SSOT (D-251 / ADR-0095 Alt D). `true` iff a Value with
+/// this tag points at an object the GC mark phase may safely read + dispatch on
+/// — i.e. its pointer targets a valid `HeapHeader` at offset 0 (a `gc.alloc`'d
+/// swept object, or a `trackHeap`'d process-lifetime object like a `Function`
+/// whose closure children we trace). `false` for the heap-TAGGED but NON-GC
+/// types whose pointer does NOT target a markable `HeapHeader`:
+///
+///   - `var_ref` / `ns` — Env-lifetime `*Var` / `*Namespace` with no header.
+///   - `symbol` / `keyword` — `gpa`-interned (process-lifetime, never swept);
+///     a constant-pool form mis-decodes to a non-header (the `tag_trace_table`
+///     OOB the dormant-chunk-constant trace hit). They never need marking (the
+///     interner keeps them + their `gpa` name strings alive), so filtering them
+///     here is both safe and the fix.
+///
+/// `Value.heapHeader()` consults this so EVERY root walk (operand stack, locals,
+/// chunk constants, closure bindings) filters the same set in ONE place — an
+/// allow-list-of-known-offenders `switch` is exactly the scatter this replaces.
+/// A `comptime` assert in `gc/tag_ops.zig` guards the invariant "every tag with
+/// a registered trace or finaliser is GcManaged" so the two cannot drift.
+pub fn isGcManaged(tag: HeapTag) bool {
+    return switch (tag) {
+        .symbol, .keyword, .var_ref, .ns => false,
+        else => true,
+    };
+}

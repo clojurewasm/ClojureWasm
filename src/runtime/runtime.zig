@@ -387,6 +387,21 @@ pub const Runtime = struct {
         @import("uuid.zig").registerGcHooks();
         @import("tagged_literal.zig").registerGcHooks();
         @import("type_descriptor.zig").registerGcHooks();
+        // D-251 / ADR-0095 Alt D consistency guard: the isGcManaged membrane
+        // (heap_tag.zig SSOT) must agree with GC-hook registration — any tag
+        // carrying a trace or finaliser is a mark-phase-visited object, so it
+        // MUST be GcManaged. Catches a future gc.alloc'd type misclassified as
+        // non-GC (which would sweep it while live). Once per Runtime.init.
+        {
+            const tag_ops_mod = @import("gc/tag_ops.zig");
+            const heap_tag_mod = @import("value/heap_tag.zig");
+            var t: u8 = 0;
+            while (t < 64) : (t += 1) {
+                if (tag_ops_mod.tag_trace_table[t] != null or tag_ops_mod.tag_finaliser_table[t] != null) {
+                    std.debug.assert(heap_tag_mod.isGcManaged(@enumFromInt(t)));
+                }
+            }
+        }
         return .{
             .io = io,
             .gpa = gpa,

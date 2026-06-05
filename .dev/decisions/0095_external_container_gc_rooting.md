@@ -1,6 +1,6 @@
 # ADR-0095 — GC children of non-swept containers must be re-reached every collect
 
-- **Status**: Proposed → Accepted (2026-06-05)
+- **Status**: Proposed → Accepted (2026-06-05); Alt D landed (2026-06-05, next commit)
 - **Amends**: ADR-0028 (mark-sweep GC) + ADR-0091 (operand-stack root walk).
   Sibling to ADR-0094 (reentrant-primitive accumulator rooting) — same
   campaign (D-251), a *different* root-gap class.
@@ -198,6 +198,31 @@ F-002 (finished-form) + F-011 (one mechanism, no parallel paths) both point at *
 ### Main-loop disposition
 
 Alt D is **accepted as the finished-form direction** and scheduled as the immediate next unit (the GC-rooting SSOT). This commit lands the F-clean, torture-verified subset that is safe today — the orthogonal bit-hygiene clear (axis ii) + the executing-chunk constant root + the closure trace — because they are correct and complete on their own surface and gate-green now. Alt D's membrane-completion (the `isGcManaged` SSOT + un-reverting the dormant trace) is the next commit, not an indefinite deferral; sequencing two correct units is not the Cycle-budget-defer smell (which is picking a smaller *alternative* as the final answer). The DA's caveat is honored: `clearPersistentMarks` stays as a separate axis.
+
+## Revision — Alt D landed (2026-06-05)
+
+The DA's recommended finished form shipped in the commit after this ADR's
+first. `heap_tag.zig` gained `isGcManaged(tag)` — the membrane SSOT —
+classifying the heap-tagged-but-non-GC set as `{symbol, keyword, var_ref, ns}`
+(`symbol`/`keyword` are `gpa`-interned via the keyword/symbol interners, never
+swept; `var_ref`/`ns` are Env pointers). `Value.heapHeader()` now consults it
+(`Tag`→`HeapTag` is 1:1 by integer for the heap slots) instead of the
+hand-listed `var_ref`/`ns` switch — so EVERY root walk (operand stack, locals,
+chunk constants, closure bindings) filters the same set in one place. The
+`tag_trace_table[112]` crash is structurally gone (keyword/symbol constants are
+filtered before decode), so `traceFunction`'s dormant-chunk-constant trace is
+**un-reverted** — a reachable-but-not-executing fn's literals are now rooted
+(`(defn g [x] (str "n=" x)) (mapv g …)` keeps `"n="` alive). A `Runtime.init`
+consistency guard asserts every tag with a registered trace/finaliser is
+`isGcManaged`, so a future `gc.alloc`'d type misclassified as non-GC fails fast
+rather than being silently swept while live. phase16_gc_torture.sh +2
+(`dormant_lit`, `kw_const`).
+
+The DA caveats are honored: `clearPersistentMarks` (the orthogonal bit-hygiene
+axis) is untouched; the membrane is now the single classifier, not an
+allow-list. The broader user-requested GC-rooting-site SSOT + `GC-ROOT:` marker
+discipline + future-GC-migration doc remains the next unit (this is its first
+SSOT piece). The remaining gaps below are now isolated to a different class.
 
 ## Remaining D-251 torture gaps (not this ADR)
 

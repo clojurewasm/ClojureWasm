@@ -299,15 +299,16 @@ pub const Value = enum(u64) {
         const top16: u16 = @truncate(bits >> nb.NB_TAG_SHIFT);
         if (top16 < nb.NB_FLOAT_TAG_BOUNDARY) return null;        // raw f64
         if (top16 >= nb.NB_TAG_INT) return null;                  // immediate band
-        // `.var_ref` (20) and `.ns` (21) are heap-TAGGED but their payload is an
-        // Env-lifetime `*Var` / `*Namespace` with NO `HeapHeader` at offset 0 —
-        // decoding one as a header and handing it to `mark()` would corrupt the
-        // Env struct (root_set.zig: "namespace-owned pointers, not GC edges").
-        // They are never GcHeap-allocated, so the membrane skips them.
-        switch (self.tag()) {
-            .var_ref, .ns => return null,
-            else => {},
-        }
+        // GC-managed membrane (D-251 / ADR-0095 Alt D): a heap-TAGGED Value whose
+        // tag is NOT GcManaged (`var_ref`/`ns` Env pointers, `symbol`/`keyword`
+        // gpa-interned) does not target a markable `HeapHeader` at offset 0, so it
+        // is filtered here BEFORE decode — handing `mark()` such a pointer reads a
+        // non-header first byte as a tag (the `tag_trace_table` OOB). `isGcManaged`
+        // is the single classifier every root walk shares (heap_tag.zig SSOT).
+        // `Tag` and `HeapTag` are 1:1 by integer for slots 0..63; the immediate
+        // band (64..69) is already returned above, so the cast is in range.
+        const ht: HeapTag = @enumFromInt(@intFromEnum(self.tag()));
+        if (!heap_tag_mod.isGcManaged(ht)) return null;
         return self.decodePtr(*HeapHeader);
     }
 };

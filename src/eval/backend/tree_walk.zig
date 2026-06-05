@@ -174,17 +174,27 @@ pub fn traceFunction(gc_ptr: *anyopaque, header: *HeapHeader) void {
     if (f.closure_bindings) |caps| {
         for (caps) |cap| if (cap.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
     }
-    // A method/variadic chunk's literal CONSTANTS are deliberately NOT traced
-    // here: while the literal *values* are `gc.alloc`'d (so a DORMANT
-    // reachable-but-not-executing fn's literals can be swept — a real D-251 gap),
-    // the constant pool also holds heap-tagged Values that point at non-GC
-    // memory whose first byte is not a valid HeapTag (observed: `index 112,
-    // len 64` reading `tag_trace_table[112]`). `Value.heapHeader()` only filters
-    // `var_ref`/`ns`, not this class, so a raw constant-pool walk crashes. Safely
-    // rooting dormant-chunk constants needs a GC-managed-tag classifier (the
-    // GC-rooting SSOT work) — tracked in D-251. EXECUTING chunks are already
-    // rooted via `EvalFrame.constants` (ADR-0095 Class 2a), which covers the
-    // common case.
+    // Mark each compiled method / variadic chunk's literal CONSTANTS (D-251 /
+    // ADR-0095 Alt D). Literal *values* are `gc.alloc`'d but sit in the
+    // run-lifetime analyser arena's constant pool; while this fn is DORMANT
+    // (reachable via a var but not executing) its pool has no `EvalFrame` root,
+    // so without this trace a literal in a not-currently-running fn is swept and
+    // the next call loads a dangling pointer (`(defn g [x] (str "n=" x))
+    // (mapv g …)` swept "n="). Safe now that `heapHeader()` consults the total
+    // `isGcManaged` membrane: `symbol`/`keyword`/`var_ref`/`ns` constants are
+    // filtered before decode, so the prior `tag_trace_table` OOB cannot recur.
+    // Nested `fn_val` template constants recurse via mark's cycle bit + the
+    // persistent-waypoint re-clear.
+    for (f.methods) |m| {
+        if (m.bytecode) |chunk| {
+            for (chunk.constants) |c| if (c.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
+        }
+    }
+    if (f.variadic) |v| {
+        if (v.bytecode) |chunk| {
+            for (chunk.constants) |c| if (c.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
+        }
+    }
 }
 
 /// Register the `.fn_val` trace. Called from `driver.installVTable` (a

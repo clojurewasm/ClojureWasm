@@ -61,5 +61,13 @@ assert_eq 'into_lazymap' "$("$BIN" -e '(count (into [] (map inc (range 1 200))))
 # map producing pair vectors into a hash-map under torture (HAMT + the pair
 # vectors survive the reduce realiser).
 assert_eq 'into_pairs'   "$("$BIN" -e '(count (into {} (map (fn [x] [x (* x x)]) (range 1 50))))')" '49'
+# ADR-0095 Alt D — a DORMANT fn's chunk LITERAL constant rooted via traceFunction
+# (the isGcManaged membrane makes that constant walk safe). `g` is reachable via
+# its var but not executing between mapv calls; without the trace its "n=" literal
+# is swept and the next call loads a dangling pointer.
+assert_eq 'dormant_lit'  "$("$BIN" -e '(do (defn g [x] (str "n=" x)) (apply str (mapv g (range 1 20))))')" '"n=1n=2n=3n=4n=5n=6n=7n=8n=9n=10n=11n=12n=13n=14n=15n=16n=17n=18n=19"'
+# keyword/symbol constants (gpa-interned, non-GC) are filtered by isGcManaged, so
+# a fn whose body references a keyword is torture-clean.
+assert_eq 'kw_const'     "$("$BIN" -e '(count (filter (fn [m] (:keep m)) [{:keep true} {:keep false} {:keep true}]))')" '2'
 
 echo "ALL phase16_gc_torture PASS"
