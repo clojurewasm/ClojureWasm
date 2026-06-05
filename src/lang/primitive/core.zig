@@ -1206,17 +1206,23 @@ pub fn subsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     if (args[1].tag() != .integer)
         return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "subs", .actual = @tagName(args[1].tag()) });
     const s = string_mod.asString(args[0]);
+    // Codepoint length; `subs` indices are codepoint-based, and clj bounds-checks
+    // against the count (it does NOT clamp — `(subs "hello" 2 10)` throws
+    // StringIndexOutOfBounds, not "llo"). D-164-adjacent string-parity fix.
+    const len = charset_mod.codepointCount(s) catch
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "subs on invalid UTF-8" });
     const start_i = args[1].asInteger();
-    if (start_i < 0)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "subs with negative start index" });
+    if (start_i < 0 or @as(u64, @intCast(@max(start_i, 0))) > len)
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "subs" });
     const start: usize = @intCast(start_i);
-    var end: usize = std.math.maxInt(usize);
+    var end: usize = len;
     if (args.len == 3) {
         if (args[2].tag() != .integer)
             return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "subs", .actual = @tagName(args[2].tag()) });
         const end_i = args[2].asInteger();
-        if (end_i < start_i)
-            return error_catalog.raise(.feature_not_supported, loc, .{ .name = "subs with end < start" });
+        // clj: start <= end <= len, else StringIndexOutOfBounds.
+        if (end_i < start_i or @as(u64, @intCast(@max(end_i, 0))) > len)
+            return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "subs" });
         end = @intCast(end_i);
     }
     const slice = charset_mod.substring(s, start, end) catch {

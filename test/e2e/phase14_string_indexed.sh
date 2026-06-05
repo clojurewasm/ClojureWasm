@@ -33,4 +33,20 @@ assert_eq 'has3'      "$("$BIN" -e '(contains? "abc" 3)')"    'false'
 assert_eq 'has_neg'   "$("$BIN" -e '(contains? "abc" -1)')"   'false'
 assert_eq 'has_empty' "$("$BIN" -e '(contains? "" 0)')"       'false'
 
-echo "OK — phase14_string_indexed (15 cases) green"
+# subs: codepoint-based, and clj bounds-checks (does NOT clamp). start/end
+# past the codepoint length (or end < start, or negative) throw
+# StringIndexOutOfBounds — cljw raises an index_error, not a clamped substring.
+assert_eq 'subs_ok'       "$("$BIN" -e '(subs "hello" 2 4)')"  '"ll"'
+assert_eq 'subs_end_eq'   "$("$BIN" -e '(subs "hello" 0 5)')"  '"hello"'
+assert_eq 'subs_start_eq' "$("$BIN" -e '(subs "hello" 5)')"    '""'
+assert_eq 'subs_utf8'     "$("$BIN" -e '(subs "héllo" 1 3)')"  '"él"'
+"$BIN" -e '(subs "hello" 2 10)' >/dev/null 2>&1 && fail 'subs_end_oob: expected error' || true
+echo 'PASS subs_end_oob -> errors'
+"$BIN" -e '(subs "hello" 6)' >/dev/null 2>&1 && fail 'subs_start_oob: expected error' || true
+echo 'PASS subs_start_oob -> errors'
+"$BIN" -e '(subs "hello" 3 2)' >/dev/null 2>&1 && fail 'subs_end_lt_start: expected error' || true
+echo 'PASS subs_end_lt_start -> errors'
+"$BIN" -e '(subs "hello" -1)' >/dev/null 2>&1 && fail 'subs_neg: expected error' || true
+echo 'PASS subs_neg -> errors'
+
+echo "OK — phase14_string_indexed (23 cases) green"
