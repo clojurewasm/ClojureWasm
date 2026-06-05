@@ -254,8 +254,12 @@ pub fn mapQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     _ = rt;
     _ = env;
     try error_catalog.checkArity("map?", args, 1, loc);
-    const t = args[0].tag();
-    return if (t == .array_map or t == .hash_map or t == .sorted_map) .true_val else .false_val;
+    const v = args[0];
+    const t = v.tag();
+    if (t == .array_map or t == .hash_map or t == .sorted_map) return .true_val;
+    // A defrecord IS an IPersistentMap in clj (`(map? rec)` → true).
+    if (t == .typed_instance and v.decodePtr(*const td_mod.TypedInstance).descriptor.kind == .defrecord) return .true_val;
+    return .false_val;
 }
 
 /// `(set? x)` — true iff `x` is a hash-set or sorted-set.

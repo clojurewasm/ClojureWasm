@@ -230,6 +230,20 @@ pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
             const idx: i64 = k.asInteger();
             break :blk if (idx >= 0 and idx < @as(i64, transient_vector.count(coll))) .true_val else .false_val;
         },
+        // A defrecord answers `contains?` for its declared field keys (D-262).
+        .typed_instance => blk: {
+            var cs: dispatch.CallSite = .{};
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ASSOCIATIVE_FQCN, "-contains-key?", args, loc)) |v| break :blk v;
+            const inst = coll.decodePtr(*const td_mod.TypedInstance);
+            if (inst.descriptor.kind == .defrecord) {
+                const layout = inst.descriptor.field_layout orelse break :blk .false_val;
+                for (layout) |f| {
+                    if ((try keyword_mod.intern(rt, null, f.name)) == k) break :blk .true_val;
+                }
+                break :blk .false_val;
+            }
+            break :blk try dispatch.dispatch(rt, env, &cs, coll, ASSOCIATIVE_FQCN, "-contains-key?", args, loc);
+        },
         else => blk: {
             // D-089 row 8.6 cycle 3: Associative -contains-key? slow-path.
             // DIVERGENCE D2 (survey §6): unifies JVM's
@@ -636,6 +650,36 @@ pub fn dissocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
                 acc = try sorted.dissoc(rt, env, acc, args[i], loc);
             }
             break :blk acc;
+        },
+        // A defrecord: dissoc of a DECLARED key degrades to a map (a record can't
+        // drop a declared field, clj parity); dissoc of only undeclared keys
+        // returns the record unchanged (D-262). cljw has no __extmap (D-086), so a
+        // record is exactly its declared fields.
+        .typed_instance => blk: {
+            var cs: dispatch.CallSite = .{};
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPM_FQCN, "-without", args, loc)) |v| break :blk v;
+            const inst = coll.decodePtr(*const td_mod.TypedInstance);
+            if (inst.descriptor.kind != .defrecord)
+                break :blk try dispatch.dispatch(rt, env, &cs, coll, IPM_FQCN, "-without", args, loc);
+            const layout = inst.descriptor.field_layout orelse break :blk coll;
+            const fields = inst.fields();
+            var any_declared = false;
+            var m = map.empty();
+            for (layout, 0..) |f, i| {
+                const kw = try keyword_mod.intern(rt, null, f.name);
+                var removed = false;
+                var ai: usize = 1;
+                while (ai < args.len) : (ai += 1) {
+                    if (kw == args[ai]) removed = true;
+                }
+                if (removed) {
+                    any_declared = true;
+                } else {
+                    m = try map.assoc(rt, m, kw, fields[i]);
+                }
+            }
+            // No declared field removed → record unchanged (record-ness preserved).
+            break :blk if (any_declared) m else coll;
         },
         else => blk: {
             // D-089 row 8.6 cycle 3: IPersistentMap -without slow-path.

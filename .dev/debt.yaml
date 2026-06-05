@@ -65,7 +65,7 @@ active:
       real reader feature. Cross-ref F-011, the `0x` hex path as the model.
     last_reviewed: "2026-06-06"
   - id: "D-262"
-    status: "open (found 2026-06-06 via a record-ops clj-diff sweep) — record map-protocol completeness: `(contains? rec k)` / `(find rec k)` / `(dissoc rec declared-key)` / `(map? rec)` diverge. SEQ already fixed (03fb1b4f); this is the sibling cluster."
+    status: "DISCHARGED 2026-06-06 — record map-protocol cluster landed: contains?/find/dissoc(declared->map, undeclared->record-unchanged)/map?(defrecord->true). Additive typed_instance arms in containsQFn/dissocFn + mapQ; gate green (map?->true ripple validated). Corpus record_map_protocol (12/12)."
     category: "clj-parity"
     barrier: |-
       **Records are map-like but several map-protocol ops are unwired** (the same

@@ -1,0 +1,24 @@
+(do (defrecord R [x y]) (contains? (->R 1 2) :x))
+;;=> true
+(do (defrecord R [x y]) (contains? (->R 1 2) :z))
+;;=> false
+(do (defrecord R [x y]) (contains? (->R 1 2) "x"))
+;;=> false
+(do (defrecord R [x y]) (find (->R 1 2) :x))
+;;=> [:x 1]
+(do (defrecord R [x y]) (find (->R 1 2) :z))
+;;=> nil
+(do (defrecord R [x y]) (map? (->R 1 2)))
+;;=> true
+(do (defrecord R [x y]) (dissoc (->R 1 2) :x))
+;;=> {:y 2}
+(do (defrecord R [x y z]) (dissoc (->R 1 2 3) :x :z))
+;;=> {:y 2}
+(do (defrecord R [x y]) (into {} (dissoc (->R 1 2) :y)))
+;;=> {:x 1}
+(map? {:a 1})
+;;=> true
+(map? [1])
+;;=> false
+(do (defrecord R [x y]) (get (find (->R 5 7) :y) 1))
+;;=> 7
