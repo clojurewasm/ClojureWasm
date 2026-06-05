@@ -567,6 +567,11 @@ zig fmt src/           # format
   usage purpose for `additionalDirectories` paths.
 - [`.dev/lessons/INDEX.md`](.dev/lessons/INDEX.md) — observational
   learnings, distinct from load-bearing ADRs.
+- [`.dev/gc_rooting.md`](.dev/gc_rooting.md) — SSOT for the GC rooting
+  surface: every site that publishes / holds / decodes a GC root (EvalFrame
+  producers, root slots, reentrant accumulators, pins, in-txn, per-tag traces,
+  the `isGcManaged` membrane) + a moving-GC migration checklist. `GC-ROOT:`
+  markers in source anchor each published-root site here.
 
 ## References
 

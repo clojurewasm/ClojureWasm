@@ -92,6 +92,17 @@ active:
       mechanically find all rooting points. Full diagnosis: ADR-0095 +
       private/notes/phaseC-d251-root-cause.md.
     last_reviewed: "2026-06-05"
+  - id: "D-252"
+    status: "OPEN (2026-06-05, from the GC-rooting SSOT sweep) — 9 UNROOTED-CANDIDATE reentrant-primitive sites that hold a GC Value in a Zig local across a call back into eval WITHOUT publishing an EvalFrame (the ADR-0094 class). Torture can hit any of them. C8 (defprotocol/defrecord) + C9 (filter/keep/remove chunk-builder) are KNOWN-OPEN today; C1 (applyFn gpa ArrayList, apply-over-lazy) + C4/C5 (sorted insert/deleteNode on the custom sorted-map-by comparator path) are HIGH-severity latent; C2/C3 (everyQ/someFn cursor), C6 (walk rebuild), C7 (multimethod dispatch_val) are med/low latent. Fix shape = the reduceFn EvalFrame exemplar (publish acc/cursor as collector-addressable slots), which also doubles as moving-GC prep (.dev/gc_rooting.md §C). C9 is suspected to be a membrane/lazy-realisation interaction, not a missing Zig frame — investigate separately. Full file:line inventory: .dev/gc_rooting.md §C + private/notes/gc-rooting-ssot-sweep.md."
+    category: "gc"
+    barrier: |-
+      Drive to torture-green: each Ci opens an EvalFrame (or sets gc_self_guard)
+      publishing its held accumulator/cursor, mirroring reduceFn (ADR-0094).
+      Repro per site under CLJW_GC_TORTURE=1; lock each closure in
+      test/e2e/phase16_gc_torture.sh. Priority C8/C9 (known-open) then C1, C4/C5.
+      Re-run the GC-rooting SSOT sweep at the next Phase boundary to catch new
+      reentrant primitives. SSOT: .dev/gc_rooting.md.
+    last_reviewed: "2026-06-05"
   - id: "D-242"
     status: "Phase B anchor (re-cut ADR-0089, 2026-06-04) — KNOWN-unimplemented CORE, concurrency-led; redesign §7 against Zig 0.16 FIRST, then implement. finished-form, rework-OK with test guards. §7-redesign DONE = ADR-0090 (2026-06-04): io_default-singleton std.Io sync + ThreadGcContext root-publication GC handshake (the DA-fork caught v0's stop-the-world lie) + MVCC retry-only STM; spike-validated. Implementation (concurrency/{io_default,thread_pool,lock_tx,gc_thread}.zig + real future/promise/delay/atom/agent/locking bodies) is the remaining Phase B work; GC handshake lands first (prereq for any real-threading primitive)."
     category: "concurrency"
