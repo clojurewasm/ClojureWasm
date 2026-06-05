@@ -139,6 +139,13 @@ the ADR); debt D-036 (Phase 16 inline-vs-Pod decision); ROADMAP
   default gate never depends on zwasm, and backs off + re-defers with
   a dated note (no thrash) if that branch is mid-rewrite. Wired in
   D-037 (trigger) + D-038 (verify-against-repo) + handover Next.
+  **Finding-handling policy (user, 2026-06-05): both repos are the
+  user's.** Bugs / gaps / usability friction surfaced during wasm
+  integration are split by SIDE: a **zwasm-side** issue is RECORDED +
+  FED BACK (no cljw-side code change to "work around" it; **never edit
+  zwasm code** — feedback is relayed to zwasm via the user) in
+  `private/notes/zwasm_v2_feedback.md`; a **cljw-side** issue gets a
+  real code fix (root-cause resolution + debt row, not a workaround).
 
 ---
 

@@ -2072,7 +2072,7 @@ active:
       wasm FFI confirmed **unavoidable**. **Direction confirmed (F-001 + F-004 + F-006 + F-008)**: F-004 day-1 reserves NaN-box `funcref` / `externref` inline slots in Group D for zwasm-v2 reference types. F-006 keeps cw heap and Wasm linear memory in **separate spaces**; zwasm internal bookkeeping accepts cw GC allocator via `Engine.init(allocator)` (cw v0 D110 dual-GC leak does not recur). F-008 pins zwasm v2 spec (ADR-0109) review + cw v1 stances. JIT-coordination with cw v1 Phase 17 JIT (D-035) lands at Phase 16 entry. | Phase 16 entry + zwasm v2 rewrite (ADR-0109) completion
     last_reviewed: "2026-05-24"
   - id: "D-037"
-    status: "READY — TRIGGER (2026-06-05 user chat): zwasm v2 Zig API is in place; run the build.zig.zon relative-path import spike as the NEXT unit once the current add-watch-IRef / set! cluster completes. Activates this row's early-prototype window now (F-001 Revision 2026-06-05). This is the loop's wired trigger; do NOT wait for Phase 16."
+    status: "SPIKE LANDED 2026-06-05 (81af5cd3) — the build.zig.zon relative-path import spike proves cljw consumes zwasm v2's Zig embedding API (Engine.init(cljw alloc) -> compile -> instantiate -> typedFunc add(2,40)==42, leak-clean) via a LAZY path-dep behind -Dzwasm-spike (default gate zwasm-free, verified). No zwasm-side or cljw-side issues (finding-handling policy = F-001 Revision). REMAINING: full FFI (the Clojure `(wasm/load ...)` surface + inline-vs-Pod) stays Phase 16 (D-036); this spike does NOT close D-036. Re-run the spike opportunistically as zwasm-from-scratch evolves."
     category: "scope"
     barrier: |-
       **TRIGGER SPIKE (2026-06-05, user-directed via F-001 Revision).** zwasm v2
@@ -2111,7 +2111,7 @@ active:
       prototype path. | TRIGGER fires after the current cluster; full FFI = Phase 16 (D-036)
     last_reviewed: "2026-06-05"
   - id: "D-038"
-    status: "VERIFY-AGAINST-REPO (2026-06-05 user chat): the zwasm v2 Zig API is now in place, so the 5 spec items are checked DIRECTLY in `~/Documents/MyProducts/zwasm_from_scratch/` (read the code/spec) during the D-037 spike — no longer blocked on an external reply. Folded into D-037 step 3."
+    status: "SURFACE VERIFIED 2026-06-05 (D-037 spike): all 5 items confirmed PRESENT in the zwasm-from-scratch source — externref/funcref = `?u64` (Value union); `Trap` exported; `Engine.init(alloc: Allocator, InitOpts)` + `deinit` (spike-verified leak-clean); untyped `Instance.invoke(name, []const Value, []Value)` (instance.zig:136); shared memory via `Linker.defineMemory` (explicit opt-in). DETAIL guarantees (align(8) doc, Trap-12 ABI-stability promise, full alloc-reach audit, opt-in-default exact semantics) re-checked at Phase 16 depth. No longer awaiting an external reply (the API exists = read the code)."
     category: "scope"
     barrier: |-
       zwasm v2 spec 確認 5 件 — now verified against the available source during the

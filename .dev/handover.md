@@ -5,28 +5,22 @@
 
 ## Resume contract
 
-- **HEAD**: pushed `7932d65e` (set! runtime thread-bound gate + clojure.main-
-  style baseline binding frame, ADR-0096 / D-254). Active plan = ADR-0089
-  (A->B->C), Phase B. The add-watch-IRef (atom/agent/ref/var) + set!-parity
-  cluster is DONE.
-- **First commit on resume MUST be**: the **zwasm v2 relative-path import spike
-  — D-037 TRIGGER (user directive 2026-06-05, F-001 Revision).** The current
-  cluster is done, so this user-wired trigger fires now (it was Phase-16-locked).
-  Execute D-037's steps: (0) **guardrail FIRST** — use zwasm v2 ONLY from the
-  **`zwasm-from-scratch` long-lived branch** of `~/Documents/MyProducts/
-  zwasm_from_scratch` (tags are zwasm v1 — NEVER pin a tag; v1 is never used/
-  supported). `/add-dir` it; verify consumable NOW via `bash
-  scripts/check_zig_consumer.sh` there (passed 2026-06-05); **back off + re-defer
-  (dated note, no thrash) + do NOT pin** if that gate fails / mid-rewrite; (1) add
-  it to `build.zig.zon` as a relative-path dep (`../zwasm_from_scratch`) **behind
-  `-Dzwasm-spike`** so the default gate never depends on zwasm; (2) minimal Zig-
-  API smoke (Engine.init(cw allocator, F-006 separate spaces) -> load/instantiate/
-  invoke a tiny wasm); (3) verify the 5 D-038 spec items directly in-repo; (4)
-  report -> informs D-036 inline-vs-Pod (still Phase 16). Full FFI stays Phase 16.
-- **Forbidden this session**: **pinning an in-progress zwasm v2 state** (D-037
-  guardrail); turning auto-collect ON (user-owned #4a'); editing .claude/rules/*
-  (permission-blocked -- surface to user); re-opening landed work (git log =
-  SSOT); trusting ~/Documents/OSS/zig for 0.16 API.
+- **HEAD**: pushed `81af5cd3` (zwasm v2 embedding spike, D-037 / F-001). Active
+  plan = ADR-0089 (A->B->C), Phase B. DONE: add-watch-IRef (atom/agent/ref/var)
+  + set!-parity (ADR-0096) + the zwasm v2 relative-path import spike (consumable,
+  no issues — full FFI stays Phase 16 / D-036).
+- **First commit on resume MUST be**: the next Phase B unit — **D-237
+  `with-local-vars`** (now-status; needs anonymous-Var creation + the heap
+  binding-frame primitive, which the ADR-0096 baseline-frame work just exercised;
+  var-get/var-set already landed). Step 0 survey clojure.core/with-local-vars +
+  vars.clj, then TDD. Owner-gated concurrency (real-threading / auto-collect ON /
+  D-244 #4) stays OUT.
+- **Forbidden this session**: **pinning an in-progress zwasm v2 state / using a
+  zwasm tag or v1** (F-001 guardrail — v2 ONLY from the `zwasm-from-scratch`
+  branch; wasm findings split per the finding-handling policy: zwasm-side =
+  feedback note no-code, cljw-side = real fix); turning auto-collect ON (user-
+  owned #4a'); editing .claude/rules/* (permission-blocked -- surface to user);
+  re-opening landed work (git log = SSOT); trusting ~/Documents/OSS/zig for 0.16.
 
 ## Active plan — ADR-0089 post-M re-cut (2026-06-04)
 
@@ -43,17 +37,17 @@ Phase C  Library-driven gap-hunt (was the quality loop) on the concurrency base;
 
 ## Recently landed (git log = SSOT)
 
-**add-watch IRef generalization + set! parity** (git log = SSOT). add-watch/
-remove-watch now span atom/agent/ref/var via the shared `iref.notifyWatches`
-SSOT; `Var.watches` is GC-walked only via the ns_vars root walk (a var_ref is
-GC-membrane-filtered). **ADR-0096 / D-254**: `set!` became a JVM-`Var.set`
-parity runtime thread-bound gate in both backends (raise on unbound, never
-setRoot; removed the analyze-time dynamic check that raced the eval-time flag +
-the silent root-write) + a process-lifetime clojure.main-style **baseline
-binding frame** (bootstrap, 8 existing standard config/print vars) so top-level
-`(set! *warn-on-reflection* true)` works for the right reason. Env.deinit nulls
-the threadlocal current_frame so the arena-owned frame can't dangle across
-setupCore tests. Partial D-241 discharge (8 of ~21 baseline vars).
+**zwasm v2 embedding spike** (D-037 / F-001, 81af5cd3). cljw consumes zwasm v2's
+Zig API via a `build.zig.zon` relative-path LAZY dep behind `-Dzwasm-spike`
+(default gate zwasm-free, verified). `zig build zwasm-spike -Dzwasm-spike` ->
+Engine.init(cljw alloc) -> compile -> instantiate -> typedFunc add(2,40)==42,
+leak-clean. zwasm v2 ONLY from the `zwasm-from-scratch` branch (tags=v1, unused).
+No issues found. D-038 surface verified in-repo. Full FFI = Phase 16 (D-036).
+Prior: add-watch IRef (atom/agent/ref/var via shared `iref.notifyWatches`) +
+**ADR-0096 / D-254** set! JVM-`Var.set` parity (runtime thread-bound gate in both
+backends, never setRoot; removed the analyze-time check that raced the eval-time
+flag) + a clojure.main-style baseline binding frame (8 std config/print vars;
+partial D-241). Env.deinit nulls the threadlocal current_frame.
 
 ## Open carry-overs (actionable)
 
