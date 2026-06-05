@@ -9,6 +9,28 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-264"
+    status: "open (found 2026-06-06 via a lazy-seq clj-diff sweep) — `distinct` and `dedupe` are EAGER, so `(take N (distinct/dedupe <infinite>))` HANGS where clj returns lazily."
+    category: "clj-parity"
+    barrier: |-
+      **`distinct` / `dedupe` are not lazy → they hang over an infinite source.**
+        cljw `(take 3 (distinct (map #(mod % 5) (range))))` → HANGS (timeout)
+        cljw `(take 3 (dedupe (map #(quot % 3) (range))))`  → HANGS
+        clj  both → `(0 1 2)` (lazy; `take` stops them early)
+      They were implemented as EAGER forms in the §A26 coverage cluster (debt
+      line ~2755 "Cluster 3 Discharged dedupe/distinct/…") — they realize the
+      whole source before returning, so an infinite source never terminates.
+      clojure.core's `distinct`/`dedupe` are LAZY (`lazy-seq` + a `seen` set /
+      previous-element state, emitting each new element as the source is pulled),
+      so `(take N …)` over an infinite seq works. Real idiom affected: sampling N
+      distinct/deduped values from an infinite generator (`(take N (distinct
+      (repeatedly f)))`). Discharge: rewrite `distinct`/`dedupe` in
+      `src/lang/clj/clojure/core.clj` as lazy-seq (mirror clojure.core: distinct's
+      `step` fn with a `seen` set in a `lazy-seq`; dedupe's prev-tracking
+      `lazy-seq`). Corpus `lazy_distinct_dedupe` (bound every take). A HANG on
+      valid (if uncommon) input is a robustness bug. Cross-ref F-011, ADR-0054
+      (lazy-seq Layer-2), the eager-cluster discharge note.
+    last_reviewed: "2026-06-06"
   - id: "D-263"
     status: "open (found 2026-06-06 via an EDN read-string clj-diff sweep) — radix integer literals `NrDDDD` (e.g. 2r1010=10, 16rFF=255, 36rZ=35) unsupported; cljw raises name_error. Hex `0x` works."
     category: "clj-parity"
