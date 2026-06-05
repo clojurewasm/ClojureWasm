@@ -55,6 +55,7 @@ const symbol_mod = @import("../../runtime/symbol.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const list_collection = @import("../../runtime/collection/list.zig");
 const lazy_seq_mod = @import("../../runtime/lazy_seq.zig");
+const root_set = @import("../../runtime/gc/root_set.zig");
 const vector_collection = @import("../../runtime/collection/vector.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
 const set_collection = @import("../../runtime/collection/set.zig");
@@ -1130,7 +1131,20 @@ fn valueSeqToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, seq_val: Va
     var items: std.ArrayList(Form) = .empty;
     defer items.deinit(arena);
     var cur = try lazy_seq_mod.seq(rt, env, seq_val);
+    // GC-ROOT: D-253 — the seq cursor lives in a Zig local across seq/first/rest
+    // (force lazy layers) + the recursive `valueToForm` (nested seqs re-enter),
+    // all re-entering the VM. A torture collect during a macro-expansion's
+    // Value->Form round-trip sweeps `cur`, so the macro's lazy `(seq (concat …))`
+    // realizes garbage elements -> e.g. `(var <list>)` (with-redefs, D-253) [ref:
+    // .dev/gc_rooting.md §C]. `items` is arena Forms (not GC), so only `cur`
+    // (+ the source) needs rooting.
+    var seq_roots: [2]Value = .{ seq_val, cur };
+    var seq_sp: u16 = 2;
+    var seq_frame: root_set.EvalFrame = .{ .stack = &seq_roots, .sp = &seq_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &seq_frame;
+    defer root_set.eval_frame_head = seq_frame.parent;
     while (!cur.isNil()) {
+        seq_roots[1] = cur;
         const head = try lazy_seq_mod.first(rt, env, cur);
         try items.append(arena, try valueToForm(arena, rt, env, head, call_loc));
         cur = try lazy_seq_mod.seq(rt, env, try lazy_seq_mod.rest(rt, env, cur));
@@ -1142,6 +1156,13 @@ fn valueSeqToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, seq_val: Va
 fn valueVectorToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, vec_val: Value, call_loc: SourceLocation) anyerror!Form {
     const n = vector_collection.count(vec_val);
     var items = try arena.alloc(Form, n);
+    // GC-ROOT: D-253 — root the source across the recursive valueToForm (a nested
+    // seq/map element re-enters the VM) [ref: .dev/gc_rooting.md §C].
+    var vroots: [1]Value = .{vec_val};
+    var vsp: u16 = 1;
+    var vframe: root_set.EvalFrame = .{ .stack = &vroots, .sp = &vsp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &vframe;
+    defer root_set.eval_frame_head = vframe.parent;
     var i: u32 = 0;
     while (i < n) : (i += 1) {
         items[i] = try valueToForm(arena, rt, env, vector_collection.nth(vec_val, i), call_loc);
@@ -1153,6 +1174,13 @@ fn valueMapToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, map_val: Va
     // ArrayMap-only iteration today (D-045 still gates HamtMap path).
     // The decode is direct because `.array_map` tag was already
     // matched in `valueToForm`.
+    // GC-ROOT: D-253 — root `map_val` (the raw `am` pointer aliases it) across the
+    // recursive valueToForm re-entries [ref: .dev/gc_rooting.md §C].
+    var mroots: [1]Value = .{map_val};
+    var msp: u16 = 1;
+    var mframe: root_set.EvalFrame = .{ .stack = &mroots, .sp = &msp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &mframe;
+    defer root_set.eval_frame_head = mframe.parent;
     const am = map_val.decodePtr(*const map_collection.ArrayMap);
     var entries = try arena.alloc(Form, @as(usize, am.count) * 2);
     var i: u32 = 0;
@@ -1166,6 +1194,13 @@ fn valueMapToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, map_val: Va
 fn valueSetToForm(arena: std.mem.Allocator, rt: *Runtime, env: *Env, set_val: Value, call_loc: SourceLocation) anyerror!Form {
     // PersistentHashSet wraps an ArrayMap-backed Value at its `map`
     // field; iterate the map's keys, ignore the sentinel values.
+    // GC-ROOT: D-253 — root `set_val` (the raw `am` aliases its backing map)
+    // across the recursive valueToForm re-entries [ref: .dev/gc_rooting.md §C].
+    var sroots: [1]Value = .{set_val};
+    var ssp: u16 = 1;
+    var sframe: root_set.EvalFrame = .{ .stack = &sroots, .sp = &ssp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &sframe;
+    defer root_set.eval_frame_head = sframe.parent;
     const ps = set_val.decodePtr(*const set_collection.PersistentHashSet);
     const am = ps.map.decodePtr(*const map_collection.ArrayMap);
     var items = try arena.alloc(Form, am.count);

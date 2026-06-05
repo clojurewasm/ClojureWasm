@@ -100,5 +100,11 @@ assert_eq 'print_method' "$("$BIN" -e '(mapv pr-str [1 :a "s" [1 2] {:k 3}])')" 
 # result-pin roots only the outer Value, not the walk's own intermediates.
 assert_eq 'print_nested' "$("$BIN" -e '(partition 2 (range 1 10))')"                                '((1 2) (3 4) (5 6) (7 8))'
 assert_eq 'print_lazlaz' "$("$BIN" -e '(map (fn [x] (range 1 x)) (range 2 5))')"                    '((1) (1 2) (1 2 3))'
+# D-253 macroexpand — the analyzer's valueToForm (Value->Form round-trip of a
+# macro expansion) roots its seq cursor / source across the recursive conversion
+# + lazy realization (a macro's `(seq (concat …))` syntax-quote). Without it a
+# torture collect mid-expansion swept the cursor -> garbage form (with-redefs
+# emitted `(var <list>)` -> an analysis-time error).
+assert_eq 'macroexpand'  "$("$BIN" -e '(do (def ^:dynamic *wv* 1) (with-redefs [*wv* 5] (+ *wv* *wv*)))')" '10'
 
 echo "ALL phase16_gc_torture PASS"
