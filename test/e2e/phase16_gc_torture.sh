@@ -34,5 +34,11 @@ assert_eq 'closure_vec'  "$("$BIN" -e '(let [x [1 2 3]] ((fn [] (reduce + x))))'
 assert_eq 'closure_nest' "$("$BIN" -e '(let [a 10] (let [f (fn [b] (+ a b))] (f 5)))')"        '15'
 # map building into a persistent map (HAMT nodes survive repeated collects).
 assert_eq 'into_map'     "$("$BIN" -e '(count (into {} (map (fn [i] [i (* i i)]) (range 1 50))))')" '49'
+# reduce accumulator rooted across the reducing-fn eval (ADR-0094 / D-251).
+assert_eq 'reduce_sum'   "$("$BIN" -e '(reduce + (range 1 101))')"                                  '5050'
+assert_eq 'mapv_lit'     "$("$BIN" -e '(mapv inc [10 20 30])')"                                     '[11 21 31]'
+assert_eq 'frequencies'  "$("$BIN" -e '(frequencies [1 1 2 3 3 3])')"                               '{1 2, 2 1, 3 3}'
+# reduce over a vector source (the .vector fast path's racc rooting).
+assert_eq 'reduce_vec'   "$("$BIN" -e '(reduce + [1 2 3 4 5 6 7 8 9 10])')"                         '55'
 
 echo "ALL phase16_gc_torture PASS"

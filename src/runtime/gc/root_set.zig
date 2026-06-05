@@ -92,18 +92,20 @@ pub const RootSource = enum {
 /// now and avoids a Phase B surface change.
 pub threadlocal var macro_root_slot: ?Value = null;
 
-/// One VM `eval` invocation's operand-stack roots, published on the
-/// thread's eval-frame chain so a GC `collect()` walks live operand
-/// Values (`stack[0..sp]`) + slot Values (`locals`) — ADR-0091. The
-/// per-thread CHAIN is built by `vm.eval`'s recursion (`op_call ->
-/// callMethodImpl -> evalChunkErased -> eval`), each invocation a fresh
-/// Zig-local `stack`/`locals`. Layer 0 owns the struct + the
-/// threadlocal head; `vm.eval` (Layer 1) push/`defer`-pops a frame per
-/// call via downward import. Fields are raw `Value` pointers (no
-/// VM-type leak into Layer 0): `stack`/`sp` are read together at walk
-/// time as `stack[0..sp.*]` — the array is `undefined` above `sp`, so
-/// the walker must NOT read past it; `locals` is fully nil-initialised
-/// (256 slots) so the whole slice is walk-safe (immediates skipped).
+/// One operand-stack-resident root scope, published on the thread's
+/// eval-frame chain so a GC `collect()` walks live operand Values
+/// (`stack[0..sp]`) + slot Values (`locals`) — ADR-0091. Two kinds of
+/// producer push these (ADR-0094): (1) every `vm.eval` activation
+/// (`op_call -> callMethodImpl -> evalChunkErased -> eval`), each a fresh
+/// Zig-local `stack`/`locals`; and (2) a reentrant Layer-2 primitive that
+/// holds GC accumulators across a call back into `eval` (e.g. `reduceFn`
+/// pushes a 2-slot `[acc, cur]` frame, `locals = &.{}`). Layer 0 owns the
+/// struct + threadlocal head; Layer 1/2 push/`defer`-pop a frame via
+/// downward import. Fields are raw `Value` pointers (no VM-type leak into
+/// Layer 0): `stack`/`sp` are read together at walk time as
+/// `stack[0..sp.*]` — the array is `undefined` above `sp`, so the walker
+/// must NOT read past it; `locals` must be fully nil-initialised (or empty)
+/// so the whole slice is walk-safe (immediates skipped).
 pub const EvalFrame = struct {
     stack: [*]const Value,
     sp: *const u16,
