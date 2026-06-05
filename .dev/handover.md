@@ -7,29 +7,25 @@
 
 - **HEAD**: see `git log` (`cw-from-scratch`). Gate green 251/0 Mac + 250/0 Linux
   x86_64 (serial-e2e). debt = `.dev/debt.yaml`. Active plan = **ADR-0089 (A→B→C)**.
-- **First commit on resume MUST be**: **Phase B #4a' — in-txn-map GC-rooting**, the
-  ONE genuine remaining root gap. The #4a' fabrication-window AUDIT is done
-  (`private/notes/phaseB-4a-rooting-audit.md`): future-result / agent-action /
-  swap!-`old` windows are PROVEN SAFE (no-park → `stopWorld` waits, or the value is
-  on an EvalFrame operand stack), and Q1-op partials are already `gc_self_guard`ed
-  — so the scope is narrower than the code-review's flag. The gap: a `dosync` body
-  parks (alloc) while `LockingTransaction.vals`/`commutes` hold un-rooted Values in
-  gpa maps. Finished-form (per the audit): `ThreadGcContext` gains an OPAQUE
-  `tx_slot` (root_set must NOT import lock_tx — cycle); `mark_sweep` (which MAY
-  import lock_tx) adds a pass after the RootIterator loop marking each thread's tx
-  vals/commutes. Drive it TDD with an explicit-`collectStopTheWorld`-during-a-tx
-  unit test (red→green). This touches the most-correctness-critical module — do it
-  as a focused dedicated step. Then agent watches/validator (ADR-0093 Alt 2 IRef
-  extraction), error-handler, `await-for`, `shutdown-agents`. The Phase B
-  concurrency PRIMITIVES are complete + dual-arch-verified + code-reviewed (see
-  Recently landed). rework-OK + test guards (F-002); src commits gate
-  `--serial-e2e`. Cold-start: `private/notes/phaseB-4a-rooting-audit.md` +
-  `phaseB-concurrency-review-fixes.md`.
-- **Forbidden this session**: turning auto-collect ON before the **#4a'**
-  runtime-wide fabrication-window + in-txn-map GC-root audit (collect stays
-  explicit/test-triggered; the safepoint + per-thread root publication are wired
-  so any collect is safe, but the in-txn `vals`/`commutes` maps + a future's
-  result are NOT yet a GC root source); editing `.claude/rules/*` (permission
+- **First commit on resume MUST be**: a non-gated Phase B unit (pick one). The
+  **#4a' GC-ROOTING is COMPLETE** — in-txn maps self+worker (opaque `ThreadGcContext.
+  tx_slot` + `mark_sweep` mark-pass + `lock_tx.markRoots`, TDD red→green) + the
+  audit-proven-safe fabrication windows (`private/notes/phaseB-4a-rooting-audit.md`)
+  + `gc_self_guard` Q1-partials. The ONLY remaining #4a' step is the **auto-collect-
+  ON flip** — GATED (Forbidden below): it needs a full runtime-wide root re-audit +
+  USER-AWARENESS (it can destabilize the whole runtime). So next non-gated work:
+  agent watches/validator (ADR-0093 Alt 2 IRef extraction) / error-handler /
+  `await-for` / `shutdown-agents`, OR with-local-vars (D-237). (arrays F-004 + full
+  `*out*` D-238 are OWNER-GATED — do NOT cold-seize.) Phase B concurrency PRIMITIVES
+  are complete + dual-arch-verified + code-reviewed. rework-OK + test guards (F-002);
+  src commits gate `--serial-e2e`. Cold-start: `private/notes/phaseB-4a-self-tx-
+  rooting.md` + `phaseB-4a-rooting-audit.md`.
+- **Forbidden this session**: turning auto-collect ON (collect stays explicit/
+  test-triggered). The safepoint + per-thread root publication + the in-txn-map
+  rooting (self+worker) + the fabrication-window audit are now ALL done — so any
+  EXPLICIT collect is safe — but the auto-collect-ON flip is the remaining highest-
+  risk step (a full runtime-wide root re-audit + user-awareness first; it can
+  destabilize the whole runtime); editing `.claude/rules/*` (permission
   classifier blocks it as self-mod — surface to user, see memory); "fixing" an
   AD-001..013 accepted divergence (AD-013 = STM no-barge, landed); re-opening
   landed work (git log = SSOT); perf without a Release `scripts/perf.sh` number;
