@@ -42,6 +42,7 @@ const vector_collection = @import("collection/vector.zig");
 const set_collection = @import("collection/set.zig");
 const map_collection = @import("collection/map.zig");
 const map_entry_collection = @import("collection/map_entry.zig");
+const root_set = @import("gc/root_set.zig");
 const persistent_queue = @import("collection/persistent_queue.zig");
 const sorted_collection = @import("collection/sorted.zig");
 const ex_info_collection = @import("collection/ex_info.zig");
@@ -206,7 +207,21 @@ fn realizeSeqWalk(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
     var items: std.ArrayList(Value) = .empty;
     defer items.deinit(rt.gpa);
     var cur = v;
+    // GC-ROOT: D-253 — root the cursor (stack) + the accumulating realized items
+    // (locals = the gpa ArrayList, refreshed each iter since append may realloc)
+    // across seq/first/rest + the recursive `deepRealize` (all re-enter the VM to
+    // force lazy layers) [ref: .dev/gc_rooting.md §C]. Without it a torture
+    // collect sweeps a partly-realized nested seq -> garbage cons (D-253 the
+    // partition-family / nested-lazy-print corruption). The C9 result-pin roots
+    // only the outer Value; this covers the deep realize walk's own intermediates.
+    var cur_root: [1]Value = .{cur};
+    var cur_sp: u16 = 1;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &cur_root, .sp = &cur_sp, .locals = items.items, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
     while (true) {
+        cur_root[0] = cur;
+        gc_frame.locals = items.items;
         // *print-length* (D-222 b): bound realization to limit+1 items so an
         // INFINITE lazy seq terminates under `*print-length*` (the +1 lets the
         // printer still emit "..." for "there is more"). Unbounded otherwise
@@ -217,7 +232,9 @@ fn realizeSeqWalk(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
         }
         const s = try lazy_seq_mod.seq(rt, env, cur);
         if (s.tag() == .nil) break;
+        cur_root[0] = s;
         try items.append(rt.gpa, try deepRealize(rt, env, try lazy_seq_mod.first(rt, env, s)));
+        gc_frame.locals = items.items; // root the just-appended item across rest's force
         cur = try lazy_seq_mod.rest(rt, env, s);
     }
     const realized = try listFromItems(rt, items.items);

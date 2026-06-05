@@ -93,5 +93,12 @@ assert_eq 'atom_watch'   "$("$BIN" -e '(let [log (atom []) a (atom 0)] (add-watc
 assert_eq 'multimethod'  "$("$BIN" -e '(do (defmulti ar :shape) (defmethod ar :circle [s] (* 3 (:r s))) (defmethod ar :square [s] (* (:side s) (:side s))) (mapv ar [{:shape :circle :r 2} {:shape :square :side 3} {:shape :circle :r 5}]))')" '[6 9 15]'
 # print-method is itself a defmulti — pr-str under torture exercises the trace.
 assert_eq 'print_method' "$("$BIN" -e '(mapv pr-str [1 :a "s" [1 2] {:k 3}])')" '["1" ":a" "\"s\"" "[1 2]" "{:k 3}"]'
+# D-253 cluster (b) — printResult's deep-realize walk (realizeSeqWalk) roots its
+# cursor + the gpa accumulator of realized items across seq/first/rest + the
+# recursive deepRealize. A NESTED lazy seq (partition returns lazy-seqs of
+# lazy-takes) corrupted under torture (`((1 (1 (1 ...` garbage cons); the C9
+# result-pin roots only the outer Value, not the walk's own intermediates.
+assert_eq 'print_nested' "$("$BIN" -e '(partition 2 (range 1 10))')"                                '((1 2) (3 4) (5 6) (7 8))'
+assert_eq 'print_lazlaz' "$("$BIN" -e '(map (fn [x] (range 1 x)) (range 2 5))')"                    '((1) (1 2) (1 2 3))'
 
 echo "ALL phase16_gc_torture PASS"
