@@ -5,40 +5,43 @@
 
 ## Resume contract
 
-- **HEAD**: ~`a05e3785` (see git log — CFP P1-P5 landed + P6 packaged). Active
-  plan = ADR-0089 (A->B->C); the CFP campaign (D-256) is mid-flight ahead of it.
-- **First commit on resume MUST be**: **D-257 — `cljw.http.server` request
-  `:headers` + `:body`** (drain the request body; today the Ring map is
-  `:request-method`/`:uri` only). This is the cljw-side enabler for the LIVE
-  edge-demo's CRUD (CFP P8). Source-bearing → cljw gate applies. Entry: ADR-0098
-  + D-257 row (the std.http.Server `discardBody` keep-alive caveat is in D-257).
-- **Forbidden**: re-doing CFP P0-P6 (done/packaged — git log + below); publishing
-  the CFP submission OR the v0.1.0 tag / GitHub Release / default-branch change
-  (ALL user-owned — see `private/clojure_conj_2026_cfp/SUBMIT_READY.md` +
-  `…/P3_DEFERRED_and_metrics.md`); pinning an in-progress zwasm v2 state / a
-  zwasm tag or v1 (F-001: v2 ONLY from `zwasm-from-scratch`; wasm findings =
-  zwasm-side feedback-note no-code, cljw-side real fix); turning auto-collect ON
-  (user-owned #4a'); editing .claude/rules/* (permission-blocked → surface);
-  trusting ~/Documents/OSS/zig for 0.16.
+- **HEAD**: ~`8c56dc52` (see git log — CFP P1-P9 packaged; D-257 + D-260/ADR-0100
+  + string/index-of-char all LANDED this overnight). Active plan = ADR-0089
+  (A->B->C); the AI-doable CFP campaign (D-256) is exhausted, now in Phase C.
+- **First commit on resume MUST be**: **continue the Phase C clj-diff gap-hunt**
+  (`scripts/clj_diff_sweep.sh`, self-select the next coherent surface — this
+  overnight closed clojure.string + the numeric `'` ops; D-210 is the standing
+  clj-parity floor, drain new DIFFs highest-value-first). **OR**, for a fresh-
+  context structural push, open **Phase B (concurrency core, D-242/244/245 — the
+  top quality-floor)** via the Phase-B entry reading list (ADR-0089). Pick Phase B
+  only with fresh context; mid-session, prefer the bounded Phase-C sweep.
+- **⚠ USER must act (time-sensitive, NOT AI-doable)**: see
+  `private/clojure_conj_2026_cfp/DEFERRED_USER_ACTIONS.md` — (1) **Sessionize
+  submit by 6/13** (`SUBMIT_READY.md` is copy-paste ready); (2) v0.1.0 tag /
+  Release + make `cw-from-scratch` the default branch (`P3_DEFERRED…`, tag
+  collides with old v1 lineage → version decision); (3) edge-demo CRUD deploy
+  (committed locally, `git push` + `fly deploy` are yours).
+- **Forbidden**: re-doing CFP P1-P9 (done/packaged — git log + below); the 3 USER
+  actions above (account / credential / product decisions — the safety layer
+  blocks them); pinning an in-progress zwasm v2 state / a zwasm tag or v1 (F-001:
+  v2 ONLY from `zwasm-from-scratch`; wasm findings = zwasm-side feedback-note
+  no-code, cljw-side real fix); turning auto-collect ON (user-owned #4a'); editing
+  .claude/rules/* (permission-blocked → surface); trusting ~/Documents/OSS/zig.
 
-## CFP campaign (D-256) — status
+## CFP campaign (D-256) — AI-doable parts DONE this overnight (git log = SSOT)
 
-P0-P5 DONE + P6 PACKAGED this overnight (git log = SSOT):
-- **P1** polyglot wasm FFI: `wasm/load`+`wasm/call` behind `-Dwasm` (ADR-0099),
-  `cljw examples/wasm/add.clj` → 42. Provisional handle = D-259 (Phase-16/F-004).
+- **P1** wasm FFI (`wasm/load`+`wasm/call` behind `-Dwasm`, ADR-0099, →42;
+  handle=D-259). **P9** `wasm_trap` Code + sandbox/trap demo (examples/wasm/trap.*).
 - **P2** README/quickstart/LICENSE(EPL-2.0)/CONTRIBUTING + ARCHITECTURE refresh.
-- **P4** binary size locked (bench/RELEASE_METRICS.md: ReleaseSafe ~2.2MB / floor
-  ~1.1MB / ~5ms cold start). **P5** docs/landscape.md (respectful map).
-- **P6** SUBMIT_READY.md = copy-paste title/abstract/reviewer-note, pivot-
-  reconciled (Fly+native, honest numbers, branch URLs).
-- **Deferred (USER actions, never AI)**: (1) Sessionize submit by 6/13 —
-  SUBMIT_READY.md checklist; (2) v0.1.0 tag + Release + make `cw-from-scratch` the
-  default branch — P3_DEFERRED (v0.1.0 tag COLLIDES with old v1 lineage; version
-  decision is the user's; recommend v0.6.0).
-- **Next AI-doable (CFP P7-P10 reframed by the 2026-06-06 PIVOT)**: P8 edge-demo
-  CRUD (needs D-257, the resume task) → P9 more polyglot examples → P10
-  getting-started/tier guide. P7 browser Playground (cljw→wasm32) stays deferred
-  (3 blockers). After CFP packaging exhausts, transition to cljw Phase B/C.
+  **P4** binary size locked (bench/RELEASE_METRICS.md: ReleaseSafe ~2.2MB / ~5ms).
+  **P5** docs/landscape.md. **P6** SUBMIT_READY.md (copy-paste, pivot-reconciled).
+- **D-257** http request :body/:headers/:query-string. **P8** edge-demo guestbook
+  CRUD (in `~/Documents/MyProducts/edge-demo`, committed LOCAL only — push+deploy
+  user-gated). **D-260/ADR-0100** the `'` ops auto-promote (was inverted-strict).
+  **index-of/last-index-of** accept a char needle. **D-261** recorded (cljw
+  over-permissively resolves a fully-qualified non-interned `ns/name`).
+- **P7** (browser Playground, cljw→wasm32) stays deferred (3 blockers).
+  **P10/P11** (getting-started, slides) are post-acceptance + partly user-owned.
 
 ## Active plan — ADR-0089 post-M re-cut (2026-06-04)
 
