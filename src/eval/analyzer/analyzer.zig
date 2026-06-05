@@ -521,7 +521,15 @@ fn analyzeSymbol(
         }
         return error_catalog.raise(.namespace_unknown, form.location, .{ .ns = ns_name });
     } else env.current_ns orelse return error_catalog.raise(.current_namespace_missing, form.location, .{ .sym = sym.name });
-    const v_ptr = ns.resolve(sym.name) orelse {
+    // A qualified symbol `ns/name` is a direct ns-var lookup that bypasses
+    // refers/aliases (JVM parity, D-261): only `ns`'s own interns count, so a
+    // referred/core var visible in `ns` does NOT satisfy `ns/name`.
+    const v_ptr = (if (sym.ns != null) ns.resolveQualified(sym.name) else ns.resolve(sym.name)) orelse {
+        // A qualified miss (the ns exists but interns no `name`) is clj's
+        // "No such var: ns/name" — a name_error on a var, not a bare symbol.
+        // The native-class / exception fall-throughs below are unqualified-only.
+        if (sym.ns != null)
+            return error_catalog.raise(.var_unresolved, form.location, .{ .sym = symFullName(sym) });
         // ADR-0072: a bare native-class symbol (`Long`, `String`,
         // `java.lang.Long`) resolves to its native TypeDescriptor —
         // AFTER Var resolution so a user `(def String …)` /

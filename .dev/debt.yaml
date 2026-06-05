@@ -113,7 +113,7 @@ active:
       03fb1b4f (seq), the keys/vals typed_instance arms as the enumeration model.
     last_reviewed: "2026-06-06"
   - id: "D-261"
-    status: "open (found 2026-06-06 via the clojure.string clj-diff sweep) — a fully-qualified symbol `ns/name` resolves to a referred/core var even when `name` is NOT interned in `ns`. clj errors 'No such var'."
+    status: "DISCHARGED 2026-06-06 — qualified `ns/name` is now a direct ns-var lookup that bypasses refers/aliases (JVM parity): analyzeSymbol uses the new `Namespace.resolveQualified` (own mappings only) when `sym.ns != null`, raising var_unresolved (name_error) on an interned-miss. `clojure.string/subs` now errors where it returned \"el\". KEY EXCEPTION: `clojure.core` — cljw splits the core surface across the internal `rt/` ns and re-exports it into clojure.core via refers (only clojure.core gets rt's refers at bootstrap), so resolveQualified counts clojure.core's refers as its own; otherwise `clojure.core/re-find`/`subs`/`use` (rt-origin) would wrongly fail (the first gate run caught 13 such regressions). Non-core ns stay own-mappings-only. Corpus qualified_resolution (8/8 legit-resolve clj-matched); e2e phase14_var_resolve cases 6-10 (errors + clojure.core rt-origin + own-intern preservation). NOTE: scoped to the analyzer call path; runtime `(resolve 'ns/name)` left as-is."
     category: "clj-parity"
     barrier: |-
       **Over-permissive fully-qualified symbol resolution.** A qualified symbol

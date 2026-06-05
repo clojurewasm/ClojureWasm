@@ -176,6 +176,26 @@ pub const Namespace = struct {
         return null;
     }
 
+    /// Resolve `name` for a FULLY-QUALIFIED reference `self/name`. clj treats a
+    /// qualified symbol as a direct ns-var lookup that bypasses refers/aliases,
+    /// so only `self`'s own interns satisfy it — a var merely *referred* into
+    /// `self` does NOT (clj: "No such var: ns/name"). D-261.
+    ///
+    /// EXCEPTION: `clojure.core`. cljw splits the core surface across the
+    /// internal `rt/` namespace and re-exports it into `clojure.core` via
+    /// refers (only `clojure.core` receives rt's refers at bootstrap). In clj
+    /// every core fn IS interned in `clojure.core`, so for `clojure.core/name`
+    /// those rt-refers count as its own — otherwise `clojure.core/re-find`
+    /// (an rt-origin var) would wrongly fail while `clojure.core/map` (a direct
+    /// core.clj intern) succeeds. Non-core namespaces stay own-mappings-only.
+    pub fn resolveQualified(self: *Namespace, name: []const u8) ?*Var {
+        if (self.mappings.get(name)) |v| return v;
+        if (std.mem.eql(u8, self.name, "clojure.core")) {
+            if (self.refers.get(name)) |v| return v;
+        }
+        return null;
+    }
+
     /// Internal: free everything this namespace owns. The `name` slice
     /// itself is **not** freed here — it is shared with the
     /// `Env.namespaces` map key, and `Env.deinit` frees it exactly once.
