@@ -30,6 +30,14 @@ const free_pool_mod = @import("free_pool.zig");
 const root_set_mod = @import("root_set.zig");
 const io_default = @import("../concurrency/io_default.zig");
 const safepoint = @import("../concurrency/safepoint.zig");
+const lock_tx = @import("../concurrency/lock_tx.zig");
+
+/// Adapter so `lock_tx.markRoots` can call back into `mark` with the GcHeap as
+/// an opaque context (avoids a lock_tx → mark_sweep import).
+fn markTxHeader(ctx: *anyopaque, header: *HeapHeader) void {
+    const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(ctx));
+    mark(gc, header);
+}
 
 const GcHeap = gc_heap_mod.GcHeap;
 const HeapHeader = heap_header.HeapHeader;
@@ -134,6 +142,12 @@ pub fn collect(gc: *GcHeap, ctx: root_set_mod.WalkContext) void {
     while (it.next()) |root_header| {
         mark(gc, root_header);
     }
+    // #4a' in-txn-map rooting: the collecting thread's `dosync` body may hold
+    // live Values in `current_tx`'s gpa `vals`/`commutes` maps that are on no
+    // operand stack — mark them so a mid-transaction collect does not sweep
+    // them. (Parked WORKER threads' transactions are a follow-up — the registry
+    // tx-slot exposure; today's collects are quiescent/single-tx.)
+    if (lock_tx.current_tx) |tx| lock_tx.markRoots(tx, @ptrCast(gc), &markTxHeader);
     sweep(gc);
     gc.threshold_bytes = @max(
         gc_heap_mod.default_gc_threshold_bytes,
@@ -288,6 +302,37 @@ test "collect: pinned roots survive; unpinned allocations get swept" {
     try testing.expectEqual(@as(usize, @sizeOf(Cell)), gc.stats.last_live_bytes);
     try testing.expectEqual(@as(usize, 0), gc.bytes_since_last_gc);
     try testing.expectEqual(@as(*HeapHeader, @ptrCast(cell_kept)), gc.allocations.items[0].header);
+}
+
+test "collect: in-transaction vals values survive (#4a' self-tx rooting)" {
+    var gc = GcHeap.init(testing.allocator);
+    defer gc.deinit();
+    const value_mod_test = @import("../value/value.zig");
+    const lock_tx_mod = @import("../concurrency/lock_tx.zig");
+    const Ref = @import("../stm/ref.zig").Ref;
+
+    // A heap value that lives ONLY in the transaction's vals cache — on no
+    // operand stack, not pinned. Without the #4a' tx-rooting it would be swept.
+    const in_tx_cell = try gc.alloc(Cell);
+    in_tx_cell.* = .{ .header = HeapHeader.init(.vector) };
+    const in_tx_val = value_mod_test.Value.encodeHeapPtr(.vector, in_tx_cell);
+
+    var tx: lock_tx_mod.LockingTransaction = .{ .read_point = 0, .gpa = testing.allocator };
+    defer tx.vals.deinit(testing.allocator);
+    // A fake (never-dereferenced) Ref key — markRoots reads only the VALUES.
+    const fake_ref: *Ref = @ptrFromInt(@alignOf(Ref) * 4096);
+    try tx.vals.put(testing.allocator, fake_ref, in_tx_val);
+
+    lock_tx_mod.current_tx = &tx;
+    defer lock_tx_mod.current_tx = null;
+
+    collect(&gc, .{ .envs = &.{}, .gc = &gc });
+
+    var found = false;
+    for (gc.allocations.items) |a| {
+        if (a.header == @as(*HeapHeader, @ptrCast(in_tx_cell))) found = true;
+    }
+    try testing.expect(found); // survived ONLY via the in-transaction rooting
 }
 
 test "collect: adaptive threshold = max(default, last_live_bytes * 2)" {

@@ -140,6 +140,24 @@ fn callThunk(rt: *Runtime, env: *Env, thunk: Value, loc: SourceLocation) !Value 
 /// else the Ref's current committed value. (#5-i: no snapshot read-point ring
 /// walk — a single thread sees no concurrent commit; #5-iii adds the walk +
 /// the fault-driven retry.)
+/// Mark every GC-heap Value held in this transaction's `vals` + `commutes` via
+/// `markFn` (#4a' in-txn-map rooting). The collector calls this for the
+/// collecting thread's `current_tx`, so a collect firing during a `dosync` body
+/// does NOT sweep a value held only in the gpa maps (not on any operand stack).
+/// The callback keeps `CommuteEntry` private + avoids a `mark_sweep` import cycle.
+pub fn markRoots(tx: *LockingTransaction, context: *anyopaque, markFn: *const fn (*anyopaque, *heap_header.HeapHeader) void) void {
+    var vit = tx.vals.valueIterator();
+    while (vit.next()) |vp| {
+        if (vp.heapHeader()) |h| markFn(context, h);
+    }
+    for (tx.commutes.items) |c| {
+        if (c.func.heapHeader()) |h| markFn(context, h);
+        for (c.args[0..c.args_len]) |a| {
+            if (a.heapHeader()) |h| markFn(context, h);
+        }
+    }
+}
+
 pub fn doGet(tx: *LockingTransaction, ref: *Ref) Value {
     if (tx.vals.get(ref)) |v| return v;
     // Read the committed value UNDER the Ref's lock. An unsynchronized read of
