@@ -30,6 +30,13 @@ src/        Zig source
 
 See [`.dev/ROADMAP.md`](./.dev/ROADMAP.md) for mission and phase plan.
 
+## Differences from Clojure
+
+ClojureWasm targets behavioural equivalence with JVM Clojure on the
+user-observable surface. The intentional divergences (by design) and the
+not-yet-implemented surface are catalogued in
+[`docs/clojure_vs_clojurewasm.md`](./docs/clojure_vs_clojurewasm.md).
+
 ## For developers
 
 Install via [bbin](https://github.com/babashka/bbin):

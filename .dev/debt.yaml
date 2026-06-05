@@ -37,18 +37,6 @@ active:
       assertions + re-test. Proposed D layout in layout-gc-decisions-2026-06-05.md;
       a broader A-C regroup is optional. Decide-to-do on resume (not yet greenlit).
     last_reviewed: "2026-06-05"
-  - id: "D-249"
-    status: "now-ish (2026-06-05 user chat — HIGH PRIORITY per user: docs/release-prep outranks the low-value concurrency tail) — a single-sheet `docs/` markdown of Clojure-vs-ClojureWasm differences (ClojureScript-style): what Clojure has that cljw lacks, and what behaves differently."
-    category: "docs"
-    barrier: |-
-      Synthesize from: the accepted-divergence ledger (AD-001..014,
-      .dev/accepted_divergences.yaml — set print order, simple class name, STM
-      no-barge, locking-on-immediate, etc.), the F-NNN-intentional divergences
-      (F-005 overflow auto-promote, ADR-0059 no-JVM class), and the deferred/
-      unimplemented surface (the low-value concurrency tail, owner-gated arrays /
-      full *out*, Tier C/D forms). One reader-facing sheet so a divergence reads as
-      "designed", not "broken". The user wants this BEFORE grinding the low-value tail.
-    last_reviewed: "2026-06-05"
   - id: "D-250"
     status: "now-ish (2026-06-05 user chat) — GC torture mode: force frequent collects to validate the #4a' rooting deterministically BEFORE the gated auto-collect-ON flip."
     category: "gc"
@@ -2052,6 +2040,19 @@ active:
     last_reviewed: "2026-05-28"
 
 discharged:
+  - id: "D-249"
+    discharged_at: "docs(diff): Clojure-vs-ClojureWasm differences sheet"
+    resolution: |-
+      Landed `docs/clojure_vs_clojurewasm.md` (linked from README): a
+      single-sheet, ClojureScript-style differences page. Part 1 = the
+      intentional divergences synthesized from the AD-001..014 ledger
+      (.dev/accepted_divergences.yaml) grouped by theme (printing, numeric
+      tower, no-JVM, concurrency), each row citing its AD-NNN + invariant.
+      Part 2 = the not-yet-implemented surface (low-value concurrency tail,
+      arrays, full *out*/*err*, Tier C/D JVM-only forms). Anchored to the
+      machine-readable ledger so it cannot drift; the "designed vs broken"
+      framing is explicit. The user set this ABOVE the low-value concurrency
+      tail (2026-06-05).
   - id: "D-018"
     discharged_at: "7f70047"
     resolution: |-
