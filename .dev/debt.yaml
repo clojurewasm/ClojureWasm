@@ -9,6 +9,22 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-265"
+    status: "open (found 2026-06-06, conversions sweep) — `biginteger` clojure.core fn missing (name_error); low-value (cljw collapses BigInt/BigInteger)."
+    category: "clj-parity"
+    barrier: |-
+      **`biginteger` is unimplemented** — `(biginteger 5)` → cljw name_error, clj
+      `5` (a java.math.BigInteger). cljw has `bigint` (→ `5N`, a `.big_int`) but
+      not `biginteger`. NON-trivial because cljw collapses clj's BigInt vs
+      BigInteger into one `.big_int` tag: clj's BigInteger prints `5` (no suffix)
+      and `(class …)`→BigInteger, while cljw's big_int prints `5N` + class BigInt.
+      So a quick `(def biginteger bigint)` alias gives the right VALUE but
+      `(str …)`/`(pr-str …)`/`(class …)` diverge (same BigInt/BigInteger-collapse
+      family as the str-suffix row). Options: (a) alias to bigint + accept the
+      print/class divergence as an AD (cljw has no distinct BigInteger type per its
+      numeric-tower collapse), or (b) a BigInteger-flavored representation. LOW
+      value (biginteger is rare; bigint covers ~all usage). Cross-ref F-005, F-011.
+    last_reviewed: "2026-06-06"
   - id: "D-264"
     status: "open (found 2026-06-06 via a lazy-seq clj-diff sweep) — `distinct` and `dedupe` are EAGER, so `(take N (distinct/dedupe <infinite>))` HANGS where clj returns lazily."
     category: "clj-parity"
