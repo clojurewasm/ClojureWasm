@@ -936,6 +936,25 @@ floor-vs-superinstruction ordering) is **deferred to each owning
 Phase entry per F-003** — this section seizes nothing, it records
 direction + foresight.
 
+> **Priority refinement (user chat, 2026-06-05)** — after the Phase B
+> concurrency core + the complete #4a' GC-rooting landed:
+> - **Docs / release-prep OUTRANKS the low-value concurrency tail.**
+>   First land a single-sheet **Clojure-vs-ClojureWasm differences doc**
+>   (ClojureScript-style; debt D-249). The low-value tail (agent watches/
+>   validator, `await-for`, `shutdown-agents`, with-local-vars) is **NOT
+>   skipped** — implemented AFTER completeness rises; a tentative
+>   completion that leaves them as tracked tasks is fine first.
+> - **Phase C = library-driven gap-hunt FIRST, THEN Wasm / edge-native.**
+>   Wasm COMPILATION itself is further off; **before the release, integrate
+>   zwasm**; the rest of the Wasm story is a **post-release best-effort
+>   goal**.
+> - **GC completeness**: the #4a' rooting is done; gate the production
+>   auto-collect-ON behind a **GC torture mode** validation (debt D-250)
+>   + user-awareness. Heap-tag layout stays **64 slots** (F-004 Revision
+>   2026-06-05; 128 + region allocator = D-247, only when slots run out);
+>   the **Group D wasm→tail reorg** (D-248) is a ready, non-breaking
+>   cleanup. Detail: `private/notes/layout-gc-decisions-2026-06-05.md`.
+
 **Milestone M = Phase 15 完遂 + a cw-v0-level narrow ARM64 JIT.**
 
 ```

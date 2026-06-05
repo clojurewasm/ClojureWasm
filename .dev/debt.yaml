@@ -9,6 +9,60 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-247"
+    status: "recall trigger (2026-06-05 user chat) — GC reserved-region allocator → 128 heap-tag slots + future compaction. DEFERRED: the system-GPA-backed heap (gc_heap.zig infra) gives full-47-bit-VA pointers, so the cheap 128-expansion (trim pointer 47→46-bit for a 5th sub-type bit) is UNSAFE (ASLR/mmap reach the upper 64TB). Safe path = mmap-reserve a region + bump within (then 46-bit pointers are safe), which is also the compaction unlock. Stay at 64 until slots run out (F-004 Revision 2026-06-05)."
+    category: "gc"
+    barrier: |-
+      Recall when the 64 heap-tag namespace (heap_tag.zig) genuinely fills — today
+      ~54 used + ~10 reserved, and host_instance/typed_instance bound the per-Java-
+      class growth, so 64 should hold for the near term (arrays → reserved D3;
+      writers → host_instance). When it does fill: introduce a reserved-region
+      allocator (mmap a virtual region for the GC heap, bump/region-allocate within),
+      switch encoding to a 5-bit sub-type (NB_HEAP_GROUP_SIZE 16→32, SUBTYPE_SHIFT
+      44→43, ADDR mask 44→43-bit), renumber HeapTag + the synced Value.Tag, grow the
+      tag_ops tables [64]→[128]. F-004 amendment (owner) + ADR + DA-fork. The region
+      allocator is the bigger half. Detail: layout-gc-decisions-2026-06-05.md.
+    last_reviewed: "2026-06-05"
+  - id: "D-248"
+    status: "ready (2026-06-05 user chat, analyzed) — reorganise the Group D slot map so wasm (Phase 16+) moves to the TAIL and the Clojure persistent-collection internal nodes (hamt_node/tail_node/hamt_map_node/hash_collision_map_node/tval) move UP. Finished-form cleanliness (the user noted wasm was reserved early, pushing Clojure essentials to the end)."
+    category: "gc"
+    barrier: |-
+      CHEAP + NON-BREAKING + NOT an F-004 amendment (ADR-0027 §2 slot-map, loop-
+      amendable). Confirmed safe: runtime dispatch is enum-NAME-based (no hardcoded
+      numeric tag values, grep-checked), and `cljw build` serialized bytecode uses a
+      DECOUPLED `ValueTag` (eval/bytecode/serialize.zig, per-Value tag-byte, NOT raw
+      u64 bits) — so renumbering runtime HeapTag does NOT touch serialized artifacts.
+      Work: renumber HeapTag (heap_tag.zig) + the synced Value.Tag (value.zig, both
+      must agree — a test asserts it) + update ADR-0027 §2 docstring + layout
+      assertions + re-test. Proposed D layout in layout-gc-decisions-2026-06-05.md;
+      a broader A-C regroup is optional. Decide-to-do on resume (not yet greenlit).
+    last_reviewed: "2026-06-05"
+  - id: "D-249"
+    status: "now-ish (2026-06-05 user chat — HIGH PRIORITY per user: docs/release-prep outranks the low-value concurrency tail) — a single-sheet `docs/` markdown of Clojure-vs-ClojureWasm differences (ClojureScript-style): what Clojure has that cljw lacks, and what behaves differently."
+    category: "docs"
+    barrier: |-
+      Synthesize from: the accepted-divergence ledger (AD-001..014,
+      .dev/accepted_divergences.yaml — set print order, simple class name, STM
+      no-barge, locking-on-immediate, etc.), the F-NNN-intentional divergences
+      (F-005 overflow auto-promote, ADR-0059 no-JVM class), and the deferred/
+      unimplemented surface (the low-value concurrency tail, owner-gated arrays /
+      full *out*, Tier C/D forms). One reader-facing sheet so a divergence reads as
+      "designed", not "broken". The user wants this BEFORE grinding the low-value tail.
+    last_reviewed: "2026-06-05"
+  - id: "D-250"
+    status: "now-ish (2026-06-05 user chat) — GC torture mode: force frequent collects to validate the #4a' rooting deterministically BEFORE the gated auto-collect-ON flip."
+    category: "gc"
+    barrier: |-
+      The #4a' GC-rooting is complete (in-txn maps self+worker, fabrication-window
+      audit, gc_self_guard), but auto-collect-ON is the highest-risk flip (path-
+      dependent root-gap bugs). Build a torture mode (e.g. CLJW_GC_TORTURE=1 makes
+      the VM back-edge poll fire collectStopTheWorld every poll, or alloc arms
+      gc_requested every Nth alloc) + run `test/run_all.sh --serial-e2e` under it:
+      any UAF = a missing root, surfaced DETERMINISTICALLY instead of rarely. This is
+      the empirical validation gate before production auto-collect. Non-forbidden
+      (test-mode forced collects ≠ production auto-collect ON, which stays gated +
+      user-aware). Then a leak check (DebugAllocator) + the production flip.
+    last_reviewed: "2026-06-05"
   - id: "D-242"
     status: "Phase B anchor (re-cut ADR-0089, 2026-06-04) — KNOWN-unimplemented CORE, concurrency-led; redesign §7 against Zig 0.16 FIRST, then implement. finished-form, rework-OK with test guards. §7-redesign DONE = ADR-0090 (2026-06-04): io_default-singleton std.Io sync + ThreadGcContext root-publication GC handshake (the DA-fork caught v0's stop-the-world lie) + MVCC retry-only STM; spike-validated. Implementation (concurrency/{io_default,thread_pool,lock_tx,gc_thread}.zig + real future/promise/delay/atom/agent/locking bodies) is the remaining Phase B work; GC handshake lands first (prereq for any real-threading primitive)."
     category: "concurrency"

@@ -279,6 +279,28 @@ of the 32-slot layout — second generation moves them to Group A's
 big_int / ratio / big_decimal slots; the amendment-1 placement is
 the smallest-diff landing, not the finished form).
 
+**Revision history**:
+
+- **2026-06-05 (user chat — KEEP 64; 128-expansion considered +
+  deferred)**: with ~54 slots used and ~10 reserved (the whole 64
+  namespace is now populated), expanding to 4 group × 32 = 128 was
+  weighed and **deferred**. The expansion is NOT a cheap constant
+  change: it needs a 5th sub-type bit, which must come from the
+  heap pointer (47→46-bit), but the GC heap is backed by the system
+  GPA (`gc_heap.zig` `infra`), so pointers span the full 47-bit VA
+  (ASLR/mmap reach the upper half) — a 46-bit (64 TB) encoding would
+  corrupt high pointers. Safe 128-expansion therefore requires a
+  **reserved-region allocator** (mmap-reserve a region + bump
+  within), which is the SAME unlock as future compaction. **Decision:
+  stay at 64; revisit (region allocator → 128 + compaction) only if
+  slots genuinely run out.** Slot-need for the near term is covered
+  WITHIN 64: arrays use the reserved D3 `array` slot; writers
+  (`*out*`/`*err*`) are `host_instance` (B13), no new slot. The
+  64-slot count + the bit layout are UNCHANGED by this — this entry
+  records the considered-and-deferred expansion, not an amendment.
+  Detail: `private/notes/layout-gc-decisions-2026-06-05.md`; debt
+  D-247.
+
 ---
 
 ## F-005 — Numeric tower: Clojure JVM surface compatibility, Zig-native internal implementation
