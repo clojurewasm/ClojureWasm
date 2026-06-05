@@ -1,0 +1,20 @@
+(do (defrecord R [x y]) (seq (->R 1 2)))
+;;=> ([:x 1] [:y 2])
+(do (defrecord R [x y]) (into {} (->R 1 2)))
+;;=> {:x 1, :y 2}
+(do (defrecord R [x y]) (vec (->R 1 2)))
+;;=> [[:x 1] [:y 2]]
+(do (defrecord R [x y]) (first (->R 1 2)))
+;;=> [:x 1]
+(do (defrecord R [x y]) (map key (->R 1 2)))
+;;=> (:x :y)
+(do (defrecord R [x y]) (count (seq (->R 1 2))))
+;;=> 2
+(do (defrecord E []) (seq (->E)))
+;;=> nil
+(do (defrecord R [a b c]) (into {} (->R 1 2 3)))
+;;=> {:a 1, :b 2, :c 3}
+(do (defrecord R [x y]) (reduce (fn [m [k v]] (assoc m k v)) {} (->R 1 2)))
+;;=> {:x 1, :y 2}
+(do (defrecord R [x]) (vec (->R 5)))
+;;=> [[:x 5]]

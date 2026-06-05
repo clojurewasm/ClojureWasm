@@ -43,6 +43,7 @@ const list = @import("../../runtime/collection/list.zig");
 const vector = @import("../../runtime/collection/vector.zig");
 const map = @import("../../runtime/collection/map.zig");
 const map_entry = @import("../../runtime/collection/map_entry.zig");
+const keyword_mod = @import("../../runtime/keyword.zig");
 const persistent_queue = @import("../../runtime/collection/persistent_queue.zig");
 const sorted = @import("../../runtime/collection/sorted.zig");
 const set = @import("../../runtime/collection/set.zig");
@@ -164,6 +165,21 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 
 // --- seq ---
 
+/// Build an array_map of a defrecord's declared fields (in declaration order),
+/// so `seq`/`into {}`/`vec` over a record yield its `[k v]` map entries like a
+/// map — JVM records are Seqable as their entry seq. (cljw has no `__extmap`
+/// yet — D-086 — so only declared fields participate.)
+fn recordToMap(rt: *Runtime, inst: *const td_mod.TypedInstance) !Value {
+    const layout = inst.descriptor.field_layout orelse return map.empty();
+    const vals = inst.fields();
+    var m = map.empty();
+    for (layout, 0..) |f, i| {
+        const kw = try keyword_mod.intern(rt, null, f.name);
+        m = try map.assoc(rt, m, kw, vals[i]);
+    }
+    return m;
+}
+
 /// Implements clojure.core/seq.
 /// Spec: `(seq coll)` returns a seq view of `coll`, or `nil` if empty.
 ///   - nil:         nil
@@ -195,14 +211,29 @@ pub fn seqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         // `.range` tail) — generic walkers then pay 1 alloc / 32 elements.
         .range => try range.seqChunk(rt, coll),
         .lazy_seq => try lazy_seq.seq(rt, env, coll),
+        .typed_instance => blk: {
+            // A user `(extend-type X Seqable (-seq …))` override wins; otherwise
+            // a defrecord is Seqable by default as its `[k v]` entry seq (JVM
+            // parity), and a deftype with no override raises.
+            var cs: dispatch.CallSite = .{};
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, SEQABLE_FQCN, "-seq", args, loc)) |v| break :blk v;
+            const inst = coll.decodePtr(*const td_mod.TypedInstance);
+            if (inst.descriptor.kind == .defrecord) {
+                const m = try recordToMap(rt, inst);
+                break :blk if (map.count(m) > 0) try map.seq(rt, m) else .nil_val;
+            }
+            return error_catalog.raise(.protocol_no_satisfies, loc, .{
+                .protocol = SEQABLE_FQCN,
+                .method = "-seq",
+                .type_name = inst.descriptor.fqcn orelse "<anonymous>",
+            });
+        },
         else => blk: {
             // Row 7.7 cycle 2: outer-else routes through dispatch against
             // `Seqable -seq`, reaching `(extend-type X Seqable -seq …)`
-            // overrides on defrecord / reified_instance receivers via the
-            // typed_instance descriptor + on native Tags via the row 7.3
-            // per-Tag descriptor registry. Raises protocol_no_satisfies
-            // when no MethodEntry is registered (supersedes the pre-7.7
-            // type_arg_invalid raise for non-seqable receivers).
+            // overrides on native Tags via the row 7.3 per-Tag descriptor
+            // registry. Raises protocol_no_satisfies when no MethodEntry is
+            // registered (supersedes the pre-7.7 type_arg_invalid raise).
             var cs: dispatch.CallSite = .{};
             break :blk try dispatch.dispatch(rt, env, &cs, coll, SEQABLE_FQCN, "-seq", args, loc);
         },
