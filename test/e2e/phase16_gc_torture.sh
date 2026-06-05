@@ -69,5 +69,13 @@ assert_eq 'dormant_lit'  "$("$BIN" -e '(do (defn g [x] (str "n=" x)) (apply str 
 # keyword/symbol constants (gpa-interned, non-GC) are filtered by isGcManaged, so
 # a fn whose body references a keyword is torture-clean.
 assert_eq 'kw_const'     "$("$BIN" -e '(count (filter (fn [m] (:keep m)) [{:keep true} {:keep false} {:keep true}]))')" '2'
+# D-252 C9 — the CLI result-print path realises a lazy seq (forcing thunks
+# re-enters the VM); `result` is pinned across printResult so a collect mid-print
+# does not sweep the seq + its source (was a hang/UAF, exit 124/garbage).
+assert_eq 'print_lazy'   "$("$BIN" -e '(filter even? (range 1 20))')"                               '(2 4 6 8 10 12 14 16 18)'
+# D-252 C2/C3 — every?/some? root the seq cursor across the predicate's reentrant
+# eval (EvalFrame, like reduceFn); over a LAZY-MAP source the cursor was swept.
+assert_eq 'some_lazy'    "$("$BIN" -e '(some (fn [x] (when (> x 150) x)) (map inc (range 1 200)))')" '151'
+assert_eq 'every_lazy'   "$("$BIN" -e '(every? (fn [x] (< x 500)) (map inc (range 1 200)))')"        'true'
 
 echo "ALL phase16_gc_torture PASS"

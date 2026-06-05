@@ -312,8 +312,18 @@ pub fn reduceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 pub fn everyQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("every?", args, 2, loc);
     const pred = args[0];
+    // GC-ROOT: A2/C2 — root pred + coll/cursor across firstFn/pred/nextFn reentrant
+    // eval (D-252) [ref: .dev/gc_rooting.md §C]. slot 1 holds the original coll
+    // across the first seqFn (its lazy-seq thunk closure roots the source), then
+    // the cursor each iteration.
+    var gc_roots: [2]Value = .{ pred, args[1] };
+    var gc_sp: u16 = 2;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &gc_roots, .sp = &gc_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
     var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
     while (!cur.isNil()) {
+        gc_roots[1] = cur;
         const elt = try sequence.firstFn(rt, env, &.{cur}, loc);
         const r = try invokeCallable(rt, env, pred, &.{elt}, loc);
         if (isFalsy(r)) return .false_val;
@@ -332,8 +342,16 @@ pub fn everyQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 pub fn someFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("some", args, 2, loc);
     const pred = args[0];
+    // GC-ROOT: A2/C3 — root pred + coll/cursor across firstFn/pred/nextFn reentrant
+    // eval (D-252) [ref: .dev/gc_rooting.md §C]. See everyQFn for the slot shape.
+    var gc_roots: [2]Value = .{ pred, args[1] };
+    var gc_sp: u16 = 2;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &gc_roots, .sp = &gc_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
     var cur = try sequence.seqFn(rt, env, &.{args[1]}, loc);
     while (!cur.isNil()) {
+        gc_roots[1] = cur;
         const elt = try sequence.firstFn(rt, env, &.{cur}, loc);
         const r = try invokeCallable(rt, env, pred, &.{elt}, loc);
         if (!isFalsy(r)) return r;

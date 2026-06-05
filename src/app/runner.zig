@@ -115,7 +115,14 @@ pub fn runSource(
             error_render.renderAndExit(stderr, ctx, err);
         };
 
+        // GC-ROOT: D1 — pin the result across printResult [ref: .dev/gc_rooting.md §D]
+        // printResult realises a lazy result (forcing thunks re-enters the VM →
+        // torture / future auto-collect poll); `result` lives only in this Zig
+        // local, on no operand stack or EvalFrame, so without the pin a collect
+        // mid-print sweeps the seq + its source → UAF (hang or garbage). D-251 C9.
+        try rt.gc.pin(result);
         try print.printResult(&rt, &env, stdout, result);
+        _ = rt.gc.unpin(result);
         try stdout.writeByte('\n');
     }
     try stdout.flush();
