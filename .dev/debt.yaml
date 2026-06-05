@@ -38,7 +38,7 @@ active:
       a broader A-C regroup is optional. Decide-to-do on resume (not yet greenlit).
     last_reviewed: "2026-06-05"
   - id: "D-250"
-    status: "PARTIAL (2026-06-05) — torture-mode INFRASTRUCTURE landed (src/runtime/gc/gc_torture.zig + VM back-edge hook + CLJW_GC_TORTURE env + post-bootstrap arm()); unit-tested + inert when off. The validation RUN it enables is BLOCKED on D-251: torture immediately + deterministically crashes on EVERY real program (tag>=64 OOB in mark()), proving the GC root walk is NOT yet sound against a real runtime env. So D-250's empirical-validation half + the auto-collect-ON flip wait on D-251."
+    status: "TIER-2 EXECUTED (2026-06-05): the full-suite torture cadence ran (D-253) -> found 38 gaps -> all fixed -> the confirmation run is 0 DRIFTs/0 panics across the diff corpus + e2e. The empirical-validation half is satisfied: the curated per-commit phase16_gc_torture.sh is green AND a full-suite torture pass is clean. The auto-collect-ON flip (D-244 #4) remains the separate, user-owned highest-risk step. PARTIAL (2026-06-05) — torture-mode INFRASTRUCTURE landed (src/runtime/gc/gc_torture.zig + VM back-edge hook + CLJW_GC_TORTURE env + post-bootstrap arm()); unit-tested + inert when off. The validation RUN it enables is BLOCKED on D-251: torture immediately + deterministically crashes on EVERY real program (tag>=64 OOB in mark()), proving the GC root walk is NOT yet sound against a real runtime env. So D-250's empirical-validation half + the auto-collect-ON flip wait on D-251."
     category: "gc"
     barrier: |-
       Tool DONE: `CLJW_GC_TORTURE=N` makes the VM back-edge poll fire
