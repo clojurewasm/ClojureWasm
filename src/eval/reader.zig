@@ -168,6 +168,12 @@ pub const Reader = struct {
         // `0x`/`0o`/`0b` prefixed forms never contain `r`, so a present `r`/`R`
         // unambiguously marks the radix form.
         if (radixSepIndex(txt)) |_| return self.readRadixInteger(tok);
+        // Octal literal `[+-]?0<octal-digits>` (clj/Java: a leading `0` followed
+        // by more digits is base 8 — `017`=15, `-010`=-8; an `8`/`9` digit is a
+        // NumberFormatException). `0x…` hex and a bare `0` stay on the parseInt
+        // base-0 path below; floats (`0.5`) never reach readInteger.
+        if (octalDigits(txt)) |oct|
+            return self.readOctalInteger(tok, oct.neg, oct.digits);
         const val = std.fmt.parseInt(i64, txt, 0) catch |e| {
             // A decimal literal that overflows i64 auto-promotes to BigInt
             // (Clojure: an integer literal too large for Long reads as
@@ -178,6 +184,38 @@ pub const Reader = struct {
             return error_catalog.raise(.integer_literal_invalid, self.locOf(tok), .{ .text = txt });
         };
         return Form{ .data = .{ .integer = val }, .location = self.locOf(tok) };
+    }
+
+    /// Classify `txt` as an octal literal `[+-]?0<digits>` (≥ 1 digit after the
+    /// leading `0`, and not a `0x`/`0X` hex prefix). Returns the sign + the
+    /// post-`0` digit run (which may include an out-of-range 8/9 that
+    /// `readOctalInteger` then rejects). `null` for `0` alone, `0x…`, or any
+    /// non-`0`-led integer.
+    fn octalDigits(txt: []const u8) ?struct { neg: bool, digits: []const u8 } {
+        var t = txt;
+        var neg = false;
+        if (t.len > 0 and (t[0] == '-' or t[0] == '+')) {
+            neg = t[0] == '-';
+            t = t[1..];
+        }
+        if (t.len < 2 or t[0] != '0') return null;
+        if (t[1] == 'x' or t[1] == 'X') return null; // hex, not octal
+        return .{ .neg = neg, .digits = t[1..] };
+    }
+
+    /// Parse a leading-`0` octal literal into an `.integer` (or `.big_int_literal`
+    /// past i64). A digit ≥ 8 is a clj NumberFormatException (`integer_literal_invalid`).
+    fn readOctalInteger(self: *Reader, tok: Token, neg: bool, digits: []const u8) ReadError!Form {
+        const loc = self.locOf(tok);
+        for (digits) |c| {
+            if (c < '0' or c > '7')
+                return error_catalog.raise(.integer_literal_invalid, loc, .{ .text = tok.text(self.source) });
+        }
+        const val = std.fmt.parseInt(i64, digits, 8) catch |e| {
+            if (e == error.Overflow) return self.radixBigIntForm(loc, digits, 8, neg);
+            return error_catalog.raise(.integer_literal_invalid, loc, .{ .text = tok.text(self.source) });
+        };
+        return Form{ .data = .{ .integer = if (neg) -val else val }, .location = loc };
     }
 
     /// Byte index of the `r`/`R` separator in a radix literal
@@ -984,6 +1022,23 @@ test "radix integer literals `<base>r<digits>`" {
     try testing.expectError(error.NumberError, ctx.read("1r0"));
     try testing.expectError(error.NumberError, ctx.read("37rA"));
     try testing.expectError(error.NumberError, ctx.read("2r12")); // 2 is not a base-2 digit
+}
+
+test "octal integer literals `0<digits>`" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    try testing.expectEqual(@as(i64, 15), (try ctx.read("017")).data.integer);
+    try testing.expectEqual(@as(i64, 511), (try ctx.read("0777")).data.integer);
+    try testing.expectEqual(@as(i64, 8), (try ctx.read("010")).data.integer);
+    try testing.expectEqual(@as(i64, -15), (try ctx.read("-017")).data.integer);
+    try testing.expectEqual(@as(i64, 0), (try ctx.read("00")).data.integer);
+    try testing.expectEqual(@as(i64, 0), (try ctx.read("0")).data.integer);
+    // `0x` hex must still work (not octal).
+    try testing.expectEqual(@as(i64, 255), (try ctx.read("0xff")).data.integer);
+    // A non-octal digit (8 / 9) after a leading 0 is rejected (clj parity).
+    try testing.expectError(error.NumberError, ctx.read("08"));
+    try testing.expectError(error.NumberError, ctx.read("019"));
 }
 
 test "big_int_literal `42N` keeps digits without the suffix" {
