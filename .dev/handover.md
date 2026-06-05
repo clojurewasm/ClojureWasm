@@ -5,35 +5,28 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (`cw-from-scratch`). Gate green 251/0 Mac + 250/0 Linux
-  x86_64 (serial-e2e). debt = `.dev/debt.yaml`. Active plan = **ADR-0089 (A→B→C)**.
-- **First commit on resume MUST be**: **D-244 #4 — the multi-thread future-worker
-  torture hang/crash**. The single-thread GC-torture campaign is RESOLVED (D-253:
-  all 38 full-suite-sweep gaps fixed; the confirmation run is 0 DRIFTs/0 panics
-  through the diff corpus + single-thread e2e). The confirmation run then
-  HUNG/crashed in `e2e_phase14_future_promise_delay`: `(future (reduce + (range
-  1 100)))` torture-hangs (124), `(mapv #(future (* % %)) (range 1 5))` crashes
-  (134). A WORKER thread's torture back-edge poll triggers a MULTI-THREAD STW
-  collect = the D-244 #4 dormant / highest-risk path (real threads + safepoint
-  STW + worker root publication); ADJACENT to the user-owned auto-collect-ON
-  decision. Investigate the worker-side rooting + the STW handshake under a
-  WORKER-initiated collect. Repro: `CLJW_GC_TORTURE=1 zig-out/bin/cljw -e '(let
-  [f (future (reduce + (range 1 100)))] @f)'`. Single-thread fixes = ADR-0094/0095
-  + D-252/253; heap-tag stays **64 slots** (F-004). src commits gate
-  `--serial-e2e`. SSOT for the rooting surface: **`.dev/gc_rooting.md`** (§A/E) +
-  `GC-ROOT:` markers. Cold-start: `.dev/gc_rooting.md` + D-253/244/250 +
-  `private/notes/torture-full-sweep-gaps.txt`.
+- **HEAD**: see `git log` (`cw-from-scratch`). Gate green 252/0 Mac (serial-e2e).
+  debt = `.dev/debt.yaml`. Active plan = **ADR-0089 (A->B->C)**.
+- **First commit on resume MUST be**: **`add-watch`/`remove-watch` generalization
+  to all IRefs** (agent first, then ref, then var). cljw's add-watch/remove-watch
+  reject everything but atoms; JVM accepts any IRef. Per-type firing: AGENT fires
+  after each action `[old new]` (drainer state-store, agent.zig:250); REF fires
+  ONCE post-commit with the net `[pre-tx post-tx]`; VAR fires on alter-var-root.
+  Add a `watches` field to Agent/Ref (extern structs) + Var (gpa struct).
+  Var watches need a NEW root-walk site: Var is `var_ref`-filtered from GC, so the
+  `ns_vars` enumeration must also walk `Var.watches`. Generalize
+  `watchesOf`/`setWatches` + `requireAtom`->`requireIRef`. Repro (currently errors
+  "add-watch: expected atom, got agent"): `(let [log (atom []) a (agent 0)]
+  (add-watch a :k (fn [k r o n] (swap! log conj n))) (send a inc) (await a) @log)`.
 - **Forbidden this session**: turning auto-collect ON (collect stays explicit/
-  test-triggered). The safepoint + per-thread root publication + the in-txn-map
-  rooting (self+worker) + the fabrication-window audit are now ALL done — so any
-  EXPLICIT collect is safe — but the auto-collect-ON flip is the remaining highest-
-  risk step (a full runtime-wide root re-audit + user-awareness first; it can
-  destabilize the whole runtime); editing `.claude/rules/*` (permission
-  classifier blocks it as self-mod — surface to user, see memory); "fixing" an
-  AD-001..013 accepted divergence (AD-013 = STM no-barge, landed); re-opening
-  landed work (git log = SSOT); perf without a Release `scripts/perf.sh` number;
-  trusting `~/Documents/OSS/zig` for 0.16 API (post-0.16 master — wrong tree; use
-  pinned nix-store std / cw v0).
+  test-triggered) -- the WORKER-INITIATED multi-thread collect + wrapping every
+  worker blocking-site in a safepoint (only `delay.force` is wrapped today, the
+  sole eval-under-lock site) is the user-owned #4a' audit, needs a full
+  runtime-wide root re-audit + user awareness; editing `.claude/rules/*`
+  (permission classifier blocks it -- surface to user); "fixing" an AD-001..013
+  accepted divergence; re-opening landed work (git log = SSOT); perf without a
+  Release `scripts/perf.sh` number; trusting `~/Documents/OSS/zig` for 0.16 API
+  (post-0.16 master -- use pinned nix-store std / cw v0).
 
 ## Active plan — ADR-0089 post-M re-cut (2026-06-04)
 
@@ -50,15 +43,19 @@ Phase C  Library-driven gap-hunt (was the quality loop) on the concurrency base;
 
 ## Recently landed (git log = SSOT)
 
-**GC-torture root-cause campaign + the GC-rooting SSOT** (git log = SSOT;
-ADR-0094/0095). 10 swept-intermediate classes fixed: Function.header@0, reduce
-(EvalFrame), persistent-waypoint mark-membrane (`clearPersistentMarks`), bytecode
-constant pool (`EvalFrame.constants`), the `isGcManaged` membrane SSOT (Alt D),
-dormant fn chunk constants, defprotocol, C9 CLI-print pin, C2/C3 every?/some?
-cursors, C6 clojure.walk rebuild accumulators. Delivered `.dev/gc_rooting.md`
-(SSOT for every rooting site + moving-GC migration checklist) + `GC-ROOT:` markers
-+ D-252. The FIRST full-suite torture sweep (D-250 tier-2) then found **38 more
-DRIFTs in 12 areas** → D-253 (the next campaign; clustered, cluster (a) first).
+**GC-torture MULTI-THREAD hardening** (git log = SSOT; D-244 #4 / D-253). Three
+hang root causes fixed, no workarounds: (1) torture scoped to the MAIN thread
+(`root_set.is_registered_worker`); (2) STW rendezvous TOCTOU -- `stopWorld`
+recomputes its park target each wake from a lock-free `registered_count` + a
+leaving worker calls `noteWorkerLeft` (closes the tiny-action-drainer hang);
+(3) delay-once BLOCKING-safepoint -- `safepoint.enterBlocked`/`exitBlocked` via
+`lockMutexAtSafepoint` at `delay.force`'s once-lock (the only eval-under-lock
+site), closing the concurrent-deref deadlock. Main-driven multi-thread torture
+(future/agent/pmap/delay/promise) is torture-CLEAN: phase16_gc_torture.sh +
+phase16_agent.sh + phase14_future_promise_delay all green under torture. The
+full-suite N=1 sweep is SLOWNESS-bound on large-N realises (interleave_large =
+100000 elems -> O(n^2) per-poll collect), NOT a hang. SSOT `.dev/gc_rooting.md`
+E4/E6 updated. D-250 tier-2 = multi-thread-clean.
 
 ## Open carry-overs (actionable)
 
