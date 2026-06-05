@@ -3,14 +3,17 @@
 //! `std.Io.net` + `std.http.Server`. Layer 0 (the cljw-original surface tree).
 //!
 //! Ring-style: `run-server` serves a blocking serial accept loop; each request
-//! becomes a Ring request map `{:request-method :get :uri "/path"}` passed to the
-//! handler (invoked via `rt.vtable.callFn`), whose response map
-//! `{:status N :body "…"}` (or a bare string body) is written back.
+//! becomes a Ring request map `{:request-method :get :uri "/path" :query-string
+//! "…" :headers {…} :body "…"}` passed to the handler (invoked via
+//! `rt.vtable.callFn`), whose response map `{:status N :body "…"}` (or a bare
+//! string body) is written back. Header names are lowercased (Ring); `:body` is
+//! nil when the client declared none (read only on Content-Length/chunked,
+//! capped at `max_body_bytes`).
 //!
-//! Follow-ons (D-257): request :headers/:body, per-connection threading + a
-//! non-blocking stop handle, and per-request GC rooting of the freshly-built
-//! request map under auto-collect (today auto-collect is off, so the
-//! build-then-immediately-call path is safe).
+//! Follow-ons (D-257 remainder): per-connection threading + a non-blocking stop
+//! handle (so keep-alive can be re-enabled), and per-request GC rooting of the
+//! freshly-built request map under auto-collect (today auto-collect is off, so
+//! the build-then-immediately-call path is safe).
 //!
 //! Backend: impl-only
 //! Impl deps: none
@@ -96,12 +99,56 @@ pub fn runServer(rt: *Runtime, env: *Env, handler: Value, port: u16, loc: Source
     }
 }
 
+/// Cap on the request body cljw will buffer (DoS guard for the public edge
+/// server). A larger body yields `:body nil` rather than an unbounded read.
+const max_body_bytes = 8 * 1024 * 1024;
+
 fn buildRequest(rt: *Runtime, req: *std.http.Server.Request, kw_method: Value, kw_uri: Value) !Value {
+    // Everything sourced from the head (method / target / headers) is copied into
+    // cljw Values FIRST: reading the body via readerExpectNone invalidates the
+    // head's string memory, so the order here is load-bearing.
     const method_kw = try methodKeyword(rt, req.head.method);
-    const uri_str = try string_mod.alloc(rt, req.head.target);
+
+    // Ring splits the path from the query: `:uri` is the path, `:query-string`
+    // the part after `?` (nil when absent).
+    const target = req.head.target;
+    const q_idx = std.mem.findScalar(u8, target, '?');
+    const path = if (q_idx) |i| target[0..i] else target;
+    const uri_str = try string_mod.alloc(rt, path);
+    const kw_query = try keyword_mod.intern(rt, null, "query-string");
+    const query_val: Value = if (q_idx) |i| try string_mod.alloc(rt, target[i + 1 ..]) else Value.nil_val;
+
+    // Headers → a cljw map {lowercased-name => value} (Ring lowercases names).
+    const kw_headers = try keyword_mod.intern(rt, null, "headers");
+    var headers = map_mod.empty();
+    var hit = req.iterateHeaders();
+    while (hit.next()) |h| {
+        const lname = try std.ascii.allocLowerString(rt.gpa, h.name);
+        defer rt.gpa.free(lname);
+        const hk = try string_mod.alloc(rt, lname);
+        const hv = try string_mod.alloc(rt, h.value);
+        headers = try map_mod.assoc(rt, headers, hk, hv);
+    }
+
+    // Body → a cljw string (nil when there is none). Read ONLY when the client
+    // declared a body (Content-Length or chunked); a body-less request with no
+    // length would otherwise read the raw stream until EOF and block.
+    const kw_body = try keyword_mod.intern(rt, null, "body");
+    const has_body = req.head.content_length != null or req.head.transfer_encoding == .chunked;
+    const body_val: Value = if (has_body) blk: {
+        var body_buf: [16384]u8 = undefined;
+        const reader = req.readerExpectContinue(&body_buf) catch break :blk Value.nil_val;
+        const bytes = reader.allocRemaining(rt.gpa, std.Io.Limit.limited(max_body_bytes)) catch break :blk Value.nil_val;
+        defer rt.gpa.free(bytes);
+        break :blk if (bytes.len == 0) Value.nil_val else try string_mod.alloc(rt, bytes);
+    } else Value.nil_val;
+
     var m = map_mod.empty();
     m = try map_mod.assoc(rt, m, kw_method, method_kw);
     m = try map_mod.assoc(rt, m, kw_uri, uri_str);
+    m = try map_mod.assoc(rt, m, kw_query, query_val);
+    m = try map_mod.assoc(rt, m, kw_headers, headers);
+    m = try map_mod.assoc(rt, m, kw_body, body_val);
     return m;
 }
 

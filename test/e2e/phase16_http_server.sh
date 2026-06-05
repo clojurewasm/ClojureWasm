@@ -26,4 +26,16 @@ echo "PASS http-get-route -> $got"
 code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:$PORT/items" 2>&1)
 [[ "$code" == "201" ]] || fail "POST status: got '$code' (discardBody panic regression?)"
 echo "PASS http-post-201 -> $code"
-echo "OK — phase16_http_server (2 cases) green"
+
+# D-257: request :body / :query-string / :headers in the Ring map.
+got=$(curl -s -X POST --data 'hello-body' "http://127.0.0.1:$PORT/echo" 2>&1)
+[[ "$got" == "echo:hello-body" ]] || fail "POST /echo :body: got '$got'"
+echo "PASS http-post-body -> $got"
+got=$(curl -s "http://127.0.0.1:$PORT/q?a=1&b=2" 2>&1)
+[[ "$got" == "q:a=1&b=2" ]] || fail "GET /q :query-string: got '$got'"
+echo "PASS http-query-string -> $got"
+got=$(curl -s -H "X-Test: v" "http://127.0.0.1:$PORT/h" 2>&1)
+[[ "$got" == "h:v" ]] || fail "GET /h :headers: got '$got'"
+echo "PASS http-header -> $got"
+
+echo "OK — phase16_http_server (5 cases) green"

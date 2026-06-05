@@ -76,30 +76,28 @@ active:
       defect. Cross-ref D-244 / D-253 / memory gate_parallel_e2e_timeout.
     last_reviewed: "2026-06-06"
   - id: "D-257"
-    status: "now (opened 2026-06-06, ADR-0098) — cljw.http.server cycle-2 follow-ons. The server is a blocking serial loop with keep-alive FORCED OFF + a minimal Ring request map (method+uri only)."
+    status: "(b) LANDED 2026-06-06 — Ring request map now carries :request-method/:uri/:query-string/:headers/:body (e2e phase16_http_server 5 cases). Remaining: (a/c) keep-alive + per-connection loop, (d) GC rooting, (e) client stub."
     category: "runtime"
     barrier: |-
       **`cljw.http.server` (ADR-0098) shipped as a deliberate minimal first cut.**
-      Follow-ons to close before it is a general-purpose server:
-      (a) **keep-alive forced OFF** — every `req.respond(…, .{ .keep_alive = false })`
-      because std.http.Server's `discardBody` ASSERTS
-      `transfer_encoding != .none or content_length != null` for any
-      `requestHasBody()` method (POST/PUT) and PANICS (process-wide) on a body-less
-      POST that sends no content-length. Forcing keep-alive off skips the
-      discard-body path entirely (connection closes per request). Proper fix: drain
-      the request body explicitly (readerExpectNone + discardRemaining, copying
-      head strings first since it invalidates them) so keep-alive can be re-enabled.
-      (b) **request :headers / :body absent** — the Ring map is `{:request-method
-      :uri}` only; add `:headers` (iterateHeaders) + `:body` (the drained body from
-      (a)) + `:query-string`. (c) **serial blocking loop** — one request at a time;
-      add per-connection threading (cljw has the Thread base) + a non-blocking
-      `run-server` returning a stop handle (http-kit shape) so it is testable
-      in-process + usable as a library. (d) **per-request GC rooting** — the
-      freshly-built request map + interned keywords/strings are built then
-      immediately passed to the handler; safe TODAY because auto-collect is off,
-      but under auto-collect a collect mid-handler could sweep them — root the
-      request map (EvalFrame) for torture-safety. (e) **cljw.http.client** is a
-      placeholder stub (feature_not_supported). Cross-ref ADR-0098.
+      (b) request :headers/:body/:query-string LANDED 2026-06-06 (buildRequest reads
+      headers via iterateHeaders + lowercases names, splits target into :uri path +
+      :query-string, and reads :body only on a declared body (Content-Length/chunked,
+      capped at max_body_bytes) — extracting head strings BEFORE readerExpectContinue
+      invalidates them; :body nil when none). Remaining follow-ons:
+      (a) **keep-alive still forced OFF** — `req.respond(…, .{ .keep_alive = false })`.
+      Draining the body now makes the keep-alive discard path safe, but the accept
+      loop is one-request-per-connection (closes after respond), so re-enabling
+      keep-alive is coupled to (c) the per-connection loop, not a standalone flip.
+      (c) **serial blocking loop** — one request at a time; add per-connection
+      threading (cljw has the Thread base) + a non-blocking `run-server` returning a
+      stop handle (http-kit shape) so it is testable in-process + usable as a library.
+      (d) **per-request GC rooting** — the freshly-built request map + interned
+      keywords/strings are built then immediately passed to the handler; safe TODAY
+      because auto-collect is off, but under auto-collect a collect mid-handler could
+      sweep them — root the request map (EvalFrame) for torture-safety. (e)
+      **cljw.http.client** is a placeholder stub (feature_not_supported). Cross-ref
+      ADR-0098.
     last_reviewed: "2026-06-06"
   - id: "D-256"
     status: "TOP PRIORITY — autonomous overnight (user 2026-06-06, asleep). The clean-session loop MUST start here. **Read `private/clojure_conj_2026_cfp/PRIORITY.md` AND `…/CFP_v2.md` TOGETHER** (both carry a 2026-06-06 PIVOT note: **Fly + native cljw, NOT Cloudflare + wasm**), then **execute PRIORITY.md IN FULL P0->P9 — do NOT abandon any step citing the deadline (AI speed is dramatically faster than it feels); on a user-only-action blocker, defer + proceed to the next step (never stop, never ask). After PRIORITY.md is exhausted, transition autonomously to the cljw Phase B/C remaining work.** edge-demo is LANDED (https://clojurewasm-edge-demo.fly.dev/, native cljw + Fly)."
