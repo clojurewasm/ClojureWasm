@@ -5,16 +5,18 @@
 
 ## Resume contract
 
-- **HEAD**: ~`8c56dc52` (see git log — CFP P1-P9 packaged; D-257 + D-260/ADR-0100
-  + string/index-of-char all LANDED this overnight). Active plan = ADR-0089
-  (A->B->C); the AI-doable CFP campaign (D-256) is exhausted, now in Phase C.
-- **First commit on resume MUST be**: **continue the Phase C clj-diff gap-hunt**
-  (`scripts/clj_diff_sweep.sh`, self-select the next coherent surface — this
-  overnight closed clojure.string + the numeric `'` ops; D-210 is the standing
-  clj-parity floor, drain new DIFFs highest-value-first). **OR**, for a fresh-
-  context structural push, open **Phase B (concurrency core, D-242/244/245 — the
-  top quality-floor)** via the Phase-B entry reading list (ADR-0089). Pick Phase B
-  only with fresh context; mid-session, prefer the bounded Phase-C sweep.
+- **HEAD**: ~`dcb36855` (see git log — CFP P1-P9 packaged; 7 F-011 fixes landed
+  this overnight). Active plan = ADR-0089 (A->B->C); AI-doable CFP exhausted,
+  in Phase C.
+- **First commit on resume MUST be**: **drain the found Phase-C backlog** (this
+  overnight's clj-diff sweep of 18 surfaces found these, all turnkey-routed in
+  debt.yaml): **D-263** radix literals `2r1010` (most bounded — tokenizer
+  readNumber + base-N parse, hex is the model) → **D-264** `distinct`/`dedupe`
+  eager-hang (lazy rewrite; NOTE the fn* self-name gotcha in the row) → **D-261**
+  qualified-symbol over-resolution → **D-265** biginteger (low). Then continue the
+  gap-hunt (`scripts/clj_diff_sweep.sh`, self-select new surfaces; D-210 standing
+  floor). **OR** open **Phase B (concurrency, D-242/244/245)** with fresh context
+  via the Phase-B reading list (ADR-0089). Mid-session prefer the bounded items.
 - **⚠ USER must act (time-sensitive, NOT AI-doable)**: see
   `private/clojure_conj_2026_cfp/DEFERRED_USER_ACTIONS.md` — (1) **Sessionize
   submit by 6/13** (`SUBMIT_READY.md` is copy-paste ready); (2) v0.1.0 tag /
@@ -76,8 +78,27 @@ Phase C  Library-driven gap-hunt; workaround remediation folds in here.
 
 ## Cold-start reading order (tracked-only)
 
-handover → **`private/clojure_conj_2026_cfp/SUBMIT_READY.md` + `…/PRIORITY.md`**
-(CFP state) → `.dev/debt.yaml` D-257/259/260 → **`.dev/decisions/0098_*`**
-(http.server, the D-257 base) + **`0099_*`** (wasm FFI) → `.dev/project_facts.md`
-F-001/F-004/F-006/F-011 → CLAUDE.md (§ Project spirit + The only stop) →
-`.dev/principle.md`.
+handover → **`private/clojure_conj_2026_cfp/SUBMIT_READY.md` +
+`DEFERRED_USER_ACTIONS.md`** (CFP state) → `.dev/debt.yaml`
+D-261/263/264/265 (the found Phase-C backlog) → **`.dev/decisions/0099_*`** (wasm
+FFI) + **`0100_*`** (prime ops) → `.dev/project_facts.md` F-001/F-004/F-006/F-011
+→ CLAUDE.md (§ Project spirit + The only stop) → `.dev/principle.md`.
+
+## Stopped — user requested
+
+User instruction (2026-06-06): server-side limit hit — "きりのいいところで止めて
+… 後処理" (stop at a clean breaking point; do the wrap-up). Stopped after
+discharging D-262 (record map-protocol cluster); working tree clean, all pushed.
+The next `/continue` deletes this section and runs the resume contract above.
+Session net: CFP P1-P9 packaged + 7 F-011 fixes (D-257/D-260/index-of/Double-
+special/char-name/record-seqable/record-map-protocol) + 18 surfaces parity-
+validated + D-261/263/264/265 found & turnkey-routed.
+
+Extended-challenge (per `.claude/rules/extended_challenge.md`):
+1. **Alt hypothesis**: D-262's `map?`->true ripple was deferred twice on fatigue
+   grounds, then landed safely once the gate validated it — lesson: a
+   gate-validated ripple is not a defer reason (applies to D-263/D-264 too).
+2. **Next experiment**: `./zig-out/bin/cljw -e '2r1010'` (→ name_error now), then
+   fix D-263 (tokenizer readNumber `<digits>[rR]<base-N>` arm + base-N parse,
+   model on the `0x` hex path); corpus `radix_literals`.
+3. **Explicit blocker**: none — D-263 is a bounded reader fix, ready to run.
