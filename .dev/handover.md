@@ -50,19 +50,15 @@
 ```
 Phase B  KNOWN-unimplemented CORE, concurrency-led (D-242): §7 redesign vs Zig
          0.16 FIRST, then STM-txn / agent / locking / real-threading / Thread +
-         arrays (F-004) / *out*·in·err (D-238) / reflection. finished-form,
-         rework-OK with test guards. North star = user-observable parity.
+         arrays (F-004) / *out*·in·err (D-238) / reflection. finished-form.
 Phase C  Library-driven gap-hunt; workaround remediation folds in here.
 ```
 
 ## Open carry-overs (actionable)
 
-- **D-260** (found this overnight): `*'` raises integer_overflow instead of
-  auto-promoting (`+'` is correct) — clj-parity bug, fold into Phase C.
-- **D-257** = the resume task (edge-demo CRUD enabler). **D-259** = the wasm FFI
-  provisional handle (Phase-16/F-004). **D-258** = dormant multi-thread torture
-  flake (D-244 #4).
-- **3 rules** carry a stale `src/runtime/host/**` glob (ADR-0029); cleanup Edit is
+- **D-259** wasm FFI provisional handle (Phase-16/F-004) · **D-258** dormant
+  multi-thread torture flake (D-244 #4) · **D-261/263/264/265** Phase-C backlog.
+- **3 rules** keep a stale `src/runtime/host/**` glob (ADR-0029); cleanup Edit is
   permission-blocked as self-mod (memory `claude-rules-edit-permission-block`).
 - **D-243** (8 re-opened deferrals) · **D-244** #4a' hardening capstone (auto-
   collect dormant) · **D-245** locking Option C · **D-246** concurrency metadata.
