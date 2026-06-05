@@ -124,8 +124,16 @@ pub const FunctionMethod = struct {
 };
 
 pub const Function = struct {
-    header: HeapHeader,
-    _pad: [6]u8 = undefined,
+    // `align(8)` forces `header` into the struct's max-alignment group so
+    // Zig's auto field-ordering keeps it at offset 0. The GC reads every
+    // heap-tagged Value's `HeapHeader` at offset 0 (`value.heapHeader` ->
+    // `decodePtr(*HeapHeader)`), but `Function` is `gpa.create`'d — it
+    // bypasses `gc.alloc`'s `assertHeaderAtOffsetZero`, so without this a
+    // non-extern struct sorts the align-8 slice fields (`methods` /
+    // `closure_bindings`) ahead of an align-4 header and the GC reads
+    // `methods.ptr`'s low byte as a bogus tag (D-251). The `comptime`
+    // assert below makes any future reorder a build failure, not a UAF.
+    header: HeapHeader align(8),
     /// Number of locals the analyser allocated above this fn — these
     /// are the slots the closure snapshot fills, and the active
     /// method's params land at `[slot_base, slot_base + method.arity)`.
@@ -141,6 +149,10 @@ pub const Function = struct {
     /// (top-level fn) so the common case stays a single null check
     /// rather than an empty-slice round-trip.
     closure_bindings: ?[]Value,
+
+    comptime {
+        std.debug.assert(@offsetOf(Function, "header") == 0);
+    }
 };
 
 /// Heap-allocate a Function and wrap it in a NaN-boxed Value. The

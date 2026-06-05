@@ -52,33 +52,30 @@ active:
       D-251 fix (it cannot pass before).
     last_reviewed: "2026-06-05"
   - id: "D-251"
-    status: "now (2026-06-05, found by D-250 torture; ROOT CAUSE NAILED) — `Function`'s `HeapHeader` is NOT at offset 0, so the GC mark walk reads the wrong bytes as the tag and OOB-crashes in mark() (`index 64, len 64`). `Function` is a non-`extern` `struct` with align-8 slice fields (`methods`, `closure_bindings`), so Zig's auto-layout sorts those BEFORE the align-4 `header` — offset 0 holds `methods.ptr` (low byte 0x40=64). Confirmed: offset-0 bytes = methods.ptr + methods.len=1 for a single-arity fn; the fn is still callable (calls access f.header/f.methods by field name) but the GC's `decodePtr(*HeapHeader)` reads offset 0. The collector had NEVER run against a real env (all prior collect/STW tests use `.envs=&.{}`), so this was invisible. Affects ~1214 .clj fns across every bootstrap ns + a deinit segfault in freeFunction (same wrong-offset f.methods)."
+    status: "PARTIAL (2026-06-05, found by D-250 torture) — LAYOUT class FIXED: `Function.header` was not at offset 0 (non-extern struct, Zig sorted its align-8 slice fields ahead of the align-4 header → offset 0 held methods.ptr, low byte 0x40=64 → mark() OOB on every .clj fn). Fixed with `header: HeapHeader align(8)` + a comptime `@offsetOf==0` assert (tree_walk.zig). Confirmed Function was the ONLY offender of this class: ProtocolDescriptor + TypeDescriptorRef (the actually-walked .type_descriptor target) are `extern struct` (guaranteed header@0); all other heap types go through gc.alloc's assertHeaderAtOffsetZero. REMAINING = the ROOTING-GAP class (live values swept under torture): protocol/defrecord → type_error, `(apply str (interpose ...))` → 'integer does not fit' panic, AND the known `fn_val` noop-trace (closures not traced). These block torture-green + auto-collect-ON."
     category: "gc"
     barrier: |-
-      THE BUG: `gc.alloc` enforces `comptime assertHeaderAtOffsetZero(T)`, but the
-      `gpa.create`'d header-bearing types BYPASS that check and Zig reorders their
-      fields. `Function` (tree_walk.zig:126) is the confirmed offender; `TypeDescriptor`
-      + `ProtocolDescriptor` (also gpa.create + trackHeap) almost certainly share it —
-      AUDIT THEM. The `_pad: [6]u8` in Function shows the author ASSUMED header@0 but
-      didn't enforce it with `extern`/alignment.
-      FIX SHAPE (ADR + DA-fork — GC layout invariant): force `header` to offset 0 on
-      every heap-tagged type, GC-allocated or not. Candidate: `header: HeapHeader
-      align(8)` as the first field (joins the align-8 group, source-order-first → off
-      0) + a `comptime { assert(@offsetOf(@This(),"header")==0); }` in EACH such struct
-      (Function/TypeDescriptor/ProtocolDescriptor/…) so a future reorder fails the
-      build, not the runtime. Verify with CLJW_GC_TORTURE=1 over a representative set,
-      then the full `--serial-e2e` suite under torture.
-      SEPARATE latent gap surfaced same cycle (fold into the ADR or a sibling row):
-      `tag_ops` registers `.fn_val` trace as **noop** — so even with header@0 fixed,
-      a fn's `closure_bindings`/captured Values are NOT traced → captured GC values
-      would be swept. fn_val needs a REAL trace that marks closure_bindings (+ any
-      GC Values in method bytecode constants) before auto-collect-ON is safe.
-      ALSO separate/narrower: a transient bootstrap window where a mid-creation ns
-      reads 0xAA (cleared by steady state; `(all-ns)` is clean) — re-check after the
-      header fix (torture is armed post-bootstrap so it does not currently exercise it).
-      Repro: `CLJW_GC_TORTURE=1 zig-out/bin/cljw -e '(+ 1 2)'` → instant OOB in mark().
-      Full diagnosis + instrumentation method: private/notes/phaseC-d250-gc-torture.md
-      + phaseC-d251-root-cause.md.
+      DONE (layout class): `Function` header forced to offset 0 (`align(8)` + comptime
+      assert). Validated: `CLJW_GC_TORTURE=1 cljw -e` on arith/reduce/sqrt/filter all
+      green. The header@0 invariant is now build-enforced for Function the same way
+      `gc.alloc`'s `assertHeaderAtOffsetZero` enforces it for GC-allocated types.
+      REMAINING (rooting-gap class — the real #4a'-against-a-real-env work):
+      - **fn_val noop trace**: `tag_ops` registers `.fn_val` trace as **noop**, so a
+        fn's `closure_bindings` + GC Values in method bytecode constants are NOT
+        traced → swept under collect. Needs a real fn_val trace. LIKELY the cause of
+        the protocol/defrecord `type_error` + the interpose `integer does not fit`
+        (a swept intermediate reused as garbage). START HERE next.
+      - **operand-stack / intermediate rooting** beyond the back-edge poll boundary
+        (the gc_self_guard fabrication window is still unwired at the set/clear sites).
+      - Re-run `CLJW_GC_TORTURE=1` over deftype/defprotocol/defrecord/transducer/
+        string-build programs, fix each swept-value gap, then the full
+        `bash test/run_all.sh --serial-e2e` under torture → green = the validation
+        gate D-250 wants. THEN a leak check + the (still-forbidden) auto-collect-ON.
+      - Narrower: the transient bootstrap 0xAA-ns window (torture is post-bootstrap
+        armed, so currently unexercised) — re-check after the rooting class is closed.
+      Repro for the remaining class: `CLJW_GC_TORTURE=1 zig-out/bin/cljw -e '(apply
+      str (interpose "," (map str (range 1 80))))'` → 'integer does not fit'.
+      Full diagnosis: private/notes/phaseC-d250-gc-torture.md + phaseC-d251-root-cause.md.
     last_reviewed: "2026-06-05"
   - id: "D-242"
     status: "Phase B anchor (re-cut ADR-0089, 2026-06-04) — KNOWN-unimplemented CORE, concurrency-led; redesign §7 against Zig 0.16 FIRST, then implement. finished-form, rework-OK with test guards. §7-redesign DONE = ADR-0090 (2026-06-04): io_default-singleton std.Io sync + ThreadGcContext root-publication GC handshake (the DA-fork caught v0's stop-the-world lie) + MVCC retry-only STM; spike-validated. Implementation (concurrency/{io_default,thread_pool,lock_tx,gc_thread}.zig + real future/promise/delay/atom/agent/locking bodies) is the remaining Phase B work; GC handshake lands first (prereq for any real-threading primitive)."
