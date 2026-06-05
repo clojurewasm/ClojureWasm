@@ -360,9 +360,16 @@ pub const Reader = struct {
             if (std.mem.eql(u8, body, "return")) break :blk '\r';
             if (std.mem.eql(u8, body, "backspace")) break :blk 8;
             if (std.mem.eql(u8, body, "formfeed")) break :blk 12;
-            if (body[0] == 'u' and body.len == 5)
-                break :blk std.fmt.parseInt(u21, body[1..], 16) catch
+            if (body[0] == 'u' and body.len == 5) {
+                const u = std.fmt.parseInt(u21, body[1..], 16) catch
                     return error_catalog.raise(.token_invalid, loc, .{ .token = txt });
+                // Reject UTF-16 surrogates (U+D800..U+DFFF): not valid Unicode
+                // scalar values (clj rejects `\uD83D`), and a surrogate would
+                // also break the later UTF-8 encode of the char.
+                if (u >= 0xD800 and u <= 0xDFFF)
+                    return error_catalog.raise(.token_invalid, loc, .{ .token = txt });
+                break :blk u;
+            }
             if (body[0] == 'o' and body.len >= 2 and body.len <= 4)
                 break :blk std.fmt.parseInt(u21, body[1..], 8) catch
                     return error_catalog.raise(.token_invalid, loc, .{ .token = txt });
@@ -1022,6 +1029,18 @@ test "radix integer literals `<base>r<digits>`" {
     try testing.expectError(error.NumberError, ctx.read("1r0"));
     try testing.expectError(error.NumberError, ctx.read("37rA"));
     try testing.expectError(error.NumberError, ctx.read("2r12")); // 2 is not a base-2 digit
+}
+
+test "char literal `\\uXXXX` rejects UTF-16 surrogates" {
+    var ctx = TestCtx.init();
+    defer ctx.deinit();
+
+    try testing.expectEqual(@as(u21, 'A'), (try ctx.read("\\u0041")).data.char);
+    try testing.expectEqual(@as(u21, 0x00e9), (try ctx.read("\\u00e9")).data.char); // é
+    // A lone surrogate (U+D800..U+DFFF) is not a valid scalar — clj rejects it.
+    try testing.expectError(error.SyntaxError, ctx.read("\\uD83D"));
+    try testing.expectError(error.SyntaxError, ctx.read("\\uDFFF"));
+    try testing.expectError(error.SyntaxError, ctx.read("\\uD800"));
 }
 
 test "octal integer literals `0<digits>`" {
