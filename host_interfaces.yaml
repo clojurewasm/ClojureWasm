@@ -1,0 +1,79 @@
+# host_interfaces.yaml — closed-set SSOT for deftype/reify/extend-type host
+# supertype markers (ADR-0102, F-013).
+#
+# These are the host-interface names cljw recognises in the deftype/reify/
+# extend-type impl-spec head position. They are MARKER NAMES that select a
+# dispatch family, NOT real host classes (ADR-0059/AD-003 — cljw has no JVM
+# Class) and NOT cljw protocol Vars (a defprotocol name resolves through the
+# ordinary `.protocol` path and needs no row here).
+#
+# This file is the reviewable SSOT-of-record. The single in-code read point is
+# `src/runtime/host_interface.zig` (a StaticStringMap). `scripts/check_host_interface.sh`
+# (gate G4) enforces:
+#   (i)  set-bound — every name recognised in host_interface.zig has a row here.
+#   (ii) over-claim — every `recognised: true` row is actually in the code table;
+#        every `status: wired` method names a `wires_to` (no floating wire).
+#
+# `derives_from` materializes the "is this a language-defined supertype"
+# judgement ONCE, in-repo (with ~/Documents/OSS/clojure as evidence), so the gate
+# is reproducible and never re-derives from the mutable pinned clone. The closed
+# set is enumerated up-front (網羅, F-013); impl is wired incrementally — a row
+# with `recognised: false` is the planned closed set, not yet in code.
+#
+# 網羅 applies to these ROWS (cheap — no impl); eager impl loading is the D-277
+# binary/startup concern, deliberately NOT done here.
+
+interfaces:
+  # --- Object: recognised now (D-275 slice 1) ---
+  - name: Object
+    aliases: [java.lang.Object]
+    derives_from: "java.lang.Object — clj universal supertype; a legal deftype/reify supertype for toString/equals/hashCode overrides (Clojure, stable across versions)."
+    tier: A
+    recognised: true
+    note: >-
+      The deftype/reify SUPERTYPE-marker facet of Object. Distinct from the
+      `compat_tiers.yaml host_classes` java.lang.Object row, which is the CLASS
+      facet (instance?/class via class_name.zig) — the two facets coexist (one
+      SSOT per concern, ADR-0102). `(extend-type Object …)` as the default-for-
+      all-types TARGET is D-276 (a separate dispatch tier, not yet wired).
+    methods:
+      toString: { status: wired, wires_to: "str/print dispatch consult (runtime/print.zig writeStrValue → dispatchOrNull Object/toString)" }
+      equals: { status: feature_not_supported }
+      hashCode: { status: feature_not_supported }
+
+  # --- clojure.lang.* deftype/reify supertype family (the closed set; 網羅) ---
+  # recognised: false → enumerated as the planned closed set, NOT yet in the
+  # host_interface.zig table. D-275 slices 3+ flip each to recognised: true by
+  # adding the code-table row + wiring its methods to the modeled protocol named
+  # in modeled_as (gate (ii) then checks that protocol is real). Most bare
+  # spellings already resolve as cljw protocol Vars (no row needed); these rows
+  # are the `clojure.lang.`-QUALIFIED spellings + the unmodeled families.
+  - name: clojure.lang.IDeref
+    derives_from: "clojure.lang.IDeref — deftype/reify supertype for deref-able refs (Clojure, stable)."
+    tier: A
+    recognised: false
+    modeled_as: "(none yet — `deref` is a plain fn, not protocol-dispatched; slice 4 models an IDeref protocol)"
+    methods:
+      deref: { status: feature_not_supported }
+  - name: clojure.lang.Counted
+    derives_from: "clojure.lang.Counted — O(1) count marker (Clojure, stable)."
+    tier: A
+    recognised: false
+    modeled_as: "(none yet — distinct from IPersistentCollection/-count)"
+    methods:
+      count: { status: feature_not_supported }
+  - name: clojure.lang.IFn
+    derives_from: "clojure.lang.IFn — invocable instance (Clojure, stable)."
+    tier: A
+    recognised: false
+    modeled_as: "(none yet — fn-call on a deftype instance)"
+    methods:
+      invoke: { status: feature_not_supported }
+  - name: clojure.lang.IObj
+    derives_from: "clojure.lang.IObj — metadata-carrying instance (Clojure, stable)."
+    tier: A
+    recognised: false
+    modeled_as: "(none yet — meta on a deftype instance)"
+    methods:
+      withMeta: { status: feature_not_supported }
+      meta: { status: feature_not_supported }

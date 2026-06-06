@@ -33,6 +33,7 @@ const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
 const error_mod = @import("../runtime/error/info.zig");
 const error_catalog = @import("../runtime/error/catalog.zig");
+const host_interface = @import("../runtime/host_interface.zig");
 const SourceLocation = error_mod.SourceLocation;
 
 pub const RegisterError = error{
@@ -2152,7 +2153,7 @@ fn expandExtendType(
     // never Var-resolves it (Path A, the `instance?` / `reify` precedent). This
     // arm also covers the `deftype`/`defrecord` paths, whose protocol sections
     // re-expand through `expandExtendType`. A cljw protocol name stays bare.
-    const protocol_form = if (args[1].data == .symbol and isHostMarker(args[1].data.symbol.name))
+    const protocol_form = if (args[1].data == .symbol and host_interface.isMarker(args[1].data.symbol.name))
         try quoteWrap(arena, args[1])
     else
         args[1];
@@ -2777,15 +2778,6 @@ fn expandLetfn(
     return list(arena, items, loc);
 }
 
-/// A `deftype`/`reify` impl-spec head that names a HOST supertype (not a cljw
-/// protocol) — recognised as a marker rather than Var-resolved (D-275). Slice 1
-/// = `Object`; `clojure.lang.*` interfaces land in follow-up slices (each wires
-/// its methods to a real dispatch surface, so they cannot be recognised before
-/// they are wired — an unwired marker would be a silent no-op).
-fn isHostMarker(name: []const u8) bool {
-    return std.mem.eql(u8, name, "Object");
-}
-
 /// `(quote form)` — wrap a form so the analyzer treats it as a literal value
 /// (a Symbol) instead of resolving it. Mirrors `expandInstanceQ`'s wrap.
 fn quoteWrap(arena: std.mem.Allocator, form: Form) !Form {
@@ -2824,7 +2816,7 @@ fn expandReify(
         // analyzer never Var-resolves it (Path A, the `instance?` precedent);
         // the primitive recognises the Symbol Value. A protocol name stays bare
         // (resolves to its protocol Var, the existing path).
-        const proto_form = if (isHostMarker(args[i].data.symbol.name))
+        const proto_form = if (host_interface.isMarker(args[i].data.symbol.name))
             try quoteWrap(arena, args[i])
         else
             args[i];

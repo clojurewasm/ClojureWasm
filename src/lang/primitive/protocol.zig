@@ -32,6 +32,7 @@ const big_int_mod = @import("../../runtime/numeric/big_int.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
 const ex_info_mod = @import("../../runtime/collection/ex_info.zig");
 const host_class_mod = @import("../../runtime/error/host_class.zig");
+const host_interface = @import("../../runtime/host_interface.zig");
 
 const MethodEntry = protocol_mod.MethodEntry;
 const ProtocolDescriptor = protocol_mod.ProtocolDescriptor;
@@ -49,18 +50,6 @@ fn allocFqcn(rt: *Runtime, sym_val: Value) ![]const u8 {
         return buf;
     }
     return rt.gc.infra.dupe(u8, sym.name);
-}
-
-/// Canonical process-lifetime slice for a host-supertype marker name (D-275).
-/// The `.symbol` marker arrives via `(quote Object)`, whose backing bytes are
-/// not guaranteed to outlive the eval; `MethodEntry.protocol_name` is borrowed
-/// (never freed — ProtocolDescriptor-lifetime contract), so the borrow source
-/// must be process-lifetime. A static literal satisfies that. Returns null for
-/// an unrecognised marker (the macro only quote-wraps recognised ones, so the
-/// null arm is defence-in-depth, not a reachable user path).
-fn hostMarkerCanonicalName(name: []const u8) ?[]const u8 {
-    if (std.mem.eql(u8, name, "Object")) return "Object";
-    return null;
 }
 
 /// Build the MethodEntry array for the descriptor from a Clojure
@@ -200,7 +189,7 @@ pub fn extendType(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     const td = @constCast(td_mod.asTypeDescriptorRef(args[0]));
     const proto_name: []const u8 = switch (args[1].tag()) {
         .protocol => protocol_mod.asProtocol(args[1]).fqcn(),
-        .symbol => hostMarkerCanonicalName(symbol_mod.asSymbol(args[1]).name) orelse {
+        .symbol => host_interface.canonicalName(symbol_mod.asSymbol(args[1]).name) orelse {
             return error_catalog.raise(.type_arg_invalid, loc, .{
                 .fn_name = "__extend-type!",
                 .expected = "protocol or host marker",
@@ -232,12 +221,14 @@ pub fn extendType(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
             });
         }
         const mname = string_mod.asString(name_val);
-        // D-275 slice 1: the `Object` marker wires `toString` (→ str/print);
-        // `equals`/`hashCode` are a transient explicit error (slice 2 wires them)
-        // rather than a silently-dropped method impl. Mirrors `reifyPrim`.
-        if (std.mem.eql(u8, proto_name, "Object") and !std.mem.eql(u8, mname, "toString")) {
+        // A recognised host marker (`Object`, D-275) wires only its listed
+        // methods (`Object`→`toString` for slice 1); an unwired method is an
+        // explicit transient error (ADR-0102 `host_interface`), never a
+        // silently-dropped impl. A real cljw protocol is not a marker, so the
+        // guard does not constrain it.
+        if (host_interface.isMarker(proto_name) and !host_interface.isMethodWired(proto_name, mname)) {
             return error_catalog.raise(.feature_not_supported, loc, .{
-                .name = "deftype/reify Object method other than toString (equals/hashCode not yet wired)",
+                .name = "deftype/reify host-marker method not yet wired (e.g. Object equals/hashCode)",
             });
         }
         // Method name slice must outlive the descriptor. Dupe onto
@@ -470,12 +461,12 @@ pub fn reifyPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
             else => unreachable,
         };
         const mname = string_mod.asString(name_val);
-        // D-275 slice 1: the `Object` marker wires `toString` (→ str/print);
-        // `equals`/`hashCode` are a transient explicit error (slice 2 wires them
-        // to equal/hash) rather than a silently-dropped method impl.
-        if (std.mem.eql(u8, proto_name, "Object") and !std.mem.eql(u8, mname, "toString")) {
+        // A recognised host marker wires only its listed methods (ADR-0102
+        // `host_interface`); an unwired method is an explicit transient error,
+        // never a silently-dropped impl. Mirrors the `__extend-type!` guard.
+        if (host_interface.isMarker(proto_name) and !host_interface.isMethodWired(proto_name, mname)) {
             return error_catalog.raise(.feature_not_supported, loc, .{
-                .name = "deftype/reify Object method other than toString (equals/hashCode not yet wired)",
+                .name = "deftype/reify host-marker method not yet wired (e.g. Object equals/hashCode)",
             });
         }
         method_table[ri] = .{

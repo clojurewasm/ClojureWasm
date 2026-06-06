@@ -84,9 +84,17 @@ set** (not re-derived from a mutable clone) + a **two-clause gate**.
      `status: feature_not_supported` (explicit transient per ADR-0018), never a
      silent drop.
 
-4. **Migration**: the legacy `Object` row currently in `compat_tiers.yaml`
-   `host_classes` (a self-contradiction — ADR-0059 says `Object` is not a class)
-   migrates out to `host_interfaces.yaml` in the implementing cycle.
+4. **Two facets of `Object` coexist (refined during implementation,
+   2026-06-07)**: the implementing cycle (D-278) found that `java.lang.Object`
+   has *two distinct facets* — (a) the **deftype/reify supertype marker** (this
+   ADR's concern → `host_interfaces.yaml`) and (b) the **class reservation** for
+   `(instance? Object x)` / `(class x)` (the `compat_tiers.yaml host_classes`
+   `java.lang.Object` row, served via `class_name.zig`). The DA's "migrate the
+   row out" advice conflated the two; deleting the class-facet reservation would
+   risk the instance?/class surface. The finished-form resolution: the two facets
+   live in two SSOTs (which *reinforces* the one-SSOT-per-concern argument) — the
+   `host_classes` `java.lang.Object` row STAYS (class facet), and
+   `host_interfaces.yaml` owns the marker facet, with a cross-note on each.
 
 5. **Sequencing**: this SSOT + gate lands **before** D-275 slices 3+
    (`clojure.lang.*`). After it, adding an interface is "author a row + wire its
@@ -139,7 +147,9 @@ soundness), with route-soundness as the primary anti-個別最適化 lever; (3) 
 DA's decisive refinement — **the closed set is materialized in the YAML rows**
 (each with a `derives_from:` note), and the gate checks "recognised-in-code ⊆
 YAML rows", so it is reproducible and in-repo, NOT re-derived from the mutable
-pinned clone every run; (4) migrate the legacy `Object` row out of `host_classes`.
+pinned clone every run; (4) the legacy `host_classes` `java.lang.Object` row
+STAYS as the class facet (refined during implementation — see Decision 4; the
+DA's "migrate out" conflated the marker and class facets).
 
 **Diverged from / not adopted**: Alternative 1 (no gate — leaves the unbounded-
 growth door open, fails F-013 clause 3) and Alternative 3 (model-as-real-protocols
@@ -165,11 +175,12 @@ gate, without making `Object` itself a protocol Var.
 - **`derives_from` makes the closed set reviewable + reproducible.** The gate never
   reads the pinned Clojure clone at run time; the clone is evidence cited in the
   row, mirroring `accepted_divergences.yaml`'s discipline.
-- **New scaffolding surface**: a 4th top-level YAML SSOT + a G4 gate +
-  `audit_scaffolding` sweep coverage + `yaml_ssot_yq.md` cookbook entry. The
+- **New scaffolding surface**: a 4th top-level YAML SSOT + a G4 gate
+  (`check_host_interface.sh`) + `audit_scaffolding` sweep coverage. The
   framework_completion.md "new discipline ⇒ discovery + retrofit" obligation is
-  satisfied by the legacy-`Object`-row migration + the scatter consolidation in
-  the implementing cycle.
+  satisfied by the scatter consolidation in the implementing cycle (D-278): the
+  5 `std.mem.eql("Object")` sites are the complete existing population, all
+  migrated to the single read point in the same commit (no 2-tier residue).
 - **D-276** (`extend-type Object` as-target = default-for-all-types) becomes a
   `host_interfaces.yaml` row routed to a default-method dispatch tier, not a
   separate `eql` special-case.

@@ -51,7 +51,7 @@ diag=$("$BIN" - <<'EOF' 2>&1 || true
 (reify Object (equals [this o] true))
 EOF
 )
-if [[ "$diag" != *"equals/hashCode not yet wired"* ]]; then
+if [[ "$diag" != *"not yet wired"* ]]; then
     fail "case3: expected Object-method-not-wired diagnostic, got '$diag'"
 fi
 echo "PASS reify_object_equals_explicit_error"
@@ -62,7 +62,7 @@ diag=$("$BIN" - <<'EOF' 2>&1 || true
 (Bar. 1)
 EOF
 )
-if [[ "$diag" != *"equals/hashCode not yet wired"* ]]; then
+if [[ "$diag" != *"not yet wired"* ]]; then
     fail "case4: expected Object-method-not-wired diagnostic, got '$diag'"
 fi
 echo "PASS deftype_object_equals_explicit_error"

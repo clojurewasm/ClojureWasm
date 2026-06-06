@@ -561,6 +561,12 @@ zig fmt src/           # format
   amendment history. Role split: compat_tiers.yaml = Java/cljw surface
   (Class-level), placement.yaml = Clojure-ns vars (var-level). Per
   `private/notes/clj_vs_zig_split_proposal_v5.md` §15.
+- [`host_interfaces.yaml`](host_interfaces.yaml) — closed-set SSOT for the
+  deftype/reify/extend-type host-supertype markers (`Object`, `clojure.lang.*`).
+  Single in-code read point: `src/runtime/host_interface.zig`. Gated by
+  `scripts/check_host_interface.sh` (G4: recognised-set ⊆ rows, no over-claim).
+  Closes the 個別最適化 entry structurally (ADR-0102, F-013). Distinct from
+  compat_tiers.yaml: that = host *class* surface; this = deftype/reify *marker*.
 - [`.dev/debt.yaml`](.dev/debt.yaml) — row-level debt ledger. `continue`
   skill Step 0.5 sweeps this on every resume. See ROADMAP §A13.
 - [`.dev/reference_clones.md`](.dev/reference_clones.md) — explicit

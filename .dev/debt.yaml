@@ -64,7 +64,7 @@ active:
       F-013 clause 4, F-010 (perf substrate), ADR-0102, the bench_regression gate.
     last_reviewed: "2026-06-07"
   - id: "D-278"
-    status: "now (ADR-0102, accepted 2026-06-07) — implement the host-interface closed-set SSOT: create `host_interfaces.yaml` (rows = the materialized closed set, each with `derives_from:`), `src/runtime/host_interface.zig` (single StaticStringMap read point), consolidate the 5 scattered `std.mem.eql(\"Object\")` sites (macro_transforms.zig ×3, protocol.zig ×3) onto it, add `scripts/check_host_interface.sh` (G4: set-bound + route-soundness) to run_all.sh, and migrate the legacy `Object` row out of `compat_tiers.yaml host_classes`. MUST land BEFORE D-275 slices 3+ (clojure.lang.*) so each interface is a gated row, not a new eql site."
+    status: "now (ADR-0102, accepted 2026-06-07) — implement the host-interface closed-set SSOT: create `host_interfaces.yaml` (rows = the materialized closed set, each with `derives_from:`), `src/runtime/host_interface.zig` (single StaticStringMap read point), consolidate the 5 scattered `std.mem.eql(\"Object\")` sites (macro_transforms.zig ×3, protocol.zig ×3) onto it, add `scripts/check_host_interface.sh` (G4: set-bound + over-claim + no-floating-wire) to run_all.sh. (Refined 2026-06-07: the `compat_tiers.yaml host_classes` `java.lang.Object` row STAYS — it is the CLASS facet for instance?/class; host_interfaces.yaml owns the distinct deftype/reify-marker facet.) MUST land BEFORE D-275 slices 3+ (clojure.lang.*) so each interface is a gated row, not a new eql site."
     category: "polymorphism"
     barrier: |-
       **The host-interface recognition scatter is not yet consolidated into the

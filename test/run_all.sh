@@ -231,6 +231,7 @@ run_step "zig_build_test_tree_walk" "zig build test -Dbackend=tree_walk"
 run_step "zone_check"           "bash scripts/zone_check.sh --gate"
 run_step "surface_marker"       "bash scripts/check_surface_marker.sh --gate"
 run_step "feature_keyword"      "bash scripts/check_feature_keyword.sh --gate"
+run_step "host_interface"       "bash scripts/check_host_interface.sh --gate"
 # Hard-fail: any src/**/*.zig with test{} blocks that is not
 # reachable from src/main.zig via @import (= Zig 0.16 lazy-decl-
 # analysis silently skips its tests). See zig_tips.md "Test

@@ -118,6 +118,9 @@ tiers:
       # runtime/java/**/*.zig surface is now D5; the remaining legacy
       # one-liners have no surface yet (pure reservations).
       # java.lang
+      # NOTE (ADR-0102): this is the CLASS facet of Object (instance?/class via
+      # class_name.zig). The deftype/reify SUPERTYPE-marker facet lives in
+      # host_interfaces.yaml — distinct concern, distinct SSOT.
       - {fqn: "java.lang.Object", native_ns: "cljw.host.java.lang.Object", phase: 5}
       - {fqn: "java.lang.String", native_ns: "cljw.host.java.lang.String", phase: 5}
       - fqn: java.lang.Long
