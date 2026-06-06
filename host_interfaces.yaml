@@ -122,6 +122,8 @@ interfaces:
       containsKey: { status: wired, wires_to_protocol: Associative, wires_to_method: "-contains-key?" }
       seq: { status: wired, wires_to_protocol: Seqable, wires_to_method: "-seq" }
       without: { status: wired, wires_to_protocol: IPersistentMap, wires_to_method: "-without" }
+      hashCode: { status: wired, wires_to: "Object method-family hashCode (D-280d1b — clj inherits Object under IPersistentMap; rewrite emits an Object section)" }
+      equals: { status: wired, wires_to: "Object method-family equals (D-280d1b — same-type; cross-type is D-280d8)" }
   - name: clojure.lang.IPersistentStack
     derives_from: "clojure.lang.IPersistentStack — peek/pop (Clojure, stable)."
     tier: A

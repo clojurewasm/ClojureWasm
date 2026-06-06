@@ -96,6 +96,12 @@ const IPERSISTENT_MAP: HostInterface = .{ .kind = .protocol_remap, .canonical = 
     .{ .clj = "containsKey", .protocol = "Associative", .method = "-contains-key?" },
     .{ .clj = "seq", .protocol = "Seqable", .method = "-seq" },
     .{ .clj = "without", .protocol = "IPersistentMap", .method = "-without" },
+    // clj groups Object's hashCode/equals under IPersistentMap (the interface
+    // inherits Object) — target the Object METHOD-FAMILY (D-280d1b). rewriteProtocolRemap
+    // groups these into an `(extend-type Name Object …)` section that re-expands via
+    // the isMarker quote-wrap path; equal.zig/hashFn (D-280d1) consult them.
+    .{ .clj = "hashCode", .protocol = "Object", .method = "hashCode" },
+    .{ .clj = "equals", .protocol = "Object", .method = "equals" },
 } };
 
 /// Recognised host-supertype names → their `HostInterface`. D-275 slice 1:

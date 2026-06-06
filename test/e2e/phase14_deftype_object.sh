@@ -264,4 +264,21 @@ if [[ "$last" != "[false true]" ]]; then
 fi
 echo "PASS deftype_no_equals_keeps_identity -> [false true]"
 
-echo "OK — phase14_deftype_object (18 cases) green"
+# --- Case 19 (D-280d1b): Object hashCode/equals declared in the IPersistentMap
+# section (priority-map shape) route to the Object method-family + are consulted ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(deftype M [m]
+  clojure.lang.IPersistentMap
+  (count [this] (count m))
+  (equals [this o] (= m (.-m o)))
+  (hashCode [this] (* (count m) 1000)))
+[(= (M. {:x 1}) (M. {:x 1})) (= (M. {:x 1}) (M. {:y 2})) (hash (M. {:x 1})) (count (M. {:x 1}))]
+EOF
+) || fail "case19: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "[true false 1000 1]" ]]; then
+    fail "case19: got '$last', want '[true false 1000 1]'"
+fi
+echo "PASS object_methods_in_ipersistentmap_section -> [true false 1000 1]"
+
+echo "OK — phase14_deftype_object (19 cases) green"
