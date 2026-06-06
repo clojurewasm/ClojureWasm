@@ -19,43 +19,87 @@
 
 const std = @import("std");
 
-/// A recognised host-supertype marker: its canonical (process-lifetime) name
-/// plus the methods wired to a real cljw surface. The canonical name is a
-/// static literal so a borrowed `MethodEntry.protocol_name` (which is never
-/// freed — ProtocolDescriptor-lifetime contract) stays valid. A method absent
-/// from `wired_methods` raises an explicit transient `feature_not_supported`
-/// (ADR-0018), never a silently-dropped impl.
+/// The three ways a recognised host-supertype name is handled (ADR-0102):
+///   - method_family: `Object` — quote-wrapped; methods registered under the
+///     canonical name ("Object") and read by a direct dispatch consult
+///     (print.zig's str/toString). NOT a cljw protocol Var.
+///   - marker: `clojure.lang.MapEquivalence`, `java.io.Serializable` —
+///     quote-wrapped, zero methods, just records "implements X".
+///   - protocol_remap: `clojure.lang.ILookup` etc. — NOT quote-wrapped; the
+///     macro REWRITES the section into bare cljw-protocol section(s), translating
+///     each clj method to its (cljw-protocol, cljw-method) target. The primitive
+///     never sees the qualified name.
+pub const Kind = enum { method_family, marker, protocol_remap };
+
+/// One clj method's target in cljw's protocol surface (protocol_remap only).
+/// `protocol` is the bare cljw protocol Var name the method registers under;
+/// `method` is cljw's dispatch method name. clj groups methods by interface, but
+/// cljw splits them across protocols (e.g. clj IPersistentMap's `count` → cljw
+/// IPersistentCollection/`-count`), so the target carries BOTH (D-280).
+pub const MethodRemap = struct { clj: []const u8, protocol: []const u8, method: []const u8 };
+
+/// A recognised host-supertype name and how it is handled. `canonical` is a
+/// process-lifetime literal (the borrowed `MethodEntry.protocol_name` contract).
+/// `wired_methods` applies to method_family; `remap` to protocol_remap.
 pub const HostInterface = struct {
+    kind: Kind,
     canonical: []const u8,
-    wired_methods: []const []const u8,
+    wired_methods: []const []const u8 = &.{},
+    remap: []const MethodRemap = &.{},
+
+    /// protocol_remap: the (cljw-protocol, cljw-method) target for a clj method,
+    /// or null when the interface declares no mapping for it (→ the caller raises
+    /// feature_not_supported rather than silently dropping the impl).
+    pub fn remapMethod(self: HostInterface, clj: []const u8) ?MethodRemap {
+        for (self.remap) |r| if (std.mem.eql(u8, r.clj, clj)) return r;
+        return null;
+    }
 };
 
-const OBJECT: HostInterface = .{ .canonical = "Object", .wired_methods = &.{"toString"} };
+const OBJECT: HostInterface = .{ .kind = .method_family, .canonical = "Object", .wired_methods = &.{"toString"} };
 
 // Zero-method markers (D-280a): a recognised supertype with NO methods — the
 // deftype/reify just records "implements X" (the Sequential/ADR-0068 precedent).
-// canonical = the full name (process-lifetime literal); no methods wired, so a
-// stray method impl on one raises feature_not_supported.
-const MAP_EQUIVALENCE: HostInterface = .{ .canonical = "clojure.lang.MapEquivalence", .wired_methods = &.{} };
-const SERIALIZABLE: HostInterface = .{ .canonical = "java.io.Serializable", .wired_methods = &.{} };
+const MAP_EQUIVALENCE: HostInterface = .{ .kind = .marker, .canonical = "clojure.lang.MapEquivalence" };
+const SERIALIZABLE: HostInterface = .{ .kind = .marker, .canonical = "java.io.Serializable" };
 
-/// Recognised marker names (+ qualified aliases) → their `HostInterface`.
-/// D-275 slice 1: `Object`/`toString`. D-280a: the zero-method `clojure.lang.*` /
-/// `java.io.*` markers. The method-bearing `clojure.lang.*` family (ILookup etc.,
-/// D-280b+) lands as entries here as each is wired — always a new row gated
-/// against `host_interfaces.yaml`, never a fresh `eql` site.
+// protocol_remap interfaces (D-280b+): the macro rewrites each declared method to
+// its cljw (protocol, method) target. ILookup's valAt → ILookup/-lookup (a 3-arity
+// valAt collapses onto the same -lookup via D-279 multi-arity; the not-found arm is
+// dormant until core get routes a 3-arity -lookup).
+const ILOOKUP: HostInterface = .{ .kind = .protocol_remap, .canonical = "ILookup", .remap = &.{
+    .{ .clj = "valAt", .protocol = "ILookup", .method = "-lookup" },
+} };
+
+/// Recognised host-supertype names → their `HostInterface`. D-275 slice 1:
+/// `Object`. D-280a: zero-method markers. D-280b+: the method-bearing
+/// `clojure.lang.*` family, each added as a row gated against
+/// `host_interfaces.yaml` — never a fresh `eql` site.
 const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "Object", OBJECT },
     .{ "clojure.lang.MapEquivalence", MAP_EQUIVALENCE },
     .{ "java.io.Serializable", SERIALIZABLE },
+    .{ "clojure.lang.ILookup", ILOOKUP },
 });
 
-/// True when `name` (a deftype/reify impl-spec head symbol) is a recognised
-/// host-supertype marker, so the macro quote-wraps it (the analyzer must never
-/// Var-resolve it). A non-marker symbol stays bare and resolves as a protocol
-/// Var through the ordinary path.
+/// True when `name` is a quote-wrap marker (method_family or zero-method marker)
+/// — the analyzer must never Var-resolve it. protocol_remap names are NOT markers
+/// (the macro rewrites them to bare cljw protocols instead); see `isProtocolRemap`.
 pub fn isMarker(name: []const u8) bool {
-    return MARKERS.has(name);
+    const hi = MARKERS.get(name) orelse return false;
+    return hi.kind == .method_family or hi.kind == .marker;
+}
+
+/// True when `name` is a protocol_remap interface (the macro rewrites its section
+/// to bare cljw-protocol section(s) with translated method names).
+pub fn isProtocolRemap(name: []const u8) bool {
+    const hi = MARKERS.get(name) orelse return false;
+    return hi.kind == .protocol_remap;
+}
+
+/// The full entry for a recognised name, or null.
+pub fn lookup(name: []const u8) ?HostInterface {
+    return MARKERS.get(name);
 }
 
 /// Canonical process-lifetime name for a recognised marker (the borrowed
@@ -87,4 +131,20 @@ test "Object/toString is wired; equals/hashCode are not (transient)" {
     try std.testing.expect(!isMethodWired("Object", "equals"));
     try std.testing.expect(!isMethodWired("Object", "hashCode"));
     try std.testing.expect(!isMethodWired("NotAMarker", "toString"));
+}
+
+test "zero-method markers are markers, not protocol_remap" {
+    try std.testing.expect(isMarker("clojure.lang.MapEquivalence"));
+    try std.testing.expect(isMarker("java.io.Serializable"));
+    try std.testing.expect(!isProtocolRemap("clojure.lang.MapEquivalence"));
+}
+
+test "ILookup is a protocol_remap (not a quote-wrap marker); valAt → ILookup/-lookup" {
+    try std.testing.expect(isProtocolRemap("clojure.lang.ILookup"));
+    try std.testing.expect(!isMarker("clojure.lang.ILookup"));
+    const hi = lookup("clojure.lang.ILookup").?;
+    const r = hi.remapMethod("valAt").?;
+    try std.testing.expectEqualStrings("ILookup", r.protocol);
+    try std.testing.expectEqualStrings("-lookup", r.method);
+    try std.testing.expect(hi.remapMethod("nonexistent") == null);
 }

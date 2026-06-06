@@ -102,11 +102,12 @@ interfaces:
   - name: clojure.lang.ILookup
     derives_from: "clojure.lang.ILookup — get/valAt lookup (Clojure, stable)."
     tier: A
-    recognised: false
+    recognised: true
+    kind: protocol_remap
     modeled_as: "ILookup (defprotocol ILookup (-lookup [c k]), core.clj:1558)"
-    note: "valAt 2-arity → -lookup; valAt 3-arity (not-found) needs D-279 arity-overload + a 3-arity -lookup or core get fallthrough."
+    note: "D-280b: valAt → ILookup/-lookup via macro rewrite. valAt 3-arity (not-found) collapses onto -lookup via D-279 multi-arity; the not-found arm is dormant until core get routes a 3-arity -lookup."
     methods:
-      valAt: { status: feature_not_supported, wires_to_protocol: ILookup, wires_to_method: "-lookup" }
+      valAt: { status: wired, wires_to_protocol: ILookup, wires_to_method: "-lookup" }
   - name: clojure.lang.IPersistentMap
     derives_from: "clojure.lang.IPersistentMap — map ops; in clj it extends IPersistentCollection/Counted/Associative, so impls group count/assoc/etc here (Clojure, stable)."
     tier: A

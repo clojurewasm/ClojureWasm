@@ -143,4 +143,33 @@ if [[ "$diag" != *"not yet wired"* ]]; then
 fi
 echo "PASS marker_stray_method_explicit_error"
 
-echo "OK — phase14_deftype_object (10 cases) green"
+# --- Case 11 (D-280b): clojure.lang.ILookup valAt → cljw get routes correctly ---
+# The macro rewrites `clojure.lang.ILookup (valAt [this k] …)` to bare
+# `ILookup (-lookup [this k] …)`, so (get inst k) dispatches to it.
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(deftype T [m] clojure.lang.ILookup (valAt [this k] (get m k)))
+(get (T. {:a 1}) :a)
+EOF
+) || fail "case11: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "1" ]]; then
+    fail "case11: got '$last', want '1'"
+fi
+echo "PASS protocol_remap_ilookup_get -> 1"
+
+# --- Case 12 (D-280b): arity-overloaded valAt (priority-map shape) via remap ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(deftype T [m]
+  clojure.lang.ILookup
+  (valAt [this k] (get m k))
+  (valAt [this k nf] (get m k nf)))
+[(get (T. {:a 1}) :a) (get (T. {:a 1}) :z)]
+EOF
+) || fail "case12: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "[1 nil]" ]]; then
+    fail "case12: got '$last', want '[1 nil]'"
+fi
+echo "PASS protocol_remap_ilookup_arity -> [1 nil]"
+
+echo "OK — phase14_deftype_object (12 cases) green"

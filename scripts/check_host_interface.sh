@@ -70,14 +70,26 @@ while IFS= read -r n; do
     fi
 done <<<"$yaml_recognised"
 
-# (iii) no floating wire: a `status: wired` method must name a non-empty wires_to.
-floating=$(yq -r '.interfaces[] as $i | ($i.methods // {}) | to_entries[] | select(.value.status == "wired") | select((.value.wires_to // "") == "") | ($i.name + "/" + .key)' "$YAML" 2>/dev/null || true)
-if [ -n "$floating" ]; then
-    while IFS= read -r w; do
-        [ -z "$w" ] && continue
-        note "VIOLATION (floating-wire): '$w' is status:wired but has no wires_to."
-        fail=1
-    done <<<"$floating"
+# (iii) route soundness: every `status: wired` method must name a real route —
+#   - a protocol_remap target (`wires_to_protocol`) that EXISTS as a cljw
+#     `(defprotocol …)` (the anti-個別最適化 lever: a name cannot be recognised
+#     without a generic protocol behind it), OR
+#   - a method-family description (`wires_to`, e.g. Object/toString → str consult).
+# A wired method with neither is a floating wire.
+wired=$(yq -r '.interfaces[] as $i | ($i.methods // {}) | to_entries[] | select(.value.status == "wired") | ($i.name + "|" + .key + "|" + (.value.wires_to_protocol // "") + "|" + (.value.wires_to // ""))' "$YAML" 2>/dev/null || true)
+if [ -n "$wired" ]; then
+    while IFS='|' read -r iname mname wproto wdesc; do
+        [ -z "$iname" ] && continue
+        if [ -n "$wproto" ]; then
+            if ! grep -rqE "\(defprotocol[[:space:]]+$wproto([[:space:]]|\()" src/lang/clj/ 2>/dev/null; then
+                note "VIOLATION (route-soundness): $iname/$mname wires to protocol '$wproto' which is not a (defprotocol …) in src/lang/clj/."
+                fail=1
+            fi
+        elif [ -z "$wdesc" ]; then
+            note "VIOLATION (floating-wire): $iname/$mname is status:wired but names no wires_to_protocol or wires_to."
+            fail=1
+        fi
+    done <<<"$wired"
 fi
 
 if [ "$fail" -eq 0 ]; then
