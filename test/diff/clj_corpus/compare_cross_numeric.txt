@@ -28,3 +28,15 @@
 ;;=> 0
 (compare 100N 100)
 ;;=> 0
+(compare ##NaN 1)
+;;=> 0
+(compare 1 ##NaN)
+;;=> 0
+(compare ##NaN ##NaN)
+;;=> 0
+(compare ##NaN 1.0)
+;;=> 0
+(compare ##NaN 1/2)
+;;=> 0
+(compare ##NaN 1.5M)
+;;=> 0

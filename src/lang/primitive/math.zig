@@ -361,10 +361,20 @@ pub fn ge(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
 
 /// `(compare x y)` — general 3-way comparison returning -1 / 0 / 1
 /// (= `clojure.lang.Util.compare`). See `runtime/compare.zig` + ADR-0053.
+/// True when `v` is a float NaN.
+fn isNanFloat(v: Value) bool {
+    return v.tag() == .float and std.math.isNan(v.asFloat());
+}
+
 pub fn compare(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     if (args.len != 2)
         return error_catalog.raise(.arity_not_expected, loc, .{ .fn_name = "compare", .got = args.len, .expected = @as(usize, 2) });
+    // clojure.core/compare treats a NaN operand as EQUAL (0) to everything,
+    // including another NaN — unlike `</<=` (false on NaN, handled in their own
+    // path), so this cannot live in the shared valueCompare. `(compare ##NaN 1)`
+    // → 0, `(compare ##NaN ##NaN)` → 0.
+    if (isNanFloat(args[0]) or isNanFloat(args[1])) return Value.initInteger(0);
     const order = try compare_mod.valueCompare(rt, args[0], args[1], loc);
     const c: i64 = switch (order) {
         .lt => -1,
