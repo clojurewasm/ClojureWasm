@@ -83,6 +83,7 @@ test {
     _ = @import("app/cli.zig");
     _ = @import("app/deps/parse.zig");
     _ = @import("app/deps/resolve.zig");
+    _ = @import("app/deps/git_fetch.zig");
     _ = @import("app/runner.zig");
     _ = @import("app/builder.zig");
     _ = @import("app/error_render.zig");

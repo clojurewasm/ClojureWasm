@@ -142,7 +142,11 @@ pub fn dispatch(init: std.process.Init) !void {
         }
         // Not a recognised subcommand — fall through to legacy flag
         // parsing by re-routing `first` through the existing arm.
-        try dispatchArgsRest(io, gpa, arena, stdout, stderr, first, &args, init.environ_map.get("CLJW_PATH"));
+        // deps.edn `:git/url` cache base: $CLJW_HOME, else ~/.cljw, else null
+        // (a HOME-less env; git-fetch raises a clear error if a git dep needs it).
+        const git_cache_base: ?[]const u8 = init.environ_map.get("CLJW_HOME") orelse
+            if (init.environ_map.get("HOME")) |h| try std.fmt.allocPrint(arena, "{s}/.cljw", .{h}) else null;
+        try dispatchArgsRest(io, gpa, arena, stdout, stderr, first, &args, init.environ_map.get("CLJW_PATH"), git_cache_base);
         return;
     }
 
@@ -163,6 +167,7 @@ fn dispatchArgsRest(
     first_arg: []const u8,
     args: anytype,
     cljw_path_env: ?[]const u8,
+    git_cache_base: ?[]const u8,
 ) !void {
     var source_text: ?[]const u8 = null;
     var source_label: []const u8 = "<-e>";
@@ -258,7 +263,7 @@ fn dispatchArgsRest(
     // Stage 1.2: a `./deps.edn` in cwd contributes its `:paths` + `:local/root`
     // deps to the FRONT of the classpath (project sources win over the cwd
     // default). Absent file → base unchanged; `:mvn/version` → parse raises.
-    const load_paths = try prependDepsEdn(io, arena, stderr, base_paths, alias_names.items);
+    const load_paths = try prependDepsEdn(io, arena, stderr, base_paths, alias_names.items, git_cache_base);
 
     if (compare_mode) {
         try runner.runSourceCompare(io, gpa, arena, stdout, stderr, source_text.?, source_label);
@@ -271,14 +276,14 @@ fn dispatchArgsRest(
 /// `:local/root` deps go to the FRONT of `base`. No deps.edn (or an empty
 /// resolution) → `base` unchanged. A `:mvn/version` dep propagates the parse
 /// error (source-only policy). Reuses the `deps/` parse + resolve modules.
-fn prependDepsEdn(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, base: []const []const u8, alias_names: []const []const u8) ![]const []const u8 {
+fn prependDepsEdn(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, base: []const []const u8, alias_names: []const []const u8, git_cache_base: ?[]const u8) ![]const []const u8 {
     const src = file_io.readAll(io, arena, "deps.edn") catch |e| switch (e) {
         error.FileNotFound, error.NotDir, error.BadPathName => return base,
         else => return e,
     };
-    // A deps.edn error (e.g. a rejected :mvn/version) is a user-facing config
-    // error: render it against the deps.edn source + exit, not a Zig trace.
-    const dep_paths = resolveFromSource(io, arena, src, alias_names) catch |e| {
+    // A deps.edn error (rejected :mvn/version, a failed git fetch) is a
+    // user-facing config error: render it against deps.edn + exit, not a trace.
+    const dep_paths = resolveFromSource(io, arena, src, alias_names, git_cache_base) catch |e| {
         const ctx = error_print.SourceContext{ .file = "deps.edn", .text = src };
         error_render.renderAndExit(stderr, ctx, e);
     };
@@ -291,9 +296,9 @@ fn prependDepsEdn(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, 
 
 /// Parse + resolve a deps.edn source into its classpath. Split out so the
 /// caller can render any error against the deps.edn source context.
-fn resolveFromSource(io: std.Io, arena: std.mem.Allocator, src: []const u8, alias_names: []const []const u8) ![]const []const u8 {
+fn resolveFromSource(io: std.Io, arena: std.mem.Allocator, src: []const u8, alias_names: []const []const u8, git_cache_base: ?[]const u8) ![]const []const u8 {
     const cfg = try deps_parse.parseDepsEdn(arena, src);
-    return deps_resolve.resolveClasspath(io, arena, ".", cfg, alias_names);
+    return deps_resolve.resolveClasspath(io, arena, ".", cfg, alias_names, git_cache_base);
 }
 
 /// Split a colon-separated classpath string into its directory roots, allocated

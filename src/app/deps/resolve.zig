@@ -17,6 +17,7 @@ const std = @import("std");
 const parse = @import("parse.zig");
 const DepsConfig = parse.DepsConfig;
 const file_io = @import("../../runtime/file_io.zig");
+const git_fetch = @import("git_fetch.zig");
 
 /// Expand `cfg` (rooted at `deps_dir`) into a classpath: `:paths` first, then
 /// each `:local/root` dep's transitive classpath, then each selected alias's
@@ -29,13 +30,14 @@ pub fn resolveClasspath(
     deps_dir: []const u8,
     cfg: DepsConfig,
     alias_names: []const []const u8,
+    git_cache_base: ?[]const u8,
 ) ![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     var visited: std.StringHashMapUnmanaged(void) = .empty;
-    try expand(io, allocator, deps_dir, cfg.paths, cfg.deps, &out, &visited);
+    try expand(io, allocator, deps_dir, cfg.paths, cfg.deps, &out, &visited, git_cache_base);
     for (alias_names) |name| {
         const al = findAlias(cfg.aliases, name) orelse continue;
-        try expand(io, allocator, deps_dir, al.extra_paths, al.extra_deps, &out, &visited);
+        try expand(io, allocator, deps_dir, al.extra_paths, al.extra_deps, &out, &visited, git_cache_base);
     }
     return out.toOwnedSlice(allocator);
 }
@@ -53,15 +55,32 @@ fn expand(
     deps: []const parse.Dep,
     out: *std.ArrayList([]const u8),
     visited: *std.StringHashMapUnmanaged(void),
+    git_cache_base: ?[]const u8,
 ) !void {
     for (try expandPaths(allocator, dir, paths)) |p| try out.append(allocator, p);
     for (deps) |dep| {
-        const lr = dep.local_root orelse continue; // git deps deferred to slice 5
-        const dep_dir = try join(allocator, dir, lr);
+        // A dep's source dir is either a `:local/root` (joined to `dir`) or a
+        // fetched `:git/url` (cloned into the cache, then `:deps/root`-joined).
+        const dep_dir = if (dep.local_root) |lr|
+            try join(allocator, dir, lr)
+        else if (dep.git_url) |url| blk: {
+            const sha = dep.git_sha orelse continue; // :git/url without :git/sha
+            const cache = try git_fetch.ensureCached(io, allocator, git_cache_base, url, sha, dep.lib);
+            break :blk if (dep.deps_root) |dr| try join(allocator, cache, dr) else cache;
+        } else continue;
         if (visited.contains(dep_dir)) continue;
         try visited.put(allocator, dep_dir, {});
-        const sub = (try readDepsEdn(io, allocator, dep_dir)) orelse continue;
-        try expand(io, allocator, dep_dir, sub.paths, sub.deps, out, visited);
+        if (try readDepsEdn(io, allocator, dep_dir)) |sub| {
+            try expand(io, allocator, dep_dir, sub.paths, sub.deps, out, visited, git_cache_base);
+        } else {
+            // No deps.edn → the tools.deps default classpath is `["src"]`.
+            const src_dir = try join(allocator, dep_dir, "src");
+            if (std.Io.Dir.cwd().access(io, src_dir, .{})) |_| {
+                try out.append(allocator, src_dir);
+            } else |_| {
+                // No src/ dir either → the dep contributes nothing.
+            }
+        }
     }
 }
 
