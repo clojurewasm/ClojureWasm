@@ -415,4 +415,22 @@ if [[ "$last" != "[2 1 2]" ]]; then
 fi
 echo "PASS host_inert_java_util_map_iterable -> [2 1 2]"
 
-echo "OK — phase14_deftype_object (27 cases) green"
+# --- Case 28 (D-283): clj-name `.method` dot-calls resolve on a protocol_remap
+# deftype (registered under both the cljw name [core fns] and the clj name [dot]) ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(deftype M [m]
+  clojure.lang.ILookup
+  (valAt [this k] (get m k))
+  clojure.lang.IPersistentMap
+  (count [this] (count m))
+  (assoc [this k v] (M. (assoc m k v))))
+(let [x (M. {:a 1})] [(get x :a) (.valAt x :a) (count (.assoc x :b 2))])
+EOF
+) || fail "case28: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "[1 1 2]" ]]; then
+    fail "case28: got '$last', want '[1 1 2]'"
+fi
+echo "PASS protocol_remap_clj_name_dotcall -> [1 1 2]"
+
+echo "OK — phase14_deftype_object (28 cases) green"

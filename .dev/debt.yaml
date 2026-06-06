@@ -131,7 +131,7 @@ active:
       (Iterable already known for instance?/class — the CLASS facet, distinct).
     last_reviewed: "2026-06-07"
   - id: "D-283"
-    status: "now (found 2026-06-07 — priority-map LOADS but isn't fully functional) — a protocol_remap method is registered under its TRANSLATED cljw name (assoc→-assoc, valAt→-lookup) for the core-fn path. But `.method` dot-calls dispatch via `td.lookupMethod(null, name)` — by BARE clj name — so `(.assoc this …)` (which priority-map uses internally during construction) looks for 'assoc', finds only '-assoc', and errors. Core fns `(assoc x …)`/`(get x …)` work; the clj-name dot-call does not."
+    status: "DISCHARGED 2026-06-07 — rewriteProtocolRemap now registers a translated protocol_remap method under BOTH its cljw name (for the core-fn (protocol,method) path) AND its original clj name (so `.cljname` dot-calls resolve via lookupMethod(null,name)); skipped when no translation (Object method-family already keeps its clj name). e2e 28: `(get x :a)` (core→-lookup), `(.valAt x :a)`, `(count (.assoc x :b 2))` → [1 1 2]. priority-map construction now advances past `.assoc`/`.valAt` to its NEXT blocker, `(MapEntry. k v)` → D-284. ORIGINAL: a protocol_remap method is registered under its TRANSLATED cljw name (assoc→-assoc, valAt→-lookup) for the core-fn path; `.method` dot-calls dispatch by BARE clj name → `(.assoc this …)` finds only '-assoc' and errors."
     category: "polymorphism"
     barrier: |-
       **protocol_remap method-name translation breaks clj-name `.method` dot-calls.**
@@ -147,6 +147,23 @@ active:
       their clj name so dot-calls work there. Unblocks priority-map FULL functionality
       (peek/assoc/seq usable). Cross-ref D-280c, D-281, tree_walk.zig evalInstanceMember
       (lookupMethod(null, name)).
+    last_reviewed: "2026-06-07"
+  - id: "D-284"
+    status: "now (found 2026-06-07 — priority-map's next blocker after D-283) — priority-map constructs `(MapEntry. item priority)` in its seq/entryAt/iterator bodies. cljw has NO MapEntry type (it represents a map entry as a 2-vector `[k v]`, per core.clj:571). `MapEntry` (clojure.lang.MapEntry) is unresolved → name_error when a body constructing one is analyzed (during `(priority-map …)`)."
+    category: "interop"
+    barrier: |-
+      **`clojure.lang.MapEntry` constructor is unresolved.** cljw uses a 2-vector for
+      map entries (no distinct MapEntry type), so `(MapEntry. k v)` name_errors.
+      Real libs that build entries explicitly (priority-map, ordered, sorted impls)
+      hit this. Finished-form fix: make `MapEntry` resolve so `(MapEntry. k v)`
+      constructs cljw's entry representation — the 2-vector `[k v]` (cljw's
+      MapEntry-equivalent). Either a reader/analyzer alias (`MapEntry.` → vector
+      ctor) or a thin `clojure.lang.MapEntry` host-class surface whose `.` ctor
+      returns `[k v]` (+ `key`/`val`/`getKey`/`getValue` already work on 2-vectors
+      via nth). This unblocks priority-map FULL functionality (its seq/entryAt build
+      MapEntry). Cross-ref core.clj:571 (entry = 2-vector), D-283 (the prior
+      priority-map blocker), class_name.zig (MapEntry already in FQCN_MAP for
+      instance?/class — the recognition exists; the CONSTRUCTOR is the gap)."
     last_reviewed: "2026-06-07"
   - id: "D-282"
     status: "now (found 2026-06-07 via D-280e) — `clojure.core.protocols` ns does NOT exist in cljw (`require` → 'Could not locate'). priority-map implements `clojure.core.protocols/IKVReduce` (line 391, kv-reduce), so its full load needs this ns. Listed MISSING in the convergence campaign Stage 0.2 (v0→v1 parity) + the D-273 v0→v1 backfill umbrella. clojure.core.protocols defines CollReduce/IKVReduce/Datafiable/Navigable — the reduce/datafy protocol surface."

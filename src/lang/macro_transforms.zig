@@ -2198,6 +2198,16 @@ fn rewriteProtocolRemap(
             @memcpy(timpl_items, impl.data.list);
             timpl_items[0] = sym(r.method, impl.location);
             try sec.append(arena, try list(arena, timpl_items, impl.location));
+            // D-283: when the clj name was translated (assoc→-assoc), ALSO register
+            // the impl under the ORIGINAL clj name so a `.cljname` dot-call resolves
+            // it — `(.member recv)` looks up by BARE name (lookupMethod(null, name)),
+            // and a deftype's own body calls `.assoc`/`.valAt` on itself (priority-map
+            // does). Core fns find the cljw name; dot-calls find the clj name; the two
+            // entries don't cross (different names). Skip when no translation happened
+            // (Object method-family keeps its clj name → already dot-callable).
+            if (!std.mem.eql(u8, impl.data.list[0].data.symbol.name, r.method)) {
+                try sec.append(arena, impl);
+            }
         }
         sections[si] = try list(arena, sec.items, loc);
     }
