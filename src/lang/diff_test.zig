@@ -574,6 +574,21 @@ test "diff: row 7.7 reduce via IReduce -reduce fast-path" {
     , 42);
 }
 
+test "diff: deftype mutable field set! + live read-after-write (ADR-0104)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // `bump` does `(set! n (inc n)) n`: the trailing read must see the live
+    // slot (read-after-write in one body), and the slot persists across the
+    // three calls — so TreeWalk and VM must both re-read the live field (not a
+    // let*-snapshot copy) and write in place. Result 3 on both backends.
+    try f.check(
+        \\(do
+        \\  (defprotocol Bump (bump [c]))
+        \\  (deftype Ctr [^:unsynchronized-mutable n] Bump (bump [this] (set! n (inc n)) n))
+        \\  (let* [c (->Ctr 0)] (bump c) (bump c) (bump c)))
+    , 3);
+}
+
 test "diff: do_node sequence" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

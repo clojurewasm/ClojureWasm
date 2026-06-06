@@ -110,10 +110,29 @@ pub const RecurTarget = struct {
 /// preserved so future named-loop / labelled-break work can reach
 /// across multiple levels without re-engineering the contract
 /// (ROADMAP A2).
+/// Deftype-method mutable-field context (ADR-0104 / D-288). Carried on the
+/// analyzer `Scope` chain (parallel to `recur_target`): inside a deftype
+/// method body that declares ≥1 mutable field, a bare field symbol resolves to
+/// a live `(.field this)` read and `(set! field v)` to a `set_field_node` over
+/// `this`. The `__mut-fields*` transport form (emitted by the deftype macro)
+/// establishes it; `this_slot` is the method's instance-param local slot.
+pub const MutFieldCtx = struct {
+    this_slot: u16,
+    names: []const []const u8,
+
+    pub fn contains(self: *const MutFieldCtx, name: []const u8) bool {
+        for (self.names) |n| if (std.mem.eql(u8, n, name)) return true;
+        return false;
+    }
+};
+
 pub const Scope = struct {
     parent: ?*const Scope = null,
     bindings: std.StringHashMapUnmanaged(u16) = .empty,
     next_slot: u16 = 0,
+    /// Innermost deftype-method mutable-field context, or null. Chain-inherited
+    /// (copied in `child`/`childWithRecur`) like `recur_target`.
+    mutable_fields: ?*const MutFieldCtx = null,
     /// Innermost recur target visible from this scope, or null if
     /// `recur` here is a syntax error.
     recur_target: ?RecurTarget = null,
@@ -134,6 +153,7 @@ pub const Scope = struct {
         return .{
             .parent = parent,
             .next_slot = parent.next_slot,
+            .mutable_fields = parent.mutable_fields,
             .recur_target = parent.recur_target,
             .recur_target_depth = parent.recur_target_depth + 1,
         };
@@ -147,6 +167,7 @@ pub const Scope = struct {
         return .{
             .parent = parent,
             .next_slot = parent.next_slot,
+            .mutable_fields = parent.mutable_fields,
             .recur_target = target,
             .recur_target_depth = 0,
         };
@@ -192,6 +213,7 @@ const SpecialFormKind = enum {
     set_bang,
     dot_form,
     new_form,
+    mut_fields,
 };
 
 const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
@@ -222,6 +244,10 @@ const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
     .{ "set!", .set_bang },
     .{ ".", .dot_form },
     .{ "new", .new_form },
+    // ADR-0104 internal transport: the deftype macro wraps a method body with
+    // mutable fields in `(__mut-fields* this [mfield…] body)`; this form's
+    // analyzer handler pushes the Scope mutable-field context.
+    .{ "__mut-fields*", .mut_fields },
 });
 
 /// Forms the analyser recognises but the runtime does not yet
@@ -487,6 +513,24 @@ fn analyzeSymbol(
                 .loc = form.location,
             } };
             return n;
+        }
+        // ADR-0104: a bare deftype mutable field (not shadowed by a local above)
+        // reads live via `(.field this)` — reuse the instance_member dot-read so
+        // a read-after-write in the same method body sees the new slot value.
+        if (scope.?.mutable_fields) |ctx| {
+            if (ctx.contains(sym.name)) {
+                const target = try arena.create(Node);
+                target.* = .{ .local_ref = .{ .name = "this", .index = ctx.this_slot, .loc = form.location } };
+                const n = try arena.create(Node);
+                n.* = .{ .interop_call_node = .{
+                    .kind = .instance_member,
+                    .target = target,
+                    .name = sym.name,
+                    .field_only = true,
+                    .loc = form.location,
+                } };
+                return n;
+            }
         }
     }
     // Global Var resolution. Qualified symbols `s/name` first
@@ -893,6 +937,7 @@ fn analyzeSpecial(
         .set_bang => special_forms.analyzeSetBang(arena, rt, env, scope, items, form, macro_table),
         .dot_form => special_forms.analyzeDot(arena, rt, env, scope, items, form, macro_table),
         .new_form => special_forms.analyzeNew(arena, rt, env, scope, items, form, macro_table),
+        .mut_fields => special_forms.analyzeMutFields(arena, rt, env, scope, items, form, macro_table),
     };
 }
 

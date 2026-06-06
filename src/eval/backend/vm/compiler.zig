@@ -157,6 +157,7 @@ const Compiler = struct {
             .map_literal_node => |n| try self.compileMapLiteral(n),
             .set_literal_node => |n| try self.compileSetLiteral(n),
             .set_node => |n| try self.compileSet(n),
+            .set_field_node => |n| try self.compileSetField(n),
         }
     }
 
@@ -168,6 +169,18 @@ const Compiler = struct {
         try self.compileNode(n.value_expr);
         const idx = try self.addConstant(Value.encodeHeapPtr(.var_ref, n.var_ptr));
         try self.emit(.op_set_var, idx);
+    }
+
+    /// `(set! field v)` on a deftype mutable field (ADR-0104). Emit the receiver
+    /// (`this`), then the value (leaves both on the stack), then `op_set_field`
+    /// with the field-name String constant. The dispatcher resolves the slot,
+    /// writes in place, and leaves `value` as the form's result.
+    fn compileSetField(self: *Compiler, n: node_mod.SetFieldNode) Error!void {
+        try self.compileNode(n.target);
+        try self.compileNode(n.value_expr);
+        const name_val = try string_mod.alloc(self.rt, n.field_name);
+        const idx = try self.addConstant(name_val);
+        try self.emit(.op_set_field, idx);
     }
 
     fn compileVectorLiteral(self: *Compiler, n: node_mod.VectorLiteralNode) Error!void {

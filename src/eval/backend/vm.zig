@@ -333,6 +333,33 @@ fn stepOnce(
                 return error_catalog.raise(.var_set_not_bound, .{}, .{ .@"var" = full });
             }
         },
+        .op_set_field => {
+            // ADR-0104: `(set! field v)` on a deftype mutable field. Stack:
+            // [receiver, value]. operand = field-name String constant.
+            if (instr.operand >= chunk.constants.len)
+                return raiseInternal("vm: op_set_field constant index out of range");
+            if (sp < 2) return raiseInternal("vm: op_set_field underflows operand stack");
+            const field_name = string_mod.asString(chunk.constants[instr.operand]);
+            const value = stack[sp - 1];
+            const receiver = stack[sp - 2];
+            if (receiver.tag() != .typed_instance)
+                return raiseInternal("vm: op_set_field receiver is not a deftype instance (compiler bug)");
+            const inst = receiver.decodePtr(*const td_mod.TypedInstance);
+            const layout = inst.descriptor.field_layout orelse
+                return raiseInternal("vm: op_set_field on a type with no fields (compiler bug)");
+            var wrote = false;
+            for (layout) |fe| {
+                if (std.mem.eql(u8, fe.name, field_name)) {
+                    inst.setField(fe.index, value);
+                    wrote = true;
+                    break;
+                }
+            }
+            if (!wrote) return error_catalog.raise(.symbol_unresolved, .{}, .{ .sym = field_name });
+            sp -= 2;
+            stack[sp] = value;
+            sp += 1;
+        },
         .op_jump => {
             const offset: i16 = @bitCast(instr.operand);
             ip = applyJump(ip, offset) orelse

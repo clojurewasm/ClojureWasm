@@ -225,6 +225,14 @@ pub const Opcode = enum(u8) {
     /// full (13-bit name-idx + 3 flag bits, no spare bit for has_init).
     op_def_unbound = 0x26,
 
+    /// `(set! field v)` on a deftype mutable field (ADR-0104 / D-288).
+    /// operand = constant index of the field-name String. Stack on entry:
+    /// `[…, receiver, value]` (target compiled, then value). Resolves the
+    /// receiver's `field_layout` index by name, writes the slot in place, pops
+    /// both, pushes `value` (the form's result). Receiver is always a
+    /// `.typed_instance` (the analyzer only emits this for an in-method `this`).
+    op_set_field = 0x27,
+
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
     /// (vm.zig:188-201 + :317 `applyJump`). Peephole's IP-remap pass
@@ -270,6 +278,7 @@ pub const Opcode = enum(u8) {
             .op_letfn_patch,
             .op_set_var,
             .op_ns_import,
+            .op_set_field,
             => false,
         };
     }
@@ -321,6 +330,7 @@ pub const Opcode = enum(u8) {
             .op_letfn_patch,
             .op_set_var,
             .op_ns_import,
+            .op_set_field,
             => false,
         };
     }

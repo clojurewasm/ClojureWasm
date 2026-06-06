@@ -2523,8 +2523,15 @@ fn wrapMethodBodyWithFields(
     const instance = params[0];
     if (instance.data != .symbol) return impl;
 
+    // ADR-0104: immutable fields ride a `let*` value-copy (a snapshot is correct
+    // — they never change); MUTABLE fields must read the live slot, so they are
+    // NOT bound here. Instead the body is wrapped in `(__mut-fields* instance
+    // [mfield…] …)` whose analyzer handler resolves bare mutable-field reads to
+    // a live `(.field instance)` and `(set! field v)` to a slot write.
     var binds: std.ArrayList(Form) = .empty;
     defer binds.deinit(arena);
+    var mut_names: std.ArrayList(Form) = .empty;
+    defer mut_names.deinit(arena);
     for (fields) |f| {
         if (f.data != .symbol) continue;
         const fname = f.data.symbol.name;
@@ -2536,6 +2543,10 @@ fn wrapMethodBodyWithFields(
             }
         }
         if (shadowed) continue;
+        if (fieldIsMutable(f)) {
+            try mut_names.append(arena, sym(fname, loc));
+            continue;
+        }
         // (.<fname> instance)
         const dot_sym = blk: {
             const buf = try arena.alloc(u8, 1 + fname.len);
@@ -2549,18 +2560,40 @@ fn wrapMethodBodyWithFields(
         try binds.append(arena, f);
         try binds.append(arena, try list(arena, acc, loc));
     }
-    if (binds.items.len == 0) return impl;
+    if (binds.items.len == 0 and mut_names.items.len == 0) return impl;
 
-    var let_items = try arena.alloc(Form, 2 + body.len);
-    let_items[0] = sym("let*", loc);
-    let_items[1] = try vec(arena, binds.items, loc);
-    @memcpy(let_items[2..], body);
-    const let_form = try list(arena, let_items, loc);
+    // Inner body: the raw method body, wrapped in a `let*` over the immutable
+    // fields when any exist.
+    var inner: []const Form = body;
+    if (binds.items.len != 0) {
+        var let_items = try arena.alloc(Form, 2 + body.len);
+        let_items[0] = sym("let*", loc);
+        let_items[1] = try vec(arena, binds.items, loc);
+        @memcpy(let_items[2..], body);
+        const one = try arena.alloc(Form, 1);
+        one[0] = try list(arena, let_items, loc);
+        inner = one;
+    }
+
+    // Outer body: wrap in `(__mut-fields* instance [mfield…] inner…)` when any
+    // mutable field is in scope.
+    var method_body: Form = undefined;
+    if (mut_names.items.len != 0) {
+        var mf_items = try arena.alloc(Form, 3 + inner.len);
+        mf_items[0] = sym("__mut-fields*", loc);
+        mf_items[1] = instance;
+        mf_items[2] = try vec(arena, mut_names.items, loc);
+        @memcpy(mf_items[3..], inner);
+        method_body = try list(arena, mf_items, loc);
+    } else {
+        // immutable-only: `inner` is the single let* form.
+        method_body = inner[0];
+    }
 
     var new_items = try arena.alloc(Form, 3);
     new_items[0] = items[0];
     new_items[1] = items[1];
-    new_items[2] = let_form;
+    new_items[2] = method_body;
     return list(arena, new_items, impl.location);
 }
 

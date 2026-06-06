@@ -214,6 +214,14 @@ pub const TypedInstance = extern struct {
     pub fn fields(self: *const TypedInstance) []const Value {
         return self.field_values_ptr[0..self.field_count];
     }
+
+    /// In-place write of a single field slot (ADR-0104, deftype mutable
+    /// fields). GC-safe under the non-moving mark-sweep collector: the slot is
+    /// already traced, so no write barrier is needed. `*const` is sufficient —
+    /// the pointee Values are mutable through the `[*]Value` field pointer.
+    pub fn setField(self: *const TypedInstance, index: u32, v: Value) void {
+        self.field_values_ptr[index] = v;
+    }
 };
 
 /// Value handle to a process-lifetime `TypeDescriptor`. Sits on the

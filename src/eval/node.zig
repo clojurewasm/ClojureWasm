@@ -78,6 +78,7 @@ pub const Node = union(enum) {
     map_literal_node: MapLiteralNode,
     set_literal_node: SetLiteralNode,
     set_node: SetNode,
+    set_field_node: SetFieldNode,
 
     /// Source location of this Node. Returns the inner variant's `loc`
     /// — every variant carries one because Phase-2 errors must cite a
@@ -127,6 +128,20 @@ pub const VarRef = struct {
 /// `(set! (.f o) v)` is a separate, unsupported sub-case. Returns the value.
 pub const SetNode = struct {
     var_ptr: *Var,
+    value_expr: *const Node,
+    loc: SourceLocation = .{},
+};
+
+/// `(set! field v)` on a deftype mutable field, inside one of the type's own
+/// methods (ADR-0104 / D-288). The analyzer produces this ONLY for a bare
+/// symbol that is a declared mutable field in the enclosing deftype-method
+/// field context; `target` is the `this` local-ref, resolved at eval to the
+/// receiver instance whose field slot (`field_name` → `field_layout` index) is
+/// written in place. `set!` on a non-mutable field / external `(set! (.f o) v)`
+/// is NOT this node (clj rejects both).
+pub const SetFieldNode = struct {
+    target: *const Node,
+    field_name: []const u8,
     value_expr: *const Node,
     loc: SourceLocation = .{},
 };

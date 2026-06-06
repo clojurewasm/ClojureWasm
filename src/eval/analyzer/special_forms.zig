@@ -29,6 +29,7 @@ const error_catalog = @import("../../runtime/error/catalog.zig");
 const macro_dispatch = @import("../macro_dispatch.zig");
 const vector_mod = @import("../../runtime/collection/vector.zig");
 const analyzer_mod = @import("analyzer.zig");
+const bindings = @import("bindings.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
 
@@ -967,6 +968,32 @@ pub fn analyzeSetBang(
     if (items[1].data != .symbol)
         return error_catalog.raise(.feature_not_supported, items[1].location, .{ .name = "set! on a non-symbol target (field assignment)" });
     const name_sym = items[1].data.symbol;
+    // ADR-0104: a bare deftype mutable field (in a method's field context, not
+    // shadowed by a local) → in-place field write. Checked before Var
+    // resolution; locals win (so a shadowing let* binding takes the Var path
+    // and errors like clj). External `(set! (.f o) v)` stays the non-symbol
+    // feature_not_supported branch above (clj rejects it too).
+    if (name_sym.ns == null) {
+        if (scope) |s| {
+            if (s.lookup(name_sym.name) == null) {
+                if (s.mutable_fields) |ctx| {
+                    if (ctx.contains(name_sym.name)) {
+                        const target = try arena.create(Node);
+                        target.* = .{ .local_ref = .{ .name = "this", .index = ctx.this_slot, .loc = form.location } };
+                        const value_node = try analyzer_mod.analyze(arena, rt, env, scope, items[2], macro_table);
+                        const n = try arena.create(Node);
+                        n.* = .{ .set_field_node = .{
+                            .target = target,
+                            .field_name = name_sym.name,
+                            .value_expr = value_node,
+                            .loc = form.location,
+                        } };
+                        return n;
+                    }
+                }
+            }
+        }
+    }
     // Resolve the target Var exactly as `binding` does (qualified → alias
     // then findNs, else current ns). `set!` mutates an existing Var.
     const target_ns = if (name_sym.ns) |ns_name|
@@ -991,6 +1018,45 @@ pub fn analyzeSetBang(
         .loc = form.location,
     } };
     return n;
+}
+
+/// `(__mut-fields* this [mfield…] body…)` — ADR-0104 internal transport the
+/// deftype macro emits around a method body that declares ≥1 mutable field. It
+/// pushes the Scope mutable-field context (so a bare mutable field reads live
+/// and `(set! field v)` writes the slot) and returns the analyzed body — the
+/// form is transparent at eval (no own Node). `this` is the method's instance
+/// param (already a local in the enclosing scope).
+pub fn analyzeMutFields(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    scope: ?*const Scope,
+    items: []const Form,
+    form: Form,
+    macro_table: *const macro_dispatch.Table,
+) AnalyzeError!*const Node {
+    if (items.len < 4 or items[1].data != .symbol or items[2].data != .vector)
+        return error_catalog.raiseInternal(form.location, "__mut-fields*: malformed compiler-emitted form");
+    const parent = scope orelse
+        return error_catalog.raiseInternal(form.location, "__mut-fields*: no enclosing scope");
+    const this_slot = parent.lookup(items[1].data.symbol.name) orelse
+        return error_catalog.raiseInternal(form.location, "__mut-fields*: instance param not in scope");
+
+    const name_forms = items[2].data.vector;
+    const names = try arena.alloc([]const u8, name_forms.len);
+    for (name_forms, 0..) |nf, i| {
+        if (nf.data != .symbol)
+            return error_catalog.raiseInternal(form.location, "__mut-fields*: non-symbol field name");
+        names[i] = nf.data.symbol.name;
+    }
+    const ctx = try arena.create(analyzer_mod.MutFieldCtx);
+    ctx.* = .{ .this_slot = this_slot, .names = names };
+
+    var child = parent.child();
+    child.mutable_fields = ctx;
+    defer child.deinit(arena);
+
+    return bindings.analyzeBody(arena, rt, env, &child, items[3..], form, macro_table);
 }
 
 pub fn analyzeInNs(

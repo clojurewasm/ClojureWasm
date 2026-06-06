@@ -247,3 +247,33 @@ accepted:
       additionally the AD-003 no-JVM-class surface.
     derives_from: "F-005 (numeric tower collapses BigInt/BigInteger into one `.big_int`) + AD-003 (simple class name, no JVM Class)"
     pin: "test/e2e/phase14_biginteger.sh — biginteger_prints_N + biginteger_class_bigint lock cljw's `5N` print and BigInt class (the divergent values, not clj's 5 / java.math.BigInteger)"
+  - id: "AD-017"
+    summary: "A deftype mutable field's `^long` / primitive type hint is parsed-and-ignored; cljw does not enforce clj's 'must assign primitive to primitive mutable'."
+    example: '(deftype C [^:unsynchronized-mutable ^long n] P (go [this] (set! n "hi") n)) (go (->C 0)) => cljw "hi" / clj compile error (primitive mismatch)'
+    why: |-
+      cljw's NaN-box value model (F-004) stores every field as a uniform 8-byte
+      Value; there is no machine-`long` field storage to constrain. On the JVM a
+      `^:unsynchronized-mutable ^long` field is a primitive `long` slot, and
+      `set!` of a non-primitively-emittable value throws "Must assign primitive
+      to primitive mutable" (Compiler.java emitAssignLocal). cljw has no such
+      slot type, so the `^long`/`^"[B"` hint is advisory only — consistent with
+      cljw's general no-primitive-specialization stance (F-005 single-f64 tower;
+      type hints stripped elsewhere). Only the `:unsynchronized-mutable` /
+      `:volatile-mutable` keyword (assignability) is acted on.
+    derives_from: "F-004 (NaN-box uniform 8-byte Value, no primitive field storage) + F-005 (no primitive specialization) + ADR-0104"
+    pin: "test/e2e/phase14_deftype_mutable.sh — long_hint_ignored_accepts_non_long (a `^long` mutable field accepts a String set)"
+  - id: "AD-018"
+    summary: "`:unsynchronized-mutable` and `:volatile-mutable` are unified into one 'assignable' flag while cljw is single-threaded; the cross-thread visibility distinction is dormant."
+    example: '(deftype C [^:volatile-mutable n] …) behaves identically to ^:unsynchronized-mutable (both: in-place slot write)'
+    why: |-
+      On the JVM the two keywords differ only in cross-thread memory visibility
+      (`:volatile-mutable` → a `volatile` field with happens-before ordering;
+      `:unsynchronized-mutable` → a plain field). cljw is single-threaded by
+      default through Phase 14 (no concurrent method invocation), so both
+      collapse to the same observable behaviour: a plain in-place slot write.
+      The original keyword is recoverable from source, so a future Phase-15
+      concurrency story can route `:volatile-mutable` through an atomic store
+      then; treating them identically now is correct, not lossy. Records reject
+      BOTH (clj parity, defrecord_mutable_field).
+    derives_from: "single-thread runtime posture (Phase ≤14, no concurrent method dispatch) + ADR-0104; revisit at Phase 15+ concurrency"
+    pin: "test/e2e/phase14_deftype_mutable.sh — volatile_mutable_same_as_unsynchronized (a :volatile-mutable counter increments identically)"

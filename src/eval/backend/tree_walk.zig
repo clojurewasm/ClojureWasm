@@ -446,6 +446,7 @@ pub fn eval(
         .map_literal_node => |n| try evalMapLiteral(rt, env, locals, n),
         .set_literal_node => |n| try evalSetLiteral(rt, env, locals, n),
         .set_node => |n| try evalSet(rt, env, locals, n),
+        .set_field_node => |n| try evalSetField(rt, env, locals, n),
     };
 }
 
@@ -465,6 +466,25 @@ fn evalSet(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.SetNode) anyerr
         return error_catalog.raise(.var_set_not_bound, n.loc, .{ .@"var" = full });
     }
     return val;
+}
+
+/// `(set! field v)` on a deftype mutable field (ADR-0104 / D-288). The receiver
+/// (`this`) is read from a method local — already GC-rooted by the eval frame —
+/// so evaluating the value (which may GC) cannot collect it. Writes the slot in
+/// place and returns the value (clj `set!` semantics).
+fn evalSetField(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.SetFieldNode) anyerror!Value {
+    const receiver = try eval(rt, env, locals, n.target);
+    const td = try receiverDescriptor(rt, receiver);
+    const value = try eval(rt, env, locals, n.value_expr);
+    if (td.field_layout) |layout| {
+        for (layout) |fe| {
+            if (std.mem.eql(u8, fe.name, n.field_name)) {
+                receiver.decodePtr(*const type_descriptor_mod.TypedInstance).setField(fe.index, value);
+                return value;
+            }
+        }
+    }
+    return error_catalog.raise(.symbol_unresolved, n.loc, .{ .sym = n.field_name });
 }
 
 /// `(in-ns 'foo.bar)` — switch `env.current_ns` to the named namespace,
