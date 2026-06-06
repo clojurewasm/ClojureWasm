@@ -82,6 +82,12 @@ const REVERSIBLE: HostInterface = .{ .kind = .protocol_remap, .canonical = "Reve
     .{ .clj = "rseq", .protocol = "Reversible", .method = "-rseq" },
 } };
 
+// clojure.lang.IPersistentStack — peek/pop (D-280d2). core.clj peek/pop consult it.
+const IPERSISTENT_STACK: HostInterface = .{ .kind = .protocol_remap, .canonical = "IPersistentStack", .remap = &.{
+    .{ .clj = "peek", .protocol = "IPersistentStack", .method = "-peek" },
+    .{ .clj = "pop", .protocol = "IPersistentStack", .method = "-pop" },
+} };
+
 const IPERSISTENT_MAP: HostInterface = .{ .kind = .protocol_remap, .canonical = "IPersistentMap", .remap = &.{
     .{ .clj = "count", .protocol = "IPersistentCollection", .method = "-count" },
     .{ .clj = "cons", .protocol = "IPersistentCollection", .method = "-cons" },
@@ -103,6 +109,7 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "clojure.lang.ILookup", ILOOKUP },
     .{ "clojure.lang.IPersistentMap", IPERSISTENT_MAP },
     .{ "clojure.lang.Reversible", REVERSIBLE },
+    .{ "clojure.lang.IPersistentStack", IPERSISTENT_STACK },
 });
 
 /// True when `name` is a quote-wrap marker (method_family or zero-method marker)

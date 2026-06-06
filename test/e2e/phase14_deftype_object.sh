@@ -211,4 +211,19 @@ if [[ "$last" != "(3 2 1)" ]]; then
 fi
 echo "PASS protocol_remap_reversible_rseq -> (3 2 1)"
 
-echo "OK — phase14_deftype_object (14 cases) green"
+# --- Case 15 (D-280d2): clojure.lang.IPersistentStack peek/pop via core.clj consult ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(deftype S [v]
+  clojure.lang.IPersistentStack
+  (peek [this] (last v))
+  (pop [this] (S. (butlast v))))
+(let [s (S. [1 2 3])] [(peek s) (vec (.-v (pop s)))])
+EOF
+) || fail "case15: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "[3 [1 2]]" ]]; then
+    fail "case15: got '$last', want '[3 [1 2]]'"
+fi
+echo "PASS protocol_remap_ipersistentstack_peek_pop -> [3 [1 2]]"
+
+echo "OK — phase14_deftype_object (15 cases) green"

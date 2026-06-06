@@ -125,11 +125,12 @@ interfaces:
   - name: clojure.lang.IPersistentStack
     derives_from: "clojure.lang.IPersistentStack — peek/pop (Clojure, stable)."
     tier: A
-    recognised: false
-    modeled_as: "(none yet — peek/pop are plain fns; needs a modeled protocol)"
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "IPersistentStack (defprotocol IPersistentStack (-peek [c]) (-pop [c]), D-280d2; core.clj peek/pop consult it)"
     methods:
-      peek: { status: feature_not_supported }
-      pop: { status: feature_not_supported }
+      peek: { status: wired, wires_to_protocol: IPersistentStack, wires_to_method: "-peek" }
+      pop: { status: wired, wires_to_protocol: IPersistentStack, wires_to_method: "-pop" }
   - name: clojure.lang.Reversible
     derives_from: "clojure.lang.Reversible — rseq (Clojure, stable)."
     tier: A

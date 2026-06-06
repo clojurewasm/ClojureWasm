@@ -539,6 +539,10 @@
 ;; rest there (D-218). nil → nil for both (clj parity).
 ;; A PersistentQueue is also IPersistentStack: peek = front (oldest), pop =
 ;; drop the front (ADR-0087); pop of empty returns the empty queue (no throw).
+;; D-280d2: defined HERE (not in the protocol block below) so peek/pop can
+;; reference it without a forward ref; peek/pop use the rt/__satisfies? primitive
+;; (always available) rather than the satisfies? wrapper (defined later).
+(defprotocol IPersistentStack (-peek [c]) (-pop [c]))
 (def peek
   (fn* [coll]
     (if (nil? coll)
@@ -549,7 +553,10 @@
           (if (pos? (count coll)) (nth coll (dec (count coll))) nil)
           (if (list? coll)
             (first coll)
-            (throw (ex-info "Can't peek: not a stack (list, vector)" {:value coll}))))))))
+            ;; D-280d2: a deftype/reify implementing clojure.lang.IPersistentStack.
+            (if (rt/__satisfies? IPersistentStack coll)
+              (-peek coll)
+              (throw (ex-info "Can't peek: not a stack (list, vector)" {:value coll})))))))))
 (def pop
   (fn* [coll]
     (if (nil? coll)
@@ -564,7 +571,10 @@
             (if (seq coll)
               (rest coll)
               (throw (ex-info "Can't pop empty list" {})))
-            (throw (ex-info "Can't pop: not a stack (list, vector)" {:value coll}))))))))
+            ;; D-280d2: a deftype/reify implementing clojure.lang.IPersistentStack.
+            (if (rt/__satisfies? IPersistentStack coll)
+              (-pop coll)
+              (throw (ex-info "Can't pop: not a stack (list, vector)" {:value coll})))))))))
 
 ;; `(find m k)` — the map entry `[k v]` for key k if present, else nil
 ;; (distinguishes "absent" from "present with nil value" via contains?).
