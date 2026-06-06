@@ -72,12 +72,18 @@ EOF
 ) || fail "case7: non-zero exit ($got)"
 assert_eq 'edn_read_nil' "$(last_line "$got")" 'nil'
 
-# --- Case 8: empty string returns nil ---
-got=$("$BIN" - <<'EOF' 2>/dev/null
+# --- Case 8: empty input THROWS EOF (clj parity, D-269); :eof opt overrides ---
+if "$BIN" - <<'EOF' >/dev/null 2>&1
 (clojure.edn/read-string "")
 EOF
-) || fail "case8: non-zero exit ($got)"
-assert_eq 'edn_read_empty' "$(last_line "$got")" 'nil'
+then fail 'case8: empty read-string should throw EOF'; fi
+echo 'PASS edn_read_empty_throws -> errors'
+# `:eof` sentinel suppresses the throw and returns the given value.
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(clojure.edn/read-string {:eof :none} "")
+EOF
+) || fail "case8b: non-zero exit ($got)"
+assert_eq 'edn_read_eof_opt' "$(last_line "$got")" ':none'
 
 # --- Case 9: nested ---
 got=$("$BIN" - <<'EOF' 2>/dev/null

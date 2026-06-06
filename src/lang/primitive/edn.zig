@@ -40,7 +40,8 @@ const Var = env_mod.Var;
 
 /// Implements clojure.edn/read-string.
 /// Spec: `(read-string s)` reads one EDN form from `s` and returns it as
-///   a Value (empty / whitespace-only → `nil`). `(read-string opts s)`
+///   a Value; empty / whitespace-only / comment-only input THROWS EOF (clj
+///   parity, D-269) unless an `:eof` opt supplies a sentinel. `(read-string opts s)`
 ///   honours an opts map: `:readers` (a `{tag-symbol reader-fn}` map bound
 ///   to `*data-readers*` for the read), `:default` (a `(fn [tag value])`
 ///   bound to `*default-data-reader-fn*`), `:eof` (value returned on empty
@@ -60,12 +61,23 @@ pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     }
     const source = string_collection.asString(str_arg);
 
-    // EOF sentinel: `:eof` opt, else `nil` (cljw 1-arity divergence — clj
-    // throws on EOF; cljw returns nil unless `:eof` overrides it).
+    // EOF (no form in `source`): clj THROWS `RuntimeException: EOF while
+    // reading` UNLESS an `:eof` opt is supplied, in which case that value is
+    // returned (D-269 — was a silent nil-default that masked "nothing to read").
+    // `:eof` may be explicitly bound to nil, so detect KEY PRESENCE, not a
+    // non-nil value.
+    var eof_provided = false;
     var eof_val: Value = Value.nil_val;
-    if (opts) |o| {
-        if (try optGet(rt, o, "eof")) |v| eof_val = v;
-    }
+    if (opts) |o| switch (o.tag()) {
+        .array_map, .hash_map => {
+            const k = try keyword.intern(rt, null, "eof");
+            if (try map_collection.contains(o, k)) {
+                eof_provided = true;
+                eof_val = try map_collection.get(o, k);
+            }
+        },
+        else => {},
+    };
 
     // Install `:readers` / `:default` as a dynamic-binding frame for the
     // read so the data-reader dispatch in `formToValue` sees them.
@@ -92,7 +104,10 @@ pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
             .name = "EDN reader error in clojure.edn/read-string",
         });
     };
-    const form = form_opt orelse return eof_val;
+    const form = form_opt orelse {
+        if (eof_provided) return eof_val;
+        return error_catalog.raise(.eof_unexpected, loc, .{});
+    };
     return try analyzer_mod.formToValue(rt, env, form);
 }
 
