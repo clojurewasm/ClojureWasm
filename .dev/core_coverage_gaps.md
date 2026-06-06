@@ -151,3 +151,15 @@ Caveat: the static var-set extraction has minor false-positives (e.g.
 - **Batch-5 sweep gaps**: `re-seq` **DONE** (re-find-from primitive + .clj loop, 2026-05-30); STILL open:
   `type`/`class` (need cljw type model), regex capture groups (cycle 1), `(subs "abc" 1 10)` clamps
   instead of throwing (lenient divergence).
+- **2026-06-06 (campaign Stage 0.1 re-run)**: regen recipe re-run — 168 raw "missing"
+  vars. The set is unchanged in shape from the 2026-05-30 generation; the residue is
+  dominated by the known-deferred classes already catalogued under "Deferred / out-of-scope":
+  REPL/dynamic vars (`*1 *2 *3 *e *ns* *out*` …, ~40), JVM primitive arrays
+  (`aget`/`aset-*`/`*-array`/`make-array`, ~30 — D-270), proxy/reify*/gen-class (Tier D),
+  reader/eval internals (`read`/`read+string`/`load-*`/`destructure`/`reader-conditional`),
+  and chunk-* perf primitives. Concurrency vars (`send-via`/`sync`/`shutdown-agents`/
+  `await-for`/`release-pending-sends`) that were "deferred Phase 15" are NOW landable
+  (Phase B implemented, D-242) — a few may already resolve; recheck during Stage 1.5.
+  Genuinely-missing non-deferred core vars are scarce (the prior sweeps drained them);
+  the real remaining coverage driver is the v0→v1 bundled-namespace backfill (D-273) +
+  the real-world lib ladder (docs/works/), not more clojure.core var minting.
