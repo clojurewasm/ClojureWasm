@@ -9,6 +9,23 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-274"
+    status: "deferred (ADR-0101 Shape C insight, 2026-06-06) — deps.edn `:git/url` resolution is host-bound: it spawns `git` (slice 5, `git_fetch.zig`). The wasm/edge horizon (F-010/F-012, cw's differentiator) cannot spawn a subprocess, so a `git`-free alternative is eventually needed: fetch a source tarball (`…/archive/<sha>.tar.gz`) over an HTTP client into the same content-addressed cache. NOT built now — it adds a new outbound-HTTP-client capability + per-forge URL knowledge that `git clone` handles uniformly; the host-bound path serves the POSIX-host case first."
+    category: "scope"
+    barrier: |-
+      **`:git/url` deps need a subprocess-free fetch path for the host-less
+      (wasm/edge) target.** Today `git_fetch.zig` shells out to `git` (ADR-0101),
+      which is correct for a POSIX host but impossible where cljw runs without a
+      process spawner (the Phase 15-20 Wasm/edge-native differentiator). The
+      finished-form alternative is an `std.http.Client` tarball fetch
+      (`<forge>/archive/<sha>.tar.gz` → inflate → content-addressed cache), which
+      is the natural second `GitFetcher`-style impl — at which point an injection
+      seam is justified (a single impl today does not warrant it, per ADR-0101's
+      divergence from the DA). cw has `std.http.Server` but no `std.http.Client`
+      yet, so this is a new capability. recall trigger: Phase 15+ wasm/edge work
+      that needs a git-coordinate dep, OR a `git`-less deployment target. Cross-ref
+      ADR-0101, F-010, F-012.
+    last_reviewed: "2026-06-06"
   - id: "D-273"
     status: "now (campaign Stage 0.2 umbrella, opened 2026-06-06) — the v0→v1 bundled-namespace + app-feature parity anchor. SSOT for the detail = `.dev/v0_v1_feature_parity.md` (24 MISSING / 3 partial / 12 present). Single anchor (does NOT re-mint a row per namespace — D-242 precedent) so the campaign Goal #1 'every MISSING has a debt row with a live barrier' holds. Drained by campaign Stage 1.5 (bundled-lib backfill) in pure-Clojure-degree order."
     category: "scope"
