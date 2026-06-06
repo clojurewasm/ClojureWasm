@@ -205,13 +205,17 @@ fn ratioArith(rt: *Runtime, a: Value, b: Value, op: RatioOp) !Value {
 
     if (try ratio_mod.allocFromManagedPair(rt, &rn, &rd)) |r| return r;
 
-    // Denominator collapsed to 1: the quotient is exact.
+    // Denominator collapsed to 1: the quotient is exact. A ratio operation
+    // that reduces to a whole number yields a BigInt in clj (`(* 1/2 4)`→2N,
+    // `(+ 1/3 2/3)`→1N — JVM Ratio's Numbers.divide returns BigInt when denom=1),
+    // NOT a Long. `ratioArith` is only reached with a ratio operand, so the
+    // collapse is always a genuine BigInt (F-005 expressed-behaviour parity).
     var q = try Managed.init(rt.gc.infra);
     defer q.deinit();
     var rem = try Managed.init(rt.gc.infra);
     defer rem.deinit();
     try q.divTrunc(&rem, &rn, &rd);
-    return try wrapManaged(rt, &q);
+    return try big_int.allocFromManaged(rt, &q, .bigint);
 }
 
 const BdOp = enum { add, sub, mul };
@@ -635,25 +639,28 @@ test "subPromoting (BigInt - Long) returns BigInt" {
     try testing.expectEqual(@as(i64, (1 << 48) - 3), try big_int.asManaged(v).toInt(i64));
 }
 
-test "ratioArith addPromoting (1/2 + 1/2) collapses to Long 1 (no leak)" {
+test "ratioArith addPromoting (1/2 + 1/2) collapses to BigInt 1N (clj parity)" {
     var fix = Fixture.init();
     defer fix.deinit();
 
     const half = try divPromoting(&fix.rt, Value.initInteger(1), Value.initInteger(2));
     try testing.expect(half.tag() == .ratio);
     const v = try addPromoting(&fix.rt, half, half);
-    try testing.expect(v.tag() == .integer);
-    try testing.expectEqual(@as(i48, 1), v.asInteger());
+    // clj `(+ 1/2 1/2)` → 1N (a BigInt, not Long) — JVM Ratio collapse.
+    try testing.expect(v.tag() == .big_int);
+    try testing.expect(big_int.originOf(v) == .bigint);
+    try testing.expectEqual(@as(i64, 1), try big_int.asManaged(v).toInt(i64));
 }
 
-test "ratioArith mulPromoting (1/2 * 4) collapses to Long 2 (mixed operand)" {
+test "ratioArith mulPromoting (1/2 * 4) collapses to BigInt 2N (mixed operand)" {
     var fix = Fixture.init();
     defer fix.deinit();
 
     const half = try divPromoting(&fix.rt, Value.initInteger(1), Value.initInteger(2));
     const v = try mulPromoting(&fix.rt, half, Value.initInteger(4));
-    try testing.expect(v.tag() == .integer);
-    try testing.expectEqual(@as(i48, 2), v.asInteger());
+    try testing.expect(v.tag() == .big_int);
+    try testing.expect(big_int.originOf(v) == .bigint);
+    try testing.expectEqual(@as(i64, 2), try big_int.asManaged(v).toInt(i64));
 }
 
 test "ratioArith addPromoting (1/2 + 1/3) stays a ratio (no leak)" {

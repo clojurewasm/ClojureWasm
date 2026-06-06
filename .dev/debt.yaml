@@ -9,7 +9,8 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
-  - id: "D-271"
+  - id: "D-272"
+    status: "DISCHARGED 2026-06-06 — ratio arithmetic that reduces to a whole number now yields a BigInt (`2N`), not a Long (`2`), matching clj's JVM Ratio (Numbers.divide returns BigInt when denom=1). Was a DELIBERATE, unit+e2e-tested Long-collapse (promote.zig ratioArith + phase14_ratio_arith) — but F-005's verbatim makes the EXPRESSED behaviour (見た目・表出する振る舞い) JVM-compatible, so `(* 1/2 4)`→2N is the contract and the Long-collapse was a surface divergence F-005 forbids. Single fix point: ratioArith's integer-collapse (the sole path for any ratio-operand +/-/*//) now allocFromManaged(.bigint) instead of wrapManaged; divPromoting/quotPromoting's integer-path collapse already did this for ratio/BigInt operands. Updated 2 unit tests + 7 phase14_ratio_arith assertions (the pinned Long values were the bug). Corpus ratio_integer_collapse (14/14 clj-matched: `(* 1/2 4)`→2N, `(+ 1/3 2/3)`→1N, `(- 1/2 1/2)`→0N; `(/ 6 3)`→2 int-div + `(/ 1 2)`→1/2 ratio + `(+ 1/2 0.5)`→1.0 float all unchanged). Cross-ref F-005, F-011."
     status: "open (found 2026-06-06, tricky-behaviour sweep) — `(with-meta (range 3) m)` raises type_error; clj attaches meta (range is IObj). The `.range` substrate AND its `.chunked_cons` seq view have no meta slot, so withMetaFn's switch has no arm. map/filter/lazy-seq/list/cons/take all work (lazy_seq is metable)."
     category: "clj-parity"
     barrier: |-
