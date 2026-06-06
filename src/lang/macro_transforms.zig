@@ -2159,8 +2159,14 @@ fn expandExtendType(
         args[1];
     const method_impls = args[2..];
 
-    const impl_pairs = try arena.alloc(Form, method_impls.len);
-    for (method_impls, 0..) |impl, i| {
+    // Validate every impl + collect distinct method names in first-seen order.
+    // A clj interface section may declare ONE method at multiple arities
+    // (e.g. ILookup `(valAt [this k]) (valAt [this k nf])`, D-279); these are
+    // grouped into a single multi-arity `fn*` below so they coexist under one
+    // (protocol, method) method_table entry and dispatch by arg count.
+    var names: std.ArrayList([]const u8) = .empty;
+    defer names.deinit(arena);
+    for (method_impls) |impl| {
         if (impl.data != .list or impl.data.list.len < 3 or
             impl.data.list[0].data != .symbol or
             impl.data.list[1].data != .vector)
@@ -2168,28 +2174,61 @@ fn expandExtendType(
             return error_catalog.raise(.extend_type_method_invalid, impl.location, .{});
         }
         const method_name = impl.data.list[0].data.symbol.name;
-        const params_form = impl.data.list[1];
-        const body = impl.data.list[2..];
+        var seen = false;
+        for (names.items) |n| {
+            if (std.mem.eql(u8, n, method_name)) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) try names.append(arena, method_name);
+    }
 
-        const body_form = if (body.len == 1) body[0] else blk: {
-            var do_items = try arena.alloc(Form, body.len + 1);
-            do_items[0] = sym("do", impl.location);
-            @memcpy(do_items[1..], body);
-            break :blk try list(arena, do_items, impl.location);
+    const impl_pairs = try arena.alloc(Form, names.items.len);
+    for (names.items, 0..) |method_name, gi| {
+        // Gather every impl for this method name as a `([params] body)` clause.
+        var clauses: std.ArrayList(Form) = .empty;
+        defer clauses.deinit(arena);
+        var name_loc = loc;
+        for (method_impls) |impl| {
+            if (!std.mem.eql(u8, impl.data.list[0].data.symbol.name, method_name)) continue;
+            const params_form = impl.data.list[1];
+            const body = impl.data.list[2..];
+            const body_form = if (body.len == 1) body[0] else blk: {
+                var do_items = try arena.alloc(Form, body.len + 1);
+                do_items[0] = sym("do", impl.location);
+                @memcpy(do_items[1..], body);
+                break :blk try list(arena, do_items, impl.location);
+            };
+            if (clauses.items.len == 0) name_loc = impl.location;
+            // ([params] body) — a single multi-arity clause
+            var clause_items = try arena.alloc(Form, 2);
+            clause_items[0] = params_form;
+            clause_items[1] = body_form;
+            try clauses.append(arena, try list(arena, clause_items, impl.location));
+        }
+
+        const fn_form = if (clauses.items.len == 1) blk: {
+            // (fn* params body) — single arity (the common case, unchanged shape)
+            const cl = clauses.items[0].data.list;
+            var fn_items = try arena.alloc(Form, 3);
+            fn_items[0] = sym("fn*", name_loc);
+            fn_items[1] = cl[0];
+            fn_items[2] = cl[1];
+            break :blk try list(arena, fn_items, name_loc);
+        } else blk: {
+            // (fn* ([p1] b1) ([p2] b2) ...) — multi-arity (D-279)
+            var fn_items = try arena.alloc(Form, 1 + clauses.items.len);
+            fn_items[0] = sym("fn*", name_loc);
+            @memcpy(fn_items[1..], clauses.items);
+            break :blk try list(arena, fn_items, name_loc);
         };
-
-        // (fn* params body)
-        var fn_items = try arena.alloc(Form, 3);
-        fn_items[0] = sym("fn*", impl.location);
-        fn_items[1] = params_form;
-        fn_items[2] = body_form;
-        const fn_form = try list(arena, fn_items, impl.location);
 
         // ["method-name" fn-form]
         var pair_items = try arena.alloc(Form, 2);
-        pair_items[0] = .{ .data = .{ .string = method_name }, .location = impl.location };
+        pair_items[0] = .{ .data = .{ .string = method_name }, .location = name_loc };
         pair_items[1] = fn_form;
-        impl_pairs[i] = try vec(arena, pair_items, impl.location);
+        impl_pairs[gi] = try vec(arena, pair_items, name_loc);
     }
     const impls_vec = try vec(arena, impl_pairs, loc);
 
@@ -2829,6 +2868,10 @@ fn expandReify(
         if (impls.len == 0)
             return error_catalog.raise(.reify_section_invalid, proto_form.location, .{});
 
+        // Validate + collect distinct method names (first-seen order); one method
+        // may appear at multiple arities (D-279), grouped into a multi-arity fn*.
+        var section_names: std.ArrayList([]const u8) = .empty;
+        defer section_names.deinit(arena);
         for (impls) |impl| {
             if (impl.data != .list or impl.data.list.len < 3 or
                 impl.data.list[0].data != .symbol or
@@ -2836,30 +2879,58 @@ fn expandReify(
             {
                 return error_catalog.raise(.reify_method_invalid, impl.location, .{});
             }
-            const method_name = impl.data.list[0].data.symbol.name;
-            const params_form = impl.data.list[1];
-            const body = impl.data.list[2..];
+            const mname = impl.data.list[0].data.symbol.name;
+            var seen = false;
+            for (section_names.items) |n| {
+                if (std.mem.eql(u8, n, mname)) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (!seen) try section_names.append(arena, mname);
+        }
 
-            const body_form = if (body.len == 1) body[0] else blk: {
-                var do_items_local = try arena.alloc(Form, body.len + 1);
-                do_items_local[0] = sym("do", impl.location);
-                @memcpy(do_items_local[1..], body);
-                break :blk try list(arena, do_items_local, impl.location);
+        for (section_names.items) |method_name| {
+            var clauses: std.ArrayList(Form) = .empty;
+            defer clauses.deinit(arena);
+            var name_loc = proto_form.location;
+            for (impls) |impl| {
+                if (!std.mem.eql(u8, impl.data.list[0].data.symbol.name, method_name)) continue;
+                const params_form = impl.data.list[1];
+                const body = impl.data.list[2..];
+                const body_form = if (body.len == 1) body[0] else blk: {
+                    var do_items_local = try arena.alloc(Form, body.len + 1);
+                    do_items_local[0] = sym("do", impl.location);
+                    @memcpy(do_items_local[1..], body);
+                    break :blk try list(arena, do_items_local, impl.location);
+                };
+                if (clauses.items.len == 0) name_loc = impl.location;
+                var clause_items = try arena.alloc(Form, 2);
+                clause_items[0] = params_form;
+                clause_items[1] = body_form;
+                try clauses.append(arena, try list(arena, clause_items, impl.location));
+            }
+
+            const fn_form = if (clauses.items.len == 1) blk: {
+                const cl = clauses.items[0].data.list;
+                var fn_items = try arena.alloc(Form, 3);
+                fn_items[0] = sym("fn*", name_loc);
+                fn_items[1] = cl[0];
+                fn_items[2] = cl[1];
+                break :blk try list(arena, fn_items, name_loc);
+            } else blk: {
+                var fn_items = try arena.alloc(Form, 1 + clauses.items.len);
+                fn_items[0] = sym("fn*", name_loc);
+                @memcpy(fn_items[1..], clauses.items);
+                break :blk try list(arena, fn_items, name_loc);
             };
-
-            // (fn* params body)
-            var fn_items = try arena.alloc(Form, 3);
-            fn_items[0] = sym("fn*", impl.location);
-            fn_items[1] = params_form;
-            fn_items[2] = body_form;
-            const fn_form = try list(arena, fn_items, impl.location);
 
             // ["m-name" Proto fn-form]
             var row_items = try arena.alloc(Form, 3);
-            row_items[0] = .{ .data = .{ .string = method_name }, .location = impl.location };
+            row_items[0] = .{ .data = .{ .string = method_name }, .location = name_loc };
             row_items[1] = proto_form;
             row_items[2] = fn_form;
-            try method_rows.append(arena, try vec(arena, row_items, impl.location));
+            try method_rows.append(arena, try vec(arena, row_items, name_loc));
         }
     }
 

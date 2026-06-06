@@ -92,4 +92,30 @@ if [[ "$last" != "99" ]]; then
 fi
 echo "PASS protocol_reify_unregressed -> 99"
 
-echo "OK — phase14_deftype_object (6 cases) green"
+# --- Case 7 (D-279): deftype method arity overload — the priority-map valAt shape ---
+# `(valAt [this k]) (valAt [this k nf])` → one multi-arity fn* under (ILookup,-lookup);
+# the 2-arity is reachable via (get inst k), the 3-arity via direct method call.
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(deftype T [] ILookup (-lookup [this k] :two) (-lookup [this k nf] :three))
+[(get (T.) :a) (.-lookup (T.) :a :nf)]
+EOF
+) || fail "case7: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "[:two :three]" ]]; then
+    fail "case7: got '$last', want '[:two :three]'"
+fi
+echo "PASS deftype_method_arity_overload -> [:two :three]"
+
+# --- Case 8 (D-279): reify method arity overload ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(def r (reify ILookup (-lookup [this k] :two) (-lookup [this k nf] :three)))
+[(get r :a) (.-lookup r :a :nf)]
+EOF
+) || fail "case8: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "[:two :three]" ]]; then
+    fail "case8: got '$last', want '[:two :three]'"
+fi
+echo "PASS reify_method_arity_overload -> [:two :three]"
+
+echo "OK — phase14_deftype_object (8 cases) green"
