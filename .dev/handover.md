@@ -5,19 +5,17 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (Phase-C library gap-hunt exhausted this session — ~16
-  clj-parity fixes landed + corpus-backed + audited; see § Phase C below).
-- **First commit on resume MUST be**: **execute the Convergence Campaign
-  Stage 0** (`.dev/convergence_campaign.md`) — inventory & SSOT rebuild:
-  (0.1) refresh `core_coverage_gaps.md`; (0.2) NEW `v0_v1_feature_parity.md`
-  (v0 bundled-lib / CLI feature → v1 status; seed list in the campaign);
-  (0.3) rebuild `compat_tiers.yaml` Java tier scope; (0.4) de-stale + defer
-  re-eval EVERY debt row (anti-D-177 over-claim + dup sweep); (0.5) populate
-  `docs/works/` real-world pure-Clojure lib ladder. Then Stage 1 runs the
-  blocker-free ordered execution autonomously (resolve-stdin fix → deps.edn →
-  lib ladder → native cljw cider ops → v0-lib backfill → clj-parity sizable →
-  **Phase B concurrency = Stage 1.7**), ending with the wiring/reference-chain
-  audit (Final Stage). The campaign is the SSOT; Phase B is one ordered item in it.
+- **HEAD**: see `git log` (Convergence Campaign **Stage 0 DONE** this session —
+  5 SSOTs rebuilt; see § Just landed).
+- **First commit on resume MUST be**: **Convergence Campaign Stage 1.1 —
+  `resolve`-in-stdin regression** (`.dev/convergence_campaign.md` Stage 1).
+  `(resolve 'map)` returns nil via `cljw -` (stdin) but `#'clojure.core/map`
+  via `-e`; the stdin eval path's ns/resolution setup differs from `-e`. Small,
+  unblocks reliable nREPL/cider eval. Then Stage 1 proceeds in order: deps.edn
+  resolution (1.2) → real-lib ladder drive (1.3) → native cljw cider ops (1.4) →
+  v0→v1 bundled-lib backfill (1.5, D-273) → clj-parity sizable (1.6) → **Phase B
+  HARDENING (1.7, D-242 — concurrency is IMPLEMENTED, this is torture/perf
+  residuals not construction)** → Final Stage wiring audit. The campaign is the SSOT.
 - **⚠ USER must act (time-sensitive, NOT AI-doable)**: see
   `private/clojure_conj_2026_cfp/DEFERRED_USER_ACTIONS.md` — (1) Sessionize submit
   by 6/13 (`SUBMIT_READY.md` copy-paste ready); (2) v0.1.0 tag/Release + make
@@ -27,29 +25,26 @@
   surface); pinning an in-progress zwasm v2 state / tag (F-001: v2 ONLY from
   `zwasm-from-scratch`); trusting `~/Documents/OSS/zig`.
 
-## Phase C — library gap-hunt exhausted (2026-06-06, git log = SSOT)
+## Just landed — Convergence Campaign Stage 0 (2026-06-06, git log = SSOT)
 
-The clj-diff differential sweep ran across all practically-probeable surfaces
-(~300 probes: reader / numeric-tower / comparison / collections / higher-order /
-regex / var-ns / string / transducers — common AND deep). ~16 clj-parity fixes
-landed, each corpus- or e2e-backed; corpus regression 2045/2045 reproduce:
+Inventory & SSOT rebuild, 4 commits:
 
-- **reader**: radix `2r1010` (D-263); octal `017` + octal-char `\o377` cap;
-  `\uXXXX` lone-surrogate reject.
-- **numeric tower**: biginteger≡bigint + AD-016 (D-265); unchecked-* FULL family
-  (D-268); ratio-collapses-to-whole → BigInt `2N` (D-272, F-005); compare across
-  the whole tower EXACTLY + `(compare ##NaN x)`→0.
-- **seq/string**: lazy distinct/dedupe (D-264); subs / subvec / .substring
-  bounds-check (was silent clamp); symbol/keyword `"ns/name"` split; nthrest
-  (n≤0 keeps coll) / take-last (empty→nil).
-- **analyzer**: qualified `ns/name` own-interns-only (D-261). **edn**: read-string
-  EOF throws, not silent nil (D-269).
-
-Remaining gaps are TRACKED sizable features or AD (not quick-fix), recorded in
-debt.yaml: **D-057** Unicode case-fold (ASCII-only; full table = Phase 11 OR AD);
-**D-270** Java primitive arrays; **D-086** record `__extmap` (F-003 structural);
-**D-266** non-chunked lazy-seq perf; **D-267** format `%c`; **D-271** with-meta on
-a raw range; re-matcher/re-groups; **D-258** dormant agent torture flake (D-244 #4).
+- **0.1** `core_coverage_gaps.md` recipe re-run (168 raw missing, unchanged
+  shape; residue = known-deferred REPL-dynvar/array/proxy classes).
+- **0.2** NEW `.dev/v0_v1_feature_parity.md` (v0's 32 bundled ns + app surface →
+  v1: 12 present / 3 partial / 24 MISSING) + umbrella **D-273** so every MISSING
+  carries a live debt row.
+- **0.3** `compat_tiers.yaml` Java scope: +31 Tier-A / +3 Tier-C host-class
+  **reservations** (smell-caught: draft proposed phantom `files:`; merged as
+  one-liner reservations per the SSOT's own convention, G3-clean).
+- **0.4** debt de-stale −5 active: **DISCOVERY — Phase B concurrency is
+  IMPLEMENTED at HEAD** (landed 2026-06-05, before the campaign was written;
+  real-OS-thread future + MVCC STM + agent/locking/atom-CAS all probe-green).
+  Discharged D-009/010/012/013/211; flipped D-224/046 to actionable; D-242
+  re-scoped "unimplemented core" → "concurrency hardening".
+- **0.5** NEW `docs/works/` ladder (F-010) — 15 libs ranked by pure-Clojure
+  degree; medley / math.combinatorics / tools.cli load green on cljw (`-cp`,
+  ADR-0084); deps.edn (Stage 1.2) is the next unlock.
 
 ## Process discipline (SSOT = memory + rules; do NOT re-expand here)
 
@@ -68,7 +63,8 @@ a raw range; re-matcher/re-groups; **D-258** dormant agent torture flake (D-244 
 ## Cold-start reading order (tracked-only)
 
 handover → **`.dev/convergence_campaign.md`** (the driving SSOT/procedure) →
-`.dev/core_coverage_gaps.md` (D-158 var map) + `.dev/debt.yaml` (131 active) +
-`compat_tiers.yaml` (Java tier scope) → ADR-0090 (Phase-B concurrency, = campaign
-Stage 1.7) + ADR-0089 → `.dev/project_facts.md` F-004/F-006 → CLAUDE.md
-(§ Project spirit + The only stop) → `.dev/principle.md`.
+`.dev/v0_v1_feature_parity.md` (D-273 backfill list) + `.dev/debt.yaml` (133
+active) + `compat_tiers.yaml` (Java tier scope) + `docs/works/ladder.md` →
+ADR-0090/0089 (Phase B — IMPLEMENTED, Stage 1.7 = hardening) →
+`.dev/project_facts.md` F-004/F-006 → CLAUDE.md (§ Project spirit + The only
+stop) → `.dev/principle.md`.

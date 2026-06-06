@@ -1,9 +1,14 @@
 # Convergence Campaign — drive cw v1 to feature-convergence (autonomous)
 
-> **Status**: opened 2026-06-06 (seeded by a light state scan; the inventory
-> itself is Stage 0 work, NOT yet done). Supersedes the handover's prior
-> "open Phase B" resume target — Phase B (concurrency) is now **one ordered
-> item inside this campaign** (Stage 1.7), not the immediate next unit.
+> **Status**: opened 2026-06-06; **Stage 0 DONE 2026-06-06** (5 SSOTs rebuilt:
+> `core_coverage_gaps.md` re-run, NEW `v0_v1_feature_parity.md` + D-273 umbrella,
+> `compat_tiers.yaml` Java scope +31A/+3C reservations, debt de-staled −5,
+> `docs/works/` ladder seeded). **Load-bearing Stage-0.4 discovery: Phase B
+> (concurrency, ADR-0090) is ALREADY IMPLEMENTED at HEAD** — STM/agent/locking/
+> real-OS-thread future all probe-green; landed 2026-06-05 (commits
+> `7ac5fb1d`..`0a1fbb73`), i.e. it was already done when this campaign was
+> written. So the handover's "open Phase B" target was stale on arrival;
+> Stage 1.7 is re-scoped to **hardening** (D-242 residuals), not implementation.
 >
 > **This file is a DRIVING procedure, not a finished inventory.** Every Stage
 > exit is a *mechanical predicate* (a script result or a count), so the
@@ -118,12 +123,17 @@ The loop self-selects the next item by the order — **no user touchpoint**.
 6. **clj-parity sizable remainder** — D-057 Unicode case-fold (table or AD),
    D-270 Java primitive arrays, D-086 record `__extmap` (F-003 structural),
    re-matcher/re-groups, D-266 lazy-seq perf, D-267 `%c`, D-271 with-meta range.
-7. **Phase B — concurrency (ADR-0090)** — real threading + GC root-publication
-   handshake + STM engine + agent/locking + dynamic-binding conveyance. The
-   structural phase; design is done (ADR-0090). Opened here (late in the order)
-   per F-003 + the fresh-context discipline — OR earlier if a Stage-1.3 lib
-   forces real threading (the loop promotes it then). `future`/`promise`/`pmap`
-   stop being synchronous when this lands.
+7. **Phase B — concurrency HARDENING (ADR-0090)** — ~~implement~~ **already
+   IMPLEMENTED at HEAD** (Stage-0.4 discovery): real-OS-thread `future`
+   (`std.Thread.spawn`), MVCC STM (`stm/ref.zig` + `concurrency/lock_tx.zig`),
+   `agent`/`send`/`await`/`agent-error`, `locking` monitor, atom CAS, the
+   ThreadGcContext root-publication GC handshake — all probe-green. This item is
+   now **hardening, not construction** (D-242 anchor): close the concurrency
+   torture/race edges (D-244 #4 family, D-250..D-253, D-258 dormant flake), wire
+   `pmap`/`pcalls` to the work-pool for genuine parallelism (D-224, result already
+   correct), pick the LazySeq.force mutex disposition (D-046). `future`/`promise`
+   are already async. NOTE: `delay` once-lock + STW-rendezvous fixes are still
+   trickling (git log), so this is real, not closed.
 
 ---
 
