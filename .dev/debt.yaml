@@ -149,7 +149,7 @@ active:
       (lookupMethod(null, name)).
     last_reviewed: "2026-06-07"
   - id: "D-284"
-    status: "now (found 2026-06-07 — priority-map's next blocker after D-283) — priority-map constructs `(MapEntry. item priority)` in its seq/entryAt/iterator bodies. cljw has NO MapEntry type (it represents a map entry as a 2-vector `[k v]`, per core.clj:571). `MapEntry` (clojure.lang.MapEntry) is unresolved → name_error when a body constructing one is analyzed (during `(priority-map …)`)."
+    status: "DISCHARGED 2026-06-07 — `(MapEntry. k v)` / `(new clojure.lang.MapEntry k v)` now construct cljw's 2-vector entry `[k v]` (constructInstance special-case; key/val/nth already work on a 2-vector). e2e 29. priority-map now CONSTRUCTS past MapEntry; its next blocker is `keys`/`vals` core fns not falling through to a typed_instance's IPersistentMap impl → D-285. ORIGINAL: priority-map constructs `(MapEntry. …)`; cljw has no MapEntry type (entry = 2-vector, core.clj:571) → name_error."
     category: "interop"
     barrier: |-
       **`clojure.lang.MapEntry` constructor is unresolved.** cljw uses a 2-vector for
@@ -164,6 +164,18 @@ active:
       MapEntry). Cross-ref core.clj:571 (entry = 2-vector), D-283 (the prior
       priority-map blocker), class_name.zig (MapEntry already in FQCN_MAP for
       instance?/class — the recognition exists; the CONSTRUCTOR is the gap)."
+    last_reviewed: "2026-06-07"
+  - id: "D-285"
+    status: "now (priority-map's next blocker after D-284) — `keys`/`vals` core fns raise 'expected map or defrecord, got typed_instance' on a deftype implementing IPersistentMap. Same class as the assocFn fix (D-280c): a core collection fn's type-switch doesn't fall through to the protocol for a typed_instance. keys→IPersistentMap/-keys, vals→IPersistentMap/-vals (the protocol methods exist; the fns don't consult them for deftype instances). Likely a small family (keys/vals, maybe seq-of-entries paths)."
+    category: "polymorphism"
+    barrier: |-
+      **`keys`/`vals` (and peers) don't consult IPersistentMap for a typed_instance.**
+      count/contains?/get/assoc/dissoc/seq already fall through (D-280c); keys/vals
+      do not. Finished-form fix: add the typed_instance arm to the keys/vals
+      primitives (or their core.clj defns), consulting IPersistentMap/`-keys`/`-vals`
+      via dispatchOrNull before the map/defrecord type-switch error (mirror dissocFn/
+      assocFn). Unblocks priority-map FULL functionality. Cross-ref D-280c (the
+      assoc fallthrough precedent), D-281 (priority-map LOADS), the keys/vals defn/prim.
     last_reviewed: "2026-06-07"
   - id: "D-282"
     status: "now (found 2026-06-07 via D-280e) — `clojure.core.protocols` ns does NOT exist in cljw (`require` → 'Could not locate'). priority-map implements `clojure.core.protocols/IKVReduce` (line 391, kv-reduce), so its full load needs this ns. Listed MISSING in the convergence campaign Stage 0.2 (v0→v1 parity) + the D-273 v0→v1 backfill umbrella. clojure.core.protocols defines CollReduce/IKVReduce/Datafiable/Navigable — the reduce/datafy protocol surface."

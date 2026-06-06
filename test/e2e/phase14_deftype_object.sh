@@ -433,4 +433,15 @@ if [[ "$last" != "[1 1 2]" ]]; then
 fi
 echo "PASS protocol_remap_clj_name_dotcall -> [1 1 2]"
 
-echo "OK — phase14_deftype_object (28 cases) green"
+# --- Case 29 (D-284): (MapEntry. k v) constructs cljw's 2-vector entry ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+[(MapEntry. :a 1) (key (MapEntry. :a 1)) (val (new clojure.lang.MapEntry :b 2))]
+EOF
+) || fail "case29: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "[[:a 1] :a 2]" ]]; then
+    fail "case29: got '$last', want '[[:a 1] :a 2]'"
+fi
+echo "PASS map_entry_ctor -> [[:a 1] :a 2]"
+
+echo "OK — phase14_deftype_object (29 cases) green"

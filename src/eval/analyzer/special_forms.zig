@@ -27,6 +27,7 @@ const env_mod = @import("../../runtime/env.zig");
 const Env = env_mod.Env;
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const macro_dispatch = @import("../macro_dispatch.zig");
+const vector_mod = @import("../../runtime/collection/vector.zig");
 const analyzer_mod = @import("analyzer.zig");
 const map_collection = @import("../../runtime/collection/map.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
@@ -104,6 +105,15 @@ pub fn constructInstance(
     args: []const Value,
     loc: error_catalog.SourceLocation,
 ) anyerror!Value {
+    // D-284: cljw has no clojure.lang.MapEntry type — a map entry IS a 2-vector
+    // `[k v]` (core.clj). `(MapEntry. k v)` (or the qualified form) constructs that
+    // 2-vector, so collection libs that build entries explicitly (priority-map,
+    // ordered, …) work. `key`/`val`/`nth` already operate on a 2-vector.
+    if (std.mem.eql(u8, type_name, "MapEntry") or std.mem.eql(u8, type_name, "clojure.lang.MapEntry")) {
+        if (args.len != 2)
+            return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = "MapEntry.", .expected = 2 });
+        return vector_mod.fromSlice(rt, args);
+    }
     const td = resolveJavaSurface(rt, env, type_name) orelse
         return error_catalog.raise(.symbol_unresolved, loc, .{ .sym = type_name });
     if (td.field_layout) |fl| {
