@@ -51,6 +51,7 @@ const sorted_prim = @import("primitive/sorted.zig");
 const reduced_prim = @import("primitive/reduced.zig");
 const namespace_prim = @import("primitive/namespace.zig");
 const macroexpand_prim = @import("primitive/macroexpand.zig");
+const array_prim = @import("primitive/array.zig");
 
 pub const RegisterError = error{
     RtNamespaceMissing,
@@ -105,6 +106,7 @@ pub fn registerAll(env: *Env) !void {
     try reduced_prim.register(env, rt_ns);
     try namespace_prim.register(env, rt_ns); // ADR-0083 ns-reflection
     try macroexpand_prim.register(env, rt_ns); // D-229 macroexpand-1/macroexpand
+    try array_prim.register(env, rt_ns); // ADR-0105 / D-287 Java arrays
 
     // Phase 14 row 14.1 (D-079 discharge): walk every
     // `runtime/java/<pkg>/<Class>.zig`'s `___HOST_EXTENSION`

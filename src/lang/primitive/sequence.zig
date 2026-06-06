@@ -50,6 +50,7 @@ const set = @import("../../runtime/collection/set.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const chunked_cons = @import("../../runtime/collection/chunked_cons.zig");
 const range = @import("../../runtime/collection/range.zig");
+const java_array = @import("../../runtime/collection/java_array.zig");
 const transient_vector = @import("../../runtime/collection/transient/transient_vector.zig");
 const transient_array_map = @import("../../runtime/collection/transient/transient_array_map.zig");
 const transient_hash_set = @import("../../runtime/collection/transient/transient_hash_set.zig");
@@ -94,6 +95,7 @@ pub fn countFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             break :blk Value.initInteger(@intCast(n));
         },
         .vector => Value.initInteger(@intCast(vector.count(coll))),
+        .array => Value.initInteger(@intCast(java_array.alength(coll))), // ADR-0105
         .map_entry => Value.initInteger(2), // a MapEntry is a 2-vector (D-209)
         .array_map, .hash_map => Value.initInteger(@intCast(map.count(coll))),
         .sorted_map, .sorted_set => Value.initInteger(@intCast(sorted.count(coll))),
@@ -200,6 +202,8 @@ pub fn seqFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         },
         .list, .cons => list.seq(coll),
         .vector => if (vector.count(coll) > 0) try vectorToList(rt, coll) else .nil_val,
+        // ADR-0105: a Java array is Seqable (clj parity), eager element seq.
+        .array => if (java_array.alength(coll) > 0) try arrayToList(rt, coll) else .nil_val,
         // A MapEntry seqs as `(key val)` (D-209 / ADR-0078).
         .map_entry => try list.consHeap(rt, map_entry.keyOf(coll), try list.consHeap(rt, map_entry.valOf(coll), .nil_val)),
         .array_map, .hash_map => if (map.count(coll) > 0) try map.seq(rt, coll) else .nil_val,
@@ -518,6 +522,19 @@ pub fn emptyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 /// vector → eager list build (head-to-tail copy).
 fn vectorToList(rt: *Runtime, vec: Value) !Value {
     return try vectorTailAsList(rt, vec, 0);
+}
+
+/// Java array → eager list view (ADR-0105). Built head-to-tail so generic seq
+/// walkers (vec / map / reduce / into) see the array elements in order.
+fn arrayToList(rt: *Runtime, arr: Value) !Value {
+    const items = java_array.asArray(arr).items();
+    var acc: Value = .nil_val;
+    var i = items.len;
+    while (i > 0) {
+        i -= 1;
+        acc = try list.consHeap(rt, items[i], acc);
+    }
+    return acc;
 }
 
 /// vector[start..] → list view, built eager (head-to-tail).

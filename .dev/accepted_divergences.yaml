@@ -277,3 +277,21 @@ accepted:
       BOTH (clj parity, defrecord_mutable_field).
     derives_from: "single-thread runtime posture (Phase ≤14, no concurrent method dispatch) + ADR-0104; revisit at Phase 15+ concurrency"
     pin: "test/e2e/phase14_deftype_mutable.sh — volatile_mutable_same_as_unsynchronized (a :volatile-mutable counter increments identically)"
+  - id: "AD-019"
+    summary: "Java arrays are type-erased: element type hints (`^\"[B\"`, `^ints`, `^bytes`) are advisory only, and a typed-array constructor / `aset` does not coerce or type-check non-byte/short/char elements."
+    example: '(let [^"[B" b (byte-array 1)] (aset b 0 65) (aget b 0)) => 65 (a non-byte stored into a byte-typed array, no error); (class (object-array 0)) => cljw "array" / clj "[Ljava.lang.Object;"'
+    why: |-
+      cljw arrays are one type-erased `[]Value` (ADR-0105): `byte-array`,
+      `int-array`, `object-array`, `make-array` all produce the same `.array`
+      shape. F-004 (uniform 8-byte Value) + F-005 (no primitive specialization)
+      delete the JVM's runtime array component-type, which on the JVM drives
+      boxing, `aset-X` coercion, and the `[Ljava.lang.Object;` class name. So a
+      `^"[B"` hint parses (reader.zig normalises it to `{:tag …}`) but is
+      ignored, and `aset` into a "typed" array never raises a type mismatch.
+      VALUE fidelity is still preserved where it is observable and value-changing
+      (F-011): per-constructor init defaults (0 / 0.0 / false / \space / nil) and
+      byte/short/char modular wrap are applied at construction / `aset-byte` —
+      those are NOT divergences. The simple class name (`array`, not the JVM
+      array-class encoding) is the AD-003 no-JVM-class surface applied to arrays.
+    derives_from: "F-004 (uniform Value) + F-005 (no primitive specialization) + ADR-0059 / AD-003 (no JVM class) + ADR-0105"
+    pin: "test/e2e/phase14_arrays.sh — type_hint_advisory (a ^\"[B\" array accepts a non-byte) + array_class_simple (class is `array`)"

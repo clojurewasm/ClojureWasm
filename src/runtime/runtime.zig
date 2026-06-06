@@ -364,6 +364,7 @@ pub const Runtime = struct {
         @import("collection/map.zig").registerGcHooks();
         @import("collection/map_entry.zig").registerGcHooks();
         @import("collection/persistent_queue.zig").registerGcHooks();
+        @import("collection/java_array.zig").registerGcHooks();
         @import("collection/set.zig").registerGcHooks();
         @import("lazy_seq.zig").registerGcHooks();
         @import("collection/chunked_cons.zig").registerGcHooks();

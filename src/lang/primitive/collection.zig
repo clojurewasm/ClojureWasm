@@ -45,6 +45,7 @@ const IPS_FQCN: []const u8 = "IPersistentSet";
 const sequence = @import("sequence.zig");
 const range_mod = @import("../../runtime/collection/range.zig");
 const vector = @import("../../runtime/collection/vector.zig");
+const java_array = @import("../../runtime/collection/java_array.zig");
 const list = @import("../../runtime/collection/list.zig");
 const map = @import("../../runtime/collection/map.zig");
 const map_entry = @import("../../runtime/collection/map_entry.zig");
@@ -402,6 +403,15 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             if (idx == 0 or idx == 1) break :blk map_entry.nth(coll, @intCast(idx));
             if (has_default) break :blk default;
             break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
+        },
+        // ADR-0105: a Java array is Indexed; `nth` keys to `aget` (with the
+        // default-arg discipline the other Indexed arms use).
+        .array => blk: {
+            if (idx < 0 or idx >= @as(i64, java_array.alength(coll))) {
+                if (has_default) break :blk default;
+                break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
+            }
+            break :blk try java_array.aget(coll, idx, "nth", loc);
         },
         // A live transient vector is Indexed (clj parity, D-199) — same
         // index discipline as a persistent vector.

@@ -1876,3 +1876,87 @@
     (if (qualified-symbol? sym)
       (do (require (symbol (namespace sym))) (resolve sym))
       (throw (ex-info (str "Not a qualified symbol: " sym) {:sym sym})))))
+
+
+;; --- Java arrays (ADR-0105 / D-287) ---
+;; Type-erased uniform []Value over the rt/__array-make + aget/aset/alength/
+;; aclone host primitives. Per-constructor init defaults + byte/short/char wrap
+;; give clj-faithful VALUES (F-011); the element type itself is erased (AD-019),
+;; so int/long/double/float arrays do not coerce non-byte elements. Arrays use
+;; identity equality.
+
+(defn- -array-from
+  "size-or-seq → array. A number makes n slots of `default`; otherwise the
+  seqable is materialised and each element passed through `coerce`."
+  [size-or-seq default coerce]
+  (if (number? size-or-seq)
+    (rt/__array-make size-or-seq default)
+    (let [s (vec size-or-seq)
+          n (count s)
+          a (rt/__array-make n default)]
+      (dotimes [i n] (aset a i (coerce (nth s i))))
+      a)))
+
+(defn- -to-byte [v]
+  (let [b (bit-and v 255)] (if (>= b 128) (- b 256) b)))
+(defn- -to-short [v]
+  (let [s (bit-and v 65535)] (if (>= s 32768) (- s 65536) s)))
+
+(defn object-array  [x] (-array-from x nil    identity))
+(defn int-array     [x] (-array-from x 0      identity))
+(defn long-array    [x] (-array-from x 0      identity))
+(defn double-array  [x] (-array-from x 0.0    identity))
+(defn float-array   [x] (-array-from x 0.0    identity))
+(defn short-array   [x] (-array-from x 0      -to-short))
+(defn byte-array    [x] (-array-from x 0      -to-byte))
+(defn char-array    [x] (-array-from x \space char))
+(defn boolean-array [x] (-array-from x false  boolean))
+
+(defn make-array
+  "Allocate an array. The `type` arg is accepted but ignored (cljw arrays are
+  type-erased, AD-019). Multi-dim builds nested arrays."
+  ([type len] (rt/__array-make len nil))
+  ([type d & more]
+   (let [a (rt/__array-make d nil)]
+     (dotimes [i d] (aset a i (apply make-array type more)))
+     a)))
+
+(defn to-array
+  "coll → an array of its elements (clj returns Object[])."
+  [coll] (-array-from (vec coll) nil identity))
+
+(defn into-array
+  "coll → array; the optional leading `type` is accepted and ignored."
+  ([coll] (to-array coll))
+  ([type coll] (to-array coll)))
+
+;; aset-* typed setters. clj coerces the value to the element type; cljw applies
+;; only the value-changing modular wraps (byte/short/char), the rest are aset.
+(defn aset-int     [a i v] (aset a i v))
+(defn aset-long    [a i v] (aset a i v))
+(defn aset-float   [a i v] (aset a i v))
+(defn aset-double  [a i v] (aset a i v))
+(defn aset-boolean [a i v] (aset a i (boolean v)))
+(defn aset-byte    [a i v] (aset a i (-to-byte v)))
+(defn aset-short   [a i v] (aset a i (-to-short v)))
+(defn aset-char    [a i v] (aset a i (char v)))
+
+(defmacro amap
+  "Like clojure.core/amap: map `expr` over array `a`, binding each index to
+  `idx` and `a` to `ret` (a clone being mutated)."
+  [a idx ret expr]
+  `(let [a# ~a
+         ~ret (aclone a#)]
+     (dotimes [~idx (alength a#)]
+       (aset ~ret ~idx ~expr))
+     ~ret))
+
+(defmacro areduce
+  "Like clojure.core/areduce: reduce over array `a`, `ret` accumulating from
+  `init`, `idx` the current index."
+  [a idx ret init expr]
+  `(let [a# ~a]
+     (loop [~idx 0 ~ret ~init]
+       (if (< ~idx (alength a#))
+         (recur (inc ~idx) ~expr)
+         ~ret))))

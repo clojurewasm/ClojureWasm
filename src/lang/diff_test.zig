@@ -574,6 +574,19 @@ test "diff: row 7.7 reduce via IReduce -reduce fast-path" {
     , 42);
 }
 
+test "diff: Java array aset/aget + seq (ADR-0105)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // Arrays are plain primitives (no new Node), so both backends invoke the
+    // same BuiltinFn — this case locks that aset's in-place mutation + the
+    // array-as-Seqable reduce path agree on TreeWalk and VM.
+    try f.check(
+        \\(let* [a (rt/__array-make 3 0)]
+        \\  (aset a 0 10) (aset a 1 20) (aset a 2 12)
+        \\  (reduce + a))
+    , 42);
+}
+
 test "diff: deftype mutable field set! + live read-after-write (ADR-0104)" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

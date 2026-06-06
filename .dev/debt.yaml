@@ -9,6 +9,19 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-290"
+    status: "deferred (Phase 16 owner) - opened 2026-06-07 by ADR-0105. cljw byte-array is a type-erased []Value (one Value per byte). A packed []u8 representation (a distinct ByteArray heap kind) is the likely finished form ONCE Phase 16 (Wasm linear memory / binary I/O / digest / charset) needs a contiguous byte buffer to @memcpy against - the Devil-advocate fork recommended it. DEFERRED per F-003 (decision-deferral on structural plans): whether byte-array is the Phase-16 binary vehicle or a dedicated WasmMemory/ByteBuffer host object is (JVM: byte-array != java.nio.ByteBuffer) is an unmade Phase-16 structural decision. Seizing packed bytes now risks building byte-only packing Phase 16 unwinds. The current []Value byte-array is fully F-011-equivalent (byte WRAP gives [1 2 44]); packing is perf/representation only."
+    category: "interop"
+    barrier: |-
+      **byte-array is []Value, not packed []u8.** Finished-form MAY want a
+      packed ByteArray ([]u8, trace-free, @memcpy-able) for Phase-16 Wasm
+      linear memory / binary I/O / digest / charset. Barrier: the Phase-16
+      Wasm-memory <-> byte-array representation decision is not made (does
+      Phase 16 consume clojure byte-array directly, or a dedicated
+      WasmMemory/ByteBuffer host type?). Dissolves when the Phase-16 binary
+      surface is designed. Until then []Value byte-array is behaviourally
+      correct (F-011, byte wrap). Cross-ref ADR-0105 Alt B, AD-019.
+    last_reviewed: "2026-06-07"
   - id: "D-289"
     status: "now (found 2026-06-07 — probed clojure.data.generators, rung 5) — its top-level `(def ^:dynamic ^java.util.Random *rnd* (java.util.Random. 42))` fails at ns-load with `arity_error: Wrong number of args (1) passed to java.util.Random, expected 0`. The `java.util.Random` surface (`runtime/java/util/Random.zig`) is RESERVATION-ONLY: empty method_table, no `<init>`, no instance methods. `constructInstance` finds the descriptor, sees field_layout=null + no `<init>` in method_table, falls through to the args.len!=0 arity guard → 'expected 0'. The backing seedable PRNG already exists (`runtime/random.zig` `Prng = std.Random.DefaultPrng`). A different capability class from the deftype host-interface stack (D-275→D-286): this is a STATEFUL NATIVE INSTANCE (a mutable PRNG carried in a Value)."
     category: "interop"
@@ -72,7 +85,7 @@ active:
       sibling)."
     last_reviewed: "2026-06-07"
   - id: "D-287"
-    status: "now (found 2026-06-07 — ordered's blocker after D-286a, a NON-deftype/NON-host-interface class) — flatland.ordered.set.clj:84 `Unable to resolve symbol: 'aset'`. `aset` (Java array element set) is unimplemented; ordered uses Java object-arrays + aset/aget/make-array internally for its backing store. This is the Java-array-interop capability, distinct from the deftype host-interface work (D-275→D-286). cljw has no Java arrays as such — would need an array surface (object-array/aset/aget/alength/make-array) backed by a cljw mutable vector or a native array Value."
+    status: "DISCHARGED ADR-0105 (2026-06-07) - Java arrays implemented: type-erased `.array` JavaArray ([]Value, mirror of TypedInstance) + aget/aset/alength/aclone/array? primitives + object-array/int-array/byte-array/make-array/to-array/into-array/aset-*/amap/areduce in core.clj; seqable/indexed/identity-equal; byte/short/char wrap + per-ctor init defaults (F-011); type-erasure = AD-019. flatland.ordered (rung 4b) advanced aset->IEditableCollection; tools.reader (rung 6) aget->Closeable (both new host-interface blockers). ORIGINAL: now (found 2026-06-07 — ordered's blocker after D-286a, a NON-deftype/NON-host-interface class) — flatland.ordered.set.clj:84 `Unable to resolve symbol: 'aset'`. `aset` (Java array element set) is unimplemented; ordered uses Java object-arrays + aset/aget/make-array internally for its backing store. This is the Java-array-interop capability, distinct from the deftype host-interface work (D-275→D-286). cljw has no Java arrays as such — would need an array surface (object-array/aset/aget/alength/make-array) backed by a cljw mutable vector or a native array Value."
     category: "interop"
     barrier: |-
       **Java array ops (aset/aget/make-array/object-array/alength) are absent.** A
