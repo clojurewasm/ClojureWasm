@@ -9,6 +9,27 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-275"
+    status: "now (campaign Stage 1.3 — first real-lib blocker, 2026-06-06) — `deftype`/`reify` cannot name a HOST supertype/interface in the impl-spec position: `(deftype Foo [x] Object (toString [this] …))` and `(reify Object …)` / `(deftype Bar [x] clojure.lang.IDeref (deref …))` all raise name_error 'Unable to resolve symbol: Object' (the analyzer resolves the interface-position symbol as a Var). Surfaced by loading `clojure.data.priority-map` via deps.edn (git fetch worked end-to-end; require reached priority_map.clj:266 `Object`)."
+    category: "polymorphism"
+    barrier: |-
+      **`deftype`/`reify` interface-position host types (`Object`, `clojure.lang.*`)
+      do not resolve.** clj's `deftype`/`reify` accept interface/protocol names in
+      the method-spec position; `Object` is special (the universal supertype for
+      `toString`/`equals`/`hashCode` impls) and `clojure.lang.IDeref`/`Seqable`/…
+      are the host interfaces collection libs implement. cljw's deftype lowering
+      (ADR-0066 macro) analyzes that position as a symbol to resolve against the
+      env → name_error for any non-Var name. This blocks a large class of real
+      libraries (every `(deftype … Object (toString …))` collection type:
+      priority-map, ordered, many data structures). Fix: the deftype/reify
+      analyzer recognises `Object` (map `toString`/`equals`/`hashCode` onto cljw's
+      print/equal/hash surface) + the cljw-native `clojure.lang.*` protocol
+      interfaces (route to the existing protocol dispatch), rather than resolving
+      them as Vars. Sizable (analyzer + deftype lowering + the Object→native-method
+      mapping). Cross-ref D-232 (frontier mention), ADR-0066 (deftype macro),
+      AD-003 (class simple-name), F-011. recall: the ladder drive (docs/works) —
+      this is the head blocker for the deftype-heavy rungs."
+    last_reviewed: "2026-06-06"
   - id: "D-274"
     status: "deferred (ADR-0101 Shape C insight, 2026-06-06) — deps.edn `:git/url` resolution is host-bound: it spawns `git` (slice 5, `git_fetch.zig`). The wasm/edge horizon (F-010/F-012, cw's differentiator) cannot spawn a subprocess, so a `git`-free alternative is eventually needed: fetch a source tarball (`…/archive/<sha>.tar.gz`) over an HTTP client into the same content-addressed cache. NOT built now — it adds a new outbound-HTTP-client capability + per-forge URL knowledge that `git clone` handles uniformly; the host-bound path serves the POSIX-host case first."
     category: "scope"
