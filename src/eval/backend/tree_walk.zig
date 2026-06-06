@@ -1025,6 +1025,12 @@ pub fn treeWalkCall(
         // (#{…} x) / ([…] i). Routes through the same dispatch so the VM,
         // `apply`, and `(map :k coll)` all get it for free.
         .keyword, .symbol, .array_map, .hash_map, .hash_set, .vector, .sorted_map, .sorted_set => lookup_mod.invoke(rt, env, callee, args, loc),
+        // Var-as-IFn (D-231): a runtime `.var_ref` Value (from `#'f` /
+        // `(var f)` / `(resolve 'f)`) in call position derefs to its current
+        // value (thread binding else root) and re-dispatches — clj's Var IFn
+        // delegation. This is the `((resolve 'f) args)` path nREPL/cider eval
+        // rides. A var holding a non-fn falls through to value_not_callable.
+        .var_ref => treeWalkCall(rt, env, callee.decodePtr(*const Var).deref(), args, loc),
         else => |t| error_catalog.raise(.value_not_callable, loc, .{ .actual = @tagName(t) }),
     };
 }

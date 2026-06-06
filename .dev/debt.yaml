@@ -1707,7 +1707,7 @@ active:
     quality_floor: "validation-campaign: run upstream/real clojure.test suites + clojuredocs differential; fix each gap"
     last_reviewed: "2026-06-03"
   - id: "D-231"
-    status: "now (found 2026-06-03 during D-230 sweep) — a `.var_ref` Value is not callable (Var-as-IFn missing)."
+    status: "DISCHARGED 2026-06-06 (campaign Stage 1.1) — Var-as-IFn landed: a runtime `.var_ref` callee in `treeWalkCall` derefs (var-get: thread binding else root) and re-dispatches, mirroring clj's Var IFn delegation. `((var inc) 5)`→6, `((resolve 'inc) 5)`→6, `(apply #'+ [1 2 3])`→6, `((resolve 'map) inc […])`→lazy all green. Shared `vt.callFn` path so VM gets it free (--compare OK; diff_test `var-as-IFn`). 4 e2e in phase14_var_special. Unblocks the `((resolve sym) args)` nREPL/cider eval pattern. A var holding a non-fn falls through to value_not_callable (correct)."
     category: "scope"
     barrier: |-
       **A Var value is not callable.** `((ns-resolve 'clojure.core 'inc) 4)` /

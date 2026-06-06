@@ -36,4 +36,12 @@ assert_last 'var_reader'    '(def x 5) #'"'"'x'          "#'user/x"
 assert_last 'var_deref'     '(def x 5) (deref (var x))' '5'
 assert_last 'var_deref_at'  '(def x 5) @#'"'"'x'         '5'
 
+# --- var-as-IFn (D-231): a var_ref Value in call position derefs to its
+#     value and invokes it — the (#'f args) / ((resolve 'f) args) pattern
+#     reliable nREPL/cider eval depends on. clj: a Var implements IFn. ---
+assert_last 'var_ifn_special'  '((var inc) 5)'                        '6'
+assert_last 'var_ifn_resolve'  '((resolve (quote inc)) 5)'           '6'
+assert_last 'var_ifn_apply'    '(apply (var +) [1 2 3])'             '6'
+assert_last 'var_ifn_hof'      '((resolve (quote map)) inc [1 2 3])' '(2 3 4)'
+
 echo "ALL phase14_var_special PASS"

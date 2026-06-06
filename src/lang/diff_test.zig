@@ -426,6 +426,19 @@ test "diff: var special form const-folds to a stable var_ref" {
     try f.check("(do (def diff-vx 7) (deref (var diff-vx)))", 7);
 }
 
+test "diff: var-as-IFn — a var_ref callee derefs and invokes (D-231)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // D-231: a runtime `.var_ref` Value in call position derefs to its value
+    // and re-dispatches. Both backends route runtime calls through the shared
+    // `treeWalkCall` (rt.vtable.callFn), so the `.var_ref` arm covers VM too.
+    // Primitive-only (var/let*/inc) — the Fixture is a minimal env with no
+    // core.clj, so `resolve`/`apply` (.clj-level) are exercised by the e2e
+    // (phase14_var_special) + the --compare CLI instead.
+    try f.check("((var inc) 5)", 6);
+    try f.check("(let* [v (var inc)] (v 9))", 10);
+}
+
 test "diff: ^meta on def target reaches Var.meta" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
