@@ -1,0 +1,169 @@
+# Convergence Campaign — drive cw v1 to feature-convergence (autonomous)
+
+> **Status**: opened 2026-06-06 (seeded by a light state scan; the inventory
+> itself is Stage 0 work, NOT yet done). Supersedes the handover's prior
+> "open Phase B" resume target — Phase B (concurrency) is now **one ordered
+> item inside this campaign** (Stage 1.7), not the immediate next unit.
+>
+> **This file is a DRIVING procedure, not a finished inventory.** Every Stage
+> exit is a *mechanical predicate* (a script result or a count), so the
+> autonomous loop self-advances with **no user touchpoint**. Where a design
+> choice surfaces, the loop drafts+accepts an ADR inline (CLAUDE.md § ADR-level
+> designs are handled inline); where a clj divergence surfaces, it is bug→fix
+> OR `AD-NNN` (never floating). The ONLY user-owned items are F-NNN amendments
+> and the 3 deferred CFP actions — both OUT of campaign scope.
+
+## Goal (the convergence definition)
+
+cw v1 is "converged" when all four hold, each mechanically checkable:
+
+1. **No v0→v1 functional regression** — every v0 bundled namespace / CLI
+   feature is either present in v1 or has a debt row with a live barrier
+   (`.dev/v0_v1_feature_parity.md`, built in Stage 0.2, has zero un-rowed
+   MISSING entries).
+2. **The true-remaining inventory is complete and honest** — `debt.yaml` has
+   no stale defer, no over-claim (anti-D-177), no dup; every gap the sweeps
+   found has a row (Stage 0.4).
+3. **Real-world pure-Clojure libraries load** — `docs/works/` (F-010) records
+   a ranked ladder of actual libraries `require`'d on cljw with pass/fail +
+   the blocking gap (Stage 0.5 seeds it; Stage 1.3 drives it up).
+4. **Every SSOT reference chain is intact** — the Final Stage wiring audit
+   passes (no orphan / dangling / contradictory cross-reference).
+
+---
+
+## Stage 0 — Inventory & SSOT rebuild (FIRST; all mechanical, all regenerable)
+
+Do these before any feature work. Each produces or refreshes an SSOT.
+
+- **0.1 clojure.core coverage** — re-run `.dev/core_coverage_gaps.md`'s regen
+  recipe (bb `ns-publics` ~647 diffed against cljw's var set). Output: the
+  refreshed missing-var list. Confirm each "missing" with a real `cljw -e`
+  probe (the recipe's false-positive caveat).
+- **0.2 v0→v1 feature parity** — NEW file `.dev/v0_v1_feature_parity.md`.
+  Enumerate every `~/Documents/MyProducts/ClojureWasm/src/lang/lib/*.zig`
+  bundled namespace + `src/app/*` feature, map to v1 status
+  (present / partial / MISSING + debt-row id). **Seed (this scan's findings —
+  verify + complete in Stage 0.2, do not trust blindly):** MISSING in v1 =
+  `clojure.spec.alpha` + `clojure.spec.gen.alpha`, `clojure.core.reducers`,
+  `clojure.core.protocols`, `clojure.datafy`, `clojure.instant`,
+  `clojure.java.io` / `.shell` / `.process` / `.browse`, `clojure.main`,
+  `clojure.repl` + `clojure.repl.deps` (`add-lib!`), `clojure.stacktrace`,
+  `clojure.template`, `clojure.test.tap`, `clojure.uuid` (ns form),
+  `clojure.xml`; **app**: `deps.edn` resolution (`deps.zig`), project
+  scaffolding. v1-only additions (reverse direction) are OUT of scope.
+- **0.3 Java-handling scope** — rebuild `compat_tiers.yaml` as the authoritative
+  "how far we handle Java" SSOT. v1 currently has only 22 Tier-A rows; v0's
+  compat_tiers + ADR-0013 carried the full A/B/C/D classification. Mine v0's
+  compat_tiers + the `clojure.java.*` libs + the `java.*` classes real
+  libraries touch; classify each Java class A/B/C/D with the cw-native
+  alternative for C/D. This is the SSOT the lib-compat ladder (0.5/1.3) reads
+  to decide "this lib needs `java.io.File` → Tier?".
+- **0.4 Debt de-stale + defer re-eval** — run the `audit_scaffolding` 5-lens +
+  the anti-D-177 over-claim check on EVERY `debt.yaml` row (131 active):
+  re-evaluate each `blocked-by` / `Phase N target` / `deferred` predicate (flip
+  if the barrier dissolved), DELETE any row whose discharge text is a lie
+  (corpus/code does not back it), consolidate dups (e.g. this session's
+  Unicode-case row that duplicated the re-opened D-057 — caught + folded).
+  Output: an honest debt set + a count delta in the commit.
+- **0.5 Real-world lib ladder** — create + populate `docs/works/` (F-010,
+  currently empty). Rank candidate libraries by **pure-Clojure degree** (zero
+  Java interop first), `require` each via the Stage-1.2 deps path (or `-cp`
+  until then), record `{lib, version, status, blocking-gap-row}`. Seed the
+  ladder head with small pure-Clojure libs (e.g. data/edn/string utilities);
+  the FIRST real Java-interop blocker each lib hits becomes a debt row read
+  against the Stage-0.3 Java tier SSOT.
+
+**Stage 0 exit (mechanical):** all five SSOTs regenerated this campaign;
+`.dev/v0_v1_feature_parity.md` exists with zero un-rowed MISSING; `debt.yaml`
+passes `audit_scaffolding` with zero over-claim/dup finding; `docs/works/` is
+non-empty. The unified, dependency-sorted work-list for Stage 1 is materialized
+from this data (the loop derives the order; it is NOT hand-fixed here).
+
+---
+
+## Stage 1 — Blocker-free ordered execution (autonomous)
+
+The order below is the **seed**; the loop re-derives the true topological order
+from Stage 0's data so that **every item's prerequisites land before it** (no
+item blocks on a later one). Each item runs the standard per-task TDD loop
+(CLAUDE.md § Autonomous Workflow): corpus- or e2e-backed, gate-green, committed.
+The loop self-selects the next item by the order — **no user touchpoint**.
+
+1. **`resolve`-in-stdin regression** — `(resolve 'map)` returns nil via
+   `cljw -` (stdin) but `#'clojure.core/map` via `-e`. Blocks reliable
+   nREPL/cider eval. Fix first (small; the stdin eval path's ns/resolution
+   setup differs from `-e`).
+2. **deps.edn source resolution** — re-derive v0's `deps.zig` cljw-clean
+   (`no_copy_from_v1`): `:paths` / `:deps` (`:local/root`, `:git/url`+`:git/sha`)
+   / `:aliases` / `-A:alias`. NO Maven/Clojars JAR (source-only, matching v0).
+   Unblocks the real-world lib ladder.
+3. **Real-world lib ladder drive** — push `docs/works/` up the pure-Clojure
+   ranking; each new lib's first blocker spawns a fix (folds into the relevant
+   item below). This is the campaign's *coverage engine* — it surfaces the
+   highest-value missing pieces empirically, not by guessing.
+4. **Native `cljw.nrepl` cider ops** — prerequisite: **populate built-in var
+   metadata** (`:doc` / `:arglists` on core vars; `(meta (var map))` is nil
+   today — generate from `compat_tiers.yaml` / JVM source). Then implement
+   `info` / `complete` (uses `ns-publics`, already works) / `eldoc` /
+   `load-file` as native ops against cljw's own var tables (more tractable than
+   JVM cider-nrepl, which is `clojure.reflect` / `tools.namespace`-coupled).
+   Also close nREPL `*out*`/`*err*` per-session capture (D-118).
+5. **v0→v1 bundled-lib backfill** — the Stage-0.2 MISSING list, in
+   pure-Clojure-degree order: `clojure.repl` (+`repl.deps` `add-lib!`) /
+   `clojure.template` / `clojure.stacktrace` / `clojure.uuid` ns /
+   `clojure.instant` / `clojure.spec.alpha`(+gen) / `clojure.core.reducers` /
+   `clojure.datafy` / `clojure.java.io`+`.shell` (gated on the Stage-0.3 Java
+   tier decision) / `clojure.xml` / `clojure.test.tap` / `clojure.main`.
+6. **clj-parity sizable remainder** — D-057 Unicode case-fold (table or AD),
+   D-270 Java primitive arrays, D-086 record `__extmap` (F-003 structural),
+   re-matcher/re-groups, D-266 lazy-seq perf, D-267 `%c`, D-271 with-meta range.
+7. **Phase B — concurrency (ADR-0090)** — real threading + GC root-publication
+   handshake + STM engine + agent/locking + dynamic-binding conveyance. The
+   structural phase; design is done (ADR-0090). Opened here (late in the order)
+   per F-003 + the fresh-context discipline — OR earlier if a Stage-1.3 lib
+   forces real threading (the loop promotes it then). `future`/`promise`/`pmap`
+   stop being synchronous when this lands.
+
+---
+
+## Final Stage — Wiring & reference-chain audit (LAST; mechanical)
+
+Run after Stage 1 converges. A graph audit that every SSOT cross-reference and
+every code dependency edge is intact:
+
+- **`@import` zone graph** — `scripts/zone_check.sh --gate` (no upward imports;
+  baseline 0).
+- **SSOT cross-reference integrity** — every `D-NNN` / `AD-NNN` / `O-NNN` /
+  `ADR-NNNN` / `F-NNN` / corpus-name / `compat_tiers` fqcn referenced in code
+  comments, debt, ADRs, rules RESOLVES to a defined node (`check_debt_id_refs`
+  extended to all ledger ID classes; add a cross-ref check if absent).
+- **marker ↔ ledger sync** — `PROVISIONAL:` ↔ `feature_deps.yaml` + debt
+  (`check_provisional_sync`); `PERF:` ↔ `optimizations.md`; `GC-ROOT:` ↔
+  `gc_rooting.md`; every marker has a live ledger row and vice-versa.
+- **aspirational-rule check** — every `.claude/rules/*.md` that declares an
+  enforcement has a backing script (the zwasm `audit_table_sync` pattern); a
+  rule promising a gate with no script is a finding.
+- **dangling/contradiction sweep** — a fact stated once (a tier, an F-NNN
+  invariant, a divergence) is referenced consistently everywhere; no node is
+  orphaned (defined, never referenced) or contradicted (two SSOTs disagree).
+
+**Final exit:** all of the above are scripts in `test/run_all.sh` (or run
+clean on demand), and the audit produces zero finding. The reference chain is
+then self-verifying for every future session.
+
+---
+
+## Autonomy contract (the "no user intervention" guarantee)
+
+- Every Stage/item exit is a **mechanical predicate** (script exit, count,
+  corpus-green) — never a judgment call that pauses for input.
+- A surfaced **design choice** → inline ADR (draft+accept, DA fork at depth ≥ 2).
+  A surfaced **clj divergence** → bug-fix OR `AD-NNN`. A surfaced **structural
+  plan** → deferred to its owning item with a debt row (F-003).
+- The loop **self-selects** the next item from the Stage-0-derived order. The
+  phrases "ask the user / awaiting / which should I do next" are forbidden
+  (CLAUDE.md § The only stop — Direction-ask smell).
+- User-owned exceptions (do NOT attempt; surface only): F-NNN amendments; the
+  3 deferred CFP actions (`DEFERRED_USER_ACTIONS.md`); `.claude/rules/*` edits
+  (permission-blocked).

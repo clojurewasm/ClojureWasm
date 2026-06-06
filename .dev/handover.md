@@ -7,11 +7,17 @@
 
 - **HEAD**: see `git log` (Phase-C library gap-hunt exhausted this session — ~16
   clj-parity fixes landed + corpus-backed + audited; see § Phase C below).
-- **First commit on resume MUST be**: **open Phase B (concurrency) per ADR-0090**
-  — the §7-redesign-vs-Zig-0.16 concurrency-mechanism design comes FIRST, then
-  STM-txn / agent / locking / real-threading / Thread+arrays (F-004) / *out*·in·err
-  (D-238) / reflection. Phase-B reading list: ADR-0089 (A→B→C re-cut) + ADR-0090,
-  ROADMAP §7 + §9 Phase-B placeholder, project_facts F-004, debt D-242/244/245/246.
+- **First commit on resume MUST be**: **execute the Convergence Campaign
+  Stage 0** (`.dev/convergence_campaign.md`) — inventory & SSOT rebuild:
+  (0.1) refresh `core_coverage_gaps.md`; (0.2) NEW `v0_v1_feature_parity.md`
+  (v0 bundled-lib / CLI feature → v1 status; seed list in the campaign);
+  (0.3) rebuild `compat_tiers.yaml` Java tier scope; (0.4) de-stale + defer
+  re-eval EVERY debt row (anti-D-177 over-claim + dup sweep); (0.5) populate
+  `docs/works/` real-world pure-Clojure lib ladder. Then Stage 1 runs the
+  blocker-free ordered execution autonomously (resolve-stdin fix → deps.edn →
+  lib ladder → native cljw cider ops → v0-lib backfill → clj-parity sizable →
+  **Phase B concurrency = Stage 1.7**), ending with the wiring/reference-chain
+  audit (Final Stage). The campaign is the SSOT; Phase B is one ordered item in it.
 - **⚠ USER must act (time-sensitive, NOT AI-doable)**: see
   `private/clojure_conj_2026_cfp/DEFERRED_USER_ACTIONS.md` — (1) Sessionize submit
   by 6/13 (`SUBMIT_READY.md` copy-paste ready); (2) v0.1.0 tag/Release + make
@@ -61,8 +67,8 @@ a raw range; re-matcher/re-groups; **D-258** dormant agent torture flake (D-244 
 
 ## Cold-start reading order (tracked-only)
 
-handover → **`.dev/decisions/0090_phase_b_concurrency_redesign.md`** +
-**`0089_recut_concurrency_and_drift_methods.md`** → ROADMAP §7 (concurrency) + §9
-Phase-B placeholder → `.dev/project_facts.md` F-004 (NaN-box arrays) / F-006 (GC) →
-debt.yaml D-242/244/245/246 → CLAUDE.md (§ Project spirit + The only stop) →
-`.dev/principle.md`.
+handover → **`.dev/convergence_campaign.md`** (the driving SSOT/procedure) →
+`.dev/core_coverage_gaps.md` (D-158 var map) + `.dev/debt.yaml` (131 active) +
+`compat_tiers.yaml` (Java tier scope) → ADR-0090 (Phase-B concurrency, = campaign
+Stage 1.7) + ADR-0089 → `.dev/project_facts.md` F-004/F-006 → CLAUDE.md
+(§ Project spirit + The only stop) → `.dev/principle.md`.
