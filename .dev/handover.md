@@ -5,29 +5,30 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log`. This session landed: the **F-013 + ADR-0102 structural
-  framework** (the 個別最適化-entry close: `host_interfaces.yaml` closed-set SSOT +
-  `src/runtime/host_interface.zig` single read point + G4 `check_host_interface.sh`
-  gate w/ set-bound + route-soundness) + **D-275/D-279/D-280 — the ENTIRE
-  `clojure.lang.*` deftype/reify host-supertype family modeled & proven**
-  (Object toString/equals/hashCode/hasheq/equiv, ILookup, IPersistentMap
-  multi-target, IPersistentStack, IHashEq, IFn, IObj, Reversible, Sorted, markers +
-  method arity-overload). D-280e: the real `(require 'clojure.data.priority-map)`
-  now advances 266→374 (past all clojure.lang.*).
-- **First commit on resume MUST be**: **D-282** — ship the bundled
-  `clojure.core.protocols` ns (CollReduce / IKVReduce / Datafiable / Navigable) under
-  `src/lang/clj/clojure/`, wiring its protocol methods to cljw's reduce / kv-reduce
-  surface (`-reduce` exists). It is ABSENT today (`require` → "Could not locate"); it
-  is the gating blocker for priority-map's `clojure.core.protocols/IKVReduce` AND for
-  reducers/datafy libs broadly (high reuse — F-013). Once it exists, IKVReduce
-  resolves through the ordinary protocol-Var path (no host-interface remap). Sibling
-  blocker **D-281** (priority-map's `java.util.Map`/`java.lang.Iterable` deftype
-  supertypes — a java host-interface family via the same ADR-0102 mechanism; java.util.Map
-  methods are no-JVM-inert per ADR-0059). Then Stage 1 continues: 1.4 native cider ops →
-  1.5 v0→v1 backfill (D-273) → 1.6 clj-parity → 1.7 Phase B hardening (D-242). The
-  campaign (`.dev/convergence_campaign.md`) is the SSOT. FUNCTIONAL follow-up cluster
-  (post-load): IFn call-path, meta/with-meta consult, find/-entry-at, subseq/Sorted-nav,
-  cross-type equiv (D-280d8).
+- **HEAD**: see `git log`. This session built the **deftype/reify host-interface
+  capability end-to-end** and drove `clojure.data.priority-map` from name_error to
+  **FULLY FUNCTIONAL** (ladder rung 4): F-013 + ADR-0102/0103 (closed-set
+  `host_interfaces.yaml` SSOT + `host_interface.zig` single read point + G4 gate =
+  the 個別最適化-entry structural close) · D-275/D-279/D-280 (the whole clojure.lang.*
+  family + arity-overload + IFn-call-path + IObj-meta consults) · D-281 (java.util.Map/
+  Iterable host_inert) · D-282 (clojure.core.protocols ns) · D-283 (clj-name `.method`
+  dot-calls) · D-284 (`(MapEntry. …)`→2-vec) · D-285 (keys/vals seq-derivation).
+  `(priority-map :a 3 :b 1 :c 2)` → peek=[:b 1], count=3, keys=(:b :c :a).
+- **First commit on resume MUST be**: probe the **next `docs/works/ladder.md` rung**
+  — the deftype host-interface capability (D-280/D-281) + clojure.core.protocols
+  (D-282) likely unblock other deftype-heavy / reducer libs, so re-probe the
+  not-probed rungs (e.g. clojure.data.generators, clojure.tools.reader) via `-cp`
+  on `~/Documents/OSS/clojure-corpus/…` and record load/fail + the FIRST blocker as
+  a debt row (the campaign Stage 1.3 ladder-drive loop). Pick the lowest-pure-degree
+  not-probed rung first. Then Stage 1 continues: 1.4 native cider ops → 1.5 v0→v1
+  backfill (D-273) → 1.6 clj-parity → 1.7 Phase B hardening (D-242). The campaign
+  (`.dev/convergence_campaign.md`) is the SSOT.
+- **Deftype host-interface FUNCTIONAL residuals** (open debt, NOT load blockers —
+  pick up if a probed lib needs them): cross-type `(= deftype-map native-map)`
+  (D-280d8, valueEqual pre-tag-gate consult) · find/`-entry-at` consult ·
+  subseq/rsubseq Sorted-nav consult · reduce-kv→IKVReduce / reduce→CollReduce
+  wiring (D-282 functional) · reify protocol_remap (expandReify lacks the
+  rewriteProtocolRemap path; deftype is the proven path).
 - **⚠ USER must act (time-sensitive, NOT AI-doable)**: see
   `private/clojure_conj_2026_cfp/DEFERRED_USER_ACTIONS.md` — (1) Sessionize submit
   by 6/13 (`SUBMIT_READY.md` copy-paste ready); (2) v0.1.0 tag/Release + make
@@ -45,11 +46,13 @@
   "make this lib pass". The 個別最適化 entry is closed structurally — a closed-set
   SSOT (`host_interfaces.yaml`) + a single read point + a G4 gate (set-bound +
   route-soundness), not vigilance.
-- **D-275 → D-280 (a/b/c + d1/d1b/d2/d3/d4/d5/d6/d7/d8) + D-279**: the whole
-  `clojure.lang.*` deftype/reify host-supertype family is modeled via that
-  mechanism (macro rewrite to bare cljw protocol sections + Object method-family
-  + multi-arity), gate-green throughout, and PROVEN end-to-end — the real
-  priority-map `(require)` advances 266→374. 23 e2e cases (phase14_deftype_object).
+- **D-275 → D-285** (+ D-279, ADR-0103): the whole deftype/reify host-interface
+  stack — clojure.lang.* family (macro rewrite to bare cljw protocol sections +
+  Object method-family + arity-overload + IFn-call-path + IObj-meta), java.util.*
+  host_inert, clojure.core.protocols ns, clj-name dot-calls, MapEntry ctor,
+  keys/vals seq-derivation — gate-green throughout. PROVEN end-to-end: real
+  `clojure.data.priority-map` is **FULLY FUNCTIONAL** (peek/count/keys/vals/assoc).
+  30 e2e cases (phase14_deftype_object).
 
 ## Process discipline (SSOT = memory + rules; do NOT re-expand here)
 
