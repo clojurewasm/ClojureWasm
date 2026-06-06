@@ -2469,6 +2469,30 @@ fn expandDeftype(
     return lowerDefType(arena, rt, args, loc, "__deftype!");
 }
 
+/// True iff a deftype/defrecord field symbol carries `^:unsynchronized-mutable`
+/// or `^:volatile-mutable` reader metadata. The two keywords are unified into a
+/// single "assignable" flag while the runtime is single-threaded (ADR-0104,
+/// AD-018); the cross-thread visibility distinction is dormant until Phase 15+.
+/// A `^long`/primitive type hint alongside (`^:unsynchronized-mutable ^long
+/// s-pos`) is ignored (AD-017; NaN-box uniform Value slot).
+fn fieldIsMutable(field_form: Form) bool {
+    const m = field_form.meta orelse return false;
+    if (m.data != .map) return false;
+    const kvs = m.data.map;
+    var i: usize = 0;
+    while (i + 1 < kvs.len) : (i += 2) {
+        if (kvs[i].data != .keyword) continue;
+        const kn = kvs[i].data.keyword.name;
+        if (std.mem.eql(u8, kn, "unsynchronized-mutable") or
+            std.mem.eql(u8, kn, "volatile-mutable"))
+        {
+            const v = kvs[i + 1];
+            return if (v.data == .boolean) v.data.boolean else true;
+        }
+    }
+    return false;
+}
+
 /// Bring a defrecord/deftype's declared fields into scope as implicit locals
 /// inside a protocol method body (D-202 gap 1), matching Clojure: a method
 /// `(m [this] (* v 2))` sees the bare field `v` without an explicit
@@ -2564,6 +2588,11 @@ fn lowerDefType(
     for (fields_in, 0..) |field_form, i| {
         if (field_form.data != .symbol or field_form.data.symbol.ns != null)
             return error_catalog.raise(.defrecord_field_invalid, field_form.location, .{});
+        // clj parity: records forbid mutable fields (core_deftype.clj:165-166).
+        if (comptime std.mem.eql(u8, ctor_prim, "__defrecord!")) {
+            if (fieldIsMutable(field_form))
+                return error_catalog.raise(.defrecord_mutable_field, field_form.location, .{});
+        }
         var q = try arena.alloc(Form, 2);
         q[0] = sym("quote", loc);
         q[1] = field_form;
