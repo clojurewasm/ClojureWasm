@@ -4,15 +4,8 @@
   "model": "claude-opus-4-8",
   "permissions": {
     "additionalDirectories": [
-      "~/Documents/MyProducts/ClojureWasm",
-      "~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref",
-      "~/Documents/OSS/clojure",
-      "~/Documents/OSS/babashka",
-      "~/Documents/OSS/zig",
-      "~/Documents/OSS/spec.alpha",
-      "~/Documents/OSS/wasmtime",
-      "~/Documents/OSS/malli",
-      "~/Documents/OSS/mattpocock_skills"
+      "~/Documents/MyProducts/",
+      "~/Documents/OSS/"
     ],
     "allow": [
       "Agent",
