@@ -85,6 +85,11 @@ const JAVA_LANG_ITERABLE: HostInterface = .{ .kind = .host_inert, .canonical = "
 const JAVA_UTIL_SET: HostInterface = .{ .kind = .host_inert, .canonical = "java.util.Set" };
 const JAVA_UTIL_LIST: HostInterface = .{ .kind = .host_inert, .canonical = "java.util.List" };
 const JAVA_UTIL_COLLECTION: HostInterface = .{ .kind = .host_inert, .canonical = "java.util.Collection" };
+// java.io.Closeable (D-291): tools.reader's InputStreamReader declares it +
+// implements `(close [this] (.close is))`. host_inert accepts the close-with-body
+// (the guard at protocol.zig:229 skips host_inert) and never dispatches it; the
+// `.close`/`.read` on the wrapped InputStream resolve at EVAL, so the deftype loads.
+const JAVA_IO_CLOSEABLE: HostInterface = .{ .kind = .host_inert, .canonical = "java.io.Closeable" };
 
 // protocol_remap interfaces (D-280b+): the macro rewrites each declared method to
 // its cljw (protocol, method) target. ILookup's valAt → ILookup/-lookup (a 3-arity
@@ -194,6 +199,10 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "java.util.List", JAVA_UTIL_LIST },
     .{ "Collection", JAVA_UTIL_COLLECTION },
     .{ "java.util.Collection", JAVA_UTIL_COLLECTION },
+    // java.io.Closeable (D-291): bare `Closeable` (tools.reader writes it bare) +
+    // the qualified canonical. Inert — close-with-body accepted, never dispatched.
+    .{ "Closeable", JAVA_IO_CLOSEABLE },
+    .{ "java.io.Closeable", JAVA_IO_CLOSEABLE },
 });
 
 /// True when `name` is a quote-wrap marker (method_family or zero-method marker)

@@ -125,6 +125,14 @@ interfaces:
     recognised: true
     kind: host_inert
     methods: {}
+  - name: java.io.Closeable
+    aliases: [Closeable]
+    derives_from: "java.io.Closeable — java-interop resource-close compat; recognised-but-inert (no JVM dispatch, ADR-0059/ADR-0103). clojure.tools.reader InputStreamReader declares it bare (`Closeable`, reader_types.clj:75) + implements `(close [this] (.close is))`."
+    tier: A
+    recognised: true
+    kind: host_inert
+    note: "close-with-body is accepted-and-recorded but never dispatched (host_inert skips the unwired-method guard, protocol.zig:229); the `.close`/`.read` on the wrapped InputStream resolve at EVAL, so the deftype loads. cljw has no java.io.InputStream dispatch (a separate eval-time gap if a real InputStreamReader is read)."
+    methods: {}
 
 # --- Design caveats discovered driving clojure.data.priority-map (2026-06-07) ---
 # Implementing the rows below requires TWO mechanisms beyond slice-1 recognition,

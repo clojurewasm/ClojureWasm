@@ -9,6 +9,27 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-292"
+    status: "now (found 2026-06-07 - tools.reader rung 6, after D-291). extend-type with MULTIPLE protocol sections fails: `(extend-type T P1 (m1..) P2 (m2..))` raises macroexpand `extend-type method implementation must be a list` at the 2nd protocol symbol. Single-protocol extend-type works; deftype multi-protocol works (priority-map/ordered). expandExtendType does not split on a second protocol head the way the deftype lowering does. reader_types.clj:185 (extend-type java.io.PushbackReader Reader (read-char)(peek-char) IPushbackReader (unread))."
+    category: "polymorphism"
+    barrier: |-
+      **extend-type does not accept multiple protocol sections.** clj allows
+      `(extend-type T P1 m... P2 m...)`; cljw expandExtendType parses one
+      protocol then errors on the next protocol symbol (expects a method-impl
+      list). deftype lowering already splits multi-protocol (D-280); the same
+      section-splitting must be applied to extend-type. Finished-form fix:
+      expandExtendType walks the impl specs, starting a new section at each
+      symbol head (mirroring the deftype path). Cross-ref ladder rung 6
+      (tools.reader), D-280 (deftype multi-protocol precedent).
+    last_reviewed: "2026-06-07"
+  - id: "D-291"
+    status: "DISCHARGED 2026-06-07 (this commit) - java.io.Closeable added to the host_inert family (host_interface.zig + host_interfaces.yaml row, ADR-0103 pattern). tools.reader InputStreamReader/LineNumberingReader declare Closeable + implement (close [this] (.close is)) with a body; host_inert accepts the body (never dispatched, protocol.zig:229 guard skips host_inert). e2e phase14_deftype_object case 32. tools.reader (rung 6) advanced reader_types.clj:75 Closeable -> :185 extend-type multi-protocol (D-292)."
+    category: "polymorphism"
+    barrier: |-
+      DISCHARGED. java.io.Closeable was an unrecognised deftype-supertype
+      marker; now host_inert (recognised, inert) per ADR-0103. G4 gate green
+      (24 recognised subset of 27 rows).
+    last_reviewed: "2026-06-07"
   - id: "D-290"
     status: "deferred (Phase 16 owner) - opened 2026-06-07 by ADR-0105. cljw byte-array is a type-erased []Value (one Value per byte). A packed []u8 representation (a distinct ByteArray heap kind) is the likely finished form ONCE Phase 16 (Wasm linear memory / binary I/O / digest / charset) needs a contiguous byte buffer to @memcpy against - the Devil-advocate fork recommended it. DEFERRED per F-003 (decision-deferral on structural plans): whether byte-array is the Phase-16 binary vehicle or a dedicated WasmMemory/ByteBuffer host object is (JVM: byte-array != java.nio.ByteBuffer) is an unmade Phase-16 structural decision. Seizing packed bytes now risks building byte-only packing Phase 16 unwinds. The current []Value byte-array is fully F-011-equivalent (byte WRAP gives [1 2 44]); packing is perf/representation only."
     category: "interop"

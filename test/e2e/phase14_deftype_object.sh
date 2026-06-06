@@ -475,4 +475,21 @@ if [[ "$last" != "[20 9]" ]]; then
 fi
 echo "PASS bare_ihasheq_java_util_family -> [20 9]"
 
-echo "OK — phase14_deftype_object (31 cases) green"
+# --- Case 32 (D-291): java.io.Closeable host_inert — a deftype declaring it +
+# implementing `(close …)` with a body LOADS (the body is accepted-and-recorded,
+# never dispatched), and the type's real protocol method still works. ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol Reader (rc [r]))
+(deftype SR [s]
+  Reader (rc [this] s)
+  Closeable (close [this] :closed))
+[(rc (->SR :x)) (.close (->SR :y))]
+EOF
+) || fail "case32: non-zero exit ($got)"
+last=$(awk 'END { print }' <<< "$got")
+if [[ "$last" != "[:x :closed]" ]]; then
+    fail "case32: got '$last', want '[:x :closed]'"
+fi
+echo "PASS closeable_host_inert_with_body -> [:x :closed]"
+
+echo "OK — phase14_deftype_object (32 cases) green"
