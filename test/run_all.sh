@@ -491,6 +491,8 @@ run_step "e2e_phase15_campaign_keywords"    "bash test/e2e/phase15_campaign_keyw
 run_step "e2e_phase15_macro_literals"       "bash test/e2e/phase15_macro_literals.sh"
 run_step "e2e_phase15_alias"                "bash test/e2e/phase15_alias.sh"
 run_step "e2e_phase15_aliased_macro"        "bash test/e2e/phase15_aliased_macro.sh"
+run_step "e2e_phase15_dotdot"               "bash test/e2e/phase15_dotdot.sh"
+run_step "e2e_phase15_clojure_template"     "bash test/e2e/phase15_clojure_template.sh"
 run_step "e2e_phase15_with_open"            "bash test/e2e/phase15_with_open.sh"
 run_step "e2e_phase15_defprotocol_docstring" "bash test/e2e/phase15_defprotocol_docstring.sh"
 run_step "e2e_phase15_marker_protocol"      "bash test/e2e/phase15_marker_protocol.sh"

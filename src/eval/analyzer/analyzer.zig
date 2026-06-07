@@ -684,8 +684,10 @@ fn analyzeList(
             if (SPECIAL_FORMS.get(head.name)) |kind| {
                 return analyzeSpecial(arena, rt, env, scope, kind, items, form, macro_table);
             }
-            // 5.12.a: `Name.` (trailing dot) -> constructor call.
-            if (head.name.len >= 2 and head.name[head.name.len - 1] == '.') {
+            // 5.12.a: `Name.` (trailing dot) -> constructor call. Exclude the
+            // exact `..` head — it is the clojure.core threading macro, not a
+            // ctor of class `.` (let it fall through to the macro path).
+            if (head.name.len >= 2 and head.name[head.name.len - 1] == '.' and !std.mem.eql(u8, head.name, "..")) {
                 return try special_forms.analyzeCtorCall(arena, rt, env, scope, head.name[0 .. head.name.len - 1], items[1..], form, macro_table);
             }
             // ADR-0050 am1: `(.-field recv)` -> field-only instance member
@@ -698,7 +700,7 @@ fn analyzeList(
             // access (arity ≥ 1). Member-vs-field resolves at eval from the
             // receiver's descriptor shape (field-first), collapsing the
             // former arity-1-field / arity-≥2-method split into one kind.
-            if (head.name.len >= 2 and head.name[0] == '.' and items.len >= 2) {
+            if (head.name.len >= 2 and head.name[0] == '.' and items.len >= 2 and !std.mem.eql(u8, head.name, "..")) {
                 return try special_forms.analyzeInstanceMember(arena, rt, env, scope, head.name[1..], items[1], items[2..], form, macro_table, false);
             }
             if (STAGED_UNSUPPORTED_FORMS.has(head.name)) {

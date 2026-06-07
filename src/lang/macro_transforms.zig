@@ -89,6 +89,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "comment", .expand = expandComment },
     .{ .name = "assert", .expand = expandAssert },
     .{ .name = "lazy-cat", .expand = expandLazyCat },
+    .{ .name = "..", .expand = expandDotDot },
     .{ .name = "->", .expand = expandThreadFirst },
     .{ .name = "->>", .expand = expandThreadLast },
     .{ .name = "as->", .expand = expandAsThread },
@@ -699,6 +700,27 @@ fn expandThreadLast(
     loc: SourceLocation,
 ) macro_dispatch.ExpandError!Form {
     return threadInto(arena, rt, args, loc, .last);
+}
+
+/// `(.. x form …)` → nested `(. (. x form1) form2 …)` (JVM clojure.core `..`).
+/// Each `form` is a bare member symbol or a `(method args…)` list; the `.`
+/// special form handles both shapes. The analyzer's `.`-prefixed dot-arms
+/// exclude the exact `..` head (analyzer.zig) so it reaches this macro instead
+/// of being misparsed as a `.` member access. Surfaced by honeysql's
+/// `(.. s toString (toUpperCase java.util.Locale/US))`.
+fn expandDotDot(arena: std.mem.Allocator, rt: *Runtime, args: []const Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
+    _ = rt;
+    if (args.len < 2)
+        return error_catalog.raise(.thread_macro_arity_invalid, loc, .{ .op = ".." });
+    var acc = args[0];
+    for (args[1..]) |form| {
+        const items = try arena.alloc(Form, 3);
+        items[0] = sym(".", loc);
+        items[1] = acc;
+        items[2] = form;
+        acc = try list(arena, items, loc);
+    }
+    return acc;
 }
 
 // --- as-> / cond-> / cond->> / some-> / some->> (D-134 threading family) ---
@@ -2109,9 +2131,15 @@ fn expandDefprotocol(
         return error_catalog.raise(.defprotocol_name_invalid, args[0].location, .{});
 
     const name_form = args[0];
-    // Optional protocol-level docstring after the name (clj parity):
-    // `(defprotocol P "doc" (m [a]) …)`. Skip it before reading method sigs.
-    const sig_start: usize = if (args.len > 1 and args[1].data == .string) 2 else 1;
+    // Optional protocol-level docstring, then optional `:keyword value` option
+    // pairs (clj parity): `(defprotocol P "doc" :extend-via-metadata true (m [a])
+    // …)`. Method sigs are lists, options are keywords, so skip a leading string
+    // then consume keyword/value pairs before reading sigs. cljw parses the
+    // options to load the protocol; `:extend-via-metadata` DISPATCH itself is not
+    // yet honored (explicit extend-type/extend-protocol works) — tracked D-314.
+    var sig_start: usize = 1;
+    if (sig_start < args.len and args[sig_start].data == .string) sig_start += 1;
+    while (sig_start + 1 < args.len and args[sig_start].data == .keyword) sig_start += 2;
     const method_sigs = args[sig_start..];
 
     // Collect each method-name Symbol from `(method-name [params])`.

@@ -78,6 +78,9 @@ pub const FILES: []const FileEntry = &.{
     // clojure.core.protocols (D-282) — reduce/datafy protocol surface; require-on-
     // demand (lookupEmbeddedFile), needed by deftypes implementing IKVReduce etc.
     .{ .label = "<clojure.core.protocols>", .source = @embedFile("clj/clojure/core/protocols.clj") },
+    // clojure.template — do-template / apply-template over clojure.walk; loads
+    // after walk (FILES[3]). Surfaced by honeysql's honey.sql require.
+    .{ .label = "<clojure.template>", .source = @embedFile("clj/clojure/template.clj") },
 };
 
 /// First file's source — exposed so `main.zig`'s renderer can fall
@@ -113,6 +116,7 @@ fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
     if (std.mem.eql(u8, ns_name, "clojure.data")) return FILES[12];
     if (std.mem.eql(u8, ns_name, "clojure.math")) return FILES[13];
     if (std.mem.eql(u8, ns_name, "clojure.core.protocols")) return FILES[14];
+    if (std.mem.eql(u8, ns_name, "clojure.template")) return FILES[15];
     return null;
 }
 

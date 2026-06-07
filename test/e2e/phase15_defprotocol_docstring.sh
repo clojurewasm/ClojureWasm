@@ -32,4 +32,14 @@ assert_eq 'marker-docstring-only' \
   "$("$BIN" -e '(defprotocol M "marker only") (satisfies? M 1)' 2>&1 | tail -1)" \
   'false'
 
-echo "OK — phase15_defprotocol_docstring (3 cases) green"
+# keyword-value option pairs after the name (e.g. :extend-via-metadata true,
+# clj 1.10+) are parsed + skipped before the method sigs, so the protocol
+# defines and dispatches normally. (The :extend-via-metadata DISPATCH itself —
+# metadata-based extension — is not yet honored, tracked D-314; explicit
+# extend works, which is what this exercises.) Surfaced by honeysql.
+OPT='(defprotocol Sz :extend-via-metadata true (sz [this] "render")) (defrecord Lit [v] Sz (sz [this] (str "<" v ">")))'
+assert_eq 'option-pair-extend-via-metadata' \
+  "$("$BIN" -e "$OPT [(sz (->Lit 7)) (satisfies? Sz (->Lit 1))]" 2>&1 | tail -1)" \
+  '["<7>" true]'
+
+echo "OK — phase15_defprotocol_docstring (4 cases) green"

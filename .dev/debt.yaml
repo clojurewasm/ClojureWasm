@@ -9,6 +9,19 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-314"
+    status: "now (2026-06-07, honeysql probe) — `defprotocol` `:extend-via-metadata true` DISPATCH unimplemented. The option is now PARSED (expandDefprotocol skips leading `:keyword value` pairs so the protocol loads), but cljw does not consult a receiver's metadata for a `protocol-ns/method` fn when no extend-type/extend-protocol impl matches. Explicit extension works; a value carrying `^{:honey.sql.protocols/sqlize (fn …)}` would hit `protocol_no_satisfies` instead of dispatching. Honest (errors, not a silent wrong answer) but incomplete. Surfaced by honeysql's InlineValue protocol; NOT on honeysql's basic format path (sqlize only inlines custom values)."
+    category: "polymorphism"
+    barrier: |-
+      `:extend-via-metadata true` parsed but metadata-fallback dispatch absent.
+      Implement in dispatch.dispatch's no-impl path: when the protocol descriptor
+      carries the extend-via-metadata flag AND the receiver has metadata with the
+      protocol-ns-qualified method keyword → call that fn. Needs (a) threading the
+      flag from defprotocol → `__make-protocol!` → descriptor, (b) receiver-meta
+      read + qualified-keyword build in dispatch. Cross-ref ADR-0068 (protocol
+      impls SSOT), honeysql verified_projects probe. Not blocking the basic format
+      path; full honeysql verification is blocked on java.util.Locale (separate).
+    last_reviewed: "2026-06-07"
   - id: "D-309"
     status: "DISCHARGED 2026-06-07 (this commit, ADR-0111). deps.edn RUN-MODE landed: `-M:alias` runs the clojure.main mini-grammar in-process (alias `:main-opts` ++ user args APPEND; `-m ns` → `(requiring-resolve 'ns/-main)` + `(-main args)`; `-e` eval+print; bare file load; `-h`), bare top-level `-m`, and `-X:alias` (`:exec-fn` + `:exec-args` map merged under CLI `:key value`, EDN-typed via `quote`d data maps; result not printed). New src/app/deps/run_mode.zig; parse.zig Alias gains main_opts/exec_fn/exec_args; runner.runSource gains print_results; cli.zig dispatch + loadDepsEdn returns {load_paths, cfg}. 7-case e2e phase14_deps_run_mode. verified_projects/ flipped to the `-M:verify` convention (deps.edn `:verify` alias + `(ns verify)` `-main`; verify_projects.sh runs `cljw -M:verify`; 4/4 green). Fixed v0's 3 gaps (args→-main, append, EDN value coercion). REMAINING (→ D-310): `*command-line-args*` binding + `-i`/`-r`/`--report`/`@resource`/mixed-init-before-main main-opts + `-T` tool mode."
     category: "app"
