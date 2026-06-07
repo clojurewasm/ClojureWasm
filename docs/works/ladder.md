@@ -52,6 +52,8 @@ so rungs are now probed via real **deps.edn git coordinates**, not just
   explicit *where* the pure-Clojure frontier ends — they will not load without
   the underlying Java library, regardless of cljw progress.
 
+- **test.check** (probed 2026-06-07 via -cp, data.generators now FULLY FUNCTIONAL): advanced past random.clj:106 hex-literal (fixed D-297, hex>i64 -> BigInt) to random.clj:178 `(proxy [ThreadLocal] …)` -> D-298 (proxy unrecognised; JVM-class proxy = Tier D). PARKED (proxy depth vs partial benefit; seeded paths might work with proxy-recognition level (a)).
+
 ## NEEDS-ROW gap summary (for the main loop)
 
 These are candidate `debt.yaml` rows — the FIRST real blocker each library

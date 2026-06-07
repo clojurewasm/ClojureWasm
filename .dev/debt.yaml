@@ -9,6 +9,26 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-298"
+    status: "parked (Tier-D-adjacent, found 2026-06-07 - test.check rung). clojure.test.check.random:178 `(proxy [ThreadLocal] [] (initialValue [] …))` -> name_error: `proxy` unresolved. cljw does not support `proxy` (JVM-class proxy = Tier D, ADR-0013) and does not even recognize it as a known form (so the whole ns fails to ANALYZE, not just eval). test.check uses proxy over java.lang.ThreadLocal in default-rng (the no-seed RNG path). Two levels: (a) recognize `proxy` as a Tier-D form that ANALYZES but raises tier_d_proxy at EVAL (ADR-0018 staged-unsupported) so libs that DEFINE-but-rarely-CALL proxy load - general, modest; (b) real proxy-over-interface via reify - large, and ThreadLocal is a class not interface (genuine Tier D). test.check would only partially work (seeded paths) even with (a). PARKED: proxy depth vs partial benefit (dead-interop lesson). Revisit if a higher-value lib needs proxy-recognition (a)."
+    category: "interop"
+    barrier: |-
+      **`proxy` is unrecognised (blocks ns analysis), and JVM-class proxy is
+      Tier D.** test.check random.clj:178 proxies java.lang.ThreadLocal. Level
+      (a) finished-form: recognize proxy as a Tier-D form (analyze-OK, eval
+      tier_d_proxy per ADR-0018) so define-but-not-call sites load. Level (b):
+      proxy-over-interface via reify (large; ThreadLocal is a class = Tier D).
+      Barrier: a higher-value lib needing proxy-recognition. Cross-ref ADR-0013
+      (Tier D), ADR-0018 (staged unsupported), the dead-interop park lesson.
+    last_reviewed: "2026-06-07"
+  - id: "D-297"
+    status: "DISCHARGED 2026-06-07 (this commit) - hex integer literals past i64 auto-promote to BigInt (reader.zig readInteger overflow -> radixBigIntForm base 16), matching clj which reads the unsigned magnitude (0xffffffffffffffff -> 18446744073709551615N, NOT -1). Decimal already promoted; hex/octal/radix now consistent. Unblocked test.check random.clj:106 (splitmix 0xbf58476d1ce4e5b9) -> advanced to :178 proxy (D-298). General: hashing/RNG/crypto libs. e2e phase14_hex_bigint."
+    category: "reader"
+    barrier: |-
+      DISCHARGED. Hex literals past i64 now promote to BigInt (clj magnitude
+      semantics) via the existing radixBigIntForm path. reader.zig hexDigits +
+      overflow branch.
+    last_reviewed: "2026-06-07"
   - id: "D-296"
     status: "DISCHARGED 2026-06-07 (this commit) - syntax-quote build machinery (vec/concat/seq/list/hash-map/hash-set/apply) now emitted FULLY-QUALIFIED clojure.core/* (syntax_quote.zig coreCall/coreSym), immune to a user :refer-clojure :exclude (clj parity). Was the last structural blocker for data.generators (rung 5 -> FULLY FUNCTIONAL, bit-for-bit seeded clj parity). e2e phase14_syntax_quote_exclude + diff parity. ORIGINAL: now (found 2026-06-07 - data.generators rung 5, after D-295). generators.clj:149 `Unable to resolve symbol: vec` during analysis of the (primitive-arrays [...]) macro call at :163. The file excludes `vec` from core (:13) and defines its OWN `vec` at :187 (AFTER :163). The primitive-array template (:149-157) does NOT literally contain `vec`. Plain syntax-quote with an excluded+forward-ref symbol RESOLVES correctly (probed: `(vec 1)` -> `(ns/vec 1)`), so the cause is subtler - likely macro-expansion/analysis-order: expanding (primitive-arrays) at :163 analyzes generated defns that reference a not-yet-defined ns-local var, OR an interaction with the :refer-clojure :exclude set during nested macroexpand. Needs focused debugging."
     category: "macro"

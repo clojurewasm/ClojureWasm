@@ -175,15 +175,34 @@ pub const Reader = struct {
         if (octalDigits(txt)) |oct|
             return self.readOctalInteger(tok, oct.neg, oct.digits);
         const val = std.fmt.parseInt(i64, txt, 0) catch |e| {
-            // A decimal literal that overflows i64 auto-promotes to BigInt
-            // (Clojure: an integer literal too large for Long reads as
-            // clojure.lang.BigInt). parseBase10 handles the sign + digits;
-            // radix-prefixed (0x/0o/0b) overflow stays an error.
-            if (e == error.Overflow and isPlainDecimal(txt))
-                return Form{ .data = .{ .big_int_literal = txt }, .location = self.locOf(tok) };
+            // A literal that overflows i64 auto-promotes to BigInt (Clojure: an
+            // integer literal too large for Long reads as clojure.lang.BigInt).
+            // Decimal: parseBase10 over the digit text. Hex (D-297): clj reads a
+            // `0x…` literal as its unsigned MAGNITUDE (`0xffffffffffffffff` →
+            // 18446744073709551615N, NOT -1), so promote via the base-16
+            // mul/add path — needed by hashing/RNG libs (test.check splitmix).
+            if (e == error.Overflow) {
+                if (isPlainDecimal(txt))
+                    return Form{ .data = .{ .big_int_literal = txt }, .location = self.locOf(tok) };
+                if (hexDigits(txt)) |hx|
+                    return self.radixBigIntForm(self.locOf(tok), hx.digits, 16, hx.neg);
+            }
             return error_catalog.raise(.integer_literal_invalid, self.locOf(tok), .{ .text = txt });
         };
         return Form{ .data = .{ .integer = val }, .location = self.locOf(tok) };
+    }
+
+    /// Classify `txt` as a hex literal `[+-]?0[xX]<hex-digits>` for the
+    /// overflow→BigInt path (D-297). Returns the sign + the post-`0x` digit run.
+    fn hexDigits(txt: []const u8) ?struct { neg: bool, digits: []const u8 } {
+        var t = txt;
+        var neg = false;
+        if (t.len > 0 and (t[0] == '-' or t[0] == '+')) {
+            neg = t[0] == '-';
+            t = t[1..];
+        }
+        if (t.len < 3 or t[0] != '0' or (t[1] != 'x' and t[1] != 'X')) return null;
+        return .{ .neg = neg, .digits = t[2..] };
     }
 
     /// Classify `txt` as an octal literal `[+-]?0<digits>` (≥ 1 digit after the
