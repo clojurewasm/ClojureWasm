@@ -27,6 +27,8 @@ private/
 .claude/settings.local.json
 
 # Gate-cadence local state (scripts/check_gate_cadence.sh): the source-state
-# fingerprint of the last full-gate pass + the additive batch counter.
+# fingerprint of the last full-gate pass + the smoke pass (ADR-0107) + the
+# batch counter.
 .dev/.gate_pass
+.dev/.smoke_pass
 .dev/.gate_cadence
