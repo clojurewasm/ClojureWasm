@@ -46,6 +46,10 @@ pub fn runSource(
     source_text: []const u8,
     source_label: []const u8,
     load_paths: []const []const u8,
+    /// Whether each top-level form's value is `prn`'d (the `cljw -e` / file
+    /// REPL-print contract). The `-M`/`-X` run modes pass `false`: `clojure.main`
+    /// runs a `-main` / `:exec-fn` for side effects and never prints its result.
+    print_results: bool,
 ) !void {
     const ctx = error_print.SourceContext{ .file = source_label, .text = source_text };
 
@@ -120,10 +124,14 @@ pub fn runSource(
         // torture / future auto-collect poll); `result` lives only in this Zig
         // local, on no operand stack or EvalFrame, so without the pin a collect
         // mid-print sweeps the seq + its source → UAF (hang or garbage). D-251 C9.
+        // A `-M`/`-X` run (print_results=false) still pins: forcing the value can
+        // re-enter the VM even when the rendering is suppressed.
         try rt.gc.pin(result);
-        try print.printResult(&rt, &env, stdout, result);
+        if (print_results) {
+            try print.printResult(&rt, &env, stdout, result);
+            try stdout.writeByte('\n');
+        }
         _ = rt.gc.unpin(result);
-        try stdout.writeByte('\n');
     }
     try stdout.flush();
 }

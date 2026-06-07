@@ -29,6 +29,7 @@ const gc_torture = @import("../runtime/gc/gc_torture.zig");
 const file_io = @import("../runtime/file_io.zig");
 const deps_parse = @import("deps/parse.zig");
 const deps_resolve = @import("deps/resolve.zig");
+const deps_run_mode = @import("deps/run_mode.zig");
 const error_print = @import("../runtime/error/print.zig");
 
 /// Top-level CLI dispatcher. Called from `src/main.zig::main` with
@@ -174,6 +175,11 @@ fn dispatchArgsRest(
     var compare_mode: bool = false;
     var classpath_arg: ?[]const u8 = null;
     var alias_names: std.ArrayList([]const u8) = .empty;
+    // `-M`/`-X` (or a bare top-level `-m`) switch from classpath-only to a
+    // run mode (D-309). Once detected, every remaining token is a verbatim
+    // run-arg (clojure.main / exec grammar), so the cljw flag loop stops.
+    var run_mode: ?deps_run_mode.Mode = null;
+    var run_args: std.ArrayList([]const u8) = .empty;
 
     var current_arg: ?[]const u8 = first_arg;
     while (current_arg) |arg| : (current_arg = args.next()) {
@@ -187,6 +193,11 @@ fn dispatchArgsRest(
                 \\                     for `.clj`/`.cljc` libs (else $CLJW_PATH, else ".").
                 \\  -A:a1:a2           Select deps.edn aliases (their :extra-paths /
                 \\                     :extra-deps join the classpath).
+                \\  -M[:a] [main-opts] Run mode: the alias :main-opts + your args via
+                \\                     the clojure.main grammar (-m <ns> | <file> | -e).
+                \\  -m <ns> [args]     Shorthand for -M -m: require <ns>, call (<ns>/-main args).
+                \\  -X[:a] [ns/fn] [:k v]  Run mode: call :exec-fn with the :exec-args
+                \\                     map merged under CLI :key value (EDN-typed).
                 \\  --compare          Run source through tree_walk AND vm backends;
                 \\                     print OK + value on agreement, MISMATCH + both
                 \\                     values (exit 1) on divergence.
@@ -210,6 +221,25 @@ fn dispatchArgsRest(
             while (it.next()) |name| {
                 if (name.len > 0) try alias_names.append(arena, name);
             }
+        } else if (std.mem.startsWith(u8, arg, "-M") or std.mem.startsWith(u8, arg, "-X")) {
+            // `-M:dev:test foo bar` / `-X:build ns/fn :k v` — the aliases ride
+            // the flag token (colon-separated, like `-A`); every following token
+            // is a verbatim run-arg, so stop the cljw flag scan and drain.
+            run_mode = if (arg[1] == 'M') .main else .exec;
+            var it = std.mem.splitScalar(u8, arg[2..], ':');
+            while (it.next()) |name| {
+                if (name.len > 0) try alias_names.append(arena, name);
+            }
+            while (args.next()) |a| try run_args.append(arena, a);
+            break;
+        } else if (std.mem.eql(u8, arg, "-m") or std.mem.eql(u8, arg, "--main")) {
+            // Bare top-level `-m my.ns a b` (no `-M`) — cljw runs the main
+            // grammar directly (in-process; clj routes this through `-M`). The
+            // `-m` token leads the run-args so the same grammar parser handles it.
+            run_mode = .main;
+            try run_args.append(arena, "-m");
+            while (args.next()) |a| try run_args.append(arena, a);
+            break;
         } else if (std.mem.eql(u8, arg, "-e") or std.mem.eql(u8, arg, "--eval")) {
             const expr = args.next() orelse {
                 try stderr.print("Error: -e / --eval requires an argument\n", .{});
@@ -250,12 +280,6 @@ fn dispatchArgsRest(
         }
     }
 
-    if (source_text == null) {
-        try stdout.writeAll("ClojureWasm\n");
-        try stdout.flush();
-        return;
-    }
-
     // ADR-0084 classpath: `-cp` wins, else `CLJW_PATH`, else cwd. Colon-split
     // into the filesystem-require search roots (`src:test` is the common shape).
     const cp_spec = classpath_arg orelse cljw_path_env orelse ".";
@@ -263,50 +287,64 @@ fn dispatchArgsRest(
     // Stage 1.2: a `./deps.edn` in cwd contributes its `:paths` + `:local/root`
     // deps to the FRONT of the classpath (project sources win over the cwd
     // default). Absent file → base unchanged; `:mvn/version` → parse raises.
-    const load_paths = try prependDepsEdn(io, arena, stderr, base_paths, alias_names.items, git_cache_base);
+    // The parsed `cfg` also feeds the `-M`/`-X` run modes (alias :main-opts /
+    // :exec-fn / :exec-args).
+    const deps = try loadDepsEdn(io, arena, stderr, base_paths, alias_names.items, git_cache_base);
+
+    // D-309: a `-M`/`-X` (or bare `-m`) run mode supersedes the `-e`/file path —
+    // it runs a `-main` / `:exec-fn` instead of printing eval results.
+    if (run_mode) |mode| {
+        try deps_run_mode.run(io, gpa, arena, stdout, stderr, mode, deps.cfg, alias_names.items, run_args.items, deps.load_paths);
+        return;
+    }
+
+    if (source_text == null) {
+        try stdout.writeAll("ClojureWasm\n");
+        try stdout.flush();
+        return;
+    }
 
     if (compare_mode) {
         try runner.runSourceCompare(io, gpa, arena, stdout, stderr, source_text.?, source_label);
     } else {
-        try runner.runSource(io, gpa, arena, stdout, stderr, source_text.?, source_label, load_paths);
+        try runner.runSource(io, gpa, arena, stdout, stderr, source_text.?, source_label, deps.load_paths, true);
     }
 }
 
-/// Merge `./deps.edn` (Stage 1.2) into the classpath: its resolved `:paths` +
-/// `:local/root` deps go to the FRONT of `base`. No deps.edn (or an empty
-/// resolution) → `base` unchanged. A `:mvn/version` dep propagates the parse
-/// error (source-only policy). Reuses the `deps/` parse + resolve modules.
-fn prependDepsEdn(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, base: []const []const u8, alias_names: []const []const u8, git_cache_base: ?[]const u8) ![]const []const u8 {
+/// The resolved deps.edn: the classpath (`:paths` + `:local/root` / `:git/url`
+/// deps prepended to the cwd base) plus the parsed `cfg` (so the `-M`/`-X` run
+/// modes can read alias `:main-opts` / `:exec-fn` / `:exec-args`). No deps.edn
+/// → `base` unchanged + an empty `cfg`.
+const DepsLoad = struct {
+    load_paths: []const []const u8,
+    cfg: deps_parse.DepsConfig,
+};
+
+/// Read + resolve `./deps.edn` (Stage 1.2). Its resolved `:paths` + source deps
+/// go to the FRONT of `base`. A deps.edn error (failed git fetch, malformed edn)
+/// is a user-facing config error rendered against deps.edn + exit. A `:mvn`
+/// dep is skipped + summary-warned (ADR-0101 amendment), not an error.
+fn loadDepsEdn(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, base: []const []const u8, alias_names: []const []const u8, git_cache_base: ?[]const u8) !DepsLoad {
     const src = file_io.readAll(io, arena, "deps.edn") catch |e| switch (e) {
-        error.FileNotFound, error.NotDir, error.BadPathName => return base,
+        error.FileNotFound, error.NotDir, error.BadPathName => return .{ .load_paths = base, .cfg = .{} },
         else => return e,
     };
-    // A deps.edn error (a failed git fetch, malformed edn) is a user-facing
-    // config error: render it against deps.edn + exit, not a trace. A `:mvn`
-    // dep is NOT an error (ADR-0101 amendment) — it is skipped + summary-warned.
+    const ctx = error_print.SourceContext{ .file = "deps.edn", .text = src };
+    const cfg = deps_parse.parseDepsEdn(arena, src) catch |e| error_render.renderAndExit(stderr, ctx, e);
     var skipped: std.ArrayList([]const u8) = .empty;
-    const dep_paths = resolveFromSource(io, arena, src, alias_names, git_cache_base, &skipped) catch |e| {
-        const ctx = error_print.SourceContext{ .file = "deps.edn", .text = src };
+    const dep_paths = deps_resolve.resolveClasspath(io, arena, ".", cfg, alias_names, git_cache_base, &skipped) catch |e|
         error_render.renderAndExit(stderr, ctx, e);
-    };
     if (skipped.items.len > 0) {
         stderr.print("note: deps.edn skipped {d} Maven dep(s) (source-only; cljw resolves :git/url + :local/root): ", .{skipped.items.len}) catch {};
         for (skipped.items, 0..) |lib, i| stderr.print("{s}{s}", .{ if (i == 0) "" else ", ", lib }) catch {};
         stderr.print(" — each is satisfied only if its namespace is cw-bundled or laid by another source dep.\n", .{}) catch {};
         stderr.flush() catch {};
     }
-    if (dep_paths.len == 0) return base;
+    if (dep_paths.len == 0) return .{ .load_paths = base, .cfg = cfg };
     var merged: std.ArrayList([]const u8) = .empty;
     try merged.appendSlice(arena, dep_paths);
     try merged.appendSlice(arena, base);
-    return merged.toOwnedSlice(arena);
-}
-
-/// Parse + resolve a deps.edn source into its classpath. Split out so the
-/// caller can render any error against the deps.edn source context.
-fn resolveFromSource(io: std.Io, arena: std.mem.Allocator, src: []const u8, alias_names: []const []const u8, git_cache_base: ?[]const u8, skipped: *std.ArrayList([]const u8)) ![]const []const u8 {
-    const cfg = try deps_parse.parseDepsEdn(arena, src);
-    return deps_resolve.resolveClasspath(io, arena, ".", cfg, alias_names, git_cache_base, skipped);
+    return .{ .load_paths = try merged.toOwnedSlice(arena), .cfg = cfg };
 }
 
 /// Split a colon-separated classpath string into its directory roots, allocated

@@ -40,9 +40,10 @@ pub const Dep = struct {
     mvn_version: ?[]const u8 = null,
 };
 
-/// One `:aliases` entry. Only the classpath-affecting keys are captured;
-/// `:main-opts` / `:exec-fn` (the `-M`/`-X` run modes) are out of Stage 1.2
-/// scope (the v0 divergence — Stage 1.2 resolves a classpath, not a run mode).
+/// One `:aliases` entry. Classpath-affecting keys (`:extra-paths` /
+/// `:extra-deps`) plus the `-M`/`-X` run-mode keys (`:main-opts` / `:exec-fn` /
+/// `:exec-args`, Stage 1.4 / D-309). The run-mode keys are inert under `-A`
+/// (classpath only) and only consulted by `run_mode.zig` under `-M`/`-X`.
 pub const Alias = struct {
     /// The alias keyword name, e.g. `"dev"` for `:dev`.
     name: []const u8,
@@ -50,6 +51,19 @@ pub const Alias = struct {
     extra_paths: []const []const u8 = &.{},
     /// `:extra-deps` — extra library coordinates when the alias is selected.
     extra_deps: []const Dep = &.{},
+    /// `:main-opts` — the `clojure.main` arg vector run under `-M:alias`
+    /// (e.g. `["-m" "my.app"]`). Empty when the alias declares none; the
+    /// user's trailing `-M` args are appended at run time (clj append, not
+    /// replace).
+    main_opts: []const []const u8 = &.{},
+    /// `:exec-fn` — the fully-qualified `"ns/name"` invoked under `-X:alias`
+    /// with the (merged) `:exec-args` map. Null when the alias declares none
+    /// (a trailing CLI symbol can still supply it).
+    exec_fn: ?[]const u8 = null,
+    /// `:exec-args` — the EDN map passed as the single argument to `:exec-fn`.
+    /// Held as the reader Form so `run_mode.zig` can re-serialize it (via
+    /// `Form.formatPrStr`) and merge CLI `:key value` overrides over it.
+    exec_args: ?Form = null,
 };
 
 /// Structured deps.edn. Fields land slice by slice.
@@ -114,6 +128,12 @@ fn parseAliases(allocator: std.mem.Allocator, v: Form) ![]const Alias {
                     alias.extra_paths = try collectStringVec(allocator, akvs[j + 1]);
                 } else if (std.mem.eql(u8, ak.keyword.name, "extra-deps")) {
                     alias.extra_deps = try parseDeps(allocator, akvs[j + 1]);
+                } else if (std.mem.eql(u8, ak.keyword.name, "main-opts")) {
+                    alias.main_opts = try collectStringVec(allocator, akvs[j + 1]);
+                } else if (std.mem.eql(u8, ak.keyword.name, "exec-fn")) {
+                    alias.exec_fn = symbolName(allocator, akvs[j + 1]) catch null;
+                } else if (std.mem.eql(u8, ak.keyword.name, "exec-args")) {
+                    if (akvs[j + 1].data == .map) alias.exec_args = akvs[j + 1];
                 }
             }
         }
@@ -199,6 +219,15 @@ fn strOf(v: Form) ?[]const u8 {
     };
 }
 
+/// Render a symbol form to its `"ns/name"` (or bare `"name"`) text — used for
+/// `:exec-fn foo.bar/run`. Errors out (caller defaults to null) for a non-symbol.
+fn symbolName(allocator: std.mem.Allocator, v: Form) ![]const u8 {
+    return switch (v.data) {
+        .symbol => |s| if (s.ns) |ns| try std.fmt.allocPrint(allocator, "{s}/{s}", .{ ns, s.name }) else s.name,
+        else => error.NotASymbol,
+    };
+}
+
 test "parse: :paths only" {
     const testing = std.testing;
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
@@ -239,6 +268,24 @@ test "parse: :aliases extra-paths + extra-deps" {
     try testing.expectEqualStrings("dev", cfg.aliases[0].name);
     try testing.expectEqualStrings("dev", cfg.aliases[0].extra_paths[0]);
     try testing.expectEqualStrings("../u", cfg.aliases[0].extra_deps[0].local_root.?);
+}
+
+test "parse: :aliases :main-opts + :exec-fn + :exec-args (D-309 run modes)" {
+    const testing = std.testing;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const cfg = try parseDepsEdn(arena.allocator(), "{:aliases {:run {:main-opts [\"-m\" \"my.app\"]} :build {:exec-fn foo.bar/release :exec-args {:id 5}}}}");
+    try testing.expectEqual(@as(usize, 2), cfg.aliases.len);
+    // :run — main-opts captured in order.
+    try testing.expectEqualStrings("run", cfg.aliases[0].name);
+    try testing.expectEqual(@as(usize, 2), cfg.aliases[0].main_opts.len);
+    try testing.expectEqualStrings("-m", cfg.aliases[0].main_opts[0]);
+    try testing.expectEqualStrings("my.app", cfg.aliases[0].main_opts[1]);
+    // :build — exec-fn is the qualified "ns/name"; exec-args is the map Form.
+    try testing.expectEqualStrings("build", cfg.aliases[1].name);
+    try testing.expectEqualStrings("foo.bar/release", cfg.aliases[1].exec_fn.?);
+    try testing.expect(cfg.aliases[1].exec_args != null);
+    try testing.expect(cfg.aliases[1].exec_args.?.data == .map);
 }
 
 test "parse: :mvn/version is recorded + skipped, not rejected (ADR-0101 amendment)" {
