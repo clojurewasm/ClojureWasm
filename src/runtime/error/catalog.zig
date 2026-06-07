@@ -311,6 +311,14 @@ pub const Code = enum {
     /// is found but cannot be opened/read (ADR-0084). Distinct from
     /// `lib_not_found` (no such lib): here the file exists but I/O failed.
     lib_load_failed,
+    /// args: `.{ .op = "slurp"|"spit", .path = "...", .detail = "..." }` —
+    /// raised when `slurp`/`spit` (clojure.core file I/O) fail to open/read/write
+    /// a path. Kind `.io_error` → catchable as `java.io.IOException` (and
+    /// Throwable), so `(try (slurp f) (catch Throwable _ default))` works rather
+    /// than the raw Zig error aborting the program. (clj raises the more specific
+    /// FileNotFoundException for a missing file; cljw reports IOException — the
+    /// supertype — until a FileNotFound Kind is minted, D-321.)
+    file_io_error,
 
     // --- Protocol dispatch (ADR-0008 amendment 1, Phase 7.1) ---
     /// args: `.{ .protocol = "ISeq", .method = "first",
@@ -516,6 +524,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .io_error,
             .phase = .eval,
             .template = "Failed to load '{[ns]s}': {[detail]s}",
+        },
+        .file_io_error => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "{[op]s} '{[path]s}' failed: {[detail]s}",
         },
         .protocol_no_satisfies => .{
             .kind = .type_error,

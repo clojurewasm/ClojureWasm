@@ -23,6 +23,19 @@ active:
       global-advance semantic trap — a later O-NNN, not the helper refactor. Resolve
       when optimization resumes. Cross-ref ADR-0115 Dec A, runtime/regex/match.zig.
     last_reviewed: "2026-06-07"
+  - id: "D-321"
+    status: "now (2026-06-08, edge-demo file I/O) — slurp/spit now raise a CATCHABLE io_error (→ java.io.IOException) instead of an uncatchable raw Zig error (ADR-0098 follow-on; demo-driven, F-013). RESIDUAL: clj raises the more specific java.io.FileNotFoundException for a missing file; cljw reports IOException (the supertype) because there is no FileNotFound Kind. (catch Throwable …) / (catch java.io.IOException …) work; (catch java.io.FileNotFoundException …) would not match a missing-file slurp. Low priority (Throwable/IOException catch is the common form)."
+    category: "clj-parity"
+    barrier: |-
+      A FileNotFoundException-precise slurp/spit needs a new `file_not_found` Kind
+      (info.zig Kind enum + ClojureWasmError union + host_class Kind→class
+      "FileNotFoundException") and slurp/spit distinguishing error.FileNotFound from
+      other I/O errors. The current io_error→IOException is a correct supertype
+      (FileNotFoundException extends IOException), so Throwable/IOException catches
+      match; only the leaf class differs. Resolve when a lib/test catches
+      FileNotFoundException specifically. Cross-ref catalog.file_io_error,
+      host_class.zig Kind switch, F-011.
+    last_reviewed: "2026-06-08"
   - id: "D-319"
     status: "now (2026-06-07, ADR-0114 hiccup) — Object-extension protocol fallback is a DISPATCH-SITE special case, not a descriptor-chain link. `(extend-protocol P Object …)` registers on the Object class descriptor; dispatch.zig consults it (uncached lookupMethod) after a per-type miss. Correct (DA confirmed no cache hole — lookupWithCache never caches a null), but a defaults-only type re-walks lookupMethod every call and never caches the Object MethodEntry (perf cliff). Finished form (DA Alt A-finished-form-clean): make Object the reserved ROOT of the descriptor lookup chain so lookupMethod walks receiver_td→…→Object_td and the CallSite cache caches the resolved entry uniformly; nil's descriptor terminates WITHOUT Object (nil-exclusion gets an honest home). Also the seam future host-supertype precedence needs."
     category: "polymorphism"

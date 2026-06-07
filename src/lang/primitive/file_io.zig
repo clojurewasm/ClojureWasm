@@ -25,7 +25,11 @@ pub fn slurp(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "slurp", .actual = @tagName(args[0].tag()) });
     }
     const path = string_collection.asString(args[0]);
-    const content = try file_io.readAll(rt.io, rt.gpa, path);
+    // Map the host I/O error to a catchable cljw exception (IOException Kind)
+    // rather than letting the raw Zig error abort the program — a real app needs
+    // `(try (slurp f) (catch Throwable _ default))` to work.
+    const content = file_io.readAll(rt.io, rt.gpa, path) catch |e|
+        return error_catalog.raise(.file_io_error, loc, .{ .op = "slurp", .path = path, .detail = @errorName(e) });
     defer rt.gpa.free(content);
     return try string_collection.alloc(rt, content);
 }
@@ -43,7 +47,8 @@ pub fn spit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     }
     const path = string_collection.asString(args[0]);
     const content = string_collection.asString(args[1]);
-    try file_io.writeAll(rt.io, path, content);
+    file_io.writeAll(rt.io, path, content) catch |e|
+        return error_catalog.raise(.file_io_error, loc, .{ .op = "spit", .path = path, .detail = @errorName(e) });
     return .nil_val;
 }
 
