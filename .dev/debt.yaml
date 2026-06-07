@@ -50,7 +50,7 @@ active:
       Dec B, gc_rooting.md §H.
     last_reviewed: "2026-06-07"
   - id: "D-317"
-    status: "now (2026-06-07, ADR-0114 hiccup) — the extend-protocol-TARGET interface→native-tag table (host_interface.NATIVE_EXTEND_TARGETS: IPersistentVector→[vector], ISeq→[7 seq tags], Named→[keyword,symbol]) is HAND-MAINTAINED. Verified complete vs the current Value.Tag seq family (rseq/iterate/repeat/cycle/sequence/interpose/lazy-cat/() all land in list|lazy_seq|vector, covered). RISK (DA finding #3): a FUTURE new seq-producing Value.Tag omitted from the ISeq list would SILENTLY mis-dispatch (fall to the Object fallback, render wrong) — an invisible F-013 coverage hole."
+    status: "PARTIALLY RESOLVED (2026-06-08, ADR-0116) — ISeq/Named/IPersistentMap extend-target sets now DERIVE from interface_membership.zig (the same SSOT class_name.matchInterface derives from), so the 7-tag ISeq list lives in ONE place. RESIDUAL: IPersistentVector is NOT unified — instance? membership = {vector, map_entry} but extend-target distribution = {vector}; deriving would distribute IPersistentVector-extended protocols to map_entry (arguably more clj-correct) but needs verification that map_entry has an extendable native descriptor + oracle confirmation (F-003 deferral, not cycle-budget). PRIOR: now (2026-06-07, ADR-0114 hiccup) — the extend-protocol-TARGET interface→native-tag table (host_interface.NATIVE_EXTEND_TARGETS: IPersistentVector→[vector], ISeq→[7 seq tags], Named→[keyword,symbol]) is HAND-MAINTAINED. Verified complete vs the current Value.Tag seq family (rseq/iterate/repeat/cycle/sequence/interpose/lazy-cat/() all land in list|lazy_seq|vector, covered). RISK (DA finding #3): a FUTURE new seq-producing Value.Tag omitted from the ISeq list would SILENTLY mis-dispatch (fall to the Object fallback, render wrong) — an invisible F-013 coverage hole."
     category: "polymorphism"
     barrier: |-
       No current omission (verified against the live tag set). The finished form
@@ -153,7 +153,7 @@ active:
       ADR-0112 Alt 2, D-312.
     last_reviewed: "2026-06-07"
   - id: "D-308"
-    status: "now (2026-06-07) — DEFERRED (ADR-level). `(instance? clojure.lang.IDeref x)` (and other recognised clojure.lang PROTOCOL markers: IFn/IObj/IPersistentStack/…) errors `class … is not a known class name`. core.memoize:67 needs it. A 2026-06-07 attempt rewrote `(instance? marker x)` → `(satisfies? proto x)` in expandInstanceQ — REVERTED: it broke `(instance? clojure.lang.IFn :kw)` (clj=true, a keyword IS a callable IFn; satisfies?=false since keywords don't extend the IFn protocol). LESSON: instance?-on-host-interface ≠ satisfies?. clj instance? checks the value's CLASS implements the interface, which for a host interface includes NATIVE implementers (keyword/vector/map/fn are IFn; atom/delay/future/var are IDeref) PLUS deftype protocol impls. The proper shape = a per-interface NATIVE-implementer membership predicate (the tag set that implements each clojure.lang interface) ∪ the protocol-satisfaction check — definition-derived, NOT a satisfies? alias. Sibling to D-293 (opaque host-class VALUE) but for clojure.lang PROTOCOL markers. Likely an ADR (host-interface instance? membership). Do NOT re-attempt the naive satisfies?-rewrite."
+    status: "DISCHARGED (2026-06-08, ADR-0116) — interface_membership.zig SSOT: native tag membership for the deref/pending/ref family (IDeref/IRef/IReference/IPending/IBlockingDeref) + a name-based protocol-satisfaction ∪ arm in class_name.matchUserType (a deftype extending IDeref matches). Native PRIMARY, protocol ADDITIVE (OR-union, never substitution — so (instance? IFn :kw) survives, the bug the reverted satisfies?-rewrite caused). isInterfaceName or-chain retired (derives from the SSOT). IObj/IMeta deferred to D-271 (clj IObj⟹withMeta, cljw range/chunked_cons have no meta slot). Oracle-grounded corpus test/diff/clj_corpus/instance_interfaces.txt. core.memoize's IDeref/IPending need met."
     category: "interop"
     barrier: |-
       `(instance? clojure.lang.IDeref x)` raises class_name_unknown. The fix is a
@@ -690,7 +690,7 @@ active:
     category: numeric
     last_reviewed: "2026-06-06"
   - id: "D-271"
-    status: "open (found 2026-06-06, tricky-behaviour sweep) — `(with-meta (range 3) m)` raises type_error; clj attaches meta (range is IObj). The `.range` substrate AND its `.chunked_cons` seq view have no meta slot, so withMetaFn's switch has no arm. map/filter/lazy-seq/list/cons/take all work (lazy_seq is metable)."
+    status: "open (found 2026-06-06, tricky-behaviour sweep) — `(with-meta (range 3) m)` raises type_error; clj attaches meta (range is IObj). The `.range` substrate AND its `.chunked_cons` seq view have no meta slot, so withMetaFn's switch has no arm. map/filter/lazy-seq/list/cons/take all work (lazy_seq is metable). ADR-0116 D: IObj/IMeta instance? membership is a D-271 deliverable — clj IObj⟹withMeta but range/chunked_cons have no meta slot, so IObj/IMeta activate only when this row lands; full oracle-verified tag sets are enumerated INACTIVE in interface_membership.zig (網羅 recognition up-front, F-013 cl.4)."
     category: "clj-parity"
     barrier: |-
       **with-meta on a raw range / chunked_cons substrate is unsupported.**
