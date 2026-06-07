@@ -32,3 +32,7 @@ private/
 .dev/.gate_pass
 .dev/.smoke_pass
 .dev/.gate_cadence
+
+# clojure-lsp / clj-kondo caches (appear when LSP analyses verified_projects/*.clj)
+.clj-kondo/
+.lsp/
