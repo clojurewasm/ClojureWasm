@@ -23,6 +23,7 @@ const set = @import("../../runtime/collection/set.zig");
 const list = @import("../../runtime/collection/list.zig");
 const lazy_seq = @import("../../runtime/lazy_seq.zig");
 const atom = @import("../../runtime/atom.zig");
+const symbol = @import("../../runtime/symbol.zig");
 
 /// `(meta obj)` — obj's metadata map, or nil for a non-IObj / no-meta value.
 pub fn metaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -38,6 +39,8 @@ pub fn metaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         // populated by `analyzeDef` from a `^meta` def target.
         .var_ref => v.decodePtr(*const env_mod.Var).meta orelse Value.nil_val,
         .atom => atom.metaOf(v),
+        // D-304 / ADR-0110: a symbol's value-metadata (nil for interned).
+        .symbol => symbol.metaOf(v),
         // D-280d7 functional: a deftype/reify implementing clojure.lang.IObj
         // `meta` → consult IObj/-meta; nil if it does not implement IObj.
         .typed_instance, .reified_instance => blk: {
@@ -87,6 +90,9 @@ pub fn withMetaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
         .hash_set => try set.withMeta(rt, v, m),
         .list => try list.withMeta(rt, v, m),
         .lazy_seq => try lazy_seq.withMeta(rt, v, m),
+        // D-304 / ADR-0110: mints a fresh non-interned symbol carrying meta.
+        // Keyword stays in the `else` arm (clj rejects keyword metadata).
+        .symbol => try symbol.withMeta(rt, v, m),
         // D-280d7 functional: a deftype/reify implementing clojure.lang.IObj
         // `withMeta` → consult IObj/-with-meta; a non-IObj instance keeps the
         // not-an-IObj error.

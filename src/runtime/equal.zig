@@ -29,6 +29,7 @@ const Runtime = @import("runtime.zig").Runtime;
 const Env = @import("env.zig").Env;
 const lazy_seq = @import("lazy_seq.zig");
 const string_mod = @import("collection/string.zig");
+const symbol_mod = @import("symbol.zig");
 const hash = @import("hash.zig");
 const uuid_mod = @import("uuid.zig");
 const tagged_literal_mod = @import("tagged_literal.zig");
@@ -326,11 +327,30 @@ pub fn keyEqValue(a: Value, b: Value) bool {
         const tlb = tagged_literal_mod.asTaggedLiteral(b);
         return keyEqValue(tla.tag, tlb.tag) and keyEqValue(tla.form, tlb.form);
     }
+    // Symbol keys by ns+name (ADR-0110): a with-meta'd symbol key finds the
+    // bare-symbol entry, so `(get {'a 1} (with-meta 'a m))` → 1. Partner of
+    // the `.symbol` valueHash arm (both meta-ignored).
+    if (ta == .symbol and tb == .symbol)
+        return symbolStructEq(a, b);
     return false;
 }
 
 inline fn isSeqKeyTag(t: Value.Tag) bool {
     return t == .vector or t == .list or t == .map_entry;
+}
+
+/// Symbol equality (ADR-0110): ns+name structural, metadata IGNORED — symbol
+/// identity is (ns, name) only, so `(= 'a (with-meta 'a m))` is true. Only
+/// reached when the two symbols are NOT bit-identical (interned pairs hit the
+/// identity fast-path); i.e. at least one is a with-meta'd non-interned symbol.
+fn symbolStructEq(a: Value, b: Value) bool {
+    const sa = symbol_mod.asSymbol(a);
+    const sb = symbol_mod.asSymbol(b);
+    const ns_eq = if (sa.ns) |an|
+        (if (sb.ns) |bn| std.mem.eql(u8, an, bn) else false)
+    else
+        sb.ns == null;
+    return ns_eq and std.mem.eql(u8, sa.name, sb.name);
 }
 
 inline fn isMapTag(t: Value.Tag) bool {
@@ -366,6 +386,11 @@ fn typedInstanceKeyEq(a: Value, b: Value) bool {
 pub fn valueHash(v: Value) u32 {
     return switch (v.tag()) {
         .string => hash.hashString(string_mod.asString(v)),
+        // Symbol hashes by its ns+name `hash_cache` (ADR-0110), meta-IGNORED.
+        // Without this, symbol fell to the `else` pointer-bits hash, so an
+        // interned `'a` and a with-meta'd `'a` (distinct pointers) hashed apart
+        // — breaking `(get {'a 1} (with-meta 'a m))`. Partner of symbolStructEq.
+        .symbol => symbol_mod.asSymbol(v).hash_cache,
         .integer => hash.hashLong(@as(i64, v.asInteger())),
         .float => hash.hashLong(@bitCast(v.asFloat())),
         .nil => 0,
@@ -548,9 +573,12 @@ pub fn valueEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     // 4. Same-tag content arms; any other tag pairing → false.
     const ta = a.tag();
     if (ta != b.tag()) return false;
-    // keyword / symbol are interned, so equal ones already hit the
-    // identity fast path above; a non-bit-identical pair is unequal.
+    // keyword is interned, so equal ones already hit the identity fast path
+    // above; a non-bit-identical keyword pair is unequal. symbol is the
+    // exception (ADR-0110): a with-meta'd symbol is non-interned, so an
+    // `=`-but-not-identical pair reaches here and compares ns+name structurally.
     return switch (ta) {
+        .symbol => symbolStructEq(a, b),
         .string => std.mem.eql(u8, string_mod.asString(a), string_mod.asString(b)),
         .array_map, .hash_map => mapEqual(rt, env, a, b),
         .hash_set => setEqual(rt, a, b),

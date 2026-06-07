@@ -357,6 +357,7 @@ pub const Runtime = struct {
     /// conflict. Each GC-managed type's `alloc` body uses `gc.alloc`
     /// and contributes one `registerGcHooks` call below.
     pub fn init(io: std.Io, gpa: std.mem.Allocator) Runtime {
+        @import("symbol.zig").registerGcHooks();
         @import("collection/string.zig").registerGcHooks();
         @import("collection/list.zig").registerGcHooks();
         @import("collection/ex_info.zig").registerGcHooks();

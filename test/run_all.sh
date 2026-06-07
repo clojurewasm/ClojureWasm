@@ -530,6 +530,7 @@ run_step "e2e_phase14_comparator"            "bash test/e2e/phase14_comparator.s
 run_step "e2e_phase14_vector_keys"           "bash test/e2e/phase14_vector_keys.sh"
 run_step "e2e_phase14_memoize"               "bash test/e2e/phase14_memoize.sh"
 run_step "e2e_phase14_metadata"              "bash test/e2e/phase14_metadata.sh"
+run_step "e2e_phase14_symbol_metadata"       "bash test/e2e/phase14_symbol_metadata.sh"
 run_step "e2e_phase14_equality"              "bash test/e2e/phase14_equality.sh"
 run_step "e2e_phase14_dedup_group"           "bash test/e2e/phase14_dedup_group.sh"
 run_step "e2e_phase14_seq_helpers2"          "bash test/e2e/phase14_seq_helpers2.sh"

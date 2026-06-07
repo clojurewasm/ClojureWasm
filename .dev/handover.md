@@ -12,19 +12,19 @@
   (opaque collapsed-numerics + `java.lang.Object` universal-root + `java.lang.Number`
   + `clojure.lang.IFn`) + clj-faithful class names (sorted_map→PersistentTreeMap,
   var_ref→Var). LOADS now: numeric-tower :98/:127→:162, algo.generic core+arithmetic
-  +comparison, core.contracts. All oracle bit-for-bit. Full gate 273/0.
-- **First commit on resume MUST be: D-304 — SYMBOL metadata** (the D-075 residual;
-  D-075 is discharged, D-304 is its fresh active row). `(with-meta sym m)`/`(meta sym)`
-  error today → core.cache + algo.generic.math-functions die on it. clj (verified):
-  symbol carries meta, `=` IGNORES meta, keyword rejects meta (keep cljw's error).
-  Approach (full reference chain + the load-bearing crux in the D-304 debt row):
-  add optional `meta` to `Symbol` (`symbol.zig`), `with-meta` mints a NON-interned
-  symbol-with-meta, and — THE RISK — change symbol equality+hash from pointer-eq
-  (`equal.zig:551`, interned) to ns+name-structural (meta-ignored), else
-  `(= 'a (with-meta 'a m))` breaks. Likely a small ADR + DA (symbol-repr + eq
-  change). First test: `(meta (with-meta 'a {:x 1}))`→{:x 1}. SCOPE = symbol only
-  (NOT keyword; var/atom meta = D-239). Then Stage 1: 1.4 cider → 1.5 v0→v1 (D-273)
-  → 1.6 clj-parity → 1.7 Phase B (D-242). SSOT = `.dev/convergence_campaign.md`.
+  +comparison, core.contracts. Then **D-304 SYMBOL metadata landed (ADR-0110)**:
+  `with-meta`/`meta` on a symbol; ns+name-structural identity (meta-ignored);
+  `.symbol` GC-membrane flip + trace. All oracle bit-for-bit. Full gate 274/0.
+- **First commit on resume MUST be: Stage 1.4 prerequisite — populate built-in var
+  metadata** (`(meta (var map))` is nil today; cider `info`/`eldoc` need `:doc`/
+  `:arglists`/`:ns`/`:name` on core vars, generated from `compat_tiers.yaml` + the
+  JVM source, NOT hand-listed). It is the gate into Stage 1.4 native `cljw.nrepl`
+  cider ops (`info`/`complete`/`eldoc`/`load-file`). SSOT =
+  `.dev/convergence_campaign.md` Stage 1 (1.4 cider → 1.5 v0→v1 D-273 → 1.6
+  clj-parity D-210 → 1.7 Phase B D-242). Self-select per the F-010 floor-drain rule
+  at Step 0 (correctness floor D-210 outranks coverage if a clj DIFF surfaces first);
+  the metadata sibling D-239 (alter-meta!/reset-meta! on ns/ref/agent) is the small
+  clean continuation of today's metadata layer.
 - **Carry-over (permission-blocked, ADR-0108)**: extend
   `.claude/rules/feature_name_consistency.md` scan-set to `runtime/clojure/**` — the
   classifier blocks `.claude/rules/*` edits; the user lands it. zone_check.sh already

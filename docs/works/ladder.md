@@ -126,6 +126,8 @@ so rungs are now probed via real **deps.edn git coordinates**, not just
 
 - **Broad re-probe (2026-06-07)** after the D-287..D-299 arc found 7 libs now LOAD: clojure.data.csv, clojure.data.codec.base64 (over D-287 byte-arrays), clojure.core.unify, potpuri.core (deep-merge bit-identical to clj), bouncer.core, qbits.ex, and **clojure.data.zip** (D-299 ns-form leniency). Deferred/parked: symbol metadata = D-075 (interned symbols, structural); test.check = D-298 (proxy/Tier-D); tools.macro = clojure.lang.Compiler (Tier-D). Full table: private/notes/stage13-broad-reprobe.md.
 
+- **Symbol-metadata layer LANDED (2026-06-07, D-304 / ADR-0110)** — `with-meta`/`meta` on a symbol now work (fresh non-interned gc.alloc'd symbol; ns+name-structural identity, meta-ignored; `.symbol` GC-membrane flip + trace). This was the blocker the frontier listed as "D-075 symbol-metadata layer" for **core.cache** + **algo.generic.math-functions** — re-probe both via hand-laid `-cp` when next fetched to confirm the load advances. Var/atom/ns/ref metadata is the remaining sibling (D-239).
+
 ## NEEDS-ROW gap summary (for the main loop)
 
 These are candidate `debt.yaml` rows — the FIRST real blocker each library

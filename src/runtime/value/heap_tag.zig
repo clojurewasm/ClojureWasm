@@ -124,12 +124,23 @@ pub const HeapTag = enum(u8) {
 /// whose closure children we trace). `false` for the heap-TAGGED but NON-GC
 /// types whose pointer does NOT target a markable `HeapHeader`:
 ///
-///   - `var_ref` / `ns` — Env-lifetime `*Var` / `*Namespace` with no header.
-///   - `symbol` / `keyword` — `gpa`-interned (process-lifetime, never swept);
-///     a constant-pool form mis-decodes to a non-header (the `tag_trace_table`
-///     OOB the dormant-chunk-constant trace hit). They never need marking (the
-///     interner keeps them + their `gpa` name strings alive), so filtering them
-///     here is both safe and the fix.
+///   - `var_ref` / `ns` — Env-lifetime `*Var` / `*Namespace` with NO header at
+///     offset 0; decoding one hands `mark()` a non-header first byte (the
+///     `tag_trace_table` OOB the dormant-chunk-constant trace hit). Filtering
+///     them here is both safe and the fix.
+///   - `keyword` — `gpa`-interned (process-lifetime, never swept). It HAS a
+///     valid header but never carries metadata, so it never needs marking (the
+///     interner keeps it + its `gpa` name strings alive) — filtered for that
+///     liveness-not-needed reason, not for any header hazard.
+///
+/// `symbol` is GcManaged = TRUE (ADR-0110), unlike `keyword`: a symbol can
+/// carry `with-meta` metadata (a GC-managed map), so its trace must mark that
+/// map. A `Symbol` HAS a valid header at offset 0 (mark-safe). An *interned*
+/// symbol always has nil meta, so it rides the trace as a no-op; its mark bit
+/// is never cleared (not on `gc.allocations`, not a `persistent_marks`
+/// waypoint), but that is provably inert — an interned symbol has NO GC child
+/// (`with-meta` always mints a *non-interned* gc.alloc'd symbol, which sweep
+/// bit-clears normally), so a stale bit cannot strand anything.
 ///
 /// `Value.heapHeader()` consults this so EVERY root walk (operand stack, locals,
 /// chunk constants, closure bindings) filters the same set in ONE place — an
@@ -140,7 +151,10 @@ pub const HeapTag = enum(u8) {
 // GC-ROOT: G2 — the membrane SSOT classifier (non-GC heap tags) [ref: .dev/gc_rooting.md §G]
 pub fn isGcManaged(tag: HeapTag) bool {
     return switch (tag) {
-        .symbol, .keyword, .var_ref, .ns => false,
+        // `symbol` is GcManaged (ADR-0110: it can carry with-meta'd metadata
+        // that its trace marks). `keyword`/`var_ref`/`ns` stay filtered — see
+        // the doc comment for the per-tag rationale.
+        .keyword, .var_ref, .ns => false,
         else => true,
     };
 }

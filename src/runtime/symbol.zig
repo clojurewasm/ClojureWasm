@@ -19,16 +19,18 @@
 //! into a two-case branch — exactly the Cascade smell ADR-0036 +
 //! ADR-0037 D6 want to prevent.
 //!
-//! ### Per-Value metadata is deferred
+//! ### Symbol value-metadata (ADR-0110, D-304)
 //!
-//! cw v1 explicitly does NOT carry a `meta_ptr: ?*Value` field on
-//! Symbol day 1, even though JVM Clojure's Symbol does. Per-Value
-//! metadata is cross-cutting (Symbol + Keyword + Var + IObj-protocol
-//! Values together) and lands as ADR-0037 D6 + D-075 (Phase 7+
-//! metadata layer). Until D-075 lands, pointer-eq IS the finished form
-//! within the cw v1 envelope — every interned Symbol is the canonical
-//! wrapper, `=` and `identical?` agree by construction. See
-//! ADR-0037 D6 for the rationale.
+//! A symbol can carry metadata. An *interned* symbol always has
+//! `meta == nil` — the interner mints it unchanged, so interned symbols
+//! keep pointer-eq identity and stay gpa-pinned (process-lifetime, never
+//! swept). `with-meta` does NOT mutate the interned symbol: it gc.allocs a
+//! FRESH non-interned `Symbol` sharing the interned base's `ns`/`name`
+//! slices (interner-owned, never freed) plus the new `meta`. That fresh
+//! symbol is collectable transient data (F-006 GC layer), so symbol
+//! equality + hash are ns+name-structural (meta-ignored) — see
+//! `equal.zig`. `(identical? 'a (with-meta 'a m))` is false (distinct
+//! objects); `(= 'a (with-meta 'a m))` is true (identity is ns+name only).
 
 const std = @import("std");
 const value = @import("value/value.zig");
@@ -36,18 +38,34 @@ const Value = value.Value;
 const HeapHeader = value.HeapHeader;
 const HeapTag = value.HeapTag;
 const hash = @import("hash.zig");
+const tag_ops = @import("gc/tag_ops.zig");
+const mark_sweep = @import("gc/mark_sweep.zig");
 const Runtime = @import("runtime.zig").Runtime;
 
-/// Heap-allocated symbol. Layout-identical to `Keyword` (modulo tag).
-/// Per ADR-0037 D6, no `meta_ptr` field on day 1 — deferred to D-075.
+/// Heap-allocated symbol. `header` is over-aligned to 8 so Zig's
+/// alignment-descending field reorder keeps it at offset 0 (it ties the
+/// 8-aligned ns/name/meta and wins on declaration order) — `GcHeap.alloc`
+/// requires `header` at offset 0 because a `with-meta`'d symbol is gc.alloc'd
+/// (ADR-0110). This lets ns/name stay plain `[]const u8` slices (an
+/// `extern struct` would forbid the optional slice and force a ptr+len
+/// rewrite of every `.ns`/`.name` reader). Mirrors `Keyword` plus `meta`.
 pub const Symbol = struct {
-    header: HeapHeader,
+    header: HeapHeader align(8),
     _pad: [6]u8 = undefined,
     /// Null for unqualified symbols like `foo`.
     ns: ?[]const u8,
     name: []const u8,
-    /// Precomputed Murmur3 hash of `ns/name` (or just `name`).
+    /// Precomputed Murmur3 hash of `ns/name` (or just `name`). Identical
+    /// for an interned symbol and its `with-meta`'d twin (meta-independent).
     hash_cache: u32,
+    /// Symbol metadata map (ADR-0110). `nil` for interned symbols; set only
+    /// by `with-meta` on a fresh non-interned symbol. Traced by `traceSymbol`.
+    meta: Value = Value.nil_val,
+
+    comptime {
+        std.debug.assert(@alignOf(Symbol) >= 8);
+        std.debug.assert(@offsetOf(Symbol, "header") == 0);
+    }
 
     /// Format as `ns/name` or `name`. No leading colon (that is
     /// Keyword's discipline). Returns a slice of `buf`.
@@ -144,6 +162,44 @@ pub fn find(rt: *Runtime, ns: ?[]const u8, name_: []const u8) ?Value {
 pub fn asSymbol(val: Value) *const Symbol {
     std.debug.assert(val.tag() == .symbol);
     return val.decodePtr(*const Symbol);
+}
+
+/// `(meta sym)` — the symbol's metadata map, or nil (ADR-0110).
+pub fn metaOf(val: Value) Value {
+    return asSymbol(val).meta;
+}
+
+/// `(with-meta sym m)` — a fresh non-interned symbol with the same
+/// (ns, name) and metadata `m`. gc.alloc'd (collectable, F-006); shares
+/// the base's interner-owned `ns`/`name` slices (no dupe, no finaliser).
+/// `m` is nil or a map (validated by the caller).
+pub fn withMeta(rt: *Runtime, val: Value, m: Value) !Value {
+    const base = asSymbol(val);
+    const sym = try rt.gc.alloc(Symbol);
+    sym.* = .{
+        .header = HeapHeader.init(.symbol),
+        .ns = base.ns,
+        .name = base.name,
+        .hash_cache = base.hash_cache,
+        .meta = m,
+    };
+    return Value.encodeHeapPtr(.symbol, sym);
+}
+
+/// GC trace for a symbol (ADR-0110): mark its `meta` map. A no-op for an
+/// interned symbol (meta nil → `heapHeader()` null). Mirrors
+/// `vector.traceVector`. Registered into `tag_ops.tag_trace_table[.symbol]`.
+fn traceSymbol(gc_ptr: *anyopaque, header: *HeapHeader) void {
+    const gc: *@import("gc/gc_heap.zig").GcHeap = @ptrCast(@alignCast(gc_ptr));
+    const sym: *Symbol = @ptrCast(@alignCast(header)); // header at offset 0
+    if (sym.meta.heapHeader()) |h| mark_sweep.mark(gc, h);
+}
+
+/// Register the symbol trace (ADR-0110). Called from `Runtime.init`. The
+/// `.symbol` membrane flip (`heap_tag.isGcManaged`) makes this trace
+/// reachable; interned symbols ride it as a nil-meta no-op.
+pub fn registerGcHooks() void {
+    tag_ops.registerTrace(.symbol, &traceSymbol);
 }
 
 // --- internal helpers ---

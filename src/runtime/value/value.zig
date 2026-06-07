@@ -297,13 +297,14 @@ pub const Value = enum(u64) {
     pub fn heapHeader(self: Value) ?*HeapHeader {
         const bits = @intFromEnum(self);
         const top16: u16 = @truncate(bits >> nb.NB_TAG_SHIFT);
-        if (top16 < nb.NB_FLOAT_TAG_BOUNDARY) return null;        // raw f64
-        if (top16 >= nb.NB_TAG_INT) return null;                  // immediate band
+        if (top16 < nb.NB_FLOAT_TAG_BOUNDARY) return null; // raw f64
+        if (top16 >= nb.NB_TAG_INT) return null; // immediate band
         // GC-managed membrane (D-251 / ADR-0095 Alt D): a heap-TAGGED Value whose
-        // tag is NOT GcManaged (`var_ref`/`ns` Env pointers, `symbol`/`keyword`
-        // gpa-interned) does not target a markable `HeapHeader` at offset 0, so it
-        // is filtered here BEFORE decode — handing `mark()` such a pointer reads a
-        // non-header first byte as a tag (the `tag_trace_table` OOB). `isGcManaged`
+        // tag is NOT GcManaged (`var_ref`/`ns` Env pointers with no header;
+        // `keyword` gpa-interned + never meta-bearing) is filtered here BEFORE
+        // decode — handing `mark()` a headerless pointer reads a non-header first
+        // byte as a tag (the `tag_trace_table` OOB). `symbol` IS GcManaged
+        // (ADR-0110: with-meta'd symbols carry a GC map to trace). `isGcManaged`
         // GC-ROOT: G1 — the single Value->header decode membrane; every root walk + trace funnels here [ref: .dev/gc_rooting.md §G]
         // is the single classifier every root walk shares (heap_tag.zig SSOT).
         // `Tag` and `HeapTag` are 1:1 by integer for slots 0..63; the immediate
