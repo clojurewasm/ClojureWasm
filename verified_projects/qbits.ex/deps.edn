@@ -1,0 +1,5 @@
+{:paths ["."]
+ :deps {cc.qbits/ex
+        {:git/url "https://github.com/mpenet/ex.git"
+         :git/sha "ea101649ac284a595950205b6392a441e4b17879"}}
+ :aliases {:verify {:main-opts ["-m" "verify"]}}}
