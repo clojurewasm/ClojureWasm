@@ -60,6 +60,8 @@ pub fn instanceQPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
     // `(instance? Integer x)` is uniformly false (clj agrees: a cljw int IS a
     // Long), never a class_name_unknown error.
     if (host_class.isKnownOpaqueClass(class_sym)) return .false_val;
+    // ADR-0109: every non-nil value is an instance of Object (clj: nil is not).
+    if (host_class.isUniversalClass(class_sym)) return if (args[1].tag() == .nil) .false_val else .true_val;
     // class_name.isKnown covers native + interface + Throwable; user-
     // defined defrecord / deftype names live in `rt.types` and need
     // a separate check (row 7.13 cycle 1 — was the row 7.12 cycle 1
@@ -83,6 +85,8 @@ pub fn classIsaPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     const child = td_mod.asTypeDescriptorRef(args[0]).fqcn orelse return .false_val;
     const parent = td_mod.asTypeDescriptorRef(args[1]).fqcn orelse return .false_val;
     if (std.mem.eql(u8, child, parent)) return .true_val;
+    // ADR-0109: Object is the universal supertype — every class isa? Object.
+    if (host_class.isUniversalClass(parent)) return .true_val;
     return if (host_class.isSubclassOf(host_class.normalizeClassName(child), host_class.normalizeClassName(parent)))
         .true_val
     else

@@ -40,6 +40,15 @@ assert_eq 'inst_string_true'   "$(last_line "$("$BIN" -e '(instance? String "x")
 # extension on the same protocol still dispatches — the Integer impl is dead in
 # BOTH cljw and clj (verified: (m 5) → :long, not :int)
 assert_eq 'extend_opaque_noop_dispatch' "$(last_line "$("$BIN" -e '(do (defprotocol P (m [x])) (extend-type Integer P (m [_] :int)) (extend-type Long P (m [_] :long)) (m 5))' 2>&1)")" ':long'
+# ADR-0109: java.lang.Object is the UNIVERSAL supertype (resolves as a value;
+# (isa? <any> Object)→true; (instance? Object x)→true for non-nil; nil→false).
+# Unblocks algo.generic's `(derive Object root-type)`.
+assert_eq 'isa_long_object'    "$(last_line "$("$BIN" -e '(isa? Long Object)' 2>&1)")" 'true'
+assert_eq 'isa_string_object'  "$(last_line "$("$BIN" -e '(isa? String Object)' 2>&1)")" 'true'
+assert_eq 'inst_object_nonnil' "$(last_line "$("$BIN" -e '(instance? Object 5)' 2>&1)")" 'true'
+assert_eq 'inst_object_nil'    "$(last_line "$("$BIN" -e '(instance? Object nil)' 2>&1)")" 'false'
+assert_eq 'derive_object'      "$(last_line "$("$BIN" -e '(do (derive (quote ::x) Object) (isa? (quote ::x) Object))' 2>&1)")" 'true'
+
 # a genuinely-unknown class name still raises (no silent default-shift)
 if "$BIN" -e '(instance? TotallyFakeClass 5)' >/dev/null 2>&1; then
     fail "unknown_class_still_errors: expected non-zero exit"

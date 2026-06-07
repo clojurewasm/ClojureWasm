@@ -169,6 +169,15 @@ pub fn isKnownOpaqueClass(class_name: []const u8) bool {
     return OPAQUE_CLASSES.has(class_name);
 }
 
+/// True iff `class_name` is `java.lang.Object` — the UNIVERSAL supertype
+/// (ADR-0109). Resolved as a class VALUE so `(derive Object …)` works (algo.generic);
+/// `(isa? <any-class> Object)` is true and `(instance? Object x)` is true for any
+/// non-nil x (clj: nil is not an Object). The OTHER host_interface markers (IFn,
+/// Counted, …) as class values are the tracked D-293 remainder.
+pub fn isUniversalClass(class_name: []const u8) bool {
+    return std.mem.eql(u8, class_name, "Object") or std.mem.eql(u8, class_name, "java.lang.Object");
+}
+
 /// Return the immediate parent of `class_name` in the hierarchy, or
 /// `null` for the root (Throwable) or for unknown class names.
 pub fn getParent(class_name: []const u8) ?[]const u8 {

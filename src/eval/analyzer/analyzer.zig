@@ -611,6 +611,14 @@ fn analyzeSymbol(
                 const ref = try type_descriptor.makeTypeDescriptorRef(env.rt, td);
                 return try makeConstant(arena, ref, form);
             }
+            // ADR-0109: java.lang.Object is the universal supertype, resolved as a
+            // class VALUE so `(derive Object …)` works; isa?/instance? special-case
+            // it (every class isa? Object; every non-nil value instance? Object).
+            if (host_class.isUniversalClass(sym.name)) {
+                const td = try env.rt.exceptionDescriptor("Object");
+                const ref = try type_descriptor.makeTypeDescriptorRef(env.rt, td);
+                return try makeConstant(arena, ref, form);
+            }
         }
         return error_catalog.raise(.symbol_unresolved, form.location, .{ .sym = symFullName(sym) });
     };

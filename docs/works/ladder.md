@@ -87,9 +87,12 @@ so rungs are now probed via real **deps.edn git coordinates**, not just
   classes cljw collapses away (java.math.BigInteger/Integer/Short/Byte/Float)
   now resolve as distinct class VALUES — `(= (type 5) Integer)`/`(instance?
   Integer 5)` clj-faithfully false, `(extend-type Integer …)` a load-only no-op
-  (no crash). Advanced numeric-tower :98/:127 → :162. The marker-value facet
-  (Object/IFn as values + Object-root isa? for algo.generic's `(derive Object)`)
-  is the tracked remainder (D-293 PARTIAL).
+  (no crash). Advanced numeric-tower :98/:127 → :162. **java.lang.Object** is also
+  wired as the universal supertype (`(isa? <any> Object)`→true, `(instance? Object
+  x)`→non-nil) — **clojure.algo.generic (core ns) now LOADS** (its `(derive Object
+  root-type)` was the blocker). Remainder (D-293 PARTIAL): `java.lang.Number`
+  (algo.generic.arithmetic), `clojure.lang.IFn` (core.contracts) + other markers
+  as class values, each with its membership predicate (Number→number?, IFn→ifn?).
 
 - **clojure.math.numeric-tower** (probed 2026-06-07 via -cp): a DEEP java.math
   interop chain, parked. Advances :79 (D-301 empty-catch) → :98 (java.math.BigInteger

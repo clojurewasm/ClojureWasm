@@ -14,3 +14,13 @@
 ;;=> true
 (instance? String "x")
 ;;=> true
+(isa? Long Object)
+;;=> true
+(isa? String Object)
+;;=> true
+(instance? Object 5)
+;;=> true
+(instance? Object nil)
+;;=> false
+(instance? Object "x")
+;;=> true
