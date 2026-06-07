@@ -9,6 +9,16 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-303"
+    status: "now (ADR-0108, found 2026-06-07). clojure.lang.Util ships 10 pure statics (equiv/equals/pcequiv/identical/isInteger/hash/hasheq/compare/hashCombine/isPrimitive), all oracle-verified (corpus clojure_lang_util.txt; hash under AD-009). `Util/classOf` is DEFERRED: a faithful classOf must match `(class x)` exactly (nil->nil, big_int-origin-long->Long, ex_info->named descriptor, typed/reified->own, else native), which lives in classPrim (lang/primitive/protocol.zig, Layer 2) and CANNOT be imported by runtime/clojure/lang/Util.zig (Layer 0, zone rule). Clean fix = factor classPrim's body into a runtime-layer helper (e.g. type_descriptor.classOf(rt,v)) that both classPrim and Util/classOf delegate to — avoids duplicating the 25-line class logic. Low frequency (Util/classOf 4x in corpus). Land with the helper factor."
+    category: "interop"
+    barrier: |-
+      Util/classOf unimplemented (the surface ships 10/11 pure statics). A
+      faithful impl needs classPrim's class-of logic, which is Layer-2 and
+      zone-forbidden from the Layer-0 surface. Barrier dissolves when
+      classPrim's body is factored into a runtime-layer classOf helper both
+      call sites share (no logic duplication). Cross-ref ADR-0108, AD-009.
+    last_reviewed: "2026-06-07"
   - id: "D-302"
     status: "parked (Step-0.6 correction 2026-06-07). numeric-tower :98 references java.math.BigInteger as a class VALUE in (= (type base) java.math.BigInteger). CORRECTION: mapping it to cljw .big_int is WRONG - it makes that compare TRUE for a cljw BigInt base, shadowing the intended BigInt branch (:99-100) and firing the dead BigInteger string ctor. Correct shape = an OPAQUE DISTINCT class (no cljw value has type java.math.BigInteger, so the compare is always false and falls through to the BigInt branch) = the D-293 opaque-host-class VALUE facet (distinct from the parked extend-type-TARGET facet). numeric-tower PARKED on D-293 (needs java.math.BigInteger + the java.math/lang refs as opaque-distinct classes; when-available is self-contained). Revisit when D-293 (opaque host class; ADR-level divergence - clj errors on unknown class) is taken. NOT a big_int alias. PROBE 2026-06-07: confirmed numeric-tower is a DEEP chain, not a single blocker - it extend-types 8 host classes (Integer/Long/Float/Double/java.math.BigInteger/BigDecimal/clojure.lang.BigInt/Ratio), reads static fields (BigDecimal/ROUND_FLOOR, Double/NaN), calls instance methods (.setScale/.bitLength), and constructs (BigDecimal. ...). Even with the D-293 opaque VALUE+TARGET capability landed it would advance :98 -> :127 (Integer) -> :162 (BigDecimal static field) and on through the .setScale/.bitLength/ctor interop. So numeric-tower is a full java.math interop campaign unit, NOT a D-293 follow-on. Stays parked behind both D-293 (unified opaque/inert class resolver) AND a java.math.BigDecimal interop surface."
     category: "interop"

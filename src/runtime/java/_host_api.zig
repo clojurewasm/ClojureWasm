@@ -100,6 +100,14 @@ const java_surfaces = [_]type{
     @import("util/regex/Pattern.zig"),
 };
 
+/// The third surface tree (ADR-0108): `clojure.lang.*` runtime internals that
+/// real pure-Clojure libs drop to. Same `Extension` contract + registry as the
+/// java/ tree; aggregated here (the registry knows all trees; the surface files
+/// live under `runtime/clojure/lang/`). Hand-maintained like `java_surfaces`.
+const clojure_surfaces = [_]type{
+    @import("../clojure/lang/Util.zig"),
+};
+
 /// Walk every enumerated surface's `___HOST_EXTENSION` declaration,
 /// create its `cljw_ns` namespace, register its `TypeDescriptor` into
 /// `rt.types`, and run any `init` callback. Idempotent — re-running
@@ -110,39 +118,35 @@ const java_surfaces = [_]type{
 /// `lang/primitive.zig::registerAll` calls this. New surfaces are
 /// added by appending an entry to `java_surfaces` above.
 pub fn installAll(env: *Env) !void {
+    inline for (java_surfaces) |S| try registerExtension(env, S.___HOST_EXTENSION);
+    inline for (clojure_surfaces) |S| try registerExtension(env, S.___HOST_EXTENSION);
+}
+
+/// Register one surface `Extension` into the registry: create its `cljw_ns`,
+/// heap-copy its `TypeDescriptor` into `rt.types` (uniform `rt.gpa` ownership so
+/// `rt.deinit` frees it), and run any `init`. Shared by every surface tree.
+fn registerExtension(env: *Env, ext: Extension) !void {
     const rt = env.rt;
-    inline for (java_surfaces) |S| {
-        const ext: Extension = S.___HOST_EXTENSION;
-        _ = try env.findOrCreateNs(ext.cljw_ns);
-        if (ext.descriptor.fqcn) |fqcn_lit| {
-            const gop = try rt.types.getOrPut(fqcn_lit);
-            if (!gop.found_existing) {
-                // `rt.deinit` (runtime.zig:290-312) frees every
-                // `types` entry — key, fqcn, and the TypeDescriptor
-                // itself — via `rt.gpa`. Surface descriptors are
-                // module-scoped statics (string literals + empty
-                // slices), so heap-copy them on install so the
-                // ownership uniformity holds at deinit. The cost is
-                // ~1 KB total across the entire surface set.
-                const td = try rt.gpa.create(type_descriptor.TypeDescriptor);
-                td.* = ext.descriptor.*;
-                td.fqcn = try rt.gpa.dupe(u8, fqcn_lit);
-                gop.key_ptr.* = try rt.gpa.dupe(u8, fqcn_lit);
-                gop.value_ptr.* = td;
-            }
+    _ = try env.findOrCreateNs(ext.cljw_ns);
+    if (ext.descriptor.fqcn) |fqcn_lit| {
+        const gop = try rt.types.getOrPut(fqcn_lit);
+        if (!gop.found_existing) {
+            // Surface descriptors are module-scoped statics (string literals +
+            // empty slices); heap-copy on install so the deinit ownership
+            // uniformity holds (~1 KB total across the surface set).
+            const td = try rt.gpa.create(type_descriptor.TypeDescriptor);
+            td.* = ext.descriptor.*;
+            td.fqcn = try rt.gpa.dupe(u8, fqcn_lit);
+            gop.key_ptr.* = try rt.gpa.dupe(u8, fqcn_lit);
+            gop.value_ptr.* = td;
         }
-        if (ext.init) |f| {
-            // Look the heap td back up so `init` operates on the
-            // canonical descriptor (idempotent re-runs: the heap td
-            // exists already on second call, so `gop.value_ptr.*`
-            // above just re-resolved it). For idempotency, init
-            // callbacks check `td.method_table.len == 0` (or the
-            // equivalent for field_layout) before populating;
-            // otherwise the second `installAll` would leak the
-            // first call's allocation.
-            const td_ptr = rt.types.get(ext.descriptor.fqcn.?).?;
-            try f(@constCast(td_ptr), rt.gpa);
-        }
+    }
+    if (ext.init) |f| {
+        // Look the heap td back up so `init` operates on the canonical
+        // descriptor. init callbacks check `method_table.len == 0` (or the
+        // field_layout equivalent) before populating, so re-runs don't leak.
+        const td_ptr = rt.types.get(ext.descriptor.fqcn.?).?;
+        try f(@constCast(td_ptr), rt.gpa);
     }
 }
 

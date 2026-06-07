@@ -101,10 +101,10 @@ for file in $files; do
 
             # G1 (ADR-0029 D2): runtime/ non-surface importing surface
             case "$file" in
-                src/runtime/java/*|src/runtime/cljw/*) ;;  # surface itself: OK
+                src/runtime/java/*|src/runtime/cljw/*|src/runtime/clojure/*) ;;  # surface itself: OK
                 src/runtime/*)
                     case "$rel" in
-                        src/runtime/java/*|src/runtime/cljw/*)
+                        src/runtime/java/*|src/runtime/cljw/*|src/runtime/clojure/*)
                             echo "$file:$lineno: G1/ADR-0029 D2: non-surface runtime/ imports surface ($import_path)" \
                                 >> "$violations_file"
                             ;;
@@ -117,7 +117,7 @@ for file in $files; do
             case "$file" in
                 src/lang/primitive/*)
                     case "$rel" in
-                        src/runtime/java/*|src/runtime/cljw/*)
+                        src/runtime/java/*|src/runtime/cljw/*|src/runtime/clojure/*)
                             echo "$file:$lineno: G1/ADR-0029 D2/F-009: lang/primitive imports surface ($import_path)" \
                                 >> "$violations_file"
                             ;;
@@ -152,8 +152,21 @@ for file in $files; do
                     ;;
                 src/runtime/cljw/*)
                     case "$rel" in
+                        */_host_api.zig) ;;  # shared registry contract: OK
                         src/runtime/java/*)
                             echo "$file:$lineno: G1/ADR-0029 D2: cljw/ imports java/ ($import_path)" \
+                                >> "$violations_file"
+                            ;;
+                    esac
+                    ;;
+                # ADR-0108: the clojure.lang.* tree reaches the shared neutral
+                # impl + the _host_api registry contract, never the java/ or
+                # cljw/ SURFACES.
+                src/runtime/clojure/*)
+                    case "$rel" in
+                        */_host_api.zig) ;;  # shared registry contract: OK
+                        src/runtime/java/*|src/runtime/cljw/*)
+                            echo "$file:$lineno: G1/ADR-0029 D2: clojure/ imports surface ($import_path)" \
                                 >> "$violations_file"
                             ;;
                     esac

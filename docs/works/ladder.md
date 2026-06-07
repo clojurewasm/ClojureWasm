@@ -68,8 +68,13 @@ so rungs are now probed via real **deps.edn git coordinates**, not just
     (a) syntax-quote-qualified method params (`user/_` from a bare `_` inside a
     backtick — clj's deftype/reify strip the ns; raw fn* still rejects, parity
     kept); (b) empty method bodies `(m [_])` → nil. Advanced :138 → :405 —
-    `clojure.lang.Util/…` static interop (deep JVM-internal, same class family as
-    data.avl). **Parked at :405** (needs a clojure.lang.Util/RT host surface).
+    `clojure.lang.Util/…` static interop. **Now wired** (ADR-0108 — new
+    `runtime/clojure/lang/` host-surface tree; `clojure.lang.Util` ships 10 pure
+    statics, oracle-verified, corpus `clojure_lang_util.txt`; `Util/classOf`
+    deferred D-303). Advanced :405 → :519 — `Counted` (a `clojure.lang.*`
+    interface marker, host_interfaces.yaml territory; next finger-tree blocker,
+    parked). The `clojure.lang.Util` surface broadly unblocks the ~95 corpus
+    `Util` call sites; `RT`/`Numbers`/`APersistentMap` are separate units.
   - **clojure.algo.generic** — `(derive Object root-type)`: bare `Object` as a
     class VALUE to `derive` is unresolved (host-class-value family, D-293).
   - **clojure.data.avl** — `(APersistentMap/mapHash …)` + `^AtomicReference`/

@@ -553,6 +553,7 @@ run_step "e2e_phase14_cljc_libspec"          "bash test/e2e/phase14_cljc_libspec
 run_step "e2e_phase14_empty_catch"           "bash test/e2e/phase14_empty_catch.sh"
 run_step "e2e_phase14_extend_type_nil"       "bash test/e2e/phase14_extend_type_nil.sh"
 run_step "e2e_phase14_deftype_method_lowering" "bash test/e2e/phase14_deftype_method_lowering.sh"
+run_step "e2e_phase14_clojure_lang_util"     "bash test/e2e/phase14_clojure_lang_util.sh"
 run_step "e2e_phase14_pattern_quote"         "bash test/e2e/phase14_pattern_quote.sh"
 run_step "e2e_phase14_var_resolve"           "bash test/e2e/phase14_var_resolve.sh"
 run_step "e2e_phase14_biginteger"            "bash test/e2e/phase14_biginteger.sh"

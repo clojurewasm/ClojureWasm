@@ -1,0 +1,24 @@
+(clojure.lang.Util/equiv 1 1.0)
+;;=> false
+(clojure.lang.Util/equiv 1 1)
+;;=> true
+(clojure.lang.Util/equals 1 1N)
+;;=> false
+(clojure.lang.Util/equals "a" "a")
+;;=> true
+(clojure.lang.Util/identical 1 1)
+;;=> true
+(clojure.lang.Util/isInteger 5)
+;;=> true
+(clojure.lang.Util/isInteger 5N)
+;;=> true
+(clojure.lang.Util/isInteger 1.5)
+;;=> false
+(clojure.lang.Util/compare nil 1)
+;;=> -1
+(clojure.lang.Util/compare 3 2)
+;;=> 1
+(clojure.lang.Util/pcequiv [1 2] [1 2])
+;;=> true
+(clojure.lang.Util/hashCombine 7 13)
+;;=> -1640531072
