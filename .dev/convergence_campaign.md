@@ -117,6 +117,32 @@ The loop self-selects the next item by the order — **no user touchpoint**.
    candidates, verified_projects = committed proofs). deps.edn-system gaps found
    while doing this are fixed in-place (within cljw's control — `:git`/`:local`
    resolution, NOT Maven JAR fetch); ADR-0101 + amendments record the policy.
+
+   **PRIORITY + STAY directive (user 2026-06-07).** The next two libs to land
+   are **hiccup** and **honeysql** (in that order of tractability is fine). Once
+   the existing **9** verified (`medley`, `math.combinatorics`,
+   `data.priority-map`, `core.cache`, `potpuri`, `data.zip`, `qbits.ex`,
+   `core.unify`, `integrant`) **plus hiccup + honeysql** all verify (→ 11), this
+   library-incorporation campaign goes to **STAY** (paused, not abandoned). After
+   the STAY, the autonomous loop **self-selects the remaining work** (per CLAUDE.md
+   § The only stop's next-task rule + the F-010 quality-loop floor) — coverage
+   has plateaued, so the precision-raise shifts to quality work (tests,
+   robustness, error-path fidelity, the `quality-loop floor:` debt drain) and any
+   user-flagged feature, NOT more lib-probing. The known blockers for the two
+   priority libs (each definition-derived, F-013):
+   - **hiccup** → `java.net.URI` (`extend-protocol ToString java.net.URI` +
+     functional `to-uri`/`url-encode`). A java.net surface (runtime/java/net/URI.zig)
+     OR — since it is a real, implementable Java class (NOT a `clojure.lang.*`
+     internal, so ADR-0113 does NOT defer it) — a minimal URI value + the
+     ToString/url-encode path. Probe `verified_projects/hiccup` for the exact chain.
+   - **honeysql** → (a) **java.util.Locale** US/ROOT static fields + a Locale-arg
+     `String.toUpperCase`/`toLowerCase` overload (D-315; a host_instance surface was
+     designed+reverted 2026-06-07 — re-land with a GC-safe per-Runtime singleton:
+     gc.infra-alloc like empty_queue, OR root the rt slots), AND (b) **regex
+     lookahead `(?=…)`** — `honey.sql/dehyphen` uses `#"(\w)-(?=\w)"`; the regex
+     engine (`src/runtime/regex/`) rejects it (`unsupported syntax in cycle 1`).
+     Land (a)+(b) TOGETHER (anti-drip-feed) so honeysql verifies in one push.
+     Cross-ref D-315, D-314 (extend-via-metadata, separate/optional).
 4. **Native `cljw.nrepl` cider ops** — prerequisite: **populate built-in var
    metadata** (`:doc` / `:arglists` on core vars; `(meta (var map))` is nil
    today — generate from `compat_tiers.yaml` / JVM source). Then implement

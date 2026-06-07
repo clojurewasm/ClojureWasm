@@ -5,63 +5,65 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log`. 2026-06-07 landed (newest last): **D-309 deps.edn
-  RUN-MODE `-M`/`-X` (ADR-0111)** · **D-310 part-1 `*command-line-args*`** (root-set
-  across -m/file/-X) · **D-312/D-313 typed_instance + record-assoc metadata
-  (ADR-0112)** · **aliased-macro analyzer fix** (resolveMaybe alias-translate) ·
-  `verified_projects/` → `-M:verify` 規約, now **7** (medley, math.combinatorics,
-  data.priority-map, core.cache, potpuri, data.zip, qbits.ex). Gate 280/0.
-- **Priority (user 2026-06-07, durable in memory `optimization-deferred-until-15-libs`)**:
-  feature completeness > correctness > **divergence suppression** FIRST; bench /
-  optimization DEFERRED until ~15 verified libs + bug pickup, THEN autonomous
+- **HEAD**: see `git log`. 2026-06-07 landed (newest last): aliased-macro analyzer
+  fix (`fa8628ea`, resolveMaybe alias-translate) · clojure.template / defprotocol
+  options / `..` macro (`811d1f08`) · java.lang.Class methods + java.util.*
+  interfaces (`ee1552d6`, D-311) · **ADR-0113 deferred `clojure.lang.*` host-refs +
+  defmethod-empty-body + defmulti docstring/attr-map** (`bfa4c514`). `verified_projects/`
+  → `-M:verify`, now **9** (medley, math.combinatorics, data.priority-map,
+  core.cache, potpuri, data.zip, qbits.ex, core.unify, integrant). Gate 285/0.
+- **First commit on resume MUST be: land hiccup, then honeysql** (user 2026-06-07
+  priority — the 2 libs that take verified_projects to 11, then the campaign STAYs).
+  `hiccup` blocks on **`java.net.URI`** (`extend-protocol ToString java.net.URI` +
+  functional `to-uri`/`url-encode`; a real Java class → a `runtime/java/net/URI.zig`
+  surface, NOT ADR-0113-deferrable). `honeysql` blocks on **java.util.Locale**
+  (D-315: US/ROOT static fields + `String.toUpperCase`/`toLowerCase` Locale overload;
+  a host_instance surface was designed+reverted — re-land GC-safe, gc.infra-singleton
+  like empty_queue) **AND regex lookahead `(?=…)`** (`honey.sql/dehyphen`;
+  `src/runtime/regex/` rejects it). Land Locale+lookahead TOGETHER (anti-drip-feed).
+  Probe `verified_projects/<lib>` for the exact chain; add dir + `bash
+  scripts/verify_projects.sh <lib>`, commit on green. SSOT = `.dev/convergence_campaign.md`
+  Stage 1.3 item 3 (PRIORITY + STAY directive). A failure IS a coverage gap → fix
+  root-cause (F-013) or improve deps.edn (`:git`/`:local`, NOT Maven JAR).
+- **After hiccup + honeysql verify (→ 11): STAY the library-incorporation
+  campaign** (paused, not abandoned). The loop then **self-selects the remaining
+  work** (CLAUDE.md § The only stop next-task rule + the F-010 `quality-loop floor:`
+  drain) — coverage has plateaued, so precision-raise = quality work (tests,
+  robustness, error-path fidelity) + any user-flagged feature, NOT more lib-probing.
+  Optimization stays DEFERRED per memory `optimization-deferred-until-15-libs`
   (binary size / startup / hot paths, measured via `scripts/perf.sh` Release only).
-  Bench regressions acceptable meanwhile — do NOT chase.
-- **First commit on resume MUST be: grow `verified_projects/` toward 15** via
-  `-M:verify` (deps.edn `:paths ["."]` + `:aliases {:verify {:main-opts ["-m"
-  "verify"]}}`; verify.clj = `(ns verify …)` + `-main`). Next candidates:
-  **alias-macro-providing libs now unblocked** by the resolveMaybe fix (re-probe a lib whose
-  blocker was an `alias/macro` call). **bouncer.core** BLOCKED (clj-time→joda-time Maven).
-  **data.codec.base64** BLOCKED (leiningen `src/main/clojure` layout + no deps.edn → cljw
-  defaults to `src/`). Then the next interop vein is **D-311 `.isArray`** (java.lang.Class
-  instance-method surface, D-293 family) → unblocks core.unify. Add dir, `bash
-  scripts/verify_projects.sh <lib>`, commit on green; reconcile ladder. A failure IS
-  a coverage gap → fix root-cause (F-013, definition-derived) OR improve deps.edn
-  (`:git`/`:local`, NOT Maven JAR). How-to: `verified_projects/README.md`. SSOT =
-  `.dev/convergence_campaign.md` Stage 1.3. data.generators deferred (maven layout);
-  tools.cli/data.json/data.csv BUNDLED, skip.
-- **deps.edn run-mode remainder = D-310** (part-2): `-i`/`-r`/`--report`/`@resource`/
-  mixed-init-before-main + `-T` tool mode. FINISHED-FORM = a `clojure.main`-shaped
-  Clojure grammar fn (ADR-0111 DA Alt 3), bootstrap-ordering-gated; current Zig
-  source-synthesis migrates cleanly. Not blocking verified_projects.
+- **Parked libs (deeper blockers; not the priority)**: schema (`clojure.lang.Compiler/
+  CHAR_MAP` value-position — ADR-0113 relieves the call-position class but CHAR_MAP is
+  value-position + more), clip (`clojure.lang.Reflector`), data.avl (`clojure.lang.RT`/
+  APersistentMap), bouncer/struct (clj-time / cuerdas Maven+regex). Re-probe after a
+  campaign re-open; NOT now.
 - **Deferred — do NOT re-attempt the naive fix**: D-308 `(instance?
-  clojure.lang.IDeref x)` needs a per-interface NATIVE-implementer membership
-  table ∪ protocol satisfaction — NOT a `satisfies?` alias (the 2026-06-07 try
-  was reverted: it broke `(instance? clojure.lang.IFn :kw)`→true). ADR-level,
-  sibling of D-293. · reify protocol_remap (D-280 residual: expandReify lacks the
-  rewriteProtocolRemap path) · D-288 deftype `^:volatile-mutable`+set! · D-305
-  builtin var :arglists/:doc table (Slice 3). These block core.memoize's deeper
-  load (cache loads; memoize advances :36→:67); NOT blocking verified_projects.
+  clojure.lang.IDeref x)` needs a per-interface NATIVE-implementer table ∪ protocol
+  satisfaction — NOT a `satisfies?` alias (reverted). · reify protocol_remap (D-280
+  residual) · D-288 deftype `^:volatile-mutable`+set! · D-305 builtin var
+  :arglists/:doc table · D-316 def-target metadata-map VALUES unevaluated (affects
+  defn+defmulti) · D-314 defprotocol `:extend-via-metadata` dispatch.
 - **⚠ USER must act (time-sensitive, NOT AI-doable)**: see
   `private/clojure_conj_2026_cfp/archive/DEFERRED_USER_ACTIONS.md` — (1) Sessionize submit
   by 6/13; (2) v0.1.0 tag/Release + make `cw-from-scratch` default branch;
   (3) edge-demo CRUD `git push` + `fly deploy`.
 - **Forbidden**: the 3 USER actions above (credential/product — safety-blocked;
-  **user will give concrete instructions later — do NOT touch tag/Sessionize/
-  edge-demo until then**); bench/optimization before the 15-lib bar (above);
-  editing `.claude/rules/*` (permission-blocked → surface as carry-over); the
-  naive D-308 `satisfies?`-rewrite; pinning an in-progress zwasm v2 state/tag
-  (F-001: v2 ONLY from `zwasm-from-scratch`); trusting `~/Documents/OSS/zig`.
+  **user gives concrete instructions later — do NOT touch tag/Sessionize/edge-demo
+  until then**); bench/optimization before the lib bar; editing `.claude/rules/*`
+  (permission-blocked → surface as carry-over); the naive D-308 `satisfies?`-rewrite;
+  pinning an in-progress zwasm v2 state/tag (F-001); trusting `~/Documents/OSS/zig`.
 
 ## Just landed (2026-06-07, git log = SSOT)
 
-- **Aliased-macro analyzer fix** (`fa8628ea`). A macro called through an `:as`
-  alias (`m/some-macro`) was not macroexpanded: `resolveMaybe` resolved a
-  qualified head with a bare `env.findNs(ns)` that does NOT translate require
-  aliases → fell through to a plain call → raw args analyzed as symbols
-  (`Unable to resolve symbol`). ADR-0035 c.5 made `analyzeSymbol` alias-aware but
-  missed the sibling macro-detection path. Fix mirrors it: alias-translate then
-  D-261 `resolveQualified`. Found via **qbits.ex** (`ex/try+ … (catch-data …)`),
-  the 7th verified project. Self-contained regression `phase15_aliased_macro.sh`.
+- **ADR-0113 deferred `clojure.lang.*` host-refs** (`bfa4c514`, integrant 9th). An
+  unresolved `clojure.lang.*`/`clojure.asm.*` qualified ref (call-head OR value
+  position) rewrites to a CALL-time `feature_not_supported` instead of failing the
+  whole namespace at analysis — a lib whose CORE is pure but whose periphery names a
+  JVM internal now LOADS (integrant's `clojure.lang.RT/baseLoader`). Strict prefix
+  allowlist keeps typos loud; `java.*` stays loud (AD-022). Same cycle:
+  enumeration-seq/iterator-seq stubs, empty-body defmethod (clj parity), defmulti
+  docstring/attr-map (was mistaken for the dispatch fn — now skipped + attached to
+  Var.meta). D-316 records a separate divergence (metadata-map values unevaluated).
 
 ## Process discipline (SSOT = memory + rules; do NOT re-expand here)
 
@@ -69,17 +71,26 @@
   -P8 over-runs under load). Doc-only / verified_projects-only = no gate. Never
   poll a bg gate.
 - `verified_projects` sweep + clj-diff probes are NETWORK / many-`cljw` — never
-  run concurrently with the gate (contends with perf-threshold steps).
-- clj-diff harness = `scripts/clj_diff_sweep.sh`; per-expr classify. `clj -M -e`
-  → `timeout 20` + bound infinite seqs. Speed ONLY via `scripts/perf.sh`.
+  run concurrently with the gate. clj-diff harness = `scripts/clj_diff_sweep.sh`;
+  `clj -M -e` → `timeout 20` + bound infinite seqs. Speed ONLY via `scripts/perf.sh`.
   Edit/Write TRANSCODES non-ASCII (splice via python). Default backend = VM (F-012).
 
 ## Cold-start reading order (tracked-only)
 
-handover → **`.dev/convergence_campaign.md`** (driving SSOT; Stage 1.3 =
-verified_projects) → **`verified_projects/README.md`** (the lib-load method) →
-`docs/works/ladder.md` (ranked candidates) + `.dev/debt.yaml` + `compat_tiers.yaml`
-→ `.dev/decisions/0101_deps_git_fetch.md` (+ am.1) + **`0111_deps_run_modes.md`**
-+ **`0112_typed_instance_metadata.md`** → `.dev/project_facts.md`
-(F-013/F-010/F-002) → CLAUDE.md (§ Project spirit + The only stop) →
-`.dev/principle.md`.
+handover → **`.dev/convergence_campaign.md`** (driving SSOT; Stage 1.3 item 3 =
+verified_projects + PRIORITY/STAY directive) → **`verified_projects/README.md`** (the
+lib-load method) → `docs/works/ladder.md` (ranked candidates + NEEDS-ROW) +
+`.dev/debt.yaml` (D-314/D-315/D-316) + `compat_tiers.yaml` → ADRs
+`0101_deps_git_fetch.md` (+am.1) / `0111_deps_run_modes.md` / `0112_typed_instance_metadata.md`
+/ **`0113_deferred_host_class_ref.md`** → `.dev/project_facts.md` (F-013/F-010/F-002)
+→ CLAUDE.md (§ Project spirit + The only stop) → `.dev/principle.md`.
+
+## Stopped — user requested
+
+User instruction (2026-06-07): prioritize incorporating **hiccup + honeysql**; once
+those + the existing 9 verify (→ 11), put the library-incorporation campaign on STAY
+and have the loop self-select the remaining work; rewrite the plan accordingly;
+audit the wiring + reference chains so a fresh `/continue` resumes autonomously; then
+stop. Plan rewritten (convergence_campaign Stage 1.3 item 3 + this Resume contract);
+wiring audited. Resume = the "First commit on resume MUST be" above (land hiccup,
+then honeysql).
