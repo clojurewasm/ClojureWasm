@@ -1,0 +1,5 @@
+{:paths ["."]
+ :deps {com.github.seancorfield/honeysql
+        {:git/url "https://github.com/seancorfield/honeysql.git"
+         :git/sha "a3376ff9d8d120093bf531459d8d6972ca812cc5"}}
+ :aliases {:verify {:main-opts ["-m" "verify"]}}}
