@@ -1,0 +1,5 @@
+{:paths ["."]
+ :deps {metosin/potpuri
+        {:git/url "https://github.com/metosin/potpuri.git"
+         :git/sha "d5294910d33147279b94152f1b4a5df907d75c6f"}}
+ :aliases {:verify {:main-opts ["-m" "verify"]}}}

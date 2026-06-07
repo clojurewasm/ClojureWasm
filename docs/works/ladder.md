@@ -149,6 +149,19 @@ forward probe method = a mini deps.edn project with `:git/url`+`:git/sha`**
 
 - **IDeref/IPending deref-able family LANDED (2026-06-07, D-307)** — `clojure.lang.IDeref`/`IPending` recognised as direct deftype/reify supertypes; new `IDeref`/`IPending` protocols; `deref`/`@`/`realized?` consult them for typed_instance (e2e phase14_deftype_ideref). core.memoize's RetryingDelay deftype now loads → advanced **:36 → :67**. **core.memoize NEXT gaps** (3, deeper): (1) `(instance? clojure.lang.IDeref v)` = host-class-VALUE resolution of a clojure.lang marker (D-293 family); (2) `(reify clojure.lang.IDeref (deref [_] v))` = reify protocol_remap (expandReify lacks the rewriteProtocolRemap path deftype has); (3) `^:volatile-mutable` fields + `set!` (D-288, ADR-level). core.cache stays fully loaded.
 
+- **verified_projects via `-M:verify` (2026-06-07, ADR-0111 run mode)** — the
+  committed-proof convention now runs `cljw -M:verify` (deps.edn `:verify` alias →
+  `verify/-main`), exercising the real deps.edn run-mode path. **potpuri** added as
+  the 5th proof (deep-merge/map-vals/find-first; pure `.cljc`, no deps.edn → cljw
+  default `src`). Two **functional** gaps surfaced while probing further libs
+  (require LOADS but exercising a fn fails — the functional bar catches what bare
+  `require` misses): **clojure.core.unify** → `(.isArray <class-value>)` on a
+  type_descriptor (**D-311**, java.lang.Class instance-method surface, D-293
+  sibling); **clojure.data.zip** → `with-meta` on a `typed_instance` (**D-312**,
+  deftype/record IObj meta, D-304 sibling). Both are definition-derived root-cause
+  fixes, not per-lib patches. data.generators stays deferred (maven layout, no
+  deps.edn → `src/main/clojure` unresolvable without the lib's own deps.edn).
+
 ## NEEDS-ROW gap summary (for the main loop)
 
 These are candidate `debt.yaml` rows — the FIRST real blocker each library

@@ -33,6 +33,26 @@ active:
       user-ns resolution). The current source-synthesis migrates cleanly: the
       synthesized form IS the Clojure body that fn would host.
     last_reviewed: "2026-06-07"
+  - id: "D-311"
+    status: "now (2026-06-07, verified_projects probe) — `(.isArray <class-value>)` unsupported: `No implementation of method 'isArray' on protocol '<.member>' for type 'type_descriptor'`. Surfaced exercising clojure.core.unify via `cljw -M:verify` (unify's array-detection calls `.isArray` on a `(class x)` value). cljw resolves `(class x)` to a `type_descriptor` but has no host java.lang.Class instance-method surface (`.isArray`/`.getName`/`.getSimpleName`/…). Sibling of D-293 (opaque host-class VALUE) — the instance-method side. Definition-derived fix (F-013): a java.lang.Class method surface over type_descriptor, NOT a per-lib patch. Blocks core.unify functional verification (require loads; unify call hits it)."
+    category: "interop"
+    barrier: |-
+      `(.isArray klass)` on a `(class x)` type_descriptor raises no-impl. cljw has
+      no java.lang.Class instance-method surface. Add the Class method family
+      (.isArray/.getName/.getSimpleName/.isInstance) over type_descriptor,
+      definition-derived. Cross-ref D-293 (class-VALUE resolution, the static side),
+      ADR-0109. Surfaced: verified_projects core.unify probe.
+    last_reviewed: "2026-06-07"
+  - id: "D-312"
+    status: "now (2026-06-07, verified_projects probe) — `with-meta` on a `typed_instance` (deftype/record instance) raises `with-meta: cannot attach metadata to typed_instance`. Surfaced exercising clojure.data.zip via `cljw -M:verify` (a zipper path attaches metadata to a typed_instance). clj records/deftypes that implement IObj support with-meta; cljw's typed_instance has no meta field/arm. Sibling of D-304 (symbol meta, landed) + D-239 (var/atom/ns meta) but for typed_instance — the IObj-bearing deftype/record case. Definition-derived (F-013): a meta slot + with-meta/meta arms for typed_instance gated on the type implementing IObj. Blocks data.zip functional verification."
+    category: "interop"
+    barrier: |-
+      `(with-meta typed-inst m)` raises cannot-attach. cljw's typed_instance carries
+      no metadata. Add a meta slot + with-meta/meta arms for typed_instance whose
+      type implements IObj (the record/deftype IObj case), mirroring the D-304
+      symbol-meta + collection-meta precedent. Cross-ref D-304, D-239, the IObj
+      protocol. Surfaced: verified_projects data.zip probe.
+    last_reviewed: "2026-06-07"
   - id: "D-308"
     status: "now (2026-06-07) — DEFERRED (ADR-level). `(instance? clojure.lang.IDeref x)` (and other recognised clojure.lang PROTOCOL markers: IFn/IObj/IPersistentStack/…) errors `class … is not a known class name`. core.memoize:67 needs it. A 2026-06-07 attempt rewrote `(instance? marker x)` → `(satisfies? proto x)` in expandInstanceQ — REVERTED: it broke `(instance? clojure.lang.IFn :kw)` (clj=true, a keyword IS a callable IFn; satisfies?=false since keywords don't extend the IFn protocol). LESSON: instance?-on-host-interface ≠ satisfies?. clj instance? checks the value's CLASS implements the interface, which for a host interface includes NATIVE implementers (keyword/vector/map/fn are IFn; atom/delay/future/var are IDeref) PLUS deftype protocol impls. The proper shape = a per-interface NATIVE-implementer membership predicate (the tag set that implements each clojure.lang interface) ∪ the protocol-satisfaction check — definition-derived, NOT a satisfies? alias. Sibling to D-293 (opaque host-class VALUE) but for clojure.lang PROTOCOL markers. Likely an ADR (host-interface instance? membership). Do NOT re-attempt the naive satisfies?-rewrite."
     category: "interop"
