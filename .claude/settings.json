@@ -40,7 +40,6 @@
       "Bash(git push -f:*)",
       "Bash(git push --force-with-lease:*)",
       "Bash(git reset --hard:*)",
-      "Bash(git rebase:*)",
       "Bash(git commit --no-verify:*)",
       "Bash(rm -rf /:*)",
       "Bash(rm -rf ~/:*)",
