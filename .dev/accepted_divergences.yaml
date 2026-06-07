@@ -309,3 +309,16 @@ accepted:
       `java.util.Random` (simple, not the JVM Class object) is the AD-003 surface.
     derives_from: "AD-002 (opaque-ref identity-hash print cljw cannot mirror) + ADR-0059 (no JVM Class) + ADR-0106"
     pin: "test/e2e/phase14_random.sh — print_opaque (#<java.util.Random>) + class (java.util.Random)"
+  - id: "AD-021"
+    summary: "A namespace VALUE (e.g. `:ns` in `(meta #'x)`) prints opaquely as `#object[Namespace \"name\"]` — simple class name, no identity hash — vs clj's `#object[clojure.lang.Namespace 0x… \"name\"]`."
+    example: '(pr-str (:ns (meta #''map))) => cljw "#object[Namespace \"clojure.core\"]" / clj "#object[clojure.lang.Namespace 0x.. \"clojure.core\"]"'
+    why: |-
+      Stage 1.4 synthesize-on-read now projects `:ns` (a first-class cljw
+      namespace value, ADR-0083) onto var metadata, where it never appeared
+      before. cljw's opaque namespace print uses the simple class name
+      `Namespace` (AD-003 no-JVM-Class) and omits the JVM identity hash
+      (AD-002 — non-reproducible). The VALUE is behaviourally clj-faithful:
+      `(ns-name (:ns (meta #'x)))` => the ns symbol (F-011); only the `pr`
+      identity rendering diverges. Same family as AD-002 / AD-020.
+    derives_from: "AD-002 (opaque-ref identity-hash print cljw cannot mirror) + AD-003 (simple class name, ADR-0059 no JVM Class) + ADR-0083 (namespace as first-class value)"
+    pin: "test/e2e/phase14_var_metadata.sh — synth_ns_render (#object[Namespace \"clojure.core\"]) + synth_ns_core (ns-name equivalence)"

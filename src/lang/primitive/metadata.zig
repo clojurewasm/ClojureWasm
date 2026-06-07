@@ -24,6 +24,28 @@ const list = @import("../../runtime/collection/list.zig");
 const lazy_seq = @import("../../runtime/lazy_seq.zig");
 const atom = @import("../../runtime/atom.zig");
 const symbol = @import("../../runtime/symbol.zig");
+const keyword = @import("../../runtime/keyword.zig");
+
+/// Project the mechanical var-meta keys onto the Var's stored `.meta`
+/// (Stage 1.4 synthesize-on-read). `:name` (bare symbol) + `:ns` (first-class
+/// namespace value) are always present; `:macro`/`:dynamic`/`:private` only
+/// when the corresponding flag is set — matching clj's `(meta #'x)` key set.
+/// User meta (`:doc`/`:arglists`/…) is preserved; mechanical keys win on a
+/// clash (clj forces :name/:ns over user meta). `:line`/`:file` are out of
+/// scope; `:ns` renders as a bare namespace, not clj's `#object[…]` (AD-021).
+fn synthVarMeta(rt: *Runtime, v: Value) !Value {
+    const vr = v.decodePtr(*const env_mod.Var);
+    var m = vr.meta orelse map.empty();
+    m = try map.assoc(rt, m, try keyword.intern(rt, null, "name"), try symbol.intern(rt, null, vr.name));
+    m = try map.assoc(rt, m, try keyword.intern(rt, null, "ns"), Env.nsValue(vr.ns));
+    if (vr.flags.macro_)
+        m = try map.assoc(rt, m, try keyword.intern(rt, null, "macro"), Value.true_val);
+    if (vr.flags.dynamic)
+        m = try map.assoc(rt, m, try keyword.intern(rt, null, "dynamic"), Value.true_val);
+    if (vr.flags.private)
+        m = try map.assoc(rt, m, try keyword.intern(rt, null, "private"), Value.true_val);
+    return m;
+}
 
 /// `(meta obj)` — obj's metadata map, or nil for a non-IObj / no-meta value.
 pub fn metaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -35,9 +57,13 @@ pub fn metaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         .hash_set => set.metaOf(v),
         .list => list.metaOf(v),
         .lazy_seq => lazy_seq.metaOf(v),
-        // D-183: `(meta #'x)` reads the Var's `.meta` Clojure-map slot,
-        // populated by `analyzeDef` from a `^meta` def target.
-        .var_ref => v.decodePtr(*const env_mod.Var).meta orelse Value.nil_val,
+        // D-183 + Stage 1.4 synthesize-on-read: `(meta #'x)` returns the Var's
+        // stored `.meta` (populated by `analyzeDef` from a `^meta` def target)
+        // with the MECHANICAL keys :name/:ns/:macro/:dynamic/:private projected
+        // from the Var's own fields on top — matching clj's Var.setMeta forcing
+        // of :name/:ns. The Var fields are the SSOT; the map is a fresh
+        // projection (no stored redundant map → no bootstrap allocation cost).
+        .var_ref => try synthVarMeta(rt, v),
         .atom => atom.metaOf(v),
         // D-304 / ADR-0110: a symbol's value-metadata (nil for interned).
         .symbol => symbol.metaOf(v),

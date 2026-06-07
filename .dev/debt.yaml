@@ -9,6 +9,16 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-305"
+    status: "now (2026-06-07) — Stage 1.4 var-metadata Slice 3. Slice 1 LANDED (mechanical keys :name/:ns/:macro/:dynamic/:private synthesized on read in metaFn's .var_ref arm; :ns opaque = AD-021). Slice 3 = builtin :arglists/:doc: Zig-builtin primitives (map/filter/reduce/…) + plain-`def` core vars have NO :arglists/:doc on `(meta #'x)` (clj has both). defn-defined vars already get :arglists (the defn macro attaches it). Unblocks full cider eldoc/info on builtins (campaign Stage 1.4)."
+    category: "runtime"
+    barrier: |-
+      `(:arglists (meta #'map))` / `(:doc (meta #'map))` → nil for Zig-builtin
+      primitives + plain-`def` core vars (clj has both). Barrier dissolves when a
+      definition-derived arglists/doc SSOT (F-013) — a build-time/comptime table
+      extracted from JVM core.clj, NOT compat_tiers.yaml (no arglists/doc fields)
+      and NOT inline-per-builtin (F-013 ad-hoc smell) — is projected by
+      synthVarMeta. Cross-ref private/notes/stage14-var-metadata-survey.md, F-013.
   - id: "D-304"
     status: "DISCHARGED 2026-06-07 (ADR-0110). Symbol value-metadata landed: `with-meta` on a symbol mints a FRESH non-interned gc.alloc'd Symbol sharing the interned base's ns/name slices + the new meta; `meta` reads it (nil for interned). Symbol identity stays ns+name-structural, meta-IGNORED, across valueEqual/keyEqValue/valueHash (symbolStructEq) — the new `.symbol` valueHash arm (hash_cache) closed a latent pointer-bits bug that would have broken `(get {'a 1} (with-meta 'a m))`. GC: the `.symbol` membrane (isGcManaged) flipped to true + a `.symbol` trace marks meta; this CORRECTS ADR-0095's symbol/keyword conflation (a Symbol HAS a header — only var_ref/ns are headerless). Interned symbols ride the trace as a nil-meta no-op (bit-stale inert: no GC child by construction). Header kept at offset 0 for gc.alloc via `header: HeapHeader align(8)` (Zig reorder ties → declaration order wins), avoiding an extern/ptr-len rewrite of every .ns/.name reader. Keyword still rejects meta (clj ClassCastException). 15 e2e (phase14_symbol_metadata, incl. GC-survival across 50k allocs); GATE 274/0. SCOPE = symbol only; var/atom/ns/ref meta = D-239. Ladder re-probe of core.cache + algo.generic.math-functions pending hand-laid -cp."
     category: "runtime"
