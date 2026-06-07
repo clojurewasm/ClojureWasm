@@ -43,14 +43,21 @@ active:
       ADR-0109. Surfaced: verified_projects core.unify probe.
     last_reviewed: "2026-06-07"
   - id: "D-312"
-    status: "now (2026-06-07, verified_projects probe) — `with-meta` on a `typed_instance` (deftype/record instance) raises `with-meta: cannot attach metadata to typed_instance`. Surfaced exercising clojure.data.zip via `cljw -M:verify` (a zipper path attaches metadata to a typed_instance). clj records/deftypes that implement IObj support with-meta; cljw's typed_instance has no meta field/arm. Sibling of D-304 (symbol meta, landed) + D-239 (var/atom/ns meta) but for typed_instance — the IObj-bearing deftype/record case. Definition-derived (F-013): a meta slot + with-meta/meta arms for typed_instance gated on the type implementing IObj. Blocks data.zip functional verification."
+    status: "DISCHARGED 2026-06-07 (this commit, ADR-0112). `with-meta`/`meta` on a typed_instance landed (Shape α, native field): `TypedInstance.meta` + `instMetaOf` + `instWithMeta` (COPIES the gc.infra-owned field array — can't share, double-free; the one divergence from symbol withMeta) + a trace-mark line (no membrane flip / no registration — typed_instance already GcManaged+registered). metadata.zig `.typed_instance` arms kind-gated: user IObj impl wins; else record→native, non-IObj deftype→`.with_meta_target_not_iobj` (=clj ClassCastException); reify stays IObj-dispatch-only (no field tail). Equality/hash unchanged (already field-structural → `(= r (with-meta r m))`→true free). **clojure.data.zip now functionally verifies** (added as verified_projects proof). e2e phase14_typed_instance_metadata. Record assoc/update thread the source meta too (D-313, folded in same commit per the DA — divergence-suppression priority)."
     category: "interop"
     barrier: |-
-      `(with-meta typed-inst m)` raises cannot-attach. cljw's typed_instance carries
-      no metadata. Add a meta slot + with-meta/meta arms for typed_instance whose
-      type implements IObj (the record/deftype IObj case), mirroring the D-304
-      symbol-meta + collection-meta precedent. Cross-ref D-304, D-239, the IObj
-      protocol. Surfaced: verified_projects data.zip probe.
+      DISCHARGED. `(with-meta record m)` mints a fresh instance carrying meta
+      (field array copied); `(meta …)` reads it; `=`/`identical?`/fields all
+      clj-faithful; non-IObj deftype throws. Mirrors ADR-0110 (symbol) minus the
+      membrane flip + equality arm. Cross-ref ADR-0112, D-304, D-313 (residual).
+    last_reviewed: "2026-06-07"
+  - id: "D-313"
+    status: "DISCHARGED 2026-06-07 (same commit as D-312, ADR-0112 Alt 2). Record `assoc`/`update` now thread the source instance's metadata: the record assoc re-mint (collection.zig:618) calls `allocInstanceMeta(…, inst.meta)` instead of `allocInstance` (meta-nil), so `(meta (assoc (with-meta r m) :k v))` → m, clj-faithful (update rides assoc). NOT deferred — the DA flagged the deferral as a 'ships a lie' smell (with-meta works but assoc silently drops it on the primary record op); closed in-cycle per the user's divergence-suppression priority. The only re-mint-from-existing site is record assoc; every other allocInstance constructs fresh (meta correctly nil). e2e phase14_typed_instance_metadata asserts assoc/update preservation. dissoc-on-record (clj demotes to a plain map) left to its existing path."
+    category: "interop"
+    barrier: |-
+      DISCHARGED. Record assoc/update thread inst.meta via allocInstanceMeta
+      (collection.zig:618); `(meta (assoc (with-meta r m) :k v))` → m. Cross-ref
+      ADR-0112 Alt 2, D-312.
     last_reviewed: "2026-06-07"
   - id: "D-308"
     status: "now (2026-06-07) — DEFERRED (ADR-level). `(instance? clojure.lang.IDeref x)` (and other recognised clojure.lang PROTOCOL markers: IFn/IObj/IPersistentStack/…) errors `class … is not a known class name`. core.memoize:67 needs it. A 2026-06-07 attempt rewrote `(instance? marker x)` → `(satisfies? proto x)` in expandInstanceQ — REVERTED: it broke `(instance? clojure.lang.IFn :kw)` (clj=true, a keyword IS a callable IFn; satisfies?=false since keywords don't extend the IFn protocol). LESSON: instance?-on-host-interface ≠ satisfies?. clj instance? checks the value's CLASS implements the interface, which for a host interface includes NATIVE implementers (keyword/vector/map/fn are IFn; atom/delay/future/var are IDeref) PLUS deftype protocol impls. The proper shape = a per-interface NATIVE-implementer membership predicate (the tag set that implements each clojure.lang interface) ∪ the protocol-satisfaction check — definition-derived, NOT a satisfies? alias. Sibling to D-293 (opaque host-class VALUE) but for clojure.lang PROTOCOL markers. Likely an ADR (host-interface instance? membership). Do NOT re-attempt the naive satisfies?-rewrite."

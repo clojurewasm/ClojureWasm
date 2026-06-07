@@ -157,10 +157,13 @@ forward probe method = a mini deps.edn project with `:git/url`+`:git/sha`**
   (require LOADS but exercising a fn fails — the functional bar catches what bare
   `require` misses): **clojure.core.unify** → `(.isArray <class-value>)` on a
   type_descriptor (**D-311**, java.lang.Class instance-method surface, D-293
-  sibling); **clojure.data.zip** → `with-meta` on a `typed_instance` (**D-312**,
-  deftype/record IObj meta, D-304 sibling). Both are definition-derived root-cause
-  fixes, not per-lib patches. data.generators stays deferred (maven layout, no
-  deps.edn → `src/main/clojure` unresolvable without the lib's own deps.edn).
+  sibling, OPEN); **clojure.data.zip** → `with-meta` on a `typed_instance`
+  (**D-312**, record IObj meta — **FIXED same session, ADR-0112**; data.zip is now
+  the 6th verified_projects proof). Both were definition-derived root-cause fixes,
+  not per-lib patches. data.generators stays deferred (maven layout, no deps.edn →
+  `src/main/clojure` unresolvable without the lib's own deps.edn). Record
+  structural-op meta threading (`(meta (assoc (with-meta r m) …))` → m) landed in
+  the same ADR-0112 commit (**D-313**, per the DA's divergence-suppression call).
 
 ## NEEDS-ROW gap summary (for the main loop)
 
