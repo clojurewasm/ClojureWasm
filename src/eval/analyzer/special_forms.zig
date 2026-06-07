@@ -328,6 +328,32 @@ fn prependImplicitMacroParams(arena: std.mem.Allocator, params_vec: Form, loc: e
     return Form{ .data = .{ .vector = out }, .location = params_vec.location };
 }
 
+/// Unwrap a `(quote X)` form to `X`; any other form passes through. clj
+/// evaluates def-target metadata values at def time, and the idiomatic
+/// non-self-evaluating value is a quoted datum (`'([k v])`, `'(a b)`); a
+/// quote lifts to its datum, matching clj.
+fn unwrapQuote(f: Form) Form {
+    if (f.data == .list and f.data.list.len == 2) {
+        const head = f.data.list[0];
+        if (head.data == .symbol and head.data.symbol.ns == null and
+            std.mem.eql(u8, head.data.symbol.name, "quote"))
+            return f.data.list[1];
+    }
+    return f;
+}
+
+/// Apply quote-evaluation to a metadata map Form's VALUES before lifting it to
+/// a Value (D-316). Keys (always literal keywords) are untouched. Arbitrary
+/// computed metadata (`{:k (+ 1 2)}`) still needs def-time RUNTIME eval — the
+/// narrow D-316 residual — and is left as-is rather than mis-claimed.
+fn unquoteMetaValues(arena: std.mem.Allocator, map_form: Form) AnalyzeError!Form {
+    if (map_form.data != .map) return map_form;
+    const pairs = map_form.data.map;
+    const out = try arena.alloc(Form, pairs.len);
+    for (pairs, 0..) |p, i| out[i] = if (i % 2 == 1) unwrapQuote(p) else p;
+    return .{ .data = .{ .map = out }, .location = map_form.location };
+}
+
 pub fn analyzeDefmacro(
     arena: std.mem.Allocator,
     rt: *Runtime,
@@ -406,7 +432,7 @@ pub fn analyzeDefmacro(
         try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "arglists" } }, .location = form.location });
         try meta_items.append(arena, .{ .data = .{ .list = arglists_inner }, .location = form.location });
         const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
-        placeholder_var.meta = try analyzer_mod.formToValue(rt, env, meta_map);
+        placeholder_var.meta = try analyzer_mod.formToValue(rt, env, try unquoteMetaValues(arena, meta_map));
     }
 
     // Build the synthetic fn* Form, then analyse it through the regular path
@@ -509,7 +535,7 @@ pub fn analyzeDef(
             try meta_items.append(arena, d);
         }
         const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
-        var_ptr.meta = try analyzer_mod.formToValue(rt, env, meta_map);
+        var_ptr.meta = try analyzer_mod.formToValue(rt, env, try unquoteMetaValues(arena, meta_map));
     }
     // `^:dynamic` / `^:private` on the def target set the Var flags (evalDef /
     // op_def copy DefNode flags onto the Var). Without this the metadata was
