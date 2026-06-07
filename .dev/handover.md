@@ -5,25 +5,26 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log`. The 2026-06-07 ladder session landed: Pattern/quote
-  (cuerdas rung 8) · `(extend-type nil …)`/`(extend-protocol P nil …)` nil-punning ·
-  deftype/reify method-lowering clj-parity (syntax-quote-qualified params + empty
-  method bodies; drove data.finger-tree :56→:138→:405→:519) · **ADR-0108 the third
-  host-surface tree `runtime/clojure/lang/`** + the complete `clojure.lang.Util`
-  static surface (11/11 pure statics, oracle-verified, AD-009 for hash) + the shared
-  runtime `class_of.zig` helper (D-303). numeric-tower + the opaque-class VALUE/TARGET
-  coupling fully diagnosed (D-293/D-302).
-- **First commit on resume MUST be: D-293 — the unified host-class-VALUE resolver
-  (ADR-0109 + DA)**. The recurring remaining ladder blocker is a host CLASS used as a
-  VALUE: bare `Object` (algo.generic `(derive Object …)`), `clojure.lang.IFn`
-  (core.contracts), `java.lang.AssertionError` (tools.trace), `Integer`/`java.math.BigInteger`
-  (numeric-tower). Design-of-record = D-293's row (DA Alt 2 verbatim): ONE resolver
-  `exceptionDescriptor`→general `classDescriptor` (NATIVE→OPAQUE/INERT→Throwable→name_error)
-  + a `kind` field all consumers (instance?/isa?/extends?/extend-type) branch on;
-  extend-type on opaque|inert = load-only no-op (NOT the crash the reverted probe hit),
-  instance?/= treat opaque as no-match, comptime OPAQUE∩NATIVE={}; isa? host hierarchy
-  = AD sub-decision. Then Stage 1: 1.4 cider ops → 1.5 v0→v1 backfill (D-273) → 1.6
-  clj-parity → 1.7 Phase B (D-242). SSOT = `.dev/convergence_campaign.md`.
+- **HEAD**: see `git log`. The 2026-06-07 ladder session landed a large arc:
+  Pattern/quote · `(extend-type nil …)` nil-punning · deftype method-lowering
+  (qualified params + empty bodies) · **ADR-0108** third host-surface tree
+  `runtime/clojure/lang/` + complete `clojure.lang.Util` (11/11) + `class_of.zig`
+  (D-303) · **ADR-0109 host-class-VALUE resolver CORE**: opaque collapsed-numerics
+  (Integer/BigInteger → numeric-tower :98/:127→:162) + `java.lang.Object` universal
+  root (algo.generic core LOADS) + `java.lang.Number` marker (algo.generic.arithmetic
+  LOADS) — all oracle bit-for-bit. D-293 PARTIAL.
+- **First commit on resume MUST be: the D-293 marker REMAINDER — `clojure.lang.IFn`
+  value-resolution**. `(instance? IFn x)` ALREADY works (class_name.matchInterface);
+  the gap is (a) resolving IFn as a VALUE in analyzeSymbol (interface-shaped names
+  are skipped today — class_name.zig:585 divergence) so core.contracts'
+  `(defmethod funcify* clojure.lang.IFn …)` registers + LOADS, and (b) class-level
+  `(isa? <class> IFn)`. (b) is BLOCKED on a callable-class NAMING gap (D-293 row):
+  `(class fn)`=`fn_val`, `sorted_map`, `var_ref` are RAW @tagName (fqcnForTag lacks
+  entries). PREREQUISITE clj-parity fix: add NATIVE_ENTRIES/fqcnForTag for
+  sorted_map→PersistentTreeMap, sorted_set→PersistentTreeSet, var_ref→Var (clean,
+  re-verify `(class x)` e2e); fn-family stays cljw-named. Then IFn isa? via clean
+  names. Then Stage 1: 1.4 cider → 1.5 v0→v1 (D-273) → 1.6 clj-parity → 1.7 Phase B
+  (D-242). SSOT = `.dev/convergence_campaign.md`.
 - **Carry-over (permission-blocked, ADR-0108)**: extend
   `.claude/rules/feature_name_consistency.md` scan-set to `runtime/clojure/**` — the
   classifier blocks `.claude/rules/*` edits; the user lands it. zone_check.sh already
