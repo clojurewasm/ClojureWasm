@@ -10,7 +10,7 @@
 
 active:
   - id: "D-302"
-    status: "now (found 2026-06-07 - numeric-tower rung, after D-301). numeric_tower.clj:98 Unable to resolve symbol java.math.BigInteger. cljw has BigInt (AD-016 collapses clj BigInt/BigInteger into one .big_int) but the class SYMBOL java.math.BigInteger does not resolve (analyzeSymbol/nativeTagFor). numeric-tower references it (type hint / class compare / static). Small-ish: map java.math.BigInteger (+ simple BigInteger) to the big_int native descriptor in class_name (mirror Integer/Long) so the symbol is a class value. Cross-ref AD-016, ADR-0080."
+    status: "parked (Step-0.6 correction 2026-06-07). numeric-tower :98 references java.math.BigInteger as a class VALUE in (= (type base) java.math.BigInteger). CORRECTION: mapping it to cljw .big_int is WRONG - it makes that compare TRUE for a cljw BigInt base, shadowing the intended BigInt branch (:99-100) and firing the dead BigInteger string ctor. Correct shape = an OPAQUE DISTINCT class (no cljw value has type java.math.BigInteger, so the compare is always false and falls through to the BigInt branch) = the D-293 opaque-host-class VALUE facet (distinct from the parked extend-type-TARGET facet). numeric-tower PARKED on D-293 (needs java.math.BigInteger + the java.math/lang refs as opaque-distinct classes; when-available is self-contained). Revisit when D-293 (opaque host class; ADR-level divergence - clj errors on unknown class) is taken. NOT a big_int alias."
     category: "interop"
     barrier: |-
       java.math.BigInteger class symbol unresolved. cljw has .big_int but no
