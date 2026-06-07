@@ -76,9 +76,13 @@ mini-grammar) and found three concrete cw v0 gaps to NOT repeat:
 - **No second-process hand-off** — the whole grammar is in `cli.zig` +
   `run_mode.zig`; the only contract preserved is the alias-`:main-opts`-then-user
   -args APPEND.
-- **`*command-line-args*` is NOT bound yet (D-310).** cljw has no such var; the
-  primary arg path (`-main` receives args directly; `:exec-fn` receives the map)
-  works without it. Adding the dynamic var + binding it is a deferred sibling.
+- **`*command-line-args*` binding (D-310 part-1, landed same session).** A
+  `(def ^:dynamic *command-line-args* nil)` in core.clj; `run_mode.zig` prepends
+  `(alter-var-root (var clojure.core/*command-line-args*) (constantly (list …)))`
+  to every `-M`/`-X` run — a **root-set, not a `binding`**, because cljw evals
+  form-by-form and a `binding` cannot span a multi-form script. Covers -m /
+  file-script / -X uniformly (the trailing args; nil for none). Migrates cleanly
+  to the Alt-3 Clojure grammar (it would set the same root).
 - **`-i` / `-r` / `--report` main-opts and `@resource` script paths are
   deferred** (D-310) — the survey ranks them medium-value; `-m`/`-e`/file/`-X`
   cover the real usage. An unrecognised `-M` main-opt is a clean error, not a

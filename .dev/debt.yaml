@@ -19,15 +19,14 @@ active:
       v0 src/app/deps.zig (the parse precedent), D-310 (deferred remainder).
     last_reviewed: "2026-06-07"
   - id: "D-310"
-    status: "now (2026-06-07, ADR-0111 deferral) — `-M`/`-X` run-mode REMAINDER. (1) `*command-line-args*`: cljw has no such dynamic var, so `-M`/`-X` don't bind it; `-main` gets args directly + `:exec-fn` gets the map, so the primary path works, but library code reading `*command-line-args*` sees nil. Needs the core dynamic var + a bind site in run_mode.zig. (2) `-M` main-opts subset: first-token dispatch only (`-m`/`-e`/file/`-h`); no mixed `-e`-init-before-`-m`, no `-i`/`--init`, `-r`/`--repl`, `--report`, or `@resource` classpath-relative scripts. (3) `-T` tool mode (needs classpath isolation cljw's load-path model lacks) + `-P`/`-Stree`/`-Sdeps` launcher knobs. Each is bonus surface; none blocks verified_projects. Survey ranks at private/notes/stage14-deps-run-mode-survey.md §4."
+    status: "PARTIAL (2026-06-07, ADR-0111 deferral) — `-M`/`-X` run-mode REMAINDER. **(1) `*command-line-args*` = DONE (this session)**: `(def ^:dynamic *command-line-args* nil)` in core.clj; run_mode.zig prepends `(alter-var-root (var clojure.core/*command-line-args*) (constantly (list …)))` to every `-M`/`-X` run (root-set, not binding — cljw evals form-by-form so a binding can't span a multi-form script), covering -m / file-script / -X uniformly; e2e phase14_deps_run_mode cases 1/2/8. REMAINING: (2) `-M` main-opts subset: first-token dispatch only (`-m`/`-e`/file/`-h`); no mixed `-e`-init-before-`-m`, no `-i`/`--init`, `-r`/`--repl`, `--report`, or `@resource` classpath-relative scripts. (3) `-T` tool mode (needs classpath isolation cljw's load-path model lacks) + `-P`/`-Stree`/`-Sdeps` launcher knobs. Each is bonus surface; none blocks verified_projects. Survey ranks at private/notes/stage14-deps-run-mode-survey.md §4."
     category: "app"
     barrier: |-
-      `-M`/`-X` cover -m/-e/file/-X/exec-fn but not *command-line-args* binding,
-      mixed init-opts-before-main, -i/-r/--report/@resource, or -T tool mode.
-      Add a clojure.core `*command-line-args*` dynamic var + bind it in
-      run_mode.zig; extend the -M mini-grammar to walk init-opts then the
-      main-opt (the clojure.main loop shape). Cross-ref ADR-0111, the survey §4-5.
-      FINISHED-FORM (ADR-0111 DA Alt 3): express the -M grammar as a
+      *command-line-args* now binds (root-set in run_mode.zig). REMAINING: -M
+      covers -m/-e/file/-h but not mixed init-opts-before-main, -i/-r/--report/
+      @resource, or -T tool mode. Extend the -M mini-grammar to walk init-opts
+      then the main-opt (the clojure.main loop shape). Cross-ref ADR-0111, survey
+      §4-5. FINISHED-FORM (ADR-0111 DA Alt 3): express the -M grammar as a
       `clojure.main`-shaped Clojure fn (cljw.run/main) invoked with the argv
       vector as Values — bootstrap-ordering-gated (the grammar ns must load before
       user-ns resolution). The current source-synthesis migrates cleanly: the
