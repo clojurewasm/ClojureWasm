@@ -814,9 +814,13 @@ pub fn analyzeNs(
     if (i < items.len and items[i].data == .map) i += 1;
     while (i < items.len) : (i += 1) {
         const directive = items[i];
-        if (directive.data != .list)
-            return error_catalog.raise(.feature_not_supported, directive.location, .{ .name = "ns directive must be a list" });
-        const inner = directive.data.list;
+        // D-299: clj accepts a list `(:require …)` OR a vector `[:require …]`
+        // ns directive (clojure.core's own string.clj uses the vector form).
+        const inner: []const Form = switch (directive.data) {
+            .list => |l| l,
+            .vector => |v| v,
+            else => return error_catalog.raise(.feature_not_supported, directive.location, .{ .name = "ns directive must be a list or vector" }),
+        };
         if (inner.len == 0 or inner[0].data != .keyword)
             return error_catalog.raise(.feature_not_supported, directive.location, .{ .name = "ns directive must begin with a keyword" });
         const kw = inner[0].data.keyword;
@@ -924,9 +928,10 @@ fn parseReferClojureFilters(
             return error_catalog.raise(.feature_not_supported, args[i].location, .{ .name = ":refer-clojure keyword without value" });
         const val = args[i + 1];
         if (std.mem.eql(u8, kw.name, "exclude")) {
-            exclude_out.* = try parseSymbolVector(arena, val);
+            // D-299: clj accepts a list OR vector arg (`:exclude (vec)` / `[vec]`).
+            exclude_out.* = try parseSymbolNameSeq(arena, val, ":refer-clojure :exclude value must be a list or vector of symbols");
         } else if (std.mem.eql(u8, kw.name, "only")) {
-            only_out.* = try parseSymbolVector(arena, val);
+            only_out.* = try parseSymbolNameSeq(arena, val, ":refer-clojure :only value must be a list or vector of symbols");
         } else if (std.mem.eql(u8, kw.name, "rename")) {
             return error_catalog.raise(.feature_not_supported, args[i].location, .{ .name = ":refer-clojure :rename (D-112 follow-up)" });
         } else {
@@ -937,18 +942,6 @@ fn parseReferClojureFilters(
     }
 }
 
-fn parseSymbolVector(arena: std.mem.Allocator, val: Form) AnalyzeError![]const []const u8 {
-    if (val.data != .vector)
-        return error_catalog.raise(.feature_not_supported, val.location, .{ .name = "expected a vector of unqualified symbols" });
-    const items = val.data.vector;
-    const buf = try arena.alloc([]const u8, items.len);
-    for (items, 0..) |entry, idx| {
-        if (entry.data != .symbol or entry.data.symbol.ns != null)
-            return error_catalog.raise(.feature_not_supported, entry.location, .{ .name = "expected an unqualified symbol" });
-        buf[idx] = try arena.dupe(u8, entry.data.symbol.name);
-    }
-    return buf;
-}
 
 /// `(set! var-symbol value)` — assign to a dynamic Var's binding. The
 /// target must be a symbol naming an existing `^:dynamic` Var (resolved

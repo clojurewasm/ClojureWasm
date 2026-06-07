@@ -9,6 +9,14 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-299"
+    status: "DISCHARGED 2026-06-07 (this commit) - ns-form leniency (clj parity): analyzeNs now accepts (1) a list-OR-vector arg to :refer-clojure :exclude/:only (parseSymbolNameSeq; `(:refer-clojure :exclude (vec))`), and (2) a vector-headed ns directive `[:require …]` (clojure.core string.clj uses it). Both oracle-confirmed valid in clj. Unblocked clojure.data.zip (LOADS). Found via the broad corpus re-probe (private/notes/stage13-broad-reprobe.md). e2e phase14_ns_form_leniency."
+    category: "reader"
+    barrier: |-
+      DISCHARGED. The ns macro rejected list-arg :exclude/:only + vector-headed
+      directives that clj accepts. analyzeNs + parseReferClojureFilters relaxed;
+      removed the now-unused parseSymbolVector (parseSymbolNameSeq covers both).
+    last_reviewed: "2026-06-07"
   - id: "D-298"
     status: "parked (Tier-D-adjacent, found 2026-06-07 - test.check rung). clojure.test.check.random:178 `(proxy [ThreadLocal] [] (initialValue [] …))` -> name_error: `proxy` unresolved. cljw does not support `proxy` (JVM-class proxy = Tier D, ADR-0013) and does not even recognize it as a known form (so the whole ns fails to ANALYZE, not just eval). test.check uses proxy over java.lang.ThreadLocal in default-rng (the no-seed RNG path). Two levels: (a) recognize `proxy` as a Tier-D form that ANALYZES but raises tier_d_proxy at EVAL (ADR-0018 staged-unsupported) so libs that DEFINE-but-rarely-CALL proxy load - general, modest; (b) real proxy-over-interface via reify - large, and ThreadLocal is a class not interface (genuine Tier D). test.check would only partially work (seeded paths) even with (a). PARKED: proxy depth vs partial benefit (dead-interop lesson). Revisit if a higher-value lib needs proxy-recognition (a)."
     category: "interop"
