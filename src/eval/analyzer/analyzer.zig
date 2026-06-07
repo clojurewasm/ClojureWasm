@@ -765,7 +765,25 @@ fn analyzeList(
 /// fall through to a regular call (where the error will land with the
 /// right `name_error` Kind).
 fn resolveMaybe(env: *Env, sym: SymbolRef) ?*Var {
-    const ns = if (sym.ns) |n| (env.findNs(n) orelse return null) else (env.current_ns orelse return null);
+    // Mirror `analyzeSymbol`'s ns resolution so the macro-detection path and
+    // the symbol-resolution path agree on a qualified head. A qualified
+    // `alias/name` first consults the current ns's alias table (ADR-0035 D3 —
+    // an `:as`/`alias` shadows a literal ns name), then resolves own-interns-
+    // only (D-261: a merely-referred macro does NOT satisfy `alias/name`). An
+    // unqualified head keeps refer-inclusive `resolve` so a `:refer`'d macro
+    // expands. (Without the alias translation, `(m/some-macro …)` fell through
+    // to a plain call and its raw args were analyzed as symbols — found via
+    // verified_projects/qbits.ex's `ex/try+`.)
+    if (sym.ns) |ns_name| {
+        const ns = ns_blk: {
+            if (env.current_ns) |here| {
+                if (here.aliases.get(ns_name)) |aliased| break :ns_blk aliased;
+            }
+            break :ns_blk env.findNs(ns_name) orelse return null;
+        };
+        return ns.resolveQualified(sym.name);
+    }
+    const ns = env.current_ns orelse return null;
     return ns.resolve(sym.name);
 }
 
