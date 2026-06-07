@@ -84,7 +84,8 @@
             (if (= i 11) acc (recur (+ i 1) (+ acc i)))))))
 
 ;; deftest registers each test under the current ns; run-tests (no arg) runs
-;; them and returns the {:test :pass :fail :error} summary. The final form's
-;; value `[passes fails]` is what run_tier_a.sh's `awk END` captures.
+;; them and returns the {:test :pass :fail :error} summary. A bare `<file.clj>`
+;; runs as a script with no result echo (ADR-0117), so the `[passes fails]`
+;; tuple run_tier_a.sh's `awk END` captures is printed explicitly via `(prn …)`.
 (let [s (clojure.test/run-tests)]
-  [(:pass s) (:fail s)])
+  (prn [(:pass s) (:fail s)]))

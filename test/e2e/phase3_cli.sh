@@ -38,12 +38,18 @@ got=$("$BIN" -e '(+ 1 2)' 2>&1) || fail "-e: non-zero exit"
 [[ "$got" == "3" ]] || fail "-e: want '3', got '$got'"
 echo "    ✓ -e '(+ 1 2)' → 3"
 
-# --- Case 2: <file.clj> ---
+# --- Case 2: <file.clj> runs as a SCRIPT — top-level values are NOT
+#     echoed (ADR-0117 clj-本家 alignment); only explicit output prints. ---
 fixture="$WORK/script.clj"
 printf '(let* [x 10] (+ x 32))\n' > "$fixture"
 got=$("$BIN" "$fixture" 2>&1) || fail "file: non-zero exit"
-[[ "$got" == "42" ]] || fail "file: want '42', got '$got'"
-echo "    ✓ <file.clj> → 42"
+[[ -z "$got" ]] || fail "file no-echo: want empty (script mode), got '$got'"
+echo "    ✓ <file.clj> bare value → no echo"
+
+printf '(println (+ 10 32))\n' > "$fixture"
+got=$("$BIN" "$fixture" 2>&1) || fail "file println: non-zero exit"
+[[ "$got" == "42" ]] || fail "file println: want '42', got '$got'"
+echo "    ✓ <file.clj> (println …) → 42"
 
 # --- Case 3: stdin ('-') ---
 got=$("$BIN" - <<'EOF' 2>&1
@@ -275,6 +281,16 @@ EOF
 ) || fail "defn multi-body: non-zero exit"
 [[ "$got" == $'#\'user/g\n105' ]] || fail "defn multi-body: want last form value, got '$got'"
 echo "    ✓ (defn g [x] (+ x 10) (+ x 100)) → last body wins (105)"
+
+# --- Case 31: --version prints the build.zig.zon-derived banner (ADR-0117) ---
+got=$("$BIN" --version 2>&1) || fail "--version: non-zero exit"
+[[ "$got" == ClojureWasm\ v* ]] || fail "--version: want 'ClojureWasm v<ver>', got '$got'"
+echo "    ✓ --version → $got"
+
+# --- Case 32: --help leads with the version banner line (ADR-0117) ---
+got=$("$BIN" --help 2>&1 | head -1) || fail "--help: non-zero exit"
+[[ "$got" == ClojureWasm\ v* ]] || fail "--help banner: want 'ClojureWasm v<ver>', got '$got'"
+echo "    ✓ --help banner → $got"
 
 echo
 echo "Phase-3 CLI entry points: all green."

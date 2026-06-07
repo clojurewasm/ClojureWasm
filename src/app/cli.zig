@@ -31,6 +31,7 @@ const deps_parse = @import("deps/parse.zig");
 const deps_resolve = @import("deps/resolve.zig");
 const deps_run_mode = @import("deps/run_mode.zig");
 const error_print = @import("../runtime/error/print.zig");
+const build_options = @import("build_options");
 
 /// Top-level CLI dispatcher. Called from `src/main.zig::main` with
 /// the Juicy-Main `std.process.Init` bundle. Parses argv, decides
@@ -172,6 +173,10 @@ fn dispatchArgsRest(
 ) !void {
     var source_text: ?[]const u8 = null;
     var source_label: []const u8 = "<-e>";
+    // clj-本家 alignment (ADR-0117): only `-e` and stdin (`-`) echo each
+    // top-level result; a bare `<file.clj>` runs as a script and prints only
+    // what the program prints. Set false in the file-open branch below.
+    var print_results: bool = true;
     var compare_mode: bool = false;
     var classpath_arg: ?[]const u8 = null;
     var alias_names: std.ArrayList([]const u8) = .empty;
@@ -183,12 +188,17 @@ fn dispatchArgsRest(
 
     var current_arg: ?[]const u8 = first_arg;
     while (current_arg) |arg| : (current_arg = args.next()) {
-        if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
+        if (std.mem.eql(u8, arg, "--version")) {
+            try stdout.print("ClojureWasm v{s}\n", .{build_options.version});
+            try stdout.flush();
+            return;
+        } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             try stdout.print(
+                \\ClojureWasm v{s}
                 \\Usage: cljw [options] [<file.clj> | -]
                 \\  -e, --eval <expr>  Read, analyse, evaluate <expr>; print each result.
-                \\  <file.clj>         Read+evaluate the named source file.
-                \\  -                  Read+evaluate from stdin (heredoc-friendly).
+                \\  <file.clj>         Run the named source file as a script (no result echo).
+                \\  -                  Read+evaluate from stdin, printing each result (heredoc-friendly).
                 \\  -cp, --classpath <dirs>  Colon-separated dirs `require` searches
                 \\                     for `.clj`/`.cljc` libs (else $CLJW_PATH, else ".").
                 \\  -A:a1:a2           Select deps.edn aliases (their :extra-paths /
@@ -201,9 +211,10 @@ fn dispatchArgsRest(
                 \\  --compare          Run source through tree_walk AND vm backends;
                 \\                     print OK + value on agreement, MISMATCH + both
                 \\                     values (exit 1) on divergence.
+                \\  --version          Print the version (ClojureWasm v<version>) and exit.
                 \\  -h, --help         Show this help.
                 \\
-            , .{});
+            , .{build_options.version});
             try stdout.flush();
             return;
         } else if (std.mem.eql(u8, arg, "--compare")) {
@@ -277,6 +288,7 @@ fn dispatchArgsRest(
                 std.process.exit(1);
             };
             source_label = arg;
+            print_results = false;
         }
     }
 
@@ -307,7 +319,7 @@ fn dispatchArgsRest(
     if (compare_mode) {
         try runner.runSourceCompare(io, gpa, arena, stdout, stderr, source_text.?, source_label);
     } else {
-        try runner.runSource(io, gpa, arena, stdout, stderr, source_text.?, source_label, deps.load_paths, true);
+        try runner.runSource(io, gpa, arena, stdout, stderr, source_text.?, source_label, deps.load_paths, print_results);
     }
 }
 

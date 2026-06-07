@@ -28,6 +28,12 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "phase_at_least_15", false);
     build_options.addOption(bool, "phase_at_least_17", false);
 
+    // `--version` / `--help` banner string, auto-derived from the single
+    // source of truth (`build.zig.zon .version`) so the CLI never hand-maintains
+    // a version literal. The user owns the value via the release tag.
+    const build_zon = @import("build.zig.zon");
+    build_options.addOption([]const u8, "version", build_zon.version);
+
     // ROADMAP §9.6 / 4.8 / §349 — backend gate (ADR-0005 / ADR-0070 / F-012).
     // `vm` is the PRODUCTION DEFAULT (flipped 2026-06-02 once every D-196
     // parity blocker closed: check_vm_parity = 0 fails, corpus 375/375 + all

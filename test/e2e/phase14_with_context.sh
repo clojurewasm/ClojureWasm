@@ -10,8 +10,10 @@
 # event.
 #
 # Multi-form stdin/-e stdout ordering is unreliable (D-096), so the
-# value cases use a file + last-result line; the read-side case uses
-# the EDN error event on stderr (unambiguous).
+# value cases use a file. A bare `<file.clj>` runs as a script with no
+# result echo (ADR-0117 clj-本家 alignment), so the asserted value is
+# printed explicitly via `(prn …)`; the read-side case uses the EDN
+# error event on stderr (unambiguous).
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -34,7 +36,7 @@ assert_contains() {
 # --- Case 1: with-context binds *error-context* over the body ---
 cat > /tmp/cljw_wc_1.clj <<'EOF'
 (require '[cljw.error :refer [with-context]])
-(with-context {:a 1} cljw.error/*error-context*)
+(prn (with-context {:a 1} cljw.error/*error-context*))
 EOF
 got=$("$BIN" /tmp/cljw_wc_1.clj 2>/dev/null | tail -1)
 assert_eq 'with_context_binds' "$got" '{:a 1}'
@@ -42,7 +44,7 @@ assert_eq 'with_context_binds' "$got" '{:a 1}'
 # --- Case 2: nested with-context merges (stacks) ---
 cat > /tmp/cljw_wc_2.clj <<'EOF'
 (require '[cljw.error :refer [with-context]])
-(with-context {:a 1} (with-context {:b 2} cljw.error/*error-context*))
+(prn (with-context {:a 1} (with-context {:b 2} cljw.error/*error-context*)))
 EOF
 got=$("$BIN" /tmp/cljw_wc_2.clj 2>/dev/null | tail -1)
 assert_eq 'with_context_nested_merge' "$got" '{:a 1, :b 2}'
@@ -51,7 +53,7 @@ assert_eq 'with_context_nested_merge' "$got" '{:a 1, :b 2}'
 cat > /tmp/cljw_wc_3.clj <<'EOF'
 (require '[cljw.error :refer [with-context]])
 (with-context {:a 1} 0)
-cljw.error/*error-context*
+(prn cljw.error/*error-context*)
 EOF
 got=$("$BIN" /tmp/cljw_wc_3.clj 2>/dev/null | tail -1)
 assert_eq 'with_context_restores' "$got" '{}'

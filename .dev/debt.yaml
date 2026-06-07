@@ -9,6 +9,21 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-322"
+    status: "now (2026-06-08, ADR-0117 CLI alignment) — stdin `-` still echoes each top-level value, while a bare `<file.clj>` was switched to no-echo script semantics in the same ADR's first commit. The finished-form target (ADR-0117 Decision B, DA-confirmed Alt 2) is `-` = no-echo script, uniform with file + clj. ALSO owed: no-args → REPL (clj-compat; currently prints a `ClojureWasm` smoke banner). Staged out of the first commit as a 56-file e2e heredoc migration + a banner-test/non-TTY-hang-bearing REPL change; to be discharged as the immediate next unit."
+    category: "clj-parity"
+    barrier: |-
+      Flipping stdin to no-echo means every `cljw - <<'EOF' … EOF` e2e case that
+      asserts an ECHOED value (≈56 files) must print its asserted form explicitly
+      via `(prn …)` (error/stderr/side-effect stdin cases are unaffected). no-args
+      → REPL additionally must (a) not break the two banner-asserting e2e
+      (phase14_repl, phase6_16_b_4_ns_macro) and (b) not hang on a non-TTY/empty
+      stdin in CI. Resolve by: thread `print_results=false` for the stdin branch in
+      cli.zig; sweep the ≈56 e2e to wrap asserted forms in `(prn …)`; route no-args
+      to repl.run with a non-TTY guard. Cross-ref ADR-0117 Decision B/D, cli.zig
+      dispatchArgsRest, the AD ledger (no AD — this is a bug-to-fix, not an accepted
+      divergence).
+    last_reviewed: "2026-06-08"
   - id: "D-320"
     status: "now (2026-06-07, ADR-0115 honeysql) — regex lookahead `(?=e)`/`(?!e)` runs a nested `tryMatchAt` per-thread-per-position from inside addThread's epsilon-closure (two fresh ThreadList allocs + a full sub-scan each hit). CORRECT (DA confirmed: fresh ThreadList → seen disjoint, greedy irrelevant, recursion-safe) but a latent O(n²·m) cliff on a quantified lookahead + hot-path allocation. Invisible for honeysql's single-step `(?=\\w)`."
     category: "perf"
