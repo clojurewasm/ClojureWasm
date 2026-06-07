@@ -1,0 +1,4 @@
+name: "Wasm memory throughput"
+category: wasm
+expected_output: "done"
+description: "Memory read/write throughput via Wasm store/load operations"

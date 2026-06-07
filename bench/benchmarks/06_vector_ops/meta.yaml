@@ -1,0 +1,4 @@
+name: "Vector operations"
+category: collections
+expected_output: "49995000"
+description: "conj + nth loop over 10K elements"

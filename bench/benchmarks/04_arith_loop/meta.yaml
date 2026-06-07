@@ -1,0 +1,4 @@
+name: "Arithmetic loop"
+category: computation
+expected_output: "499999500000"
+description: "Numeric loop with 1M iterations — measures loop/recur + arithmetic"

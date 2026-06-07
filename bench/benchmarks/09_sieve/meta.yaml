@@ -1,0 +1,4 @@
+name: "Sieve of Eratosthenes"
+category: hof
+expected_output: "168"
+description: "Prime sieve up to 1000 using filter — measures HOF + list ops"

@@ -1,0 +1,4 @@
+name: "Wasm TinyGo takeuchi"
+category: wasm
+expected_output: "7"
+description: "tak(18,12,6) x 10000 via TinyGo-compiled .wasm — deep recursion in wasm"

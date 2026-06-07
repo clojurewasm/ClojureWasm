@@ -1,0 +1,4 @@
+name: "Protocol Dispatch"
+category: dispatch
+expected_output: "149985000"
+description: "Protocol method call in tight loop (10K iterations) — measures protocol dispatch overhead"

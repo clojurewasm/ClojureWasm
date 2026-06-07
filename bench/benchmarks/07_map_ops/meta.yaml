@@ -1,0 +1,4 @@
+name: "Map operations"
+category: collections
+expected_output: "499500"
+description: "assoc + get loop over 1K map entries"

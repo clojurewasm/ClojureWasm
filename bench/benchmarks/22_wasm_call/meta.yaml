@@ -1,0 +1,4 @@
+name: "Wasm function call"
+category: wasm
+expected_output: "1000000"
+description: "Call overhead: cljw → wasm → return, 1M invocations of trivial add"

@@ -1,0 +1,4 @@
+name: "Nested Update"
+category: collections
+expected_output: "10000"
+description: "assoc-in/update-in/get-in on 3-level nested map (10K iterations)"

@@ -1,0 +1,4 @@
+name: "Atom reset/deref"
+category: state
+expected_output: "10000"
+description: "reset!/deref loop over 10K iterations — measures atom state ops"

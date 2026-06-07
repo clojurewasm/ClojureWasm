@@ -1,0 +1,4 @@
+name: "Lazy Chain"
+category: sequences
+expected_output: "299970000"
+description: "Lazy seq chain (range->map->filter->take->reduce) — measures lazy-seq overhead"

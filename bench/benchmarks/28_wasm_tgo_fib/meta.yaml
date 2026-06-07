@@ -1,0 +1,4 @@
+name: "Wasm TinyGo fibonacci"
+category: wasm
+expected_output: "6765"
+description: "fib(20) x 10000 via TinyGo-compiled .wasm — realistic module with runtime overhead"

@@ -1,0 +1,4 @@
+name: "Wasm module load"
+category: wasm
+expected_output: "loaded"
+description: "Module decode + instantiate cycle — measures Wasm startup overhead"

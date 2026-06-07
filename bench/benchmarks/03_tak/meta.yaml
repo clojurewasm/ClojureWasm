@@ -1,0 +1,4 @@
+name: "Takeuchi function"
+category: computation
+expected_output: "7"
+description: "Non-tail deep recursion — measures call stack overhead"

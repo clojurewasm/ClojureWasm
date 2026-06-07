@@ -1,0 +1,4 @@
+name: "Multimethod Dispatch"
+category: dispatch
+expected_output: "70000"
+description: "defmulti dispatch in tight loop (10K iterations) — measures multimethod overhead"
