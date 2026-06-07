@@ -1,0 +1,78 @@
+(into [] (map inc) [1 2 3])
+;;=> [2 3 4]
+(into [] (comp (filter odd?) (map inc)) [1 2 3 4 5])
+;;=> [2 4 6]
+(transduce (map inc) + 0 [1 2 3])
+;;=> 9
+(transduce (filter odd?) + [1 2 3 4 5])
+;;=> 9
+(sequence (map inc) [1 2 3])
+;;=> (2 3 4)
+(into {} (map (fn [[k v]] [k (inc v)])) {:a 1 :b 2})
+;;=> {:a 2, :b 3}
+(eduction (filter even?) (range 10))
+;;=> (0 2 4 6 8)
+(into [] (take 3) (range 100))
+;;=> [0 1 2]
+(into [] (partition-by odd?) [1 1 2 2 3])
+;;=> [[1 1] [2 2] [3]]
+(reduce-kv (fn [acc k v] (assoc acc v k)) {} {:a 1 :b 2})
+;;=> {1 :a, 2 :b}
+(format "%5d" 42)
+;;=> "   42"
+(format "%-5d|" 42)
+;;=> "42   |"
+(format "%05d" 42)
+;;=> "00042"
+(format "%x" 255)
+;;=> "ff"
+(format "%o" 8)
+;;=> "10"
+(format "%+d" 42)
+;;=> "+42"
+(format "%.2f" 3.14159)
+;;=> "3.14"
+(format "%e" 12345.678)
+;;=> "1.234568e+04"
+(format "%10.3f" 3.14159)
+;;=> "     3.142"
+(format "%s and %s" "a" "b")
+;;=> "a and b"
+(format "%,d" 1234567)
+;;=> "1,234,567"
+(ex-data (ex-info "msg" {:k 1}))
+;;=> {:k 1}
+(ex-message (ex-info "msg" {:k 1}))
+;;=> "msg"
+(bit-shift-left 1 4)
+;;=> 16
+(bit-and 12 10)
+;;=> 8
+(quot 17 5)
+;;=> 3
+(mod -7 3)
+;;=> 2
+(rem -7 3)
+;;=> -1
+(cond-> 1 true inc false (* 100))
+;;=> 2
+(some-> {:a {:b 2}} :a :b inc)
+;;=> 3
+(condp = 2 1 :one 2 :two :default)
+;;=> :two
+(case 2 1 :one 2 :two :default)
+;;=> :two
+(let [{:keys [a b] :or {b 99}} {:a 1}] [a b])
+;;=> [1 99]
+(let [[x & xs] [1 2 3 4]] [x xs])
+;;=> [1 (2 3 4)]
+(for [x [1 2] y [3 4] :when (not= x 1)] [x y])
+;;=> ([2 3] [2 4])
+(map vector [1 2 3] [:a :b :c])
+;;=> ([1 :a] [2 :b] [3 :c])
+(filterv even? [1 2 3 4])
+;;=> [2 4]
+(mapv inc [1 2 3])
+;;=> [2 3 4]
+(keep identity [1 nil 2 nil 3])
+;;=> (1 2 3)
