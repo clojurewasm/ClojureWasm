@@ -10,18 +10,20 @@
 
 active:
   - id: "D-315"
-    status: "now (2026-06-07, honeysql probe) — `java.util.Locale` value + Locale-arg case overloads. honeysql's `honey.sql/upper-case` calls `(.. s toString (toUpperCase java.util.Locale/US))` to force locale-independent (US) SQL-keyword casing. Blockers: (1) `java.util.Locale/US` does not resolve (`No namespace: 'java.util.Locale'`) — Locale is reserved in compat_tiers (phase 6) but unimplemented; (2) `.toUpperCase`/`.toLowerCase` are arity-1 only (no Locale overload). Surfaced AFTER landing clojure.template + defprotocol-options + `..` (811d1f08), which cleared honeysql's earlier blockers. This is the sole remaining gap for functional honeysql verification."
+    status: "PARKED (2026-06-07) — honeysql is a DRIP-FEED well; deferred as a whole. After landing clojure.template + defprotocol-options + `..` (811d1f08), honeysql's blocker chain kept revealing one gap at a time: (1) `java.util.Locale/US` + `.toUpperCase`/`.toLowerCase` Locale overload — a host surface was BUILT then REVERTED this session: with the NEXT blocker (3) present, Locale alone lands no verified lib, so it was speculative (no driving lib) + carried host_instance GC-rooting subtlety for a singleton cache. (2) `:extend-via-metadata` dispatch (D-314, separate). (3) **regex lookahead `(?=…)`** — `honey.sql/dehyphen` uses `#\"(\\w)-(?=\\w)\"`; cljw's regex engine rejects lookahead (`unsupported syntax in cycle 1`). This is a regex-ENGINE feature (not interop), a separate substantial unit. Resume honeysql only when (1)+(3) are landed TOGETHER (big-bang, not drip-feed) or honeysql is explicitly prioritized."
     category: "interop"
     barrier: |-
-      Implement java.util.Locale as a host surface: US/ROOT/ENGLISH static fields
-      resolving to a Locale value (host_instance, ADR-0106 — no new Value tag), +
-      `.toUpperCase`/`.toLowerCase` accept an optional Locale 2nd arg. cljw's
-      casing is already locale-independent Unicode, so US/ROOT/ENGLISH map to the
-      existing impl (correct for ASCII SQL keywords; a non-US-family Locale arg is
-      out of scope — error or default). Unblocks honeysql functional verification
-      (verified_projects/honeysql staged when it passes). Cross-ref compat_tiers
-      java.util.Locale (phase 6 reservation), D-314 (honeysql's other deferred
-      gap, extend-via-metadata).
+      honeysql functional verification needs, landed together (anti-drip-feed):
+      (a) java.util.Locale host surface — US/ROOT static fields → a Locale value
+      (host_instance, ADR-0106; cache per-Runtime + GC-root the slots, or gc.infra-
+      alloc like empty_queue so the singleton survives GC) + `.toUpperCase`/
+      `.toLowerCase` optional Locale arg (cljw casing is already locale-independent
+      → US/ROOT map to the existing impl). (b) regex lookahead `(?=…)` in the
+      regex engine (src/runtime/regex/, a real matcher feature). Cross-ref
+      compat_tiers java.util.Locale (phase 6), D-314 (extend-via-metadata). The
+      template/`..`/defprotocol-options/Class/java.util fixes honeysql surfaced
+      ALREADY landed standalone (811d1f08, ee1552d6) — those were the harvest;
+      honeysql itself is not worth more drip-feed cycles right now.
     last_reviewed: "2026-06-07"
   - id: "D-314"
     status: "now (2026-06-07, honeysql probe) — `defprotocol` `:extend-via-metadata true` DISPATCH unimplemented. The option is now PARSED (expandDefprotocol skips leading `:keyword value` pairs so the protocol loads), but cljw does not consult a receiver's metadata for a `protocol-ns/method` fn when no extend-type/extend-protocol impl matches. Explicit extension works; a value carrying `^{:honey.sql.protocols/sqlize (fn …)}` would hit `protocol_no_satisfies` instead of dispatching. Honest (errors, not a silent wrong answer) but incomplete. Surfaced by honeysql's InlineValue protocol; NOT on honeysql's basic format path (sqlize only inlines custom values)."
