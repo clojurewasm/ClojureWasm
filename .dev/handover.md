@@ -44,6 +44,16 @@
   naive D-308 `satisfies?`-rewrite; pinning an in-progress zwasm v2 state/tag
   (F-001: v2 ONLY from `zwasm-from-scratch`); trusting `~/Documents/OSS/zig`.
 
+## Stopped — user requested
+
+User instruction (2026-06-07): "ちょっと今回のキリが良くなったところで止めてくだ
+さい。Mac のディスク容量が逼迫してきていますので、わたしが整理します。" Clean
+stop at a good boundary (HEAD `2ac8a405`, tree clean, all pushed). Resume per the
+Resume contract above — first commit = grow `verified_projects/` by one lib
+(next = clojure.core.cache; see `private/notes/stage13-deps-edn-verified-projects.md`
+for the concrete next-experiment + the priority-map-dep blocker). Delete this
+section on resume (the directive applied to that session only).
+
 ## Just landed (2026-06-07, git log = SSOT)
 
 - **deps.edn unified as the lib-load methodology** (user direction). A
