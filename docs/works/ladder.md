@@ -111,6 +111,19 @@ so rungs are now probed via real **deps.edn git coordinates**, not just
   probe (reverted) verified `(= (type 5) Integer)`/`(instance? Integer x)` are
   clj-faithful in isolation but COUPLED to extend-type (D-293); see debt D-293/D-302.
 
+- **Re-probe (2026-06-07, after the ADR-0108/0109 arc)** — LOADS now:
+  `clojure.algo.generic` (core + `.arithmetic` + `.comparison`) via the
+  Object/Number/host-class-value markers, `clojure.core.contracts` (with its
+  core.unify dep) via the IFn marker, plus the earlier set. **Frontier is now
+  structural / host-surface / Tier-D** (clean single-fix wins harvested): D-075
+  symbol-metadata layer (core.cache, algo.generic.math-functions — ADR-0037-deferred
+  cross-cutting Symbol/Keyword/Var meta), clojure.lang internals (Util/RT statics,
+  LazilyPersistentVector — host surfaces), reflection (tools.trace — Tier-D),
+  clojure.lang.Compiler (tools.macro — Tier-D), threads (core.async — Phase B),
+  java.io/StAX/Jackson (data.xml/json, instaparse — host surfaces). Each is a
+  sizeable fresh unit; the next clean vein is the D-075 metadata layer or a
+  clojure.lang.RT host surface.
+
 - **Broad re-probe (2026-06-07)** after the D-287..D-299 arc found 7 libs now LOAD: clojure.data.csv, clojure.data.codec.base64 (over D-287 byte-arrays), clojure.core.unify, potpuri.core (deep-merge bit-identical to clj), bouncer.core, qbits.ex, and **clojure.data.zip** (D-299 ns-form leniency). Deferred/parked: symbol metadata = D-075 (interned symbols, structural); test.check = D-298 (proxy/Tier-D); tools.macro = clojure.lang.Compiler (Tier-D). Full table: private/notes/stage13-broad-reprobe.md.
 
 ## NEEDS-ROW gap summary (for the main loop)
