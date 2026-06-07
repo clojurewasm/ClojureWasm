@@ -111,7 +111,7 @@ pub fn makeProtocol(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     // DebugAllocator diagnostics at process exit. Test fixtures in
     // `runtime/protocol.zig` keep the prior manual-destroy shape
     // because their fqcn / methods are stack / rodata literals.
-    try rt.trackHeap(.{ .ptr = @constCast(@ptrCast(protocol_mod.asProtocol(v))), .free = protocol_mod.freeOwnedProtocol });
+    try rt.trackHeap(.{ .ptr = @ptrCast(@constCast(protocol_mod.asProtocol(v))), .free = protocol_mod.freeOwnedProtocol });
     return v;
 }
 
@@ -144,7 +144,7 @@ pub fn makeProtocolFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     const name_dup = try rt.gc.infra.dupe(u8, string_mod.asString(args[1]));
     errdefer rt.gc.infra.free(name_dup);
     const v = try protocol_mod.makeProtocolFn(rt, proto, name_dup);
-    try rt.trackHeap(.{ .ptr = @constCast(@ptrCast(protocol_mod.asProtocolFn(v))), .free = protocol_mod.freeOwnedProtocolFn });
+    try rt.trackHeap(.{ .ptr = @ptrCast(@constCast(protocol_mod.asProtocolFn(v))), .free = protocol_mod.freeOwnedProtocolFn });
     return v;
 }
 
@@ -162,7 +162,12 @@ pub fn makeProtocolFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
 pub fn extendType(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("__extend-type!", args, 3, loc);
-    if (args[0].tag() != .type_descriptor) {
+    // `(extend-type nil P ...)` extends a protocol to the nil type (clj
+    // nil-punning — a common idiom, e.g. data.finger-tree's empty-meter
+    // defaults). nil resolves below to the per-Tag nil descriptor, the same
+    // one dispatch resolves a nil receiver to (dispatch.zig resolveDescriptor),
+    // so the registered impls dispatch on `(m nil)`.
+    if (args[0].tag() != .type_descriptor and args[0].tag() != .nil) {
         return error_catalog.raise(.type_arg_invalid, loc, .{
             .fn_name = "__extend-type!",
             .expected = "type_descriptor",
@@ -186,7 +191,10 @@ pub fn extendType(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
             .actual = @tagName(args[2].tag()),
         });
     }
-    const td = @constCast(td_mod.asTypeDescriptorRef(args[0]));
+    const td: *td_mod.TypeDescriptor = if (args[0].tag() == .nil)
+        try rt.nativeDescriptor(.nil)
+    else
+        @constCast(td_mod.asTypeDescriptorRef(args[0]));
     const proto_name: []const u8 = switch (args[1].tag()) {
         .protocol => protocol_mod.asProtocol(args[1]).fqcn(),
         .symbol => host_interface.canonicalName(symbol_mod.asSymbol(args[1]).name) orelse {

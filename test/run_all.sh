@@ -551,6 +551,7 @@ run_step "e2e_phase14_hex_bigint"             "bash test/e2e/phase14_hex_bigint.
 run_step "e2e_phase14_ns_form_leniency"       "bash test/e2e/phase14_ns_form_leniency.sh"
 run_step "e2e_phase14_cljc_libspec"          "bash test/e2e/phase14_cljc_libspec.sh"
 run_step "e2e_phase14_empty_catch"           "bash test/e2e/phase14_empty_catch.sh"
+run_step "e2e_phase14_extend_type_nil"       "bash test/e2e/phase14_extend_type_nil.sh"
 run_step "e2e_phase14_pattern_quote"         "bash test/e2e/phase14_pattern_quote.sh"
 run_step "e2e_phase14_var_resolve"           "bash test/e2e/phase14_var_resolve.sh"
 run_step "e2e_phase14_biginteger"            "bash test/e2e/phase14_biginteger.sh"

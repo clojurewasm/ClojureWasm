@@ -58,6 +58,22 @@ so rungs are now probed via real **deps.edn git coordinates**, not just
 
 - **test.check** (probed 2026-06-07 via -cp, data.generators now FULLY FUNCTIONAL): advanced past random.clj:106 hex-literal (fixed D-297, hex>i64 -> BigInt) to random.clj:178 `(proxy [ThreadLocal] …)` -> D-298 (proxy unrecognised; JVM-class proxy = Tier D). PARKED (proxy depth vs partial benefit; seeded paths might work with proxy-recognition level (a)).
 
+- **Pure deftype/algo libs probed (2026-06-07 via -cp):**
+  - **clojure.data.finger-tree** — `(extend-type nil …)` (nil-punning protocol
+    extension) was unsupported (`__extend-type!: expected type_descriptor, got
+    nil`). **Fixed** (extend-type + extend-protocol now accept a nil target →
+    the per-Tag nil descriptor; clj-faithful, e2e `phase14_extend_type_nil`).
+    Advanced :56 → :138 — `(defdigit a)` macro expansion hits `fn* parameter
+    must not be namespace-qualified` (a syntax-quote + deftype/reify
+    method-param-qualification interaction; next finger-tree blocker).
+  - **clojure.algo.generic** — `(derive Object root-type)`: bare `Object` as a
+    class VALUE to `derive` is unresolved (host-class-value family, D-293).
+  - **clojure.data.avl** — `(APersistentMap/mapHash …)` + `^AtomicReference`/
+    `^Comparator`: deep clojure.lang/java-internal static interop. Park.
+  - **clojure.core.match** — `definterface` (Tier-D-adjacent). **clojure.data.int-map**
+    needs `clojure.core.reducers` (bundled-ns gap, D-273). **clojure.algo.monads**
+    needs `clojure.tools.macro` (Compiler-dep, parked).
+
 - **clojure.math.numeric-tower** (probed 2026-06-07 via -cp): a DEEP java.math
   interop chain, parked. Advances :79 (D-301 empty-catch) → :98 (java.math.BigInteger
   class value, D-302) → :127 (Integer class value) → :162 (BigDecimal/ROUND_FLOOR

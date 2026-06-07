@@ -2396,10 +2396,12 @@ fn expandExtendProtocol(
 
     const protocol_form = args[0];
 
-    // Walk args[1..]; symbol forms open a new section, list forms
-    // append method-impls to the current section. First non-protocol
-    // arg must be a type symbol.
-    if (args[1].data != .symbol)
+    // Walk args[1..]; a type head (symbol, OR a `nil` literal for the nil type
+    // per clj nil-punning) opens a new section, list forms append method-impls
+    // to the current section. The generated `(extend-type <head> …)` re-expands
+    // through expandExtendType, which already passes a nil target to
+    // __extend-type! (resolved to the nil descriptor there).
+    if (args[1].data != .symbol and args[1].data != .nil)
         return error_catalog.raise(.extend_protocol_section_invalid, args[1].location, .{});
 
     var sections: std.ArrayList(Form) = .empty;
@@ -2407,7 +2409,7 @@ fn expandExtendProtocol(
 
     var i: usize = 1;
     while (i < args.len) {
-        if (args[i].data != .symbol)
+        if (args[i].data != .symbol and args[i].data != .nil)
             return error_catalog.raise(.extend_protocol_section_invalid, args[i].location, .{});
         const type_form = args[i];
         i += 1;
