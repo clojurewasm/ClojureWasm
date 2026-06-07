@@ -5,30 +5,32 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log`. The 2026-06-07 sessions landed (newest last): D-304
-  symbol metadata (ADR-0110) · D-306 collection-base deftype supertypes ·
-  defn/fn `:pre`/`:post` → **core.cache FULLY LOADS** · D-307 IDeref/IPending ·
-  **deps.edn `:mvn`-skip (ADR-0101 am.1)** · **`verified_projects/` mechanism** ·
-  **D-309 deps.edn RUN-MODE `-M`/`-X` (ADR-0111)**: `-M:alias` clojure.main
-  mini-grammar (`-m ns`→`-main`, `-e`, file, `-h`) + bare `-m` + `-X:alias`
-  exec-fn (EDN-typed `:k v` merge); `verified_projects/` flipped to `-M:verify`.
-  Full gate 278/0.
-- **First commit on resume MUST be: grow `verified_projects/` by one library**
-  using the `-M:verify` convention (deps.edn `:paths ["."]` + `:aliases {:verify
-  {:main-opts ["-m" "verify"]}}`; verify.clj = `(ns verify …)` + `-main`). Next
-  candidate: **clojure.data.zip** (loads, D-299 ns-leniency) or clojure.core.unify
-  (both loads-rows in `docs/works/ladder.md`). NOTE data.generators is maven-layout
-  (no deps.edn → src/main/clojure), deferred; tools.cli/data.json/data.csv are
-  BUNDLED, skip. Add the dir, `bash scripts/verify_projects.sh <lib>`, commit on
-  green; reconcile the ladder. A failure IS a coverage gap → fix root-cause
-  (definition-derived, F-013) OR improve the deps.edn system (`:git`/`:local`, NOT
-  Maven JAR). How-to: `verified_projects/README.md`. SSOT =
-  `.dev/convergence_campaign.md` Stage 1.3.
-- **deps.edn run-mode remainder = D-310** (ADR-0111 deferral): `*command-line-args*`
-  binding + `-i`/`-r`/`--report`/`@resource`/mixed-init-before-main + `-T` tool
-  mode. FINISHED-FORM = a `clojure.main`-shaped Clojure grammar fn (DA Alt 3),
-  bootstrap-ordering-gated; current Zig source-synthesis migrates cleanly. Not
-  blocking verified_projects.
+- **HEAD**: see `git log`. 2026-06-07 landed (newest last): **D-309 deps.edn
+  RUN-MODE `-M`/`-X` (ADR-0111)** · **D-310 part-1 `*command-line-args*`** (root-set
+  across -m/file/-X) · **D-312/D-313 typed_instance + record-assoc metadata
+  (ADR-0112)** · `verified_projects/` → `-M:verify` 規約, now **6** (medley,
+  math.combinatorics, data.priority-map, core.cache, potpuri, data.zip). Gate 279/0.
+- **Priority (user 2026-06-07, durable in memory `optimization-deferred-until-15-libs`)**:
+  feature completeness > correctness > **divergence suppression** FIRST; bench /
+  optimization DEFERRED until ~15 verified libs + bug pickup, THEN autonomous
+  (binary size / startup / hot paths, measured via `scripts/perf.sh` Release only).
+  Bench regressions acceptable meanwhile — do NOT chase.
+- **First commit on resume MUST be: grow `verified_projects/` toward 15** via
+  `-M:verify` (deps.edn `:paths ["."]` + `:aliases {:verify {:main-opts ["-m"
+  "verify"]}}`; verify.clj = `(ns verify …)` + `-main`). Next candidates (broad-
+  reprobe "loads", likely no new interop): **clojure.data.codec.base64**
+  (`(b64/encode (.getBytes "hi"))`→"aGk="), **qbits.ex**, **bouncer.core**. Then
+  the next interop vein is **D-311 `.isArray`** (java.lang.Class instance-method
+  surface, D-293 family) → unblocks core.unify. Add dir, `bash
+  scripts/verify_projects.sh <lib>`, commit on green; reconcile ladder. A failure IS
+  a coverage gap → fix root-cause (F-013, definition-derived) OR improve deps.edn
+  (`:git`/`:local`, NOT Maven JAR). How-to: `verified_projects/README.md`. SSOT =
+  `.dev/convergence_campaign.md` Stage 1.3. data.generators deferred (maven layout);
+  tools.cli/data.json/data.csv BUNDLED, skip.
+- **deps.edn run-mode remainder = D-310** (part-2): `-i`/`-r`/`--report`/`@resource`/
+  mixed-init-before-main + `-T` tool mode. FINISHED-FORM = a `clojure.main`-shaped
+  Clojure grammar fn (ADR-0111 DA Alt 3), bootstrap-ordering-gated; current Zig
+  source-synthesis migrates cleanly. Not blocking verified_projects.
 - **Deferred — do NOT re-attempt the naive fix**: D-308 `(instance?
   clojure.lang.IDeref x)` needs a per-interface NATIVE-implementer membership
   table ∪ protocol satisfaction — NOT a `satisfies?` alias (the 2026-06-07 try
@@ -41,29 +43,25 @@
   `private/clojure_conj_2026_cfp/archive/DEFERRED_USER_ACTIONS.md` — (1) Sessionize submit
   by 6/13; (2) v0.1.0 tag/Release + make `cw-from-scratch` default branch;
   (3) edge-demo CRUD `git push` + `fly deploy`.
-- **Forbidden**: the 3 USER actions above (credential/product — safety-blocked);
+- **Forbidden**: the 3 USER actions above (credential/product — safety-blocked;
+  **user will give concrete instructions later — do NOT touch tag/Sessionize/
+  edge-demo until then**); bench/optimization before the 15-lib bar (above);
   editing `.claude/rules/*` (permission-blocked → surface as carry-over); the
   naive D-308 `satisfies?`-rewrite; pinning an in-progress zwasm v2 state/tag
   (F-001: v2 ONLY from `zwasm-from-scratch`); trusting `~/Documents/OSS/zig`.
 
 ## Just landed (2026-06-07, git log = SSOT)
 
-- **D-309 deps.edn run modes `-M`/`-X` (ADR-0111)**. In-process clojure.main
-  grammar (cljw is JVM-less, no second-process). `-M[:alias]` = alias `:main-opts`
-  ++ user args (APPEND); `-m ns`→`(requiring-resolve 'ns/-main)`+`(-main args)`,
-  `-e` eval+print, bare file load, `-h`; bare top-level `-m` too. `-X[:alias]
-  [ns/fn] [:k v]` = `:exec-fn` + `:exec-args` merged under CLI `:k v` (EDN-typed
-  via `quote`d data maps; result not printed). New `src/app/deps/run_mode.zig`
-  synthesizes a Clojure form → `runner.runSource(print_results=false)`. parse.zig
-  Alias gains main_opts/exec_fn/exec_args. 7-case e2e phase14_deps_run_mode. v0's
-  3 gaps fixed (args→-main, append, EDN coercion). DA Alt 2/Alt 3 in ADR-0111;
-  source-synthesis kept on F-009 (thin Zig; clojure.main is Clojure), Alt 3 = D-310.
-  `verified_projects/` (medley/data.priority-map/math.combinatorics/core.cache,
-  4/4 green) flipped to `cljw -M:verify`.
-- **bench note (user)**: gate bench_regression flags binary_size 2.5x (locked
-  1.13MB → 2.86MB) + others — non-blocking; pre-existing project-wide drift (stale
-  locked baseline, Phase 6→14), not the ~300-line run_mode. A bench-lock re-take
-  may be warranted (user judgement).
+- **D-312/D-313 typed_instance metadata (ADR-0112)**. `with-meta`/`meta` on a
+  defrecord (native `TypedInstance.meta`; `instWithMeta` COPIES the gc.infra field
+  array — F-006 double-free guard). metadata.zig kind-gates the arms (user IObj
+  wins; record→native; non-IObj deftype→error; reify dispatch-only). Record
+  `assoc`/`update` thread `inst.meta` (collection.zig:618) so `(meta (assoc
+  (with-meta r m) :k v))`→m — **D-313 closed in-cycle, NOT deferred** (DA flagged
+  the assoc-meta-drop as a "ships a lie" smell; user's divergence-suppression
+  priority). No membrane flip / no equality arm (records already field-structural).
+  **clojure.data.zip** functionally verifies (6th proof). D-310 part-1
+  (`*command-line-args*` root-set across -m/file/-X) also landed alongside.
 
 ## Process discipline (SSOT = memory + rules; do NOT re-expand here)
 
@@ -81,6 +79,15 @@
 handover → **`.dev/convergence_campaign.md`** (driving SSOT; Stage 1.3 =
 verified_projects) → **`verified_projects/README.md`** (the lib-load method) →
 `docs/works/ladder.md` (ranked candidates) + `.dev/debt.yaml` + `compat_tiers.yaml`
-→ `.dev/decisions/0101_deps_git_fetch.md` (+ amendment 1) → `.dev/project_facts.md`
+→ `.dev/decisions/0101_deps_git_fetch.md` (+ am.1) + **`0111_deps_run_modes.md`**
++ **`0112_typed_instance_metadata.md`** → `.dev/project_facts.md`
 (F-013/F-010/F-002) → CLAUDE.md (§ Project spirit + The only stop) →
 `.dev/principle.md`.
+
+## Stopped — user requested
+
+User instruction (2026-06-07): 「このPCは一旦シャットダウン、Ubuntumini も再起動する
+予定。今の実行結果を反映（バグってたら直して）、きれいな状態で止めて待って」。Same-day
+priority directives are captured above (Priority line) + in memory
+`optimization-deferred-until-15-libs` / `tool-channel-corrupts-under-load`.
+Resume = the First-commit-MUST-be above (grow `verified_projects/` toward 15).
