@@ -86,6 +86,22 @@ fn call(arena: std.mem.Allocator, name: []const u8, args: []const Form, loc: Sou
     return md.makeList(arena, items, loc);
 }
 
+/// Like `call`, but the head is a FULLY-QUALIFIED `clojure.core/<name>` so the
+/// syntax-quote build machinery (list/concat/seq/vec/apply/hash-map/hash-set) is
+/// immune to a user `(:refer-clojure :exclude [vec …])` (D-296). Matches clj,
+/// whose syntax-quote emits `clojure.core/*` for its reconstruction fns. (`quote`
+/// stays bare — it is a special form, not a core var.)
+fn coreCall(arena: std.mem.Allocator, name: []const u8, args: []const Form, loc: SourceLocation) ExpandError!Form {
+    const items = try arena.alloc(Form, args.len + 1);
+    items[0] = coreSym(name, loc);
+    @memcpy(items[1..], args);
+    return md.makeList(arena, items, loc);
+}
+
+fn coreSym(name: []const u8, loc: SourceLocation) Form {
+    return .{ .data = .{ .symbol = .{ .ns = "clojure.core", .name = name } }, .location = loc };
+}
+
 fn quoted(arena: std.mem.Allocator, inner: Form, loc: SourceLocation) ExpandError!Form {
     return call(arena, "quote", &[_]Form{inner}, loc);
 }
@@ -99,11 +115,11 @@ fn seqConcat(arena: std.mem.Allocator, rt: *Runtime, env: *Env, items: []const F
         if (it.data == .unquote_splicing) {
             builders[i] = it.data.unquote_splicing.*;
         } else {
-            builders[i] = try call(arena, "list", &[_]Form{try walk(arena, rt, env, it, gmap, loc)}, loc);
+            builders[i] = try coreCall(arena, "list", &[_]Form{try walk(arena, rt, env, it, gmap, loc)}, loc);
         }
     }
-    const concat = try call(arena, "concat", builders, loc);
-    return try call(arena, "seq", &[_]Form{concat}, loc);
+    const concat = try coreCall(arena, "concat", builders, loc);
+    return try coreCall(arena, "seq", &[_]Form{concat}, loc);
 }
 
 fn walk(arena: std.mem.Allocator, rt: *Runtime, env: *Env, form: Form, gmap: *GensymMap, loc: SourceLocation) ExpandError!Form {
@@ -128,25 +144,26 @@ fn walk(arena: std.mem.Allocator, rt: *Runtime, env: *Env, form: Form, gmap: *Ge
             // Stage 2: qualify to the symbol's ns (clj hygiene).
             break :blk try quoted(arena, qualifySym(env, s, form.location), form.location);
         },
-        // `(…)` → (seq (concat …)); empty → `(list)` = ().
+        // `(…)` → (seq (concat …)); empty → `(list)` = (). Machinery fns are
+        // clojure.core-qualified (D-296) so a user :exclude can't break them.
         .list => |items| if (items.len == 0)
-            try call(arena, "list", &.{}, loc)
+            try coreCall(arena, "list", &.{}, loc)
         else
             try seqConcat(arena, rt, env, items, gmap, loc),
         // `[…]` → (vec (seq (concat …))); empty → `[]`.
         .vector => |items| if (items.len == 0)
             md.makeVector(arena, &.{}, loc)
         else
-            try call(arena, "vec", &[_]Form{try seqConcat(arena, rt, env, items, gmap, loc)}, loc),
+            try coreCall(arena, "vec", &[_]Form{try seqConcat(arena, rt, env, items, gmap, loc)}, loc),
         // `{…}` → (apply hash-map (seq (concat <flat k/v>))); empty → `(hash-map)`.
-        .map => |items| try call(arena, "apply", &[_]Form{
-            md.makeSymbol("hash-map", loc),
-            if (items.len == 0) try call(arena, "list", &.{}, loc) else try seqConcat(arena, rt, env, items, gmap, loc),
+        .map => |items| try coreCall(arena, "apply", &[_]Form{
+            coreSym("hash-map", loc),
+            if (items.len == 0) try coreCall(arena, "list", &.{}, loc) else try seqConcat(arena, rt, env, items, gmap, loc),
         }, loc),
         // `#{…}` → (apply hash-set (seq (concat …))); empty → `(hash-set)`.
-        .set => |items| try call(arena, "apply", &[_]Form{
-            md.makeSymbol("hash-set", loc),
-            if (items.len == 0) try call(arena, "list", &.{}, loc) else try seqConcat(arena, rt, env, items, gmap, loc),
+        .set => |items| try coreCall(arena, "apply", &[_]Form{
+            coreSym("hash-set", loc),
+            if (items.len == 0) try coreCall(arena, "list", &.{}, loc) else try seqConcat(arena, rt, env, items, gmap, loc),
         }, loc),
         // Self-evaluating literals (numbers, strings, keywords, nil, bool, …)
         // pass through — `` `5 `` → 5, `` `:k `` → :k.

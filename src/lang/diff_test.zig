@@ -574,6 +574,13 @@ test "diff: row 7.7 reduce via IReduce -reduce fast-path" {
     , 42);
 }
 
+// D-296 (syntax-quote machinery → clojure.core/vec etc.) has NO new analyzer
+// Node — syntax-quote expands at analyze time to a form both backends share, so
+// it needs no diff-parity case. (A syntax-quoted [vector] can't be diff-tested
+// in this fixture anyway: the machinery now requires clojure.core/vec, which the
+// core.clj-less fixture does not intern. Coverage: test/e2e/
+// phase14_syntax_quote_exclude.sh on the full runtime.)
+
 test "diff: java.util.Random seeded LCG parity (ADR-0106)" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
