@@ -36,3 +36,15 @@
 ;;=> true
 (instance? Number "x")
 ;;=> false
+(instance? clojure.lang.IFn :kw)
+;;=> true
+(instance? clojure.lang.IFn [1 2])
+;;=> true
+(instance? clojure.lang.IFn 5)
+;;=> false
+(isa? clojure.lang.Keyword clojure.lang.IFn)
+;;=> true
+(isa? clojure.lang.PersistentVector clojure.lang.IFn)
+;;=> true
+(isa? java.lang.Long clojure.lang.IFn)
+;;=> false

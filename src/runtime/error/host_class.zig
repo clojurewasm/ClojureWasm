@@ -197,6 +197,14 @@ pub fn isNumericClass(class_name: []const u8) bool {
     return false;
 }
 
+/// True iff `class_name` is `clojure.lang.IFn` — the callable marker, resolved
+/// as a class VALUE (ADR-0109) so `(defmethod m clojure.lang.IFn …)`
+/// (core.contracts) works. `(instance? IFn x)` = `(ifn? x)` (class_name
+/// matchInterface); `(isa? <callable-class> IFn)` uses `class_name.isCallableClassName`.
+pub fn isIFnClass(class_name: []const u8) bool {
+    return std.mem.eql(u8, class_name, "IFn") or std.mem.eql(u8, class_name, "clojure.lang.IFn");
+}
+
 /// Return the immediate parent of `class_name` in the hierarchy, or
 /// `null` for the root (Throwable) or for unknown class names.
 pub fn getParent(class_name: []const u8) ?[]const u8 {

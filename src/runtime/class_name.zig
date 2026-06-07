@@ -274,11 +274,33 @@ fn matchNativeExact(v: Value, simple: []const u8) bool {
     return false;
 }
 
+/// True iff `name` is a callable class — a member of `clojure.lang.IFn` for
+/// class-level `(isa? <class> IFn)` (ADR-0109). The cljw class names whose
+/// instances are `ifn?`: fns (raw tag names), Keyword/Symbol/Var, and the
+/// persistent collections (all invocable as lookups). Mirrors `core.ifnQ`.
+pub fn isCallableClassName(name: []const u8) bool {
+    const CALLABLE = [_][]const u8{
+        "fn_val",             "builtin_fn",        "multi_fn",          "protocol_fn",
+        "Keyword",            "Symbol",            "Var",               "PersistentVector",
+        "PersistentArrayMap", "PersistentHashMap", "PersistentHashSet", "PersistentTreeMap",
+        "PersistentTreeSet",
+    };
+    const simple = normalizeClassName(name);
+    inline for (CALLABLE) |c| {
+        if (std.mem.eql(u8, c, simple)) return true;
+    }
+    return false;
+}
+
 fn matchInterface(v: Value, simple: []const u8) bool {
     const t = v.tag();
     if (std.mem.eql(u8, simple, "IFn")) {
+        // ADR-0109: `(instance? IFn x)` = `(ifn? x)` — clj's IFn covers every
+        // callable, NOT just fns (Keyword/Symbol/Var/Vector/Map/Set are all IFn
+        // via invoke-as-lookup). Was fn-tags only → (instance? IFn :kw) wrongly
+        // false. Mirrors `core.ifnQ`'s tag set.
         return switch (t) {
-            .fn_val, .builtin_fn, .multi_fn, .protocol_fn => true,
+            .fn_val, .builtin_fn, .multi_fn, .protocol_fn, .keyword, .symbol, .var_ref, .vector, .array_map, .hash_map, .hash_set, .sorted_map, .sorted_set => true,
             else => false,
         };
     }

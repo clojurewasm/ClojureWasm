@@ -94,6 +94,8 @@ pub fn classIsaPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     if (host_class.isUniversalClass(parent)) return .true_val;
     // ADR-0109: a numeric-tower class isa? java.lang.Number (narrow membership).
     if (host_class.isNumberClass(parent)) return if (host_class.isNumericClass(child)) .true_val else .false_val;
+    // ADR-0109: a callable class isa? clojure.lang.IFn (narrow callable membership).
+    if (host_class.isIFnClass(parent)) return if (class_name.isCallableClassName(child)) .true_val else .false_val;
     return if (host_class.isSubclassOf(host_class.normalizeClassName(child), host_class.normalizeClassName(parent)))
         .true_val
     else

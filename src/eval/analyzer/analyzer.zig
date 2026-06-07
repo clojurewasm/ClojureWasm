@@ -627,6 +627,14 @@ fn analyzeSymbol(
                 const ref = try type_descriptor.makeTypeDescriptorRef(env.rt, td);
                 return try makeConstant(arena, ref, form);
             }
+            // ADR-0109: clojure.lang.IFn — the callable marker as a class VALUE
+            // (defmethod dispatch in core.contracts). instance? already works
+            // (class_name.matchInterface = ifn?); isa? uses isCallableClassName.
+            if (host_class.isIFnClass(sym.name)) {
+                const td = try env.rt.exceptionDescriptor("IFn");
+                const ref = try type_descriptor.makeTypeDescriptorRef(env.rt, td);
+                return try makeConstant(arena, ref, form);
+            }
         }
         return error_catalog.raise(.symbol_unresolved, form.location, .{ .sym = symFullName(sym) });
     };

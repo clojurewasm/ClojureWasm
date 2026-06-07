@@ -93,12 +93,16 @@ EOF
 ) || fail "case6: non-zero exit ($got)"
 assert_eq 'user_def_shadows_class' "$(last_line "$got")" '42'
 
-# --- Case 7: interface-shaped name still does NOT resolve as a value ---
-# Number/IFn have no single Tag; bare use stays an unresolved-symbol error.
-if "$BIN" -e 'Number' >/dev/null 2>&1; then
-    fail "case7: bare 'Number' unexpectedly resolved (should raise)"
+# --- Case 7: ADR-0109 — the numeric-supertype marker Number now RESOLVES as a
+# class value (was the pre-ADR-0109 "interface-shaped names don't resolve"
+# divergence). isa?/instance? use its narrow numeric membership.
+assert_eq 'number_resolves'  "$(last_line "$("$BIN" -e '(isa? Long Number)')")" 'true'
+assert_eq 'number_instance'  "$(last_line "$("$BIN" -e '(instance? Number 5)')")" 'true'
+# a genuinely-unknown class symbol still raises (no silent default-shift)
+if "$BIN" -e 'TotallyMadeUpClass' >/dev/null 2>&1; then
+    fail "case7: bare unknown class unexpectedly resolved (should raise)"
 fi
-echo "PASS interface_name_unresolved -> (raised as expected)"
+echo "PASS unknown_class_still_unresolved -> (raised as expected)"
 
 # --- Case 8: both backends agree (dual-backend parity) ---
 got=$("$BIN" --compare - <<'EOF' 2>/dev/null

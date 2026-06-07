@@ -95,7 +95,11 @@ so rungs are now probed via real **deps.edn git coordinates**, not just
   LOADS**. Remainder (D-293 PARTIAL): `clojure.lang.IFn` (core.contracts) + other
   markers as class values (each its narrow membership), and a deeper functional
   gap — `(ga/+ 3 4)` mis-dispatches on the `[Number Number]` class-vector defmethod
-  (loads but the generic-fn dispatch machinery, separate).
+  (loads but the generic-fn dispatch machinery, separate). **`clojure.lang.IFn`**
+  also wired (value-resolution + isa? callable-members + matchInterface IFn fixed
+  to full `ifn?`) — **clojure.core.contracts now LOADS** (with its core.unify dep).
+  The CORE host-class-value markers (opaque-numerics / Object / Number / IFn) are
+  now all landed.
 
 - **clojure.math.numeric-tower** (probed 2026-06-07 via -cp): a DEEP java.math
   interop chain, parked. Advances :79 (D-301 empty-catch) → :98 (java.math.BigInteger

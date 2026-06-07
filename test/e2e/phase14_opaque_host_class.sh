@@ -57,6 +57,15 @@ assert_eq 'inst_number_int'   "$(last_line "$("$BIN" -e '(instance? Number 5)' 2
 assert_eq 'inst_number_ratio' "$(last_line "$("$BIN" -e '(instance? Number 1/2)' 2>&1)")" 'true'
 assert_eq 'inst_number_str'   "$(last_line "$("$BIN" -e '(instance? Number "x")' 2>&1)")" 'false'
 
+# ADR-0109: clojure.lang.IFn — callable marker (member = ifn? classes).
+# Unblocks core.contracts's `(defmethod funcify* clojure.lang.IFn …)`.
+assert_eq 'inst_ifn_kw'    "$(last_line "$("$BIN" -e '(instance? clojure.lang.IFn :kw)' 2>&1)")" 'true'
+assert_eq 'inst_ifn_vec'   "$(last_line "$("$BIN" -e '(instance? clojure.lang.IFn [1 2])' 2>&1)")" 'true'
+assert_eq 'inst_ifn_int'   "$(last_line "$("$BIN" -e '(instance? clojure.lang.IFn 5)' 2>&1)")" 'false'
+assert_eq 'isa_kw_ifn'     "$(last_line "$("$BIN" -e '(isa? clojure.lang.Keyword clojure.lang.IFn)' 2>&1)")" 'true'
+assert_eq 'isa_vec_ifn'    "$(last_line "$("$BIN" -e '(isa? clojure.lang.PersistentVector clojure.lang.IFn)' 2>&1)")" 'true'
+assert_eq 'isa_long_ifn'   "$(last_line "$("$BIN" -e '(isa? java.lang.Long clojure.lang.IFn)' 2>&1)")" 'false'
+
 # a genuinely-unknown class name still raises (no silent default-shift)
 if "$BIN" -e '(instance? TotallyFakeClass 5)' >/dev/null 2>&1; then
     fail "unknown_class_still_errors: expected non-zero exit"
