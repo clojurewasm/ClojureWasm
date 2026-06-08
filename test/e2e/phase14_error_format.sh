@@ -201,5 +201,40 @@ case "$out" in
         fail "error_future_catchable_class: expected to catch ArithmeticException, got '$out'" ;;
 esac
 
+# --- Case 17 (ADR-0120 / D-329): per-thread error ISOLATION — two concurrent
+#     futures each raising a DIFFERENT error, caught independently, each surface
+#     their OWN error (the call_stack/last_error/trace_snapshot are all
+#     threadlocal, so worker threads don't cross-contaminate). ---
+out=$(printf '(prn [(try @(future (/ 1 0)) (catch java.lang.Throwable e (.getMessage e))) (try @(future (throw (ex-info "BBB" {}))) (catch java.lang.Throwable e (.getMessage e)))])\n' | "$BIN" - 2>&1 || true)
+case "$out" in
+    *'["Divide by zero" "BBB"]'*)
+        echo "PASS error_future_isolation -> concurrent futures keep their own errors" ;;
+    *)
+        fail "error_future_isolation: expected [\"Divide by zero\" \"BBB\"], got '$out'" ;;
+esac
+
+# --- Case 18 (ADR-0119 / D-331): a stack trace spans MULTIPLE MODULES across a
+#     require chain — each frame carries its DEFINING ns. myx.mid/run calls
+#     myx.leaf/boom which errors; the trace shows both, ns-qualified per module.
+#     (The per-frame FILE is the call-site file, a known call-site-line semantic,
+#     D-334 — so we assert the cross-module NS spanning, the core requirement.) ---
+WORK_MM="$(mktemp -d)"
+trap 'rm -rf "$WORK_EL" "$WORK_TR" "$WORK_MM"' EXIT
+mkdir -p "$WORK_MM/src/myx"
+printf '{:paths ["src"]}\n' > "$WORK_MM/deps.edn"
+printf '(ns myx.leaf)\n(defn boom [x] (/ x 0))\n' > "$WORK_MM/src/myx/leaf.clj"
+printf '(ns myx.mid (:require [myx.leaf]))\n(defn run [] (myx.leaf/boom 3))\n' > "$WORK_MM/src/myx/mid.clj"
+# Absolute BIN: deps.edn resolution needs cwd = the project, so we `cd` away
+# from the repo — a relative `$BIN` would not resolve there.
+ABS_BIN="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
+out=$(cd "$WORK_MM" && "$ABS_BIN" -e "(require 'myx.mid) (myx.mid/run)" 2>&1 || true)
+trace=$(printf '%s' "$out" | awk '/Trace:/{f=1} f')
+case "$trace" in
+    *"myx.leaf/boom"*"myx.mid/run"*)
+        echo "PASS error_trace_multi_module -> trace spans modules with per-frame ns" ;;
+    *)
+        fail "error_trace_multi_module: expected myx.leaf/boom + myx.mid/run frames, got '$trace'" ;;
+esac
+
 echo
 echo "Phase 14 row 14.13 (D-066 partial) error format e2e: all green."
