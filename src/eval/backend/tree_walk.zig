@@ -1105,6 +1105,11 @@ pub fn treeWalkCall(
     // an uncaught error renders a `Trace:`. Pop on BOTH success and unwind
     // (recur/try/reduced-safe) via `defer`. The single shared choke point covers
     // both backends (VM op_call routes here through vt.callFn).
+    // D-334: advance the CALLER's frame (current top) to this call's site
+    // before pushing the callee — the caller is now executing here, so its
+    // trace frame shows its own file/line (matching its ns), not the site it
+    // was originally pushed at.
+    error_mod.updateTopFrame(loc);
     const pushed = if (calleeFrame(callee, loc)) |fr| error_mod.pushFrame(fr) else false;
     defer if (pushed) error_mod.popFrame();
     return switch (callee.tag()) {

@@ -254,6 +254,10 @@ pub fn setErrorFmt(
         @memcpy(msg_buf[509..512], "...");
         break :blk msg_buf[0..512];
     };
+    // D-334: advance the innermost frame to the error site, so the deepest
+    // trace frame shows WHERE in that fn the error is (its own file/line),
+    // not the call site it was pushed at. Must precede the snapshot below.
+    updateTopFrame(location);
     // Freeze the call stack now (ADR-0119 Stage 2) — `defer popFrame` unwinds
     // the live stack before the renderer reads `.trace`. Same rationale as the
     // `.context` snapshot below.
@@ -307,6 +311,21 @@ pub fn pushFrame(frame: StackFrame) bool {
 pub fn popFrame() void {
     if (stack_depth > 0) {
         stack_depth -= 1;
+    }
+}
+
+/// Move the innermost (top) frame's position to `loc` (ADR-0119 / D-334:
+/// execution-point lines). A frame is pushed at its CALL site, then advanced
+/// as the fn acts: to each call it makes (the caller is now there), and at
+/// raise time to the error site. So a rendered frame shows WHERE in that fn
+/// execution currently is — matching its `ns` (the defining module's file),
+/// not the caller's call-site file. No-op on an empty stack.
+pub fn updateTopFrame(loc: SourceLocation) void {
+    if (stack_depth > 0) {
+        const fr = &call_stack[stack_depth - 1];
+        fr.file = loc.file;
+        fr.line = loc.line;
+        fr.column = loc.column;
     }
 }
 

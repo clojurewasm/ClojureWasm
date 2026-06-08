@@ -213,11 +213,11 @@ case "$out" in
         fail "error_future_isolation: expected [\"Divide by zero\" \"BBB\"], got '$out'" ;;
 esac
 
-# --- Case 18 (ADR-0119 / D-331): a stack trace spans MULTIPLE MODULES across a
-#     require chain — each frame carries its DEFINING ns. myx.mid/run calls
-#     myx.leaf/boom which errors; the trace shows both, ns-qualified per module.
-#     (The per-frame FILE is the call-site file, a known call-site-line semantic,
-#     D-334 — so we assert the cross-module NS spanning, the core requirement.) ---
+# --- Case 18 (ADR-0119 / D-331 + D-334): a stack trace spans MULTIPLE MODULES
+#     across a require chain — each frame carries its DEFINING ns AND its own
+#     module FILE (execution-point lines, D-334). myx.mid/run calls
+#     myx.leaf/boom which errors; the leaf frame shows leaf.clj, the mid frame
+#     shows mid.clj — ns and file agree per frame across the module boundary. ---
 WORK_MM="$(mktemp -d)"
 trap 'rm -rf "$WORK_EL" "$WORK_TR" "$WORK_MM"' EXIT
 mkdir -p "$WORK_MM/src/myx"
@@ -230,10 +230,10 @@ ABS_BIN="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
 out=$(cd "$WORK_MM" && "$ABS_BIN" -e "(require 'myx.mid) (myx.mid/run)" 2>&1 || true)
 trace=$(printf '%s' "$out" | awk '/Trace:/{f=1} f')
 case "$trace" in
-    *"myx.leaf/boom"*"myx.mid/run"*)
-        echo "PASS error_trace_multi_module -> trace spans modules with per-frame ns" ;;
+    *"myx.leaf/boom"*"leaf.clj"*"myx.mid/run"*"mid.clj"*)
+        echo "PASS error_trace_multi_module -> trace spans modules; per-frame ns + file agree" ;;
     *)
-        fail "error_trace_multi_module: expected myx.leaf/boom + myx.mid/run frames, got '$trace'" ;;
+        fail "error_trace_multi_module: expected leaf frame@leaf.clj + mid frame@mid.clj, got '$trace'" ;;
 esac
 
 echo
