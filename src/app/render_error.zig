@@ -97,6 +97,49 @@ fn renderOne(stdout: *Writer, line: []const u8) !void {
         try stdout.writeByte('\n');
     }
     try stdout.print("  {s}\n", .{message});
+    // D-333: decode the nested `:trace [{…} …]` vector into the same text the
+    // live renderer (`error_print` Trace: writer) produces, so a decoded log
+    // shows the trace too — they were already in lockstep on the EMIT side.
+    try renderTrace(stdout, line);
+}
+
+/// Decode the EDN `:trace [{:fn ".." :ns ".." :file ".." :line N} …]` vector
+/// (emitted innermost-first by `error_render.formatErrorEdn`) into the live
+/// `Trace:` text — `  <ns>/<fn> (<file>:<line>)` per frame, matching
+/// `runtime/error/print.zig`'s writer (ns omitted when absent, line omitted
+/// when 0). Hand-rolled per-frame `{…}` scan, consistent with the decoder
+/// strategy (no full EDN parser; v0.1.0 fixed field set). No-op when `:trace`
+/// is absent. A frame `}` and the vector `]` are taken as the first such byte
+/// after their opener — frame fields (identifiers / paths / decimals) carry
+/// neither, matching the format's single-line v0.1.0 lock.
+fn renderTrace(stdout: *Writer, line: []const u8) !void {
+    const tidx = std.mem.find(u8, line, ":trace [") orelse return;
+    const vec_start = tidx + ":trace [".len;
+    const vec_end = std.mem.findScalarPos(u8, line, vec_start, ']') orelse return;
+    const vec = line[vec_start..vec_end];
+    if (std.mem.findScalar(u8, vec, '{') == null) return;
+
+    try stdout.writeAll("\nTrace:\n");
+    var cursor: usize = 0;
+    while (std.mem.findScalarPos(u8, vec, cursor, '{')) |fopen| {
+        const fclose = std.mem.findScalarPos(u8, vec, fopen, '}') orelse break;
+        const frame = vec[fopen .. fclose + 1];
+        const fn_name = scanString(frame, ":fn \"") orelse "fn";
+        const ns = scanString(frame, ":ns \"");
+        const file = scanString(frame, ":file \"") orelse "unknown";
+        const lineno = scanInt(frame, ":line ") orelse 0;
+        if (ns) |n| {
+            try stdout.print("  {s}/{s}", .{ n, fn_name });
+        } else {
+            try stdout.print("  {s}", .{fn_name});
+        }
+        if (lineno != 0) {
+            try stdout.print(" ({s}:{d})\n", .{ file, lineno });
+        } else {
+            try stdout.print(" ({s})\n", .{file});
+        }
+        cursor = fclose + 1;
+    }
 }
 
 /// Scan for `prefix` then the keyword/symbol token (up to whitespace
@@ -163,4 +206,31 @@ test "scanInt extracts a decimal field" {
 test "scanField returns null when prefix is missing" {
     const line = "{:cljw/error true :kind :foo}";
     try testing.expect(scanField(line, ":bar :") == null);
+}
+
+test "renderTrace decodes the nested :trace vector into live-format lines (D-333)" {
+    const line = "{:cljw/error true :kind :arithmetic_error :message \"Divide by zero\" :trace [{:fn \"boom\" :ns \"user\" :file \"f.clj\" :line 1} {:fn \"fn__201\" :ns \"user\" :file \"f.clj\" :line 2}]}";
+    var buf: [256]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    try renderTrace(&w, line);
+    try testing.expectEqualStrings(
+        "\nTrace:\n  user/boom (f.clj:1)\n  user/fn__201 (f.clj:2)\n",
+        w.buffered(),
+    );
+}
+
+test "renderTrace omits the ns segment when a frame has no :ns (D-333)" {
+    const line = "{:cljw/error true :message \"boom\" :trace [{:fn \"anon\" :file \"f.clj\" :line 3}]}";
+    var buf: [128]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    try renderTrace(&w, line);
+    try testing.expectEqualStrings("\nTrace:\n  anon (f.clj:3)\n", w.buffered());
+}
+
+test "renderTrace emits nothing when :trace is absent (D-333)" {
+    const line = "{:cljw/error true :kind :name_error :message \"x\"}";
+    var buf: [64]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    try renderTrace(&w, line);
+    try testing.expectEqualStrings("", w.buffered());
 }

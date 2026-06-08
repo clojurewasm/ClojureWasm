@@ -62,5 +62,22 @@ exit_code=0
 [[ "$exit_code" -ne 0 ]] || fail "render_error_missing_file: expected non-zero exit"
 echo "PASS render_error_missing_file -> non-zero exit"
 
+# --- Case 6 (D-333): the decoder reads the nested EDN :trace vector, so a
+#     decoded log shows the `Trace:` section in lockstep with the live render.
+#     A user fn frame must appear (user/boom), not just the header/message. ---
+> "$log_file"
+trace_src=$(mktemp -t cljw_renderr_src.XXXXXX.clj)
+printf '(defn boom [] (/ 1 0))\n(boom)\n' > "$trace_src"
+CLJW_ERROR_LOG="$log_file" "$BIN" "$trace_src" 2>/dev/null || true
+out=$("$BIN" render-error "$log_file" 2>/dev/null)
+rm -f "$trace_src"
+trace=$(printf '%s' "$out" | awk '/Trace:/{f=1} f')
+case "$trace" in
+    *"Trace:"*"user/boom"*)
+        echo "PASS render_error_decodes_trace -> decoded log shows the Trace: section" ;;
+    *)
+        fail "render_error_decodes_trace: expected a Trace: naming user/boom, got '$out'" ;;
+esac
+
 echo
 echo "Phase 14 row 14.11 D-100(c) cljw render-error e2e: all green."
