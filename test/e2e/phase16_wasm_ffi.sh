@@ -45,5 +45,17 @@ leaks="$(echo "$out" | grep -c "leaked" || true)"
 $out"
 echo "PASS wasm-ffi-no-leak -> 0 leaks"
 
+# (3) FIX-4 catchability: every wasm-surface error is a catchable cljw exception
+# (NOT an internal_error / exit 70). The fixture wraps each failing wasm/load +
+# wasm/call in a (catch …); if any error were uncatchable the process would exit
+# 70 here (non-zero), and a mismatched Kind would print NOT-CAUGHT.
+catch_out="$("$BIN" test/e2e/fixtures/wasm_ffi_catch.clj 2>&1)" || fail "catchability fixture exited non-zero (an error escaped (catch …) → exit 70):
+$catch_out"
+echo "$catch_out" | grep -q "NOT-CAUGHT" && fail "a wasm error was not caught (or matched the wrong host class):
+$catch_out"
+echo "$catch_out" | grep -q "^DONE$" || fail "catchability fixture did not run to completion:
+$catch_out"
+echo "PASS wasm-ffi-catchable -> all errors caught, exit 0"
+
 echo
-echo "Phase 16 / wasm FFI smoke + leak guard: all green."
+echo "Phase 16 / wasm FFI smoke + leak guard + catchability: all green."

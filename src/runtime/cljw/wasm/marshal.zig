@@ -33,8 +33,8 @@ pub fn toWasm(arg: Value, vt: ValType, loc: SourceLocation) ClojureWasmError!ZVa
             if (!arg.isNumber()) return badArg(loc);
             return ZValue.fromF64Bits(@bitCast(floatOf(arg)));
         },
-        .v128 => return error_catalog.raiseInternal(loc, "wasm/call: v128 arguments are not supported yet"),
-        .ref => return error_catalog.raiseInternal(loc, "wasm/call: reference-typed arguments are not supported yet"),
+        .v128 => return error_catalog.raise(.wasm_value_type_unsupported, loc, .{ .what = "v128 arguments" }),
+        .ref => return error_catalog.raise(.wasm_value_type_unsupported, loc, .{ .what = "reference-typed arguments" }),
     }
 }
 
@@ -45,8 +45,8 @@ pub fn fromWasm(res: ZValue, loc: SourceLocation) ClojureWasmError!Value {
         .i64 => |v| return Value.initInteger(v),
         .f32 => |bits| return Value.initFloat(@as(f32, @bitCast(bits))),
         .f64 => |bits| return Value.initFloat(@bitCast(bits)),
-        .v128 => return error_catalog.raiseInternal(loc, "wasm/call: v128 results are not supported yet"),
-        .funcref, .externref => return error_catalog.raiseInternal(loc, "wasm/call: reference-typed results are not supported yet"),
+        .v128 => return error_catalog.raise(.wasm_value_type_unsupported, loc, .{ .what = "v128 results" }),
+        .funcref, .externref => return error_catalog.raise(.wasm_value_type_unsupported, loc, .{ .what = "reference-typed results" }),
     }
 }
 
@@ -63,14 +63,14 @@ fn coerceInt(arg: Value, comptime T: type, loc: SourceLocation) ClojureWasmError
     if (!arg.isNumber()) return badArg(loc);
     const i: i64 = if (arg.isInt()) arg.asInteger() else blk: {
         const f = arg.asFloat();
-        if (@floor(f) != f) return error_catalog.raiseInternal(loc, "wasm/call: a non-integer float cannot be passed to an integer parameter");
+        if (@floor(f) != f) return error_catalog.raise(.wasm_arg_not_integer, loc, .{});
         // The float is integral; widen-range check before the i64 cast.
         if (f < @as(f64, @floatFromInt(std.math.minInt(i64))) or f > @as(f64, @floatFromInt(std.math.maxInt(i64))))
-            return error_catalog.raiseInternal(loc, "wasm/call: integer argument is out of range");
+            return error_catalog.raise(.wasm_arg_out_of_range, loc, .{});
         break :blk @intFromFloat(f);
     };
     if (i < std.math.minInt(T) or i > std.math.maxInt(T))
-        return error_catalog.raiseInternal(loc, "wasm/call: integer argument is out of range for the parameter type");
+        return error_catalog.raise(.wasm_arg_out_of_range, loc, .{});
     return @intCast(i);
 }
 
@@ -80,5 +80,5 @@ fn floatOf(v: Value) f64 {
 }
 
 fn badArg(loc: SourceLocation) ClojureWasmError {
-    return error_catalog.raiseInternal(loc, "wasm/call: argument is not a number");
+    return error_catalog.raise(.wasm_arg_not_number, loc, .{});
 }

@@ -39,18 +39,18 @@ pub fn wasmLoadFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     _ = env;
     try error_catalog.checkArityRange("wasm/load", args, 1, 2, loc);
     if (!args[0].isString())
-        return error_catalog.raiseInternal(loc, "wasm/load: expected a string path");
+        return error_catalog.raise(.wasm_path_invalid, loc, .{});
     const path = string_mod.asString(args[0]);
 
     var opts: engine.LoadOpts = .{};
     if (args.len == 2) opts = try parseLoadOpts(rt, args[1], loc);
 
     const bytes = file_io.readAll(rt.io, rt.gpa, path) catch
-        return error_catalog.raiseInternal(loc, "wasm/load: cannot read the .wasm file");
+        return error_catalog.raise(.wasm_load_read_failed, loc, .{ .path = path });
     defer rt.gpa.free(bytes);
 
     const loaded = engine.load(rt.gpa, bytes, opts) catch
-        return error_catalog.raiseInternal(loc, "wasm/load: failed to compile/instantiate the module");
+        return error_catalog.raise(.wasm_load_failed, loc, .{});
     return wasm_handle.wrap(rt, loaded);
 }
 
@@ -60,7 +60,7 @@ pub fn wasmLoadFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 fn parseLoadOpts(rt: *Runtime, m: Value, loc: SourceLocation) anyerror!engine.LoadOpts {
     const tag = m.tag();
     if (tag != .array_map and tag != .hash_map)
-        return error_catalog.raiseInternal(loc, "wasm/load: second argument must be an options map");
+        return error_catalog.raise(.wasm_opts_invalid, loc, .{ .detail = "the options argument must be a map" });
     var opts: engine.LoadOpts = .{};
     if (try axisFromMap(rt, m, "fuel", loc)) |b| opts.fuel = b;
     if (try axisFromMap(rt, m, "max-memory-pages", loc)) |b| opts.max_memory_pages = b;
@@ -75,7 +75,7 @@ fn axisFromMap(rt: *Runtime, m: Value, comptime name: []const u8, loc: SourceLoc
     const v = map_mod.get(m, kw) catch return null;
     if (v.isNil()) return null;
     if (!v.isInt())
-        return error_catalog.raiseInternal(loc, "wasm/load: :" ++ name ++ " must be an integer");
+        return error_catalog.raise(.wasm_opts_invalid, loc, .{ .detail = "the :" ++ name ++ " option must be an integer" });
     const n = v.asInteger();
     if (n <= 0) return .unmetered;
     return engine.Budget{ .limited = @intCast(n) };
@@ -88,18 +88,18 @@ pub fn wasmCallFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     _ = env;
     try error_catalog.checkArityMin("wasm/call", args, 2, loc);
     if (!wasm_handle.isHandle(args[0]))
-        return error_catalog.raiseInternal(loc, "wasm/call: first argument is not a loaded wasm module");
+        return error_catalog.raise(.wasm_handle_invalid, loc, .{});
     if (!args[1].isString())
-        return error_catalog.raiseInternal(loc, "wasm/call: export name must be a string");
+        return error_catalog.raise(.wasm_export_name_invalid, loc, .{});
 
     const loaded = wasm_handle.unwrap(args[0]);
     const name = string_mod.asString(args[1]);
     const call_args = args[2..];
 
     const sig = loaded.exportSig(name) orelse
-        return error_catalog.raiseInternal(loc, "wasm/call: no such exported function");
+        return error_catalog.raise(.wasm_export_not_found, loc, .{ .name = name });
     if (call_args.len != sig.params.len)
-        return error_catalog.raiseInternal(loc, "wasm/call: wrong number of arguments for the export");
+        return error_catalog.raise(.wasm_arity_mismatch, loc, .{ .name = name, .expected = sig.params.len, .actual = call_args.len });
 
     // Marshal args in + size the results buffer. Both are short-lived
     // host-side scratch on rt.gpa (the wasm boundary, not cljw Values).

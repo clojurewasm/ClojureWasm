@@ -376,6 +376,46 @@ pub const Code = enum {
     /// per-trap-kind 1:1 map (div0→arithmetic, OOB→index, …) is Phase-16
     /// (the zwasm Trap trap_map, ADR-0099).
     wasm_trap,
+    /// The `wasm_*` surface taxonomy (FIX-4): every `wasm/load` + `wasm/call`
+    /// error is a CATCHABLE cljw exception (a request-derived bad arg or a
+    /// faulty module on an edge request must not end the whole process). Each
+    /// Code carries a Kind that `(catch …)` traps as the matching host class
+    /// (value_error→IllegalArgumentException, type_error→ClassCastException,
+    /// arity_error→ArityException, io_error→IOException). The lone exception is
+    /// `wasm_value_type_unsupported` (Kind `.not_implemented`), kept a LOUD
+    /// uncaught missing-feature signal so a `(catch Exception …)` cannot
+    /// silently swallow a v128/ref marshal gap (Silent-default-shift smell).
+    /// args: `.{}` — `wasm/load`'s path argument was not a string.
+    wasm_path_invalid,
+    /// args: `.{ .detail = "..." }` — `wasm/load`'s options argument was
+    /// malformed (not a map, or an axis value of the wrong type). `detail`
+    /// names the specific problem.
+    wasm_opts_invalid,
+    /// args: `.{ .path = "..." }` — `wasm/load` could not read the file.
+    wasm_load_read_failed,
+    /// args: `.{}` — `wasm/load`'s bytes did not compile / instantiate as a
+    /// valid WebAssembly module.
+    wasm_load_failed,
+    /// args: `.{}` — `wasm/call`'s first argument was not a loaded handle.
+    wasm_handle_invalid,
+    /// args: `.{}` — `wasm/call`'s export-name argument was not a string.
+    wasm_export_name_invalid,
+    /// args: `.{ .name = "..." }` — `wasm/call` found no export of that name.
+    wasm_export_not_found,
+    /// args: `.{ .name = "...", .expected = N, .actual = N }` — `wasm/call`'s
+    /// argument count did not match the export's parameter count.
+    wasm_arity_mismatch,
+    /// args: `.{}` — a `wasm/call` argument was not a number for a numeric param.
+    wasm_arg_not_number,
+    /// args: `.{}` — a `wasm/call` number argument was not an integer for an
+    /// integer param.
+    wasm_arg_not_integer,
+    /// args: `.{}` — a `wasm/call` integer argument was outside the param
+    /// type's range.
+    wasm_arg_out_of_range,
+    /// args: `.{ .what = "..." }` — a `wasm/call` argument/result used a wasm
+    /// value type cljw does not marshal yet (v128 / reference types).
+    wasm_value_type_unsupported,
 
     // --- System ---
     out_of_memory,
@@ -1333,6 +1373,66 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .value_error,
             .phase = .eval,
             .template = "WebAssembly module trapped (e.g. divide-by-zero, out-of-bounds, or an unreachable instruction)",
+        },
+        .wasm_path_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "wasm/load: the module path must be a string",
+        },
+        .wasm_opts_invalid => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm/load: {[detail]s}",
+        },
+        .wasm_load_read_failed => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "wasm/load: cannot read the wasm file at '{[path]s}'",
+        },
+        .wasm_load_failed => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm/load: the module failed to compile or instantiate",
+        },
+        .wasm_handle_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "wasm/call: the first argument must be a loaded wasm module",
+        },
+        .wasm_export_name_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "wasm/call: the export name must be a string",
+        },
+        .wasm_export_not_found => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm/call: no exported function named '{[name]s}'",
+        },
+        .wasm_arity_mismatch => .{
+            .kind = .arity_error,
+            .phase = .eval,
+            .template = "wasm/call: '{[name]s}' expects {[expected]d} argument(s), got {[actual]d}",
+        },
+        .wasm_arg_not_number => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "wasm/call: argument is not a number",
+        },
+        .wasm_arg_not_integer => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm/call: a non-integer number cannot be passed to an integer parameter",
+        },
+        .wasm_arg_out_of_range => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm/call: an integer argument is out of range for the parameter type",
+        },
+        .wasm_value_type_unsupported => .{
+            .kind = .not_implemented,
+            .phase = .eval,
+            .template = "wasm/call: {[what]s} are not supported yet",
         },
         .internal_error => .{
             .kind = .internal_error,
