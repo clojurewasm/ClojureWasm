@@ -13,6 +13,6 @@ assert_eq() { local n="$1" g="$2" w="$3"; [[ "$g" == "$w" ]] || fail "$n: got '$
 assert_eq 'alias-use'   "$("$BIN" -e '(alias (quote str) (quote clojure.string)) (str/upper-case "hi")' 2>&1 | tail -1)" '"HI"'
 assert_eq 'ns-aliases'  "$("$BIN" -e '(do (alias (quote s) (quote clojure.set)) (contains? (ns-aliases *ns*) (quote s)))' 2>&1 | tail -1)" 'true'
 assert_eq 'alias-target' "$("$BIN" -e '(do (alias (quote w) (quote clojure.walk)) (ns-name ((ns-aliases *ns*) (quote w))))' 2>&1 | tail -1)" 'clojure.walk'
-assert_eq 'alias-unknown' "$("$BIN" -e '(alias (quote x) (quote no.such.ns))' 2>&1 | grep -c 'Could not locate')" '1'
+assert_eq 'alias-unknown' "$("$BIN" -e '(alias (quote x) (quote no.such.ns))' 2>&1 | grep -cm1 'Could not locate')" '1'
 
 echo "OK — phase15_alias (4 cases) green"

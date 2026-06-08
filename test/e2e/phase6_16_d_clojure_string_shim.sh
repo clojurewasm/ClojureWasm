@@ -72,7 +72,7 @@ assert_eq 'reverse_via_shim' "$got" '"cba"'
 
 # --- (2) private leaf qualified access is denied from user ns ---
 got="$("$BIN" -e '(clojure.string/-upper-case "hi")' 2>&1 || true)"
-if ! grep -q 'name_error' <<<"$got"; then
+if ! grep -q 'Name error' <<<"$got"; then
     fail "private_leaf_qualified_kind: missing [name_error] (got '$got')"
 fi
 if ! grep -q 'private' <<<"$got"; then

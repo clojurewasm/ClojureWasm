@@ -60,7 +60,7 @@ assert_not_contains 'throw_control_no_ctx' "$out" ':request-id'
 # --- Case 4: text format shows message + exception label, not ThrownValue ---
 out=$("$BIN" -e '(throw (ex-info "kaboom" {}))' 2>&1 1>/dev/null || true)
 assert_contains 'throw_text_message'   "$out" 'kaboom'
-assert_contains 'throw_text_label'     "$out" 'exception [eval]'
+assert_contains 'throw_text_label'     "$out" 'Exception'
 assert_not_contains 'throw_text_no_tv' "$out" 'ThrownValue'
 
 # --- Case 5: non-ex-info throw renders the value as the message ---

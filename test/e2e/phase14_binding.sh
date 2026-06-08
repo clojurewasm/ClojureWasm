@@ -33,7 +33,7 @@ EOF
 assert_contains 'binding_non_dynamic_raises' "$got" 'Can'\''t dynamically bind non-dynamic var: user/x'
 
 # --- Case 2: the error is categorised value_error at eval phase ---
-assert_contains 'binding_non_dynamic_kind' "$got" 'value_error'
+assert_contains 'binding_non_dynamic_kind' "$got" 'Value error'
 
 # --- Case 3: bindings must be a vector ---
 got=$("$BIN" - <<'EOF' 2>&1 || true

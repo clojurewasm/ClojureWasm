@@ -62,7 +62,7 @@ esac
 
 # --- (3) unknown namespace → lib_not_found ---
 got="$("$BIN" -e "(require 'no.such.ns)" 2>&1 || true)"
-if ! grep -q 'name_error' <<<"$got"; then
+if ! grep -q 'Name error' <<<"$got"; then
     fail "require_unknown_kind: missing [name_error] tag (got '$got')"
 fi
 if ! grep -q "Could not locate" <<<"$got"; then
@@ -77,7 +77,7 @@ echo "PASS require_unknown_raises_lib_not_found"
 # AND a runtime Var (ADR-0085: computed/non-head libspecs route to the Var,
 # clj parity where require is a function). `(var require)` resolves to the Var. ---
 got="$("$BIN" -e "(var require)" 2>&1 || true)"
-if ! grep -q "require" <<<"$got" || grep -q 'name_error' <<<"$got"; then
+if ! grep -q "require" <<<"$got" || grep -q 'Name error' <<<"$got"; then
     fail "require_var_ref: expected the require Var, got '$got'"
 fi
 echo "PASS require_resolves_as_var (ADR-0085)"

@@ -90,32 +90,74 @@ pub fn formatErrorWithContext(
     else
         ctx.file;
 
-    // Header
-    try w.print("{s}:{d}:{d}: {s} [{s}]\n", .{
-        file_label,
-        info.location.line,
-        info.location.column,
-        info.kindLabel(),
-        @tagName(info.phase),
-    });
-
-    // Source line + caret (only when line is known)
+    // Header: "<Natural Kind> at <file>:<line>:<col>" (ADR-0118 Decision C —
+    // v0-style natural label, cljw-native, no JVM class; the `[phase]` bracket
+    // moves to the EDN `:phase` only). The location is omitted when unknown.
+    try writeNaturalKind(w, info.kindLabel());
     if (info.location.line != 0) {
-        if (extractLine(ctx.text, info.location.line)) |line| {
-            try w.print("  {s}\n  ", .{line});
-            // Caret indent: column is 0-based char position. Pad with
-            // ASCII spaces, then emit a single '^'. (Multi-byte
-            // alignment under proportional fonts is out of scope; for
-            // ASCII source this is correct.)
-            var i: u16 = 0;
-            while (i < info.location.column) : (i += 1) try w.writeByte(' ');
-            try w.writeByte('^');
-            try w.writeByte('\n');
-        }
+        try w.print(" at {s}:{d}:{d}\n", .{ file_label, info.location.line, info.location.column });
+    } else {
+        try w.writeByte('\n');
     }
 
-    // Message
-    try w.print("{s}\n", .{info.message});
+    // Message, indented under the header.
+    try w.print("  {s}\n", .{info.message});
+
+    // Numbered ±2-line source window with an inline `^--- <message>` caret on
+    // the error line (only when the position is known and the line is present).
+    if (info.location.line != 0 and extractLine(ctx.text, info.location.line) != null) {
+        try w.writeByte('\n');
+        const err_line = info.location.line;
+        const start: u32 = if (err_line > 2) err_line - 2 else 1;
+        const end: u32 = err_line + 2;
+        const max_digits = countDigits(end);
+        const gutter_width = 2 + max_digits + 3; // "  " + line-number + " | "
+        var n: u32 = start;
+        while (n <= end) : (n += 1) {
+            const line = extractLine(ctx.text, n) orelse continue;
+            try w.writeAll("  ");
+            try writePaddedNum(w, n, max_digits);
+            try w.print(" | {s}\n", .{line});
+            if (n == err_line) {
+                var pad: usize = 0;
+                const indent = gutter_width + @as(usize, info.location.column);
+                while (pad < indent) : (pad += 1) try w.writeByte(' ');
+                try w.print("^--- {s}\n", .{info.message});
+            }
+        }
+    }
+}
+
+/// Write `label` (an `info.kindLabel()` snake value like `arithmetic_error`)
+/// as a natural header label (`Arithmetic error`): first char uppercased,
+/// underscores rendered as spaces. The EDN path keeps the raw keyword.
+/// Shared with the post-mortem `render-error` decoder (`app/render_error.zig`)
+/// so live stderr and decoded-log output stay in lockstep.
+pub fn writeNaturalKind(w: *Writer, label: []const u8) Writer.Error!void {
+    for (label, 0..) |c, idx| {
+        if (idx == 0) {
+            try w.writeByte(std.ascii.toUpper(c));
+        } else if (c == '_') {
+            try w.writeByte(' ');
+        } else {
+            try w.writeByte(c);
+        }
+    }
+}
+
+/// Base-10 digit count of `n` (≥ 1 always; `n == 0` returns 1).
+fn countDigits(n: u32) usize {
+    var x = n;
+    var d: usize = 1;
+    while (x >= 10) : (x /= 10) d += 1;
+    return d;
+}
+
+/// Right-align `n` in a field of `width` digits, space-padded.
+fn writePaddedNum(w: *Writer, n: u32, width: usize) Writer.Error!void {
+    var pad = width - countDigits(n);
+    while (pad > 0) : (pad -= 1) try w.writeByte(' ');
+    try w.print("{d}", .{n});
 }
 
 // --- tests ---
@@ -162,10 +204,11 @@ test "formatErrorWithContext: with line + caret" {
     var w: Writer = .fixed(&buf);
     try formatErrorWithContext(info, ctx, &w, .{});
     try testing.expectEqualStrings(
-        \\<-e>:1:5: type_error [eval]
-        \\  (+ 1 :foo)
-        \\       ^
-        \\+: expected number, got keyword
+        \\Type error at <-e>:1:5
+        \\  +: expected number, got keyword
+        \\
+        \\  1 | (+ 1 :foo)
+        \\           ^--- +: expected number, got keyword
         \\
     , w.buffered());
 }
@@ -183,8 +226,8 @@ test "formatErrorWithContext: unknown location skips source line" {
     var w: Writer = .fixed(&buf);
     try formatErrorWithContext(info, ctx, &w, .{});
     try testing.expectEqualStrings(
-        \\<-e>:0:0: name_error [analysis]
-        \\x: unable to resolve symbol
+        \\Name error
+        \\  x: unable to resolve symbol
         \\
     , w.buffered());
 }
@@ -202,10 +245,13 @@ test "formatErrorWithContext: location with line on multi-line input" {
     var w: Writer = .fixed(&buf);
     try formatErrorWithContext(info, ctx, &w, .{});
     try testing.expectEqualStrings(
-        \\script.clj:2:0: syntax_error [parse]
-        \\  )
-        \\  ^
-        \\unexpected ')'
+        \\Syntax error at script.clj:2:0
+        \\  unexpected ')'
+        \\
+        \\  1 | (+ 1 2)
+        \\  2 | )
+        \\      ^--- unexpected ')'
+        \\  3 | (+ 3 4)
         \\
     , w.buffered());
 }
@@ -222,7 +268,7 @@ test "formatErrorWithContext: prefers info.location.file when set" {
     var buf: [256]u8 = undefined;
     var w: Writer = .fixed(&buf);
     try formatErrorWithContext(info, ctx, &w, .{});
-    try testing.expect(std.mem.startsWith(u8, w.buffered(), "real.clj:1:0:"));
+    try testing.expect(std.mem.startsWith(u8, w.buffered(), "Syntax error at real.clj:1:0"));
 }
 
 test "formatErrorWithRegistry uses registry entry when info.location.file matches" {

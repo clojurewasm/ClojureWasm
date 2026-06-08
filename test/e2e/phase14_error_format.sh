@@ -86,7 +86,7 @@ echo "PASS error_log_appends_on_repeat -> 2 events in file"
 #     (vm) backend must now report the failing call's line. ---
 out=$("$BIN" -e '(/ 1 0)' 2>&1 || true)
 case "$out" in
-    *"<-e>:1:"*"arithmetic_error"*)
+    *"Arithmetic error"*"<-e>:1:"*)
         echo "PASS error_eval_loc_backfilled -> eval error has line 1, not 0:0" ;;
     *)
         fail "error_eval_loc_backfilled: eval error should report <-e>:1:<col>, got '$out'" ;;
@@ -99,7 +99,7 @@ trap 'rm -rf "$WORK_EL"' EXIT
 printf '(defn f [x] (/ x 0))\n(defn g [y] (f y))\n(g 10)\n' > "$WORK_EL/nested.clj"
 out=$("$BIN" "$WORK_EL/nested.clj" 2>&1 || true)
 case "$out" in
-    *"nested.clj:1:"*"arithmetic_error"*)
+    *"Arithmetic error"*"nested.clj:1:"*)
         echo "PASS error_eval_loc_deep -> deep eval error points at the failing line" ;;
     *)
         fail "error_eval_loc_deep: expected nested.clj:1:<col>, got '$out'" ;;

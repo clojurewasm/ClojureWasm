@@ -48,7 +48,7 @@ assert_eq 'insert_left' "$got" '[1 99 2 3]'
 # (ADR-0055 am2 / D-144), not the old generic "ThrownValue".
 diag=$("$BIN" -e '(clojure.zip/insert-right (clojure.zip/vector-zip [1 2 3]) 99)' 2>&1 || true)
 case "$diag" in
-    *"exception"*"insert-right at root has no parent"*) echo "PASS insert_right_root_raises -> ex-info message surfaced" ;;
+    *"Exception"*"insert-right at root has no parent"*) echo "PASS insert_right_root_raises -> ex-info message surfaced" ;;
     *) fail "insert_right_root_raises: missing ex-info message ($diag)" ;;
 esac
 

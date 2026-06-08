@@ -21,7 +21,7 @@ trap 'rm -f "$log_file"' EXIT
 CLJW_ERROR_LOG="$log_file" "$BIN" -e '(undefined-symbol)' 2>/dev/null || true
 out=$("$BIN" render-error "$log_file" 2>/dev/null)
 case "$out" in
-    *"name_error [analysis]"*"Unable to resolve symbol: 'undefined-symbol'"*)
+    *"Name error"*"Unable to resolve symbol: 'undefined-symbol'"*)
         echo "PASS render_error_roundtrip -> human-readable visible" ;;
     *)
         fail "render_error_roundtrip: expected name_error decoded, got '$out'" ;;

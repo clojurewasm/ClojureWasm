@@ -59,7 +59,7 @@ assert_eq 'map_evals_inside' "$("$BIN" -e '(get {(+ 0 1) (+ 10 10)} 1)')" '20'
 # --- map odd-arity rejection ---
 got=$("$BIN" -e '{:a}' 2>&1 || true)
 case "$got" in
-    *"syntax_error"*|*"unexpected"*|*"odd"*|*"arity"*)
+    *"Syntax error"*|*"unexpected"*|*"odd"*|*"arity"*)
         echo "PASS map_odd_rejected" ;;
     *)
         fail "map_odd_rejected: expected error, got '$got'" ;;

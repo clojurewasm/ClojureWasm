@@ -59,7 +59,7 @@ assert_eq 'baseline_walk' "$got" '[2 3 4]'
 # `private_access_error` / `feature_not_supported_unsupported_var`
 # both reuse is unchanged.
 got="$("$BIN" -e '(no-such-var)' 2>&1 || true)"
-if ! grep -q 'name_error' <<<"$got"; then
+if ! grep -q 'Name error' <<<"$got"; then
     fail "unresolved_symbol_kind: did not render [name_error] tag (got '$got')"
 fi
 if ! grep -q "Unable to resolve symbol" <<<"$got"; then

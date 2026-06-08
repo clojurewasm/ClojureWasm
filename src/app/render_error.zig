@@ -20,6 +20,7 @@
 
 const std = @import("std");
 const Writer = std.Io.Writer;
+const error_print = @import("../runtime/error/print.zig");
 
 pub fn run(
     io: std.Io,
@@ -79,23 +80,23 @@ pub fn run(
 
 fn renderOne(stdout: *Writer, line: []const u8) !void {
     const kind = scanField(line, ":kind :") orelse "unknown";
-    const phase = scanField(line, ":phase :") orelse "unknown";
     const file = scanString(line, ":file \"") orelse "unknown";
     const lineno = scanInt(line, ":line ") orelse 0;
     const column = scanInt(line, ":column ") orelse 0;
     const message = scanString(line, ":message \"") orelse "";
 
-    // Human-readable rendering: `<file>:<line>:<column>: <kind> [<phase>]\n  <message>\n`.
-    // Mirrors the in-process renderer at runtime/error/print.zig so
-    // post-mortem output reads identically to live stderr output.
-    try stdout.print("{s}:{d}:{d}: {s} [{s}]\n  {s}\n", .{
-        file,
-        lineno,
-        column,
-        kind,
-        phase,
-        message,
-    });
+    // Mirror the in-process renderer's v0-style header (ADR-0118):
+    // `<Natural Kind> at <file>:<line>:<col>` + indented message. The log
+    // carries no source text, so the numbered source window is omitted here
+    // (live stderr shows it; the post-mortem decoder cannot reconstruct it).
+    // The `:phase` keyword stays in the EDN only — it is not surfaced in text.
+    try error_print.writeNaturalKind(stdout, kind);
+    if (lineno != 0) {
+        try stdout.print(" at {s}:{d}:{d}\n", .{ file, lineno, column });
+    } else {
+        try stdout.writeByte('\n');
+    }
+    try stdout.print("  {s}\n", .{message});
 }
 
 /// Scan for `prefix` then the keyword/symbol token (up to whitespace

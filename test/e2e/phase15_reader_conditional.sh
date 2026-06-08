@@ -59,7 +59,7 @@ assert_eq 'splice-list' \
   '(1 2 3)'
 # top-level #?@ is an error (splice only valid inside a collection)
 assert_eq 'splice-top-level' \
-  "$("$BIN" -e '#?@(:clj [1 2])' 2>&1 | grep -c 'only allowed inside')" \
+  "$("$BIN" -e '#?@(:clj [1 2])' 2>&1 | grep -cm1 'only allowed inside')" \
   '1'
 
 echo "OK — phase15_reader_conditional (10 cases) green"

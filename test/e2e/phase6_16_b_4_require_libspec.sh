@@ -74,7 +74,7 @@ esac
 # deleted when map went lazy (ADR-0054); `-take-eager` is the surviving
 # private seq leaf used for this privacy check.
 got="$("$BIN" -e "(require '[clojure.core :refer [-take-eager]])" 2>&1 || true)"
-if ! grep -q 'name_error' <<<"$got"; then
+if ! grep -q 'Name error' <<<"$got"; then
     fail "refer_private_kind: missing [name_error] tag (got '$got')"
 fi
 if ! grep -q "private" <<<"$got"; then
@@ -84,7 +84,7 @@ echo "PASS refer_private_rejected"
 
 # --- (5) :refer with a non-existent name raises symbol_unresolved ---
 got="$("$BIN" -e "(require '[clojure.set :refer [no-such-fn]])" 2>&1 || true)"
-if ! grep -q 'name_error' <<<"$got"; then
+if ! grep -q 'Name error' <<<"$got"; then
     fail "refer_missing_kind: missing [name_error] tag (got '$got')"
 fi
 if ! grep -q "no-such-fn" <<<"$got"; then

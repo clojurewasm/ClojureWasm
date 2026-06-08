@@ -52,7 +52,7 @@ assert_eq 'public_wrapper_filter' "$got" '(1 2)'
 # `-filter-eager` / `-keep-eager` / `-remove-eager` / `-drop-eager` were
 # all deleted as map/filter/keep/remove/drop went lazy, ADR-0054.)
 got="$("$BIN" -e '(clojure.core/-take-eager 2 [1 2 3])' 2>&1 || true)"
-if ! grep -q 'name_error' <<<"$got"; then
+if ! grep -q 'Name error' <<<"$got"; then
     fail "private_leaf_qualified_kind: missing [name_error] tag (got '$got')"
 fi
 if ! grep -q "private" <<<"$got"; then

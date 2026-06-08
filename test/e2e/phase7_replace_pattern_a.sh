@@ -59,7 +59,7 @@ assert_eq 'replace_regex_string_dollar_zero' "$got" '"abc123"'
 # silently fall through.
 diag=$("$BIN" -e '(clojure.string/replace "abc" 42 "X")' 2>&1 || true)
 case "$diag" in
-    *"exception"*"replace: unsupported match type"*)
+    *"Exception"*"replace: unsupported match type"*)
         echo "PASS replace_unsupported_match_raises -> ex-info message surfaced" ;;
     *)
         fail "replace_unsupported_match_raises: missing ex-info message ($diag)" ;;
