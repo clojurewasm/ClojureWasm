@@ -57,4 +57,18 @@ got=$(curl -s "http://127.0.0.1:$PORT/still-alive" 2>&1)
 [[ "$got" == "GET /still-alive" ]] || fail "server died after bad :status: got '$got'"
 echo "PASS http-survives-badstatus -> $got"
 
-echo "OK — phase16_http_server (9 cases) green"
+# SE-5: a header value with CRLF must NOT split the response (header injection).
+# cljw rejects the dirty header at the boundary → 500, and the injected
+# "Set-Cookie: pwned" must NOT appear anywhere in the response headers.
+resp=$(curl -s -D - "http://127.0.0.1:$PORT/crlf-header" 2>&1)
+echo "$resp" | grep -qi "Set-Cookie: pwned" && fail "SE-5 header injection: Set-Cookie reflected:
+$resp"
+echo "PASS http-crlf-no-injection -> no Set-Cookie"
+code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/crlf-header" 2>&1)
+[[ "$code" == "500" ]] || fail "SE-5 dirty header: got '$code' (expected 500 rejection)"
+echo "PASS http-crlf-header-500 -> $code"
+got=$(curl -s "http://127.0.0.1:$PORT/still-alive" 2>&1)
+[[ "$got" == "GET /still-alive" ]] || fail "server died after CRLF header: got '$got'"
+echo "PASS http-survives-crlf -> $got"
+
+echo "OK — phase16_http_server (12 cases) green"

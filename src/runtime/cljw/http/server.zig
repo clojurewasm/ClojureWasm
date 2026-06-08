@@ -45,6 +45,21 @@ fn methodKeyword(rt: *Runtime, m: std.http.Method) !Value {
     return keyword_mod.intern(rt, null, name);
 }
 
+/// HTTP header field validation (SE-5). Reject any name/value byte that is an
+/// ASCII control char (CR / LF / NUL / TAB / DEL, anything < 0x20 or 0x7F). A
+/// CRLF in a header value reflected from request data would split the response
+/// (header injection); worse, the current Zig `std.http` `respond` ABORTS the
+/// process on a CRLF header value (an uncatchable panic, not an error). cljw
+/// validates at its own boundary BEFORE `respond` rather than trusting an
+/// unaudited, version-dependent stdlib invariant — a dirty header is treated as
+/// a server error (500), never emitted and never crashes the server.
+fn headerFieldClean(s: []const u8) bool {
+    for (s) |b| {
+        if (b < 0x20 or b == 0x7F) return false;
+    }
+    return true;
+}
+
 /// Bind `0.0.0.0:port` and serve forever (blocking, serial), dispatching each
 /// request through `handler` (a Ring `(fn [req] resp)`).
 pub fn runServer(rt: *Runtime, env: *Env, handler: Value, port: u16, loc: SourceLocation) anyerror!Value {
@@ -97,6 +112,9 @@ pub fn runServer(rt: *Runtime, env: *Env, handler: Value, port: u16, loc: Source
         // into the GC strings, valid for the synchronous respond() below.
         var header_buf: [16]std.http.Header = undefined;
         var n_headers: usize = 0;
+        // SE-5: set false the moment a handler header name/value carries a control
+        // byte (CRLF injection / std.http abort vector). A dirty response → 500.
+        var headers_clean: bool = true;
         if (resp.tag() == .string) {
             body = string_mod.asString(resp);
         } else {
@@ -124,11 +142,23 @@ pub fn runServer(rt: *Runtime, env: *Env, handler: Value, port: u16, loc: Source
                     const hk = am.entries[2 * i];
                     const hv = am.entries[2 * i + 1];
                     if (hk.tag() == .string and hv.tag() == .string) {
-                        header_buf[n_headers] = .{ .name = string_mod.asString(hk), .value = string_mod.asString(hv) };
+                        const nm = string_mod.asString(hk);
+                        const vl = string_mod.asString(hv);
+                        if (!headerFieldClean(nm) or !headerFieldClean(vl)) {
+                            headers_clean = false;
+                            break;
+                        }
+                        header_buf[n_headers] = .{ .name = nm, .value = vl };
                         n_headers += 1;
                     }
                 }
             }
+        }
+        // SE-5: a control byte in any response header would split the response (or
+        // abort std.http) — fail the response as a 500 rather than emit it.
+        if (!headers_clean) {
+            req.respond("Internal Server Error\n", .{ .status = .internal_server_error, .keep_alive = false }) catch {};
+            continue;
         }
         req.respond(body, .{ .status = status, .keep_alive = false, .extra_headers = header_buf[0..n_headers] }) catch {};
     }
