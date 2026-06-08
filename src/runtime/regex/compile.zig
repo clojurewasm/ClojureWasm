@@ -45,6 +45,15 @@ pub const Flags = packed struct(u8) {
 /// ⇒ `n` mandatory copies followed by `*`).
 pub const REPEAT_INF: u16 = std.math.maxInt(u16);
 
+/// Upper bound on a compiled program's instruction count. Legitimate patterns
+/// sit well under ~10^3 insts; this 100k cap leaves ~100× headroom while
+/// blocking the nested-counted-repetition compile-bomb on untrusted
+/// `(re-pattern …)` input: `(a{n}){m}` expands to n·m insts inline, so
+/// `(a{65535}){65535}` would emit ~4.3e9 insts → multi-GB OOM (INV-1, measured
+/// 1 GB at `(a{5000}){5000}`). The Pike-NFA matcher is already ReDoS-immune for
+/// untrusted *input*; this guards the compile side against untrusted *patterns*.
+pub const MAX_PROGRAM_INSTS: usize = 100_000;
+
 pub const Node = union(enum) {
     /// A single literal byte (e.g. `a`).
     lit: u8,
@@ -159,6 +168,13 @@ pub const CompileError = error{
     UnclosedClass,
     InvalidQuantifier,
     InvalidEscape,
+
+    /// The compiled program would exceed `MAX_PROGRAM_INSTS` instructions —
+    /// almost always a nested counted repetition (`(a{n}){m}` → n·m insts) on
+    /// untrusted pattern input. Rejected as a clean catchable error instead of
+    /// an OOM (INV-1); the matcher is Pike-NFA / ReDoS-immune, so only the
+    /// compile side needs this bound.
+    PatternTooLarge,
 } || std.mem.Allocator.Error;
 
 /// Compile a regex pattern source into a `Program`. Caller owns
@@ -710,6 +726,11 @@ fn emit(alloc: std.mem.Allocator, node: *const Node, flags: Flags, capture_count
 }
 
 fn emitNode(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, node: *const Node) CompileError!void {
+    // Compile-bomb guard (INV-1): every node's instructions flow through here
+    // (children recurse, counted reps loop over emitNode), so a single check at
+    // entry bounds total program size. A nested `(a{n}){m}` trips this once its
+    // running expansion crosses the cap, instead of OOMing the process.
+    if (list.items.len > MAX_PROGRAM_INSTS) return CompileError.PatternTooLarge;
     switch (node.*) {
         .lit => |c| try list.append(alloc, .{ .char = c }),
         .class => |cls| try list.append(alloc, .{ .class = cls }),
@@ -1165,4 +1186,25 @@ test "(?i) leading flag folds literal + class to case-insensitive" {
     try testing.expectEqual(@as(u8, 'A'), asciiSwapCase('a'));
     try testing.expectEqual(@as(u8, 'a'), asciiSwapCase('A'));
     try testing.expectEqual(@as(u8, '5'), asciiSwapCase('5'));
+}
+
+// INV-1: nested counted repetition `(a{n}){m}` expands to n·m instructions
+// inline (emitNode duplicates the child per copy). On untrusted PATTERN input
+// (`(re-pattern user-string)`) this is a compile-bomb: `(a{65535}){65535}` would
+// emit ~4.3e9 insts → multi-GB OOM. The matcher itself is Pike-NFA / ReDoS-immune;
+// this is the pattern-compile-side resource guard. MAX_PROGRAM_INSTS caps the
+// program size so an over-large pattern is a clean catchable error, not an OOM.
+test "INV-1: oversized program rejected with PatternTooLarge, not OOM" {
+    const alloc = testing.allocator;
+    // (a{400}){400} = 160_000 insts, over the 100k cap → rejected fast + light.
+    try testing.expectError(error.PatternTooLarge, compile(alloc, "(a{400}){400}", .{}));
+}
+
+test "INV-1: a large-but-under-cap pattern still compiles" {
+    const alloc = testing.allocator;
+    // (a{300}){300} = 90_000 insts, under the 100k cap → compiles fine (no
+    // false-positive on a legitimately large bounded repetition).
+    var prog = try compile(alloc, "(a{300}){300}", .{});
+    defer prog.deinit(alloc);
+    try testing.expect(prog.insts.len > 80_000);
 }

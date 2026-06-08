@@ -370,6 +370,14 @@ pub const Code = enum {
     tier_d_proxy_deep,
     tier_d_bean_deep,
 
+    // --- Regex (ADR-0031) ---
+    /// args: `.{}` — `(re-pattern …)`'s source compiled to a program larger
+    /// than the matcher's instruction cap (a nested counted repetition like
+    /// `(a{n}){m}` on untrusted pattern input). Kind `.value_error` so it is a
+    /// catchable IllegalArgumentException (JVM's `PatternSyntaxException` is also
+    /// an IllegalArgumentException), not an OOM that ends the process (INV-1).
+    regex_pattern_too_large,
+
     // --- Wasm FFI (ADR-0099) ---
     /// A WebAssembly module loaded via `wasm/load` trapped during a
     /// `wasm/call`. The single-Code mapping is the P1/P9 shape; the
@@ -1368,6 +1376,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .out_of_memory,
             .phase = .eval,
             .template = "Out of memory",
+        },
+        .regex_pattern_too_large => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "re-pattern: the regular expression is too large to compile",
         },
         .wasm_trap => .{
             .kind = .value_error,

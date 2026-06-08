@@ -119,4 +119,11 @@ CLJ
 )"
 assert_eq 'regex_str_raw' "$(printf '%s' "$got" | head -1)" '"a.c"'
 
-echo "phase6_regex_cycle1: all 24 cases passed"
+# INV-1: a nested-counted-repetition compile-bomb on untrusted pattern input
+# (`(a{65535}){65535}` would expand to ~4.3e9 insts) is a CATCHABLE
+# IllegalArgumentException, not an OOM / process kill. The matcher is Pike-NFA
+# (ReDoS-immune for untrusted input); this guards the compile side.
+got="$("$BIN" -e '(try (do (re-pattern "(a{65535}){65535}") :uncaught) (catch IllegalArgumentException _ :caught))')"
+assert_eq 'inv1_compile_bomb_catchable' "$got" ':caught'
+
+echo "phase6_regex_cycle1: all 25 cases passed"

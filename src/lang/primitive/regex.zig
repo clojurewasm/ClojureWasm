@@ -55,6 +55,9 @@ pub fn rePattern(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     const src = string_collection.asString(args[0]);
     return regex_value.alloc(rt, src, .{}) catch |err| switch (err) {
         error.OutOfMemory => err,
+        // INV-1: a nested-counted-repetition compile-bomb is a catchable error,
+        // not an OOM / process kill.
+        error.PatternTooLarge => error_catalog.raise(.regex_pattern_too_large, loc, .{}),
         else => error_catalog.raise(.feature_not_supported, loc, .{
             .name = "re-pattern (unsupported syntax in cycle 1)",
         }),
@@ -159,6 +162,8 @@ fn coerceRegex(rt: *Runtime, v: Value, loc: SourceLocation, fn_name: []const u8)
         const src = string_collection.asString(v);
         const compiled = regex_value.alloc(rt, src, .{}) catch |err| switch (err) {
             error.OutOfMemory => return err,
+            // INV-1: compile-bomb pattern is a catchable error, not an OOM.
+            error.PatternTooLarge => return error_catalog.raise(.regex_pattern_too_large, loc, .{}),
             else => return error_catalog.raise(.feature_not_supported, loc, .{
                 .name = "re-find / re-matches with invalid pattern (cycle 1)",
             }),
