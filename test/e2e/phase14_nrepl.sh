@@ -39,6 +39,15 @@ done
 [[ -f "$PORT_FILE" ]] || fail "nrepl_port_file: .nrepl-port not created within 5s"
 echo "PASS nrepl_port_file -> $(cat "$PORT_FILE")"
 
+# SE-9: the nREPL server binds LOOPBACK (127.0.0.1) by default, never 0.0.0.0.
+# nREPL is unauthenticated remote-eval, so this secure default is load-bearing —
+# lock it so a future "expose nREPL" change can't silently make eval reachable
+# from the network. Asserted via the startup banner (reflects the bind host).
+startup=$(cat "/tmp/cljw_nrepl_stdout.$$" 2>/dev/null || true)
+echo "$startup" | grep -q "127.0.0.1" || fail "nrepl_loopback: startup did not declare 127.0.0.1: $startup"
+if echo "$startup" | grep -q "0.0.0.0"; then fail "nrepl_loopback: server bound 0.0.0.0 — unauthenticated remote-eval exposed: $startup"; fi
+echo "PASS nrepl-loopback-default -> 127.0.0.1"
+
 # --- Case 2: eval (+ 1 2) returns value="3" via Python driver ---
 result=$(python3 - "$PORT" <<'PY'
 import socket, sys
