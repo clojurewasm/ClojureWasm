@@ -9,8 +9,22 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-342"
+    status: "open — security (SE-6/7 finished form). The FS-jail v1 (ADR-0123, lexical containment) blocks `..`/absolute-path traversal portably but does NOT resolve symlinks: a symlink planted INSIDE the jail pointing outside is followed. Documented residual (mitigate via read-only mount / no symlinks in jail). The symlink-SAFE finished form is the ADR-0123 DA Alt-2."
+    category: "security"
+    barrier: |-
+      blocked-by: a portable symlink-safe path-resolution mechanism. Finished form
+      (per the ADR-0123 DA Alt-2): per-component openat/fstatat-relative resolution
+      holding the jail root dir-handle — openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS)
+      on Linux, an O_NOFOLLOW per-component walk on macOS (keep the dirfd to avoid
+      TOCTOU) — plus a Clojure dynamic var `*fs-root*` layered over the env default
+      for per-request tightening. Forces a root dir-handle into file_io.zig (real
+      surgery). Build when symlink-planting (needs prior jail-write access) becomes
+      a tracked threat OR std.Io gains portable resolve_beneath. Cross-ref ADR-0123,
+      D-340 (v1), SE-6/7.
+    last_reviewed: "2026-06-09"
   - id: "D-340"
-    status: "open — security (SE-6/7, edge FS confinement). READY TO BUILD NEXT. slurp/spit AND wasm/load take any string path with no confinement, no `..` rejection, no preopen root (lang/primitive/file_io.zig readAll/writeAll; surface.zig:48 wasm/load reuses file_io.readAll). At the edge, request data → path arg = arbitrary read/write + traversal. Local CLI: fine by design. The shared choke point is file_io.readAll/writeAll, so one jail check there covers all three surfaces (F-009-clean)."
+    status: "DISCHARGED 2026-06-09 (ADR-0123 v1). The opt-in FS jail landed: CLJW_FS_ROOT confines slurp/spit/wasm-load to a subtree via file_io.jailResolve (lexical resolvePosix + withinRoot containment); a `..`/absolute escape raises catchable fs_jail_escape (value_error), the resolved path is what is opened (no check-vs-open mismatch), jail-off (unset) leaves local CLI unchanged. Wired: Runtime.fs_jail_root + cli.zig CLJW_FS_ROOT read threaded through runSource AND run_mode (-M/-X so deploy runs are not bypassed). 9 unit tests (boundary list) + phase16_fs_jail e2e (6 cases) + -Dwasm wasm/load path. REPL/nREPL/--compare are local dev tools (jail-off, consistent). Symlink-planting residual = D-342. ORIGINAL: see status history."
     category: "security"
     barrier: |-
       Build the opt-in FS-jail next unit (the only implementable-now SE item, per
