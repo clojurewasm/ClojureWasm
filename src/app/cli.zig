@@ -2,7 +2,7 @@
 //! CLI argv-dispatcher for `cljw`. Parses flags + positional args
 //! into a `source_text` + `source_label` pair, then hands off to
 //! `app/runner.zig::runSource`. Surface:
-//!   - With no arguments, prints `ClojureWasm` (smoke output).
+//!   - With no arguments, starts the REPL (clj-本家 alignment).
 //!   - `-e <expr>` / `--eval <expr>`: in-line source string.
 //!   - `<file.clj>` (positional): file's contents.
 //!   - `-` (positional): stdin (heredoc-friendly).
@@ -152,9 +152,10 @@ pub fn dispatch(init: std.process.Init) !void {
         return;
     }
 
-    // No argv at all → smoke output.
-    try stdout.writeAll("ClojureWasm\n");
-    try stdout.flush();
+    // No argv at all → start the REPL (clj-本家 alignment, ADR-0117 D-322).
+    // `repl.run` reads stdin via takeDelimiter until EOF, so a piped/closed
+    // stdin exits cleanly; an interactive TTY gets the prompt loop.
+    return repl.run(io, gpa, arena, stdout, stderr);
 }
 
 /// Legacy flag-parse loop for non-subcommand invocations. Lifted

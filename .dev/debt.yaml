@@ -10,7 +10,7 @@
 
 active:
   - id: "D-322"
-    status: "PARTIAL (2026-06-08, ADR-0117 CLI alignment). DONE: stdin `-` now runs as a no-echo script, uniform with file + clj (cli.zig stdin branch print_results=false). The 55 e2e that used `cljw - <<EOF` to assert echoed values were migrated to wrap the asserted form in `(prn …)`, keeping `cljw -` (so the no-echo stdin path stays covered); phase3_cli pins the bare-value-no-echo contract. REMAINING: no-args → REPL (clj-compat; cli.zig:156 still prints a `ClojureWasm` smoke banner). Re-assessed lower-risk than first feared (the two 'banner' e2e don't assert the no-args banner; repl.run exits on stdin EOF so no CI hang) — Commit C. Residual: the `-cp foo`-but-no-source case (cli.zig:315) wants a classpath-aware repl (repl.run takes no load_paths today)."
+    status: "PARTIAL (2026-06-08, ADR-0117 CLI alignment). DONE (Commit B): stdin `-` runs as a no-echo script, uniform with file + clj; 55 e2e migrated to wrap the asserted form in `(prn …)` keeping `cljw -`; phase3_cli pins the bare-value-no-echo contract. DONE (Commit C): no-args `cljw` starts the REPL (cli.zig:156 → repl.run; clj-本家; verified no hang — repl.run reads stdin to EOF, piped/closed exits cleanly). RESIDUAL (minor): the flags-but-no-source case (cli.zig:315, e.g. `cljw -cp foo`) still prints the `ClojureWasm` banner rather than starting a classpath-aware REPL — repl.run takes no load_paths today (the `cljw repl` subcommand shares that gap). Resolve when threading load_paths + installChained into repl.run is worth it; low priority (rare path)."
     category: "clj-parity"
     barrier: |-
       Flipping stdin to no-echo means every `cljw - <<'EOF' … EOF` e2e case that
