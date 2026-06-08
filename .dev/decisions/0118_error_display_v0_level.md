@@ -63,18 +63,32 @@ weakest load-bearing choice: two divergent loc-recovery mechanisms = two test
 matrices + a Chunk-size regression on **every** compiled unit. Adopted instead
 (DA Alt 2 — strictly cleaner, finished-form):
 
-- **The frame stack IS the loc carrier.** The error-frame pushed at the shared
-  `callFn` choke point (Decision B) already records `{fn, ns, file, line,
-  column}` from the call-site `loc` that is **already threaded into `callFn`**.
-  So the **innermost live frame's loc** is the back-fill source for **both
-  backends** — no VM per-IP side table, no Chunk bloat, backend parity falls
-  out for free (one mechanism, one test).
-- **TreeWalk additionally** back-fills from the node `n` in hand at each eval
-  arm (free — no table) for **sub-form precision** finer than the call site.
-  This covers the one case the frame loc is coarser on: a `raise` *between*
-  calls (a bad arg checked before any sub-call) whose nearest frame is the
-  enclosing call, not the sub-expression.
-- Audit `raise(…, .{}, …)` sites and pass the in-scope `loc` where one exists.
+- **TreeWalk**: back-fills from the node `n` in hand at each eval arm (free —
+  no table) for sub-form precision. `evalCall` already threads `n.loc` into
+  `callFn`, so the TreeWalk path largely works; audit any `raise(…, .{}, …)`.
+
+- **VM** (Revision 1, 2026-06-08 — corrects the DA Alt 2 premise): the DA's
+  "the frame stack carries the loc, no VM table needed" assumed the call-site
+  `loc` is **already threaded into `callFn` in the VM**. It is NOT — `vm.zig:386`
+  `op_call` calls `vt.callFn(rt, env, callee, args, .{})` with an **empty loc**,
+  so the divide-by-zero primitive (which DOES take a `loc`, `math.zig:142`)
+  receives `.{}` → `0:0`. The VM operand stack discards node identity, so the
+  call-site loc must come from the **bytecode** (compile-time known: `CallNode`
+  carries `loc`). The finished-form carrier, matching v1's established
+  **sparse-side-table-on-`BytecodeChunk`** pattern (`call_sites` / `libspecs` /
+  `ns_filters` / `ctor_sites` / `import_sites`, all indexed off an operand): a
+  parallel **`locs: []SourceLocation`** array on the chunk, indexed by
+  instruction index (IP). The compiler populates it from each node's `loc` at
+  `emit`; the VM passes `chunk.locs[ip]` into `callFn` at `op_call` (and the
+  direct-raising ops annotate from it). The frame push (Decision B) reads its
+  loc from the same `locs[call_ip]`.
+
+  This is v0's per-IP `lines`/`columns` approach re-derived onto v1's `Chunk`.
+  The DA's bloat objection stands as a real cost (≈ one `SourceLocation` per
+  instruction) but is **necessary** — there is no free loc in the VM to reuse;
+  the cost is bounded by code size and lives only on compiled fns. A later O-NNN
+  may sparsify it (only call/raise IPs) if it measures; per-IP is the simplest
+  correct first form.
 
 Start at sub-form (node) precision; add arg-precise carets (v0's 8-slot
 `arg_sources`) only if a sweep shows it matters.
@@ -225,21 +239,28 @@ writes per call — negligible versus the back-fill it replaces — and
 and D as drafted (EDN `:trace` in lockstep per ADR-0055; spans never on
 NaN-boxed Values).
 
-**Main-loop disposition**: adopt **Alt 2** (DA's lead) — Decisions A + B above
-are rewritten to it: the frame stack is the single loc carrier (no VM per-IP
-Chunk table), TreeWalk node back-fill only where the node is free, and
-**pop-on-both + snapshot-at-raise** replaces the draft's leaky pop-on-success-only.
-Alt 3 (GC-EvalFrame reconstruction) is held as the perf fallback (it widens the
-`gc_rooting.md` contract — taken only if the threadlocal push/pop ever measures).
-Decisions C + D stand as drafted.
+**Main-loop disposition**: adopt **Alt 2's two correct contributions** — (1) the
+revived frame stack with **pop-on-both + snapshot-at-raise** replacing the draft's
+leaky pop-on-success-only (the DA's most valuable catch), and (2) TreeWalk node
+back-fill where the node is free. **BUT Decision A Revision 1 reverses Alt 2's
+"no VM per-IP table"**: implementation (2026-06-08) found the VM threads NO
+call-site loc into `callFn` (`vm.zig:386` passes `.{}`), so the frame's loc has
+no free source in the VM — a per-IP `locs` array on `BytecodeChunk` is necessary
+(re-deriving v0's per-IP lines/columns onto v1's Chunk, matching v1's existing
+sparse-side-table precedent). The DA's bloat objection is acknowledged as a real
+(bounded, sparsifiable-later) cost, not a blocker. Alt 3 (GC-EvalFrame
+reconstruction) is held as the perf fallback. Decisions C + D stand as drafted.
 
 ## Consequences
 
 - Eval errors (incl. run-mode) gain location + numbered context + caret + trace
   — v0-level display, cljw-native (no JVM class).
-- **No VM `Chunk` size regression** (Alt 2 dropped the per-IP table; the frame
-  stack carries location). Cost is a 64-frame threadlocal + two pointer writes
-  per call (negligible; `max_call_depth` truncation is best-effort, as documented).
+- **VM `Chunk` grows a per-IP `locs: []SourceLocation` array** (Decision A
+  Revision 1 — the DA's "no table" premise did not hold for the VM, which
+  threads no call-site loc into `callFn`). Cost ≈ one `SourceLocation` per
+  instruction, bounded by code size, on compiled fns only; a later O-NNN may
+  sparsify to call/raise IPs. Plus the frame stack: a 64-frame threadlocal +
+  two pointer writes per call (negligible; `max_call_depth` best-effort).
 - The text + EDN renderers stay in lockstep (ADR-0055); both gain `:trace`.
 - D-323 tracks the 3-cycle implementation + the run-mode label/Kind polish.
 
