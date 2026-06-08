@@ -86,6 +86,18 @@ slot), and fully renderable (location + trace).
   trace on the consuming thread. Tests pin the kind (catchable) + message +
   location + trace.
 
+### Landed (2026-06-08)
+
+- **Stage A** (a8b88c35): ExInfo `origin_loc` + `buildThrownInfo` reads it →
+  thrown exceptions render their location (closes the latent in-thread gap).
+- **Stage B**: neutral `runtime/concurrency/worker_error.{capture,reraise}` +
+  wired into `future` (stm.zig deref re-raises the marshalled error;
+  future.zig worker captures) and `agent` (captureThrown delegated → the
+  hardcoded-ExceptionInfo class bug is fixed). `@(future (/ 1 0))` now renders
+  "Divide by zero" + `<stdin>:1:14` + caret and is catchable as
+  `ArithmeticException`. `pmap` is sequential (core.clj:415) → no wiring.
+  REMAINING: the trace across the boundary (D-336, needs trace-on-ExInfo).
+
 ### Scope / deferrals
 
 - **Trace rides v1** (per the user "not just the trace"): the deep-copy machinery

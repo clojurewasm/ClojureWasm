@@ -54,8 +54,8 @@ const vector = @import("collection/vector.zig");
 const iref = @import("iref.zig");
 const dispatch = @import("dispatch.zig");
 const error_mod = @import("error/info.zig");
-const ex_info = @import("collection/ex_info.zig");
 const lock_tx = @import("concurrency/lock_tx.zig");
+const worker_error = @import("concurrency/worker_error.zig");
 
 /// Off-heap control block: the queue mutex, the single-drainer flag, and the
 /// pending actions. Held on `rt.gpa` (stable address), freed by the finaliser.
@@ -242,11 +242,10 @@ fn drainer(a: *Agent) void {
 /// otherwise synthesize an exception from the catalog Info the raise just set.
 /// (Precise cross-thread error identity beyond this is the future-shared D-115.)
 fn captureThrown(a: *Agent) Value {
-    if (dispatch.last_thrown_exception) |tv| return tv;
-    if (error_mod.peekLastError()) |info| {
-        return ex_info.allocException(a.rt, info.message, "clojure.lang.ExceptionInfo") catch Value.nil_val;
-    }
-    return Value.nil_val;
+    // ADR-0120: the uniform worker-error marshal — a catalog error now carries
+    // its KIND-DERIVED class (was hardcoded "ExceptionInfo", so `(agent-error a)`
+    // around `(/ 1 0)` mis-reported the class) + its source location.
+    return worker_error.capture(a.rt);
 }
 
 /// `(apply f state args...)` and store the new state. `action` is `[f & args]`.

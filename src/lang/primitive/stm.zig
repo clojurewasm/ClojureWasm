@@ -22,6 +22,7 @@ const lock_tx = @import("../../runtime/concurrency/lock_tx.zig");
 const delay_mod = @import("../../runtime/delay.zig");
 const promise_mod = @import("../../runtime/promise.zig");
 const future_mod = @import("../../runtime/future.zig");
+const worker_error = @import("../../runtime/concurrency/worker_error.zig");
 const lazy_seq_mod = @import("../../runtime/lazy_seq.zig");
 const atom_mod = @import("../../runtime/atom.zig");
 const agent_mod = @import("../../runtime/agent.zig");
@@ -55,8 +56,15 @@ pub fn derefFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         .delay => try delay_mod.force(rt, env, v, loc),
         // Blocks until delivered (Phase B #4b / D-113) — matches JVM Clojure.
         .promise => promise_mod.deref(v),
-        .future => future_mod.deref(v) orelse
-            error_catalog.raise(.future_thunk_failed, loc, .{}),
+        // ADR-0120: a failed future re-raises the worker's MARSHALLED error
+        // (real kind/message/location), not a generic future_thunk_failed.
+        // The `future_thunk_failed` fallback only fires if the marshal yielded
+        // nil (no error info — shouldn't happen at a real thunk failure).
+        .future => blk: {
+            if (future_mod.deref(v)) |val| break :blk val;
+            if (future_mod.errorValue(v)) |ev| break :blk worker_error.reraise(ev);
+            break :blk error_catalog.raise(.future_thunk_failed, loc, .{});
+        },
         // `@#'x` / `(deref a-var)` reads the Var's active value, mirroring
         // the analyzer's var_ref node (tree_walk.zig). resolve returns one.
         .var_ref => v.decodePtr(*const env_mod.Var).deref(),

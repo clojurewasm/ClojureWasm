@@ -174,5 +174,32 @@ case "$out" in
         fail "error_thrown_keeps_location: expected a <stdin>:1:<col> location + message, got '$out'" ;;
 esac
 
+# --- Case 15 (ADR-0120 Stage B): a future thunk error crosses the REAL OS
+#     thread boundary (future.zig:103) faithfully — `@(future (/ 1 0))` shows the
+#     real "Divide by zero" + location, NOT a generic future_thunk_failed. The
+#     worker marshals its threadlocal error into a GC-heap exception Value that
+#     survives the thread; deref re-raises it. ---
+out=$(printf '@(future (/ 1 0))\n' | "$BIN" - 2>&1 || true)
+case "$out" in
+    *"future_thunk_failed"*)
+        fail "error_future_fidelity: future error still generic future_thunk_failed: '$out'" ;;
+    *"<stdin>:1:"*"Divide by zero"*)
+        echo "PASS error_future_fidelity -> future error crosses with real message + location" ;;
+    *)
+        fail "error_future_fidelity: expected Divide by zero + location, got '$out'" ;;
+esac
+
+# --- Case 16 (ADR-0120 Stage B): the KIND-DERIVED class crosses too, so a
+#     future's arithmetic error is catchable as ArithmeticException — fixing the
+#     old hardcoded-ExceptionInfo marshal. Proves the class (not just the
+#     message) is faithful across the boundary. ---
+out=$(printf '(prn (try @(future (/ 1 0)) (catch java.lang.ArithmeticException e (.getMessage e))))\n' | "$BIN" - 2>&1 || true)
+case "$out" in
+    *'"Divide by zero"'*)
+        echo "PASS error_future_catchable_class -> future error catchable by its real class" ;;
+    *)
+        fail "error_future_catchable_class: expected to catch ArithmeticException, got '$out'" ;;
+esac
+
 echo
 echo "Phase 14 row 14.13 (D-066 partial) error format e2e: all green."

@@ -39,6 +39,7 @@ const tag_ops = @import("gc/tag_ops.zig");
 const gc_heap_mod = @import("gc/gc_heap.zig");
 const mark_sweep = @import("gc/mark_sweep.zig");
 const SourceLocation = @import("error/info.zig").SourceLocation;
+const worker_error = @import("concurrency/worker_error.zig");
 
 pub const FutureState = enum(u8) {
     pending = 0,
@@ -132,7 +133,11 @@ fn worker(f: *Future) void {
             result_state = .realised_value;
             result_value = result;
         } else |_| {
+            // ADR-0120: marshal the worker's error into a GC-heap exception
+            // Value (survives this thread) so `deref` re-raises the REAL error
+            // (kind/message/location), not a generic `future_thunk_failed`.
             result_state = .realised_error;
+            result_value = worker_error.capture(f.rt);
         }
     }
 
@@ -161,6 +166,18 @@ pub fn deref(v: Value) ?Value {
         io_default.condWait(&f.cell.cond, &f.cell.mutex);
     }
     return if (f.state == .realised_value) f.cached else null;
+}
+
+/// The marshalled exception Value of a failed future (ADR-0120), or `null` if
+/// the future succeeded / is pending. The consumer (`deref`) re-raises this via
+/// `worker_error.reraise` so the real error surfaces, not `future_thunk_failed`.
+/// Assumes the worker has realised (call after `deref` returned null).
+pub fn errorValue(v: Value) ?Value {
+    std.debug.assert(v.tag() == .future);
+    const f = v.decodePtr(*Future);
+    io_default.lockMutex(&f.cell.mutex);
+    defer io_default.unlockMutex(&f.cell.mutex);
+    return if (f.state == .realised_error) f.cached else null;
 }
 
 /// `(realized? f)` — non-blocking: true iff the worker has finished (value or
