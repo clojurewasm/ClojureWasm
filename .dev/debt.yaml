@@ -9,6 +9,17 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-337"
+    status: "deferred from ADR-0121 (2026-06-08). `(class fn)` / `(type fn)` return the raw heap-tag name `fn_val` (likewise `multi_fn` / `protocol_fn`) instead of a clj-reduced simple class name. clj returns a munged generated class (`user$boom__7`); cljw has no JVM class (ADR-0059 / AD-003 simple-name). A callable's class is a TYPE-SYSTEM concern (what TypeDescriptor a closure carries), distinct from the ADR-0121 PRINT form — co-designing it would drag TypeDescriptor design into a print cycle, so it was split out. The ADR-0121 print form (`#<ns/name>`) implies NO class decision."
+    category: "error-system"
+    barrier: |-
+      Needs a TypeDescriptor decision for callables (what simple class name a
+      fn/multifn/protocol-fn reports) + an AD for the clj divergence (clj's munged
+      generated class vs a cljw simple name). Resolve when `(class fn)` returning a
+      raw tag is worth the type-system design (rare; `class_name.zig` already
+      treats `fn_val` as a callable class for `ifn?`). Cross-ref ADR-0121 §3,
+      AD-003, class_name.zig isCallableClassName.
+    last_reviewed: "2026-06-08"
   - id: "D-336"
     status: "DISCHARGED 2026-06-08 (ADR-0120 §1). The TRACE now crosses the thread boundary + closes the in-thread `(throw (ex-info))` gap. `ExInfo` gains `trace_ptr`/`trace_len`, deep-copied (frame array + each frame's fn_name/ns/file strings GC-owned, freed in finaliseGc) — the same ownership story as `message`/`origin_file`, so the ExInfo owns its trace outright and the worker's threadlocal `trace_snapshot` dying with the thread is irrelevant. `allocExceptionLoc` gains a `trace` param; the 3 synth/marshal sites (vm.zig, tree_walk.zig, worker_error.zig) pass `info.trace`; `buildThrownInfo` reads `originTrace` → `info.trace` (text + EDN renderers already consume it). VERIFIED: e2e error_future_trace_crosses (`@(future (boom))` renders `Trace: user/boom`) + error_thrown_trace_inthread (re-thrown synth ex_info carries its trace) + the deep-copy unit test (survives source-array mutation). The ADR-0120-noted lazy-materialisation perf refinement is deferred (optimization_deferred_until_15_libs); the eager deep-copy is correct + simple. ORIGINAL: carry the TRACE on the widened ExInfo (after Stage A landed `origin_loc`)."
     category: "error-system"
@@ -91,14 +102,12 @@ active:
       (the cross-thread transfer), info.zig threadlocals.
     last_reviewed: "2026-06-08"
   - id: "D-328"
-    status: "blocked-by: ADR-0119 Stage 1 landing (2026-06-08). With ADR-0119 Stage 1 a Function carries `name`/`defining_ns`, but `(pr foo)`/`(str foo)` still render `#<fn_val>` (print.zig:677 fallthrough). A user-facing fn print form (clj: `#object[user$foo__N 0x.. \"..\"]`; cw-native reduced per AD-002 no-hash + AD-003 simple-name) should show `<ns>/<name>`. Couples to the `(class fn)` label (currently raw tag `fn_val`) + the `#object[…]` convention (AD-010) → needs its own format + AD design. Deferred from Stage 1 to keep naming-threading separate from print-format design."
+    status: "DISCHARGED 2026-06-08 (ADR-0121 / AD-025). Callable values print `#<ns/name>` (the AD-002 `#<…>` envelope filled with the qualified name) instead of the leaked internal tag `#<fn_val>`. Big-bang over the whole callable family: `.fn_val` (via an eval-injected `print.setFnNameAccessor`, mirroring `info.context_provider`, since `Function` is Layer 1), `.multi_fn` + `.protocol_fn` (Layer-0 structs read directly). `str` and `pr` share the render site (clj agrees). builtins keep `#builtin` (D-327 fills later; envelope co-designed). `(class fn)` deferred → D-337. The DA recommended a `tag_ops` display-table generalisation on a 3-cross-zone-consumer premise; the main loop verified only `.fn_val` crosses zones (multi_fn/protocol_fn are Layer 0) → a 1-registrant table would be speculative, so a single accessor is the finished form (see ADR-0121 'Main-loop response to the DA'). Tests: print.zig unit (printCallable forms + null-accessor fallback) + e2e phase14_callable_print (fn/anon/defmulti/str==pr) + treewalk-backend parity probe. ORIGINAL: `(pr foo)`/`(str foo)` rendered `#<fn_val>`."
     category: "error-system"
     barrier: |-
-      Stage 1 lands the name on the value (white-box verified); making it visible
-      via pr/str is a separate format decision (what class label, #object vs #<>,
-      AD for the clj divergence). Resolve when fn print naming is worth designing
-      the format + AD (and possibly cleaning up `(class fn)` = fn_val → a real
-      simple name). Cross-ref ADR-0119 Stage 1 note, print.zig:677, AD-010.
+      DISCHARGED. The `#<ns/name>` form lands for all three callable tags; AD-025
+      pins the clj divergence. Follow-on (not blocking): builtin naming (D-327),
+      `(class fn)` simple-name cleanup (D-337). Cross-ref ADR-0121, AD-025.
     last_reviewed: "2026-06-08"
   - id: "D-327"
     status: "blocked-by: ADR-0119 Stage 1+2 landing (2026-06-08). Builtins are NaN-boxed immediate fn-pointers (value.zig:221) with no name slot, so `(pr +)` shows `#builtin` not `#object[clojure.core/+]`. A reverse `ptr -> ns/name` map built at `registerAll` (primitive.zig:65) into an rt-owned `AutoHashMap(usize,[]const u8)` would let `pr` name a builtin. Out of trace scope (builtins are elided from traces, ADR-0119 §6). Pure `pr`-parity nicety."

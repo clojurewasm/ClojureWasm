@@ -374,3 +374,20 @@ accepted:
       may surface stdlib frames (like clj's `pst`).
     derives_from: "ADR-0119 (callable naming + the trace-visibility discipline `isUserNs`) + user directive 2026-06-08 (host/stdlib/user is non-uniform → follow a discipline, not ad-hoc, for good UX)"
     pin: "test/e2e/phase14_error_format.sh — error_trace_discipline (map → user-only trace, no clojure.* / nameless internal frame)"
+  - id: "AD-025"
+    summary: "A callable value (`fn` / `defmulti` / protocol method fn) prints as `#<ns/name>` (`#<fn>` when unnamed) — clj prints `#object[user$boom__N 0xHASH \"user$boom__N@…\"]` with a munged JVM class + identity hash. `str` and `pr` render identically (both reach the same site; clj agrees)."
+    example: '(pr-str (defn boom [] 1)) => cljw "#<user/boom>" / clj "#object[user$boom__... 0x.. \"user$boom__...@..\"]" ; (pr-str (fn [])) => cljw "#<user/fn__N>" (or "#<fn>" if nameless) ; (str defmulti-val) == (pr-str defmulti-val) (no str↔pr split, matching clj)'
+    why: |-
+      cljw has no JVM Class hierarchy (TypeDescriptor instead, ADR-0059) and no
+      reproducible identity hash, so the munged `user$boom__N` class + `0xHASH`
+      cannot be mirrored — the same reason AD-002 prints opaque refs as `#<tag>`
+      not `#object[…]`. ADR-0121 fills that `#<…>` envelope with the callable's
+      qualified `ns/name` (already on the value per ADR-0119 Stage 1) instead of
+      leaking the internal Zig heap-tag name (`#<fn_val>`). The form is identical
+      for all three callable tags (fn/multifn/protocol-fn) and for both `str` and
+      `pr` (they share the render site, as in clj). The print form implies NO
+      `(class fn)` decision — `(class fn)` is a separate type-system concern,
+      deferred. Builtins keep `#builtin` until D-327 supplies a name (the envelope
+      is co-designed so D-327 only fills the name).
+    derives_from: "ADR-0121 (callable print naming) + AD-002 (opaque refs print #<…> not #object[…]) + AD-003 (simple names) + ADR-0059 (no JVM class hierarchy)"
+    pin: "test/e2e/phase14_callable_print.sh — fn_named + fn_anon + defmulti + str_eq_pr"
