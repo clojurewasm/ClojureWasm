@@ -147,7 +147,14 @@ the ADR); debt D-036 (Phase 16 inline-vs-Pod decision); ROADMAP
   `private/notes/zwasm_v2_feedback.md`; a **cljw-side** issue gets a
   real code fix (root-cause resolution + debt row, not a workaround).
 - **2026-06-08 (user chat — pin the `v2.0.0-alpha.1` dogfood tag;
-  supersedes the 2026-06-05 "NEVER pin a tag" guardrail).** The user cut
+  supersedes the 2026-06-05 "NEVER pin a tag" guardrail).**
+  **Verbatim**: 「今、cw v1（ClojureWasmFromScratchのこと）は、相対パスで、
+  build.zig.zonとかで動作させていますが、zwasm v2（このPCでは、
+  $MY/zwasm_from_scratchの v2.0.0-alpha.1 タグをきったものを指定して
+  動かしたいです。」+（デモ堅牢化フェーズについて）「あれ、これ考慮
+  できていな、バグっている、未実装だ、ということに気付いたら、
+  zwasm_from_scratchおよびClojureWasmFromScratchで修正をしていきます」.
+  The user cut
   a deliberate **v2 pre-release tag `v2.0.0-alpha.1`** (commit `3b84fa24`,
   pushed to `clojurewasm/zwasm`) **off the `zwasm-from-scratch` long-lived
   branch, explicitly for ClojureWasm dogfooding** (tag message: *"First
@@ -172,6 +179,32 @@ the ADR); debt D-036 (Phase 16 inline-vs-Pod decision); ROADMAP
   2026-06-08 addition that **direct edits to `zwasm_from_scratch` are now
   user-authorized** during this interactive demo-hardening phase (the loop
   confirms direct-edit vs record-and-relay per zwasm-touching change).
+- **2026-06-08 (user chat — switch to RELATIVE-PATH co-development; two
+  consumption modes).** With the demo-hardening security pass now actively
+  fixing BOTH repos in lockstep, cw v1 consumes zwasm via a **relative-path
+  `build.zig.zon` import (`.path = "../zwasm_from_scratch"`, `lazy = true`)**
+  again, NOT the tag pin. **Verbatim**: 「zwasm_from_scratch側のセッションで…
+  対応がまとまりました。なので、ClojureWasmFromScratch側の作業にうつります。
+  相対パスでのbuild.zig.zonにしたり」+「build.zig.zonは相対パスから読むことが
+  でき、まだタグ作らなくてもビルドや実行可能である。作業途中で、
+  zwasm_from_scratch側にフィードバック修正したくなることもあると思うので。」
+  This formalises **two consumption modes** (not a contradiction — a phase
+  selector):
+  - **Relative-path = active co-development mode (current).** zwasm's
+    `zwasm-from-scratch` working tree is consumed directly, so a zwasm fix is
+    picked up immediately and cljw can feed back more findings
+    (`security_handover_from_cljw_03.md`…) without tag/fetch churn. This is the
+    mode whenever the two repos are being fixed together.
+  - **Tag pin (`v2.0.0-alpha.N` + `.hash`) = stable-snapshot / release mode.**
+    Used when the integration settles, or for a reproducible CI/release build.
+    The `alpha.1` pin landed earlier is NOT wasted — it verified the
+    tag-fetch-and-build path works as a snapshot mechanism.
+  Switching between the two modes is a routine `build.zig.zon` edit (path ↔
+  url+hash), NOT an F-001 amendment. **UNCHANGED:** zwasm stays `lazy` +
+  `-Dwasm`/`-Dzwasm-spike` flag-guarded, so cw v1's DEFAULT build + gate never
+  resolve zwasm in either mode (the churning relative tree cannot break the
+  default gate). The finding-handling split + direct-edit authorization from
+  the prior 2026-06-08 entries stay in force.
 
 ---
 
