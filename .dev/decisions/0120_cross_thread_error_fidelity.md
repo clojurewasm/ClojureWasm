@@ -96,7 +96,16 @@ slot), and fully renderable (location + trace).
   hardcoded-ExceptionInfo class bug is fixed). `@(future (/ 1 0))` now renders
   "Divide by zero" + `<stdin>:1:14` + caret and is catchable as
   `ArithmeticException`. `pmap` is sequential (core.clj:415) → no wiring.
-  REMAINING: the trace across the boundary (D-336, needs trace-on-ExInfo).
+- **§1 trace-on-ExInfo** (D-336): `ExInfo` gains `trace_ptr`/`trace_len`,
+  deep-copied (frame array + each frame's `fn_name`/`ns`/`file` strings
+  GC-owned, freed in `finaliseGc` — the same ownership as `message`/
+  `origin_file`). `allocExceptionLoc` gains a `trace` param; the 3 synth/
+  marshal sites (vm.zig, tree_walk.zig, worker_error.zig) pass `info.trace`;
+  `buildThrownInfo` reads `originTrace`. `@(future (boom))` renders
+  `Trace: user/boom` across the OS-thread boundary, and the latent in-thread
+  `(throw (ex-info …))` trace gap closes too. The perf note's lazy
+  frame-pointer scheme is deferred (Phase 15); the eager deep-copy is the
+  correct + simple form. Closes D-336 + D-330 + D-335.
 
 ### Scope / deferrals
 
