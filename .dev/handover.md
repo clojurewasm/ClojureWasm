@@ -9,19 +9,21 @@
   (see `git log`). The error-display overhaul is comprehensively landed —
   caret / naming / trace / trace-discipline / cross-thread fidelity +
   trace-across-boundary all shipped. Working tree clean of source.
-- **First commit on resume MUST be: D-333 — the post-mortem `cljw render-error`
-  decoder reads the EDN `:trace`.** Live text `Trace:` + EDN `:trace` are in
-  lockstep, but `render_error.zig` (a hand-rolled flat-field scan;
-  `renderOne` at :81) does NOT decode the nested `:trace [{:fn ".."  :ns ".."
-  :file ".." :line N} …]` vector — the decoded-log view omits the trace. Add a
-  nested-vector scan after the header/message in `renderOne` that walks each
-  inner `{…}` map and prints `  <ns>/<fn> (<file>:<line>)`, matching the live
-  text renderer (confirm the exact format from `runtime/error/print.zig`'s
-  `Trace:` writer). Hand-rolled scan, NOT a full EDN parser (per the file's
-  decoder-strategy docstring + v0.1.0 stability lock). Read FIRST:
-  `.dev/debt.yaml` D-333 + `src/app/render_error.zig` + `runtime/error/print.zig`.
-  After D-333: D-328 (`pr`/`str` of a fn shows its name) → D-325 (`(fn name …)`
-  self-name).
+- **First commit on resume MUST be: D-327 — builtins print `#<clojure.core/name>`,
+  not `#builtin`.** This is the last form of the callable-print surface (ADR-0121
+  / AD-025 closed fn/multifn/protocol-fn and co-designed the envelope so D-327
+  only fills the builtin name). Builtins are NaN-boxed immediate fn-pointers
+  (value.zig) with no name slot, so `print.zig`'s `.builtin_fn` arm prints
+  `#builtin`. Plan: build a reverse `ptr → ns/name` map at `primitive.registerAll`
+  into an rt-owned `AutoHashMap(usize, FnIdentity)`, expose a Layer-0 accessor
+  (same setter-injection shape as the `.fn_val` `fn_name_accessor` ADR-0121 added),
+  and have the `.builtin_fn` arm format `#<ns/name>` via `printCallable`. Read
+  FIRST: `.dev/debt.yaml` D-327 + `src/lang/primitive.zig` (registerAll) +
+  `src/runtime/print.zig` (`.builtin_fn` arm + `printCallable` + `setFnNameAccessor`
+  precedent) + `.dev/decisions/0121_callable_print_naming.md`. After D-327 the
+  callable-print area is exhaustively closed; next self-select is a quality-loop
+  floor row (D-210 clj-parity / D-273 bundled-lib / D-242 concurrency — drain
+  highest-value-first per CLAUDE.md).
 - **Forbidden**: trusting a bg-gate notification's exit code (verify ONLY via
   Summary `failed: 0` + `.gate_pass` == `bash scripts/gate_state_hash.sh`).
   Skipping `zig build lint` (~2s) before the full gate when you delete/delegate
