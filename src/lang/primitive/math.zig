@@ -59,10 +59,11 @@ fn toF64(v: Value) f64 {
 }
 
 fn ensureNumeric(args: []const Value, name: []const u8, loc: SourceLocation) !void {
-    for (args) |v| {
+    for (args, 0..) |v, i| {
         switch (v.tag()) {
             .integer, .float, .big_int, .ratio, .big_decimal => continue,
-            else => |t| return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = name, .actual = @tagName(t) }),
+            // ADR-0118 cycle 2.5: caret on the non-numeric operand, not the call form.
+            else => |t| return error_catalog.raise(.type_arg_not_number, error_mod.argLoc(i, loc), .{ .fn_name = name, .actual = @tagName(t) }),
         }
     }
 }
@@ -138,8 +139,9 @@ pub fn slash(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     if (args.len == 0)
         return error_catalog.raise(.arity_below_min, loc, .{ .got = @as(usize, 0), .fn_name = "/", .min = @as(usize, 1) });
     if (args.len == 1) {
+        // 1-arg `/` is `1/x`; the divisor is the sole operand (index 0).
         return promote.divPromoting(rt, Value.initInteger(1), args[0]) catch |err| switch (err) {
-            error.DivideByZero => return error_catalog.raise(.divide_by_zero, loc, .{}),
+            error.DivideByZero => return error_catalog.raise(.divide_by_zero, error_mod.argLoc(0, loc), .{}),
             error.NonTerminatingDecimal => return error_catalog.raise(.non_terminating_decimal, loc, .{}),
             else => return err,
         };
@@ -148,7 +150,8 @@ pub fn slash(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         acc = promote.divPromoting(rt, acc, args[i]) catch |err| switch (err) {
-            error.DivideByZero => return error_catalog.raise(.divide_by_zero, loc, .{}),
+            // ADR-0118 cycle 2.5: caret on the zero divisor at index `i`, not the call form.
+            error.DivideByZero => return error_catalog.raise(.divide_by_zero, error_mod.argLoc(i, loc), .{}),
             error.NonTerminatingDecimal => return error_catalog.raise(.non_terminating_decimal, loc, .{}),
             else => return err,
         };
@@ -473,10 +476,11 @@ pub fn abs(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
 
 /// Map the shared numeric-tower errors a quot/rem/mod helper can raise
 /// onto user-facing catalog errors (F-011: one translation, three sites).
-fn raiseTowerDivError(name: []const u8, err: anyerror, loc: SourceLocation) anyerror {
+fn raiseTowerDivError(name: []const u8, err: anyerror, divisor_idx: usize, loc: SourceLocation) anyerror {
     _ = name;
     return switch (err) {
-        error.DivideByZero => error_catalog.raise(.divide_by_zero, loc, .{}),
+        // ADR-0118 cycle 2.5: caret on the zero divisor, uniform with `/`.
+        error.DivideByZero => error_catalog.raise(.divide_by_zero, error_mod.argLoc(divisor_idx, loc), .{}),
         error.NonTerminatingDecimal => error_catalog.raise(.non_terminating_decimal, loc, .{}),
         else => err,
     };
@@ -489,7 +493,7 @@ pub fn quot(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     _ = env;
     try error_catalog.checkArity("quot", args, 2, loc);
     try ensureNumeric(args, "quot", loc);
-    return promote.quotPromoting(rt, args[0], args[1]) catch |err| raiseTowerDivError("quot on BigDecimal", err, loc);
+    return promote.quotPromoting(rt, args[0], args[1]) catch |err| raiseTowerDivError("quot on BigDecimal", err, 1, loc);
 }
 
 /// `(rem a b)` — remainder with sign matching the dividend
@@ -499,7 +503,7 @@ pub fn rem(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     _ = env;
     try error_catalog.checkArity("rem", args, 2, loc);
     try ensureNumeric(args, "rem", loc);
-    return promote.remPromoting(rt, args[0], args[1]) catch |err| raiseTowerDivError("rem on BigDecimal", err, loc);
+    return promote.remPromoting(rt, args[0], args[1]) catch |err| raiseTowerDivError("rem on BigDecimal", err, 1, loc);
 }
 
 /// `(mod a b)` — floor-mod: result has the same sign as the
@@ -509,7 +513,7 @@ pub fn mod(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     _ = env;
     try error_catalog.checkArity("mod", args, 2, loc);
     try ensureNumeric(args, "mod", loc);
-    return promote.modPromoting(rt, args[0], args[1]) catch |err| raiseTowerDivError("mod on BigDecimal", err, loc);
+    return promote.modPromoting(rt, args[0], args[1]) catch |err| raiseTowerDivError("mod on BigDecimal", err, 1, loc);
 }
 
 /// `(bit-and a b)` — bitwise AND on two integers.
@@ -730,7 +734,7 @@ pub fn uncheckedDivideInt(rt: *Runtime, env: *Env, args: []const Value, loc: Sou
     try error_catalog.checkArity("unchecked-divide-int", args, 2, loc);
     const a = try uncheckedI32(args[0], "unchecked-divide-int", loc);
     const b = try uncheckedI32(args[1], "unchecked-divide-int", loc);
-    if (b == 0) return error_catalog.raise(.divide_by_zero, loc, .{});
+    if (b == 0) return error_catalog.raise(.divide_by_zero, error_mod.argLoc(1, loc), .{});
     // i32 MIN / -1 overflows; clj's unchecked op wraps to MIN (no throw).
     if (a == std.math.minInt(i32) and b == -1) return promote.wrapI64(rt, @as(i64, std.math.minInt(i32)));
     return promote.wrapI64(rt, @as(i64, @divTrunc(a, b)));
@@ -741,7 +745,7 @@ pub fn uncheckedRemainderInt(rt: *Runtime, env: *Env, args: []const Value, loc: 
     try error_catalog.checkArity("unchecked-remainder-int", args, 2, loc);
     const a = try uncheckedI32(args[0], "unchecked-remainder-int", loc);
     const b = try uncheckedI32(args[1], "unchecked-remainder-int", loc);
-    if (b == 0) return error_catalog.raise(.divide_by_zero, loc, .{});
+    if (b == 0) return error_catalog.raise(.divide_by_zero, error_mod.argLoc(1, loc), .{});
     if (a == std.math.minInt(i32) and b == -1) return promote.wrapI64(rt, 0);
     return promote.wrapI64(rt, @as(i64, @rem(a, b)));
 }

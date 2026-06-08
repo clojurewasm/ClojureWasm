@@ -25,8 +25,10 @@ const Reader = @import("../eval/reader.zig").Reader;
 const analyze = @import("../eval/analyzer/analyzer.zig").analyze;
 const driver = @import("../eval/driver.zig");
 const vm_compiler = @import("../eval/backend/vm/compiler.zig");
+const vm = @import("../eval/backend/vm.zig");
 const serialize = @import("../eval/bytecode/serialize.zig");
 const tree_walk = @import("../eval/backend/tree_walk.zig");
+const error_mod = @import("../runtime/error/info.zig");
 
 const testing = std.testing;
 
@@ -1214,4 +1216,47 @@ test "aot: deserialized bytecode fn dispatches via tree_walk vtable evalChunk" {
 
     const result = try tree_walk.callFunction(&f.rt, &f.env, fn_val, &.{Value.initInteger(5)}, .{});
     try testing.expectEqual(@as(i64, 6), result.asInteger());
+}
+
+// ADR-0118 cycle 2.5: the arg-precise caret column must be IDENTICAL on both
+// backends — a runtime error caret lands on the culprit operand, not the
+// enclosing call form, and TreeWalk (the oracle) and the VM (production) agree.
+// This is the dual-backend parity case for the error-location surface (the
+// standard `compare` oracle checks Values, not error locations).
+fn caretColumn(f: *Fixture, source: []const u8, backend: enum { tree_walk, vm }) !u16 {
+    const arena = f.arena.allocator();
+    var reader = Reader.init(arena, source);
+    const form = (try reader.read()).?;
+    const node = try analyze(arena, &f.rt, &f.env, null, form, &f.table);
+    var locals: [256]Value = [_]Value{.nil_val} ** 256;
+    error_mod.clearLastError();
+    switch (backend) {
+        .tree_walk => {
+            tree_walk.installVTable(&f.rt);
+            _ = tree_walk.eval(&f.rt, &f.env, &locals, node) catch
+                return (error_mod.peekLastError() orelse return error.NoErrorRaised).location.column;
+        },
+        .vm => {
+            vm.installVTable(&f.rt);
+            const chunk = try vm_compiler.compile(&f.rt, arena, node);
+            _ = vm.eval(&f.rt, &f.env, &locals, &chunk) catch
+                return (error_mod.peekLastError() orelse return error.NoErrorRaised).location.column;
+        },
+    }
+    return error.ExpectedError;
+}
+
+test "diff: arg-precise caret column agrees across backends (ADR-0118 cycle 2.5)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // (/ 2 0): caret on the zero divisor `0` at col 5 (index 1), both backends.
+    try testing.expectEqual(@as(u16, 5), try caretColumn(&f, "(/ 2 0)", .tree_walk));
+    try testing.expectEqual(@as(u16, 5), try caretColumn(&f, "(/ 2 0)", .vm));
+    // (+ :foo 1): caret on the non-numeric arg `:foo` at col 3 (index 0).
+    try testing.expectEqual(@as(u16, 3), try caretColumn(&f, "(+ :foo 1)", .tree_walk));
+    try testing.expectEqual(@as(u16, 3), try caretColumn(&f, "(+ :foo 1)", .vm));
+    // (+ 1 (/ 2 0)): innermost culprit wins — the inner `0` at col 10, not the
+    // outer `+` form; depth-first eval + the slice swap make this fall out.
+    try testing.expectEqual(@as(u16, 10), try caretColumn(&f, "(+ 1 (/ 2 0))", .tree_walk));
+    try testing.expectEqual(@as(u16, 10), try caretColumn(&f, "(+ 1 (/ 2 0))", .vm));
 }

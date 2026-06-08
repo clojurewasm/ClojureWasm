@@ -188,6 +188,45 @@ pub const StackFrame = struct {
 threadlocal var call_stack: [max_call_depth]StackFrame = [_]StackFrame{.{}} ** max_call_depth;
 threadlocal var stack_depth: u8 = 0;
 
+// --- Arg-precise caret side channel (ADR-0118 cycle 2.5) ---
+//
+// Each call boundary (TreeWalk `evalCall`, VM `op_call`) publishes the
+// per-argument source locations just before invoking the callee, so a
+// primitive that fails on argument `i` can resolve a caret that lands on
+// the culprit operand (`(/ 2 0)` → the `0`) instead of the enclosing call
+// form (`(`). The primitive's only new job is to NAME the index via
+// `argLoc(i, fallback)` — it never carries or computes a location, keeping
+// the mechanism uniform across primitives rather than per-primitive ad hoc.
+//
+// The slice points at the caller's stack-resident loc array, which is alive
+// for the synchronous duration of the call; the boundary swaps the previous
+// value back on return (stack-disciplined for nested calls). A culprit that
+// does not map to a positional arg slot (variadic fold, lazy-seq element,
+// between-subcall raise) falls back through `orelse` to the call-form loc.
+threadlocal var arg_sources: []const SourceLocation = &.{};
+
+/// Publish `locs` as the current call's per-argument source locations and
+/// return the previous value, so the caller can restore it on return
+/// (`const prev = swapArgSources(locs); defer _ = swapArgSources(prev);`).
+pub fn swapArgSources(locs: []const SourceLocation) []const SourceLocation {
+    const prev = arg_sources;
+    arg_sources = locs;
+    return prev;
+}
+
+/// The source location of argument `i` for the in-flight call, or `null`
+/// when `i` is out of range (no positional slot → caller falls back).
+pub fn getArgSource(i: usize) ?SourceLocation {
+    return if (i < arg_sources.len) arg_sources[i] else null;
+}
+
+/// Resolve the caret location for a failure on argument `i`: the arg's own
+/// source position when known, else the call-form `fallback`. The single
+/// idiom every arg-positional `raise` uses to name its culprit.
+pub fn argLoc(i: usize, fallback: SourceLocation) SourceLocation {
+    return getArgSource(i) orelse fallback;
+}
+
 // --- Core error API ---
 
 /// Set the threadlocal error payload and return the matching Zig error.
@@ -335,7 +374,6 @@ test "clearLastError" {
     clearLastError();
     try testing.expect(peekLastError() == null);
 }
-
 
 test "call stack push/pop and overflow are silent" {
     clearCallStack();

@@ -80,29 +80,31 @@ line_count=$(grep -c '^{:cljw/error' "$log_file" || true)
 [[ "$line_count" -eq 2 ]] || fail "error_log_appends_does_not_truncate: expected 2 EDN lines, got $line_count"
 echo "PASS error_log_appends_on_repeat -> 2 events in file"
 
-# --- Case 8 (ADR-0118 cycle 1): an eval (runtime) error carries a real
-#     source location, not `0:0`. Previously the VM op_call passed an empty
-#     loc into callFn so deep eval errors surfaced as `<-e>:0:0`. The default
-#     (vm) backend must now report the failing call's line. ---
+# --- Case 8 (ADR-0118 cycle 2.5): an eval (runtime) error carries an
+#     ARG-PRECISE source location — the caret lands on the culprit operand,
+#     not the enclosing call form. `(/ 1 0)` divides by the divisor at index
+#     1, so the column is the `0` (col 5: `(`=0 `/`=1 ` `=2 `1`=3 ` `=4 `0`=5),
+#     NOT the opening `(` at col 0. ---
 out=$("$BIN" -e '(/ 1 0)' 2>&1 || true)
 case "$out" in
-    *"Arithmetic error"*"<-e>:1:"*)
-        echo "PASS error_eval_loc_backfilled -> eval error has line 1, not 0:0" ;;
+    *"Arithmetic error"*"<-e>:1:5"*)
+        echo "PASS error_eval_loc_arg_precise -> caret on the divisor (col 5)" ;;
     *)
-        fail "error_eval_loc_backfilled: eval error should report <-e>:1:<col>, got '$out'" ;;
+        fail "error_eval_loc_arg_precise: eval error should report <-e>:1:5 (the divisor), got '$out'" ;;
 esac
 
-# --- Case 9 (ADR-0118 cycle 1): a deep eval error in a file points at the
-#     failing form's line, not the chunk start. ---
+# --- Case 9 (ADR-0118 cycle 2.5): a deep eval error in a file points at the
+#     culprit operand's column. `(/ x 0)` on line 1 has the divisor `0` at
+#     col 17 (`(defn f [x] (/ x 0))` — the `0` inside the division). ---
 WORK_EL="$(mktemp -d)"
 trap 'rm -rf "$WORK_EL"' EXIT
 printf '(defn f [x] (/ x 0))\n(defn g [y] (f y))\n(g 10)\n' > "$WORK_EL/nested.clj"
 out=$("$BIN" "$WORK_EL/nested.clj" 2>&1 || true)
 case "$out" in
-    *"Arithmetic error"*"nested.clj:1:"*)
-        echo "PASS error_eval_loc_deep -> deep eval error points at the failing line" ;;
+    *"Arithmetic error"*"nested.clj:1:17"*)
+        echo "PASS error_eval_loc_deep -> deep eval error points at the divisor column" ;;
     *)
-        fail "error_eval_loc_deep: expected nested.clj:1:<col>, got '$out'" ;;
+        fail "error_eval_loc_deep: expected nested.clj:1:18 (the divisor), got '$out'" ;;
 esac
 
 # --- Case 10 (ADR-0118 E.1): EDN :file is the source label, not "unknown".

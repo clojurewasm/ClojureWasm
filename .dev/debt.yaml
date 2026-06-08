@@ -10,7 +10,7 @@
 
 active:
   - id: "D-323"
-    status: "now (2026-06-08, ADR-0118) — v0-level error DISPLAY overhaul, user CFP target. v1's runtime/eval errors render `<-e>:0:0: arithmetic_error [eval]` with no location, caret, source-context window, or stack trace (a regression vs cw v0, which located eval errors + showed numbered context + `^--- msg` caret + `Trace:`). Acceptance spec = `private/notes/error-format-survey.md` § 最終形（目標）. Stays cljw-native (no JVM class, AD-007). 3 TDD cycles (ADR-0118 Decision F)."
+    status: "now (2026-06-08, ADR-0118) — v0-level error DISPLAY overhaul, user CFP target. v1's runtime/eval errors render `<-e>:0:0: arithmetic_error [eval]` with no location, caret, source-context window, or stack trace (a regression vs cw v0, which located eval errors + showed numbered context + `^--- msg` caret + `Trace:`). Acceptance spec = `private/notes/error-format-survey.md` § 最終形（目標）. Stays cljw-native (no JVM class, AD-007). Cycle 1 (loc back-fill) DONE 0c36cc8a; cycle 2 (renderer) DONE 6d36acc4; cycle 2.5 (arg-precise carets, ADR Rev 2 — slice side channel + VM loc_stack, arithmetic family uniform) DONE. REMAINING: cycle 3 (frame `Trace:`, Decision B) + follow-on span/underline O-NNN."
     category: "error-system"
     barrier: |-
       Three independent cycles, highest-value first: (1) loc back-fill via the

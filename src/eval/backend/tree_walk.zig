@@ -1016,11 +1016,17 @@ fn evalCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.CallNode) !Val
     var args_buf: [MAX_LOCALS]Value = undefined;
     if (n.args.len > MAX_LOCALS)
         return error_catalog.raise(.call_args_exceed_max_locals, n.loc, .{ .got = n.args.len, .max = MAX_LOCALS });
+    var arg_locs: [MAX_LOCALS]SourceLocation = undefined;
     for (n.args, 0..) |*a, i| {
         args_buf[i] = try eval(rt, env, locals, a);
+        arg_locs[i] = a.loc();
     }
     const args = args_buf[0..n.args.len];
     if (rt.vtable) |vt| {
+        // ADR-0118 cycle 2.5: publish per-arg locs so a failing primitive can
+        // resolve an arg-precise caret; restore the parent's on return.
+        const prev = error_mod.swapArgSources(arg_locs[0..n.args.len]);
+        defer _ = error_mod.swapArgSources(prev);
         return vt.callFn(rt, env, callee, args, n.loc);
     }
     return error_catalog.raiseInternal(n.loc, "Runtime vtable not installed; cannot dispatch call");

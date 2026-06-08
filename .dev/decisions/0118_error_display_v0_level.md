@@ -338,13 +338,44 @@ field is populated from the same resolved loc the text caret uses.
 *between* sub-evaluations, or from a variadic fold / lazy-seq element where the
 culprit is not a positional arg (`(apply / coll)`; a reduce failing on the 4th
 realised element of a lazy seq that was arg 0), falls back to the call-form loc
-(the `line==0` back-fill) — no worse than today, but not arg-precise. The slot
-count `N` (v0 used 8) truncates beyond `N`.
+via `argLoc`'s `orelse fallback` — no worse than today, but not arg-precise. (The
+as-built slice channel removes v0's `N=8` slot truncation; see "Implementation
+landed" below.)
 
 **Cycle 2.5 edit sites + the verbatim DA output** are mirrored in
 `private/notes/phase14-error-cycle2.5-caret-precision-plan.md` (gitignored
 working memory). The load-bearing decision, constraints, and rationale are this
 section (tracked); the plan note adds the file:line implementation map.
+
+**Implementation landed (2026-06-08, cycle 2.5).** Two refinements over the
+planned prose, both finished-form improvements:
+
+- **The side channel is a `[]const SourceLocation` slice, not a fixed `[N]`
+  array.** `info.zig` holds `threadlocal var arg_sources: []const SourceLocation`
+  plus `swapArgSources` / `getArgSource` / `argLoc(i, fallback)`. Each call
+  boundary publishes a slice into its own stack-resident loc array (alive for the
+  synchronous call) and swaps the parent's slice back on return (stack-
+  disciplined). This **removes the v0 `N=8` truncation boundary entirely** — any
+  arity is covered, so the only remaining fallback is the non-positional-culprit
+  case (variadic fold / lazy-seq element / between-subcall), which `argLoc`'s
+  `orelse fallback` handles.
+- **Innermost-wins falls out of depth-first eval + the swap/restore**, not a
+  `line == 0` back-fill guard. The inner call's boundary publishes its args,
+  the inner primitive raises reading them, and the error short-circuits before
+  the outer boundary publishes — so the innermost culprit's loc is the one baked
+  into `last_error`, on both backends.
+
+TreeWalk publishes in `evalCall`'s arg loop (`a.loc()` in hand). The VM keeps a
+parallel `loc_stack` mirroring the operand stack: a post-switch sweep stamps each
+newly-pushed operand with its instruction's compiled loc (uniform, one site), and
+`op_call` reads `loc_stack[sp+1 .. sp+1+arg_count]` as the per-arg locs. Primitives
+name the culprit index via `argLoc(i, loc)` — applied uniformly across the whole
+arithmetic divide/type family (`/`, `quot`, `rem`, `mod`, `unchecked-divide-int`,
+`unchecked-remainder-int`, and `ensureNumeric` for `+`/`-`/`*`). Other primitives'
+arg-positional raises adopt the same one-token idiom incrementally; until then they
+fall back to the call-form loc (no worse than before). Dual-backend parity is
+locked by a `diff_test.zig` case asserting the caret column is equal (and exact)
+on TreeWalk + VM for `(/ 2 0)`, `(+ :foo 1)`, and nested `(+ 1 (/ 2 0))`.
 
 ### Alternatives considered (Devil's-advocate, fresh-context fork, Rev 2)
 

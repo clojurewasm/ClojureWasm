@@ -91,6 +91,10 @@ pub fn eval(
     var ip: usize = 0;
     var handlers: [HANDLER_STACK_MAX]Handler = undefined;
     var handler_count: u16 = 0;
+    // ADR-0118 cycle 2.5: a parallel stack of per-operand source locations,
+    // mirroring `stack`. Each push records the producing instruction's loc so
+    // `op_call` can publish arg-precise caret positions for a failing callee.
+    var loc_stack: [OPERAND_STACK_MAX]SourceLocation = undefined;
 
     // Publish this invocation's operand-stack roots on the thread's eval-frame
     // chain so a GC collect() walks live operand Values `stack[0..sp]` + `locals`
@@ -135,7 +139,7 @@ pub fn eval(
         if (gc_torture.period != 0 and !root_set.is_registered_worker and gc_torture.tick()) {
             mark_sweep.collectStopTheWorld(&rt.gc, .{ .envs = &.{env}, .gc = &rt.gc }, false);
         }
-        const step_result = stepOnce(rt, env, locals, chunk, &stack, &sp, &ip, &handlers, &handler_count);
+        const step_result = stepOnce(rt, env, locals, chunk, &stack, &loc_stack, &sp, &ip, &handlers, &handler_count);
         if (step_result) |maybe_return| {
             if (maybe_return) |v| return v;
         } else |err| {
@@ -185,6 +189,10 @@ pub fn eval(
                 if (sp >= OPERAND_STACK_MAX)
                     return raiseInternal("vm: handler unwind overflow");
                 stack[sp] = thrown;
+                // ADR-0118 cycle 2.5: the caught value has no compiled operand
+                // loc; record an unknown loc so a later op_call never reads an
+                // uninitialized loc_stack slot (renderer falls back gracefully).
+                loc_stack[sp] = .{};
                 sp += 1;
                 continue;
             }
@@ -203,6 +211,7 @@ fn stepOnce(
     locals: []Value,
     chunk: *const BytecodeChunk,
     stack: *[OPERAND_STACK_MAX]Value,
+    loc_stack: *[OPERAND_STACK_MAX]SourceLocation,
     sp_ptr: *u16,
     ip_ptr: *usize,
     handlers: *[HANDLER_STACK_MAX]Handler,
@@ -211,6 +220,7 @@ fn stepOnce(
     var sp = sp_ptr.*;
     var ip = ip_ptr.*;
     var handler_count = handler_count_ptr.*;
+    const sp_entry = sp;
     defer {
         sp_ptr.* = sp;
         ip_ptr.* = ip;
@@ -221,6 +231,13 @@ fn stepOnce(
         return raiseInternal("vm: ip past end of chunk");
     const instr = chunk.instructions[ip];
     ip += 1;
+
+    // ADR-0118 cycle 2.5: this instruction's compiled source loc. Each operand
+    // it pushes inherits this loc (recorded in the post-switch sweep below), so
+    // a literal `0` pushed by `op_const` carries the `0`'s column, not the
+    // enclosing call form's. `op_call` overrides its own result slot with the
+    // call-form loc explicitly (it pops before it pushes, so the sweep misses it).
+    const instr_loc: SourceLocation = .{ .file = chunk.source_file, .line = instr.line, .column = instr.column };
 
     switch (instr.opcode) {
         .op_const => {
@@ -386,10 +403,18 @@ fn stepOnce(
             // ADR-0118: thread the call form's source position (compiled onto
             // this op + the chunk's file) into callFn, so an error raised by
             // the callee annotates the failing call site instead of `0:0`.
-            const call_loc: SourceLocation = .{ .file = chunk.source_file, .line = instr.line, .column = instr.column };
+            const call_loc = instr_loc;
+            // ADR-0118 cycle 2.5: publish each arg's recorded loc (the parallel
+            // loc_stack slots the operand pushes filled in) so a failing
+            // primitive resolves an arg-precise caret; restore on return.
+            const prev_arg_sources = error_mod.swapArgSources(loc_stack[sp + 1 .. sp + 1 + arg_count]);
+            defer _ = error_mod.swapArgSources(prev_arg_sources);
             const result = try vt.callFn(rt, env, callee, args, call_loc);
             if (sp >= OPERAND_STACK_MAX)
                 return raiseInternal("vm: operand stack overflow");
+            // The result's own loc is the call form (this op pops below sp_entry,
+            // so the post-switch sweep does not reach this slot).
+            loc_stack[sp] = call_loc;
             stack[sp] = result;
             sp += 1;
         },
@@ -901,9 +926,17 @@ fn stepOnce(
             const result = try vt.callFn(rt, env, me.method_val, args_slice, .{});
             sp -= arg_count;
             stack[sp] = result;
+            // Result loc = this call form (pops below sp_entry, so the sweep misses it).
+            loc_stack[sp] = instr_loc;
             sp += 1;
         },
     }
+    // ADR-0118 cycle 2.5: every operand this instruction newly pushed inherits
+    // its compiled source loc, so a later `op_call` can read each arg's column.
+    // (`op_call` pops before it pushes, so its result slot sits below `sp_entry`
+    // and is set explicitly in its own arm — not by this sweep.)
+    var pushed = sp_entry;
+    while (pushed < sp) : (pushed += 1) loc_stack[pushed] = instr_loc;
     return null;
 }
 
