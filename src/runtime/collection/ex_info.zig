@@ -38,6 +38,7 @@ const gc_heap_mod = @import("../gc/gc_heap.zig");
 const mark_sweep = @import("../gc/mark_sweep.zig");
 const string_mod = @import("string.zig");
 const SourceLocation = @import("../error/info.zig").SourceLocation;
+const StackFrame = @import("../error/info.zig").StackFrame;
 
 /// Heap ExInfo. `message` is owned (duped from caller bytes); `data`
 /// and `cause` are Values (`cause = .nil_val` when absent, mirroring
@@ -69,6 +70,15 @@ pub const ExInfo = extern struct {
     origin_file_len: usize = 0,
     origin_line: u32 = 0,
     origin_column: u16 = 0,
+    // ADR-0120 §1 / D-336: the error's call-stack snapshot, so a thrown
+    // exception renders its `Trace:` even after crossing a thread boundary
+    // (the worker's threadlocal `trace_snapshot` dies with the thread). The
+    // array AND each frame's strings are GC-owned (deep-copied into `gc.infra`,
+    // freed in `finaliseGc`) — the same ownership story as `message` /
+    // `origin_file`, so the ExInfo owns all its trace data outright rather than
+    // borrowing arena-lifetime frame strings. `null`/0 ≡ no trace.
+    trace_ptr: ?[*]const StackFrame = null,
+    trace_len: usize = 0,
 
     comptime {
         std.debug.assert(@alignOf(ExInfo) >= 8);
@@ -110,14 +120,17 @@ pub fn alloc(rt: *Runtime, msg_bytes: []const u8, data_v: Value, cause_v: Value)
 /// no cause. `class_name` is a comptime-static catalog string, stored by
 /// pointer (not duped); `msg_bytes` IS duped like `alloc`.
 pub fn allocException(rt: *Runtime, msg_bytes: []const u8, class: []const u8) !Value {
-    return allocExceptionLoc(rt, msg_bytes, class, .{});
+    return allocExceptionLoc(rt, msg_bytes, class, .{}, null);
 }
 
-/// `allocException` carrying the error's source location (ADR-0120 Stage A).
-/// `loc.file` is GC-owned (duped) when `loc.line != 0`, so the location
-/// survives a thread boundary (the worker's threadlocal Info dies). An empty
-/// loc (`line == 0`) leaves `origin_*` null — the renderer falls back as before.
-pub fn allocExceptionLoc(rt: *Runtime, msg_bytes: []const u8, class: []const u8, loc: SourceLocation) !Value {
+/// `allocException` carrying the error's source location + call-stack trace
+/// (ADR-0120 Stage A location + §1/D-336 trace). `loc.file` and every `trace`
+/// frame's strings are GC-owned (deep-copied into `gc.infra`), so the whole
+/// origin survives a thread boundary (the worker's threadlocal Info +
+/// `trace_snapshot` die with the thread). An empty loc (`line == 0`) leaves
+/// `origin_*` null; a null/empty `trace` leaves `trace_ptr` null — the renderer
+/// falls back as before in each case.
+pub fn allocExceptionLoc(rt: *Runtime, msg_bytes: []const u8, class: []const u8, loc: SourceLocation, trace: ?[]const StackFrame) !Value {
     const owned_msg = try rt.gc.infra.dupe(u8, msg_bytes);
     errdefer rt.gc.infra.free(owned_msg);
     const owned_file: ?[]const u8 = if (loc.line != 0 and loc.file.len > 0)
@@ -125,6 +138,8 @@ pub fn allocExceptionLoc(rt: *Runtime, msg_bytes: []const u8, class: []const u8,
     else
         null;
     errdefer if (owned_file) |of| rt.gc.infra.free(of);
+    const owned_trace: ?[]StackFrame = if (trace) |t| (if (t.len > 0) try dupeTrace(rt.gc.infra, t) else null) else null;
+    errdefer if (owned_trace) |ot| freeTrace(rt.gc.infra, ot);
     const ex = try rt.gc.alloc(ExInfo);
     ex.* = .{
         .header = HeapHeader.init(.ex_info),
@@ -138,8 +153,44 @@ pub fn allocExceptionLoc(rt: *Runtime, msg_bytes: []const u8, class: []const u8,
         .origin_file_len = if (owned_file) |of| of.len else 0,
         .origin_line = loc.line,
         .origin_column = loc.column,
+        .trace_ptr = if (owned_trace) |ot| ot.ptr else null,
+        .trace_len = if (owned_trace) |ot| ot.len else 0,
     };
     return Value.encodeHeapPtr(.ex_info, ex);
+}
+
+/// Deep-copy a call-stack snapshot into GC-infra storage: the frame array plus
+/// each frame's `fn_name`/`ns`/`file` bytes, so the ExInfo owns all its trace
+/// data and the source (a threadlocal `trace_snapshot` that dies with the
+/// worker, or an arena slice) may go away. Mirrors the `message` dup ownership.
+fn dupeTrace(gc_infra: std.mem.Allocator, trace: []const StackFrame) ![]StackFrame {
+    const arr = try gc_infra.alloc(StackFrame, trace.len);
+    var done: usize = 0;
+    errdefer {
+        for (arr[0..done]) |fr| freeFrameStrings(gc_infra, fr);
+        gc_infra.free(arr);
+    }
+    for (trace, 0..) |src, i| {
+        const fn_name: ?[]const u8 = if (src.fn_name) |s| try gc_infra.dupe(u8, s) else null;
+        errdefer if (fn_name) |s| gc_infra.free(s);
+        const ns: ?[]const u8 = if (src.ns) |s| try gc_infra.dupe(u8, s) else null;
+        errdefer if (ns) |s| gc_infra.free(s);
+        const file: ?[]const u8 = if (src.file) |s| try gc_infra.dupe(u8, s) else null;
+        arr[i] = .{ .fn_name = fn_name, .ns = ns, .file = file, .line = src.line, .column = src.column };
+        done = i + 1;
+    }
+    return arr;
+}
+
+fn freeFrameStrings(gc_infra: std.mem.Allocator, fr: StackFrame) void {
+    if (fr.fn_name) |s| gc_infra.free(s);
+    if (fr.ns) |s| gc_infra.free(s);
+    if (fr.file) |s| gc_infra.free(s);
+}
+
+fn freeTrace(gc_infra: std.mem.Allocator, trace: []StackFrame) void {
+    for (trace) |fr| freeFrameStrings(gc_infra, fr);
+    gc_infra.free(trace);
 }
 
 /// Build a Throwable-family value from Java constructor args (D-198 /
@@ -175,6 +226,8 @@ pub fn finaliseGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
     gc.infra.free(ex.message());
     // ADR-0120 Stage A: free the GC-owned origin file copy (if any).
     if (ex.origin_file_ptr) |p| gc.infra.free(p[0..ex.origin_file_len]);
+    // ADR-0120 §1 / D-336: free the deep-copied trace (array + frame strings).
+    if (ex.trace_ptr) |p| freeTrace(gc.infra, @constCast(p[0..ex.trace_len]));
 }
 
 /// Per-tag trace fn called by mark phase. Walks `data` + `cause`
@@ -229,6 +282,14 @@ pub fn originLoc(val: Value) SourceLocation {
     const ex = asExInfo(val);
     const file: []const u8 = if (ex.origin_file_ptr) |p| p[0..ex.origin_file_len] else "unknown";
     return .{ .file = file, .line = ex.origin_line, .column = ex.origin_column };
+}
+
+/// The error's captured call-stack trace (ADR-0120 §1 / D-336), or `null` when
+/// none was carried. The renderer (`buildThrownInfo`) reads this so a thrown
+/// exception shows its `Trace:` even after crossing a worker-thread boundary.
+pub fn originTrace(val: Value) ?[]const StackFrame {
+    const ex = asExInfo(val);
+    return if (ex.trace_ptr) |p| p[0..ex.trace_len] else null;
 }
 
 // --- tests ---
@@ -294,7 +355,7 @@ test "allocExceptionLoc round-trips the origin location; allocException leaves i
     var rt = Runtime.init(th.io(), testing.allocator);
     defer rt.deinit(); // leak detector also covers the GC-owned origin_file free
 
-    const with_loc = try allocExceptionLoc(&rt, "boom", "ArithmeticException", .{ .file = "f.clj", .line = 7, .column = 3 });
+    const with_loc = try allocExceptionLoc(&rt, "boom", "ArithmeticException", .{ .file = "f.clj", .line = 7, .column = 3 }, null);
     const ol = originLoc(with_loc);
     try testing.expectEqualStrings("f.clj", ol.file);
     try testing.expectEqual(@as(u32, 7), ol.line);
@@ -303,6 +364,33 @@ test "allocExceptionLoc round-trips the origin location; allocException leaves i
     // No loc (line 0) → origin stays unknown (the renderer falls back).
     const no_loc = try allocException(&rt, "boom", "ExceptionInfo");
     try testing.expectEqual(@as(u32, 0), originLoc(no_loc).line);
+}
+
+test "allocExceptionLoc deep-copies the trace; it round-trips and survives source mutation (D-336)" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit(); // leak detector covers the GC-owned trace array + frame strings
+
+    var fn_name: [4]u8 = "boom".*;
+    var frames = [_]StackFrame{
+        .{ .fn_name = fn_name[0..], .ns = "user", .file = "f.clj", .line = 2, .column = 5 },
+    };
+    const v = try allocExceptionLoc(&rt, "boom", "ArithmeticException", .{ .file = "f.clj", .line = 2, .column = 5 }, frames[0..]);
+
+    // Mutate the source after alloc — the ExInfo must hold its own deep copy.
+    fn_name[0] = 'Z';
+    frames[0].line = 999;
+
+    const tr = originTrace(v).?;
+    try testing.expectEqual(@as(usize, 1), tr.len);
+    try testing.expectEqualStrings("boom", tr[0].fn_name.?);
+    try testing.expectEqualStrings("user", tr[0].ns.?);
+    try testing.expectEqual(@as(u32, 2), tr[0].line);
+
+    // No trace passed → originTrace is null (the renderer falls back).
+    const no_tr = try allocExceptionLoc(&rt, "boom", "ExceptionInfo", .{}, null);
+    try testing.expect(originTrace(no_tr) == null);
 }
 
 test "Runtime.deinit frees ExInfo without leaking message bytes" {

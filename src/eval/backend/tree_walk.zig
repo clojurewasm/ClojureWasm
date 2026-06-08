@@ -965,7 +965,7 @@ fn evalTry(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.TryNode) anyerr
                 // VM handler path (parity). A truly uncaught error (no
                 // enclosing try) never reaches here, so it keeps its raw
                 // Zig error + `[kind]` CLI header.
-                const synth = try ex_info_collection.allocExceptionLoc(rt, info.message, class, info.location);
+                const synth = try ex_info_collection.allocExceptionLoc(rt, info.message, class, info.location, info.trace);
                 dispatch.last_thrown_exception = synth;
                 error_mod.clearLastError();
                 thrown = synth;

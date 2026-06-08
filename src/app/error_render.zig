@@ -101,6 +101,9 @@ fn buildThrownInfo(thrown: Value) error_mod.Info {
         // source location, so a thrown internal error (in-thread or across a
         // worker-thread boundary) renders WHERE it came from, not "unknown".
         info.location = ex_info.originLoc(thrown);
+        // ADR-0120 §1 / D-336: and its call-stack trace, so the `Trace:` survives
+        // a worker-thread boundary (future/agent) and an in-thread `(throw …)`.
+        info.trace = ex_info.originTrace(thrown);
         return info;
     }
     var w: Writer = .fixed(&thrown_msg_buf);

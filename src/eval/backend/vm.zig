@@ -170,7 +170,7 @@ pub fn eval(
             if (err != error.ThrownValue and handler_count > 0) {
                 if (error_mod.peekLastError()) |info| {
                     if (host_class.kindToHostClass(info.kind)) |class| {
-                        const synth = ex_info_mod.allocExceptionLoc(rt, info.message, class, info.location) catch return err;
+                        const synth = ex_info_mod.allocExceptionLoc(rt, info.message, class, info.location, info.trace) catch return err;
                         dispatch.last_thrown_exception = synth;
                         error_mod.clearLastError();
                         thrown_err = error.ThrownValue;

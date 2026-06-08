@@ -236,5 +236,33 @@ case "$trace" in
         fail "error_trace_multi_module: expected leaf frame@leaf.clj + mid frame@mid.clj, got '$trace'" ;;
 esac
 
+# --- Case 19 (ADR-0120 §1 / D-336): the worker's TRACE crosses the thread
+#     boundary too — `@(future (boom))` renders a Trace: naming the user frame
+#     `user/boom`, not just the message+location. The trace is deep-copied onto
+#     the marshalled ExInfo (the worker's threadlocal trace_snapshot dies with
+#     the thread). ---
+out=$(printf '(defn boom [] (/ 1 0))\n@(future (boom))\n' | "$BIN" - 2>&1 || true)
+trace=$(printf '%s' "$out" | awk '/Trace:/{f=1} f')
+case "$trace" in
+    *"Trace:"*"user/boom"*)
+        echo "PASS error_future_trace_crosses -> future error carries its Trace: across the thread boundary" ;;
+    *)
+        fail "error_future_trace_crosses: expected a Trace: naming user/boom, got '$out'" ;;
+esac
+
+# --- Case 20 (ADR-0120 §1 / D-336): an in-thread thrown synth exception carries
+#     its trace too — `(throw (try (boom) (catch Throwable e e)))` re-throws the
+#     caught ex_info and renders user/boom in the Trace:, closing the latent
+#     in-thread gap (buildThrownInfo used to drop the trace for any thrown
+#     ex_info). ---
+out=$(printf '(defn boom [] (/ 1 0))\n(throw (try (boom) (catch java.lang.Throwable e e)))\n' | "$BIN" - 2>&1 || true)
+trace=$(printf '%s' "$out" | awk '/Trace:/{f=1} f')
+case "$trace" in
+    *"Trace:"*"user/boom"*)
+        echo "PASS error_thrown_trace_inthread -> a re-thrown synth exception carries its Trace:" ;;
+    *)
+        fail "error_thrown_trace_inthread: expected a Trace: naming user/boom, got '$out'" ;;
+esac
+
 echo
 echo "Phase 14 row 14.13 (D-066 partial) error format e2e: all green."

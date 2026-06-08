@@ -32,7 +32,7 @@ pub fn capture(rt: *Runtime) Value {
     }
     if (error_mod.getLastError()) |info| {
         const class = host_class.kindToHostClass(info.kind) orelse "clojure.lang.ExceptionInfo";
-        return ex_info.allocExceptionLoc(rt, info.message, class, info.location) catch Value.nil_val;
+        return ex_info.allocExceptionLoc(rt, info.message, class, info.location, info.trace) catch Value.nil_val;
     }
     return Value.nil_val;
 }
