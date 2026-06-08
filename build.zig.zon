@@ -9,12 +9,17 @@
             .hash = "zlinter-0.0.1-OjQ08c7oCwDIwhlde7eDKMACNTsqAhGXy5vB7GdfGobG",
         },
         // zwasm v2 embedding API (F-001 / D-037). `lazy` so the DEFAULT build +
-        // gate never resolve it — only `-Dzwasm-spike` (b.lazyDependency) does.
-        // Path-dep into the LONG-LIVED `zwasm-from-scratch` branch working tree
-        // (user 2026-06-05: zwasm v2 is used ONLY from there; the git tags are
-        // zwasm v1, which is never used). zwasm is under active dev — keeping it
-        // lazy + flag-guarded means a churning zwasm tree cannot break cljw's gate.
-        .zwasm = .{ .path = "../zwasm_from_scratch", .lazy = true },
+        // gate never resolve it — only `-Dwasm` / `-Dzwasm-spike` (b.lazyDependency) do.
+        // Pinned to the `v2.0.0-alpha.1` tag (user 2026-06-08: a deliberate dogfood
+        // pre-release cut from the long-lived `zwasm-from-scratch` branch for
+        // ClojureWasm consumption — see F-001 Revision history 2026-06-08). Content
+        // is pinned by `.hash`; lazy + flag-guarded means a churning zwasm tree
+        // cannot break cljw's gate.
+        .zwasm = .{
+            .url = "git+https://github.com/clojurewasm/zwasm.git#v2.0.0-alpha.1",
+            .hash = "zwasm-0.0.0-pre-FT1Fvx2BdwBNakLdx3bsFBwXiPEFsUiMOR2R69IoX0rX",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",
