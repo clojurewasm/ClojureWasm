@@ -80,5 +80,30 @@ line_count=$(grep -c '^{:cljw/error' "$log_file" || true)
 [[ "$line_count" -eq 2 ]] || fail "error_log_appends_does_not_truncate: expected 2 EDN lines, got $line_count"
 echo "PASS error_log_appends_on_repeat -> 2 events in file"
 
+# --- Case 8 (ADR-0118 cycle 1): an eval (runtime) error carries a real
+#     source location, not `0:0`. Previously the VM op_call passed an empty
+#     loc into callFn so deep eval errors surfaced as `<-e>:0:0`. The default
+#     (vm) backend must now report the failing call's line. ---
+out=$("$BIN" -e '(/ 1 0)' 2>&1 || true)
+case "$out" in
+    *"<-e>:1:"*"arithmetic_error"*)
+        echo "PASS error_eval_loc_backfilled -> eval error has line 1, not 0:0" ;;
+    *)
+        fail "error_eval_loc_backfilled: eval error should report <-e>:1:<col>, got '$out'" ;;
+esac
+
+# --- Case 9 (ADR-0118 cycle 1): a deep eval error in a file points at the
+#     failing form's line, not the chunk start. ---
+WORK_EL="$(mktemp -d)"
+trap 'rm -rf "$WORK_EL"' EXIT
+printf '(defn f [x] (/ x 0))\n(defn g [y] (f y))\n(g 10)\n' > "$WORK_EL/nested.clj"
+out=$("$BIN" "$WORK_EL/nested.clj" 2>&1 || true)
+case "$out" in
+    *"nested.clj:1:"*"arithmetic_error"*)
+        echo "PASS error_eval_loc_deep -> deep eval error points at the failing line" ;;
+    *)
+        fail "error_eval_loc_deep: expected nested.clj:1:<col>, got '$out'" ;;
+esac
+
 echo
 echo "Phase 14 row 14.13 (D-066 partial) error format e2e: all green."

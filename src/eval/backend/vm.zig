@@ -383,7 +383,11 @@ fn stepOnce(
             const args = stack[sp + 1 .. sp + 1 + arg_count];
             const vt = rt.vtable orelse
                 return error_catalog.raiseInternal(.{}, "Runtime vtable not installed; cannot dispatch call");
-            const result = try vt.callFn(rt, env, callee, args, .{});
+            // ADR-0118: thread the call form's source position (compiled onto
+            // this op + the chunk's file) into callFn, so an error raised by
+            // the callee annotates the failing call site instead of `0:0`.
+            const call_loc: SourceLocation = .{ .file = chunk.source_file, .line = instr.line, .column = instr.column };
+            const result = try vt.callFn(rt, env, callee, args, call_loc);
             if (sp >= OPERAND_STACK_MAX)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = result;

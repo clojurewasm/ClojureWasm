@@ -92,6 +92,13 @@ const Compiler = struct {
     /// `compileRecur` reads this to know the back-edge target IP and
     /// the slot list to rebind. Saved/restored across nested loops.
     current_loop: ?LoopFrame = null,
+    /// Source position stamped onto each emitted instruction (ADR-0118).
+    /// `compileNode` sets these from the node's `loc()`; `emit` copies
+    /// them onto the `Instruction`. `source_file` is captured once (the
+    /// first real loc) and dup'd onto the finalized chunk.
+    current_line: u32 = 0,
+    current_column: u16 = 0,
+    source_file: []const u8 = "unknown",
 
     const LoopFrame = struct {
         /// Instruction index `recur` jumps back to (the first
@@ -127,6 +134,17 @@ const Compiler = struct {
     }
 
     fn compileNode(self: *Compiler, node: *const Node) Error!void {
+        // ADR-0118: stamp this node's source position onto the instructions
+        // it emits, so a VM eval error annotates the failing form (not 0:0).
+        // Compound nodes that emit after their children (e.g. compileCall)
+        // re-set `current_*` right before their own emit.
+        const nloc = node.loc();
+        if (nloc.line != 0) {
+            self.current_line = nloc.line;
+            self.current_column = nloc.column;
+            if (self.source_file.len == 0 or std.mem.eql(u8, self.source_file, "unknown"))
+                self.source_file = nloc.file;
+        }
         switch (node.*) {
             .constant => |n| try self.emitConst(n.value),
             .quote_node => |n| try self.emitConst(n.quoted),
@@ -280,6 +298,13 @@ const Compiler = struct {
         try self.compileNode(n.callee);
         if (n.args.len > std.math.maxInt(u16)) return error.TooManyCallArgs;
         for (n.args) |*a| try self.compileNode(a);
+        // Compiling the callee + args moved `current_*` to the last arg;
+        // re-stamp the CALL form's loc so `op_call` (and the error it may
+        // surface from the callee) points at the call site (ADR-0118).
+        if (n.loc.line != 0) {
+            self.current_line = n.loc.line;
+            self.current_column = n.loc.column;
+        }
         try self.emit(.op_call, @intCast(n.args.len));
     }
 
@@ -732,7 +757,12 @@ const Compiler = struct {
     }
 
     fn emit(self: *Compiler, op: Opcode, operand: u16) Error!void {
-        try self.instructions.append(self.arena, .{ .opcode = op, .operand = operand });
+        try self.instructions.append(self.arena, .{
+            .opcode = op,
+            .operand = operand,
+            .line = self.current_line,
+            .column = self.current_column,
+        });
     }
 
     fn addConstant(self: *Compiler, v: Value) Error!u16 {
@@ -756,7 +786,7 @@ const Compiler = struct {
         // the same path, and the Phase-12 serializer caches the
         // optimized chunk transparently.
         const instrs = try peephole.optimize(self.arena, raw);
-        return .{ .instructions = instrs, .constants = consts, .call_sites = sites, .libspecs = specs, .ns_filters = filters, .ctor_sites = ctors, .import_sites = ns_imports };
+        return .{ .instructions = instrs, .constants = consts, .call_sites = sites, .libspecs = specs, .ns_filters = filters, .ctor_sites = ctors, .import_sites = ns_imports, .source_file = self.source_file };
     }
 };
 

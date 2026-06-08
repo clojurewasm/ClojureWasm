@@ -352,6 +352,15 @@ pub const DEF_FLAG_PRIVATE: u16 = 1 << 15;
 pub const Instruction = struct {
     opcode: Opcode,
     operand: u16 = 0,
+    /// Source position of the form this instruction was compiled from
+    /// (ADR-0118 Decision A Rev 1 — closes the VM eval-error `0:0` gap).
+    /// The file label is per-chunk (`BytecodeChunk.source_file`); only
+    /// line:col rides each instruction so the op the VM is executing on
+    /// error annotates the catalog `Info.location`. Default 0 = unknown
+    /// (e.g. AOT-deserialized chunks, which don't carry per-op loc — the
+    /// serialize format stays `opcode:u8 + operand:u16`).
+    line: u32 = 0,
+    column: u16 = 0,
 };
 
 /// Per-call-site cache entry — row 7.6 cycle 4 (ADR-0040 Shape 1.b).
@@ -431,6 +440,11 @@ pub const NsFilterEntry = struct {
 pub const BytecodeChunk = struct {
     instructions: []const Instruction,
     constants: []const Value,
+    /// Source file label shared by every instruction in this chunk
+    /// (ADR-0118 — the per-op `line`/`column` + this = the full
+    /// `SourceLocation` the VM annotates on error). `"unknown"` for
+    /// AOT-deserialized chunks (the serialize format omits it).
+    source_file: []const u8 = "unknown",
     /// Side-table indexed by `op_method_call` operand. Empty for
     /// chunks that contain no method-call sites.
     call_sites: []CallSiteEntry = &.{},
