@@ -1,0 +1,221 @@
+# Cross-language benchmark comparison
+# Generated: 2026-06-08T09:35:33+09:00
+
+env:
+  cpu: Apple M4 Pro
+  ram: 48 GB
+  os: Darwin 25.5.0
+  tool: hyperfine
+  runs: 5
+  warmup: 2
+
+date: "2026-06-08"
+
+benchmarks:
+  fib_recursive:
+    cold:
+      cw: 45.3
+      c: 2.3
+      java: 28.9
+      py: 25.2
+      rb: 38.5
+      js: 49.2
+      bb: 25.4
+  fib_loop:
+    cold:
+      cw: 5.2
+      c: 2.1
+      java: 28.4
+      py: 19.1
+      rb: 32.3
+      js: 47.1
+      bb: 14.4
+  tak:
+    cold:
+      cw: 16.6
+      c: 1.3
+      java: 27.3
+      py: 19.6
+      rb: 33.2
+      js: 45.7
+      bb: 16.3
+  arith_loop:
+    cold:
+      cw: 112.2
+      c: 1.9
+      java: 28.6
+      py: 59.6
+      rb: 55.9
+      js: 51.4
+      bb: 49.7
+  map_filter_reduce:
+    cold:
+      cw: 20.5
+      c: 2.3
+      java: 29.2
+      py: 20.9
+      rb: 34.2
+      js: 48.7
+      bb: 17.2
+  vector_ops:
+    cold:
+      cw: 10.0
+      c: 2.4
+      java: 30.5
+      py: 21.9
+      rb: 34.1
+      js: 48.1
+      bb: 15.5
+  map_ops:
+    cold:
+      cw: 5.8
+      c: 3.3
+      java: 29.5
+      py: 19.6
+      rb: 34.3
+      js: 48.4
+      bb: 15.0
+  list_build:
+    cold:
+      cw: 7.1
+      c: 2.1
+      java: 30.3
+      py: 22.3
+      rb: 33.9
+      js: 50.2
+      bb: 15.6
+  sieve:
+    cold:
+      cw: 25.9
+      c: 1.7
+      java: 31.9
+      py: 19.6
+      rb: 35.2
+      js: 47.1
+      bb: 17.8
+  nqueens:
+    cold:
+      cw: 26.9
+      c: 1.8
+      java: 29.2
+      py: 22.0
+      rb: 39.5
+      js: 49.4
+      bb: 22.3
+  atom_swap:
+    cold:
+      cw: 6.4
+      c: 1.7
+      java: 28.4
+      py: 19.4
+      rb: 36.5
+      js: 48.7
+      bb: 14.8
+  gc_stress:
+    cold:
+      cw: 43.5
+      c: 2.1
+      java: 39.8
+      py: 36.3
+      rb: 43.4
+      js: 50.4
+      bb: 35.3
+  lazy_chain:
+    cold:
+      cw: 21.6
+      c: 1.2
+      java: 27.7
+      py: 19.9
+      rb: 34.7
+      js: 47.9
+      bb: 16.6
+  transduce:
+    cold:
+      cw: 11.6
+      c: 2.2
+      java: 30.3
+      py: 20.6
+      rb: 35.0
+      js: 47.5
+      bb: 15.3
+  keyword_lookup:
+    cold:
+      cw: 16.1
+      c: 2.4
+      java: 31.3
+      py: 25.2
+      rb: 36.1
+      js: 45.7
+      bb: 18.0
+  protocol_dispatch:
+    cold:
+      cw: 7.5
+      c: 1.6
+      java: 27.9
+      py: 21.3
+      rb: 38.1
+      js: 51.4
+  nested_update:
+    cold:
+      cw: 45.1
+      c: 1.9
+      java: 29.0
+      py: 21.6
+      rb: 36.5
+      js: 51.0
+      bb: 17.2
+  string_ops:
+    cold:
+      cw: 33.0
+      c: 5.7
+      java: 36.5
+      py: 31.7
+      rb: 44.2
+      js: 53.7
+      bb: 23.8
+  multimethod_dispatch:
+    cold:
+      cw: 9.9
+      c: 1.2
+      java: 34.8
+      py: 22.4
+      rb: 39.4
+      js: 50.8
+      bb: 16.4
+  real_workload:
+    cold:
+      cw: 18.9
+      c: 0.0
+      java: 32.4
+      py: 23.7
+      rb: 48.5
+      js: 54.1
+      bb: 18.2
+  wasm_load:
+    cold:
+  wasm_call:
+    cold:
+  wasm_memory:
+    cold:
+  wasm_fib:
+    cold:
+  wasm_sieve:
+    cold:
+  gc_alloc_rate:
+    cold:
+      cw: 128.5
+      js: 50.3
+      bb: 34.3
+  gc_large_heap:
+    cold:
+      cw: 59.6
+      js: 53.3
+      bb: 29.8
+  wasm_tgo_fib:
+    cold:
+  wasm_tgo_tak:
+    cold:
+  wasm_tgo_arith:
+    cold:
+  wasm_tgo_sieve:
+    cold:

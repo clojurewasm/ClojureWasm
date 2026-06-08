@@ -74,6 +74,17 @@ cljw
   the FFI, so the polyglot story runs inside a real app (the static musl edge build
   falls back to a pure-Clojure hue until zwasm is musl-portable).
 
+## Benchmarks
+
+A cross-language workload suite ([`bench/`](./bench/)) measures `cljw` against
+Python, Ruby, Node, Java, Babashka, and C. On tight loops and dispatch its
+cold-start already beats every dynamic language here — `fib_loop` 5.2,
+`map_ops` 5.8, `atom_swap` 6.4, `protocol_dispatch` 7.5 ms (only AOT-native C is
+faster). Allocation-heavy and bignum-arith workloads are slower — the
+deliberately optimization-deferred paths (correctness first). The full table,
+how-to-run, and honest caveats live in [`bench/README.md`](./bench/README.md);
+the table is **generated** from the measurement YAML, never hand-curated.
+
 ## Architecture
 
 [`ARCHITECTURE.md`](./ARCHITECTURE.md) is a 5-minute orientation (zones, dual
