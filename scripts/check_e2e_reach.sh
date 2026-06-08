@@ -20,6 +20,7 @@ cd "$(dirname "$0")/.."
 # Intentionally-not-gated e2e (feature pending). Format: "<basename> # D-NNN why".
 ALLOWLIST=(
     "phase16_wasm_ffi.sh # D-259 opt-in: builds -Dwasm (resolves zwasm via the relative-path build.zig.zon), so it is intentionally NOT in the default per-commit gate (F-001: the default gate never resolves zwasm). Run explicitly or in a wasm-aware gate."
+    "phase16_wasm_run.sh # ADR-0124 opt-in: builds -Dwasm (resolves zwasm), so intentionally NOT in the default per-commit gate (F-001). Exercises (wasm/run …) WASI command execution. Run explicitly or in a wasm-aware gate."
 )
 
 allowed() {

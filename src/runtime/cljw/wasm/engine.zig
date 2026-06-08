@@ -70,6 +70,69 @@ pub const Loaded = struct {
     }
 };
 
+/// One preopened host directory mapped into the WASI guest's preopen table.
+pub const PreopenDir = zwasm.cli.run.PreopenDir;
+
+/// Options for `run` (the WASI command path). `argv` is forwarded verbatim
+/// (argv[0] is the program name by convention); `stdin` feeds the guest's fd 0;
+/// `preopens` maps host directories into the guest's preopen table (host paths
+/// are expected FS-jail resolved by the caller); `env_keys`/`env_vals` are the
+/// parallel environment pairs.
+pub const RunOpts = struct {
+    argv: []const []const u8 = &.{},
+    stdin: ?[]const u8 = null,
+    preopens: []const PreopenDir = &.{},
+    env_keys: []const []const u8 = &.{},
+    env_vals: []const []const u8 = &.{},
+};
+
+/// Captured result of a WASI command run. `out`/`err` are owned by the caller's
+/// allocator (the surface copies them into GC strings, then frees them).
+pub const RunResult = struct {
+    out: []u8,
+    err: []u8,
+    exit: u8,
+};
+
+/// Compile + instantiate-with-WASI + run the guest's command entry
+/// (`_start` → `main` → first export), capturing stdout/stderr and the exit
+/// code. Mirrors zwasm's own CLI runner (`zwasm.cli.run.runWasmCapturedFull`)
+/// — the C-API WASI path, the only one that captures output today. A non-zero
+/// `exit` (incl. a trap → 1) is returned as data, not raised; only a
+/// load/instantiate/preopen failure returns a Zig error. F-006: `alloc` is the
+/// layer-1 backing allocator (the cljw GC heap is never handed to zwasm).
+pub fn run(alloc: std.mem.Allocator, io: std.Io, bytes: []const u8, opts: RunOpts) !RunResult {
+    var out_list: std.ArrayList(u8) = .empty;
+    errdefer out_list.deinit(alloc);
+    var err_list: std.ArrayList(u8) = .empty;
+    errdefer err_list.deinit(alloc);
+
+    // NOTE: zwasm's C-API WASI run path does not thread fuel/max-memory budgets
+    // (unlike `wasm/load`), so a wasm/run module is currently unmetered — bounded
+    // by the OS sandbox (wall-clock + ulimit) in the playground. Threading
+    // budgets through the C-API run path is a tracked zwasm gap (D-347).
+    const exit = try zwasm.cli.run.runWasmCapturedFull(
+        alloc,
+        io,
+        bytes,
+        opts.argv,
+        &out_list,
+        &err_list,
+        opts.stdin,
+        null, // invoke_name → _start / main / first export
+        opts.preopens,
+        opts.env_keys,
+        opts.env_vals,
+        null, // invoke_args
+    );
+
+    return .{
+        .out = try out_list.toOwnedSlice(alloc),
+        .err = try err_list.toOwnedSlice(alloc),
+        .exit = exit,
+    };
+}
+
 /// Compile + instantiate `bytes` into a fresh `*Loaded`, boxed on `alloc`
 /// (the F-006 seam — pass cljw's layer-1 backing allocator, NOT the moving GC
 /// heap; zwasm keeps its linear memory + bookkeeping in this separate space).

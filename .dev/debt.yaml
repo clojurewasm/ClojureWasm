@@ -9,6 +9,42 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-347"
+    status: "open — security. `(wasm/run …)` runs the module via zwasm's C-API WASI path (runWasmCapturedFull), which does NOT thread fuel / max-memory budgets the way `(wasm/load …)` → Module.instantiate does. So a wasm/run module is currently UNMETERED (an infinite loop / runaway alloc in the guest is not fuel-trapped). In the playground this is bounded by the OS sandbox (wall-clock timeout + ulimit); for a general cljw embedder it is a gap. Surfaced 2026-06-09 implementing wasm/run (ADR-0124)."
+    category: "security"
+    barrier: |-
+      blocked-by: zwasm threading fuel / max-memory through the C-API WASI run
+      path (wasm_instance_new / runWasmCapturedFull). zwasm-side capability gap
+      (F-001 record-and-feed-back). Until then, untrusted wasm/run callers must
+      supply OS-level bounds (the playground does). Cross-ref engine.zig `run`
+      NOTE comment + ADR-0124.
+    last_reviewed: "2026-06-09"
+  - id: "D-348"
+    status: "open — feature completeness. `(wasm/run …)` supports :args / :stdin / :dir / :dirs but NOT :env (environment variables). zwasm's runWasmCapturedFull already threads env_keys/env_vals (cljw passes empty slices); the gap is only the surface-side parse of an :env map, which needs a cljw map→parallel-key/val-slice walk (no unified array_map/hash_map iterator in Zig today). The demos (Go json / sqlite / playground) need argv/stdin/dirs, not env. Surfaced 2026-06-09 (ADR-0124, DA review F-013)."
+    category: "feature"
+    barrier: |-
+      blocked-by: a small cljw map-iteration helper (or array_map+hash_map dual
+      walk) to extract parallel key/val string slices from an :env map. Low
+      effort; deferred because no current demo needs env. Cross-ref surface.zig
+      wasmRunFn :dir/:dirs block.
+    last_reviewed: "2026-06-09"
+  - id: "D-349"
+    status: "open — robustness. `(wasm/run …)` buffers the guest's ENTIRE stdout + stderr into GC strings before returning. A guest that prints unbounded output grows memory without limit (in the playground the OS sandbox bounds it; generally it is a gap). A streaming / size-capped capture is the finished form. Surfaced 2026-06-09 (ADR-0124, DA alternative-c insight)."
+    category: "robustness"
+    barrier: |-
+      blocked-by: a capped or streaming capture API on zwasm's WASI host
+      (incremental flush / max-bytes). Tie to D-347 (both are wasm/run resource
+      bounds). Low priority while wasm/run is demo/trusted-module scoped.
+    last_reviewed: "2026-06-09"
+  - id: "D-350"
+    status: "open — structural (Phase 16 / D-036 territory). The finished-form-clean wasm embedding (DA alternative-b, F-002) is a UNIFIED `(wasm/load path {:wasi {…}})` returning a handle, with `wasm/run`/`wasm/call` as operations on it — one 'embed a wasm module' concept, WASI config as the definition-derived closed set, reusable persistent WASI instances. The current one-shot `wasm/run` (compile+instantiate+run+teardown per call) is the smallest honest shape that captures output today. The unified form is gated on a zwasm API addition (instantiate-with-WASI separated from run-entry on the public Engine/Instance surface). Recorded + deferred to the Phase-16 owner per F-003. Surfaced 2026-06-09 (ADR-0124)."
+    category: "structural"
+    barrier: |-
+      blocked-by: Phase 16 wasm-component/instance-lifetime design (D-036) +
+      zwasm exposing persistent instantiate-with-WASI vs run-entry separately.
+      Imagined-and-deferred per F-003; do not seize in a demo-hardening cycle.
+      Cross-ref ADR-0124 Alternatives considered (b).
+    last_reviewed: "2026-06-09"
   - id: "D-346"
     status: "open — security (VM operand-stack on large literal). Evaluating a large collection LITERAL (e.g. `(count [1 1 … ×40000])`) overflows the VM operand stack → `internal_error: vm: operand stack overflow` (uncatchable, exit 70). NOT a crash/panic (the tokenizer overflow-panic was the separate, fixed finding) — a clean process-end. Lower severity: it is reached by EVALUATING a large literal (untrusted CODE), not by READING data (read-string builds the collection in the reader, not via operand pushes), and untrusted-code-eval is already a higher-trust scenario. Surfaced 2026-06-09 while testing the tokenizer fix."
     category: "security"

@@ -13,6 +13,7 @@
 //! Backend: impl-only
 //! Impl deps: none
 //! Clojure peer: wasm/load, wasm/call
+const std = @import("std");
 const engine = @import("engine.zig");
 const marshal = @import("marshal.zig");
 const wasm_handle = @import("wasm_handle.zig");
@@ -133,6 +134,129 @@ pub fn wasmCallFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     return vector_mod.fromSlice(rt, items);
 }
 
+/// FS-jail resolve a `:dir` / `:dirs` host path; returns the path to open (the
+/// resolved path under the jail, or the original when no jail is configured).
+fn resolveDir(rt: *Runtime, scratch: std.mem.Allocator, dir_path: []const u8, loc: SourceLocation) ![]const u8 {
+    const resolved = file_io.jailResolve(scratch, rt.fs_jail_root, dir_path) catch |e| switch (e) {
+        error.OutOfMemory => return e,
+        error.FsJailEscape => return error_catalog.raise(.fs_jail_escape, loc, .{ .fn_name = "wasm/run", .path = dir_path }),
+    };
+    return resolved orelse dir_path;
+}
+
+/// `(wasm/run "path.wasm")` / `(wasm/run "path.wasm" {:args [...] :stdin "..." :dir "..." :dirs [[h g]...]})`
+/// — run a WASI command module (Rust/Go/… compiled to wasm32-wasip1): compile,
+/// instantiate with a WASI host, run the command entry (`_start`/`main`), and
+/// return `{:out <stdout> :err <stderr> :exit <code>}`. A non-zero exit (incl. a
+/// guest trap → 1) is returned as data, not raised; only a path/opts type error,
+/// FS-jail escape, unreadable file, or compile/instantiate/preopen failure is a
+/// catchable exception. `:dir` preopens one host directory (FS-jail resolved) as
+/// the guest's "/". Complements `wasm/call` (scalar pure-compute, no WASI).
+pub fn wasmRunFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArityRange("wasm/run", args, 1, 2, loc);
+    if (!args[0].isString())
+        return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "the module path must be a string" });
+    const path = string_mod.asString(args[0]);
+
+    const jailed = file_io.jailResolve(rt.gpa, rt.fs_jail_root, path) catch |e| switch (e) {
+        error.OutOfMemory => return e,
+        error.FsJailEscape => return error_catalog.raise(.fs_jail_escape, loc, .{ .fn_name = "wasm/run", .path = path }),
+    };
+    defer if (jailed) |j| rt.gpa.free(j);
+    const open_path = jailed orelse path;
+
+    const bytes = file_io.readAll(rt.io, rt.gpa, open_path) catch
+        return error_catalog.raise(.wasm_run_read_failed, loc, .{ .path = path });
+    defer rt.gpa.free(bytes);
+
+    // Parse-scratch arena: argv slice, preopen host paths + slice. String views
+    // (asString) point into GC strings, which stay valid during engine.run (no
+    // cljw allocation happens there); the arena holds the slices + jail-resolved
+    // host paths, bulk-freed when the builtin returns.
+    var arena_state = std.heap.ArenaAllocator.init(rt.gpa);
+    defer arena_state.deinit();
+    const scratch = arena_state.allocator();
+
+    var run_opts: engine.RunOpts = .{};
+
+    if (args.len == 2) {
+        const m = args[1];
+        const mt = m.tag();
+        if (mt != .array_map and mt != .hash_map)
+            return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "the options argument must be a map" });
+
+        const args_v = map_mod.get(m, try keyword_mod.intern(rt, null, "args")) catch Value.nil_val;
+        if (!args_v.isNil()) {
+            if (args_v.tag() != .vector)
+                return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "the :args option must be a vector of strings" });
+            const n = vector_mod.count(args_v);
+            const argv = try scratch.alloc([]const u8, n);
+            var i: u32 = 0;
+            while (i < n) : (i += 1) {
+                const e = vector_mod.nth(args_v, i);
+                if (!e.isString())
+                    return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "every :args element must be a string" });
+                argv[i] = string_mod.asString(e);
+            }
+            run_opts.argv = argv;
+        }
+
+        const stdin_v = map_mod.get(m, try keyword_mod.intern(rt, null, "stdin")) catch Value.nil_val;
+        if (!stdin_v.isNil()) {
+            if (!stdin_v.isString())
+                return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "the :stdin option must be a string" });
+            run_opts.stdin = string_mod.asString(stdin_v);
+        }
+
+        // Preopens: :dir (one host dir → guest "/") is sugar; :dirs is a vector of
+        // [host guest] pairs. Both host paths are FS-jail resolved. (:env is a
+        // tracked follow-up, D-348 — the demos here need argv/stdin/dirs only.)
+        var preopens: std.ArrayList(engine.PreopenDir) = .empty;
+        const dir_v = map_mod.get(m, try keyword_mod.intern(rt, null, "dir")) catch Value.nil_val;
+        if (!dir_v.isNil()) {
+            if (!dir_v.isString())
+                return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "the :dir option must be a string" });
+            try preopens.append(scratch, .{
+                .host_path = try resolveDir(rt, scratch, string_mod.asString(dir_v), loc),
+                .guest_path = "/",
+            });
+        }
+        const dirs_v = map_mod.get(m, try keyword_mod.intern(rt, null, "dirs")) catch Value.nil_val;
+        if (!dirs_v.isNil()) {
+            if (dirs_v.tag() != .vector)
+                return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "the :dirs option must be a vector of [host guest] pairs" });
+            const n = vector_mod.count(dirs_v);
+            var i: u32 = 0;
+            while (i < n) : (i += 1) {
+                const pair = vector_mod.nth(dirs_v, i);
+                if (pair.tag() != .vector or vector_mod.count(pair) != 2)
+                    return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "each :dirs entry must be a [host guest] pair" });
+                const host_v = vector_mod.nth(pair, 0);
+                const guest_v = vector_mod.nth(pair, 1);
+                if (!host_v.isString() or !guest_v.isString())
+                    return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "each :dirs [host guest] must be two strings" });
+                try preopens.append(scratch, .{
+                    .host_path = try resolveDir(rt, scratch, string_mod.asString(host_v), loc),
+                    .guest_path = string_mod.asString(guest_v),
+                });
+            }
+        }
+        run_opts.preopens = preopens.items;
+    }
+
+    const res = engine.run(rt.gpa, rt.io, bytes, run_opts) catch
+        return error_catalog.raise(.wasm_run_failed, loc, .{});
+    defer rt.gpa.free(res.out);
+    defer rt.gpa.free(res.err);
+
+    var result = map_mod.empty();
+    result = try map_mod.assoc(rt, result, try keyword_mod.intern(rt, null, "out"), try string_mod.alloc(rt, res.out));
+    result = try map_mod.assoc(rt, result, try keyword_mod.intern(rt, null, "err"), try string_mod.alloc(rt, res.err));
+    result = try map_mod.assoc(rt, result, try keyword_mod.intern(rt, null, "exit"), Value.initInteger(@as(i64, res.exit)));
+    return result;
+}
+
 /// Create the `wasm` host namespace. Called by
 /// `runtime/cljw/_host_api.zig::installAll` under `build_options.wasm`.
 pub fn register(env: *Env) !void {
@@ -142,4 +266,5 @@ pub fn register(env: *Env) !void {
     const ns = try env.findOrCreateNs("wasm");
     _ = try env.intern(ns, "load", Value.initBuiltinFn(&wasmLoadFn), null);
     _ = try env.intern(ns, "call", Value.initBuiltinFn(&wasmCallFn), null);
+    _ = try env.intern(ns, "run", Value.initBuiltinFn(&wasmRunFn), null);
 }

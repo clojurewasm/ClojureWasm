@@ -430,6 +430,14 @@ pub const Code = enum {
     /// args: `.{ .what = "..." }` — a `wasm/call` argument/result used a wasm
     /// value type cljw does not marshal yet (v128 / reference types).
     wasm_value_type_unsupported,
+    /// args: `.{ .detail = "..." }` — a `wasm/run` argument was the wrong type
+    /// (path not a string, opts not a map, `:args` not a string vector, …).
+    wasm_run_arg_invalid,
+    /// args: `.{ .path = "..." }` — a `wasm/run` module file could not be read.
+    wasm_run_read_failed,
+    /// args: `.{}` — a `wasm/run` module failed to compile / instantiate, or its
+    /// preopen directory could not be opened.
+    wasm_run_failed,
 
     // --- System ---
     out_of_memory,
@@ -1457,6 +1465,21 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .not_implemented,
             .phase = .eval,
             .template = "wasm/call: {[what]s} are not supported yet",
+        },
+        .wasm_run_arg_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "wasm/run: {[detail]s}",
+        },
+        .wasm_run_read_failed => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "wasm/run: cannot read the wasm file at '{[path]s}'",
+        },
+        .wasm_run_failed => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "wasm/run: the module failed to compile, instantiate, or open its directory",
         },
         .internal_error => .{
             .kind = .internal_error,
