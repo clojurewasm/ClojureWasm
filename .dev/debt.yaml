@@ -9,6 +9,16 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-346"
+    status: "open — security (VM operand-stack on large literal). Evaluating a large collection LITERAL (e.g. `(count [1 1 … ×40000])`) overflows the VM operand stack → `internal_error: vm: operand stack overflow` (uncatchable, exit 70). NOT a crash/panic (the tokenizer overflow-panic was the separate, fixed finding) — a clean process-end. Lower severity: it is reached by EVALUATING a large literal (untrusted CODE), not by READING data (read-string builds the collection in the reader, not via operand pushes), and untrusted-code-eval is already a higher-trust scenario. Surfaced 2026-06-09 while testing the tokenizer fix."
+    category: "security"
+    barrier: |-
+      blocked-by: untrusted large-literal eval becoming a tracked threat. Options:
+      a growable/​checked operand stack with a catchable error (not internal_error),
+      or compiling a large vector/map literal to a bulk-build (not N operand pushes).
+      Low priority (eval-of-untrusted-code path; clean exit-70, not a crash).
+      Cross-ref the tokenizer long-input fix, vm.zig operand stack.
+    last_reviewed: "2026-06-09"
   - id: "D-344"
     status: "open — security (regex compile-budget completeness). INV-1's MAX_PROGRAM_INSTS (compile.zig) caps EACH program's instruction count, blocking the trivial `(a{n}){m}` bomb. But a lookahead's child compiles to its OWN list (separate program), so the per-program cap does NOT bound the SUM across many sibling/nested lookaheads: `(?=a{99999})(?=a{99999})…` ×N gives N×100k insts from ~N×12 chars, so a ~120 KB untrusted pattern can still OOM. Surfaced by the 2026-06-09 review (rated LOW: needs a large untrusted pattern vs the trivial counted-rep bomb already closed)."
     category: "security"

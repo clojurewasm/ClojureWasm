@@ -93,8 +93,11 @@ pub const TokenKind = enum(u8) {
 pub const Token = struct {
     kind: TokenKind,
     start: u32,
-    len: u16,
+    /// Token byte length (u32 — a string/symbol literal can exceed 65535 chars;
+    /// it is load-bearing for `text()`'s source slice, so it must NOT be clamped).
+    len: u32,
     line: u32,
+    /// Display column, saturated at u16-max on very long lines (see `advance`).
     column: u16,
 
     pub fn text(self: Token, source: []const u8) []const u8 {
@@ -409,7 +412,13 @@ pub const Tokenizer = struct {
                 self.line += 1;
                 self.column = 0;
             } else {
-                self.column += 1;
+                // Saturate: `column` is for error display only, so clamping it on
+                // a line longer than 65535 columns avoids a u16-overflow PANIC on
+                // untrusted input (e.g. a minified one-line JSON/EDN payload) — a
+                // whole-process DoS in the shipped ReleaseSafe build — without
+                // growing the Token. The load-bearing `Token.len` is widened to
+                // u32 (text slicing), so no token is silently truncated.
+                if (self.column != std.math.maxInt(u16)) self.column += 1;
             }
             self.pos += 1;
         }
@@ -421,11 +430,11 @@ pub const Tokenizer = struct {
 
     fn makeToken(self: *Tokenizer, kind: TokenKind, start: u32, start_line: u32, start_col: u16) Token {
         const len = self.pos - start;
-        return makeTokenAt(kind, start, @intCast(len), start_line, start_col);
+        return makeTokenAt(kind, start, len, start_line, start_col);
     }
 };
 
-fn makeTokenAt(kind: TokenKind, start: u32, len: u16, line: u32, column: u16) Token {
+fn makeTokenAt(kind: TokenKind, start: u32, len: u32, line: u32, column: u16) Token {
     return .{ .kind = kind, .start = start, .len = len, .line = line, .column = column };
 }
 

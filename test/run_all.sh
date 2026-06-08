@@ -487,6 +487,7 @@ run_step "e2e_phase16_concurrency_stress"   "bash test/e2e/phase16_concurrency_s
 run_step "e2e_phase16_http_server"          "bash test/e2e/phase16_http_server.sh"
 run_step "e2e_phase16_file_io_errors"       "bash test/e2e/phase16_file_io_errors.sh"
 run_step "e2e_phase16_fs_jail"              "bash test/e2e/phase16_fs_jail.sh"
+run_step "e2e_phase16_tokenizer_long_input" "bash test/e2e/phase16_tokenizer_long_input.sh"
 run_step "e2e_phase15_for_while"            "bash test/e2e/phase15_for_while.sh"
 run_step "e2e_phase15_ns_import"            "bash test/e2e/phase15_ns_import.sh"
 run_step "e2e_phase15_dot_form"             "bash test/e2e/phase15_dot_form.sh"
