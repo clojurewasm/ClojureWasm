@@ -9,6 +9,61 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-334"
+    status: "blocked-by: ADR-0119 Stage 2 landing (2026-06-08). Trace frame line = the CALL-SITE loc (where the fn was invoked), not clj's/v0's EXECUTION-POINT line (the currently-executing line inside each fn; v0 patched the innermost frame to the IP via `updateTopFrame`). So `user/tf (file:2)` shows tf's call site (line 2 in tg) rather than where tf is executing (line 1, the `/`). The precise error spot IS in the header + caret; the trace gives the call chain. Execution-point precision would need per-frame IP/node-loc tracking at each nested call (v0's updateTopFrame)."
+    category: "error-system"
+    barrier: |-
+      Call-site line is a correct, useful first form (the header/caret already
+      pin the exact error). Execution-point precision (innermost = the failing
+      op's line, outer = the line of the call each frame made) needs updateTopFrame-
+      style per-frame IP tracking. Resolve when a sweep shows the call-site line
+      is confusing in practice. Cross-ref ADR-0119 Stage 2 note, survey §position.
+    last_reviewed: "2026-06-08"
+  - id: "D-333"
+    status: "blocked-by: ADR-0119 Stage 2 landing (2026-06-08). The post-mortem decoder `cljw render-error` (render_error.zig, hand-rolled flat-field scan) does NOT yet decode the new `:trace [{...} …]` nested vector — live text+EDN are in lockstep, but the decoded-log view omits the trace. Needs a nested-map scan in the hand-rolled decoder (or a minimal EDN sub-parse). Lower priority (post-mortem tool); the live render is the primary surface."
+    category: "error-system"
+    barrier: |-
+      Live `Trace:` (text) + `:trace` (EDN) land in ADR-0119 Stage 2; the
+      render-error decoder's nested-vector parse is a separable follow-on.
+      Resolve when decoded-log trace display is wanted. Cross-ref ADR-0055
+      lockstep, render_error.zig:84.
+    last_reviewed: "2026-06-08"
+  - id: "D-332"
+    status: "post-happy-path verification (user-directed 2026-06-08). The stack-trace ORIGIN-DISPLAY BOUNDARY: how far back to show frames between host (zig builtins / cw-internal) and USER clj code. Premise: cljw's impl is assumed correct, the bug is in user code — so the trace should surface the USER call chain and elide impl noise. Builtins are already elided (ADR-0119 §6). OPEN: do cw-stdlib `lang/clj/**` frames (clojure.core/map, etc.) SHOW (clj shows clojure.core frames) or ELIDE (they're cljw's impl, not the user's bug)? Decide the boundary + TEST it. Verify an error deep inside a builtin/stdlib called by user code shows the user frames up to the call, not internal noise."
+    category: "error-system"
+    barrier: |-
+      Needs the Stage-2 trace landed first, then a deliberate boundary decision
+      (show vs elide cw-stdlib clj frames) + e2e tests pinning it. Likely an AD
+      (divergence from clj which shows clojure.core frames). Resolve by deciding
+      + testing the host/stdlib/user frame boundary. User-directed verification.
+    last_reviewed: "2026-06-08"
+  - id: "D-331"
+    status: "post-happy-path verification (user-directed 2026-06-08). Stack trace across MULTI-MODULE projects / `require` chains: an error deep in a required ns (`(require 'foo)`, foo calls bar, bar errors) must show frames with correct per-frame `ns`/`file` across module boundaries. ADR-0119 carries `defining_ns` + the call-site file per frame, so cross-module traces SHOULD work — but UNVERIFIED. Make a multi-file e2e fixture (a require chain erroring in a leaf module) and assert the trace spans the modules with right ns/file. Fix if frames collapse to one file/ns."
+    category: "error-system"
+    barrier: |-
+      Needs Stage-2 trace + a multi-file fixture. Verify the per-frame file/ns is
+      the DEFINING module's, not the entry file's, across a require chain. Resolve
+      by adding the e2e fixture + assertions; fix any cross-module frame defect.
+      User-directed verification. Cross-ref ADR-0119 defining_ns.
+    last_reviewed: "2026-06-08"
+  - id: "D-330"
+    status: "post-happy-path verification (user-directed 2026-06-08). Stack trace under ASYNC (futures / promises / any continuation resumed off the raising stack): the call_stack is threadlocal + stack-based, so a computation resumed on a different stack/turn would show frames that do not reflect the logical async call chain. Verify what cljw's async surface (futures? core.async?) actually does to the trace, and decide/fix (snapshot the logical chain at suspend, or accept the divergence with an AD)."
+    category: "error-system"
+    barrier: |-
+      Needs Stage-2 trace + clarity on cljw's async maturity. Verify a future/
+      async error's trace; decide whether to thread a logical async stack or
+      accept the host-stack divergence (AD). Resolve by testing the async error
+      path. User-directed verification. May be blocked on async impl depth.
+    last_reviewed: "2026-06-08"
+  - id: "D-329"
+    status: "post-happy-path verification (user-directed 2026-06-08). Stack trace under MULTI-THREADING: call_stack/trace_snapshot/arg_sources are all threadlocal (info.zig), so each worker thread has its own stack → traces SHOULD be per-thread-correct by construction with no cross-thread bleed. UNVERIFIED with real threads (Phase-15 concurrency is largely dormant today). When threads run real work, add a test that an error on a worker shows THAT thread's frames, not the main thread's, and no corruption under concurrent raises."
+    category: "error-system"
+    barrier: |-
+      Needs Stage-2 trace + real multi-thread execution (Phase 15). Threadlocal
+      design suggests correctness; verify with a concurrent-raise test once
+      workers do real work. Resolve by testing per-thread trace isolation.
+      User-directed verification. Likely blocked on Phase-15 concurrency.
+    last_reviewed: "2026-06-08"
   - id: "D-328"
     status: "blocked-by: ADR-0119 Stage 1 landing (2026-06-08). With ADR-0119 Stage 1 a Function carries `name`/`defining_ns`, but `(pr foo)`/`(str foo)` still render `#<fn_val>` (print.zig:677 fallthrough). A user-facing fn print form (clj: `#object[user$foo__N 0x.. \"..\"]`; cw-native reduced per AD-002 no-hash + AD-003 simple-name) should show `<ns>/<name>`. Couples to the `(class fn)` label (currently raw tag `fn_val`) + the `#object[…]` convention (AD-010) → needs its own format + AD design. Deferred from Stage 1 to keep naming-threading separate from print-format design."
     category: "error-system"

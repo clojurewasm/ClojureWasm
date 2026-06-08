@@ -1324,3 +1324,69 @@ test "naming: fn carries name+defining_ns on the value (ADR-0119 Stage 1, both b
     const c_vm = try evalFnInfo(&f, "((fn* [y] (fn* [x] y)) 5)", .vm);
     try testing.expect(std.mem.startsWith(u8, c_vm.name.?, "fn"));
 }
+
+// ADR-0119 Stage 2: an uncaught runtime error carries a `Trace:` snapshot of the
+// runtime call stack. Frames are pushed at the single shared `treeWalkCall`
+// choke point (both backends route here), so TreeWalk + VM must produce the SAME
+// frames. `fn_name` slices point at the arena-owned fn name (stable), but the
+// frame ARRAY lives in a threadlocal snapshot the next eval overwrites — so copy
+// the frames out into a caller buffer before running the other backend.
+fn traceOf(f: *Fixture, source: []const u8, backend: enum { tree_walk, vm }, out: []error_mod.StackFrame) !usize {
+    const arena = f.arena.allocator();
+    var reader = Reader.init(arena, source);
+    const form = (try reader.read()).?;
+    const node = try analyze(arena, &f.rt, &f.env, null, form, &f.table);
+    var locals: [256]Value = [_]Value{.nil_val} ** 256;
+    error_mod.clearLastError();
+    error_mod.clearCallStack();
+    const ran = switch (backend) {
+        .tree_walk => blk: {
+            tree_walk.installVTable(&f.rt);
+            break :blk tree_walk.eval(&f.rt, &f.env, &locals, node);
+        },
+        .vm => blk: {
+            vm.installVTable(&f.rt);
+            const chunk = try vm_compiler.compile(&f.rt, arena, node);
+            break :blk vm.eval(&f.rt, &f.env, &locals, &chunk);
+        },
+    };
+    _ = ran catch {
+        const t = (error_mod.peekLastError() orelse return error.NoErrorRaised).trace orelse return error.NoTrace;
+        @memcpy(out[0..t.len], t);
+        return t.len;
+    };
+    return error.ExpectedError;
+}
+
+test "trace: nested named-fn error → identical frames both backends (ADR-0119 Stage 2)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    const src = "(do (defn tf [x] (/ x 0)) (defn tg [y] (tf y)) (tg 3))";
+    var tw: [16]error_mod.StackFrame = undefined;
+    var vmt: [16]error_mod.StackFrame = undefined;
+    const tw_n = try traceOf(&f, src, .tree_walk, &tw);
+    const vm_n = try traceOf(&f, src, .vm, &vmt);
+    // Push order is outermost-first: tg called tf. The builtin `/` is elided.
+    try testing.expectEqual(@as(usize, 2), tw_n);
+    try testing.expectEqual(@as(usize, 2), vm_n);
+    try testing.expectEqualStrings("tg", tw[0].fn_name.?);
+    try testing.expectEqualStrings("tf", tw[1].fn_name.?);
+    try testing.expectEqualStrings(tw[0].fn_name.?, vmt[0].fn_name.?);
+    try testing.expectEqualStrings(tw[1].fn_name.?, vmt[1].fn_name.?);
+}
+
+test "trace: recur loops push ONE frame, not N (ADR-0119 Stage 2, both backends)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // recur is a backjump (TreeWalk rebind / VM op_jump), NOT a re-call through
+    // treeWalkCall — so a recursion loop pushes the fn's frame exactly ONCE.
+    const src = "(do (defn rf [n] (if (= n 0) (/ 1 0) (recur (- n 1)))) (rf 3))";
+    var tw: [16]error_mod.StackFrame = undefined;
+    var vmt: [16]error_mod.StackFrame = undefined;
+    const tw_n = try traceOf(&f, src, .tree_walk, &tw);
+    const vm_n = try traceOf(&f, src, .vm, &vmt);
+    try testing.expectEqual(@as(usize, 1), tw_n);
+    try testing.expectEqual(@as(usize, 1), vm_n);
+    try testing.expectEqualStrings("rf", tw[0].fn_name.?);
+    try testing.expectEqualStrings("rf", vmt[0].fn_name.?);
+}

@@ -49,6 +49,7 @@ const set_collection = @import("../../runtime/collection/set.zig");
 const list_mod = @import("../../runtime/collection/list.zig");
 const multimethod_mod = @import("../../runtime/multimethod.zig");
 const protocol_mod = @import("../../runtime/protocol.zig");
+const symbol_mod = @import("../../runtime/symbol.zig");
 const method_table = @import("../../runtime/dispatch/method_table.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
@@ -1045,6 +1046,31 @@ fn evalCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.CallNode) !Val
 
 // --- Backend's callFn (registered as rt.vtable.callFn) ---
 
+/// Build the `Trace:` frame for a callable, or `null` to ELIDE it (ADR-0119
+/// Stage 2). Named callables (fn / multimethod / protocol method) push a frame
+/// sourced from the VALUE (Stage 1 put the name there); builtins, data-as-IFn
+/// (keyword / collection), and `.var_ref` (its re-dispatch's inner `.fn_val`
+/// pushes) are elided — the trace answers "which of MY fns was running", so
+/// plumbing frames are noise (cw's analog of clj's `RestFn`/`AFn` filtering).
+fn calleeFrame(callee: Value, loc: SourceLocation) ?error_mod.StackFrame {
+    return switch (callee.tag()) {
+        .fn_val => blk: {
+            const f = callee.decodePtr(*const Function);
+            break :blk .{ .fn_name = f.name, .ns = f.defining_ns, .file = loc.file, .line = loc.line, .column = loc.column };
+        },
+        .multi_fn => blk: {
+            const mf = callee.decodePtr(*const multimethod_mod.MultiFn);
+            const sym = symbol_mod.asSymbol(mf.name);
+            break :blk .{ .fn_name = sym.name, .ns = sym.ns, .file = loc.file, .line = loc.line, .column = loc.column };
+        },
+        .protocol_fn => blk: {
+            const pf = protocol_mod.asProtocolFn(callee);
+            break :blk .{ .fn_name = pf.methodName(), .ns = pf.descriptor.fqcn(), .file = loc.file, .line = loc.line, .column = loc.column };
+        },
+        else => null,
+    };
+}
+
 /// `dispatch.CallFn` implementation. Dispatches on the callee's tag:
 /// `.fn_val` evaluates the body; `.builtin_fn` calls the C function
 /// directly.
@@ -1055,6 +1081,12 @@ pub fn treeWalkCall(
     args: []const Value,
     loc: SourceLocation,
 ) anyerror!Value {
+    // ADR-0119 Stage 2: push a runtime call-stack frame for named callables so
+    // an uncaught error renders a `Trace:`. Pop on BOTH success and unwind
+    // (recur/try/reduced-safe) via `defer`. The single shared choke point covers
+    // both backends (VM op_call routes here through vt.callFn).
+    const pushed = if (calleeFrame(callee, loc)) |fr| error_mod.pushFrame(fr) else false;
+    defer if (pushed) error_mod.popFrame();
     return switch (callee.tag()) {
         .fn_val => callFunction(rt, env, callee, args, loc),
         .builtin_fn => callBuiltin(rt, env, callee, args, loc),

@@ -172,6 +172,35 @@ cost as analyzer threading (a clean, separable unit), not GC (a static
 `[]const u8` is GC-inert). Alt 2's HOF-naming claim is *unrecoverable* anyway,
 so its supposed parity advantage over Alt 3 does not exist.
 
+## Stage 2 implementation landed (2026-06-08)
+
+The `Trace:` consumer landed on the Stage-1 names. As-built refinements:
+
+- **`pushFrame` now returns `bool`** (recorded / dropped-at-cap). The push site
+  pops only when it actually pushed, so push/pop stays balanced past the
+  64-frame cap (an unconditional `defer popFrame` would underflow). This means
+  the live `call_stack` self-zeroes between top-level forms (every `defer pop`
+  runs on success AND error return), so **no production `clearCallStack` is
+  needed** — a clean divergence from v0's defensive per-form clear. (Tests call
+  `clearCallStack` for isolation only.)
+- **Single-choke-point push at `treeWalkCall`** via `calleeFrame(callee, loc)`:
+  `.fn_val`/`.multi_fn`/`.protocol_fn` push a value-sourced frame; everything
+  else (builtin, data-as-IFn, `.var_ref`) elides. Both backends share it (VM
+  op_call → vt.callFn). `Info.trace` is snapshotted into a threadlocal buffer at
+  `setErrorFmt` (mirrors the `.context` snapshot), read by the renderer after
+  the live stack has unwound.
+- **Frame line = the CALL-SITE loc** (where the fn was invoked), not the
+  execution-point line clj/v0 show (v0 patched the innermost frame to the IP via
+  `updateTopFrame`). The precise error spot is already in the header + caret;
+  the trace gives the call chain. Execution-point precision is deferred (D-334).
+- **Text `Trace:` + EDN `:trace` land in lockstep** (ADR-0055), innermost-first,
+  `  <ns>/<fn> (<file>:<line>)` with the same `file_label` fallback as the
+  header. The post-mortem `render-error` decoder's `:trace` parse is deferred
+  (D-333). Dual-backend parity + e2e (Case 11/12) cover both.
+- **Post-happy-path verification backlog** (user-directed): trace under
+  multi-threading (D-329), async (D-330), multi-module require chains (D-331),
+  and the host/stdlib/user frame BOUNDARY — how far back to trace (D-332).
+
 ## Consequences
 
 - A function knows its own name → traces, `pr`, and future `(:name (meta #'f))`

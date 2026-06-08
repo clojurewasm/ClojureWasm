@@ -126,6 +126,37 @@ pub fn formatErrorWithContext(
             }
         }
     }
+
+    // Trace: (ADR-0119 Stage 2) — the runtime call stack at raise time. The
+    // snapshot slice is push-order (outermost-first); display innermost-first
+    // (clj / cw-v0 `pst` order) by walking it reversed. Each frame:
+    // `  <ns>/<fn> (<file>:<line>)`. Builtin / data-as-IFn frames are already
+    // elided at push time, so only user-meaningful frames appear here.
+    if (info.trace) |frames| {
+        if (frames.len > 0) {
+            try w.writeAll("\nTrace:\n");
+            var i: usize = frames.len;
+            while (i > 0) {
+                i -= 1;
+                const fr = frames[i];
+                const fn_name = fr.fn_name orelse "fn";
+                if (fr.ns) |ns|
+                    try w.print("  {s}/{s}", .{ ns, fn_name })
+                else
+                    try w.print("  {s}", .{fn_name});
+                // Same file fallback as the header (E.1): the call node carries
+                // line:col but not the file, so substitute the source label.
+                const file = if (fr.file) |ff|
+                    (if (ff.len > 0 and !std.mem.eql(u8, ff, "unknown")) ff else ctx.file)
+                else
+                    ctx.file;
+                if (fr.line != 0)
+                    try w.print(" ({s}:{d})\n", .{ file, fr.line })
+                else
+                    try w.print(" ({s})\n", .{file});
+            }
+        }
+    }
 }
 
 /// Write `label` (an `info.kindLabel()` snake value like `arithmetic_error`)

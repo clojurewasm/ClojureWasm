@@ -118,5 +118,29 @@ case "$out" in
         fail "error_edn_file_label: EDN :file should be \"<-e>\", not unknown; got '$out'" ;;
 esac
 
+# --- Case 11 (ADR-0119 Stage 2): an uncaught error renders a `Trace:` of the
+#     runtime call stack, named fns innermost-first (tf called by tg). Functions
+#     carry their name on the value (Stage 1), so frames show `user/<fn>`. ---
+WORK_TR="$(mktemp -d)"
+trap 'rm -rf "$WORK_EL" "$WORK_TR"' EXIT
+printf '(defn tf [x] (/ x 0))\n(defn tg [y] (tf y))\n(tg 3)\n' > "$WORK_TR/trace.clj"
+out=$("$BIN" "$WORK_TR/trace.clj" 2>&1 || true)
+case "$out" in
+    *"Trace:"*"user/tf"*"user/tg"*)
+        echo "PASS error_trace_named_frames -> Trace: shows user/tf then user/tg" ;;
+    *)
+        fail "error_trace_named_frames: expected a Trace: with user/tf + user/tg, got '$out'" ;;
+esac
+
+# --- Case 12 (ADR-0119 Stage 2): EDN :trace mirrors the text Trace: in lockstep
+#     (ADR-0055) — a `:trace [{:fn "tf" ...} ...]` vector. ---
+out=$(CLJW_ERROR_FORMAT=edn "$BIN" "$WORK_TR/trace.clj" 2>&1 1>/dev/null || true)
+case "$out" in
+    *':trace ['*':fn "tf"'*':fn "tg"'*)
+        echo "PASS error_edn_trace -> EDN :trace mirrors the text trace" ;;
+    *)
+        fail "error_edn_trace: expected EDN :trace with :fn \"tf\"/\"tg\", got '$out'" ;;
+esac
+
 echo
 echo "Phase 14 row 14.13 (D-066 partial) error format e2e: all green."

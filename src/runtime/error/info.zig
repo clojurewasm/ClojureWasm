@@ -100,6 +100,13 @@ pub const Info = struct {
     /// non-ex-info throws. Distinct from `context` (the ambient
     /// `*error-context*`); this is the data attached to *this* exception.
     data: ?Value = null,
+    /// Snapshot of the runtime call stack at raise time, innermost-LAST
+    /// (push order), rendered as the `Trace:` section + EDN `:trace`
+    /// (ADR-0119 Stage 2). Snapshotted into a threadlocal buffer in
+    /// `setErrorFmt` because the live `call_stack` unwinds (every
+    /// `defer popFrame`) before the renderer reads it. null when no frames
+    /// were pushed (e.g. a parse/analysis error before any call).
+    trace: ?[]const StackFrame = null,
 
     /// The user-visible category label: the catalog `Kind` name, or
     /// `"exception"` for a user throw. Both renderers (text header +
@@ -188,6 +195,11 @@ pub const StackFrame = struct {
 threadlocal var call_stack: [max_call_depth]StackFrame = [_]StackFrame{.{}} ** max_call_depth;
 threadlocal var stack_depth: u8 = 0;
 
+/// Frozen copy of `call_stack` taken at raise time (ADR-0119 Stage 2). The
+/// live stack unwinds via `defer popFrame` before the renderer runs, so the
+/// `Info.trace` slice points here, not at the (by-then-empty) live stack.
+threadlocal var trace_snapshot: [max_call_depth]StackFrame = [_]StackFrame{.{}} ** max_call_depth;
+
 // --- Arg-precise caret side channel (ADR-0118 cycle 2.5) ---
 //
 // Each call boundary (TreeWalk `evalCall`, VM `op_call`) publishes the
@@ -242,6 +254,11 @@ pub fn setErrorFmt(
         @memcpy(msg_buf[509..512], "...");
         break :blk msg_buf[0..512];
     };
+    // Freeze the call stack now (ADR-0119 Stage 2) — `defer popFrame` unwinds
+    // the live stack before the renderer reads `.trace`. Same rationale as the
+    // `.context` snapshot below.
+    const trace_n = stack_depth;
+    @memcpy(trace_snapshot[0..trace_n], call_stack[0..trace_n]);
     last_error = .{
         .kind = kind,
         .phase = phase,
@@ -250,6 +267,7 @@ pub fn setErrorFmt(
         // Snapshot the live dynamic error-context now — the `binding`
         // frame is popped during unwind, before the renderer reads this.
         .context = if (context_provider) |p| p() else null,
+        .trace = if (trace_n > 0) trace_snapshot[0..trace_n] else null,
     };
     return kindToError(kind);
 }
@@ -273,11 +291,17 @@ pub fn clearLastError() void {
 
 // --- Call stack API ---
 
-pub fn pushFrame(frame: StackFrame) void {
+/// Push a frame; returns `true` if it was recorded, `false` if the 64-frame
+/// cap was hit (the frame is dropped — best-effort trace). The caller pops
+/// only when this returned `true`, keeping push/pop balanced past the cap
+/// (ADR-0119 Stage 2: an unconditional `defer popFrame` would underflow).
+pub fn pushFrame(frame: StackFrame) bool {
     if (stack_depth < max_call_depth) {
         call_stack[stack_depth] = frame;
         stack_depth += 1;
+        return true;
     }
+    return false;
 }
 
 pub fn popFrame() void {
@@ -379,8 +403,8 @@ test "call stack push/pop and overflow are silent" {
     clearCallStack();
     try testing.expectEqual(@as(usize, 0), getCallStack().len);
 
-    pushFrame(.{ .fn_name = "foo", .ns = "user" });
-    pushFrame(.{ .fn_name = "bar" });
+    try testing.expect(pushFrame(.{ .fn_name = "foo", .ns = "user" }));
+    try testing.expect(pushFrame(.{ .fn_name = "bar" }));
     try testing.expectEqual(@as(usize, 2), getCallStack().len);
     try testing.expectEqualStrings("foo", getCallStack()[0].fn_name.?);
 
@@ -390,7 +414,7 @@ test "call stack push/pop and overflow are silent" {
     popFrame(); // pop on empty is safe
     try testing.expectEqual(@as(usize, 0), getCallStack().len);
 
-    for (0..max_call_depth + 10) |i| pushFrame(.{ .line = @truncate(i) });
+    for (0..max_call_depth + 10) |i| _ = pushFrame(.{ .line = @truncate(i) });
     try testing.expectEqual(@as(usize, max_call_depth), getCallStack().len);
     clearCallStack();
 }

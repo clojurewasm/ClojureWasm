@@ -196,6 +196,28 @@ fn formatErrorEdn(info: error_mod.Info, ctx: error_print.SourceContext, w: *Writ
         try w.writeAll(" :data ");
         try print_value(w, d);
     }
+    // Trace: in lockstep with the text renderer (ADR-0119 Stage 2 / ADR-0055):
+    // `:trace [{:ns "..":fn "..":file "..":line N} …]`, innermost-first (the
+    // push-order snapshot walked reversed). Same `file_label` fallback as :file.
+    if (info.trace) |frames| {
+        if (frames.len > 0) {
+            try w.writeAll(" :trace [");
+            var i: usize = frames.len;
+            while (i > 0) {
+                i -= 1;
+                const fr = frames[i];
+                if (i != frames.len - 1) try w.writeByte(' ');
+                try w.print("{{:fn \"{s}\"", .{fr.fn_name orelse "fn"});
+                if (fr.ns) |ns| try w.print(" :ns \"{s}\"", .{ns});
+                const ffile = if (fr.file) |ff|
+                    (if (ff.len > 0 and !std.mem.eql(u8, ff, "unknown")) ff else file_label)
+                else
+                    file_label;
+                try w.print(" :file \"{s}\" :line {d}}}", .{ ffile, fr.line });
+            }
+            try w.writeByte(']');
+        }
+    }
     // Merge the snapshotted `cljw.error/*error-context*` entries as
     // top-level event fields (ADR-0055 D3). array_map only — context
     // maps are small (the >8-entry hash_map path mirrors printMap's
