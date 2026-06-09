@@ -629,6 +629,132 @@ cljw require-closure feature; the e2e cases use define-and-print libs that are
 harmless to double-print (build stdout vs run stdout are distinct streams; the
 e2e asserts the run output). Tracked as a demo-side note in D-356.
 
+## `-m` main-entry mode (amendment 4)
+
+Amendment 3 made `cljw build` embed the require closure so a multi-file
+`(require '[lib])` app builds self-contained. But `cljw build` evals top-level
+forms at build (A1-D2 Clojure-AOT), so an APP whose top-level starts a server
+(`(my.app/-main 8080)`) HANGS the build. The finished-form answer is the
+Clojure / GraalVM / cljw-run-path convention: put runtime logic in `-main` and
+name it as the artifact's ENTRY POINT, invoked at RUN, not build.
+
+### A4-D1: two build modes, mirroring the run path
+
+- **Script mode** (`cljw build app.clj -o out`, unchanged): the entry file's
+  top-level forms ARE the program; build compiles+evals them (Clojure-AOT,
+  build-time side effects run — the documented wart, A1-D2); run VM-executes the
+  embedded chunks top-to-bottom. No `-main` required. Keeps today's behaviour.
+- **Main mode** (`cljw build -m <ns> [args…] -o out`, new): build does
+  `(require '[<ns>])` → captures the closure (am3 build_chunk_sink) + registers
+  `<ns>`'s defns; the `-main` is DEFINED but NOT called at build (no hang / no
+  side effect). The produced binary, at RUN, invokes `(<ns>/-main args)` as the
+  entry point. This is the production-deploy path; it preserves fast cold-start
+  (bytecode closure + setupCoreAot, no re-parse of the program).
+
+Main mode is a thin layer over am3: the `-main` ns is reached via `(require)`,
+so the whole program is embedded by the am3 closure mechanism; main mode only
+adds (a) "don't call -main at build" and (b) "call -main at run".
+
+The undecidable env-shaping-vs-side-effecting classifier is NOT attempted (Alt C
+of am1 stays rejected); cljw is Clojure-AOT-faithful (build = load). "Don't run
+at build" is achieved the Clojure way — put logic in `-main`, use `-m`. The cw
+v0 `http_server.build_mode=true` per-primitive side-effect suppression is
+REJECTED (F-013 ad-hoc-allowlist smell).
+
+### A4-D2: entry point is artifact metadata (entry manifest), not a code chunk
+
+Every real executable format stores the entry point as HEADER metadata (ELF
+`e_entry`, Mach-O `LC_MAIN`, jar `Main-Class`) — not as "code that calls main".
+The payload envelope gains an optional **entry manifest** at its front:
+`{ entry_ns: ?[]const u8, entry_args: []const []const u8 }`. Script mode →
+`entry_ns = null` (run chunks, stop). Main mode → `entry_ns = <ns>`,
+`entry_args` = the build-time `-m`/`:main-opts` args (possibly empty). One
+payload schema covers both modes; the entry is inspectable artifact data and the
+forward home for the deferred D4 metadata (build-id / Tier-0 — D-131).
+
+### A4-D3: run-side dispatch routes through the run-path `synthMainNs` (F-011)
+
+`tryRunEmbedded` runs the closure chunks (defines `<ns>`), then, if the manifest
+names an entry: `all_args = entry_args ++ <binary's own runtime argv>`;
+`src = run_mode.synthMainNs(<ns>, all_args)` — the **same** helper
+`cljw -M -m` uses (promoted to `pub`); read+analyze+eval it. So the built
+binary's `-m` behaviour is byte-identical to `cljw -M -m` (F-011) — the
+`requiring-resolve` guard (clean "no -main" error), the `*command-line-args*`
+setter, the call — all shared, no parallel resolve+call to drift. `requiring-
+resolve` at run is idempotent (the closure already loaded `<ns>`, op_require
+skips), so no filesystem resolver is needed in the shipped binary. Runtime argv
+gives `./out 8080` real-program semantics (8080 reaches `-main` at run);
+build-time `entry_args` are baked defaults overridden by a non-empty runtime
+argv. The startup parse of the one-line `synthMainNs` source is ~1-2% of cold
+start (negligible; a `-m` binary is a long-running server).
+
+### A4-D4: deps.edn `:main-opts` drives the entry
+
+`cljw build -A:alias -o out` reads the alias's `:main-opts ["-m" <ns> args…]`
+to derive the entry (mirrors `cljw -M:alias`), so the classpath (am3) AND the
+entry both flow from deps.edn. An explicit `-m <ns>` on the CLI wins over
+`:main-opts`.
+
+### Amendment-4 Devil's-advocate fork (2026-06-09, -m entry-mode shape, F-002/F-009/F-011/F-013 envelope) — verbatim
+
+I have all I need. The build branch positionally consumes one bare `<in.clj>` (line 168 rejects a second bare token), takes `-o`/`-cp`/`-A`, and calls `buildFile(in, out, deps.load_paths)`. The serializer frames `serializeEnvelope(chunks)` — no manifest/header field for entry ns exists today. `tryRunEmbedded` just `runEnvelope`s the chunks with no post-run hook.
+
+## Alternatives considered
+
+I verified against `src/app/builder.zig` (`buildEnvelope`/`buildFile`/`tryRunEmbedded`), `src/app/deps/run_mode.zig` (`synthMainNs`/`writeClArgsSetter`), and `src/app/cli.zig` (build branch lines 133-198 + `dispatchArgsRest`). Confirmed: the payload is a flat `serializeEnvelope(chunks)` framing with **no header/manifest field**; `tryRunEmbedded` runs the chunks and has **no post-run resolve-and-call hook**; `synthMainNs` already emits the `*command-line-args*` setter + `requiring-resolve` guarded `-main` call; `op_require` idempotency + D-356 closure embedding are in place. The draft is mechanically buildable on what exists.
+
+### Leading finding: no alternative requires violating an F-NNN
+
+All three shapes below live inside the F-NNN envelope. The axis where they genuinely diverge is **where the "call -main at run, not at build" decision is encoded** — in a Clojure source chunk (Layer 2 surface, compiled like any form), in a bytecode opcode (Layer 1), or in payload metadata read by the Layer-3 driver. F-009/F-011 push hard toward the first; F-013 is the constraint that kills any "build-mode flag that suppresses -main" convenience.
+
+### Alt 1 — Smallest-diff: synthMainNs as a compile-only entry chunk (the draft)
+
+**(a) Concrete shape.** `cljw build -m <ns> [args…] -o out`. In `cli.zig`'s build branch, parse `-m <ns>` + trailing main-args (mirror the `-A`/`-cp` parsing already there; `-m` consumes the rest as args, like the run path). `buildFile`/`buildEnvelope` gain an optional `entry: ?struct{ ns, args }`. When set: after the entry-file forms (or instead of an entry file — see the script-vs-main axis), eval `(require '[<ns>])` to trigger D-356 closure capture + register the defns, then **compile but do NOT eval** one extra chunk = `run_mode.synthMainNs(<ns>, args)`. Append that chunk last. At run, `runEnvelope` runs it like any other chunk → idempotent require resolves to already-loaded → `(-main args)`. `synthMainNs` is promoted from `fn` to `pub fn` in `run_mode.zig` (same Layer 3, same-layer reuse per F-009). Zero serializer change, zero `tryRunEmbedded` change.
+
+**(b) Better than the others.** Maximal reuse: the built binary's `-m` behaviour is **byte-identical** to `cljw -M -m` because it is literally the same synthesized source compiled through the same pipeline (F-011 behavioural equivalence is free, not engineered). No new opcode, no new payload field, no new run-path branch — the smallest possible new surface. The "don't call -main at build" property is expressed as *"this one chunk is compiled but not eval'd"*, which is a local, legible exception to `buildEnvelope`'s compile-then-eval loop.
+
+**(c) Risks / what it breaks.** The compile-then-eval loop in `buildEnvelope` (lines 89-95) is currently **uniform** — every form compiles then evals. Adding a single chunk that is compiled-but-not-eval'd introduces a special case into that loop's invariant. If done carelessly (an `if (is_entry_chunk) skip_eval`), it reads like the F-013 anti-pattern's cousin (a flag that changes per-form behaviour). The clean framing is to keep the entry-chunk synthesis *outside* the form loop entirely (synthesize + compile it after the loop, never feed it to `evalForm`), so the loop stays uniform and the entry chunk is just "an extra chunk we append, never evaluated at build by construction." Second risk: main-args are **build-baked** into the chunk's string literals (`synthMainNs(ns, args)` embeds them). That means `out 8080` bakes `8080`; the binary's own runtime argv is ignored. For an AOT artifact whose entry args come from deps.edn `:main-opts` this is arguably correct, but it diverges from `cljw -M -m my.app 8080` where args are runtime — see the args axis in the recommendation.
+
+### Alt 2 — Finished-form-clean: payload entry-manifest, driver resolves+calls at run
+
+**(a) Concrete shape.** Extend the payload framing so `serializeEnvelope` can carry an optional **entry manifest** in the trailer: `{ entry_ns: ?[]const u8, entry_args: []const []const u8 }` (a small typed header section ahead of the chunk stream, versioned). `buildEnvelope` at build does the `(require '[<ns>])` (closure capture + defn registration, no `-main` call) and records the manifest — it does **not** synthesize any entry chunk. `tryRunEmbedded` → `runEnvelope` runs all chunks, then, if the manifest names an entry ns, **calls `synthMainNs`-equivalent at run** (or directly `requiring-resolve` + invoke via the runtime's callFn vtable) using the manifest's ns + (manifest args ∪ the binary's own argv). Script mode = manifest with `entry_ns = null` (run chunks, stop). One payload schema covers both modes.
+
+**(b) Better than the others.** This is the **finished-form** answer to "how does main mode relate to script mode": they are one payload schema differing by one optional field, not two code paths. The entry intent is *data in the artifact* (inspectable: a future `cljw inspect out` can print "entry: my.app/-main"), not buried in a compiled string-literal chunk. Crucially it cleanly solves the **args axis**: the run-side resolve can splice the binary's *actual* argv into `*command-line-args*` and `-main`, so `./out 8080` works like a real program (Alt 1 can only bake build-time args). It keeps `buildEnvelope`'s compile-then-eval loop perfectly uniform (no special compiled-not-eval'd chunk). The manifest is also the natural home for future artifact metadata (build timestamp, cljw version, AOT cache id) — a forward-clean extension point.
+
+**(c) Risks / what it breaks.** Touches the serializer format (`serializeEnvelope`/`extractPayload`/`frameArtifact` + a version bump) and adds a run-path branch in `tryRunEmbedded` — the largest diff of the three. The behavioural-equivalence-to-`cljw -M -m` property (F-011) is no longer *free*: the run-side resolve+call is a **second implementation** of what `synthMainNs` does for the `-M` path, so the two can drift unless the manifest path *also* routes through `synthMainNs` (i.e. at run, build the synthMainNs source from the manifest and eval it — which recovers F-011 but means the manifest is just a deferred way of producing the same chunk Alt 1 produces at build). If you route through synthMainNs at run, ask what the manifest bought over Alt 1: the answer is *runtime args* + *uniform build loop* + *inspectability*, which are real, but the F-011 sharing must be deliberate, not assumed.
+
+### Alt 3 — Wildcard: unify script and main mode — every build is "main mode", script = synthetic -main
+
+**(a) Concrete shape.** Collapse the script/main distinction at the *model* level: `cljw build` always produces an artifact with one entry point. `-m <ns>` sets entry = `<ns>/-main`. A bare `cljw build app.clj` (no `-m`) is sugar for "wrap the file's top-level forms as the body of a synthetic `(defn -main [& args] …)` in an anonymous ns, entry = that". Convention auto-detection: if `app.clj` itself defines `-main` and has no other top-level side-effecting forms, build treats it as main mode automatically (Clojure-CLI-ish convention). One mechanism: entry-invocation always goes through synthMainNs (or the manifest of Alt 2); script mode is the degenerate case where the synthetic -main *is* the top-level forms.
+
+**(b) Better than the others.** Conceptual unification — there is exactly one notion ("an artifact has an entry") and script mode stops being a separate thing. This is the most F-011-shaped *idea* (one mechanism, F-011 commonization outranks effort). Auto-detection gives the nicest UX (`cljw build app.clj` "just works" whether app.clj is a script or has a -main).
+
+**(c) Risks / what it breaks — and an F-013 hazard.** **Auto-detection is the F-013 trap in disguise.** "If the file defines -main and has no side-effecting top-levels, call it; otherwise run top-levels" is exactly the kind of *implicit, definition-derived-but-heuristic* behaviour switch that F-013 warns against — it is one short step from the rejected `build_mode=true` server-suppression: the build silently decides whether your `(start-server)` at top level runs or not based on a heuristic. It also breaks Clojure-AOT semantics (ADR-0034): top-level forms in a script *must* run at build (that is how form N+1 sees form N's macros/defs); you cannot retroactively decide they were "a -main body" that shouldn't have run at build. Wrapping top-levels in a synthetic `-main` would mean they DON'T run at build, defeating the compile-then-eval contract. So the unification is clean only if it is **explicit** (`-m` required to defer; bare build keeps today's run-at-build script semantics) — at which point the "unification" is just Alt 1 or Alt 2 with the script case relabelled, and the auto-detection (the only thing that made it a distinct wildcard) is dropped as an F-013 violation. Recorded here so the loop sees the auto-detect temptation and rejects it.
+
+### Non-binding recommendation
+
+**Alt 2 (entry-manifest), with the run-side resolve routed through `synthMainNs` to keep F-011 sharing explicit.** Citing F-002: it is the largest diff of the three, and that is not a reason to downgrade. The finished-form question the ADR is really answering is *"is the entry point an inspectable property of the artifact, or an opaque compiled chunk?"* — and the artifact owner (Phase 15-20 edge-native, where a deployed binary's metadata matters) wants it as data. Alt 2 also cleanly resolves the **args axis** in favour of runtime argv (`./out 8080` behaving like a real program), which Alt 1 structurally cannot, and keeps `buildEnvelope`'s compile-then-eval loop uniform (no compiled-not-eval'd special case).
+
+The one discipline Alt 2 must hold: the run-side entry invocation **must** build its source via the shared `synthMainNs` (not a parallel hand-rolled resolve+call), so the built binary's `-m` and `cljw -M -m` cannot drift (F-011). If the loop instead picks Alt 1 on the grounds that it is smaller and "F-011 is free," note that this is the **Cycle-budget defer smell**: Alt 1's smaller diff comes at the cost of build-baked-only args and a special-cased build loop, both of which the artifact owner would unwind later. The smell-free reasons to prefer Alt 1 would be (i) if runtime-argv entry is judged a non-goal for AOT artifacts, and (ii) if payload-format versioning is deemed premature before other trailer metadata is needed — both legitimate finished-form positions, but they are *design* arguments, not budget arguments, and should be stated as such in the ADR if Alt 1 is chosen.
+
+On the **script-vs-main-mode-share axis**: recommend they share one payload schema (Alt 2's optional-entry-field), explicitly **not** auto-detection (Alt 3's F-013 hazard) — `-m` is required to get deferred `-main`; bare `cljw build` keeps today's run-at-build script semantics per ADR-0034.
+
+### Amendment-4 decision
+
+**Alt 2 selected** (matches the DA recommendation), with the run-side routed
+through the shared `run_mode.synthMainNs` (F-011 — the built `-m` binary and
+`cljw -M -m` cannot drift; the DA's mandatory discipline). Rationale beyond the
+DA: the runtime-argv property is achievable in Alt 2 *with* F-011 fidelity (run
+reads the binary's argv and calls the SAME `synthMainNs(ns, argv)` the run path
+calls), whereas Alt 1 can only get runtime argv via a divergent
+`apply *command-line-args*` synthesis — so Alt 2 wins on the args axis without an
+F-011 cost. The entry-as-artifact-metadata shape (manifest) mirrors every real
+executable format (ELF/Mach-O/jar) and is the forward home for the deferred D4
+metadata (D-131). The startup parse of the one-line synth source is ~1-2% of
+cold start (negligible for a long-running `-m` server). Alt 3's auto-detection is
+rejected (F-013). The choice is on design grounds (finished-form entry encoding +
+F-011-clean runtime args), NOT diff size.
+
 ## Selection rationale
 
 Alt 2 (本提案) を選択。 F-002 (finished-form wins) + cljw メインターゲット
@@ -762,3 +888,22 @@ Phase 12 entry 以降の Affected files (本 cycle 時点では未着地):
   (chunk-capture during load, finished-form-clean) selected — Alt-1/Alt-3
   double-eval, an F-002 disqualifier. The build-time `(-main)` server-start
   hazard is scoped to the serverless-v2 demo (D-362), not this amendment.
+- 2026-06-09 (amendment 4): `-m` main-entry mode (D-363) — resolves the am3
+  build-time `(-main)` server-start hazard as a real cljw feature. Added the
+  "`-m` main-entry mode" section (A4-D1..A4-D4): two build modes (script =
+  unchanged top-level-as-program; main = `cljw build -m <ns>` requires the
+  closure, embeds NO `-main` call, invokes `(<ns>/-main args)` at RUN only);
+  the entry point is artifact metadata (an optional entry manifest
+  `{entry_ns, entry_args}` at the front of the payload envelope), mirroring
+  ELF/Mach-O/jar — script mode = `entry_ns null`; run-side dispatch routes
+  through the shared `run_mode.synthMainNs` (promoted `pub`) so the built `-m`
+  binary is byte-identical to `cljw -M -m` (F-011), with runtime argv
+  (`./out 8080` → `-main`); deps.edn `:main-opts` drives the entry. The
+  undecidable env-vs-side-effect classifier stays rejected (Clojure-AOT-faithful
+  build=load; "-main is the escape hatch"); the cw v0 `build_mode` per-primitive
+  suppression stays rejected (F-013). Devil's-advocate fork (general-purpose,
+  fresh context, F-002/F-009/F-011/F-013 envelope, 3 alternatives) embedded
+  verbatim; Alt-2 (entry-manifest, finished-form) selected — entry-as-metadata
+  mirrors real executable formats + F-011-clean runtime argv; Alt-3
+  auto-detection rejected (F-013 hazard). Choice on design grounds, not diff
+  size.
