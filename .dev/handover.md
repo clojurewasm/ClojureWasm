@@ -5,21 +5,21 @@
 
 ## Resume contract
 
-- **HEAD**: ≈ `ffd7ecd2` (see `git log` for current). Mac gate baseline
-  **303/0** `--serial-e2e`. Tree clean. The user's 3 CFP-demo goals are all
-  delivered (io subsystem + babashka-free playground D-355 + fly.io configs for
-  both demos — the latter two in the `$MY/playground-v2` + `$MY/serverless-v2`
-  repos, not this one).
-- **First commit on resume MUST be**: **D-361** — make the Linux-only
-  `e2e_phase16_eval_budget` heap case diagnosable, then fix. The runner cap-lift
-  did NOT resolve it (Linux `$out` is empty + non-zero → process killed without
-  rendering). Concrete step: add an exit-code echo to the heap case in
-  `test/e2e/phase16_eval_budget.sh` (124=timeout vs 137=OOM disambiguates
-  cause), `bash scripts/run_remote_ubuntu.sh`, then fix (loosen the timeout, or
-  make `heap_ceiling` cover the bulk-alloc path it currently misses). Mac cannot
-  reproduce. If you'd rather defer D-361 (Linux-env-bound), self-select per
-  CLAUDE.md § The only stop — D-356 (bookshelf single-binary via `cljw build`)
-  or a quality-loop floor.
+- **HEAD**: ≈ `1764f6fa` (see `git log` for current). Mac **303/0** + ubuntunote
+  **302/0** (1-step delta = Mac-only zlinter gate, ADR-0003) both green. Tree
+  clean. The user's 3 CFP-demo goals are all delivered (clojure.java.io
+  subsystem ADR-0126 + babashka-free playground D-355 + fly.io configs for both
+  demos, the latter two in `$MY/playground-v2` + `$MY/serverless-v2`), and the
+  D-361 cross-platform heap-cap bug is root-fixed + Linux-verified.
+- **First commit on resume MUST be**: self-select a quality-loop unit — the
+  demo arc + D-361 are closed. Candidates, highest-value first: (1) implement the
+  now-UNBLOCKED **D-357** (getAbsolutePath/getCanonicalPath via
+  `std.process.currentPathAlloc(rt.io, a)` + resolvePosix — research corrected
+  the "no cwd path" premise) to finish the `java.io.File` surface; (2) **D-358**
+  (stream leaf-name `instance?` closed-set in class_name.isKnown); (3) a
+  simplify/audit pass on the large ADR-0126 io diff. (User greenlit completing
+  the io/url half-done items — D-357 + D-359 as-url/URL — this session.)
+  **D-356** (bookshelf single-binary via `cljw build`) stays user-deferred.
 - **Forbidden**: pushing to `main`; pinning a zwasm tag (F-001 relative-path
   co-dev). Two gates at once (share `/tmp/codev_gate.lock` — `mkdir` acquire,
   `rmdir` release).
