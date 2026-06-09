@@ -405,3 +405,24 @@ accepted:
       "fix" back into an eval-on-read RCE.
     derives_from: "ADR-0122 (read-string eval-free by design) + SE-8 (security audit secure-by-default property)"
     pin: "test/e2e/phase14_read_string.sh — rs_no_read_eval (#=(+ 1 2) must not yield 3)"
+  - id: "AD-027"
+    summary: "java.util.Map/Collection/Iterable methods (iterator/entrySet/keySet/values/size/…) declared UNDER a clojure.lang.* deftype-supertype section are ACCEPTED-AND-DROPPED (load-level, no dispatch), not raised. clj's IPersistentMap/Set/Vector extend Iterable/Map/Collection, so a lib may group these java methods there (flatland.ordered.map); cljw has no java dispatch (ADR-0059), so a later `(.iterator x)` is DECLINED (method-not-found), exactly as a whole host_inert java section is dropped (ADR-0103) — at method granularity (D-372, ADR-0102 am2)."
+    example: '(deftype OM [m] clojure.lang.IPersistentMap (valAt [this k] (get m k)) (iterator [this] (clojure.lang.SeqIterator. (.seq this)))) => loads; (.valAt x k) dispatches; (.iterator x) => method-not-found (NOT the JVM-only body, NOT a silent value)'
+    why: |-
+      cljw has no java-interop dispatch (ADR-0059), so a java.util/lang method has no
+      callable target whether it sits in a java.util section (host_inert, dropped
+      wholesale per ADR-0103) or — because clj's clojure.lang collection interfaces
+      EXTEND the java ones — grouped under a clojure.lang.* section. The disposition
+      MUST be identical regardless of the cosmetic placement, so the grouped form is
+      dropped the same way. This is NOT a permanent-no-op: the drop removes the method
+      REGISTRATION (a `(.iterator x)` call is declined with method-not-found), it does
+      not install a success-masking body that answers the call — and the dropped body
+      is JVM-only by construction (constructs clojure.lang.SeqIterator etc.). Scope is
+      read/iteration-only: a persistent type's java MUTATORS (put/add/clear) throw on
+      the JVM too, so an unmapped mutator correctly still raises (closer parity than a
+      drop). The closed set lives in host_interface.isJavaUtilMethod, derived from the
+      java.lang.Iterable + java.util.{Collection,Map,List} definitions (F-013), NOT from
+      any one library — a genuinely-unwired clojure.lang method still raises so
+      library-driven discovery survives.
+    derives_from: "ADR-0059/AD-003 (no-JVM: java methods have no cljw dispatch) + ADR-0103 (host_inert accept-don't-dispatch) + ADR-0102 am2 (method-granularity application) + F-013 (definition-derived closed set)"
+    pin: "test/e2e/phase14_java_method_grouping.sh — case 2 (a dropped .iterator is DECLINED, never silently run)"

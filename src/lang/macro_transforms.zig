@@ -2290,8 +2290,15 @@ fn rewriteProtocolRemap(
             return error_catalog.raise(.extend_type_method_invalid, impl.location, .{});
         }
         const clj_m = impl.data.list[0].data.symbol.name;
-        const r = hi.remapMethod(clj_m) orelse
+        const r = hi.remapMethod(clj_m) orelse {
+            // A java.util.Map/Iterable method grouped under this clojure.lang section
+            // (D-372): cljw has no java dispatch, so accept-and-DROP it (load-level,
+            // the ADR-0103 host_inert principle applied to the grouped-method case)
+            // instead of feature_not_supported. ordered.map groups iterator/entrySet
+            // under IPersistentMap. A genuinely-unwired clojure.lang method still raises.
+            if (host_interface.isJavaUtilMethod(clj_m)) continue;
             return error_catalog.raise(.feature_not_supported, impl.location, .{ .name = "deftype/reify clojure.lang.* method not yet wired" });
+        };
         var seen = false;
         for (protos.items) |p| {
             if (std.mem.eql(u8, p, r.protocol)) {
@@ -2311,7 +2318,8 @@ fn rewriteProtocolRemap(
         try sec.append(arena, target_form);
         try sec.append(arena, sym(proto, loc));
         for (impls) |impl| {
-            const r = hi.remapMethod(impl.data.list[0].data.symbol.name).?;
+            // A dropped java.util method (loop above) has no remap → skip it here too.
+            const r = hi.remapMethod(impl.data.list[0].data.symbol.name) orelse continue;
             if (!std.mem.eql(u8, r.protocol, proto)) continue;
             // Translate the method head (clj → cljw); keep params + body verbatim.
             var timpl_items = try arena.alloc(Form, impl.data.list.len);

@@ -267,3 +267,84 @@ decision. Recorded faithfully:
   cycle. Recorded as the D-369 follow-up (transient consult + `-editable?`
   typed_instance detection, OFF the ordered critical path).
 - **No F-NNN-violating option** was required; all three sit in the envelope.
+
+### Amendment 2 (2026-06-10) — java.util methods grouped under a clojure.lang section (D-372)
+
+clj's `IPersistentMap`/`IPersistentSet`/`IPersistentVector` **extend**
+`java.util.Map`/`Collection`/`java.lang.Iterable`, so a library may place java
+methods (`iterator`/`entrySet`/`keySet`/`values`/`size`/…) UNDER its
+`clojure.lang.*` deftype-supertype section instead of a separate `java.util.*`
+section (flatland.ordered.map's OrderedMap declares `iterator`/`entrySet` under
+its IPersistentMap section). `rewriteProtocolRemap` raised `feature_not_supported`
+for any method with no remap target.
+
+**Decision (DA Alt A): ACCEPT-AND-DROP the java method, load-level.** A new closed
+set `host_interface.isJavaUtilMethod(name)` (derived from java.lang.Iterable +
+java.util.{Collection,Map,List} read/iteration definitions — F-013); when an
+unmapped `protocol_remap`-section method is in it, `rewriteProtocolRemap` drops it
+(no registration, no emitted section) instead of raising. This is the **ADR-0103
+`host_inert` accept-don't-dispatch rule at METHOD granularity**: a whole
+`java.util.Map` section is already dropped wholesale, and the disposition must be
+identical whether the author groups the same methods under a java section or a
+clojure.lang section (a cosmetic placement choice must not change cljw behaviour).
+A genuinely-unwired *clojure.lang* method (not in the java set) still raises — the
+F-013 discovery mechanism survives. **Scope: read/iteration only**; a persistent
+type's java mutators (`put`/`add`/`clear`/`remove`) throw on the JVM too, so an
+unmapped mutator correctly still raises (closer parity than dropping).
+
+**Not a `permanent_noop_forbidden` violation**: the drop removes a *registration*
+(a later `(.iterator x)` is DECLINED with method-not-found), it does NOT install a
+success-masking no-op that *answers* the call. The dropped body
+(`(SeqIterator. …)`) is JVM-only/unrunnable in cljw (ADR-0059) and no cljw caller
+reaches it. Recorded as **AD-027** (accepted_divergences.yaml) with a pin
+(`test/e2e/phase14_java_method_grouping.sh` case 2: a dropped method is declined,
+never silently run). `isJavaUtilMethod` carries a `derives_from`-style doc block
+citing the java interface definitions (the Alt-A "set lives in code" seam the DA
+flagged — closed by the comment; a future gate clause may bound it like gate (i)).
+
+#### Alternatives considered (Devil's-advocate fork, verbatim-reflected)
+
+> Fresh-context DA-fork (agent a7ac0278570032884), F-NNN envelope. The spike
+> (Opt B implemented + validated: ordered.map parses past the iterator/entrySet
+> grouping, next blocker unrelated `Map$Entry`) preceded the fork per ADR-0089.
+
+**Leading F-NNN entry:** no option requires violating an F-NNN. The real tension
+is whether ACCEPT-AND-DROP is sound parity with ADR-0103 or a silent semantic drop
+`permanent_noop_forbidden` forbids — assessed head-on: the NG criterion is "user
+sees success while semantics are silently dropped." ACCEPT-AND-DROP passes because
+(1) the dropped body is JVM-only by construction (constructs `clojure.lang.SeqIterator`,
+unrunnable in cljw, no cljw caller reaches it); (2) it is the ADR-0103 rule at finer
+granularity, making section-placement irrelevant (a consistency fix, not a
+loosening); (3) it is observably honest — a `(.iterator m)` call gets method-not-found,
+NOT a plausible wrong value (it DECLINES, it does not no-op-answer). The one guardrail
+to keep: the drop stays bounded to the java.util/lang closed set.
+
+- **Alt A — closed-set drop (implemented):** the minimal *coherent* fix (placement
+  irrelevant); definition-derived (F-013 — unlocks the 15+ data-structure libs that
+  group java methods under clojure.lang sections: finger-tree/core.cache/rrb-vector/
+  avl/priority-map/int-map/gvec, not just ordered.map); reuses ADR-0103 semantics at
+  a finer node; unmapped-clojure.lang still raises (discovery survives). Risk: the set
+  is a code `StaticStringMap`, not gated YAML rows — mild ADR-0102-discipline seam;
+  bounded because small + definition-derived. **DA recommendation.**
+- **Alt B — map java read methods semantically** (entrySet→seq, keySet→keys,
+  size→count…) so `.size`/`.keySet` dot-calls dispatch. Better: deepest F-011 for the
+  analogue-having subset. Loses decisively: (1) **re-introduces the `size`/`count`
+  collision ADR-0103 made impossible by construction** (ordered.map declares `count`
+  under IPersistentMap; mapping its `size`→`-count` = duplicate `(IPersistentCollection,
+  -count)` last-wins hazard); (2) `iterator`/`entrySet` have NO sound cljw target
+  (no Iterable protocol; entrySet returns JVM `Map$Entry` — the very next blocker), so
+  B cannot even replace A, only add surface on top; (3) "should a no-JVM runtime expose
+  `.size`/`.keySet`" is its own AD/ADR (AD-003), over-scoping this cycle. Diff size is
+  NOT why B loses (F-002) — the collision re-introduction + no-sound-target are. B's
+  insight is a separate follow-up D-NNN.
+- **Alt C — wildcard: drop ANY unmapped method (no closed set).** Better: zero
+  maintenance. **The F-013-clause-3 forbidden open-set posture**: a genuinely-unwired
+  *cljw* protocol method (a real gap cljw should model) would be silently dropped instead
+  of surfacing — destroys library-driven discovery (the next lib re-buries it); also masks
+  clj-rejected typos (F-011 divergence that HIDES errors). The symmetric finding to
+  ADR-0103's own DA. **Reject.**
+
+**Recommendation: Alt A as implemented**, scoped read/iteration-only. Fold in: (1)
+an AD-NNN with a pin (done — AD-027); (2) a `derives_from` comment on the closed set
+(done) [+ a future gate clause is optional]. Reject B (ADR-0103 collision + no sound
+target + over-scope) and C (open-set inverts F-013 clause 3).

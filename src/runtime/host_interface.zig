@@ -429,6 +429,31 @@ pub fn isHostInert(name: []const u8) bool {
     return hi.kind == .host_inert;
 }
 
+/// java.util.Map / java.util.Collection / java.util.List / java.lang.Iterable
+/// instance methods a deftype may declare UNDER a clojure.lang.* `protocol_remap`
+/// section (clj's IPersistentMap/Vector/Set EXTEND Iterable/Map/Collection, so a
+/// lib can group these methods there — flatland.ordered's OrderedMap declares
+/// `iterator`/`entrySet` under its IPersistentMap section). cljw has NO java
+/// dispatch (ADR-0103 / ADR-0059), so — exactly like a whole `host_inert` java
+/// section — these are ACCEPTED-AND-DROPPED (load-level, no dispatch) rather than
+/// raising `feature_not_supported`. Closed set derived from the java.util/lang
+/// interface definitions (D-372, F-013), NOT from any one library's usage. The
+/// READ/iteration surface only — a persistent type never implements the mutators
+/// (put/add/clear) so they are omitted; if one appears it correctly still raises.
+pub fn isJavaUtilMethod(name: []const u8) bool {
+    const SET = std.StaticStringMap(void).initComptime(.{
+        // java.lang.Iterable
+        .{"iterator"}, .{"forEach"}, .{"spliterator"},
+        // java.util.Collection
+        .{"size"}, .{"isEmpty"}, .{"contains"}, .{"containsAll"}, .{"toArray"}, .{"stream"}, .{"parallelStream"},
+        // java.util.Map
+        .{"containsKey"}, .{"containsValue"}, .{"keySet"}, .{"values"}, .{"entrySet"}, .{"getOrDefault"},
+        // java.util.List
+        .{"listIterator"}, .{"indexOf"}, .{"lastIndexOf"}, .{"subList"},
+    });
+    return SET.has(name);
+}
+
 /// The full entry for a recognised name, or null.
 pub fn lookup(name: []const u8) ?HostInterface {
     return MARKERS.get(name);
