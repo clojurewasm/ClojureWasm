@@ -15,6 +15,13 @@
   detection layers (check_test_reach / lazy decl ride-along /
   debt review); the aspirational-rule sibling (cross-cluster, see
   also Cluster E).
+- [`io_isolation_findings.md`](io_isolation_findings.md) — ADR-0126/
+  D-355/D-361: per-eval `with-budget` vs the process-wide `CLJW_EVAL_*`
+  budget (the long-running-server footgun); the heap ceiling is
+  gc.alloc-only so infra bulk allocs need `checkInfraCap` (D-361);
+  Zig 0.16 cwd path = `std.process.currentPathAlloc` (not getCwd);
+  a background, independent Linux gate as look-ahead surfaces
+  cross-platform bugs cheaply (cross-ref Cluster E).
 
 ### Cluster B: Clojure semantics
 

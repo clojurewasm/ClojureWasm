@@ -18,6 +18,16 @@ active:
       cljw-as-wasm. This is a $MY/playground-v2 task gated on the cljw isolation
       features; recorded here for discoverability next to D-351..354.
     last_reviewed: "2026-06-09"
+  - id: "D-362"
+    status: "recall trigger (user-declared 2026-06-09) — Clojure Conj 2026 CFP submission runway. AFTER D-358 + D-356 are resolved, run this ORDERED sequence (collaborative with the user where noted): (1) register $MY/playground-v2 as the `cw-playground` repo under the clojurewasm org; (2) register $MY/serverless-v2 (bookshelf) as `cw-serverless-demo` under clojurewasm; (3) DELETE the existing `playground` + `edge-demo` repos in the org; (4) deploy both to fly.io COLLABORATIVELY — the user drives the fly dashboard / settings, the AI assists with the fly CLI + DEPLOY.md steps, verify live, micro-fix what surfaces; (5) cut a zwasm_from_scratch tag `v2.0.0-alpha.2`; (6) switch ClojureWasmFromScratch's build.zig.zon zwasm dep from the F-001 relative path to that tag (url+hash); (7) polish README.md (+ the rest) for the CFP submission. NOTE: step 6 is an F-001-adjacent change (relative-path co-dev → tag pin) — re-read F-001's amendment note before doing it; the user has signalled this is the intended end-state, so it is a planned F-001 transition, not a violation."
+    category: "project-flow"
+    barrier: |-
+      blocked-by: D-358 + D-356 resolution first (this is the post-debt runway).
+      Steps 1-4 + 7 are user-collaborative (org repo admin, fly account, CFP text);
+      the AI assists. Step 5 (zwasm tag) + step 6 (build.zig.zon pin) are the
+      F-001 relative-path → tag transition — confirm with the user + log an F-001
+      Revision-history entry when taken. Surfaced by the user's CFP plan.
+    last_reviewed: "2026-06-09"
   - id: "D-356"
     status: "open — bookshelf single-binary via `cljw build`. The $MY/serverless-v2 bookshelf runs on `cljw.http.server`; `cljw build` can fold it into one self-contained binary (no cljw command needed) — the compelling 'small edge app as a single file' story. Needs: a build-entry .clj that requires bookshelf.server + calls -main (top-level call so the embedded run starts the server), `cljw build` resolving the multi-file requires (classpath), and the binary finding its runtime assets (wasm/, resources/public/, data/) relative to cwd. The cljw build path is verified working (incl. wasm FFI single binaries, stdout fix 802dca55). Surfaced 2026-06-09 (user-directed; deferred per user — feature work first)."
     category: "demo"

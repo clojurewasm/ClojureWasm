@@ -15,12 +15,18 @@
   fly-ready, and verified end-to-end (playground via curl + my-playwright:
   eval/runaway/static/wasm-FFI nth_prime=541; bookshelf via curl:
   static/config/books-from-SQLite-wasm).
-- **First commit on resume MUST be**: self-select a quality-loop unit — the demo
-  arc, D-361, and the io/url items are closed. Candidates: (1) **D-358** stream
-  leaf-name `instance?` (BufferedReader etc.) closed-set in class_name.isKnown;
-  (2) **D-360** clojure.data.json/read-str `:key-fn`; (3) a simplify/audit pass
-  on the ADR-0126 io diff. **D-356** (bookshelf single-binary via `cljw build`)
-  + actual fly deploys stay user-owned.
+- **First commit on resume MUST be**: **D-358** (stream leaf-name `instance?` —
+  add a closed-set of host_stream's READER/WRITER/INPUT/OUTPUT_NAMES to
+  `class_name.isKnown`, mirroring the host_interfaces.yaml pattern; the leaf
+  names are already in each family descriptor's `protocol_impls`, so
+  matchUserType will match once isKnown recognises them — avoid a
+  class_name↔host_stream import cycle, define the name list in a leaf module or
+  inline). **Then D-356** (bookshelf single-binary via `cljw build`: a
+  build-entry .clj requiring bookshelf.server + `(-main 8080)`, classpath for the
+  multi-file requires, runtime assets relative to cwd). After BOTH: see **D-362**
+  — the Clojure Conj 2026 CFP runway (repo migration to clojurewasm org → fly
+  deploy → zwasm v2.0.0-alpha.2 tag → build.zig.zon pin → README/CFP), which is
+  user-collaborative.
 - **Forbidden**: pushing to `main`; pinning a zwasm tag (F-001 relative-path
   co-dev). Two gates at once (share `/tmp/codev_gate.lock` — `mkdir` acquire,
   `rmdir` release).
@@ -33,9 +39,10 @@ Full cljw-native io, `bca4eb9d..8a9460fd`: `java.io.File` host type (Cycle 1) ·
 buffer-backed `host_stream` (Cycle 3, `runtime/io/host_stream.zig`) ·
 `cljw.json` (encode/decode-keywordized) + `cljw.fs` (babashka.fs-style) (Cycle
 7) · D-361 Linux heap-render fix. cljw-style (no-JVM, F-009 neutral impl, FS-jail
-reused, cond dispatch). Deferrals tracked: D-357 (getAbsolutePath, no cwd path),
-D-358 (stream leaf-name instance?), D-359 (URL/resource), D-360 (read-str
-:key-fn), D-051 (byte-array Value, Phase 16).
+reused, cond dispatch). DONE since: D-357 (getAbsolutePath via
+currentPathAlloc), D-359 (as-url→URI + URI reader/writer arms), D-361 (heap-cap
+infra-buffer fix). Still deferred: D-358 (stream leaf-name instance?), D-360
+(read-str :key-fn), resource (no classpath), D-051 (byte-array Value, Phase 16).
 
 ## Process discipline (SSOT)
 
@@ -53,5 +60,20 @@ D-358 (stream leaf-name instance?), D-359 (URL/resource), D-360 (read-str
 ## Cold-start reading order
 
 handover → `.dev/decisions/0126_clojure_java_io.md` (the io subsystem ADR +
-DA Alt 2) → `.dev/debt.yaml` (D-355 playground, D-357..361 io deferrals) →
-`~/Documents/MyProducts/RESUME_cfp_demos.md` (demo background) → CLAUDE.md.
+DA Alt 2) → `.dev/debt.yaml` (D-358 + D-356 = next; D-362 = CFP runway) →
+`.dev/lessons/io_isolation_findings.md` (budget-scope / heap-cap / cwd /
+look-ahead-gate know-how) → `~/Documents/MyProducts/RESUME_cfp_demos.md` (demo
+background) → CLAUDE.md.
+
+## Stopped — user requested
+
+User instruction (2026-06-09): "ここまでのノウハウや経緯を永続化しつつ、次の
+クリアセッションから continue で D-358, D-356 に取り組めるよう配線、参照
+チェーンを監査して止まって". Then (post-debt) the D-362 CFP runway: register
+playground-v2 → `cw-playground` + serverless-v2 → `cw-serverless-demo` under the
+clojurewasm org, delete the old `playground`/`edge-demo` repos, deploy to fly.io
+collaboratively (fly CLI + dashboard, verify, micro-fix), tag zwasm
+`v2.0.0-alpha.2`, repoint ClojureWasmFromScratch build.zig.zon to that tag, then
+README/CFP polish for Clojure Conj 2026. Resume at **D-358** (then D-356, then
+D-362). Know-how persisted in `.dev/lessons/io_isolation_findings.md` + the
+per-task notes in `private/notes/`.
