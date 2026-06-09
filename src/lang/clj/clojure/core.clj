@@ -787,6 +787,16 @@
         (when (branch? root)
           (mapcat (fn* [c] (tree-seq branch? children c)) (children root)))))))
 
+;; `(line-seq rdr)` — lazy seq of the lines of `rdr` (a host reader exposing
+;; `.readLine`, e.g. from `clojure.java.io/reader`). The head line is read
+;; eagerly (matching JVM `line-seq`'s when-let); the tail is lazy. nil at EOF.
+(def line-seq
+  (fn* [rdr]
+    (let* [line (.readLine rdr)]
+      (if (nil? line)
+        nil
+        (cons line (lazy-seq (line-seq rdr)))))))
+
 ;; ----------------------------------------------------------------
 ;; Phase 14 §9.16 row 14.13 — D-134 cluster 1. High-frequency eager
 ;; collection helpers (Pattern A over reduce/conj/assoc/get/into/apply).

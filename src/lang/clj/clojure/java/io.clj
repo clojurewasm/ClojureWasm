@@ -57,3 +57,53 @@
   [f & more]
   (when-let [parent (.getParentFile (apply file f more))]
     (.mkdirs parent)))
+
+;; --- IOFactory coercions (ADR-0126 Cycle 4) ---------------------------------
+;; reader/writer/input-stream/output-stream coerce a String path / File / an
+;; already-open stream into a buffer-backed host_stream (host_stream.zig). The
+;; JVM IOFactory protocol over String/File/URL/Socket/byte[] is replaced by cond
+;; dispatch (cljw cannot extend a protocol to String, ADR-0059). The String arm
+;; opens a FILE at that path (URI resolution + as-url are deferred — no URL type);
+;; encoding/append/buffer-size opts are accepted-and-ignored (the model is
+;; buffer-backed UTF-8). Use (java.io.StringReader-style) rt/__string-reader for
+;; a reader over string CONTENT.
+
+(defn reader
+  "Coerce x into an open java.io.Reader. A String/File names a file to open; an
+   existing Reader is returned as-is. Use inside with-open."
+  [x & opts]
+  (cond
+    (instance? java.io.Reader x) x
+    (instance? java.io.File x)   (rt/__open-reader (.getPath x))
+    (string? x)                  (rt/__open-reader x)
+    :else (throw (ex-info (str "Cannot open as a java.io.Reader: " (pr-str x)) {:value x}))))
+
+(defn writer
+  "Coerce x into an open java.io.Writer (truncating). A String/File names the
+   target file; an existing Writer is returned as-is. Use inside with-open."
+  [x & opts]
+  (cond
+    (instance? java.io.Writer x) x
+    (instance? java.io.File x)   (rt/__open-writer (.getPath x))
+    (string? x)                  (rt/__open-writer x)
+    :else (throw (ex-info (str "Cannot open as a java.io.Writer: " (pr-str x)) {:value x}))))
+
+(defn input-stream
+  "Coerce x into an open java.io.InputStream. A String/File names a file; an
+   existing InputStream is returned as-is. Use inside with-open."
+  [x & opts]
+  (cond
+    (instance? java.io.InputStream x) x
+    (instance? java.io.File x)        (rt/__open-input-stream (.getPath x))
+    (string? x)                       (rt/__open-input-stream x)
+    :else (throw (ex-info (str "Cannot open as a java.io.InputStream: " (pr-str x)) {:value x}))))
+
+(defn output-stream
+  "Coerce x into an open java.io.OutputStream (truncating). A String/File names
+   the target; an existing OutputStream is returned as-is. Use inside with-open."
+  [x & opts]
+  (cond
+    (instance? java.io.OutputStream x) x
+    (instance? java.io.File x)         (rt/__open-output-stream (.getPath x))
+    (string? x)                        (rt/__open-output-stream x)
+    :else (throw (ex-info (str "Cannot open as a java.io.OutputStream: " (pr-str x)) {:value x}))))
