@@ -39,6 +39,18 @@ active:
       stands. clojure.java.io's file/as-relative-path/make-parents do NOT depend on
       it (they use isAbsolute/getPath/getParentFile/mkdirs).
     last_reviewed: "2026-06-09"
+  - id: "D-358"
+    status: "open — stream leaf-class-name instance? recognition (ADR-0126 Cycle 3). The 4 host_stream family descriptors (java.io.{Reader,Writer,InputStream,OutputStream}) are in rt.types so (instance? java.io.Reader s) works via the __instance? rt.types-contains precheck. The LEAF names (BufferedReader/FileInputStream/StringReader/…) are listed in each family descriptor's protocol_impls (so matchUserType WOULD match them), but class_name.isKnown does not know them, so (instance? java.io.BufferedReader s) raises class_name_unknown instead of true. Surfaced 2026-06-09 (ADR-0126 Cycle 3)."
+    category: "interop"
+    barrier: |-
+      blocked-by: nothing technical. Add the leaf class names (host_stream's
+      READER/WRITER/INPUT/OUTPUT_NAMES) to a closed-set class_name.isKnown reads
+      (a host_stream_classes table, the host_interfaces.yaml/ADR-0102 SSOT pattern,
+      so isKnown + the membership check share one source). Care: avoid a
+      class_name -> host_stream import cycle (define the name list in a leaf module
+      both import, or inline in class_name with a cross-ref comment). Low priority:
+      family instance? + class already work; leaf instance? is a nicety.
+    last_reviewed: "2026-06-09"
   - id: "D-351"
     status: "open — native in-process eval deadline / step budget (isolation dim (a)). cljw has NO eval timeout: an infinite loop in evaluated code hangs the process; the playground relies on an OS subprocess + `timeout` to kill it. The VM back-edge safe-point poll (vm.zig:119-141) already loads an atomic flag every back-edge (predicted-not-taken) — a deadline/step budget rides this at ~zero cost, mirroring zwasm's per-instruction fuel charge (dispatch.zig:109-119). Surfaced 2026-06-09 by the isolation scope study (private/notes/cljw_isolation_scope.md)."
     category: "isolation"
