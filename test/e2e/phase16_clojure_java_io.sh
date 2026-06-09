@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# test/e2e/phase16_clojure_java_io.sh
+#
+# ADR-0126 Cycle 2 — clojure.java.io file family (Coercions + file /
+# as-relative-path / delete-file / make-parents) over the java.io.File host
+# type. cljw-style cond dispatch (no protocol-to-String); ex-info throws.
+#
+# clojure.java.io is eager-loaded (FILES), so the fully-qualified names resolve
+# without a require. The `:as` alias path (the user-facing form) is covered by
+# the fixture-file smoke at the end — an alias established by a runtime require
+# is only visible to SUBSEQUENT top-level forms, so it cannot be exercised
+# inside a single `-e (do (require …) …)` (the whole form analyses before eval).
+
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+BIN="zig-out/bin/cljw"
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build >/dev/null
+
+run() { "$BIN" -e "$1" 2>&1 | tail -n 1; }
+
+fail() { echo "FAIL $1" >&2; exit 1; }
+assert_eq() {
+    local name="$1" got="$2" want="$3"
+    [[ "$got" == "$want" ]] || fail "$name: got '$got', want '$want'"
+    echo "PASS $name -> $want"
+}
+
+TMP="/tmp/cljw_cji_test"
+rm -rf "$TMP"; mkdir -p "$TMP"
+echo "x" > "$TMP/del.txt"
+
+# --- file / as-file ---
+assert_eq 'file_1'      "$(run '(.getPath (clojure.java.io/file "/a/b"))')"             '"/a/b"'
+assert_eq 'file_2'      "$(run '(.getPath (clojure.java.io/file "/a" "b/c.txt"))')"     '"/a/b/c.txt"'
+assert_eq 'file_3'      "$(run '(.getPath (clojure.java.io/file "/a" "b" "c"))')"       '"/a/b/c"'
+assert_eq 'file_class'  "$(run '(instance? java.io.File (clojure.java.io/file "/a"))')" 'true'
+assert_eq 'as_file_str' "$(run '(.getPath (clojure.java.io/as-file "/x/y"))')"          '"/x/y"'
+assert_eq 'as_file_nil' "$(run '(clojure.java.io/as-file nil)')"                        'nil'
+assert_eq 'as_file_idem' "$(run '(.getPath (clojure.java.io/as-file (clojure.java.io/file "/z")))')" '"/z"'
+
+# --- as-relative-path ---
+assert_eq 'rel_ok'      "$(run '(clojure.java.io/as-relative-path "a/b")')"             '"a/b"'
+assert_eq 'rel_abs_throws' "$(run '(try (clojure.java.io/as-relative-path "/abs") (catch Throwable e :threw))')" ':threw'
+
+# --- delete-file ---
+assert_eq 'delete_ok'   "$(run "(clojure.java.io/delete-file \"$TMP/del.txt\")")"       'true'
+assert_eq 'delete_silently' "$(run "(clojure.java.io/delete-file \"$TMP/gone\" :skipped)")" ':skipped'
+assert_eq 'delete_throws' "$(run "(try (clojure.java.io/delete-file \"$TMP/gone\") (catch Throwable e :threw))")" ':threw'
+
+# --- make-parents (creates parent dirs of the target file) ---
+assert_eq 'make_parents' "$(run "(clojure.java.io/make-parents (clojure.java.io/file \"$TMP\" \"d1/d2/leaf.txt\"))")" 'true'
+assert_eq 'parents_made' "$(run "(.isDirectory (clojure.java.io/file \"$TMP/d1/d2\"))")" 'true'
+
+# --- :as alias path (the user-facing form), via a fixture file (sequential eval) ---
+FIX="$TMP/alias_smoke.clj"
+cat > "$FIX" <<EOF
+(require '[clojure.java.io :as io])
+(println (.getPath (io/file "/a" "b")))
+EOF
+assert_eq 'alias_via_require' "$("$BIN" "$FIX" 2>&1 | tail -n 1)" '/a/b'
+
+rm -rf "$TMP"
+echo "ALL PASS phase16_clojure_java_io"
