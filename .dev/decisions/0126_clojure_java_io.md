@@ -288,3 +288,81 @@ byte-array-Value-facing arms, which are correctly Phase-16 work.
 playground needs it), json/fs impl in neutral files with thin `cljw.*`
 wrappers (F-009), byte-array-Value-facing arms left as transient
 `feature_not_supported` stubs for Phase 16.
+
+## Revision history
+
+### 2026-06-09 — Amendment: stream `class`/`instance?` made clj-faithful (concrete+chain) + lexical import resolution (D-358)
+
+Decision point 3 originally modelled the JVM stream class names as a FLAT
+closed-set table all routing to the one generic stream, on the reasoning
+"no-JVM (ADR-0059) means there is no `extends` relationship to model." The
+first D-358 implementation followed that literally: any reader leaf was
+`instance?`-true and `(class s)` returned the family (`java.io.Reader`). The
+**`clj` oracle proved this DIVERGES** (F-011): clj's `io/reader` returns a
+*concrete* `java.io.BufferedReader`, `(instance? java.io.FileReader (io/reader f))`
+is **false** (a sibling), and `(class …)` is the concrete buffered type. The
+"no extends to model" reasoning was right about cljw's INTERNALS but wrong to
+let the OBSERVABLE answers diverge — F-011 requires `class`/`instance?` to
+mirror clj even when the internal representation (one generic `host_stream`,
+no real hierarchy) does not.
+
+**What changed:**
+1. `runtime/io/stream_classes.zig` now models, per kind, the CONCRETE buffered
+   class clj's coercion returns + its java.io superclass CHAIN (the
+   `instance?`-true set): reader→{BufferedReader,Reader},
+   writer→{BufferedWriter,Writer}, input→{BufferedInputStream,FilterInputStream,
+   InputStream}, output→{BufferedOutputStream,FilterOutputStream,OutputStream}.
+   host_stream stamps the concrete as the descriptor `fqcn` (→ `(class s)`
+   clj-faithful) and the chain as `protocol_impls` (the existing
+   `class_name.matchUserType` arm). cljw still keeps ONE generic `host_stream`
+   internally — only the observable answers mirror clj.
+2. The recognised `isKnown` set is the COMPREHENSIVE java.io stream surface
+   (chain ∪ a sibling list covering every public Reader/Writer/InputStream/
+   OutputStream subtype), so `(instance? java.io.LineNumberReader rdr)` is a
+   clj-faithful **false**, not `class_name_unknown` (F-013 clause 4: 網羅 the
+   recognition table — cheap rows, no impl, definition-derived from the java.io
+   package, NOT a per-library allowlist). A name outside that set still raises
+   `class_name_unknown`: cljw has no classpath to confirm an arbitrary FQCN is a
+   real class (an inherent no-classpath divergence; clj would resolve it or
+   `ClassNotFound`).
+3. An imported simple class name resolves to its FQCN for `instance?` in TWO
+   layers: (a) **lexically at analyze time** via `special_forms.resolveInstanceClassArg`
+   (reads the lexical ns's `(:import …)` map — the same D-235 `ns.imports` that
+   `resolveJavaSurface` reads for `(Class. …)`), so a fn that closes over an
+   `(:import …)` resolves when called from another ns (clj resolves class symbols
+   at compile time); (b) **at runtime** in `__instance?` (`resolveClassImport`)
+   for a class imported AFTER analysis (REPL `(import …)` then use). Both
+   `(import …)` and `(ns … (:import …))` populate `ns.imports`, so both forms
+   work. No per-class allowlist — the same shared lexical resolver constructors
+   use (F-013-canonical / DA Alt b).
+
+**Devil's-advocate (fresh-context, F-NNN-bounded) — 3 alternatives + 2 gaps it
+raised, both resolved before landing:**
+- **Alt (a) smallest-diff** — `isKnown(java.io.*)` by a suffix *shape rule*
+  instead of a sibling enumeration. Better: no curated list. Worse: a shape
+  rule accepts a TYPO (`java.io.FooReader`) as known-false where clj raises
+  `ClassNotFound` — trades the F-013 allowlist worry for an F-011 edge
+  divergence.
+- **Alt (b) finished-form-clean (ADOPTED for AXIS-1)** — a single shared
+  class-symbol resolver used by `instance?`/`class`/constructors + a
+  definition-derived supertype set. We adopted its AXIS-1 shape: lexical
+  resolution lives in `special_forms` next to `resolveJavaSurface` (the
+  analyzer's existing env-based class resolver), NOT threaded through all 55
+  Zig macro expanders (wrong layer — expansion is syntactic) and NOT via an
+  `rt` side-channel field (hidden mutable state, duplicates `Env.current_ns`).
+- **Alt (c) wildcard** — per-stream-instance concrete class + macro-expansion
+  (lexical) import resolution. Its lexical-correctness insight is real and is
+  what AXIS-1 (b) delivers via the analyzer; its macro-expansion placement was
+  rejected because it cannot see a runtime `(import …)` (a different F-011
+  divergence) and cannot fix `(class …)` (a fn, not a macro).
+- **Gap 1 (AXIS-1 lexical-vs-dynamic ns)** — the DA showed a fn closing over an
+  import, called under a different `*ns*`, broke with runtime-only resolution
+  (clj returns true; cljw threw). **Resolved this cycle** (user-directed) by the
+  analyze-time lexical resolver in (3a); e2e `import_cross_ns` locks it.
+- **Gap 2 (F-013 sibling allowlist)** — the first sibling list was a curated
+  12-name subset. **Resolved** by making it the comprehensive java.io stream set
+  (2); the no-classpath boundary for non-stream/unknown FQCNs is recorded as an
+  inherent divergence, not over-claimed (the corpus probes only recognised
+  names).
+
+Corpus: `test/diff/clj_corpus/io_stream_class.txt` (13 clj-verified lines).
