@@ -5,21 +5,22 @@
 
 ## Resume contract
 
-- **HEAD**: ≈ `1764f6fa` (see `git log` for current). Mac **303/0** + ubuntunote
-  **302/0** (1-step delta = Mac-only zlinter gate, ADR-0003) both green. Tree
-  clean. The user's 3 CFP-demo goals are all delivered (clojure.java.io
-  subsystem ADR-0126 + babashka-free playground D-355 + fly.io configs for both
-  demos, the latter two in `$MY/playground-v2` + `$MY/serverless-v2`), and the
-  D-361 cross-platform heap-cap bug is root-fixed + Linux-verified.
-- **First commit on resume MUST be**: self-select a quality-loop unit — the
-  demo arc + D-361 are closed. Candidates, highest-value first: (1) implement the
-  now-UNBLOCKED **D-357** (getAbsolutePath/getCanonicalPath via
-  `std.process.currentPathAlloc(rt.io, a)` + resolvePosix — research corrected
-  the "no cwd path" premise) to finish the `java.io.File` surface; (2) **D-358**
-  (stream leaf-name `instance?` closed-set in class_name.isKnown); (3) a
-  simplify/audit pass on the large ADR-0126 io diff. (User greenlit completing
-  the io/url half-done items — D-357 + D-359 as-url/URL — this session.)
-  **D-356** (bookshelf single-binary via `cljw build`) stays user-deferred.
+- **HEAD**: ≈ `38706fcd` (see `git log` for current). Mac **303/0** + ubuntunote
+  **302/0** (1-step delta = Mac-only zlinter gate, ADR-0003). Tree clean. All
+  three CFP-demo goals delivered + the io/url half-done items completed (D-357
+  getAbsolutePath/getCanonicalPath; D-359 as-url→java.net.URI + reader/writer
+  URI arms) + D-361 cross-platform heap-cap bug root-fixed + Linux-verified.
+  Both demos (`$MY/playground-v2` + `$MY/serverless-v2`) are babashka-free,
+  cljw-native, one-command local (`./run_local.sh`, env mirrors fly.toml) +
+  fly-ready, and verified end-to-end (playground via curl + my-playwright:
+  eval/runaway/static/wasm-FFI nth_prime=541; bookshelf via curl:
+  static/config/books-from-SQLite-wasm).
+- **First commit on resume MUST be**: self-select a quality-loop unit — the demo
+  arc, D-361, and the io/url items are closed. Candidates: (1) **D-358** stream
+  leaf-name `instance?` (BufferedReader etc.) closed-set in class_name.isKnown;
+  (2) **D-360** clojure.data.json/read-str `:key-fn`; (3) a simplify/audit pass
+  on the ADR-0126 io diff. **D-356** (bookshelf single-binary via `cljw build`)
+  + actual fly deploys stay user-owned.
 - **Forbidden**: pushing to `main`; pinning a zwasm tag (F-001 relative-path
   co-dev). Two gates at once (share `/tmp/codev_gate.lock` — `mkdir` acquire,
   `rmdir` release).
