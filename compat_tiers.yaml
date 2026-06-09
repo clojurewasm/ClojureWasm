@@ -222,7 +222,7 @@ tiers:
           surface: runtime/java/io/File.zig
           impl: runtime/file_io.zig
           clojure_peer: lang/primitive/file_io.zig
-        methods: [exists, isFile, isDirectory, getName, getPath, getParent, getParentFile, isAbsolute, length, canRead, delete, mkdir, mkdirs, list, listFiles, toString, "getAbsolutePath/getCanonicalPath (D-357 deferred stub)"]
+        methods: [exists, isFile, isDirectory, getName, getPath, getParent, getParentFile, isAbsolute, length, canRead, delete, mkdir, mkdirs, list, listFiles, toString, getAbsolutePath, "getCanonicalPath (lexical; no symlink resolution per D-357)"]
         clojure_peer_vars: [clojure.core/slurp, clojure.core/spit]
       - {fqn: "java.io.InputStream", native_ns: "cljw.host.java.io.InputStream", phase: 6}
       - {fqn: "java.io.OutputStream", native_ns: "cljw.host.java.io.OutputStream", phase: 6}

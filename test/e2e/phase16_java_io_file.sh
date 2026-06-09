@@ -39,6 +39,11 @@ assert_eq 'isAbsolute_f' "$(run '(.isAbsolute (java.io.File. "a/b"))')"         
 assert_eq 'toString'     "$(run '(str (java.io.File. "/a/b"))')"                   '"/a/b"'
 assert_eq 'getParentFile' "$(run '(.getName (.getParentFile (java.io.File. "/a/b/c")))')" '"b"'
 
+# --- getAbsolutePath / getCanonicalPath (D-357, via std.process.currentPathAlloc) ---
+assert_eq 'absPath_abs'  "$(run '(.getAbsolutePath (java.io.File. "/a/b/c.txt"))')" '"/a/b/c.txt"'
+assert_eq 'absPath_rel'  "$(run '(.isAbsolute (java.io.File. (.getAbsolutePath (java.io.File. "rel/x"))))')" 'true'
+assert_eq 'canon_dotdot' "$(run '(.getCanonicalPath (java.io.File. "/a/./b/../c"))')" '"/a/c"'
+
 # --- 2-arg ctor (parent + child) ---
 assert_eq 'ctor2'        "$(run '(.getPath (java.io.File. "/a/b" "c.txt"))')"      '"/a/b/c.txt"'
 assert_eq 'ctor2_file'   "$(run '(.getPath (java.io.File. (java.io.File. "/a") "b"))')" '"/a/b"'

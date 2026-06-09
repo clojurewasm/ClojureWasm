@@ -19,10 +19,10 @@
 //!   - `.list` / `.listFiles` return a cljw vector (not a JVM `String[]`/`File[]`
 //!     array) — the Java array tower is Phase-16 deferred (D-051); a vector is
 //!     `seq`/`count`/`sort`-able, matching every realistic call site.
-//!   - `.getAbsolutePath` / `.getCanonicalPath` raise `feature_not_supported`:
-//!     the std.Io handle model exposes no process cwd path, so a relative path
-//!     cannot be made truly absolute (D-357). Shipping a wrong answer would be a
-//!     silent lie (no-op-stub rule); the explicit error is the honest stub.
+//!   - `.getCanonicalPath` resolves `.`/`..` lexically but NOT symlinks (the
+//!     std.Io handle model has no realpath; D-357). `.getAbsolutePath` /
+//!     `.getCanonicalPath` resolve a relative path against the process cwd via
+//!     `std.process.currentPathAlloc`.
 
 const std = @import("std");
 const host_api = @import("../_host_api.zig");
@@ -133,13 +133,45 @@ fn isAbsolute(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     return Value.initBoolean(path.isAbsolutePosix(pathOf(args[0])));
 }
 
-/// `.getAbsolutePath` / `.getCanonicalPath` — deferred (D-357): the std.Io handle
-/// model exposes no process cwd path to resolve a relative path against.
-fn absolutePathUnsupported(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
+/// Process cwd path (D-357): `std.process.currentPathAlloc` is the Zig 0.16
+/// io-model accessor (the removed `getCwd`/`realpath` were renamed to
+/// `currentPath`). Caller frees.
+fn cwdAlloc(rt: *Runtime, loc: SourceLocation) anyerror![]u8 {
+    return std.process.currentPathAlloc(rt.io, rt.gpa) catch
+        return error_catalog.raise(.file_io_error, loc, .{ .op = "getAbsolutePath", .path = ".", .detail = "cannot read the current directory" });
+}
+
+/// `.getAbsolutePath` — an absolute path is returned as-is; a relative path is
+/// joined onto the process cwd (NO `.`/`..` normalisation — that is
+/// getCanonicalPath's job, matching JVM File semantics).
+fn getAbsolutePath(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    _ = args;
-    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "java.io.File/getAbsolutePath" });
+    try error_catalog.checkArity("getAbsolutePath", args, 1, loc);
+    const p = pathOf(args[0]);
+    if (path.isAbsolutePosix(p)) return pathValOf(args[0]);
+    const cwd = try cwdAlloc(rt, loc);
+    defer rt.gpa.free(cwd);
+    const abs = try path.join(rt.gpa, &.{ cwd, p });
+    defer rt.gpa.free(abs);
+    return string_mod.alloc(rt, abs);
+}
+
+/// `.getCanonicalPath` — like getAbsolutePath but lexically resolves `.`/`..`
+/// (via resolvePosix). cljw-style DIVERGENCE: symlinks are NOT resolved (the
+/// std.Io handle model has no realpath; lexical canonicalisation only, D-357).
+fn getCanonicalPath(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("getCanonicalPath", args, 1, loc);
+    const p = pathOf(args[0]);
+    const abs = if (path.isAbsolutePosix(p))
+        try path.resolvePosix(rt.gpa, &.{p})
+    else blk: {
+        const cwd = try cwdAlloc(rt, loc);
+        defer rt.gpa.free(cwd);
+        break :blk try path.resolvePosix(rt.gpa, &.{ cwd, p });
+    };
+    defer rt.gpa.free(abs);
+    return string_mod.alloc(rt, abs);
 }
 
 // --- FS-touching query methods (jail-resolved) ---
@@ -284,8 +316,8 @@ const METHODS = [_]MethodSpec{
     .{ .name = "getParent", .f = &getParent },
     .{ .name = "getParentFile", .f = &getParentFile },
     .{ .name = "isAbsolute", .f = &isAbsolute },
-    .{ .name = "getAbsolutePath", .f = &absolutePathUnsupported },
-    .{ .name = "getCanonicalPath", .f = &absolutePathUnsupported },
+    .{ .name = "getAbsolutePath", .f = &getAbsolutePath },
+    .{ .name = "getCanonicalPath", .f = &getCanonicalPath },
     .{ .name = "exists", .f = &exists },
     .{ .name = "isFile", .f = &isFile },
     .{ .name = "isDirectory", .f = &isDirectory },
