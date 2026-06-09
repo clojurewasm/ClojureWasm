@@ -9,6 +9,62 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-355"
+    status: "open — playground self-isolation (drop babashka). The $MY/playground-v2 demo currently uses a babashka supervisor that spawns a sandboxed child `cljw -e` (OS `timeout`/`ulimit`/`CLJW_FS_ROOT`) because cljw lacks an in-process eval budget. Once D-351 (eval deadline) + D-352 (heap cap) land, the eval can run IN-PROCESS with time+memory bounds, dropping babashka for everything except crash containment (D-354). Full self-isolation (no external supervisor at all) is gated on cljw-as-wasm (D-354 endgame). Surfaced 2026-06-09 (user-directed demo work)."
+    category: "demo"
+    barrier: |-
+      blocked-by: D-351 + D-352 (in-process time+memory bound) → playground evals
+      in-process; D-354 (crash isolation) keeps a thin subprocess/wasm shell until
+      cljw-as-wasm. This is a $MY/playground-v2 task gated on the cljw isolation
+      features; recorded here for discoverability next to D-351..354.
+    last_reviewed: "2026-06-09"
+  - id: "D-356"
+    status: "open — bookshelf single-binary via `cljw build`. The $MY/serverless-v2 bookshelf runs on `cljw.http.server`; `cljw build` can fold it into one self-contained binary (no cljw command needed) — the compelling 'small edge app as a single file' story. Needs: a build-entry .clj that requires bookshelf.server + calls -main (top-level call so the embedded run starts the server), `cljw build` resolving the multi-file requires (classpath), and the binary finding its runtime assets (wasm/, resources/public/, data/) relative to cwd. The cljw build path is verified working (incl. wasm FFI single binaries, stdout fix 802dca55). Surfaced 2026-06-09 (user-directed; deferred per user — feature work first)."
+    category: "demo"
+    barrier: |-
+      blocked-by: nothing technical (cljw build works) — deferred by user priority
+      (bookshelf feature improvement first). When taken: add server/build_main.clj
+      (require + (-main port)), confirm `cljw build` classpath handling for the
+      requires, ship a build script + a note on the relative runtime-asset layout.
+      $MY/serverless-v2 task; recorded here for discoverability.
+    last_reviewed: "2026-06-09"
+  - id: "D-351"
+    status: "open — native in-process eval deadline / step budget (isolation dim (a)). cljw has NO eval timeout: an infinite loop in evaluated code hangs the process; the playground relies on an OS subprocess + `timeout` to kill it. The VM back-edge safe-point poll (vm.zig:119-141) already loads an atomic flag every back-edge (predicted-not-taken) — a deadline/step budget rides this at ~zero cost, mirroring zwasm's per-instruction fuel charge (dispatch.zig:109-119). Surfaced 2026-06-09 by the isolation scope study (private/notes/cljw_isolation_scope.md)."
+    category: "isolation"
+    barrier: |-
+      blocked-by: deciding eval-budget is a tracked need (it is, for untrusted-code
+      embedders / playground in-process). ~80-150 LOC: a deadline/step field on
+      Runtime + a check at the VM back-edge poll AND the TreeWalk loop poll (both
+      backends, dual-backend parity) raising a CATCHABLE error on expiry. Models
+      on zwasm Module.Budget. Cheapest high-value isolation win.
+    last_reviewed: "2026-06-09"
+  - id: "D-352"
+    status: "open — per-eval heap/memory cap (isolation dim (b)). cljw's GC tracks bytes but has NO cap: the threshold only TRIGGERS a collection, never REFUSES an allocation (gc_heap.zig:156). Untrusted code can exhaust memory; the playground relies on OS `ulimit`. A per-eval high-water cap at the GC alloc boundary would bound it in-process. Surfaced 2026-06-09 (isolation scope study)."
+    category: "isolation"
+    barrier: |-
+      blocked-by: D-351 sibling (same untrusted-embedder need). ~60-120 LOC: a
+      heap-byte ceiling on Runtime checked at the alloc/collect boundary, raising a
+      catchable OOM-class error past the ceiling. Pairs with D-351 for a
+      time+memory in-process bound.
+    last_reviewed: "2026-06-09"
+  - id: "D-353"
+    status: "open — SCI-style capability gating (var/ns allow-deny) (isolation dim (c)). cljw resolves ANY var (env.zig:173); there is no allow/deny on which vars/namespaces evaluated code may reach (cf. SCI's :allow/:deny/:namespaces). A compat_tiers.yaml-driven allow-list at the var-resolution choke point would let an embedder restrict untrusted code to a safe surface. Surfaced 2026-06-09 (isolation scope study)."
+    category: "isolation"
+    barrier: |-
+      blocked-by: a use case needing capability restriction (the playground today
+      restricts via FS-jail + no-network, not var-gating). ~100-200 LOC: an optional
+      allow/deny set consulted at the single var-resolution site. Lower priority
+      than D-351/D-352.
+    last_reviewed: "2026-06-09"
+  - id: "D-354"
+    status: "open — crash isolation is IMPOSSIBLE in-process (isolation dim (d)). A Zig panic / UAF in cljw takes the whole process down, so a single-binary playground evaluating untrusted code cannot contain a runtime crash. Only a PROCESS boundary (subprocess) or a WASM boundary (cljw-as-wasm-guest in zwasm) gives true crash isolation. This is the structural argument for keeping a subprocess shell (or the eventual cljw-as-wasm endgame) even after D-351/D-352/D-353 land. cljw also has NO process-spawn API, so 'make the supervisor a cljw program' is itself blocked. Surfaced 2026-06-09 (isolation scope study)."
+    category: "isolation"
+    barrier: |-
+      blocked-by: cljw-as-wasm (the CFP 'self → wasm' side, not yet possible) for the
+      clean endgame; until then crash containment stays at the subprocess boundary
+      (the playground's current model). Records WHY a single-binary playground is the
+      wrong shape (see private/notes/cljw_isolation_scope.md recommendation).
+    last_reviewed: "2026-06-09"
   - id: "D-347"
     status: "open — security. `(wasm/run …)` runs the module via zwasm's C-API WASI path (runWasmCapturedFull), which does NOT thread fuel / max-memory budgets the way `(wasm/load …)` → Module.instantiate does. So a wasm/run module is currently UNMETERED (an infinite loop / runaway alloc in the guest is not fuel-trapped). In the playground this is bounded by the OS sandbox (wall-clock timeout + ulimit); for a general cljw embedder it is a gap. Surfaced 2026-06-09 implementing wasm/run (ADR-0124)."
     category: "security"
