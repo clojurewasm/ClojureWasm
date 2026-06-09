@@ -69,4 +69,25 @@ $got"
 [[ "$got" == "1000" ]] || fail "metered small alloc wrong result: got '$got'"
 echo "PASS eval-budget-heap-normal-unaffected"
 
-echo "OK — phase16_eval_budget (steps/deadline/heap kill + uncatchable + unmetered) green"
+# 9. cljw.eval/with-budget (D-355 Path A): an in-process scoped budget whose
+#    breach is RECOVERED as a value (not an uncatchable kill), so a long-lived
+#    server survives a runaway eval. Success returns the thunk value.
+got="$("$BIN" -e '(cljw.eval/with-budget {:max-steps 1000000} (fn [] (+ 1 2)))')" || fail "with-budget success errored:
+$got"
+[[ "$got" == "3" ]] || fail "with-budget success wrong: got '$got'"
+echo "PASS with-budget-success"
+
+# A step / deadline / heap breach inside with-budget returns the exhausted marker
+# AND the process exits 0 (survives) — the whole point vs the uncatchable kill.
+for probe in \
+  ':max-steps 100000} (fn [] (loop [] (recur)))' \
+  ':max-heap-mb 16} (fn [] (vec (range 100000000)))'; do
+  out="$(timeout 20 "$BIN" -e "(let [r (cljw.eval/with-budget {$probe)] (println :exhausted (:cljw.eval/exhausted r) :alive (+ 40 2)))" 2>&1)" \
+    || fail "with-budget recovery: process did NOT survive (non-zero exit):
+$out"
+  echo "$out" | grep -q ":alive 42" || fail "with-budget recovery: server did not continue after breach:
+$out"
+done
+echo "PASS with-budget-recovers-and-survives"
+
+echo "OK — phase16_eval_budget (steps/deadline/heap kill + uncatchable + unmetered + with-budget recovery) green"

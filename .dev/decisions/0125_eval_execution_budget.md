@@ -313,3 +313,24 @@ section above: ambient-on-`Runtime` is retained for D-351 because the ownership
 model is D-355's F-003-owned structural choice and save/restore scoping serves the
 in-process case; the latch + AD-NNN fixes are adopted now; call-boundary + shared-
 IR unit are deferred follow-ups noted on D-351.)*
+
+## Revision history
+
+- **2026-06-09 — the deferred `with-budget` host surface landed (D-355 Path A).**
+  `cljw.eval/with-budget opts thunk` (`src/runtime/cljw/eval/with_budget.zig`)
+  realizes the host-observable path the DA's Alt 2 / DP1 described, on top of the
+  ambient-on-`Runtime` substrate this ADR kept: it SAVES the prior budget + heap
+  cap, installs the opts (`:max-steps` / `:deadline-ms` / `:max-heap-mb`), calls
+  the thunk via `rt.vtable.callFn`, and **catches the (Clojure-uncatchable) budget
+  breach as a raw Zig error** (`error.ResourceExhausted` / `error.OutOfMemory`),
+  returning `{:cljw.eval/exhausted :steps|:deadline|:heap}` and restoring the saved
+  budget over the dynamic extent (the save/restore scoping this ADR predicted, so a
+  long-lived server resets per call). This is the sanctioned embedder frame — the
+  Clojure `(try …)` still cannot swallow the budget, only this Zig host frame can —
+  exactly the two-frame split the DA recommended. Subtlety found in implementation:
+  the result map must be built AFTER restoring the cap, or a heap breach re-trips on
+  the map's own allocations. With this, the playground evaluates untrusted code
+  in-process (no babashka subprocess) — `eval` / `read-string` / `with-out-str`
+  already exist — and a runaway is reported, not fatal. Crash isolation (a Zig
+  panic, D-354) is still out of scope for in-process; fly.io instance isolation +
+  restart covers it at deploy time.

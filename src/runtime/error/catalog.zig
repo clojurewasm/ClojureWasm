@@ -459,6 +459,9 @@ pub const Code = enum {
     /// args: `.{ .bytes = <usize> }` — the eval live-heap ceiling (ADR-0125 /
     /// D-352) was exceeded (untrusted-code isolation; uncatchable).
     eval_heap_exceeded,
+    /// args: `.{ .detail = "..." }` — a `cljw.eval/with-budget` opts argument was
+    /// malformed (not a map of `:max-steps` / `:deadline-ms` / `:max-heap-mb`).
+    eval_opts_invalid,
 };
 
 const Entry = struct {
@@ -1427,6 +1430,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .resource_exhausted,
             .phase = .eval,
             .template = "evaluation exceeded its heap budget ({[bytes]d} bytes)",
+        },
+        .eval_opts_invalid => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "cljw.eval/with-budget: {[detail]s}",
         },
         .regex_pattern_too_large => .{
             .kind = .value_error,
