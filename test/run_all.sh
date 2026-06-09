@@ -111,7 +111,7 @@ fi
 #      before the flush — leaves the pool a correct, stable binary.
 # These run serially BEFORE the parallel flush, on a quiet machine.
 # bench_quick / bench_regression are not e2e_-prefixed, so already serial.
-SERIAL_STEPS="e2e_phase14_cold_start_threshold,e2e_phase8_exit_smoke,e2e_phase4_cli,e2e_phase4_exit,e2e_phase4_exit_codes,e2e_phase16_http_server"
+SERIAL_STEPS="e2e_phase14_cold_start_threshold,e2e_phase8_exit_smoke,e2e_phase4_cli,e2e_phase4_exit,e2e_phase4_exit_codes,e2e_phase16_http_server,e2e_phase16_http_client"
 declare -a E2E_QUEUE=()
 
 # --- run_step framework (per ADR-0024) ---
@@ -485,6 +485,7 @@ run_step "e2e_phase16_locking"              "bash test/e2e/phase16_locking.sh"
 run_step "e2e_phase16_agent"                "bash test/e2e/phase16_agent.sh"
 run_step "e2e_phase16_concurrency_stress"   "bash test/e2e/phase16_concurrency_stress.sh"
 run_step "e2e_phase16_http_server"          "bash test/e2e/phase16_http_server.sh"
+run_step "e2e_phase16_http_client"          "bash test/e2e/phase16_http_client.sh"
 run_step "e2e_phase16_file_io_errors"       "bash test/e2e/phase16_file_io_errors.sh"
 run_step "e2e_phase16_fs_jail"              "bash test/e2e/phase16_fs_jail.sh"
 run_step "e2e_phase16_tokenizer_long_input" "bash test/e2e/phase16_tokenizer_long_input.sh"

@@ -28,6 +28,7 @@ const error_catalog = @import("../../error/catalog.zig");
 const keyword_mod = @import("../../keyword.zig");
 const string_mod = @import("../../collection/string.zig");
 const map_mod = @import("../../collection/map.zig");
+const client = @import("client.zig");
 
 /// `:request-method` keyword for an HTTP method (lowercase, Ring convention).
 fn methodKeyword(rt: *Runtime, m: std.http.Method) !Value {
@@ -72,7 +73,10 @@ pub fn runServer(rt: *Runtime, env: *Env, handler: Value, port: u16, loc: Source
 
     var addr = std.Io.net.IpAddress.parse("0.0.0.0", port) catch
         return error_catalog.raiseInternal(loc, "cljw.http.server: invalid bind address");
-    var server = addr.listen(io, .{}) catch
+    // reuse_address (SO_REUSEADDR): rebind the port while prior connections from a
+    // just-stopped server linger in TIME_WAIT — otherwise a crash-then-restart (or
+    // two back-to-back e2e servers on a fixed port) fails to bind for ~30-60s.
+    var server = addr.listen(io, .{ .reuse_address = true }) catch
         return error_catalog.raiseInternal(loc, "cljw.http.server: listen/bind failed (port in use?)");
 
     while (true) {
@@ -241,22 +245,16 @@ pub fn runServerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     return runServer(rt, env, handler, @intCast(port), loc);
 }
 
-/// Placeholder for every `cljw.http.client` fn until the client lands (D-257).
-pub fn clientStubFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
-    _ = env;
-    _ = args;
-    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "cljw.http.client (HTTP client not yet implemented)" });
-}
-
 /// Create the `cljw.http.server` / `cljw.http.client` host namespaces. Called by
-/// `runtime/cljw/_host_api.zig::installAll`.
+/// `runtime/cljw/_host_api.zig::installAll`. The client fns live in `client.zig`
+/// (D-257 discharged: a real outbound HTTP(S) client via std.http.Client).
 pub fn register(env: *Env) !void {
     const srv = try env.findOrCreateNs("cljw.http.server");
     _ = try env.intern(srv, "run-server", Value.initBuiltinFn(&runServerFn), null);
 
     const cli = try env.findOrCreateNs("cljw.http.client");
-    inline for (.{ "get", "post", "put", "delete" }) |name| {
-        _ = try env.intern(cli, name, Value.initBuiltinFn(&clientStubFn), null);
-    }
+    _ = try env.intern(cli, "get", Value.initBuiltinFn(&client.getFn), null);
+    _ = try env.intern(cli, "post", Value.initBuiltinFn(&client.postFn), null);
+    _ = try env.intern(cli, "put", Value.initBuiltinFn(&client.putFn), null);
+    _ = try env.intern(cli, "delete", Value.initBuiltinFn(&client.deleteFn), null);
 }

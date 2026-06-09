@@ -438,6 +438,14 @@ pub const Code = enum {
     /// args: `.{}` — a `wasm/run` module failed to compile / instantiate, or its
     /// preopen directory could not be opened.
     wasm_run_failed,
+    /// args: `.{}` — an `cljw.http.client` call's URL argument was not a string.
+    http_url_invalid,
+    /// args: `.{ .detail = "..." }` — an `cljw.http.client` opts argument was
+    /// malformed (not a map, bad :headers/:body type).
+    http_opts_invalid,
+    /// args: `.{ .url = "..." }` — an outbound HTTP(S) request failed (connect /
+    /// TLS / DNS / protocol error).
+    http_request_failed,
 
     // --- System ---
     out_of_memory,
@@ -1480,6 +1488,21 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .value_error,
             .phase = .eval,
             .template = "wasm/run: the module failed to compile, instantiate, or open its directory",
+        },
+        .http_url_invalid => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "cljw.http.client: the URL must be a string",
+        },
+        .http_opts_invalid => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "cljw.http.client: {[detail]s}",
+        },
+        .http_request_failed => .{
+            .kind = .io_error,
+            .phase = .eval,
+            .template = "cljw.http.client: request to '{[url]s}' failed (connect / TLS / DNS / protocol)",
         },
         .internal_error => .{
             .kind = .internal_error,

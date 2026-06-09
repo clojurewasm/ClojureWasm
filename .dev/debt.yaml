@@ -1349,7 +1349,7 @@ active:
       defect. Cross-ref D-244 / D-253 / memory gate_parallel_e2e_timeout.
     last_reviewed: "2026-06-06"
   - id: "D-257"
-    status: "(b) LANDED 2026-06-06 — Ring request map now carries :request-method/:uri/:query-string/:headers/:body (e2e phase16_http_server 5 cases). Remaining: (a/c) keep-alive + per-connection loop, (d) GC rooting, (e) client stub."
+    status: "(b) LANDED 2026-06-06; (e) client LANDED 2026-06-09 — cljw.http.client get/post/put/delete via std.http.Client (TLS, system CA auto-rescan); Ring-style {:status :body}; every failure (bad URL/opts, connect/TLS/DNS/protocol) is a catchable cljw exception (e2e phase16_http_client). Server listen now sets SO_REUSEADDR (reuse_address) so a crash-restart rebinds immediately instead of failing on TIME_WAIT. Remaining: (a/c) keep-alive + per-connection loop, (d) GC rooting. NOT fully discharged — (a/c/d) are server-side follow-ons."
     category: "runtime"
     barrier: |-
       **`cljw.http.server` (ADR-0098) shipped as a deliberate minimal first cut.**
@@ -1369,9 +1369,12 @@ active:
       keywords/strings are built then immediately passed to the handler; safe TODAY
       because auto-collect is off, but under auto-collect a collect mid-handler could
       sweep them — root the request map (EvalFrame) for torture-safety. (e)
-      **cljw.http.client** is a placeholder stub (feature_not_supported). Cross-ref
-      ADR-0098.
-    last_reviewed: "2026-06-06"
+      **cljw.http.client** LANDED 2026-06-09 (src/runtime/cljw/http/client.zig;
+      std.http.Client get/post/put/delete, TLS, Ring-style response, catchable
+      errors). Server listen sets reuse_address (SO_REUSEADDR) — surfaced by the new
+      e2e where http_server→http_client share a fixed port and the second failed to
+      bind during TIME_WAIT. Cross-ref ADR-0098.
+    last_reviewed: "2026-06-09"
   - id: "D-256"
     status: "TOP PRIORITY — autonomous overnight (user 2026-06-06, asleep). The clean-session loop MUST start here. **Read `private/clojure_conj_2026_cfp/PRIORITY.md` AND `…/CFP_v2.md` TOGETHER** (both carry a 2026-06-06 PIVOT note: **Fly + native cljw, NOT Cloudflare + wasm**), then **execute PRIORITY.md IN FULL P0->P9 — do NOT abandon any step citing the deadline (AI speed is dramatically faster than it feels); on a user-only-action blocker, defer + proceed to the next step (never stop, never ask). After PRIORITY.md is exhausted, transition autonomously to the cljw Phase B/C remaining work.** edge-demo is LANDED (https://clojurewasm-edge-demo.fly.dev/, native cljw + Fly)."
     category: "scope"
