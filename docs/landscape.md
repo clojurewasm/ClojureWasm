@@ -2,30 +2,30 @@
 
 Clojure runs in a lot of places now. Each runtime below was built for a
 different job and is excellent at it. This page is a map of where they sit, not
-a ranking — ClojureWasm is one young entry exploring the WebAssembly / edge
+a ranking — ClojureWasm is one young entry exploring the WebAssembly
 corner, and the only numbers it claims are its own measured ones.
 
-| Runtime            | Host / where it shines                                                                       | Distribution                             |
-|--------------------|----------------------------------------------------------------------------------------------|------------------------------------------|
-| **Clojure (JVM)**  | The JVM. Mature, complete, an enormous ecosystem.                                            | Runs on a JVM.                           |
-| **Babashka / SCI** | GraalVM native / JS. Fast-starting scripting, glue.                                          | Self-contained binary.                   |
-| **ClojureScript**  | JavaScript. Front-end and the Node ecosystem.                                                | JS host.                                 |
-| **jank**           | LLVM / C++. Native code and seamless C++ interop.                                            | Native.                                  |
-| **ClojureDart**    | Dart / Flutter. Mobile and cross-platform UI.                                                | App bundles.                             |
-| **ClojureWasm**    | Zig. Compiles to WebAssembly **and** embeds a Wasm engine (polyglot FFI); aimed at the edge. | ~2 MB native binary, starts in a few ms. |
+| Runtime            | Host / where it shines                                                                                                | Distribution                             |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------|------------------------------------------|
+| **Clojure (JVM)**  | The JVM. Mature, complete, an enormous ecosystem.                                                                     | Runs on a JVM.                           |
+| **Babashka / SCI** | GraalVM native / JS. Fast-starting scripting, glue.                                                                   | Self-contained binary.                   |
+| **ClojureScript**  | JavaScript. Front-end and the Node ecosystem.                                                                         | JS host.                                 |
+| **jank**           | LLVM / C++. Native code and seamless C++ interop.                                                                     | Native.                                  |
+| **ClojureDart**    | Dart / Flutter. Mobile and cross-platform UI.                                                                         | App bundles.                             |
+| **ClojureWasm**    | Zig. Embeds a Wasm engine so Clojure calls modules from Rust/Go/C (polyglot FFI), and compiles to WebAssembly itself. | ~2 MB native binary, starts in a few ms. |
 
 The other rows are respectful summaries of what each runtime is known for, not
 evaluations. The ClojureWasm row lists only its own
 [measured figures](../bench/RELEASE_METRICS.md); it does not claim to beat
 anything.
 
-## What "the WebAssembly / edge corner" means here
+## What "the WebAssembly corner" means here
 
 Two things, which are easy to conflate:
 
 1. **ClojureWasm compiles to WebAssembly** — the runtime is plain Zig, so a
-   WebAssembly build is a natural target (a browser-only playground, an edge
-   function).
+   WebAssembly build is a natural target (a browser-only playground, a small
+   Wasm function).
 2. **ClojureWasm embeds a WebAssembly engine** — so a Clojure program can load a
    sandboxed module compiled from Rust, Go, Zig, or C and call it like a
    namespace. WebAssembly becomes an FFI: other languages' libraries become

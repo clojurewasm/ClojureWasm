@@ -35,7 +35,7 @@ Today the calls are pure computation; host capabilities for I/O-bound modules ar
 being extended. (The line: cljw *calls* Wasm; compiling cljw itself *to* Wasm is
 still ahead.)
 
-## 3. A real app — the Bookshelf (the polyglot story inside a serverless demo)
+## 3. A real app — the Bookshelf (the polyglot story inside a real web app)
 
 [`clojurewasm/cw-serverless-demo`](https://github.com/clojurewasm/cw-serverless-demo)
 (<https://cw-serverless-demo.fly.dev>) — a multi-user bookshelf served end-to-end
@@ -73,4 +73,4 @@ the numeric tower, ratios, lazy seqs, STM, and the Wasm modules.
   `-Dwasm` — zwasm's GC uses a glibc-only `pthread_getattr_np` — but the Fly demos
   do not use musl.)
 - Deep Java interop (gen-class / deep proxy / deep reflection) is out of scope by
-  design — this targets the Wasm/edge corner, not a JVM replacement.
+  design — this targets the "call Wasm from Clojure" corner, not a JVM replacement.
