@@ -107,3 +107,30 @@
     (instance? java.io.File x)         (rt/__open-output-stream (.getPath x))
     (string? x)                        (rt/__open-output-stream x)
     :else (throw (ex-info (str "Cannot open as a java.io.OutputStream: " (pr-str x)) {:value x}))))
+
+;; `(copy input output & opts)` — copy input to output, returns nil. Input may be
+;; a Reader / InputStream, a File, or a String (the String's CONTENT, matching
+;; JVM do-copy's StringReader arm). Output may be a Writer / OutputStream, a File,
+;; or a String (a file PATH — a cljw convenience; JVM has no String output arm,
+;; so note the input=content / output=path asymmetry). Like JVM copy, only a
+;; stream copy itself opened (a File/String arg) is closed; a passed stream is
+;; the caller's to close. The :buffer-size / :encoding opts are accepted-and-
+;; ignored (the transfer is a single Zig []u8 bulk move, UTF-8 throughout).
+(defn copy
+  [input output & opts]
+  (let [in  (cond
+              (instance? java.io.Reader input)      input
+              (instance? java.io.InputStream input) input
+              (instance? java.io.File input)        (reader input)
+              (string? input)                       (rt/__string-reader input)
+              :else (throw (ex-info (str "copy: cannot read from " (pr-str input)) {:value input})))
+        out (cond
+              (instance? java.io.Writer output)       output
+              (instance? java.io.OutputStream output) output
+              (instance? java.io.File output)         (writer output)
+              (string? output)                        (rt/__open-writer output)
+              :else (throw (ex-info (str "copy: cannot write to " (pr-str output)) {:value output})))
+        own? (or (instance? java.io.File output) (string? output))]
+    (rt/__stream-copy in out)
+    (when own? (.close out))
+    nil))
