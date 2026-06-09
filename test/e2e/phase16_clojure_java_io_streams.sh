@@ -30,6 +30,13 @@ assert_eq 'reader_idem'   "$(run "(let [r (clojure.java.io/reader \"$TMP/lines.t
 assert_eq 'reader_of_file' "$(run "(class (clojure.java.io/reader (clojure.java.io/file \"$TMP/lines.txt\")))")" 'java.io.Reader'
 assert_eq 'reader_bad'    "$(run '(try (clojure.java.io/reader 42) (catch Throwable e :threw))')" ':threw'
 
+# --- leaf-class instance? (D-358): a reader stream is any reader-family leaf ---
+assert_eq 'leaf_buffered_reader' "$(run "(instance? java.io.BufferedReader (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'true'
+assert_eq 'leaf_print_writer'    "$(run "(instance? java.io.PrintWriter (clojure.java.io/writer \"$TMP/w2.txt\"))")" 'true'
+assert_eq 'leaf_file_inputstream' "$(run "(instance? java.io.FileInputStream (clojure.java.io/input-stream \"$TMP/lines.txt\"))")" 'true'
+# cross-family leaf is false (a reader is not an OutputStream leaf)
+assert_eq 'leaf_cross_false'     "$(run "(instance? java.io.FileOutputStream (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'false'
+
 # --- line-seq + with-open round-trips, via fixture files (sequential eval) ---
 cat > "$TMP/lineseq.clj" <<EOF
 (require '[clojure.java.io :as io])

@@ -58,6 +58,7 @@ const TypedInstance = @import("type_descriptor.zig").TypedInstance;
 const ReifiedInstance = @import("type_descriptor.zig").ReifiedInstance;
 const host_class = @import("error/host_class.zig");
 const interface_membership = @import("interface_membership.zig");
+const stream_classes = @import("io/stream_classes.zig");
 
 /// One Tag-level entry — exact match against `Value.tag()`.
 const NativeEntry = struct {
@@ -204,6 +205,11 @@ pub fn isKnown(class_name: []const u8) bool {
     }
     if (isInterfaceName(simple)) return true;
     if (host_class.isKnownException(simple)) return true;
+    // java.io stream classes (family + leaf): one buffer-backed host_stream
+    // answers `instance?` for the whole closed set (D-358). Shared SSOT with
+    // host_stream's descriptor `protocol_impls` so the precheck and the match
+    // agree. FQCN form (cljw never auto-imports java.io), unchanged by normalise.
+    if (stream_classes.isStreamClass(simple)) return true;
     return false;
 }
 
@@ -369,6 +375,16 @@ test "matchInterface: corrected + new interface membership" {
     try testing.expect(!isInstance(Value.initInteger(5), "Seqable"));
     try testing.expect(!isInstance(Value.initInteger(5), "Sequential"));
     try testing.expect(!isInstance(Value.initInteger(5), "ISeq"));
+}
+
+test "isKnown accepts java.io stream family + leaf class names (D-358)" {
+    try testing.expect(isKnown("java.io.Reader"));
+    try testing.expect(isKnown("java.io.BufferedReader"));
+    try testing.expect(isKnown("java.io.FileInputStream"));
+    try testing.expect(isKnown("java.io.PrintWriter"));
+    try testing.expect(isKnown("java.io.ByteArrayOutputStream"));
+    // Unknown io-shaped names still raise (no silent-default-shift).
+    try testing.expect(!isKnown("java.io.RandomAccessFile"));
 }
 
 test "isKnown delegates Throwable hierarchy to host_class" {

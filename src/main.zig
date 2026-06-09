@@ -95,6 +95,7 @@ test {
     _ = @import("runtime/error/print.zig");
     _ = @import("runtime/error/host_class.zig");
     _ = @import("runtime/class_name.zig");
+    _ = @import("runtime/io/stream_classes.zig");
     _ = @import("runtime/interface_membership.zig");
     _ = @import("runtime/gc/arena.zig");
     _ = @import("runtime/gc/tag_ops.zig");

@@ -36,6 +36,7 @@ const TypeDescriptor = type_descriptor.TypeDescriptor;
 const file_io = @import("../file_io.zig");
 const string_mod = @import("../collection/string.zig");
 const env_mod = @import("../env.zig");
+const stream_classes = @import("stream_classes.zig");
 
 pub const Kind = enum(u8) { reader, writer, input, output };
 
@@ -281,10 +282,9 @@ const Method = struct { name: []const u8, f: *const fn (*Runtime, *Env, []const 
 const READER_METHODS = [_]Method{ .{ .name = "read", .f = &readByte }, .{ .name = "readLine", .f = &readLine }, .{ .name = "close", .f = &close } };
 const WRITER_METHODS = [_]Method{ .{ .name = "write", .f = &write }, .{ .name = "flush", .f = &flush }, .{ .name = "close", .f = &close } };
 
-const READER_NAMES = [_][]const u8{ "Reader", "BufferedReader", "InputStreamReader", "FileReader", "StringReader", "PushbackReader" };
-const WRITER_NAMES = [_][]const u8{ "Writer", "BufferedWriter", "OutputStreamWriter", "FileWriter", "PrintWriter", "StringWriter" };
-const INPUT_NAMES = [_][]const u8{ "InputStream", "BufferedInputStream", "FileInputStream", "ByteArrayInputStream" };
-const OUTPUT_NAMES = [_][]const u8{ "OutputStream", "BufferedOutputStream", "FileOutputStream", "ByteArrayOutputStream" };
+// Leaf class names recognised by `instance?` live in the stream_classes SSOT
+// (D-358) as fully-qualified `java.io.*` names, shared with class_name.isKnown
+// so the `__instance?` precheck and the matchUserType arm cannot drift.
 
 /// Build one family descriptor into `rt.types` (gpa-owned per the `rt.deinit`
 /// contract: key, fqcn, each method_name + the method_table slice, and the
@@ -332,10 +332,10 @@ const PRIMS = [_]Prim{
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
     const rt = env.rt;
     if (!rt.types.contains("java.io.Reader")) {
-        try registerDescriptor(rt, "java.io.Reader", &READER_METHODS, &READER_NAMES);
-        try registerDescriptor(rt, "java.io.Writer", &WRITER_METHODS, &WRITER_NAMES);
-        try registerDescriptor(rt, "java.io.InputStream", &READER_METHODS, &INPUT_NAMES);
-        try registerDescriptor(rt, "java.io.OutputStream", &WRITER_METHODS, &OUTPUT_NAMES);
+        try registerDescriptor(rt, "java.io.Reader", &READER_METHODS, &stream_classes.READER_NAMES);
+        try registerDescriptor(rt, "java.io.Writer", &WRITER_METHODS, &stream_classes.WRITER_NAMES);
+        try registerDescriptor(rt, "java.io.InputStream", &READER_METHODS, &stream_classes.INPUT_NAMES);
+        try registerDescriptor(rt, "java.io.OutputStream", &WRITER_METHODS, &stream_classes.OUTPUT_NAMES);
     }
     for (PRIMS) |p| {
         _ = try env.intern(rt_ns, p.name, Value.initBuiltinFn(p.f), null);
