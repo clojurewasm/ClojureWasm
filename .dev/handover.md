@@ -5,20 +5,21 @@
 
 ## Resume contract
 
-- **HEAD**: ≈ `8a9460fd` (D-361 runner cap-lift; see `git log` for current).
-  Mac gate baseline **303/0** `--serial-e2e`. Tree clean.
-- **First commit on resume MUST be**: the **D-355 babashka-free playground
-  port** — rewrite `~/Documents/MyProducts/playground-v2/server/playground/
-  {server,sandbox}.clj` to run ON cljw (no babashka), using the now-landed
-  `clojure.java.io` / `cljw.fs` / `cljw.json` / `cljw.eval/with-budget` /
-  `cljw.http.server`. First: `zig build -Dwasm -Doptimize=ReleaseSafe && cp
-  zig-out/bin/cljw zig-out/bin/cljw-wasm` (the demo binary predates the io
-  work). Any cljw gap the port hits → fix cljw-side (TDD, finished-form), the
-  playground repo is NOT cljw-gated.
-- **In flight**: a background ubuntunote Linux gate verifies the D-361 fix on
-  `8a9460fd` (`/tmp/cljw_ubuntu_d361.txt`). If it still shows
-  `e2e_phase16_eval_budget` red, the cap-lift hypothesis was incomplete —
-  re-open D-361 and inspect the actual Linux render path.
+- **HEAD**: ≈ `ffd7ecd2` (see `git log` for current). Mac gate baseline
+  **303/0** `--serial-e2e`. Tree clean. The user's 3 CFP-demo goals are all
+  delivered (io subsystem + babashka-free playground D-355 + fly.io configs for
+  both demos — the latter two in the `$MY/playground-v2` + `$MY/serverless-v2`
+  repos, not this one).
+- **First commit on resume MUST be**: **D-361** — make the Linux-only
+  `e2e_phase16_eval_budget` heap case diagnosable, then fix. The runner cap-lift
+  did NOT resolve it (Linux `$out` is empty + non-zero → process killed without
+  rendering). Concrete step: add an exit-code echo to the heap case in
+  `test/e2e/phase16_eval_budget.sh` (124=timeout vs 137=OOM disambiguates
+  cause), `bash scripts/run_remote_ubuntu.sh`, then fix (loosen the timeout, or
+  make `heap_ceiling` cover the bulk-alloc path it currently misses). Mac cannot
+  reproduce. If you'd rather defer D-361 (Linux-env-bound), self-select per
+  CLAUDE.md § The only stop — D-356 (bookshelf single-binary via `cljw build`)
+  or a quality-loop floor.
 - **Forbidden**: pushing to `main`; pinning a zwasm tag (F-001 relative-path
   co-dev). Two gates at once (share `/tmp/codev_gate.lock` — `mkdir` acquire,
   `rmdir` release).
