@@ -250,6 +250,13 @@ fn ensureCapacity(rt: *Runtime, tv: *TransientVector, needed: u32) !void {
     while (new_cap < needed) new_cap *|= 2;
 
     const old_buf: []Value = if (tv.items_ptr) |p| p[0..tv.capacity] else &.{};
+    // D-361: this element buffer grows via `infra`, bypassing gc.alloc's
+    // heap_ceiling. Without this check a runaway `(vec (range 1e8))` under a
+    // CLJW_EVAL_MAX_HEAP_MB cap grows the buffer to hundreds of MB and the OS
+    // OOM-kills the process before `persistent!` (gc.alloc) would trip the cap
+    // (the D-361 Linux symptom). Refuse here so the cap surfaces as the
+    // catchable/uncatchable eval_heap_exceeded during the build, on every host.
+    try rt.gc.checkInfraCap(new_cap * @sizeOf(Value));
     const new_buf = try rt.gc.infra.realloc(old_buf, new_cap);
     tv.items_ptr = new_buf.ptr;
     tv.capacity = new_cap;

@@ -338,6 +338,26 @@ pub const GcHeap = struct {
         return obj;
     }
 
+    /// D-361: enforce the per-eval live-heap ceiling against a BULK `infra`
+    /// allocation that bypasses `alloc` — the transient vector's element buffer
+    /// grows via `gc.infra.realloc` and can reach hundreds of MB before the
+    /// build finishes (`persistent!`, which DOES go through `alloc`, only trips
+    /// the cap afterwards). On a memory-tight host that uncapped buffer
+    /// OS-OOM-kills the process first (the D-361 Linux symptom) instead of
+    /// surfacing the catchable `eval_heap_exceeded`. A bulk-infra site calls
+    /// this BEFORE allocating `infra_bytes`; it refuses (hook + OutOfMemory)
+    /// when that plus the current live gc bytes would exceed the cap. No-op when
+    /// unmetered. (Per-eval is single-threaded, so the read needs no gc_mutex.)
+    pub fn checkInfraCap(self: *GcHeap, infra_bytes: usize) error{OutOfMemory}!void {
+        if (self.heap_ceiling) |cap| {
+            const live = self.stats.bytes_allocated - self.stats.bytes_freed;
+            if (live + infra_bytes > cap) {
+                if (self.heap_exceeded_hook) |hook| hook(cap);
+                return error.OutOfMemory;
+            }
+        }
+    }
+
     // The `collect()` orchestrator lives in `mark_sweep.zig` — it
     // imports `root_set.zig` which itself imports `gc_heap.zig`, so the
     // natural cycle-free place for the entry point is
