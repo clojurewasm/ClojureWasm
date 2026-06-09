@@ -96,6 +96,106 @@ interfaces:
     methods:
       withMeta: { status: wired, wires_to_protocol: IObj, wires_to_method: "-with-meta" }
       meta: { status: wired, wires_to_protocol: IObj, wires_to_method: "-meta" }
+  # --- editable / transient collection family (D-286, F-013 definition-derived) ---
+  # flatland.ordered drives this: OrderedSet declares IEditableCollection (the LOAD
+  # blocker) + IPersistentSet with clj-named methods (D-286b); the Transient* types
+  # declare the ITransient* family. All protocol_remap. LOAD-LEVEL: methods register
+  # + dispatch (D-286b dispatch verified); the native conj!/assoc!/persistent!/disj!
+  # + `into`/`-editable?` typed_instance consult is an off-critical-path follow-up
+  # (D-369). Both the bare simple name (deftype `:import`s + declares it bare) and the
+  # qualified spelling resolve to the same row (the bare alias covers set-bound).
+  - name: clojure.lang.IEditableCollection
+    aliases: [IEditableCollection]
+    derives_from: "clojure.lang.IEditableCollection — asTransient: a persistent coll that can produce a transient (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "IEditableCollection (defprotocol IEditableCollection (-as-transient [c]), D-286 — load-level)"
+    note: "Registers asTransient→IEditableCollection/-as-transient. `transient`/`into` consulting a typed_instance's -as-transient is the off-critical-path follow-up D-369."
+    methods:
+      asTransient: { status: wired, wires_to_protocol: IEditableCollection, wires_to_method: "-as-transient" }
+  - name: clojure.lang.ITransientCollection
+    aliases: [ITransientCollection]
+    derives_from: "clojure.lang.ITransientCollection — conj!/persistent!: the base transient mutation interface (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "ITransientCollection (defprotocol ITransientCollection (-conj! [c x]) (-persistent! [c]), D-286 — load-level)"
+    note: "conj→ITransientCollection/-conj!, persistent→ITransientCollection/-persistent!. The conj!/persistent! fns consulting a typed_instance is the D-369 follow-up."
+    methods:
+      conj: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-conj!" }
+      persistent: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-persistent!" }
+  - name: clojure.lang.ITransientAssociative
+    aliases: [ITransientAssociative]
+    derives_from: "clojure.lang.ITransientAssociative — assoc! (extends ITransientCollection) (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "ITransientAssociative (defprotocol ITransientAssociative (-assoc! [c k v]), D-286 — load-level)"
+    note: "assoc→ITransientAssociative/-assoc!; conj/persistent inherit ITransientCollection targets."
+    methods:
+      assoc: { status: wired, wires_to_protocol: ITransientAssociative, wires_to_method: "-assoc!" }
+      conj: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-conj!" }
+      persistent: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-persistent!" }
+  - name: clojure.lang.ITransientMap
+    aliases: [ITransientMap]
+    derives_from: "clojure.lang.ITransientMap — without! + the grouped count/valAt/assoc/conj/persistent it inherits (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "ITransientMap (defprotocol ITransientMap (-without! [m k]), D-286 — load-level; other methods split to IPersistentCollection/ILookup/ITransientAssociative/ITransientCollection)"
+    note: "clj groups count/valAt/assoc/conj/without/persistent under ITransientMap; cljw splits them (TransientOrderedMap)."
+    methods:
+      count: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-count" }
+      valAt: { status: wired, wires_to_protocol: ILookup, wires_to_method: "-lookup" }
+      assoc: { status: wired, wires_to_protocol: ITransientAssociative, wires_to_method: "-assoc!" }
+      conj: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-conj!" }
+      without: { status: wired, wires_to_protocol: ITransientMap, wires_to_method: "-without!" }
+      persistent: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-persistent!" }
+  - name: clojure.lang.ITransientSet
+    aliases: [ITransientSet]
+    derives_from: "clojure.lang.ITransientSet — disjoin!/contains + the grouped count/get/conj/persistent (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "ITransientSet (defprotocol ITransientSet (-disjoin! [s k]) (-tset-contains? [s k]), D-286 — load-level)"
+    note: "clj groups count/get/disjoin/conj/contains/persistent under ITransientSet; cljw splits them (TransientOrderedSet)."
+    methods:
+      count: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-count" }
+      get: { status: wired, wires_to_protocol: ILookup, wires_to_method: "-lookup" }
+      disjoin: { status: wired, wires_to_protocol: ITransientSet, wires_to_method: "-disjoin!" }
+      conj: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-conj!" }
+      contains: { status: wired, wires_to_protocol: ITransientSet, wires_to_method: "-tset-contains?" }
+      persistent: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-persistent!" }
+  - name: clojure.lang.ITransientVector
+    aliases: [ITransientVector]
+    derives_from: "clojure.lang.ITransientVector — assocN!/pop! + the grouped conj/persistent/count/nth (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "ITransientVector (defprotocol ITransientVector (-assoc-n! [c i v]) (-pop! [c]), D-286 — load-level; definition-derived family completion, no ordered deftype-supertype section but :import-declared)"
+    methods:
+      assocN: { status: wired, wires_to_protocol: ITransientVector, wires_to_method: "-assoc-n!" }
+      pop: { status: wired, wires_to_protocol: ITransientVector, wires_to_method: "-pop!" }
+      conj: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-conj!" }
+      persistent: { status: wired, wires_to_protocol: ITransientCollection, wires_to_method: "-persistent!" }
+      count: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-count" }
+      nth: { status: wired, wires_to_protocol: Indexed, wires_to_method: "-nth" }
+  - name: clojure.lang.IPersistentSet
+    aliases: [IPersistentSet]
+    derives_from: "clojure.lang.IPersistentSet — disjoin + the grouped cons/seq/empty/equiv/get/count a set impl declares (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    note: "D-286b: IPersistentSet IS a cljw protocol Var, but routing the bare deftype-supertype spelling through protocol_remap translates ordered's clj-named methods (cons→-cons, seq→-seq, …) so they DISPATCH (verified: conj/seq/count on a deftype IPersistentSet). clj groups them under IPersistentSet; cljw splits like IPersistentMap. The `-disjoin` self entry is the identity passthrough."
+    methods:
+      disjoin: { status: wired, wires_to_protocol: IPersistentSet, wires_to_method: "-disjoin" }
+      cons: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-cons" }
+      seq: { status: wired, wires_to_protocol: Seqable, wires_to_method: "-seq" }
+      empty: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-empty" }
+      equiv: { status: wired, wires_to: "Object method-family equiv (D-280d8 — clj collection =)" }
+      get: { status: wired, wires_to_protocol: ILookup, wires_to_method: "-lookup" }
+      count: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-count" }
   # --- host_inert: no-JVM java interfaces (D-281 / ADR-0103) ---
   # Recognised so collection deftypes declaring them for java-interop LOAD; their
   # methods are inert (cljw has no java dispatch). `recognised: true`, `kind:

@@ -2368,6 +2368,35 @@ fn stripMethodParamNs(arena: std.mem.Allocator, params_form: Form) macro_dispatc
     return .{ .data = .{ .vector = out }, .location = params_form.location };
 }
 
+/// Whether a `protocol_remap` section is a FIRST pass (declared clj methods that
+/// still need translation) vs the SECOND pass over a SELF-targeting section the
+/// rewrite already emitted. Routing the second pass back through the rewrite would
+/// loop forever: the rewrite translates `disjoin`→`-disjoin` AND (D-283) dual-emits
+/// the original `disjoin` for `.dot` calls, so a self-targeting section
+/// (IPersistentSet/ITransient*) comes back carrying BOTH `-disjoin` (identity) and
+/// `disjoin` (re-translatable) → infinite recursion / stack-overflow segfault.
+/// Rule: if the section carries ANY already-cljw (identity) method, it is the
+/// rewrite's own output → do NOT re-route; the bare-protocol-Var arm registers both
+/// spellings directly. Only an all-clj-names section (no identity) is a first pass.
+/// An unknown method (no remap entry) routes so `rewriteProtocolRemap` raises the
+/// precise `feature_not_supported`. (D-286b)
+fn sectionNeedsRemap(hi: host_interface.HostInterface, impls: []const Form) bool {
+    var any_translate = false;
+    for (impls) |impl| {
+        if (impl.data != .list or impl.data.list.len < 1 or impl.data.list[0].data != .symbol) continue;
+        const m = impl.data.list[0].data.symbol.name;
+        const r = hi.remapMethod(m) orelse return true;
+        // Identity = unchanged method name AND already under the interface's OWN
+        // protocol (a self-targeting method the rewrite emitted) ⇒ second pass, skip.
+        // A same-NAME-but-different-PROTOCOL remap (IHashEq `hasheq`→Object/hasheq,
+        // IPersistentSet `equiv`→Object/equiv) is NOT identity — it still retargets,
+        // so the section is a first pass that must route.
+        if (std.mem.eql(u8, r.method, m) and std.mem.eql(u8, r.protocol, hi.canonical)) return false;
+        any_translate = true;
+    }
+    return any_translate;
+}
+
 fn expandExtendType(
     arena: std.mem.Allocator,
     rt: *Runtime,
@@ -2464,7 +2493,20 @@ fn expandExtendType(
     // <cljw-proto> <translated-impls>) ...)`. Those re-expand through this fn
     // (arity-grouped there); the primitive never sees the qualified name.
     if (args[1].data == .symbol and host_interface.isProtocolRemap(args[1].data.symbol.name)) {
-        return try rewriteProtocolRemap(arena, host_interface.lookup(args[1].data.symbol.name).?, target_form, args[2..], loc);
+        const hi = host_interface.lookup(args[1].data.symbol.name).?;
+        // Only rewrite when a method actually translates (clj-name → a DIFFERENT
+        // cljw -method). When every impl is ALREADY in cljw target form, this is the
+        // SECOND pass over a section the rewrite itself emitted for a SELF-targeting
+        // interface (D-286b: IPersistentSet's `disjoin` → IPersistentSet/`-disjoin`,
+        // ITransientSet's `disjoin` → ITransientSet/`-disjoin!`). The interface's bare
+        // name is in the remap table (so the deftype-supertype position routes here),
+        // so without this guard the emitted `(extend-type Name IPersistentSet
+        // (-disjoin …))` would re-route and translate `-disjoin` → `-disjoin` forever
+        // (the segfault-by-stack-overflow this guard fixes). Falling through lets the
+        // already-cljw method register under the bare protocol Var directly.
+        if (sectionNeedsRemap(hi, args[2..])) {
+            return try rewriteProtocolRemap(arena, hi, target_form, args[2..], loc);
+        }
     }
 
     // A host-supertype marker (`Object`, D-275) is quote-wrapped so the analyzer

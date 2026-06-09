@@ -1590,6 +1590,18 @@
 (defprotocol Associative (-assoc [c k v]) (-contains-key? [c k]) (-entry-at [c k]))
 (defprotocol IPersistentMap (-without [m k]) (-keys [m]) (-vals [m]))
 (defprotocol IPersistentSet (-disjoin [s k]))
+;; Editable / transient collection family (D-286, F-013 definition-derived).
+;; A deftype declaring these (flatland.ordered's OrderedSet/Transient* types)
+;; registers + dispatches its methods. LOAD-LEVEL: cljw's native conj!/assoc!/
+;; persistent!/disj! consult of a typed_instance transient + `into`/`-editable?`
+;; typed_instance detection are a tracked off-critical-path follow-up (D-369);
+;; `(ordered-set …)` rides the plain conj path, not transients (see D-286 note).
+(defprotocol IEditableCollection (-as-transient [c]))
+(defprotocol ITransientCollection (-conj! [c x]) (-persistent! [c]))
+(defprotocol ITransientAssociative (-assoc! [c k v]))
+(defprotocol ITransientMap (-without! [m k]))
+(defprotocol ITransientSet (-disjoin! [s k]) (-tset-contains? [s k]))
+(defprotocol ITransientVector (-assoc-n! [c i v]) (-pop! [c]))
 (defprotocol Reversible (-rseq [c]))
 ;; `-sorted-comparator` (not `-comparator` — that name is already the sort
 ;; predicate-coercion helper at L1159; a collision broke `(sort > …)`).

@@ -938,7 +938,7 @@ active:
       (reader_types.clj:52), campaign Stage 1.3 ladder rung 6."
     last_reviewed: "2026-06-07"
   - id: "D-286"
-    status: "PARTIAL (D-286a landed 2026-06-07) — DONE a) bare `IHashEq` alias (the one host-interface name that is NOT a cljw protocol Var, so unambiguous) + the java.util collection host_inert family (Set/List/Collection alongside Map, big-bang). ordered advances past ALL its bare deftype-supertype names (IObj/IFn/IPersistentStack/Reversible/Sorted are already protocol Vars so resolve bare; IHashEq + java.util.Set now recognised) to its NEXT blocker `aset` (Java arrays) → D-287, a different capability class. REMAINING D-286b: bare names that ARE cljw protocol Vars (IPersistentSet/IPersistentMap with clj-named methods like disjoin/assoc) bypass protocol_remap → clj-named methods register under the clj name, cljw core fns (-disjoin/-assoc) miss them. Needs method-name disambiguation (clj name → remap; cljw dash-name → direct) in the bare-name deftype-supertype path. ordered will hit this after D-287 (aset). ORIGINAL: ordered uses `(:import (clojure.lang …))` + BARE-name deftype supertypes vs priority-map's qualified."
+    status: "PARTIAL→FAMILY LANDED 2026-06-10 (ADR-0102 am1, F-013) — the editable/transient collection interface family + the D-286b dispatch fix landed. ADDED: 7 protocol_remap rows (IEditableCollection/ITransientCollection/ITransientAssociative/ITransientMap/ITransientSet/ITransientVector/IPersistentSet) + 6 new cljw defprotocols + bare aliases + a sectionNeedsRemap self-targeting recursion guard (macro_transforms.zig) that resolves D-286bs harder part generically (a bare name that is BOTH a cljw protocol Var AND needs clj→cljw method translation). VERIFIED: a deftype IPersistentSet with clj-named cons/seq/count/disjoin now DISPATCHES (conj/seq/count work); flatland.ordered.set advances past ALL its editable/transient interfaces to its next SEPARATE blocker print-method (D-370). e2e phase14_deftype_transient_family (4 cases). OVER-CLAIM CORRECTED (ROADMAP §17): the prior D-286a status ordered advances past ALL its bare deftype-supertype names to aset was FALSE — it MISSED IEditableCollection (the real LOAD blocker at set.clj:95), and aset is in a deftype method BODY (def-time-unevaluated, never a load blocker). FOLLOW-UP D-369: transient conj!/assoc!/persistent!/disj! + into/-editable? typed_instance consult — OFF the ordered critical path (DA finding: -editable? is native-tag-only so a user editable type takes the plain conj path, never the transient surface). D-286a (2026-06-07): bare IHashEq alias + java.util host_inert family. ORIGINAL: ordered uses (:import (clojure.lang …)) + BARE-name deftype supertypes."
     category: "polymorphism"
     barrier: |-
       **`:import`-ed bare clojure.lang.* / java.util.* names in deftype supertype
@@ -956,7 +956,29 @@ active:
       D-281 (host_inert), the ordered probe (flatland.ordered.set.clj:67), the
       campaign Stage 1.3 ladder. Likely also needs java.util.Set host_inert (D-281
       sibling)."
-    last_reviewed: "2026-06-07"
+    last_reviewed: "2026-06-10"
+  - id: "D-369"
+    status: "open (2026-06-10, off-critical-path follow-up to D-286 ADR-0102 am1) — transient DISPATCH wiring for user deftypes. The editable/transient family is RECOGNISED + LOAD-LEVEL (methods register; D-286b makes the persistent clj-named methods dispatch), but cljw's native `conj!`/`assoc!`/`persistent!`/`disj!`/`pop!` (src/lang/primitive/transient.zig) switch over the `.transient_*` Value tags and raise `transient_kind_mismatch` on a `.typed_instance` — they do NOT consult a user deftype's ITransientCollection/-conj! etc. ALSO: cljw's `into` (core.clj) + `-editable?` branch on native-tag predicates (set?/vector?/map?), all false for a typed_instance, so a user IEditableCollection type takes the plain `conj` path and NEVER reaches the transient surface. Finished form (DA Alt 3, F-011 JVM-parity): make `-editable?`/`into` consult IEditableCollection on a typed_instance + wire the transient builtins to the ITransient* protocols, so `(into (ordered-set) xs)` rides the transient fast-path like JVM. Deliberately OFF the ordered critical path (DA finding) — recorded so it is not lost, NOT a cycle-budget defer (it is a genuinely separable concern + its own AD/ADR for the -editable? native-tag divergence). recall trigger: a lib whose public api actually exercises a user transient, OR a perf cycle on user editable types."
+    category: "polymorphism"
+    barrier: |-
+      Native `conj!`/`assoc!`/`persistent!`/`disj!`/`pop!` (transient.zig) +
+      `into`/`-editable?` (core.clj) do not consult a `.typed_instance`'s
+      ITransient*/IEditableCollection methods, so a user editable/transient deftype
+      registers its methods (D-286 am1) but they never dispatch. Off the ordered
+      critical path (`-editable?` native-tag-only ⇒ transient path unreached). Wire
+      the typed_instance consult + classify the `-editable?` native-tag divergence
+      (bug→fix vs AD). Cross-ref D-286 (recognition), ADR-0102 am1 (the DA Alt 3).
+    last_reviewed: "2026-06-10"
+  - id: "D-370"
+    status: "open (2026-06-10, surfaced loading flatland.ordered.set) — `print-method` is unimplemented. cljw has no `print-method` multimethod (resolve → nil; no core.clj def), so a lib's `(defmethod print-method MyType [o w] …)` raises `Unable to resolve symbol: print-method` and blocks the whole file load. `print-method` is the clojure.core user-extensible print-dispatch multimethod (pr/prn consult it); MANY libs extend it to customise how their types print. Finished form: a `print-method` (+ likely `print-dup`) multimethod that `pr`/`pr-str`/`prn` dispatch through, with a default method = the current writeStrValue path, so a user `(defmethod print-method T …)` overrides printing for T. Distinct from the editable/transient family (D-286) — a clojure.core printing-surface gap. This is the NEXT blocker for flatland.ordered.set after D-286 landed. clj-grounded. recall trigger: the validation campaign / a lib that extends print-method (common)."
+    category: "runtime"
+    barrier: |-
+      `print-method` multimethod absent: `(defmethod print-method T …)` →
+      name_error, blocking any lib that customises its type's printing (flatland.ordered,
+      and many others). Wire `print-method` as a clojure.core multimethod that pr/prn
+      consult, default method = the native writeStrValue path. Cross-ref D-286
+      (surfaced it), F-010/F-011 (library-driven discovery + clj parity).
+    last_reviewed: "2026-06-10"
   - id: "D-287"
     status: "DISCHARGED ADR-0105 (2026-06-07) - Java arrays implemented: type-erased `.array` JavaArray ([]Value, mirror of TypedInstance) + aget/aset/alength/aclone/array? primitives + object-array/int-array/byte-array/make-array/to-array/into-array/aset-*/amap/areduce in core.clj; seqable/indexed/identity-equal; byte/short/char wrap + per-ctor init defaults (F-011); type-erasure = AD-019. flatland.ordered (rung 4b) advanced aset->IEditableCollection; tools.reader (rung 6) aget->Closeable (both new host-interface blockers). ORIGINAL: now (found 2026-06-07 — ordered's blocker after D-286a, a NON-deftype/NON-host-interface class) — flatland.ordered.set.clj:84 `Unable to resolve symbol: 'aset'`. `aset` (Java array element set) is unimplemented; ordered uses Java object-arrays + aset/aget/make-array internally for its backing store. This is the Java-array-interop capability, distinct from the deftype host-interface work (D-275→D-286). cljw has no Java arrays as such — would need an array surface (object-array/aset/aget/alength/make-array) backed by a cljw mutable vector or a native array Value."
     category: "interop"

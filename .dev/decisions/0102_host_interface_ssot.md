@@ -192,3 +192,78 @@ gate, without making `Object` itself a protocol Var.
   maintained capability allowlists (should any arise) cite this pattern: closed-
   set SSOT (keys from the definition) + a gate bounding the set + a gate requiring
   a generic route.
+
+## Revision history
+
+### Amendment 1 (2026-06-10) — editable / transient collection family (D-286)
+
+The closed set absorbs the **editable / transient collection interface family**
+unchanged (no new ADR; the ADR-0102 mechanism is the right shape): 7 new
+`protocol_remap` rows — `IEditableCollection`, `ITransientCollection`,
+`ITransientAssociative`, `ITransientMap`, `ITransientSet`, `ITransientVector`,
+and `IPersistentSet` (the last as the **D-286b** work-fix). 6 new cljw
+`defprotocol`s back the transient targets (cljw had no transient protocol Var;
+transients are native Value tags). Driven by `flatland.ordered` (F-010/F-013
+library-discovery): `OrderedSet` declares `clojure.lang.IEditableCollection`
+(the prior LOAD blocker at set.clj:95) + `IPersistentSet` with clj-named
+methods, and the `Transient*` types declare the `ITransient*` family.
+
+**Two mechanism changes** beyond the data rows:
+1. **Bare aliases route through `protocol_remap`.** A deftype `:import`s
+   `(clojure.lang IEditableCollection …)` and declares the BARE simple name, so
+   both the bare and qualified spellings are MARKERS keys → the same row.
+2. **Self-targeting recursion guard** (`sectionNeedsRemap`, macro_transforms.zig).
+   `IPersistentSet`/`ITransient*` remaps self-target (`disjoin`→IPersistentSet/
+   `-disjoin`), and the D-283 dual-registration re-emits the original clj name, so
+   the emitted section carried BOTH `-disjoin` (cljw) and `disjoin` (clj) and
+   re-routing translated `disjoin`→`-disjoin` forever (stack-overflow segfault).
+   The guard: a section carrying any already-cljw method *under the interface's own
+   protocol* is the rewrite's second pass → register directly, don't re-route. A
+   same-name-but-different-protocol remap (`equiv`→Object, `hasheq`→Object) is NOT
+   identity → still routes. This generically resolves the D-286 barrier's "harder
+   part" (a bare name that is BOTH a cljw protocol Var AND needs clj→cljw method
+   translation).
+
+**Disposition: LOAD-LEVEL + the D-286b dispatch fix** (DA Alt 2). Recognition lets
+the family LOAD; D-286b makes ordered's declared clj-named methods DISPATCH
+(verified: `conj`/`seq`/`count` on a deftype `IPersistentSet`). The native
+`conj!`/`assoc!`/`persistent!`/`disj!` + `into`/`-editable?` typed_instance consult
+is deferred to **D-369**, an honestly off-critical-path follow-up: cljw's `into`
+branches on `-editable?` (native-tag-only), so a user editable type takes the plain
+`conj` path and NEVER reaches the transient surface — wiring it does nothing for
+`(ordered-set …)` today. ordered.set now advances past ALL its editable/transient
+interfaces to its next, SEPARATE blocker `print-method` (a clojure.core multimethod
+gap, D-370) — NOT claimed "fully working".
+
+#### Alternatives considered (Devil's-advocate fork, verbatim-reflected)
+
+The DA fork found a load-bearing fact the survey missed and it reframed the
+decision. Recorded faithfully:
+
+- **Critical finding:** ordered's public api `(ordered-set 1 2 3)` → `(into
+  empty xs)` → cljw `into` branches on `-editable?` (NOT `(instance?
+  IEditableCollection)` like JVM); `-editable?` is native-tag-only → returns
+  false for a `.typed_instance` → the transient path is NEVER entered. So the
+  transient-dispatch wiring (the proposal's deferred follow-up) is genuinely OFF
+  the critical path, and the REAL work-blocker is D-286b (clj-named methods
+  mis-registering), which IS on the critical path.
+- **Alt 1 — smallest-diff (LOAD-LEVEL only, defer D-286b too):** lands the family
+  recognition big-bang; matches the IFn/IObj/Sorted "load-level" precedent. BREAKS:
+  leaves ordered LOADABLE-BUT-BROKEN and mis-attributes the residual blocker — the
+  Defer-to-amnesia / false-positive-discharge class (the exact over-claim the D-286
+  row already committed once).
+- **Alt 2 — finished-form-clean (LOAD-LEVEL + D-286b same cycle; transient consult
+  a genuine follow-up):** the disposition that makes the driver WORK, not merely
+  load (F-013/F-011 bar). The clj-name disambiguation is a COMMONISED mechanism
+  (fixes every bare-named-interface deftype, F-011 clause 1), not a per-lib shim.
+  Larger diff — but diff size is not a valid reason to prefer smaller (F-002/F-011
+  clause 5). **DA recommendation.**
+- **Alt 3 — wildcard (wire `-editable?`/`into` to consult IEditableCollection on
+  typed_instances now):** deepest F-011 reading (user editable types ride the
+  transient fast-path like JVM); closes the `-editable?` native-tag divergence at
+  the root. BREAKS: still needs Alt 2's D-286b; front-loads the most machinery +
+  a silently-wrong-`into` hazard; the `-editable?` divergence is a DISTINCT
+  finished-form concern deserving its own ADR/AD — bundling it over-scopes this
+  cycle. Recorded as the D-369 follow-up (transient consult + `-editable?`
+  typed_instance detection, OFF the ordered critical path).
+- **No F-NNN-violating option** was required; all three sit in the envelope.

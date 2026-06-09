@@ -215,6 +215,80 @@ const IPERSISTENT_COLLECTION: HostInterface = .{
     },
 };
 
+// Editable / transient collection family (D-286, F-013 definition-derived, big-bang).
+// Driven by flatland.ordered (OrderedSet declares IEditableCollection — the LOAD
+// blocker — + IPersistentSet with clj-named methods; the Transient* types declare
+// the ITransient* family). All protocol_remap. Each remap maps the clj method to a
+// cljw (protocol, -method) target; a clj interface groups methods cljw splits across
+// protocols (count→IPersistentCollection, get/valAt→ILookup, …), exactly like
+// IPERSISTENT_MAP. The cljw-native `-name` spellings are included as IDENTITY entries
+// so a future cljw-native deftype using the (also-a-protocol-Var) interface bare with
+// `-names` is not mis-routed to feature_not_supported (the D-286b "harder part").
+// LOAD-LEVEL: methods register + dispatch; the native conj!/assoc!/persistent!/disj!
+// + `into`/`-editable?` typed_instance consult is an off-critical-path follow-up
+// (D-369 — `(ordered-set …)` takes the plain conj path, not transients).
+const IEDITABLE_COLLECTION: HostInterface = .{ .kind = .protocol_remap, .canonical = "IEditableCollection", .remap = &.{
+    .{ .clj = "asTransient", .protocol = "IEditableCollection", .method = "-as-transient" },
+    .{ .clj = "-as-transient", .protocol = "IEditableCollection", .method = "-as-transient" },
+} };
+const ITRANSIENT_COLLECTION: HostInterface = .{ .kind = .protocol_remap, .canonical = "ITransientCollection", .remap = &.{
+    .{ .clj = "conj", .protocol = "ITransientCollection", .method = "-conj!" },
+    .{ .clj = "persistent", .protocol = "ITransientCollection", .method = "-persistent!" },
+    .{ .clj = "-conj!", .protocol = "ITransientCollection", .method = "-conj!" },
+    .{ .clj = "-persistent!", .protocol = "ITransientCollection", .method = "-persistent!" },
+} };
+const ITRANSIENT_ASSOCIATIVE: HostInterface = .{ .kind = .protocol_remap, .canonical = "ITransientAssociative", .remap = &.{
+    .{ .clj = "assoc", .protocol = "ITransientAssociative", .method = "-assoc!" },
+    .{ .clj = "conj", .protocol = "ITransientCollection", .method = "-conj!" },
+    .{ .clj = "persistent", .protocol = "ITransientCollection", .method = "-persistent!" },
+    .{ .clj = "-assoc!", .protocol = "ITransientAssociative", .method = "-assoc!" },
+} };
+const ITRANSIENT_MAP: HostInterface = .{ .kind = .protocol_remap, .canonical = "ITransientMap", .remap = &.{
+    .{ .clj = "count", .protocol = "IPersistentCollection", .method = "-count" },
+    .{ .clj = "valAt", .protocol = "ILookup", .method = "-lookup" },
+    .{ .clj = "assoc", .protocol = "ITransientAssociative", .method = "-assoc!" },
+    .{ .clj = "conj", .protocol = "ITransientCollection", .method = "-conj!" },
+    .{ .clj = "without", .protocol = "ITransientMap", .method = "-without!" },
+    .{ .clj = "persistent", .protocol = "ITransientCollection", .method = "-persistent!" },
+    .{ .clj = "-without!", .protocol = "ITransientMap", .method = "-without!" },
+} };
+const ITRANSIENT_SET: HostInterface = .{ .kind = .protocol_remap, .canonical = "ITransientSet", .remap = &.{
+    .{ .clj = "count", .protocol = "IPersistentCollection", .method = "-count" },
+    .{ .clj = "get", .protocol = "ILookup", .method = "-lookup" },
+    .{ .clj = "disjoin", .protocol = "ITransientSet", .method = "-disjoin!" },
+    .{ .clj = "conj", .protocol = "ITransientCollection", .method = "-conj!" },
+    .{ .clj = "contains", .protocol = "ITransientSet", .method = "-tset-contains?" },
+    .{ .clj = "persistent", .protocol = "ITransientCollection", .method = "-persistent!" },
+    .{ .clj = "-disjoin!", .protocol = "ITransientSet", .method = "-disjoin!" },
+    .{ .clj = "-tset-contains?", .protocol = "ITransientSet", .method = "-tset-contains?" },
+} };
+const ITRANSIENT_VECTOR: HostInterface = .{ .kind = .protocol_remap, .canonical = "ITransientVector", .remap = &.{
+    .{ .clj = "assocN", .protocol = "ITransientVector", .method = "-assoc-n!" },
+    .{ .clj = "pop", .protocol = "ITransientVector", .method = "-pop!" },
+    .{ .clj = "conj", .protocol = "ITransientCollection", .method = "-conj!" },
+    .{ .clj = "persistent", .protocol = "ITransientCollection", .method = "-persistent!" },
+    .{ .clj = "count", .protocol = "IPersistentCollection", .method = "-count" },
+    .{ .clj = "nth", .protocol = "Indexed", .method = "-nth" },
+    .{ .clj = "-assoc-n!", .protocol = "ITransientVector", .method = "-assoc-n!" },
+    .{ .clj = "-pop!", .protocol = "ITransientVector", .method = "-pop!" },
+} };
+// IPersistentSet as a DIRECT deftype supertype (D-286b): OrderedSet groups
+// disjoin/cons/seq/empty/equiv/get/count under one IPersistentSet section; cljw
+// splits them across protocols like IPersistentMap. Routing the bare name through
+// protocol_remap (IPersistentSet is ALSO a cljw protocol Var) translates the clj
+// names → cljw -methods so cljw core fns (disj→-disjoin, conj→-cons) find them; the
+// `-disjoin` identity entry keeps a cljw-native impl working.
+const IPERSISTENT_SET: HostInterface = .{ .kind = .protocol_remap, .canonical = "IPersistentSet", .remap = &.{
+    .{ .clj = "disjoin", .protocol = "IPersistentSet", .method = "-disjoin" },
+    .{ .clj = "cons", .protocol = "IPersistentCollection", .method = "-cons" },
+    .{ .clj = "seq", .protocol = "Seqable", .method = "-seq" },
+    .{ .clj = "empty", .protocol = "IPersistentCollection", .method = "-empty" },
+    .{ .clj = "equiv", .protocol = "Object", .method = "equiv" },
+    .{ .clj = "get", .protocol = "ILookup", .method = "-lookup" },
+    .{ .clj = "count", .protocol = "IPersistentCollection", .method = "-count" },
+    .{ .clj = "-disjoin", .protocol = "IPersistentSet", .method = "-disjoin" },
+} };
+
 /// Recognised host-supertype names → their `HostInterface`. D-275 slice 1:
 /// `Object`. D-280a: zero-method markers. D-280b+: the method-bearing
 /// `clojure.lang.*` family, each added as a row gated against
@@ -247,6 +321,26 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     // D-307: the deref-able family (core.memoize's RetryingDelay).
     .{ "clojure.lang.IDeref", IDEREF },
     .{ "clojure.lang.IPending", IPENDING },
+    // D-286: the editable / transient collection family (flatland.ordered).
+    // BOTH the qualified spelling AND the bare simple name (a deftype `:import`s
+    // `(clojure.lang IEditableCollection …)` then declares the BARE name) route to
+    // the same protocol_remap row. IPersistentSet (D-286b) is added bare too — it
+    // is already a cljw protocol Var, but the remap (with the `-disjoin` identity
+    // entry) translates ordered's clj-named methods so they dispatch.
+    .{ "IEditableCollection", IEDITABLE_COLLECTION },
+    .{ "clojure.lang.IEditableCollection", IEDITABLE_COLLECTION },
+    .{ "ITransientCollection", ITRANSIENT_COLLECTION },
+    .{ "clojure.lang.ITransientCollection", ITRANSIENT_COLLECTION },
+    .{ "ITransientAssociative", ITRANSIENT_ASSOCIATIVE },
+    .{ "clojure.lang.ITransientAssociative", ITRANSIENT_ASSOCIATIVE },
+    .{ "ITransientMap", ITRANSIENT_MAP },
+    .{ "clojure.lang.ITransientMap", ITRANSIENT_MAP },
+    .{ "ITransientSet", ITRANSIENT_SET },
+    .{ "clojure.lang.ITransientSet", ITRANSIENT_SET },
+    .{ "ITransientVector", ITRANSIENT_VECTOR },
+    .{ "clojure.lang.ITransientVector", ITRANSIENT_VECTOR },
+    .{ "IPersistentSet", IPERSISTENT_SET },
+    .{ "clojure.lang.IPersistentSet", IPERSISTENT_SET },
     // host_inert: accept both the bare spelling (priority-map writes `Map`/`Iterable`)
     // and the fully-qualified one (the canonical, which the primitive re-checks).
     .{ "Map", JAVA_UTIL_MAP },
