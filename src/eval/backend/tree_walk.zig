@@ -908,6 +908,9 @@ fn evalLoop(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.LoopNode) anye
         locals[b.index] = try eval(rt, env, locals, b.value_expr);
     }
     while (true) {
+        // ADR-0125: in-process eval budget — TreeWalk loop back-edge (parity
+        // with the VM back-edge poll). Unmetered = one optional unwrap.
+        if (rt.eval_budget) |*budget| try budget.tick(rt.io);
         if (eval(rt, env, locals, n.body)) |result| {
             return result;
         } else |err| switch (err) {
@@ -1278,6 +1281,9 @@ fn callMethodImpl(rt: *Runtime, env: *Env, f: *Function, args: []const Value, lo
     // only fn-tail recurs reach this catch.
     const recur_arity: u16 = m.arity + @intFromBool(m.has_rest);
     while (true) {
+        // ADR-0125: in-process eval budget — TreeWalk fn-tail-recur back-edge
+        // (parity with the VM + loop* polls). Unmetered = one optional unwrap.
+        if (rt.eval_budget) |*budget| try budget.tick(rt.io);
         if (eval(rt, env, &locals, m.body)) |result| {
             return result;
         } else |err| switch (err) {

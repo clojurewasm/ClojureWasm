@@ -26,6 +26,7 @@ const builder = @import("builder.zig");
 const render_error_mod = @import("render_error.zig");
 const error_render = @import("error_render.zig");
 const gc_torture = @import("../runtime/gc/gc_torture.zig");
+const eval_budget = @import("../runtime/concurrency/eval_budget.zig");
 const file_io = @import("../runtime/file_io.zig");
 const deps_parse = @import("deps/parse.zig");
 const deps_resolve = @import("deps/resolve.zig");
@@ -65,6 +66,16 @@ pub fn dispatch(init: std.process.Init) !void {
     // Inert when unset. Test/validation only — not production auto-collect.
     if (init.environ_map.get("CLJW_GC_TORTURE")) |raw|
         gc_torture.configure(std.fmt.parseInt(u32, raw, 10) catch 1);
+
+    // ADR-0125: in-process eval budget arming (isolation dim (a)).
+    // CLJW_EVAL_MAX_STEPS bounds back-edge crossings; CLJW_EVAL_DEADLINE_MS
+    // bounds wall-clock ms. Either / both / neither (unmetered). An invalid
+    // value is ignored (that axis stays unset). Applied to the Runtime at eval
+    // start by `runner.runSource`.
+    eval_budget.configureFromEnv(
+        if (init.environ_map.get("CLJW_EVAL_MAX_STEPS")) |raw| (std.fmt.parseInt(u64, raw, 10) catch null) else null,
+        if (init.environ_map.get("CLJW_EVAL_DEADLINE_MS")) |raw| (std.fmt.parseInt(i64, raw, 10) catch null) else null,
+    );
 
     // Self-contained artifact check (ADR-0034 / D-100(b)): if this binary
     // carries an embedded bytecode payload trailer, run it and exit —

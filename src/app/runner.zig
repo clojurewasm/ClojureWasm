@@ -26,6 +26,7 @@ const Value = @import("../runtime/value/value.zig").Value;
 const bootstrap = @import("../lang/bootstrap.zig");
 const require_resolver = @import("../lang/require_resolver.zig");
 const gc_torture = @import("../runtime/gc/gc_torture.zig");
+const eval_budget = @import("../runtime/concurrency/eval_budget.zig");
 const error_print = @import("../runtime/error/print.zig");
 const print = @import("../runtime/print.zig");
 
@@ -105,6 +106,11 @@ pub fn runSource(
     // core bootstrap is complete, so torture validates steady-state user-eval
     // rooting. The bootstrap namespace-creation window is out of scope (D-251).
     gc_torture.arm();
+
+    // ADR-0125: install the env-armed eval budget now that bootstrap is
+    // complete, so the wall-clock deadline starts at user-eval time (bootstrap
+    // is not charged). No-op when no CLJW_EVAL_* env was set.
+    eval_budget.installFromEnv(&rt.eval_budget, io);
 
     // --- Read - Analyse - Eval - Print loop ---
     var reader = Reader.init(arena, source_text);

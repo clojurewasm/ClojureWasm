@@ -125,6 +125,11 @@ pub fn eval(
         // this poll only needs to eventually observe the flag. One predicted-not-
         // taken branch; inert until a Phase-B worker arms `gc_requested` (#4).
         if (safepoint.gc_requested.load(.monotonic)) safepoint.park();
+        // ADR-0125: in-process eval execution budget (isolation dim (a)). One
+        // optional unwrap when unmetered (rt.eval_budget == null) — same cost
+        // shape as the GC poll above; charges a step + (throttled) checks the
+        // wall-clock deadline, raising an uncatchable error on expiry.
+        if (rt.eval_budget) |*budget| try budget.tick(rt.io);
         // GC torture (D-250): when armed via CLJW_GC_TORTURE, force a real
         // stop-the-world collect at this clean safe point every Nth poll, so a
         // missing root surfaces as a deterministic UAF on the next collect. The

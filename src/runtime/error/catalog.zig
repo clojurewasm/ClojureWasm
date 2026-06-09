@@ -450,6 +450,12 @@ pub const Code = enum {
     // --- System ---
     out_of_memory,
     internal_error,
+    /// args: `.{ .steps = <u64> }` — the eval step budget (ADR-0125) was
+    /// exhausted (untrusted-code isolation; uncatchable).
+    eval_steps_exceeded,
+    /// args: `.{ .ms = <i64> }` — the eval wall-clock deadline (ADR-0125) was
+    /// exceeded (untrusted-code isolation; uncatchable).
+    eval_deadline_exceeded,
 };
 
 const Entry = struct {
@@ -1403,6 +1409,16 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .out_of_memory,
             .phase = .eval,
             .template = "Out of memory",
+        },
+        .eval_steps_exceeded => .{
+            .kind = .resource_exhausted,
+            .phase = .eval,
+            .template = "evaluation exceeded its step budget ({[steps]d} steps)",
+        },
+        .eval_deadline_exceeded => .{
+            .kind = .resource_exhausted,
+            .phase = .eval,
+            .template = "evaluation exceeded its time budget ({[ms]d} ms)",
         },
         .regex_pattern_too_large => .{
             .kind = .value_error,

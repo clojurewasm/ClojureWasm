@@ -58,6 +58,11 @@ pub const Kind = enum {
     // System
     internal_error,
     out_of_memory,
+    /// An in-process eval execution budget (ADR-0125: wall-clock deadline or
+    /// step ceiling) was exhausted. Uncatchable (maps to null in
+    /// `kindToHostClass`) so untrusted code cannot swallow its own timeout via
+    /// `(try … (catch Throwable …))`.
+    resource_exhausted,
 };
 
 /// Compilation/execution phase where the error occurred.
@@ -155,6 +160,7 @@ pub const ClojureWasmError = error{
     IoError,
     InternalError,
     OutOfMemory,
+    ResourceExhausted,
 };
 
 fn kindToError(kind: Kind) ClojureWasmError {
@@ -172,6 +178,7 @@ fn kindToError(kind: Kind) ClojureWasmError {
         .io_error => ClojureWasmError.IoError,
         .internal_error => ClojureWasmError.InternalError,
         .out_of_memory => ClojureWasmError.OutOfMemory,
+        .resource_exhausted => ClojureWasmError.ResourceExhausted,
     };
 }
 

@@ -150,12 +150,17 @@ cycle 1**:
   recorded as a D-355 concern — when the playground's host frame exists, it can
   catch `error.BudgetExceeded` and report "timed out" without tearing down the
   server. Cycle 1's degenerate host frame is the CLI top-level.
-- **AD-NNN for the cross-backend step-count divergence (DP2)**: the budget-
-  exceeded *outcome* (Kind `resource_exhausted`) is identical under VM and
-  TreeWalk; the *exact step count at expiry* differs (each backend's loop
-  structure crosses back-edges at its own rate). Recorded as an accepted
-  divergence (pinned by per-backend + e2e tests, never diff-tested on timing) so
-  it does not float (clj_diff_sweep.md).
+- **Cross-backend step-count divergence (DP2) — documented here, NOT a clj-AD.**
+  On reflection the DA's "add an AD-NNN" is the wrong SSOT: `accepted_divergences.yaml`
+  classifies **cljw-vs-JVM-clj** divergences, not VM-vs-TreeWalk internal ones. The
+  dual-backend differential oracle asserts *equal Value*, and the budget-exceeded
+  **outcome is equal** under both backends (both raise `error.ResourceExhausted` /
+  Kind `resource_exhausted`) — only the never-asserted internal step count differs,
+  so nothing floats in either the clj sweep or the diff oracle. The intent is locked
+  by `evaluator.zig`'s `test "ADR-0125: a step budget kills an infinite loop under
+  BOTH backends"` (fresh budget per backend → each counts independently to the same
+  ceiling and trips), and the rule that budget-expiry is never diff-tested on the
+  exact count lives in this ADR. No `AD-NNN` row is minted.
 
 Deferred to follow-ups (noted on D-351's debt row, not stubbed): the **call-
 boundary poll site (DP5)** that would close the time-overshoot hole in non-

@@ -105,6 +105,7 @@ test {
     _ = @import("runtime/gc/gc_torture.zig");
     _ = @import("runtime/concurrency/io_default.zig");
     _ = @import("runtime/concurrency/safepoint.zig");
+    _ = @import("runtime/concurrency/eval_budget.zig");
     _ = @import("runtime/concurrency/lock_tx.zig");
     _ = @import("runtime/concurrency/object_monitor.zig");
     _ = @import("runtime/agent.zig");

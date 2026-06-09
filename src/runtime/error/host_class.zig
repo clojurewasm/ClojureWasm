@@ -267,7 +267,7 @@ pub fn kindToHostClass(kind: Kind) ?[]const u8 {
         .number_error => "NumberFormatException",
         .name_error, .syntax_error, .string_error => "RuntimeException",
         .io_error => "IOException",
-        .not_implemented, .internal_error, .out_of_memory => null,
+        .not_implemented, .internal_error, .out_of_memory, .resource_exhausted => null,
     };
 }
 

@@ -153,3 +153,20 @@ test "compare: boolean and nil immediate Values" {
     const r_false = compare(&f3.rt, &f3.env, &f3.table, f3.arena.allocator(), "false");
     try testing.expect(r_false.equal);
 }
+
+test "ADR-0125: a step budget kills an infinite loop under BOTH backends" {
+    // Dual-backend parity (F-011): run each backend with a FRESH budget (the
+    // counter must not carry across runs — DP4) and assert the same uncatchable
+    // `resource_exhausted` outcome. `loop*` is the special form (no macro-table
+    // dependency in the Fixture). The vm gate build covers the VM poll site;
+    // the tree_walk build covers the loop* poll site — this test exercises both
+    // regardless of the build's configured default.
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    inline for (.{ BackendChoice.tree_walk, BackendChoice.vm }) |backend| {
+        f.rt.eval_budget = .{ .step_ceiling = 50_000 };
+        const r = runOnce(&f.rt, &f.env, &f.table, f.arena.allocator(), "(loop* [] (recur))", backend);
+        try testing.expectError(error.ResourceExhausted, r);
+    }
+    f.rt.eval_budget = null;
+}
