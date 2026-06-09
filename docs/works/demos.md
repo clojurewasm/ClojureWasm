@@ -35,37 +35,42 @@ Today the calls are pure computation; host capabilities for I/O-bound modules ar
 being extended. (The line: cljw *calls* Wasm; compiling cljw itself *to* Wasm is
 still ahead.)
 
-## 3. An edge app — "Shelf" (the polyglot story inside a real app)
+## 3. A real app — the Bookshelf (the polyglot story inside a serverless demo)
 
-[`clojurewasm/edge-demo`](https://github.com/clojurewasm/edge-demo) — a multi-user
-bookshelf served entirely by cljw's own HTTP server as a ~2.8 MB static binary on
-Fly.io. Register, edit your shelf, browse others, copy a book, label, favorite —
-sessions, CRUD, persistence, server-rendered HTML, no JVM.
+[`clojurewasm/cw-serverless-demo`](https://github.com/clojurewasm/cw-serverless-demo)
+(<https://cw-serverless-demo.fly.dev>) — a multi-user bookshelf served end-to-end
+by cljw's own HTTP server, no JVM. Sign in with Google, build your shelf, browse
+others — sessions, CRUD, persistence, server-rendered SPA.
 
-```sh
-cljw server.clj            # http://127.0.0.1:8080
-bash smoke.sh              # 11-check end-to-end verification
-```
+The polyglot story runs *inside* the app, both over the Wasm FFI:
 
-On a `-Dwasm` build, each book cover's hue is computed by `cover.wasm` (compiled
-from Zig) over the FFI — the polyglot story running inside a real app. Storage is
-an EDN file that auto-detects a mounted `/data` volume, so the Fly.io "DB
-migration" is just `fly volumes create`.
+- **SQLite** is `sqlite3.wasm` (the C amalgamation + a first-party wrapper, compiled
+  with `zig cc --target=wasm32-wasi`) driven by `(wasm/run …)` — real SQL, file
+  persistence, no file-VFS.
+- **Book-cover colours** come from a hand-written Rust module via `(wasm/call …)`.
+
+It deploys self-contained: the `Dockerfile` builds `cljw` from source (`-Dwasm`
+ReleaseSafe; zwasm via a pinned tag), and the SQLite store persists on a Fly
+volume. Config is environment-driven (`GOOGLE_CLIENT_ID` via `fly secrets`).
 
 ## 4. A Playground — eval Clojure on cljw in the browser
 
-`playground.clj` (`:8081`): type Clojure, run it on cljw (not JVM Clojure), see the
-printed output and result. Example snippets cover the numeric tower, ratios, lazy
-seqs, STM, and the Wasm FFI. It is a local/speaker-controlled demo (in-process,
-single-threaded eval — no per-eval timeout yet).
+[`clojurewasm/cw-playground`](https://github.com/clojurewasm/cw-playground)
+(<https://cw-playground.fly.dev>) — type Clojure, run it on cljw (not JVM Clojure),
+see the printed output and result. Submissions are evaluated **in-process** on the
+server's cljw under a per-submission budget (`cljw.eval/with-budget` — steps /
+deadline / heap; a runaway is recovered as a value so the server survives), and can
+call sandboxed Rust and Go WebAssembly modules over the FFI. Example snippets cover
+the numeric tower, ratios, lazy seqs, STM, and the Wasm modules.
 
 ## The honest edges
 
 - Verified on macOS arm64 + Ubuntu x86_64 only.
 - Throughput/GC have headroom; the strengths are startup (~4–5 ms), size (<4 MB),
   and a small footprint.
-- The static musl edge deploy currently ships without `-Dwasm` (zwasm's GC uses a
-  glibc-only `pthread_getattr_np`); the polyglot covers run on a native build, with
-  a pure-Clojure fallback otherwise.
+- The deployed demos run a Debian-slim (glibc) image with the full `-Dwasm` build,
+  so the polyglot Wasm FFI is live in production. (A static-musl build still omits
+  `-Dwasm` — zwasm's GC uses a glibc-only `pthread_getattr_np` — but the Fly demos
+  do not use musl.)
 - Deep Java interop (gen-class / deep proxy / deep reflection) is out of scope by
   design — this targets the Wasm/edge corner, not a JVM replacement.

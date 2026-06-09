@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/clojurewasm_logo.png" alt="ClojureWasm" width="320" />
+  <img src="assets/clojurewasm_logo.png" alt="ClojureWasm" width="180" />
 </p>
 
 <h1 align="center">ClojureWasm</h1>
@@ -12,7 +12,7 @@
 > ClojureWasm is **not yet stable** and is built by a very small team with
 > limited resources. To keep that focus, **Issues and Pull Requests are not
 > being accepted** right now. You are very welcome to read along, try it, and
-> say hello on the [Clojurians Slack](https://clojurians.slack.com).
+> say hello in [GitHub Discussions](https://github.com/clojurewasm/ClojureWasm/discussions).
 
 ## What it is
 
@@ -62,23 +62,13 @@ cljw
 
 ## Try it live
 
-- **Playground** — <!-- TODO(D-362): fly.io URL --> _(coming soon)_
-- **Bookshelf demo** — <!-- TODO(D-362): fly.io URL --> _(coming soon)_ — a small
-  multi-user bookshelf app served end-to-end by `cljw`'s own HTTP server as a
-  single binary (SQLite-over-Wasm storage, server-rendered pages, no JVM).
-
-## The ideal
-
-Clojure already thrives on the JVM, in the browser through ClojureScript, on the
-command line through Babashka, on LLVM through jank, and on Flutter through
-ClojureDart. ClojureWasm reaches for one more place: the **WebAssembly / edge**
-world — Clojure as a small, self-contained binary that starts instantly, runs
-anywhere a tiny runtime can, and treats WebAssembly modules from any language as
-first-class, sandboxed libraries. The goal is a Clojure you can drop into a
-serverless function, an edge node, or a `.wasm` sandbox and have it feel like
-Clojure — interactive, expressive, and honest about its semantics. It is a young
-project finding its footing, not a replacement for the runtimes above; they are
-excellent at what they do.
+- **Playground** — <https://cw-playground.fly.dev> — run Clojure in your browser,
+  evaluated in-process by `cljw`; call sandboxed Rust / Go WebAssembly modules
+  over the FFI. ([source](https://github.com/clojurewasm/cw-playground))
+- **Bookshelf demo** — <https://cw-serverless-demo.fly.dev> — a small multi-user
+  bookshelf served end-to-end by `cljw`'s own HTTP server, with SQLite and
+  book-cover colours running in-process through the WebAssembly FFI, no JVM.
+  ([source](https://github.com/clojurewasm/cw-serverless-demo))
 
 ## Documentation
 
