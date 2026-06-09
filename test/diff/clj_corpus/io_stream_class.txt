@@ -1,0 +1,26 @@
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (class (clojure.java.io/reader "/tmp/cljw_corpus_io.txt")))
+;;=> java.io.BufferedReader
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (instance? java.io.BufferedReader (clojure.java.io/reader "/tmp/cljw_corpus_io.txt")))
+;;=> true
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (instance? java.io.Reader (clojure.java.io/reader "/tmp/cljw_corpus_io.txt")))
+;;=> true
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (instance? java.io.FileReader (clojure.java.io/reader "/tmp/cljw_corpus_io.txt")))
+;;=> false
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (instance? java.io.InputStream (clojure.java.io/reader "/tmp/cljw_corpus_io.txt")))
+;;=> false
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (class (clojure.java.io/input-stream "/tmp/cljw_corpus_io.txt")))
+;;=> java.io.BufferedInputStream
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (instance? java.io.FilterInputStream (clojure.java.io/input-stream "/tmp/cljw_corpus_io.txt")))
+;;=> true
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (instance? java.io.FileInputStream (clojure.java.io/input-stream "/tmp/cljw_corpus_io.txt")))
+;;=> false
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (instance? java.io.LineNumberReader (clojure.java.io/reader "/tmp/cljw_corpus_io.txt")))
+;;=> false
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (instance? java.io.DataInputStream (clojure.java.io/input-stream "/tmp/cljw_corpus_io.txt")))
+;;=> false
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (class (clojure.java.io/writer "/tmp/cljw_corpus_io.txt")))
+;;=> java.io.BufferedWriter
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (instance? java.io.PrintWriter (clojure.java.io/writer "/tmp/cljw_corpus_io.txt")))
+;;=> false
+(do (spit "/tmp/cljw_corpus_io.txt" "x") (import (quote java.io.BufferedReader)) (instance? BufferedReader (clojure.java.io/reader "/tmp/cljw_corpus_io.txt")))
+;;=> true

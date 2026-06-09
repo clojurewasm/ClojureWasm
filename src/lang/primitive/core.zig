@@ -44,8 +44,18 @@ const driver = @import("../../eval/driver.zig");
 /// Dispatches through `runtime/class_name.zig::isInstance` which
 /// covers native tags + interface-shaped multi-tag sets + Throwable
 /// hierarchy + user TypeDescriptor parent walk.
+/// Resolve a bare (dot-free) class name through the current ns's `(:import …)`
+/// map to its FQCN; pass qualified names + unimported names through unchanged.
+/// Reuses `ns.imports` (D-235) — the same map `resolveJavaSurface` consults for
+/// `(Class. …)` — so a simple imported class name behaves uniformly in
+/// `instance?` and constructors, via `(import …)` or `(ns … (:import …))`.
+fn resolveClassImport(env: *Env, name: []const u8) []const u8 {
+    if (std.mem.findScalar(u8, name, '.') != null) return name;
+    const ns = env.current_ns orelse return name;
+    return ns.imports.get(name) orelse name;
+}
+
 pub fn instanceQPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArity("instance?", args, 2, loc);
     if (args[0].tag() != .symbol) {
         return error_catalog.raise(.type_arg_invalid, loc, .{
@@ -54,7 +64,12 @@ pub fn instanceQPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
             .actual = @tagName(args[0].tag()),
         });
     }
-    const class_sym = symbol_mod.asSymbol(args[0]).name;
+    // A bare imported simple name (`(import java.io.BufferedReader)` or
+    // `(ns … (:import [java.io BufferedReader]))`) resolves to its FQCN via the
+    // current ns's import map — the same D-235 `ns.imports` that
+    // `resolveJavaSurface` uses for `(Class. …)`, so class-name resolution is
+    // uniform across constructors and `instance?` (no per-class allowlist).
+    const class_sym = resolveClassImport(env, symbol_mod.asSymbol(args[0]).name);
     // ADR-0109: a recognised OPAQUE host class (Integer, java.math.BigInteger, …)
     // is one cljw COLLAPSES away (F-005) — no cljw value has it as its type, so
     // `(instance? Integer x)` is uniformly false (clj agrees: a cljw int IS a

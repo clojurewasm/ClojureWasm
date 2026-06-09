@@ -782,6 +782,16 @@ fn analyzeList(
             // shadowed by a local: not a macro
         } else {
             if (resolveMaybe(env, head)) |v_ptr| {
+                // instance?'s class name is a lexical class reference (like the
+                // (Class. …) / Class/method branches above): resolve an imported
+                // simple name to its FQCN here, at analyze time, so a fn closing
+                // over an (:import …) resolves when called from another ns. The
+                // runtime importer in __instance? still covers a class imported
+                // after analysis (REPL (import …) then use).
+                const macro_args = if (head.ns == null and std.mem.eql(u8, head.name, "instance?"))
+                    try special_forms.resolveInstanceClassArg(arena, env, items[1..])
+                else
+                    items[1..];
                 if (try macro_dispatch.expandIfMacro(
                     arena,
                     rt,
@@ -789,7 +799,7 @@ fn analyzeList(
                     macro_table,
                     v_ptr,
                     head.name,
-                    items[1..],
+                    macro_args,
                     form,
                     scope,
                     form.location,

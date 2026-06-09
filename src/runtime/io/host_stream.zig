@@ -3,10 +3,14 @@
 //! clojure.java.io's reader/writer/input-stream/output-stream/copy (ADR-0126
 //! Cycle 3 / Alt 2). A `.host_instance` (ADR-0106) carrying a `*StreamState`
 //! (state[0]); four family descriptors (java.io.{Reader,Writer,InputStream,
-//! OutputStream}) registered in `rt.types` share the impl, distinguished by a
-//! `kind` tag — NOT a JVM-style class hierarchy (no-JVM, ADR-0059). Leaf class
-//! names (BufferedReader / FileInputStream / …) are recognised by `instance?`
-//! via each family descriptor's `protocol_impls` list, not by a parent chain.
+//! OutputStream chain) registered in `rt.types` share the impl, distinguished
+//! by a `kind` tag — NOT a JVM-style class hierarchy (no-JVM, ADR-0059). Each
+//! descriptor is keyed + fqcn'd by its CONCRETE class (the buffered type clj's
+//! coercion returns: BufferedReader / BufferedWriter / BufferedInputStream /
+//! BufferedOutputStream), so `(class s)` is clj-faithful; its `protocol_impls`
+//! is the concrete+superclass chain (the `instance?`-true set). The recognised
+//! names + chains live in the `stream_classes` SSOT (shared with
+//! `class_name.isKnown`); see that file for the clj-verification.
 //!
 //! Backend: impl-only
 //! Impl deps: file_io
@@ -38,7 +42,9 @@ const string_mod = @import("../collection/string.zig");
 const env_mod = @import("../env.zig");
 const stream_classes = @import("stream_classes.zig");
 
-pub const Kind = enum(u8) { reader, writer, input, output };
+/// Re-exported from the stream_classes SSOT so the enum has one definition
+/// shared with the chain accessors there.
+pub const Kind = stream_classes.Kind;
 
 /// The in-memory backing for one stream. `gc.infra`-owned; the `.host_instance`
 /// tag finaliser (routed via the descriptor's `host_finalise`) frees it.
@@ -70,17 +76,8 @@ fn allocStream(rt: *Runtime, kind: Kind, data: std.ArrayList(u8), dest: ?[]u8) !
     // The descriptor pointers are rt.types-owned heap copies (see register); look
     // the live one up so dispatch reads the canonical method_table, not the
     // module-static placeholder.
-    const td = rt.types.get(fqcnFor(kind)) orelse return error.NoVTable;
+    const td = rt.types.get(stream_classes.concreteFor(kind)) orelse return error.NoVTable;
     return host_instance.alloc(rt, td, .{ @intFromPtr(st), 0, 0, 0 });
-}
-
-fn fqcnFor(kind: Kind) []const u8 {
-    return switch (kind) {
-        .reader => "java.io.Reader",
-        .writer => "java.io.Writer",
-        .input => "java.io.InputStream",
-        .output => "java.io.OutputStream",
-    };
 }
 
 // --- instance methods ---
@@ -259,8 +256,8 @@ fn isStream(v: Value) bool {
 
 fn isStreamFqcn(fqcn: ?[]const u8) bool {
     const n = fqcn orelse return false;
-    return std.mem.eql(u8, n, "java.io.Reader") or std.mem.eql(u8, n, "java.io.Writer") or
-        std.mem.eql(u8, n, "java.io.InputStream") or std.mem.eql(u8, n, "java.io.OutputStream");
+    // A live stream value's descriptor fqcn is its concrete class (BufferedReader …).
+    return stream_classes.isConcrete(n);
 }
 
 // --- GC finaliser ---
@@ -289,8 +286,10 @@ const WRITER_METHODS = [_]Method{ .{ .name = "write", .f = &write }, .{ .name = 
 /// Build one family descriptor into `rt.types` (gpa-owned per the `rt.deinit`
 /// contract: key, fqcn, each method_name + the method_table slice, and the
 /// protocol_impls slice are all freed there).
-fn registerDescriptor(rt: *Runtime, fqcn: []const u8, methods: []const Method, names: []const []const u8) !void {
+fn registerDescriptor(rt: *Runtime, kind: Kind, methods: []const Method) !void {
     const gpa = rt.gpa;
+    const fqcn = stream_classes.concreteFor(kind);
+    const chain = stream_classes.chainFor(kind);
     const td = try gpa.create(TypeDescriptor);
     errdefer gpa.destroy(td);
 
@@ -298,9 +297,10 @@ fn registerDescriptor(rt: *Runtime, fqcn: []const u8, methods: []const Method, n
     for (methods, 0..) |m, i| {
         entries[i] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, m.name), .method_val = Value.initBuiltinFn(m.f) };
     }
-    // protocol_impls: the slice is gpa-freed at deinit (entries are static literals).
-    const impls = try gpa.alloc([]const u8, names.len);
-    @memcpy(impls, names);
+    // protocol_impls = the concrete+superclass chain (the instance?-true set);
+    // the slice is gpa-freed at deinit (entries are static literals).
+    const impls = try gpa.alloc([]const u8, chain.len);
+    @memcpy(impls, chain);
 
     td.* = .{
         .fqcn = try gpa.dupe(u8, fqcn),
@@ -331,11 +331,15 @@ const PRIMS = [_]Prim{
 /// stream primitives. Called from `primitive.registerAll`.
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
     const rt = env.rt;
-    if (!rt.types.contains("java.io.Reader")) {
-        try registerDescriptor(rt, "java.io.Reader", &READER_METHODS, &stream_classes.READER_NAMES);
-        try registerDescriptor(rt, "java.io.Writer", &WRITER_METHODS, &stream_classes.WRITER_NAMES);
-        try registerDescriptor(rt, "java.io.InputStream", &READER_METHODS, &stream_classes.INPUT_NAMES);
-        try registerDescriptor(rt, "java.io.OutputStream", &WRITER_METHODS, &stream_classes.OUTPUT_NAMES);
+    // Each descriptor is keyed + fqcn'd by its CONCRETE class (BufferedReader …)
+    // so `(class s)` is clj-faithful; protocol_impls is the concrete+superclass
+    // chain (the instance?-true set). reader/input share read methods; writer/
+    // output share write methods.
+    if (!rt.types.contains(stream_classes.concreteFor(.reader))) {
+        try registerDescriptor(rt, .reader, &READER_METHODS);
+        try registerDescriptor(rt, .writer, &WRITER_METHODS);
+        try registerDescriptor(rt, .input, &READER_METHODS);
+        try registerDescriptor(rt, .output, &WRITER_METHODS);
     }
     for (PRIMS) |p| {
         _ = try env.intern(rt_ns, p.name, Value.initBuiltinFn(p.f), null);

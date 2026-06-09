@@ -22,20 +22,46 @@ TMP="/tmp/cljw_cji_streams"; rm -rf "$TMP"; mkdir -p "$TMP"
 printf 'alpha\nbeta\ngamma\n' > "$TMP/lines.txt"
 
 # --- coercion fns return the right family (fully-qualified; eager ns) ---
-assert_eq 'reader_class'  "$(run "(class (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'java.io.Reader'
+# class identity = the clj-concrete buffered type (clj: io/reader -> BufferedReader).
+assert_eq 'reader_class'  "$(run "(class (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'java.io.BufferedReader'
 assert_eq 'writer_inst'   "$(run "(instance? java.io.Writer (clojure.java.io/writer \"$TMP/w.txt\"))")" 'true'
 assert_eq 'instream_inst' "$(run "(instance? java.io.InputStream (clojure.java.io/input-stream \"$TMP/lines.txt\"))")" 'true'
 assert_eq 'outstream_inst' "$(run "(instance? java.io.OutputStream (clojure.java.io/output-stream \"$TMP/o.dat\"))")" 'true'
 assert_eq 'reader_idem'   "$(run "(let [r (clojure.java.io/reader \"$TMP/lines.txt\")] (identical? r (clojure.java.io/reader r)))")" 'true'
-assert_eq 'reader_of_file' "$(run "(class (clojure.java.io/reader (clojure.java.io/file \"$TMP/lines.txt\")))")" 'java.io.Reader'
+assert_eq 'reader_of_file' "$(run "(class (clojure.java.io/reader (clojure.java.io/file \"$TMP/lines.txt\")))")" 'java.io.BufferedReader'
 assert_eq 'reader_bad'    "$(run '(try (clojure.java.io/reader 42) (catch Throwable e :threw))')" ':threw'
 
-# --- leaf-class instance? (D-358): a reader stream is any reader-family leaf ---
-assert_eq 'leaf_buffered_reader' "$(run "(instance? java.io.BufferedReader (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'true'
-assert_eq 'leaf_print_writer'    "$(run "(instance? java.io.PrintWriter (clojure.java.io/writer \"$TMP/w2.txt\"))")" 'true'
-assert_eq 'leaf_file_inputstream' "$(run "(instance? java.io.FileInputStream (clojure.java.io/input-stream \"$TMP/lines.txt\"))")" 'true'
-# cross-family leaf is false (a reader is not an OutputStream leaf)
-assert_eq 'leaf_cross_false'     "$(run "(instance? java.io.FileOutputStream (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'false'
+# --- instance? class identity (D-358, clj-faithful, verified vs clj) ---
+# concrete + java.io superclass chain are true; sibling leaves are a KNOWN false
+# (not class_name_unknown); cross-family false. Mirrors clj exactly (corpus
+# test/diff/clj_corpus/io_stream_class.txt).
+assert_eq 'r_concrete'  "$(run "(instance? java.io.BufferedReader (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'true'
+assert_eq 'r_super'     "$(run "(instance? java.io.Reader (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'true'
+assert_eq 'r_sibling'   "$(run "(instance? java.io.FileReader (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'false'
+assert_eq 'w_sibling'   "$(run "(instance? java.io.PrintWriter (clojure.java.io/writer \"$TMP/w2.txt\"))")" 'false'
+assert_eq 'is_filter'   "$(run "(instance? java.io.FilterInputStream (clojure.java.io/input-stream \"$TMP/lines.txt\"))")" 'true'
+assert_eq 'is_sibling'  "$(run "(instance? java.io.FileInputStream (clojure.java.io/input-stream \"$TMP/lines.txt\"))")" 'false'
+assert_eq 'r_cross'     "$(run "(instance? java.io.OutputStream (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'false'
+
+# --- imported simple name resolves (both forms), via ns.imports (D-235) ---
+assert_eq 'import_simple' "$(run "(do (import (quote java.io.BufferedReader)) (instance? BufferedReader (clojure.java.io/reader \"$TMP/lines.txt\")))")" 'true'
+cat > "$TMP/nsimp.clj" <<EOF
+(ns foo (:import [java.io BufferedReader]))
+(require '[clojure.java.io :as io])
+(println (instance? BufferedReader (io/reader "$TMP/lines.txt")))
+EOF
+assert_eq 'import_ns_form' "$("$BIN" "$TMP/nsimp.clj" 2>&1 | tail -n 1)" 'true'
+# cross-ns: a fn closing over an (:import …) resolves the simple class name
+# LEXICALLY (analyze-time), so it works when called from a different ns (clj
+# resolves class symbols at compile time). Was a class_name_unknown throw.
+cat > "$TMP/crossns.clj" <<EOF
+(ns aaa (:import [java.io BufferedReader]))
+(defn r? [x] (instance? BufferedReader x))
+(ns user)
+(require '[clojure.java.io :as io])
+(println (aaa/r? (io/reader "$TMP/lines.txt")))
+EOF
+assert_eq 'import_cross_ns' "$("$BIN" "$TMP/crossns.clj" 2>&1 | tail -n 1)" 'true'
 
 # --- line-seq + with-open round-trips, via fixture files (sequential eval) ---
 cat > "$TMP/lineseq.clj" <<EOF

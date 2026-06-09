@@ -86,6 +86,30 @@ pub fn resolveJavaSurface(rt: *Runtime, env: *Env, head: []const u8) ?*const Typ
     return null;
 }
 
+/// Lexical class-name resolution for `instance?`'s class argument, the
+/// `instance?`-side companion of `resolveJavaSurface` (both read the current
+/// ns's `(:import …)` map, D-235). `args` are the `instance?` macro's
+/// `[ClassSym x]`; if `ClassSym` is a dot-free symbol imported in the lexical
+/// ns, return a copy with it rewritten to the imported FQCN — so the class name
+/// is resolved at ANALYZE time (lexically), like `(Class. …)` / `Class/method`
+/// above. This makes a fn that closes over an `(:import …)` resolve correctly
+/// when called from another ns (clj resolves class symbols at compile time);
+/// `__instance?`'s runtime importer still covers a class imported AFTER analysis
+/// (REPL `(import …)` then use, where the import has not run at analyze time).
+/// Returns `args` unchanged when there is nothing to resolve.
+pub fn resolveInstanceClassArg(arena: std.mem.Allocator, env: *Env, args: []const Form) ![]const Form {
+    if (args.len != 2 or args[0].data != .symbol) return args;
+    const s = args[0].data.symbol;
+    if (s.ns != null) return args; // already qualified
+    if (std.mem.findScalar(u8, s.name, '.') != null) return args; // dotted FQCN
+    const ns = env.current_ns orelse return args;
+    const fqcn = ns.imports.get(s.name) orelse return args;
+    const out = try arena.alloc(Form, args.len);
+    @memcpy(out, args);
+    out[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = fqcn } }, .location = args[0].location };
+    return out;
+}
+
 /// Construct an instance of `type_name` from already-evaluated `args`.
 /// Shared by both backends (TreeWalk `evalConstructorCall` + VM
 /// `op_ctor_call`) so the resolution + dispatch is identical — the
