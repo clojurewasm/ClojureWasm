@@ -39,4 +39,6 @@ Many additions are actually re-tagging an existing entry (status / barrier
 3. Update the existing entry (status / barrier / last_reviewed) if
    relevant.
 4. Otherwise append a new entry under `active:` with the next ID
-   (highest existing: `grep -oE 'D-[0-9]+' .dev/debt.yaml | sort -t- -k2 -n | tail -1`).
+   (highest existing — MUST scope to the `id:` field, else prose `D-NNN`
+   cross-refs / a typo'd phantom inflate it:
+   `grep -oE 'id: "D-[0-9]+' .dev/debt.yaml | grep -oE '[0-9]+' | sort -n | tail -1`).
