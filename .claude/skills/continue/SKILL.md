@@ -1,6 +1,6 @@
 ---
 name: continue
-description: Resume fully autonomous work on cw-from-scratch and drive the per-task TDD loop. Trigger when the user says 続けて, "resume", "pick up where we left off", "/continue", "次", "go", or starts a fresh session expecting prior context. `/continue` may also be re-invoked automatically (cron / wake hook); treat every invocation as the same go signal. The full step-by-step loop spec (Step 0 → 7) lives in CLAUDE.md § Autonomous Workflow + § The only stop (single condition: user explicit stop) and is loaded into every turn's system prompt; this skill is the invocation trigger and carries the resume procedure, the Phase-boundary review chain, the subagent delegation cheatsheet, and the model-selection guidance.
+description: Resume fully autonomous work on the `main` branch and drive the per-task TDD loop. Trigger when the user says 続けて, "resume", "pick up where we left off", "/continue", "次", "go", or starts a fresh session expecting prior context. `/continue` may also be re-invoked automatically (cron / wake hook); treat every invocation as the same go signal. The full step-by-step loop spec (Step 0 → 7) lives in CLAUDE.md § Autonomous Workflow + § The only stop (single condition: user explicit stop) and is loaded into every turn's system prompt; this skill is the invocation trigger and carries the resume procedure, the Phase-boundary review chain, the subagent delegation cheatsheet, and the model-selection guidance.
 ---
 
 # continue

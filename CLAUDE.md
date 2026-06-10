@@ -66,18 +66,20 @@ forbidden.
 **Project name (in all docs and the published artifact): `ClojureWasm`.**
 Binary name: `cljw`. Package name: `cljw`.
 
-Working directory + branch are intentionally named with `from-scratch`
-because **this branch is a ground-up redesign of ClojureWasm on top of
-the v0.5.0 git history**:
+The working directory keeps the `from-scratch` name because **this codebase
+is a ground-up redesign of ClojureWasm on top of the v0.5.0 git history**.
+On **2026-06-10 the redesign was merged into `main`** (an `-s ours` merge
+superseding the v0.5.0 main + its libc hotfix; v0.5.0 tag preserved), so
+`main` is now the working branch:
 
 - **Working directory**: `~/Documents/MyProducts/ClojureWasmFromScratch/`
-  — distinct from the existing `~/Documents/MyProducts/ClojureWasm/`
-  reference clone.
-- **Branch**: `cw-from-scratch` — long-lived, branched from `main`
-  (v0.5.0). All work happens here. **Never push to `main`**. Every
-  commit on `cw-from-scratch` is followed immediately by
-  `git push origin cw-from-scratch` in the same Step 6 — commits do
-  not accumulate locally.
+  — the dir name keeps `from-scratch` (intentionally unchanged for now);
+  distinct from the `~/Documents/MyProducts/ClojureWasm/` reference clone.
+- **Branch**: `main` — the working branch. **All work happens on `main`**
+  and every commit is followed immediately by `git push origin main` in the
+  same Step 6 — commits do not accumulate locally. (The old `cw-from-scratch`
+  branch == `main` after the merge and is kept only as a historical alias;
+  do not commit to it. Pushing to `main` is now expected, not forbidden.)
 - **Git remote**: `git@github.com:clojurewasm/ClojureWasm.git`.
 
 ### Read-only reference clones (do not edit, do not commit from)
@@ -145,12 +147,11 @@ turn 1 must be Japanese.
   (>200 lines), cross-codebase searches (>5 files), phase-boundary
   audit / simplify / security-review fan-out. Stay in main only for
   small in-context edits.
-- **Commit and push are one atomic Step 6** on `cw-from-scratch`:
+- **Commit and push are one atomic Step 6** on `main`:
   after the gate is green, `git commit` is followed immediately by
-  `git push origin cw-from-scratch`. Local commits never accumulate
+  `git push origin main`. Local commits never accumulate
   unpushed — leaving them stacked invites a "should I push?"
-  decision point that does not exist. Pushing to `main` is
-  forbidden.
+  decision point that does not exist.
 - ROADMAP corrections follow the four-step amendment in
   [`ROADMAP §17`](.dev/ROADMAP.md#17-amendment-policy): edit in place
   as if it had always been so, open an ADR, sync `handover.md`,
@@ -308,7 +309,7 @@ ADR-0049 (orphan / fan hazard). Run it at Phase-boundary review
 chains, before v0.1.0 tag, and on demand for feature branches:
 
 - `bash scripts/run_remote_ubuntu.sh` (drives `ubuntunote` SSH
-  host via `git fetch + reset --hard origin/cw-from-scratch` +
+  host via `git fetch + reset --hard origin/main` +
   `nix develop --command bash test/run_all.sh`). Setup at
   `.dev/ubuntunote_setup.md`.
 
@@ -354,7 +355,7 @@ Then:
    source-bearing files (`src/**/*.zig`, `build.zig`,
    `build.zig.zon`, `.dev/decisions/NNNN_*.md`). Pre-commit gate
    auto-aligns Markdown tables; only genuine syntax errors block.
-5. `git push origin cw-from-scratch` runs immediately on the
+5. `git push origin main` runs immediately on the
    commit's success. **The `scripts/check_smell_audit.sh` PreToolUse
    hook physically blocks pushes that include any source-bearing
    commit missing a `Smell-audited:` line.** Re-audit, amend the

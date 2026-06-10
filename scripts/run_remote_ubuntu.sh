@@ -6,11 +6,11 @@
 # Replacement for the OrbStack `my-ubuntu-amd64` path retired
 # per ADR-0049. Mirrors zwasm v2's
 # `scripts/run_remote_ubuntu.sh`: `git fetch + reset --hard` the
-# ubuntunote clone to the latest pushed `origin/cw-from-scratch`,
+# ubuntunote clone to the latest pushed `origin/main`,
 # then run `nix develop --command bash test/run_all.sh`.
 #
 # Usage:
-#   bash scripts/run_remote_ubuntu.sh                          # default: full gate on cw-from-scratch
+#   bash scripts/run_remote_ubuntu.sh                          # default: full gate on main
 #   bash scripts/run_remote_ubuntu.sh --branch NAME            # gate an arbitrary branch (feature-branch verification)
 #
 # Prerequisites:
@@ -31,7 +31,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 REMOTE_DIR="Documents/MyProducts/ClojureWasmFromScratch"
-REMOTE_BRANCH="cw-from-scratch"
+REMOTE_BRANCH="main"
 if [ "${1:-}" = "--branch" ]; then
     if [ -z "${2:-}" ]; then
         echo "[run_remote_ubuntu] FAIL: --branch requires a branch name" >&2

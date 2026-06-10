@@ -65,7 +65,7 @@ inherits that host unchanged; only the **clone step** differs.
 ```bash
 ssh ubuntunote
 cd ~/Documents/MyProducts
-git clone -b cw-from-scratch https://github.com/clojurewasm/ClojureWasm.git ClojureWasmFromScratch
+git clone -b main https://github.com/clojurewasm/ClojureWasm.git ClojureWasmFromScratch
 cd ClojureWasmFromScratch
 nix develop --command zig version   # should print 0.16.0
 ```
@@ -82,7 +82,7 @@ bring-up; ~5 min cold).
 ### Gate smoke from Mac
 
 ```bash
-bash scripts/run_remote_ubuntu.sh                          # full gate on cw-from-scratch
+bash scripts/run_remote_ubuntu.sh                          # full gate on main
 bash scripts/run_remote_ubuntu.sh --branch develop/foo     # feature-branch verification
 ```
 
