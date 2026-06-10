@@ -1,0 +1,24 @@
+(clojure.string/join "," [1 2 3])
+;;=> "1,2,3"
+(clojure.string/join ["a" "b" "c"])
+;;=> "abc"
+(clojure.string/join "," [])
+;;=> ""
+(clojure.string/join "," [42])
+;;=> "42"
+(clojure.string/join ", " [:a :b :c])
+;;=> ":a, :b, :c"
+(clojure.string/join "-" [1 nil 3])
+;;=> "1--3"
+(clojure.string/join "" [1 2 3])
+;;=> "123"
+(clojure.string/join "," (range 5))
+;;=> "0,1,2,3,4"
+(clojure.string/join "::" ["x"])
+;;=> "x"
+(clojure.string/join \, [1 2 3])
+;;=> "1,2,3"
+(clojure.string/join "," '(1 2 3))
+;;=> "1,2,3"
+(clojure.string/join "," (map inc [10 20 30]))
+;;=> "11,21,31"

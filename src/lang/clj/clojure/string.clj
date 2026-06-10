@@ -76,25 +76,21 @@
       (str (-upper-case (subs s 0 1))
            (-lower-case (subs s 1))))))
 
-;; join: 1-arity (coll) = (apply str coll); 2-arity (sep coll) folds
-;; with explicit separator insertion. Variadic via `[& args]` + count
-;; discrimination since cw v1 lacks multi-arity `fn*` (D-070).
+;; join: 1-arity (coll) = (apply str coll); 2-arity (sep coll) interposes the
+;; separator and builds the result in one `apply str`. Variadic via `[& args]`
+;; + count discrimination since cw v1 lacks multi-arity `fn*` (D-070).
 ;; (join sep) transducer arity is deferred (D-070 + ADR-0033 D6a).
 ;;
-;; The 2-arity body uses a nil sentinel for the initial accumulator
-;; because cw v1's `=` is currently number-only (string equality
-;; lives in `identical?` for interned cases but not for general string
-;; compares yet). The nil sentinel + `nil?` check works regardless.
+;; PERF: the old 2-arity `(reduce (fn [acc x] (str acc sep x)) nil coll)` copied
+;; the growing accumulator string on EVERY element → O(n²) in total length. The
+;; JVM idiom `(apply str (interpose sep coll))` walks once and builds the result
+;; in a single `str` pass (O(n) — `apply str` is the native variadic builder).
+;; [refs: O-012]
 (def join
   (fn* [& args]
     (if (= 1 (count args))
       (apply str (first args))
-      ;; str (reduce ...) coerces a nil result (empty input) to "".
-      (str (reduce
-             (fn* [acc x]
-               (if (nil? acc) (str x) (str acc (first args) x)))
-             nil
-             (first (rest args)))))))
+      (apply str (interpose (first args) (first (rest args)))))))
 
 ;; ----------------------------------------------------------------
 ;; Row 7.12 cycle 3 (D-078): `replace` / `replace-first` Pattern A
