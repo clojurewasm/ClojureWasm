@@ -95,6 +95,9 @@ pub const FILES: []const FileEntry = &.{
     // clojure.uuid (D-273) — require-compat shim; the #uuid reader + UUID print
     // are cljw built-ins. Appended last so earlier FILES[N] indices stay stable.
     .{ .label = "<clojure.uuid>", .source = @embedFile("clj/clojure/uuid.clj") },
+    // clojure.instant (D-273) — read-instant-* over the built-in #inst parser;
+    // single Date type (no Timestamp/Calendar = AD-030). Appended last.
+    .{ .label = "<clojure.instant>", .source = @embedFile("clj/clojure/instant.clj") },
 };
 
 /// First file's source — exposed so `main.zig`'s renderer can fall
@@ -136,6 +139,7 @@ fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
     if (std.mem.eql(u8, ns_name, "cljw.fs")) return FILES[18];
     if (std.mem.eql(u8, ns_name, "clojure.stacktrace")) return FILES[19];
     if (std.mem.eql(u8, ns_name, "clojure.uuid")) return FILES[20];
+    if (std.mem.eql(u8, ns_name, "clojure.instant")) return FILES[21];
     return null;
 }
 
