@@ -111,7 +111,7 @@ You are running Step 0 (Survey) for ClojureWasm v1 Phase 7 entry
 prereq T1 — VM backend parity catch-up + dual-backend-parity rule
 landing.
 
-Working dir: /Users/shota.508/Documents/MyProducts/ClojureWasmFromScratch/
+Working dir: <repo-root>/
 Branch: cw-from-scratch
 HEAD baseline: ~8d4841c (or whatever current HEAD is)
 
@@ -482,7 +482,7 @@ Phase 7 entry is the **natural landing window** because:
 You are running Step 0 (Survey) for ClojureWasm v1 Phase 7 entry
 prereq T2 — Symbol heap Value impl (F-004 Group A slot 1).
 
-Working dir: /Users/shota.508/Documents/MyProducts/ClojureWasmFromScratch/
+Working dir: <repo-root>/
 Branch: cw-from-scratch
 HEAD: ~current
 
@@ -768,7 +768,7 @@ You are running Step 0 (Survey) for ClojureWasm v1 Phase 7 entry
 prereq T3 — ADR-0035 D9 second amendment for (:refer-clojure)
 semantic widening in cw v1 to include rt.
 
-Working dir: /Users/shota.508/Documents/MyProducts/ClojureWasmFromScratch/
+Working dir: <repo-root>/
 Branch: cw-from-scratch
 HEAD: ~current
 
