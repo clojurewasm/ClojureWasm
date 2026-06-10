@@ -1,0 +1,4 @@
+name: "BigInt factorial"
+category: numeric
+expected_output: "158"
+description: "100! via auto-promoting * (Long->BigInt) x1000, prints digit count (158) — numeric-tower throughput"

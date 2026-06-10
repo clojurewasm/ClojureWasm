@@ -90,12 +90,18 @@ _Cold-start wall-clock, ms (lower is better). Apple M4 Pro, Darwin 25.5.0, hyper
 
 ## Not yet wired (follow-ups)
 
-- **Zig + TinyGo columns.** The imported `bench.zig` sources use a pre-0.16
-  stdout API (`std.fs.File.stdout()`, removed in Zig 0.16) and don't compile
-  yet; TinyGo isn't on the host. Both are AOT-native baselines alongside C.
-- **Wasm-runtime + SIMD tables** (`wasm_bench.sh`, `bench/simd/`,
-  `bench/wasm/`) — the `cljw` ⇄ zwasm ⇄ wasmtime story, gated behind `-Dwasm`.
-  Needs `wasmtime` + `tinygo` in the dev shell (`flake.nix`).
+- **Toolchains are pinned in `flake.nix`** (2026-06-10): clang (C), JDK, Python,
+  Ruby, Node, Babashka, Go, TinyGo, wasmtime, wasm-tools. Run the cross-language
+  and wasm comparisons from inside `nix develop` to get the full column set
+  reproducibly (the host may lack TinyGo / wasmtime; the dev shell does not).
+- **Zig column.** The imported `bench.zig` sources use a pre-0.16 stdout API
+  (`std.fs.File.stdout()`, removed in Zig 0.16) and don't compile yet — an
+  AOT-native baseline alongside C still to be ported.
+- **Wasm-runtime + SIMD tables** (`wasm_bench.sh`, `bench/simd/`, `bench/wasm/`)
+  — the `cljw` ⇄ zwasm ⇄ wasmtime story. wasmtime + TinyGo are now in the dev
+  shell, but `wasm_bench.sh` still targets a phantom FFI API (`wasm/load-wasi` /
+  `wasm/fn`) and needs WASI-import FFI in cljw before it can run (tracked as
+  D-384). The `bench/wasm/ffi/` FFI suite in `run_bench.sh` already works today.
 - **`record.sh` / `history.yaml`** track `cljw`-only timings over commits
   (ADR-0044, regression-gated). That machinery is separate from this
   cross-language snapshot.

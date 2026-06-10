@@ -2297,14 +2297,15 @@ active:
       TinyGo-vs-handwritten cross-runtime story remains blocked.
     category: "wasm"
     barrier: |-
-      Blocked-by: (1) WASI-import support on the FFI load path (a `wasm/load-wasi`, or
+      Blocked-by: WASI-import support on the FFI load path (a `wasm/load-wasi`, or
       host-capability imports threaded into `wasm/load`) so a WASI reactor module's
       exports become callable from `wasm/call` — the same host-capability work the
-      playground / edge demos defer; (2) `wasmtime` + `tinygo` in the dev shell
-      (`flake.nix`) for the comparison runtimes. Predicate to land: WASI-import FFI
-      exists AND wasmtime/tinygo are on the host — then rewrite wasm_bench.sh to the
+      playground / edge demos defer. The earlier second blocker (wasmtime + tinygo
+      absent) was RESOLVED 2026-06-10 by pinning them in `flake.nix` (wasmtime 43 +
+      tinygo 0.40 now in the dev shell), so `nix develop` has the comparison runtimes.
+      Predicate to land: WASI-import FFI exists — then rewrite wasm_bench.sh to the
       real surface (`wasm/load` + `wasm/call`, dropping `wasm/load-wasi` / `wasm/fn`).
-      Until then `bench/README.md` § "Not yet wired" flags it. | WASI-import FFI + toolchain
+      Until then `bench/README.md` § "Not yet wired" flags it. | WASI-import FFI
     last_reviewed: "2026-06-10"
 discharged:
   - id: "D-249"

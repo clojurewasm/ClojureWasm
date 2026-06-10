@@ -1,0 +1,4 @@
+name: "Ratio harmonic sum"
+category: numeric
+expected_output: "13943237577224054960759/3099044504245996706400"
+description: "Exact harmonic sum 1/1..1/50 as a Ratio x1000 — exact-rational arithmetic (cljw-only)"

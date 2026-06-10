@@ -1,0 +1,4 @@
+name: "Regex count"
+category: string
+expected_output: "4"
+description: "Count digit-runs (re-seq #\"\\d+\") in a string x10000 — regex matching throughput"

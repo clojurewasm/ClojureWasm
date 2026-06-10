@@ -1,0 +1,4 @@
+name: "Sort"
+category: collection
+expected_output: "5050"
+description: "Sort a 5000-element descending vector x5, sum the 100 smallest (5050) — comparison-sort throughput"

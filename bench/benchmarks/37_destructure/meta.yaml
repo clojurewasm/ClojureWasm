@@ -1,0 +1,4 @@
+name: "Destructuring"
+category: language
+expected_output: "6600000"
+description: "Map + vector destructuring in a tight loop x100000 — binding-form overhead (cljw-only)"

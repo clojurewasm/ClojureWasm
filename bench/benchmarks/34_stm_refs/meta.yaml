@@ -1,0 +1,4 @@
+name: "STM refs"
+category: concurrency
+expected_output: "[50000 100000]"
+description: "dosync 2-ref transaction (alter a + alter b) x50000 — STM commit throughput (cljw-only)"

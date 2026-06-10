@@ -1,0 +1,4 @@
+name: "EDN round-trip"
+category: io
+expected_output: "cw"
+description: "read-string + pr-str round-trip of a nested EDN structure x10000 — reader/printer throughput (cljw-only)"
