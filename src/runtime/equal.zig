@@ -30,6 +30,7 @@ const Env = @import("env.zig").Env;
 const lazy_seq = @import("lazy_seq.zig");
 const string_mod = @import("collection/string.zig");
 const symbol_mod = @import("symbol.zig");
+const keyword_mod = @import("keyword.zig");
 const hash = @import("hash.zig");
 const uuid_mod = @import("uuid.zig");
 const tagged_literal_mod = @import("tagged_literal.zig");
@@ -391,6 +392,14 @@ pub fn valueHash(v: Value) u32 {
         // interned `'a` and a with-meta'd `'a` (distinct pointers) hashed apart
         // — breaking `(get {'a 1} (with-meta 'a m))`. Partner of symbolStructEq.
         .symbol => symbol_mod.asSymbol(v).hash_cache,
+        // Keyword hashes by its ns+name `hash_cache` + 0x9e3779b9 — clj's
+        // `Keyword.hasheq = sym.hasheq + 0x9e3779b9` (the offset decorrelates a
+        // keyword from the same-named symbol). Without this arm keyword fell to
+        // the `else` pointer-bits hash, which is NON-DETERMINISTIC across
+        // processes (keyword cells are ASLR-placed) — so a keyword-keyed map's
+        // hash varied per run and `(hash {:a 1})` ≠ a fresh process's. Keywords
+        // are interned, so `=` keywords share one cell ⇒ one hash_cache.
+        .keyword => keyword_mod.asKeyword(v).hash_cache +% 0x9e3779b9,
         .integer => hash.hashLong(@as(i64, v.asInteger())),
         .float => hash.hashLong(@bitCast(v.asFloat())),
         .nil => 0,
