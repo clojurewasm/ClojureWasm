@@ -298,6 +298,12 @@ pub const Runtime = struct {
     /// `deinit`. `null` until the first Date value is built.
     date_descriptor: ?*TypeDescriptor = null,
 
+    /// The per-Runtime `java.sql.Timestamp` descriptor (D-382) — a
+    /// nanosecond-precision instant, a 2-field no-slot `.typed_instance`.
+    /// Lazily allocated by `runtime/time/timestamp.zig::descriptorOf`, freed
+    /// in `deinit`. `null` until the first Timestamp value is built.
+    timestamp_descriptor: ?*TypeDescriptor = null,
+
     /// Lazy-init access to the per-Tag default descriptor. On first
     /// call for a given tag, allocates a TypeDescriptor on
     /// `rt.gc.infra` with `fqcn = nativeFqcnFor(tag)` and empty
@@ -490,6 +496,7 @@ pub const Runtime = struct {
         @import("locale.zig").deinitSingletons(self);
         // Free the per-Runtime Date descriptor (gc.infra — D-200/ADR-0079).
         @import("time/date.zig").deinitDescriptor(self);
+        @import("time/timestamp.zig").deinitDescriptor(self);
 
         // Free per-Tag native descriptors first (their method_table
         // slice was re-allocated on rt.gc.infra by extendTypeWithImpls

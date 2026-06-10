@@ -14,6 +14,7 @@ const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const date = @import("../../runtime/time/date.zig");
+const timestamp = @import("../../runtime/time/timestamp.zig");
 const instant = @import("../../runtime/time/instant.zig");
 
 /// The default `#inst "…"` data reader (ADR-0079). Parses the RFC3339-subset
@@ -31,21 +32,39 @@ pub fn instReader(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     return try date.make(rt, epoch_ms);
 }
 
-/// `(inst? x)` — true iff `x` is an instant (cljw: a java.util.Date value).
+/// `clojure.instant/read-instant-timestamp` backing primitive (`rt/__read-instant-timestamp`,
+/// D-382). Parses the RFC3339-subset string → a `java.sql.Timestamp` value
+/// (epoch-ms + the full fractional-second nanos). Malformed input raises.
+pub fn readInstantTimestamp(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("read-instant-timestamp", args, 1, loc);
+    if (args[0].tag() != .string) {
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "read-instant-timestamp", .actual = @tagName(args[0].tag()) });
+    }
+    const s = string_collection.asString(args[0]);
+    const f = instant.parseInstantFields(s) catch
+        return error_catalog.raise(.inst_string_invalid, loc, .{ .s = s });
+    return try timestamp.make(rt, f.epoch_ms, f.nanos);
+}
+
+/// `(inst? x)` — true iff `x` is an instant. cljw's Inst values: Date AND
+/// Timestamp (clj's `Inst` protocol covers both — a Timestamp IS an instant).
 pub fn instQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("inst?", args, 1, loc);
-    return if (date.isDate(rt, args[0])) Value.true_val else Value.false_val;
+    const x = args[0];
+    return if (date.isDate(rt, x) or timestamp.isTimestamp(rt, x)) Value.true_val else Value.false_val;
 }
 
-/// `(inst-ms inst)` — the instant as epoch-millis. Errors on a non-Date.
+/// `(inst-ms inst)` — the instant as epoch-millis (Date or Timestamp). Errors
+/// on a non-instant.
 pub fn instMs(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("inst-ms", args, 1, loc);
-    if (!date.isDate(rt, args[0])) {
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "inst-ms", .expected = "inst", .actual = @tagName(args[0].tag()) });
-    }
-    return Value.initInteger(date.epochMsOf(args[0]));
+    const x = args[0];
+    if (date.isDate(rt, x)) return Value.initInteger(date.epochMsOf(x));
+    if (timestamp.isTimestamp(rt, x)) return Value.initInteger(timestamp.epochMsOf(x));
+    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "inst-ms", .expected = "inst", .actual = @tagName(x.tag()) });
 }
 
 // --- registration ---
@@ -58,6 +77,9 @@ const Entry = struct {
 const ENTRIES = [_]Entry{
     .{ .name = "inst?", .f = &instQ },
     .{ .name = "inst-ms", .f = &instMs },
+    // Internal (`__`-prefixed, qualified-only) backing for clojure.instant's
+    // read-instant-timestamp — not part of the unqualified clojure.core surface.
+    .{ .name = "__read-instant-timestamp", .f = &readInstantTimestamp },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {

@@ -87,6 +87,18 @@ fn readN(s: []const u8, i: *usize, n: usize) ParseError!i64 {
 /// optional `Z` / `±HH:MM` offset (absent ⇒ UTC). Mirrors clj
 /// `clojure.instant/read-instant-date` for the common grammar.
 pub fn parseInstantMillis(s: []const u8) ParseError!i64 {
+    return (try parseInstantFields(s)).epoch_ms;
+}
+
+/// The instant decomposed into the data the richer types need beyond Date:
+/// `epoch_ms` (UTC ms, offset folded — what Date keeps) + `nanos` (the FULL
+/// fractional-second in nanoseconds 0..999_999_999, which Date truncates to
+/// ms) + `offset_min` (the parsed ±HH:MM offset, which Date folds away).
+/// `parseInstantMillis` is the thin epoch-ms-only wrapper — one grammar SSOT
+/// (F-009/F-011). Timestamp uses `nanos`; a future Calendar uses `offset_min`.
+pub const InstantFields = struct { epoch_ms: i64, nanos: i32, offset_min: i32 };
+
+pub fn parseInstantFields(s: []const u8) ParseError!InstantFields {
     var i: usize = 0;
     const year = try readN(s, &i, 4);
     var month: i64 = 1;
@@ -95,6 +107,7 @@ pub fn parseInstantMillis(s: []const u8) ParseError!i64 {
     var mm: i64 = 0;
     var ss: i64 = 0;
     var frac_ms: i64 = 0;
+    var nanos: i64 = 0;
     var off_min: i64 = 0;
 
     if (i < s.len and s[i] == '-') {
@@ -114,16 +127,17 @@ pub fn parseInstantMillis(s: []const u8) ParseError!i64 {
                     ss = try readN(s, &i, 2);
                     if (i < s.len and s[i] == '.') {
                         i += 1;
-                        // Fractional seconds: take the first 3 digits as ms,
-                        // ignore the rest (java.util.Date is ms precision).
+                        // Fractional seconds: accumulate up to 9 digits as `nanos`
+                        // (Timestamp precision); `frac_ms` = the first 3 (Date).
                         var digits: usize = 0;
-                        var f: i64 = 0;
+                        var n: i64 = 0;
                         while (i < s.len and s[i] >= '0' and s[i] <= '9') : (i += 1) {
-                            if (digits < 3) f = f * 10 + (s[i] - '0');
+                            if (digits < 9) n = n * 10 + (s[i] - '0');
                             digits += 1;
                         }
-                        while (digits < 3) : (digits += 1) f *= 10;
-                        frac_ms = f;
+                        while (digits < 9) : (digits += 1) n *= 10;
+                        nanos = n;
+                        frac_ms = @divFloor(nanos, 1_000_000);
                     }
                 }
                 // Optional timezone.
@@ -149,7 +163,11 @@ pub fn parseInstantMillis(s: []const u8) ParseError!i64 {
 
     const days = daysFromCivil(year, month, day);
     const tod_ms = ((hh * 3600 + mm * 60 + ss) * 1000) + frac_ms;
-    return days * MS_PER_DAY + tod_ms - off_min * 60 * 1000;
+    return .{
+        .epoch_ms = days * MS_PER_DAY + tod_ms - off_min * 60 * 1000,
+        .nanos = @intCast(nanos),
+        .offset_min = @intCast(off_min),
+    };
 }
 
 /// Format epoch-millis (UTC) → the canonical `#inst` body
@@ -171,6 +189,27 @@ pub fn formatInstantMillis(buf: []u8, epoch_ms: i64) []const u8 {
         @as(u64, @intCast(c.y)),  @as(u64, @intCast(c.m)),   @as(u64, @intCast(c.d)),
         @as(u64, @intCast(hour)), @as(u64, @intCast(min)),   @as(u64, @intCast(sec)),
         @as(u64, @intCast(ms)),
+    }) catch buf[0..0];
+}
+
+/// Format epoch-millis (UTC, used to the SECOND) + `nanos` → the canonical
+/// `#inst` body with a 9-digit fractional second
+/// `YYYY-MM-DDTHH:MM:SS.nnnnnnnnn-00:00` (clj Timestamp print form). The ms
+/// part of `epoch_ms` is dropped (the fraction is `nanos`, which carries it).
+/// Writes into `buf` (≥ 35 bytes) and returns the written slice.
+pub fn formatInstantNanos(buf: []u8, epoch_ms: i64, nanos: i32) []const u8 {
+    const day = @divFloor(epoch_ms, MS_PER_DAY);
+    var rem = epoch_ms - day * MS_PER_DAY; // [0, MS_PER_DAY)
+    const c = civilFromDays(day);
+    rem = @divFloor(rem, 1000); // drop ms; `nanos` carries the fraction
+    const sec = @rem(rem, 60);
+    rem = @divFloor(rem, 60);
+    const min = @rem(rem, 60);
+    const hour = @divFloor(rem, 60);
+    return std.fmt.bufPrint(buf, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}.{d:0>9}-00:00", .{
+        @as(u64, @intCast(c.y)),  @as(u64, @intCast(c.m)),   @as(u64, @intCast(c.d)),
+        @as(u64, @intCast(hour)), @as(u64, @intCast(min)),   @as(u64, @intCast(sec)),
+        @as(u64, @intCast(nanos)),
     }) catch buf[0..0];
 }
 

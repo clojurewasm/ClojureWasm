@@ -588,19 +588,25 @@ active:
       deferred it), D-377 (the discharged facet), F-010, D-180, equal.zig hashDispatch.
     last_reviewed: "2026-06-10"
   - id: "D-382"
-    status: "open (2026-06-10, user-flagged smell). clojure.instant ships `read-instant-date`
-      (clj-faithful Date) but NOT `read-instant-timestamp` / `read-instant-calendar` —
-      ClojureWasm has a SINGLE Date instant type, no java.sql.Timestamp (sub-millisecond)
-      / java.util.Calendar (tz + fields). Collapsing those two to Date was rejected as a
-      bad smell (user 2026-06-10: 「Date にcollapseはbad smellを感じる」), so they are
-      intentionally absent today (honest NameError), not a fake-Date. FINISHED FORM (user
-      direction 2026-06-10): model the richer instant types in a NEUTRAL runtime impl
-      (`runtime/time/`, exploring Zig 0.16.0 std.time) and surface them THINLY per-namespace
-      (F-009) — clojure.instant's read-instant-timestamp/calendar + the java.sql.Timestamp /
-      java.util.Calendar host surfaces all wrap the one neutral model, the way uuid/date/etc.
-      already share a neutral impl. Likely needs new NaN-box tag(s) (F-004 reserved slots) +
-      print methods. A real feature, not a backfill — schedule when an instant-precision lib
-      surfaces it or in the F-010 quality window."
+    status: "PARTIAL (2026-06-10, user-directed neutral-time modeling). STAGE 1 (Timestamp)
+      LANDED: java.sql.Timestamp is a real nanosecond-precision instant — a no-slot 2-field
+      `.typed_instance` ([epoch_ms, nanos]) with a per-Runtime descriptor (runtime/time/
+      timestamp.zig, mirroring the Date model ADR-0079 — NO new NaN-box tag, the debt's
+      earlier 'likely needs a slot' was wrong per the survey). parseInstantMillis refactored
+      to a shared `parseInstantFields` {epoch_ms, nanos, offset_min} (one grammar SSOT, F-011);
+      `formatInstantNanos` prints the 9-digit fraction. `clojure.instant/read-instant-timestamp`
+      wraps the `rt/__read-instant-timestamp` primitive (F-009 thin surface); inst?/inst-ms
+      broadened to Timestamp (clj's Inst protocol). CLJ-EXACT (oracle-verified): print form
+      `#inst \"…123456789-00:00\"`, (class)→Timestamp, inst?/inst-ms, `=` by epoch+nanos,
+      Timestamp ≠ an =-instant Date. e2e phase15_clojure_instant. Collapsing to Date was the
+      rejected smell (user 2026-06-10: 「Date にcollapseはbad smellを感じる」). REMAINING —
+      STAGE 2 (Calendar): java.util.Calendar is field-rich (tz + .get FIELD + mutable); a
+      minimal offset-only Calendar is low-value (unusable without fields), so the field API is
+      a larger unit (a reduced-field cljw Calendar would need a new AD). read-instant-calendar
+      stays absent (honest NameError) until the field surface is designed. STAGE 3 (optional):
+      java.sql.Timestamp / java.util.Calendar HOST surfaces (compat_tiers) wrapping the same
+      neutral model (F-009). The neutral runtime/time/ home + the Timestamp template are now in
+      place, so Stage 2/3 extend rather than design anew."
     category: "interop"
     barrier: |-
       Blocked-by: needs a neutral richer-instant model in runtime/time/ (Zig 0.16.0

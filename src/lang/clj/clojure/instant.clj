@@ -7,12 +7,10 @@
 ;; canonical instant parser (runtime/time/instant.zig). `read-instant-date` exposes that
 ;; parser as a fn (clj-faithful: clj's read-instant-date also returns a Date).
 ;;
-;; `read-instant-timestamp` / `read-instant-calendar` are NOT provided yet: ClojureWasm
-;; models a single Date instant and has no java.sql.Timestamp / java.util.Calendar type.
-;; Collapsing them to Date is a smell (user 2026-06-10); the finished form is a NEUTRAL
-;; time model in runtime/time/ (Zig 0.16.0 std.time) surfaced thinly per-namespace (F-009)
-;; — tracked in D-382. Until then they are intentionally absent (an honest NameError),
-;; not a fake-Date collapse.
+;; `read-instant-timestamp` returns a real java.sql.Timestamp (nanosecond precision),
+;; backed by the same neutral time model (runtime/time/timestamp.zig, D-382) — NOT a
+;; Date collapse. `read-instant-calendar` is still absent (no java.util.Calendar type
+;; yet; tracked in D-382 — an honest NameError, not a fake-Date).
 
 (ns clojure.instant)
 
@@ -30,3 +28,8 @@
 (defn read-instant-date
   "Parse an RFC3339-like instant string into a java.util.Date (the #inst reader fn)."
   [s] (parse-inst s))
+
+(defn read-instant-timestamp
+  "Parse an RFC3339-like instant string into a java.sql.Timestamp (nanosecond
+  precision). Backed by the neutral runtime/time model (D-382), not a Date."
+  [s] (rt/__read-instant-timestamp s))

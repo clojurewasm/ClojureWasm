@@ -922,8 +922,14 @@ fn printTypedInstance(w: *Writer, v: Value) anyerror!void {
     // canonical ISO string. Descriptor-driven (no rt, no surface import).
     if (inst.descriptor.print_tag) |tag| {
         if (inst.field_count >= 1 and inst.fields()[0].tag() == .integer) {
-            var buf: [40]u8 = undefined;
-            const iso = instant_mod.formatInstantMillis(&buf, inst.fields()[0].asInteger());
+            var buf: [48]u8 = undefined;
+            const epoch_ms = inst.fields()[0].asInteger();
+            // A 2-field inst value is a Timestamp (epoch-ms + nanos, D-382) →
+            // 9-digit fraction; a 1-field one is a Date → 3-digit ms.
+            const iso = if (inst.field_count >= 2 and inst.fields()[1].tag() == .integer)
+                instant_mod.formatInstantNanos(&buf, epoch_ms, @intCast(inst.fields()[1].asInteger()))
+            else
+                instant_mod.formatInstantMillis(&buf, epoch_ms);
             try w.print("#{s} \"{s}\"", .{ tag, iso });
             return;
         }
