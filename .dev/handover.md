@@ -20,7 +20,10 @@
   1. **Build / confirm the experiment → measure → keep-or-revert loop first**:
      baseline with `scripts/perf.sh` (Release) + `bench/run_bench.sh` +
      `bench/compare_langs.sh`; make ONE change; re-measure; keep if faster, else
-     `git` revert. Each unit is its own commit (revert-friendly); log every
+     `git` revert. **Measure the FOCUSED target only** — `bash bench/run_bench.sh
+     --quick --bench=<name>` (3 runs / 1 warmup, low-noise); run the FULL suite
+     (no `--bench`) only for regression once a real win lands, not every iteration.
+     Each unit is its own commit (revert-friendly); log every
      speed-for-simplicity trade in [`.dev/optimizations.md`](./optimizations.md)
      (O-NNN SSOT) + a `// PERF:` marker; the naive form stays the F-011 contract
      (observably equivalent vs `clj`).

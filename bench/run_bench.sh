@@ -4,13 +4,20 @@
 # Usage:
 #   bash bench/run_bench.sh                        # All benchmarks
 #   bash bench/run_bench.sh --bench=fib_recursive  # Single benchmark
-#   bash bench/run_bench.sh --quick                # Fast check (1 run, no warmup)
+#   bash bench/run_bench.sh --quick --bench=NAME   # A/B check: 3 runs / 1 warmup, low-noise
 #   bash bench/run_bench.sh --runs=10 --warmup=3   # Custom hyperfine settings
 #   bash bench/run_bench.sh --no-wasm              # Skip wasm benchmarks (binary -Dwasm=false)
 #
 # Always: ReleaseSafe, VM backend, hyperfine measurement.
 # For multi-language comparison: use bench/compare_langs.sh
 # For recording to history.yaml: use bench/record.sh
+#
+# Measurement discipline (self-comparison — did THIS change get faster?):
+#   1. Measure ONLY the focused target: `--quick --bench=<name>` (3 runs /
+#      1 warmup, low-noise). Bare warmup 0 / runs 1 is too noisy for an A/B call,
+#      and the full default (5/3 over every benchmark) is too slow to iterate on.
+#   2. Run the FULL suite (no --bench) only once a real win lands, to catch
+#      regressions. Do NOT run full on every experiment.
 
 set -euo pipefail
 
@@ -40,7 +47,7 @@ for arg in "$@"; do
     --bench=*)    BENCH_FILTER="${arg#--bench=}" ;;
     --runs=*)     RUNS="${arg#--runs=}" ;;
     --warmup=*)   WARMUP="${arg#--warmup=}" ;;
-    --quick)      RUNS=1; WARMUP=0 ;;
+    --quick)      RUNS=3; WARMUP=1 ;;
     --no-wasm)    NO_WASM=true; ZIG_BUILD_FLAGS=("-Dwasm=false") ;;
     -h|--help)
       echo "Usage: bash bench/run_bench.sh [OPTIONS]"
@@ -49,7 +56,7 @@ for arg in "$@"; do
       echo "  --bench=NAME     Run specific benchmark (e.g. fib_recursive)"
       echo "  --runs=N         Hyperfine runs (default: 5)"
       echo "  --warmup=N       Hyperfine warmup runs (default: 3)"
-      echo "  --quick          Fast check: 1 run, no warmup"
+      echo "  --quick          A/B check: 3 runs, 1 warmup (low-noise; pair with --bench=NAME)"
       echo "  --no-wasm        Skip wasm_* benchmarks; build with -Dwasm=false"
       echo "  -h, --help       Show this help"
       echo ""
