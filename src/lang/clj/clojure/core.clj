@@ -760,19 +760,22 @@
           nil)))))
 
 ;; `(concat & colls)` — lazy left-to-right catenation (JVM-idiom).
-;; `(concat)` → (); `(concat a)` → `(seq a)`.
-;; PERF: catenate the (finite) arg list RIGHT-nested via `-concat-seqs`
-;; (`(-concat2 c1 (-concat2 c2 …))`), NOT the old `(reduce -concat2 nil colls)`
-;; LEFT fold (`(-concat2 (-concat2 c1 c2) c3)…`). In a left-nested concat every
-;; element of an early coll is re-yielded through all the outer `-concat2`
-;; wrappers → O(n × #colls); right-nesting yields each element through one
-;; wrapper → O(n). Catenation is associative, so the element sequence is
-;; identical (and right-nesting is strictly more lazy). [refs: O-013]
+;; Folds the (finite) arg list with `-concat2`; element realization
+;; stays lazy. `(concat)` → (); `(concat a)` → `(seq a)`.
+;; NOTE: this is a LEFT fold deliberately (O-013 RETIRED). A right-nested
+;; `-concat-seqs` form is O(n) for `(apply concat many-colls)` BUT places a
+;; recursive 2-arg `concat`'s tail arg behind an extra `-concat2`/lazy-seq
+;; layer, so a deeply self-recursive caller like `interleave`
+;; (`(concat (map first ss) (apply interleave (map rest ss)))`) accumulates one
+;; native force-frame per level → stack overflow at ~50k. The left fold keeps
+;; the tail arg in `-concat2`'s 2nd (seq-y) position, so deep 2-arg recursion
+;; stays flat. The `(apply concat N-colls)` O(n×N) cost is the accepted
+;; tradeoff (rare; `mapcat` already uses the lazy `-concat-seqs`).
 (def concat
   (fn* [& colls]
-    ;; `(concat)` (no colls) → () not nil (D-164); the nil from an empty/all-
-    ;; empty catenation is lifted to the empty list.
-    (or (-concat-seqs colls) '())))
+    ;; `(concat)` (no colls) → () not nil (D-164); the reduce init nil is
+    ;; lifted to the empty list when nothing is catenated.
+    (or (reduce -concat2 nil colls) '())))
 
 ;; `(mapcat f & colls)` — the JVM shape `(apply concat (apply map f colls))`,
 ;; but with `-concat-seqs` instead of `apply concat` to stay lazy over an
