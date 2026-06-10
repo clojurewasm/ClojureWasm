@@ -562,19 +562,27 @@ pub fn assocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         },
         .typed_instance => blk: {
             var cs: dispatch.CallSite = .{};
-            // A deftype/reify implementing Associative `-assoc` takes the protocol
-            // path (single-pair; mirrors dissoc/-without). D-280c: a deftype is not
-            // a defrecord, so the record-only branch below would otherwise raise on
-            // a perfectly valid Associative impl.
+            const inst = coll.decodePtr(*const td_mod.TypedInstance);
+            // A deftype/reify (non-record) implementing Associative `-assoc` takes
+            // the protocol path. D-378: multi-pair assoc folds over pairs into
+            // repeated single-pair `-assoc` (clj reduces over pairs), so
+            // `(assoc m k1 v1 k2 v2 …)` works — e.g. flatland.ordered's ordered-map
+            // ctor `(apply assoc empty-ordered-map …)`. args.len is validated odd≥3
+            // at the top; a deftype with no `-assoc` impl raises a proper no-impl
+            // error via `dispatch`. D-280c: a deftype is not a defrecord, so the
+            // record-only branch below must not capture it.
+            if (inst.descriptor.kind != .defrecord) {
+                var acc: Value = coll;
+                var i: usize = 1;
+                while (i + 1 < args.len) : (i += 2) {
+                    var cs2: dispatch.CallSite = .{};
+                    acc = try dispatch.dispatch(rt, env, &cs2, acc, ASSOCIATIVE_FQCN, "-assoc", &.{ acc, args[i], args[i + 1] }, loc);
+                }
+                break :blk acc;
+            }
+            // A defrecord with a custom single-pair `-assoc` impl takes it first.
             if (args.len == 3) {
                 if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ASSOCIATIVE_FQCN, "-assoc", args, loc)) |v| break :blk v;
-            }
-            const inst = coll.decodePtr(*const td_mod.TypedInstance);
-            if (inst.descriptor.kind != .defrecord) {
-                if (args.len != 3)
-                    break :blk error_catalog.raise(.feature_not_supported, loc, .{ .name = "multi-pair assoc on extend-type Associative receiver" });
-                // Non-record typed instance with no `-assoc` impl → proper no-impl error.
-                break :blk try dispatch.dispatch(rt, env, &cs, coll, ASSOCIATIVE_FQCN, "-assoc", args, loc);
             }
             // Single-pair assoc only on a record. Multi-pair would
             // allocate multiple TypedInstance values; the `__extmap`
@@ -621,19 +629,18 @@ pub fn assocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             break :blk try td_mod.allocInstanceMeta(rt, inst.descriptor, new_fields, inst.meta);
         },
         else => blk: {
-            // D-089 row 8.6 cycle 3: Associative -assoc slow-path. The
-            // multi-pair fast-path above is the cw native shape; user
-            // extension uses single-pair (extend-type X Associative
-            // (-assoc [c k v] …)) so the outer-else routes only the
-            // 3-arity form. Multi-pair extension would require the
-            // caller to fold via reduce themselves.
-            if (args.len != 3) {
-                break :blk error_catalog.raise(.feature_not_supported, loc, .{
-                    .name = "multi-pair assoc on extend-type Associative receiver",
-                });
+            // D-089 row 8.6 cycle 3: Associative -assoc slow-path for a non-native
+            // receiver `(extend-type X Associative (-assoc [c k v] …))`. D-378:
+            // multi-pair folds over pairs into repeated single-pair `-assoc` (clj
+            // reduces over pairs), so `(assoc x k1 v1 k2 v2 …)` works. args.len is
+            // validated odd≥3 at the top.
+            var acc: Value = coll;
+            var i: usize = 1;
+            while (i + 1 < args.len) : (i += 2) {
+                var cs: dispatch.CallSite = .{};
+                acc = try dispatch.dispatch(rt, env, &cs, acc, ASSOCIATIVE_FQCN, "-assoc", &.{ acc, args[i], args[i + 1] }, loc);
             }
-            var cs: dispatch.CallSite = .{};
-            break :blk try dispatch.dispatch(rt, env, &cs, coll, ASSOCIATIVE_FQCN, "-assoc", args, loc);
+            break :blk acc;
         },
     };
 }

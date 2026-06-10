@@ -1030,15 +1030,24 @@ active:
       map.zig foldHash, core.zig collHash.
     last_reviewed: "2026-06-10"
   - id: "D-378"
-    status: "open (2026-06-10, flatland.ordered.map next blocker after D-375). `(apply assoc empty-ordered-map k v more)` (map.clj:159) → `multi-pair assoc on extend-type Associative receiver is not supported` (collection.zig:575/632 feature_not_supported). cljw's assoc on an extend-type/deftype Associative receiver handles the single k/v pair but raises on the multi-pair (`assoc m k1 v1 k2 v2 …`) form. ordered.map's ordered-map ctor uses the variadic assoc. Finished-form: lower multi-pair assoc on an Associative-protocol receiver to a fold of single-pair `-assoc` calls (the same lowering native maps get). Distinct from the hash-static work (D-375). ordered.map advanced map.clj:123→:159."
+    status: "DISCHARGED 2026-06-10. Multi-pair assoc on an Associative deftype/extend-type receiver now folds over pairs into repeated single-pair `-assoc` dispatch (collection.zig: the .typed_instance non-defrecord arm + the else arm), matching clj's reduce-over-pairs and the native-map fast-path. args.len is validated odd≥3 at assocFn top, so the fold needs no extra arity check. e2e phase14_multipair_assoc_extend (multi-pair + single-pair on a Box deftype). flatland.ordered.map advanced map.clj:159→ its NEXT blocker: `(.get ^Map backing-map k)` = java.util.Map `.get` on a native persistent map (D-379)."
     category: "polymorphism"
     barrier: |-
-      `(apply assoc <deftype-Associative> k v more)` raises `multi-pair assoc on
-      extend-type Associative receiver is not supported` (collection.zig:575/632).
-      Single-pair assoc on the protocol receiver works; the variadic multi-pair form
-      is unimplemented. Fix: fold the multi-pair form into repeated single-pair
-      `-assoc` protocol calls (as native maps do). Blocks flatland.ordered.map (the
-      ordered-map ctor). Cross-ref D-375 (the blocker before it), collection.zig assoc.
+      DISCHARGED — multi-pair assoc on an Associative protocol receiver folds into
+      single-pair `-assoc` calls (collection.zig .typed_instance + else arms). e2e
+      phase14_multipair_assoc_extend.
+    last_reviewed: "2026-06-10"
+  - id: "D-379"
+    status: "open (2026-06-10, flatland.ordered.map next blocker after D-378). `(.get ^Map backing-map k)` (map.clj:72 etc., the OrderedMap deftype calling java.util.Map's `.get` on its NATIVE PersistentArrayMap backing) → `No implementation of method 'get' on protocol '<.member>' for type 'PersistentArrayMap'`. cljw routes `.get` (a java.util.Map method) on a native map through a member-protocol that has no native-map impl. Sibling of D-371 (`.valAt`/`.cons`/… on native colls → clojure.core): add `.get` (java.util.Map/get, 1-arg → value-or-nil; 2-arg → value-or-default) on native maps routing to clojure.core/get, definition-derived (the java.util.Map read methods on a cljw collection, F-013). ordered.map uses `.get`/`.getKey`/`.getValue`/`.val`/`.key` (Map.Entry) interop on its backing; check the whole java.util.Map/Map.Entry read surface. ordered.map advanced map.clj:159→:72."
+    category: "interop"
+    barrier: |-
+      `(.get native-map k)` (java.util.Map/get) → `No implementation of method 'get'
+      on protocol '<.member>'`. cljw has no `.get` (java.util.Map read method) on a
+      native map. Sibling of D-371 (.valAt/.cons on native colls). Fix: route the
+      java.util.Map/Map.Entry READ methods (.get/.getKey/.getValue/.containsKey/.size
+      + Map.Entry .key/.val) on a native coll to the clojure.core equivalents,
+      definition-derived (F-013), not per-lib. Blocks flatland.ordered.map (.get on
+      backing-map). Cross-ref D-371, D-372, collection/object-method dispatch.
     last_reviewed: "2026-06-10"
   - id: "D-287"
     status: "DISCHARGED ADR-0105 (2026-06-07) - Java arrays implemented: type-erased `.array` JavaArray ([]Value, mirror of TypedInstance) + aget/aset/alength/aclone/array? primitives + object-array/int-array/byte-array/make-array/to-array/into-array/aset-*/amap/areduce in core.clj; seqable/indexed/identity-equal; byte/short/char wrap + per-ctor init defaults (F-011); type-erasure = AD-019. flatland.ordered (rung 4b) advanced aset->IEditableCollection; tools.reader (rung 6) aget->Closeable (both new host-interface blockers). ORIGINAL: now (found 2026-06-07 — ordered's blocker after D-286a, a NON-deftype/NON-host-interface class) — flatland.ordered.set.clj:84 `Unable to resolve symbol: 'aset'`. `aset` (Java array element set) is unimplemented; ordered uses Java object-arrays + aset/aget/make-array internally for its backing store. This is the Java-array-interop capability, distinct from the deftype host-interface work (D-275→D-286). cljw has no Java arrays as such — would need an array surface (object-array/aset/aget/alength/make-array) backed by a cljw mutable vector or a native array Value."
