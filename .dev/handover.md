@@ -17,11 +17,11 @@
   USER-COLLABORATIVE pass, NOT the autonomous TDD loop).** Order:
   1. **`README.md` + outward-facing materials** — improve interactively with
      the user (tone, accuracy, the story; the numbers are now ~3.4 MB default /
-     ~3.8 MB `-Dwasm` / ~6 ms cold-start / 24 bundled `clojure.*` ns / 130 ADRs —
+     ~3.8 MB `-Dwasm` / ~5 ms cold-start / 24 bundled `clojure.*` ns / 130 ADRs —
      see `bench/RELEASE_METRICS.md`).
   2. **CFP text + materials** (`private/clojure_conj_2026_cfp/`) — interactive
      refinement of SUBMISSION / REVIEWER_INFO / MY_CFP (numbers already refreshed
-     2026-06-10 to "約4MB(最小1.6MB)/ 約6ms"; remaining = human-gated video /
+     2026-06-10 to "約4MB(最小1.6MB)/ 約5ms"; remaining = human-gated video /
      photo / final name).
   This is collaborative doc work; ask the user for direction on wording, do not
   autonomously rewrite their outward-facing claims.

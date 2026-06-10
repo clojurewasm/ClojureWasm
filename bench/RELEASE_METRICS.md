@@ -36,10 +36,10 @@ and a bytecode VM.
 
 End-to-end `cljw -e nil` (process spawn + runtime init + eval), measured on the
 ReleaseSafe build with [`hyperfine`](https://github.com/sharkdp/hyperfine) `-N`
-on an Apple M4 Pro:
+on an Apple M4 Pro (re-measured 2026-06-11):
 
 ```
-≈ 6 ms (mean, ± a couple ms), warm filesystem cache
+≈ 5 ms (4.8 ms ± 0.2 mean), warm filesystem cache
 ```
 
 This includes loading the AOT-compiled `clojure.core` bootstrap (ADR-0056), so
