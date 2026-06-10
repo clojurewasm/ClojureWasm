@@ -81,6 +81,7 @@ the JVM's `hashCode`/`hasheq` split.
 | `(class x)` / `(type x)`                                         | `java.lang.Long` (FQCN)                          | `Long` (simple name)                                              | AD-003 |
 | Error rendering                                                  | `ArithmeticException …` (JVM exception class)   | `[arithmetic_error] …` (catalog Kind); same accept/reject        | AD-007 |
 | Stack trace frames                                               | includes `clojure.core` machinery                | user frames only (stdlib + host elided uniformly)                 | AD-024 |
+| `clojure.stacktrace` per-frame printing                          | `Class.method (file:line)` frames                | `[no stack trace available]` marker (cause-chain + message work)  | AD-029 |
 | `hash` / `.hashCode` values                                      | JVM/Murmur3 values                               | cljw-native values (intra-cljw consistent)                        | AD-009 |
 | `APersistentMap/mapHash` vs `/mapHasheq`                         | distinct (additive `hashCode` vs murmur)         | both = the single `(hash m)` content hash                         | AD-028 |
 | `ns-interns`/`ns-publics` of `clojure.core`                      | includes `reduce`, `+`, …                       | omits the `rt`-referred primitives (`ns-map` includes them)       | AD-011 |

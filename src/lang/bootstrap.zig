@@ -89,6 +89,9 @@ pub const FILES: []const FileEntry = &.{
     // (ADR-0126 Cycle 7); load after their targets (data.json/walk/clojure.java.io).
     .{ .label = "<cljw.json>", .source = @embedFile("clj/cljw/json.clj") },
     .{ .label = "<cljw.fs>", .source = @embedFile("clj/cljw/fs.clj") },
+    // clojure.stacktrace (D-273) — pure-Clojure cause-chain printer over the
+    // ex-info model; appended last so earlier FILES[N] indices stay stable.
+    .{ .label = "<clojure.stacktrace>", .source = @embedFile("clj/clojure/stacktrace.clj") },
 };
 
 /// First file's source — exposed so `main.zig`'s renderer can fall
@@ -128,6 +131,7 @@ fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
     if (std.mem.eql(u8, ns_name, "clojure.java.io")) return FILES[16];
     if (std.mem.eql(u8, ns_name, "cljw.json")) return FILES[17];
     if (std.mem.eql(u8, ns_name, "cljw.fs")) return FILES[18];
+    if (std.mem.eql(u8, ns_name, "clojure.stacktrace")) return FILES[19];
     return null;
 }
 

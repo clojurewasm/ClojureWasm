@@ -444,3 +444,23 @@ accepted:
       DA-fork (ADR-0108 am1) Alt 2.
     derives_from: "AD-009 (cljw-native hash, intra-cljw consistency only) + ADR-0108 am1 (the DA-fork decision) + F-011 (observable equivalence over unobservable JVM bit-shape)"
     pin: "test/diff/clj_corpus/clojure_lang_coll_hash.txt (the two `(= (mapHash …) (hash …))` / `(= (mapHash …) (mapHasheq …))` lines lock cljw=true)"
+  - id: "AD-029"
+    summary: "`clojure.stacktrace/print-stack-trace` / `print-cause-trace` print a `[no stack trace available]` marker instead of per-frame `Class.method (file:line)` lines — cljw has no JVM `StackTraceElement` and exposes no Clojure-level frame accessor for a caught exception. The cause-chain (`Caused by:` walk) + `root-cause` + `print-throwable` are clj-faithful; only the per-FRAME listing degrades. `print-trace-element` and the `*e`-dependent REPL helper `e` are not provided."
+    example: '(with-out-str (clojure.stacktrace/print-stack-trace (ex-info "x" {}))) => cljw "ExceptionInfo: x\n{}\n at [no stack trace available]" / clj "clojure.lang.ExceptionInfo: x …\n at user$eval… (REPL:1)\n …frames…"'
+    why: |-
+      A caught exception in cljw is an ex-info value (ADR-0059: no JVM Throwable /
+      StackTraceElement). The ExInfo struct DOES carry frame data internally
+      (trace_ptr, ADR-0120) but there is no Clojure-level accessor — that surface
+      (a cljw-shaped frame seq, NOT JVM StackTraceElements) is owned by the
+      clojure.repl/pst work (D-232), so exposing it here would be a structural
+      decision out of this namespace's scope (F-003: defer to the owner). JVM
+      StackTraceElement-shaped frames will NEVER exist (no JVM); the per-frame
+      listing therefore degrades to an honest `[no stack trace available]` marker
+      — never a silent empty success. The USEFUL parts (root-cause, the cause
+      chain, the class+message+ex-data of each throwable) are fully clj-faithful.
+      Any cljw user-frame printing D-232 later adds REPLACES the marker (the pin
+      flips then); the JVM-frame divergence stays. The simple class name
+      (`ExceptionInfo`, not `clojure.lang.ExceptionInfo`) is the AD-003 surface;
+      user-frames-only (when frames do appear) is AD-024.
+    derives_from: "ADR-0059 (no JVM Throwable / StackTraceElement) + AD-024 (user-frames-only trace) + AD-003 (simple class name) + F-003 (the frame-accessor surface is D-232's structural decision, deferred)"
+    pin: "test/e2e/phase15_clojure_stacktrace.sh — print_cause_trace locks cljw's degraded marker + clj-faithful cause-chain output"
