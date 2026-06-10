@@ -1,4 +1,4 @@
-name: "Wasm TinyGo takeuchi"
+name: "Wasm arithmetic"
 category: wasm
-expected_output: "7"
-description: "tak(18,12,6) x 10000 via TinyGo-compiled .wasm — deep recursion in wasm"
+expected_output: "499999500000"
+description: "arith_loop(1M) x 10 over the wasm FFI — tight loop returning an i64 result"

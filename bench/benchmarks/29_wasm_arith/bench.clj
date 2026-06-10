@@ -1,10 +1,7 @@
-(require '[cljw.wasm :as wasm])
+;; Tight loop in wasm with a 64-bit result: arith_loop(1M) run 10 times over FFI.
+(def m (wasm/load "bench/wasm/ffi/arith.wasm" {:fuel 0}))  ; :fuel 0 = unlimited (benchmark)
 
-(def wmod (wasm/load-wasi "bench/wasm/tak.wasm"))
-(def wasm-tak (wasm/fn wmod "tak"))
-
-;; Call wasm tak(18,12,6) 10000 times
 (loop [i 0 result 0]
-  (if (< i 10000)
-    (recur (inc i) (wasm-tak 18 12 6))
+  (if (< i 10)
+    (recur (inc i) (wasm/call m "arith_loop" 1000000))
     (println result)))

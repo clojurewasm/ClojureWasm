@@ -1,4 +1,4 @@
-name: "Wasm TinyGo arithmetic"
+name: "Wasm gcd"
 category: wasm
-expected_output: "499999500000"
-description: "arith_loop(1M) x 10 via TinyGo-compiled .wasm — tight loop in wasm interpreter"
+expected_output: "21"
+description: "gcd(1071,462) x 1000000 over the wasm FFI — modulo-heavy recursion in wasm"

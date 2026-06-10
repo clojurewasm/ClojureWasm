@@ -27,10 +27,12 @@ RESET='\033[0m'
 
 # --- Defaults ---
 BENCH_FILTER=""
-RUNS=3
-WARMUP=1
+RUNS=5
+WARMUP=3
 NO_WASM=false
-ZIG_BUILD_FLAGS=()
+# Default builds WITH the polyglot Wasm FFI (-Dwasm) so the wasm_* workloads
+# (the documented "All benchmarks" set) can actually run; --no-wasm resets this.
+ZIG_BUILD_FLAGS=("-Dwasm")
 
 # --- Parse arguments ---
 for arg in "$@"; do
@@ -39,14 +41,14 @@ for arg in "$@"; do
     --runs=*)     RUNS="${arg#--runs=}" ;;
     --warmup=*)   WARMUP="${arg#--warmup=}" ;;
     --quick)      RUNS=1; WARMUP=0 ;;
-    --no-wasm)    NO_WASM=true; ZIG_BUILD_FLAGS+=("-Dwasm=false") ;;
+    --no-wasm)    NO_WASM=true; ZIG_BUILD_FLAGS=("-Dwasm=false") ;;
     -h|--help)
       echo "Usage: bash bench/run_bench.sh [OPTIONS]"
       echo ""
       echo "Options:"
       echo "  --bench=NAME     Run specific benchmark (e.g. fib_recursive)"
-      echo "  --runs=N         Hyperfine runs (default: 3)"
-      echo "  --warmup=N       Hyperfine warmup runs (default: 1)"
+      echo "  --runs=N         Hyperfine runs (default: 5)"
+      echo "  --warmup=N       Hyperfine warmup runs (default: 3)"
       echo "  --quick          Fast check: 1 run, no warmup"
       echo "  --no-wasm        Skip wasm_* benchmarks; build with -Dwasm=false"
       echo "  -h, --help       Show this help"
@@ -104,40 +106,46 @@ echo ""
 TMPDIR_BENCH=$(mktemp -d)
 trap "rm -rf $TMPDIR_BENCH" EXIT
 
-# --- Run benchmarks ---
+# --- Run benchmarks (from PROJECT_ROOT so fixture-relative paths resolve) ---
+cd "$PROJECT_ROOT"
+skipped=0
 for bench_dir in "${BENCH_DIRS[@]}"; do
   bench_name=$(basename "$bench_dir" | sed 's/^[0-9]*_//')
   expected=$(yq '.expected_output' "$bench_dir/meta.yaml")
+  expected_clean=$(echo "$expected" | tr -d '[:space:]')
   json_file="$TMPDIR_BENCH/${bench_name}.json"
 
   printf "  %-24s " "$bench_name"
 
-  # Run hyperfine
-  hyperfine \
-    --warmup "$WARMUP" \
-    --runs "$RUNS" \
-    --export-json "$json_file" \
-    "$CLJW $bench_dir/bench.clj" \
-    >/dev/null 2>&1
+  # Correctness probe FIRST: a broken benchmark is reported and skipped, never
+  # aborting the whole suite (one bad workload must not kill the run).
+  actual=$($CLJW "$bench_dir/bench.clj" 2>&1 | head -1 | tr -d '[:space:]' || true)
+  if [[ "$actual" != "$expected_clean" ]]; then
+    echo -e "${YELLOW}SKIP${RESET} (output=$actual expected=$expected_clean)"
+    skipped=$((skipped + 1))
+    continue
+  fi
 
-  # Parse results
+  # Time it (only reached once the output is correct).
+  if ! hyperfine --warmup "$WARMUP" --runs "$RUNS" --export-json "$json_file" \
+       "$CLJW $bench_dir/bench.clj" >/dev/null 2>&1; then
+    echo -e "${RED}FAIL${RESET} (hyperfine error)"
+    skipped=$((skipped + 1))
+    continue
+  fi
+
   result=$(python3 -c "
 import json
 with open('$json_file') as f:
     data = json.load(f)
-r = data['results'][0]
-time_ms = round(r['mean'] * 1000)
-print(time_ms)
+print(round(data['results'][0]['mean'] * 1000))
 ")
   printf "%6s ms\n" "$result"
-
-  # Verify output
-  actual=$($CLJW "$bench_dir/bench.clj" 2>&1 | head -1 | tr -d '[:space:]')
-  expected_clean=$(echo "$expected" | tr -d '[:space:]')
-  if [[ "$actual" != "$expected_clean" ]]; then
-    echo -e "    ${RED}WARNING: output mismatch (expected=$expected_clean actual=$actual)${RESET}"
-  fi
 done
 
 echo ""
-echo -e "${GREEN}Done.${RESET}"
+if [[ "$skipped" -gt 0 ]]; then
+  echo -e "${YELLOW}Done — $skipped benchmark(s) skipped/failed.${RESET}"
+else
+  echo -e "${GREEN}Done.${RESET}"
+fi

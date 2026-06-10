@@ -1,10 +1,8 @@
-(require '[cljw.wasm :as wasm])
+;; Deep recursion in wasm: tak(18,12,6) called 100 times over the FFI
+;; (tak(18,12,6) fans out to ~63k wasm calls each, so 100 is already ~0.8s).
+(def m (wasm/load "bench/wasm/ffi/tak.wasm" {:fuel 0}))  ; :fuel 0 = unlimited (benchmark)
 
-(def wmod (wasm/load-wasi "bench/wasm/fib.wasm"))
-(def wasm-fib (wasm/fn wmod "fib"))
-
-;; Call wasm fib(20) 10000 times
 (loop [i 0 result 0]
-  (if (< i 10000)
-    (recur (inc i) (wasm-fib 20))
+  (if (< i 100)
+    (recur (inc i) (wasm/call m "tak" 18 12 6))
     (println result)))

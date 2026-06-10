@@ -2283,6 +2283,29 @@ active:
     barrier: |-
       Anonymous NaN-box slot reservations to revisit. ADR-0027 §2 leaves Group D slots D11 / D12 / D13 + Group B slot B15 declared but unnamed (2 reserves — count updated post-ADR-0027-amendment-5 which named D13 = hamt_map_node + D14 = hash_collision_map_node for PersistentHashMap internals at §9.7 row 5.5.a; remaining B15 + D15 stay anonymous). Per F-002 + Devil's-advocate "reservations are memos, not contracts" verdict: name a Phase-5-to-15 horizon use case for each, OR shrink the slot count by re-drawing F-004's 4 × 16 group boundaries (depth-4 surgery) per measured dispatch frequency. Also tracks the Phase 7+ immediate-band candidate ADR (Devil's-advocate Wildcard Alt 3 on ADR-0027: inline 15-bit-id interned keyword / symbol at a new immediate band like `int_53` at `NB_INT_TAG`) — if adopted, B15 / C11 / D11-D15 may be reclaimed entirely. Phase 7 entry owner picks: name, shrink, or both. | Phase 7 entry
     last_reviewed: "2026-05-28"
+  - id: "D-384"
+    status: |-
+      open (2026-06-10) — the wasm cross-runtime comparison (`bench/wasm_bench.sh`,
+      cljw vs wasmtime on TinyGo modules) is unwired and uses a phantom API. It calls
+      `wasm/load-wasi` + `wasm/fn`, neither of which exists: the current FFI surface is
+      only `wasm/load` / `wasm/call` / `wasm/run` (src/runtime/cljw/wasm/surface.zig).
+      The TinyGo/Go-WASI modules under `bench/wasm/*.wasm` cannot be reached via FFI
+      because `wasm/load` provides no WASI host imports, so the module fails to
+      instantiate; `wasm/run` executes `_start` only (the bench `main()` is empty → no
+      result). The run_bench.sh wasm suite was rebuilt 2026-06-10 onto hand-authored
+      non-WASI `.wat` fixtures (`bench/wasm/ffi/`) so it works today; only the
+      TinyGo-vs-handwritten cross-runtime story remains blocked.
+    category: "wasm"
+    barrier: |-
+      Blocked-by: (1) WASI-import support on the FFI load path (a `wasm/load-wasi`, or
+      host-capability imports threaded into `wasm/load`) so a WASI reactor module's
+      exports become callable from `wasm/call` — the same host-capability work the
+      playground / edge demos defer; (2) `wasmtime` + `tinygo` in the dev shell
+      (`flake.nix`) for the comparison runtimes. Predicate to land: WASI-import FFI
+      exists AND wasmtime/tinygo are on the host — then rewrite wasm_bench.sh to the
+      real surface (`wasm/load` + `wasm/call`, dropping `wasm/load-wasi` / `wasm/fn`).
+      Until then `bench/README.md` § "Not yet wired" flags it. | WASI-import FFI + toolchain
+    last_reviewed: "2026-06-10"
 discharged:
   - id: "D-249"
     discharged_at: "docs(diff): Clojure-vs-ClojureWasm differences sheet"
@@ -2352,7 +2375,7 @@ discharged:
   - id: "D-056"
     discharged_at: "RE-OPENED 2026-06-04 (D-243, soft) — Phase 11 done, lookahead unimpl + de-scope decision unrecorded. Was: Phase 11+ entry (honey/sql compat tier evaluation)"
     resolution: |-
-      scope | **Lookahead `(?=...)` is implicitly required by cw v0's compat tier**. Discovered 2026-05-25 via the regex indirect-coverage deep dive (`private/notes/cw_v0_regex_indirect_coverage.md`): `/Users/shota.508/Documents/MyProducts/ClojureWasm/test/compat/honey/sql.cljc` L238 uses `#"(\w)-(?=\w)"` inside the `dehyphen` helper; honey/sql_test invokes it hundreds of times per gate via column-name conversions, and cw v0 currently passes. **Implication for ADR-0031**: lookahead was framed as "Phase 4+ debt or never" in the original cycle plan (D-051 covers cycle 2-5 = lazy DFA / captures / `(?i)` / errors but NOT lookaround). Honey/sql being on the cw v1 compat tier list would pull lookahead forward into cycle 4 or 5. Pre-Phase-11 entry the owner must: (1) confirm whether honey/sql remains on cw v1's compat tier; (2) if yes, amend D-051 to include lookahead in cycle 4 or 5 + open an ADR-0031 revision history entry; (3) if no, record the de-scoping decision so the assumption is not re-litigated. Note: the cw v0 `pprint.clj` internal `param-pattern` (`#"^([vV]|#|('.)|([+-]?\d+)|(?=,))"` at L40, alternation + capture + lookahead) is the same shape — cl-format coverage at Phase 11+ would also force lookahead. | Phase 11 compat-tier evaluation | 2026-05-25
+      scope | **Lookahead `(?=...)` is implicitly required by cw v0's compat tier**. Discovered 2026-05-25 via the regex indirect-coverage deep dive (`private/notes/cw_v0_regex_indirect_coverage.md`): `<cw-v1-ref>/test/compat/honey/sql.cljc` L238 uses `#"(\w)-(?=\w)"` inside the `dehyphen` helper; honey/sql_test invokes it hundreds of times per gate via column-name conversions, and cw v0 currently passes. **Implication for ADR-0031**: lookahead was framed as "Phase 4+ debt or never" in the original cycle plan (D-051 covers cycle 2-5 = lazy DFA / captures / `(?i)` / errors but NOT lookaround). Honey/sql being on the cw v1 compat tier list would pull lookahead forward into cycle 4 or 5. Pre-Phase-11 entry the owner must: (1) confirm whether honey/sql remains on cw v1's compat tier; (2) if yes, amend D-051 to include lookahead in cycle 4 or 5 + open an ADR-0031 revision history entry; (3) if no, record the de-scoping decision so the assumption is not re-litigated. Note: the cw v0 `pprint.clj` internal `param-pattern` (`#"^([vV]|#|('.)|([+-]?\d+)|(?=,))"` at L40, alternation + capture + lookahead) is the same shape — cl-format coverage at Phase 11+ would also force lookahead. | Phase 11 compat-tier evaluation | 2026-05-25
   - id: "D-057"
     discharged_at: "RE-OPENED 2026-06-04 (D-243, soft) — Phase 11 done, Unicode fold ASCII-only; land table OR AD-NNN. Was: Phase 11 conformance (clojure.string Unicode case)"
     resolution: |-

@@ -1,12 +1,11 @@
-(require '[cljw.wasm :as wasm])
+;; FFI call overhead: 1M invocations of a trivial wasm add over the boundary.
+;; :fuel 0 = unlimited — measure raw throughput, not the sandbox fuel budget
+;; (the finite 1e9 default would trap partway through a long benchmark loop).
+(def m (wasm/load "bench/wasm/ffi/add.wasm" {:fuel 0}))
 
-(def wmod (wasm/load "src/app/wasm/testdata/01_add.wasm"))
-(def add (wasm/fn wmod "add"))
-
-;; Call wasm add function 1M times
 (loop [i 0]
   (when (< i 1000000)
-    (add i 1)
+    (wasm/call m "add" i 1)
     (recur (inc i))))
 
 (println 1000000)

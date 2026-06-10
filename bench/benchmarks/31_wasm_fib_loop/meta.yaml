@@ -1,4 +1,4 @@
-name: "Wasm TinyGo sieve"
+name: "Wasm fibonacci (iterative)"
 category: wasm
-expected_output: "6542"
-description: "sieve(65536) x 100 via TinyGo-compiled .wasm — memory-heavy workload"
+expected_output: "6765"
+description: "fib_loop(20) x 100000 over the wasm FFI — iterative counterpart to wasm_fib"
