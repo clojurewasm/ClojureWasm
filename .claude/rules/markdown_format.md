@@ -19,16 +19,14 @@ md-table-align <file>            # rewrite in place
 md-table-align --check <file>    # verify (pre-commit hook does this)
 ```
 
-A `PreToolUse` hook on `git commit` **auto-aligns and re-stages** any
-staged `.md` file whose tables drifted (`scripts/check_md_tables.sh`).
-The commit then proceeds with the realigned content automatically.
-Only genuine table-syntax errors (parser cannot fix) block.
+A `PreToolUse` hook on `git commit` (`scripts/check_md_tables.sh`) checks
+staged `.md` tables. **Since 2026-06-11 (user-directed) it is advisory only:**
+it prints a `⚠ non-blocking` recommendation if a staged `.md` has unaligned
+tables but does **not** auto-format, re-stage, or block — the earlier silent
+in-place reformat drifted the gate fingerprint mid-commit. Run
+`md-table-align <file>` yourself when you want tables tidied.
 
-You can still run `md-table-align` yourself before staging — it's
-faster than waiting for the hook, and the diff stays minimal — but
-forgetting is no longer a 2-cycle penalty.
-
-If the binary is missing, the gate prints an install guide. Short form:
+If the binary is missing, the hook simply skips (no block). Short form:
 
 ```sh
 bbin install io.github.chaploud/babashka-utilities

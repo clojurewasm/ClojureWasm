@@ -37,76 +37,26 @@ STAGED_MD="$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null \
 
 [[ -z "$STAGED_MD" ]] && exit 0
 
-# --- 4. Tool availability ----------------------------------------------------
+# --- 4. Tool availability (advisory only) ------------------------------------
+# User-directed 2026-06-11: this hook no longer auto-formats / re-stages / blocks.
+# The silent in-place reformat drifted the gate fingerprint mid-commit (forcing a
+# re-smoke), so it is now a non-mutating advisory ("努力目標"). Run
+# `md-table-align <file>` yourself when you want tables tidied.
 if ! command -v md-table-align >/dev/null 2>&1; then
-  cat >&2 <<'EOF'
-[md-table-gate] md-table-align is not on PATH.
-
-This repo enforces Markdown table alignment at commit time. Install
-the CLI via bbin:
-
-  # one-time: install bbin (Linux / macOS via Homebrew)
-  brew install babashka/brew/bbin
-  echo 'export PATH="$PATH:$HOME/.local/bin"' >> ~/.bashrc
-
-  # install the tool
-  bbin install io.github.chaploud/babashka-utilities
-
-After installation `md-table-align --help` should print a usage screen.
-Then re-run your `git commit`.
-
-If you cannot install bbin right now, you can also bypass via:
-  git -c core.hooksPath=/dev/null commit ...
-…but please don't make a habit of it; chapters that drift here are
-painful to clean up later.
-EOF
-  exit 2
+  exit 0
 fi
 
-# --- 5. Per-file auto-fix + re-stage -----------------------------------------
-#
-# For each staged *.md file that md-table-align --check reports as
-# misaligned, run md-table-align in-place and re-add it. The commit
-# will then pick up the realigned content. If md-table-align itself
-# errors out for a file (genuine syntax issue, not just alignment),
-# we block the commit and surface the filename.
-
-FIXED=()
-FAILED=()
+# --- 5. Check-only advisory (non-mutating, non-blocking) ---------------------
+DRIFTED=()
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
   [[ -f "$f" ]] || continue
-
-  if md-table-align --check "$f" >/dev/null 2>&1; then
-    continue
-  fi
-
-  if md-table-align "$f" >/dev/null 2>&1; then
-    git add -- "$f"
-    FIXED+=("$f")
-  else
-    FAILED+=("$f")
-  fi
+  md-table-align --check "$f" >/dev/null 2>&1 || DRIFTED+=("$f")
 done <<< "$STAGED_MD"
 
-if (( ${#FIXED[@]} > 0 )); then
-  echo "[md-table-gate] auto-aligned and re-staged ${#FIXED[@]} file(s):" >&2
-  for f in "${FIXED[@]}"; do
-    echo "  - $f" >&2
-  done
-fi
-
-if (( ${#FAILED[@]} > 0 )); then
-  {
-    echo "[md-table-gate] md-table-align could not process the following file(s):"
-    for f in "${FAILED[@]}"; do
-      echo "  - $f"
-    done
-    echo
-    echo "Run md-table-align manually on each to see the parser error,"
-    echo "fix the table syntax, then retry the commit."
-  } >&2
-  exit 2
+if (( ${#DRIFTED[@]} > 0 )); then
+  echo "[md-table-gate] (advisory, non-blocking) ${#DRIFTED[@]} staged .md file(s) have unaligned tables — run \`md-table-align <file>\` if you want them tidied (NOT auto-applied):" >&2
+  for f in "${DRIFTED[@]}"; do echo "  - $f" >&2; done
 fi
 
 exit 0

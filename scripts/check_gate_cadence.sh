@@ -94,19 +94,12 @@ if [[ -n "$smoke_hash" && "$now_hash" == "$smoke_hash" ]]; then
   count=$((count + 1))
   if [[ "$count" -gt "$GATE_MAX_BATCH" ]]; then
     cat >&2 <<EOF
-✗ commit blocked by scripts/check_gate_cadence.sh
-
-$GATE_MAX_BATCH smoke-authorized commits have accumulated since the last full
-gate. The smoke check skips the e2e SHELL suite + perf, so the policy forces a
-full run-alone gate at the ceiling (catches any e2e-shell regression in the
-batch + resets the count):
-
-  Run:  bash test/run_all.sh
-  then re-commit.
-
-Policy: $RULE (ADR-0107 two-tier gate).
+⚠ [gate_cadence] advisory (non-blocking since 2026-06-11): $GATE_MAX_BATCH+
+smoke-authorized commits since the last full gate. Recommended to run a full gate
+soon (catches any e2e-shell regression the smoke skips + resets the count):
+  bash test/run_all.sh
+Policy: $RULE (ADR-0107 two-tier gate; effort-goal, not a hard block).
 EOF
-    exit 2
   fi
   echo "$count" > "$COUNT_FILE"
   echo "[gate_cadence] smoke-authorized commit ${count}/${GATE_MAX_BATCH} since last full gate — ok (run \`bash test/run_all.sh\` to reset)"
@@ -116,19 +109,13 @@ fi
 # --- 3. neither full-gate nor smoke fresh: apply the cadence rule -----------
 if [[ "$risky" -eq 1 ]]; then
   cat >&2 <<EOF
-✗ commit blocked by scripts/check_gate_cadence.sh
-
-This is a SHARED-CODE change ($risky_reason). Such changes carry regression +
-dual-backend-parity risk, so the policy requires a fresh gate. Per ADR-0107 the
-fast per-commit check is the smoke gate (the full dual-backend oracle + all unit
-+ the changed e2e):
-
-  Run:  bash test/run_all.sh --smoke <changed-e2e-step>   # ~tens of seconds
-  (or a full  bash test/run_all.sh)  then re-commit.
-
+⚠ [gate_cadence] advisory (non-blocking since 2026-06-11): shared-code change
+($risky_reason) with no fresh smoke/gate fingerprint. Recommended:
+  bash test/run_all.sh --smoke <changed-e2e-step>   # ~tens of seconds
+The smoke cadence is now an effort-goal, not a hard block (user-directed).
 Policy: $RULE
 EOF
-  exit 2
+  exit 0
 fi
 
 # Additive + not fresh → consume one batch slot (rides without even a smoke; the
@@ -139,17 +126,11 @@ count=$((count + 1))
 
 if [[ "$count" -gt "$GATE_MAX_BATCH" ]]; then
   cat >&2 <<EOF
-✗ commit blocked by scripts/check_gate_cadence.sh
-
-$GATE_MAX_BATCH source commits have accumulated since the last full gate. Batch
-limit reached — run a full gate before continuing:
-
-  Run:  bash test/run_all.sh
-  then re-commit.
-
-Policy: $RULE (additive/smoke commits batch up to $GATE_MAX_BATCH per full gate).
+⚠ [gate_cadence] advisory (non-blocking since 2026-06-11): $GATE_MAX_BATCH+
+source commits since the last full gate. Recommended to run one soon:
+  bash test/run_all.sh
+Policy: $RULE (effort-goal, not a hard block).
 EOF
-  exit 2
 fi
 
 echo "$count" > "$COUNT_FILE"

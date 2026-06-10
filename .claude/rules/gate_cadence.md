@@ -52,7 +52,18 @@ committed (the `gate_state_hash.sh` fingerprint matches). The full gate
 is `test/run_all.sh` with no `--only`/`--skip`, run ALONE (`--serial-e2e`
 for determinism), at the 5-commit ceiling / Phase boundary / pre-tag.
 
-## Mechanical enforcement (this is law, not advice)
+## Enforcement (ADVISORY since 2026-06-11 — effort-goal, not a hard block)
+
+> **User-directed 2026-06-11**: `check_gate_cadence.sh` no longer *blocks*
+> commits. The smoke-per-commit / batch-the-full-gate cadence below is an
+> **effort-goal (努力目標)** — the hook prints a `⚠ advisory` recommendation and
+> exits 0. It was over-strict (it blocked + forced a re-smoke when the md-table
+> hook reformatted a `test/` doc mid-commit). The smoke/full-gate discipline is
+> still the right rhythm — run it — but it is now self-enforced, not hook-blocked.
+> The description below documents the *recommended* cadence; "blocks" / "law"
+> wording is historical.
+
+### Recommended cadence (was: mechanical enforcement)
 
 - **`scripts/gate_state_hash.sh`** — prints a fingerprint by hashing the
   *content* (path + bytes) of every tracked or untracked-non-ignored file
