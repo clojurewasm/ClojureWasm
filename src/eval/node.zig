@@ -202,6 +202,12 @@ pub const FnMethod = struct {
     /// when `has_rest` is false, `arity + 1` otherwise.
     params: []const []const u8,
     body: *const Node,
+    /// Analyser-computed high-water slot count for this method's frame:
+    /// the maximum `next_slot` reached over the params + every nested
+    /// `let*`/`loop*`/`catch` binding in the body. The backend nil-inits
+    /// only `[0, frame_size)` of the call frame instead of all
+    /// `MAX_LOCALS` slots (O-005). 0 until the analyser fills it.
+    frame_size: u16 = 0,
 };
 
 /// `(fn* [params] body)` or `(fn* ([params] body1) ([params] body2) ...)`.
