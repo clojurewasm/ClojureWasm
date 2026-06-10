@@ -175,6 +175,57 @@ fn rebuildArrayMap(
     return result;
 }
 
+const HashMapCollectCtx = struct { list: *std.ArrayList(Value), gpa: std.mem.Allocator };
+
+fn collectHashEntry(c: *HashMapCollectCtx, k: Value, v: Value) anyerror!void {
+    try c.list.append(c.gpa, k);
+    try c.list.append(c.gpa, v);
+}
+
+/// `rebuildArrayMap`'s `.hash_map` (> 8 entries) counterpart. The HAMT has no
+/// flat entries array, so collect every `(k v)` first via the pure
+/// `map.forEachEntry` (the collected Values stay alive through `form`, rooted
+/// below), then rebuild reentrantly with the same C6 rooting as the array_map
+/// path. Was a stale `feature_not_supported` stub citing D-045 — but D-045 (the
+/// HAMT body) landed 2026-05-30, so `clojure.walk` on a > 8-key map (e.g.
+/// `keywordize-keys` over a JSON-parsed map) just needed wiring.
+fn rebuildHashMap(
+    rt: *Runtime,
+    env: *Env,
+    loc: SourceLocation,
+    form: Value,
+    comptime transform_child: fn (rt: *Runtime, env: *Env, ctx: anytype, child: Value, loc: SourceLocation) anyerror!Value,
+    ctx: anytype,
+) anyerror!Value {
+    var entries: std.ArrayList(Value) = .empty;
+    defer entries.deinit(rt.gpa);
+    var collect_ctx = HashMapCollectCtx{ .list = &entries, .gpa = rt.gpa };
+    try map_collection.forEachEntry(form, &collect_ctx, collectHashEntry);
+
+    var result = map_collection.empty();
+    // GC-ROOT: C6 — root the source map (keeps the collected entries alive) +
+    // accumulator + the in-flight [k v] entry across transform_child (D-252)
+    // [ref: .dev/gc_rooting.md §C].
+    var gc_roots: [3]Value = .{ form, result, .nil_val };
+    var gc_sp: u16 = 3;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &gc_roots, .sp = &gc_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
+    var i: usize = 0;
+    while (i < entries.items.len) : (i += 2) {
+        var entry = vector_collection.empty();
+        entry = try vector_collection.conj(rt, entry, entries.items[i]);
+        entry = try vector_collection.conj(rt, entry, entries.items[i + 1]);
+        gc_roots[1] = result;
+        gc_roots[2] = entry;
+        const transformed = try transform_child(rt, env, ctx, entry, loc);
+        if (transformed.tag() != .vector or vector_collection.count(transformed) != 2)
+            return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.walk map child returned non-2-vector" });
+        result = try map_collection.assoc(rt, result, vector_collection.nth(transformed, 0), vector_collection.nth(transformed, 1));
+    }
+    return result;
+}
+
 // --- walk (one-level) ---
 
 const WalkCtx = struct { inner: Value };
@@ -190,7 +241,7 @@ fn walkRebuild(rt: *Runtime, env: *Env, inner: Value, form: Value, loc: SourceLo
         .vector => rebuildVector(rt, env, loc, form, walkInnerCallback, ctx),
         .hash_set => rebuildSet(rt, env, loc, form, walkInnerCallback, ctx),
         .array_map => rebuildArrayMap(rt, env, loc, form, walkInnerCallback, ctx),
-        .hash_map => error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.walk on .hash_map (D-045)" }),
+        .hash_map => rebuildHashMap(rt, env, loc, form, walkInnerCallback, ctx),
         else => form, // scalar / other Tag — walk leaves it alone
     };
 }
@@ -221,7 +272,7 @@ fn prewalkRec(rt: *Runtime, env: *Env, f: Value, form: Value, loc: SourceLocatio
         .vector => rebuildVector(rt, env, loc, transformed, prewalkChildCallback, ctx),
         .hash_set => rebuildSet(rt, env, loc, transformed, prewalkChildCallback, ctx),
         .array_map => rebuildArrayMap(rt, env, loc, transformed, prewalkChildCallback, ctx),
-        .hash_map => error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.walk/prewalk on .hash_map (D-045)" }),
+        .hash_map => rebuildHashMap(rt, env, loc, transformed, prewalkChildCallback, ctx),
         else => transformed,
     };
 }
@@ -246,7 +297,7 @@ fn postwalkRec(rt: *Runtime, env: *Env, f: Value, form: Value, loc: SourceLocati
         .vector => try rebuildVector(rt, env, loc, form, postwalkChildCallback, ctx),
         .hash_set => try rebuildSet(rt, env, loc, form, postwalkChildCallback, ctx),
         .array_map => try rebuildArrayMap(rt, env, loc, form, postwalkChildCallback, ctx),
-        .hash_map => return error_catalog.raise(.feature_not_supported, loc, .{ .name = "clojure.walk/postwalk on .hash_map (D-045)" }),
+        .hash_map => try rebuildHashMap(rt, env, loc, form, postwalkChildCallback, ctx),
         else => form,
     };
     return callOne(rt, env, f, rebuilt, loc);

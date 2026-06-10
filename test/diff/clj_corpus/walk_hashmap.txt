@@ -1,0 +1,18 @@
+(clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) {:a 1 :b 2})
+;;=> {:a 2, :b 3}
+(clojure.walk/keywordize-keys {"a" 1 "b" 2})
+;;=> {:a 1, :b 2}
+(clojure.walk/stringify-keys {:a 1 :b 2})
+;;=> {"a" 1, "b" 2}
+(into (sorted-map) (clojure.walk/keywordize-keys (into {} (map (fn [i] [(str i) i]) (range 12)))))
+;;=> {:0 0, :1 1, :10 10, :11 11, :2 2, :3 3, :4 4, :5 5, :6 6, :7 7, :8 8, :9 9}
+(clojure.walk/prewalk-replace {1 :one 2 :two} {:x 1 :y 2 :z 3})
+;;=> {:x :one, :y :two, :z 3}
+(clojure.walk/postwalk-replace {:a :A} {:a 1 :b {:a 2}})
+;;=> {:A 1, :b {:A 2}}
+(count (clojure.walk/postwalk (fn [x] x) (into {} (map (fn [i] [i i]) (range 30)))))
+;;=> 30
+(clojure.walk/keywordize-keys {"nested" {"inner" 5}})
+;;=> {:nested {:inner 5}}
+(into (sorted-map) (clojure.walk/postwalk (fn [x] (if (number? x) (* x 2) x)) (into {} (map (fn [i] [i i]) (range 10)))))
+;;=> {0 0, 2 2, 4 4, 6 6, 8 8, 10 10, 12 12, 14 14, 16 16, 18 18}

@@ -88,6 +88,9 @@ assert_eq 'every_lazy'   "$("$BIN" -e '(every? (fn [x] (< x 500)) (map inc (rang
 # torture the accumulator was swept (set -> #{5 nil}, vector -> @memcpy panic).
 assert_eq 'walk_vec'     "$("$BIN" -e '(clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) [1 2 3 [4 5 [6 7]]])')" '[2 3 4 [5 6 [7 8]]]'
 assert_eq 'walk_map'     "$("$BIN" -e '(clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) {:a 1 :b 2 :c 3})')" '{:a 2, :b 3, :c 4}'
+# walk over a >8-key map (hash_map/HAMT) — the reentrant rebuildHashMap rebuild
+# must keep its accumulator + entries rooted (C6) across the per-entry callback.
+assert_eq 'walk_hashmap' "$("$BIN" -e '(count (clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) (into {} (map (fn [i] [(keyword (str i)) i]) (range 40)))))')" '40'
 assert_eq 'walk_set'     "$("$BIN" -e '(count (clojure.walk/postwalk (fn [x] (if (number? x) (inc x) x)) (set (range 1 60))))')" '59'
 # D-253 cluster (a) — atom notifyWatches roots the atom + watches map + key cursor
 # across the watch fn's reentrant eval (a nested swap! re-enters the VM); the
