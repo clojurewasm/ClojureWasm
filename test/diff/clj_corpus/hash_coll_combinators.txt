@@ -32,3 +32,11 @@
 ;;=> true
 (= (hash-ordered-coll [1 :a "s"]) (hash [1 :a "s"]))
 ;;=> true
+;; D-377 facet 1: a map's hash == hash-unordered-coll over its entries (the
+;; per-entry contribution is the [k v] MapEntry's own hash). clj parity.
+(= (hash {:a 1 :b 2}) (hash-unordered-coll {:a 1 :b 2}))
+;;=> true
+(= (hash (hash-map :a 1 :b 2)) (hash (array-map :a 1 :b 2)))
+;;=> true
+(= (hash (first {:a 1})) (hash [:a 1]))
+;;=> true

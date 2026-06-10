@@ -394,12 +394,17 @@ pub fn get(v: Value, k: Value) !Value {
 // two maps built by different insertion paths hash equal. The ratio /
 // big_decimal element residual is shared with the vector-key path.
 
-/// Per-entry hash contribution (key·value). Exposed (D-375) so the
-/// `clojure.lang.APersistentMap/mapHash` surface folds deftype-instance entries
-/// through the SAME formula `contentHash` uses — a custom map and an `=`-equal
-/// native map then share one content hash (the DA-fork DRY guard, ADR-0108 am1).
+/// Per-entry hash contribution = the `[k v]` MapEntry's own hash (a 2-element
+/// ordered/vector hash: `mixCollHash((1*31+hash k)*31+hash v, 2)`), so a map's
+/// content hash folds the SAME per-entry value `(hash (first m))` / `(hash [k v])`
+/// / `hash-unordered-coll` over the entries produce. This makes `(hash m)` ==
+/// `(hash-unordered-coll m)` (clj parity, D-377 facet 1) and keeps
+/// `(hash mapentry)` == `(hash [k v])`. Entries still combine by order-independent
+/// `+%` sum in foldHash. Exposed (D-375) so the
+/// `clojure.lang.APersistentMap/mapHash` surface reuses the identical fold.
 pub inline fn entryHash(k: Value, v: Value) u32 {
-    return equal.valueHash(k) *% 31 +% equal.valueHash(v);
+    const h: u32 = (1 *% 31 +% equal.valueHash(k)) *% 31 +% equal.valueHash(v);
+    return hash.mixCollHash(h, 2);
 }
 
 fn hamtFoldHash(node: *const HamtMapNode, acc: *u32, comptime keys_only: bool) void {
