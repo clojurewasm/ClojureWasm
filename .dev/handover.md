@@ -5,67 +5,64 @@
 
 ## Resume contract
 
-- **HEAD**: see `git log` (host-interface substrate + prefer-method fn + edge-doc
-  positioning fixes + a reference-chain audit, all pushed). Gate cadence: per-commit
-  **smoke** (`bash test/run_all.sh --smoke <step>`); **batch the full gate**; verify
-  manual probes on a **ReleaseSafe** binary (`zig build -Doptimize=ReleaseSafe
-  -Dcpu=baseline`), not Debug.
-- **First on resume MUST be: D-373 in FINISHED-FORM** (user-directed 2026-06-10 —
-  NOT the workaround). **Read `private/notes/D373-macros-that-should-be-fns.md`
-  FIRST** (the full design + clj-comparison audit + edge cases + DA-fork brief).
-  Summary: `instance?` is a cljw MACRO (auto-quotes the class symbol) so it can't be
-  passed higher-order — `(condp instance? obj Map$Entry …)` (ordered.map) evals it to
-  nil. Finished form = complete the class-symbol-as-value surface (ONE
-  `class_name.isKnown`-driven analyzer arm, analyzer.zig:609-674, replacing the
-  scattered Object/Number/IFn/opaque arms) + **UNIFY with D-293's classDescriptor**
-  (rename rt.exceptionDescriptor → kind-tagged classDescriptor; 9 sites / 3 files) +
-  make `instance?` a real fn (drop expandInstanceQ). Map$Entry = a 1-line FQCN_MAP
-  add. The sibling `prefer-method` was the trivial half (LANDED). spike-first
-  (ADR-0089) + DA-fork (depth-3). Verify the FULL ordered.map chain after.
-- **THEN FREEZE** (user-directed): once D-373 lands, do **NOT** self-select the next
-  F-010 unit — stop and wait for an explicit human go. The loop's usual "self-select
-  + keep going" is suspended for one unit by this directive (see § Stopped below).
+- **HEAD**: see `git log` (D-373 instance?-as-fn + ADR-0128 + the gate-cadence
+  scaffolding reconciliation, all pushed). Gate cadence (now the documented
+  default everywhere — ADR-0107): per-commit **smoke**
+  (`bash test/run_all.sh --smoke <step>`, background it, don't block); **batch the
+  full gate** at the ≤5 ceiling / Phase boundary / pre-tag; verify manual probes on
+  a **ReleaseSafe** binary (`zig build -Doptimize=ReleaseSafe -Dcpu=baseline`).
+- **First on resume MUST be: HONOR THE FREEZE** — do **not** self-select the next
+  unit; wait for an explicit human go (the standing directive in § Stopped). The
+  loop's usual self-select rule is suspended until the human lifts it.
+- **When the human gives go**, the highest-value next unit is **D-375**
+  (`APersistentMap/mapHash` + the clojure.lang abstract-collection static hash
+  helpers — flatland.ordered.map's LIVE next blocker at map.clj:123, and a gap the
+  D-372 data-structure cluster shares). Second: **D-374** (top-level-`do` unroll,
+  clj-parity, eval-semantics). Both are filed with full barriers.
 - **Forbidden**: pushing to `main`. The fly demos (D-362) are DONE + live.
 
 ## Just landed
 
-- **Host-interface convergence substrate** (the F-010/F-013 deftype-load path for the
-  196 corpus libs declaring clojure.lang.* supertypes): **D-365 residual** (serializer
-  CHUNK completeness gate), **D-286 / ADR-0102 am1** (editable/transient family +
-  D-286b sectionNeedsRemap guard), **ADR-0127 / D-370** (`print-method` multimethod,
-  A2 writer + B2 consult), **D-371** (`.valAt`/`.cons`/… on native colls → clojure.core),
-  **D-372 / ADR-0102 am2** (map-side aliases + valAt; java.util-method grouping
-  accept-and-dropped, AD-027). `(ordered-set 3 1 2 1)` → `#ordered/set (3 1 2)` (full);
-  ordered.map parses past the ENTIRE host-interface surface to D-373 (a class/instance?
-  gap — a DIFFERENT subsystem). Unlocks the 15+ data-structure libs (finger-tree/
-  core.cache/rrb-vector/avl/priority-map/int-map/gvec).
-- **prefer-method → fn** (D-373 macro→fn audit; the trivial sibling of instance?).
-- **Edge-positioning doc fixes** (CFP): docs/landscape.md + docs/works/demos.md drop
-  edge/serverless-as-current-strength wording (FIX_DOCS git-tracked subset). NOTE:
-  FIX_DOCS §7 binary-size claim is wrong — landscape "~2 MB" MATCHES the
-  RELEASE_METRICS SSOT (default cljw ReleaseSafe stripped 2.24 MB); 4.3 MB is the
-  -Dwasm demo build. Left ~2 MB unchanged (honest).
-- **Reference-chain audit** (this turn): removed a duplicate D-292 row (the open copy
-  of the already-DISCHARGED multi-protocol-extend-type debt); corrected D-373's barrier
-  (was a stale type-hint mis-diagnosis) + wired it to D-293 + the design note.
+- **D-373 / ADR-0128 — `instance?` is a fn over a class VALUE** (finished form,
+  user-directed; DA-fork depth-3 verbatim in the ADR, adopted Alt 2'). Dropped the
+  `expandInstanceQ` macro → `(def instance? (fn* [c x] (rt/-instance-of? c x)))`, so
+  higher-order use works (condp/map/partial/apply/bound-fn-arg). Completed
+  `class_name.isInstance` into a no-special-case membership oracle (widened
+  NUMBER_TAGS to the full tower == `number?`; one-line Object arm; opaque → false
+  naturally), so `-instance-of?` has zero taxonomy branch. ONE
+  `classValueKeyFor`-driven `classDescriptor` analyzer arm replaced the scattered
+  exception/opaque/Object/Number/IFn/host_inert arms (interface markers now resolve
+  as values; arm consults ns.imports). Renamed `exceptionDescriptor`→`classDescriptor`
+  (D-293 unify). `Map$Entry`→`MapEntry` in FQCN_MAP. clj-oracle bit-for-bit; corpus
+  2252/2252 + e2e phase7 Case 8/9 + corpus instance_higher_order.txt. **ordered.map
+  advanced PAST the entire instance?/Map$Entry surface (map.clj:59) to its next,
+  DIFFERENT blocker `(APersistentMap/mapHash …)` at :123 (D-375).**
+- **Gate-cadence scaffolding reconciled to ADR-0107** (user-directed): the stale
+  "run the full gate every commit" wording (a light-e2e-era artifact) is replaced by
+  the smoke-per-commit / batch-full model across CLAUDE.md (L125 + Step 5 + Build&test),
+  `gate_cadence.md` (SSOT — retired the additive-vs-risky table; smoke authorises
+  shared-code too), continue SKILL resume step 6, exploration_vs_done.
 
 ## Follow-ups tracked
 
-D-369 (transient dispatch, off critical path) · D-238 (bindable `*out*`) · D-293
-(classDescriptor unify — D-373's target) · D-275 slice2 / D-276 (class-value markers).
-quality_floor rows = the standing correctness-first drain.
+D-375 (clojure.lang static hash helpers — ordered.map live blocker) · D-374
+(top-level-do unroll) · D-369 (transient dispatch) · D-238 (bindable `*out*`) ·
+D-276 (class-value markers residual). quality_floor rows = the standing
+correctness-first drain. `private/notes/D373-instance-of-fn.md` = this unit's note.
 
 ## Cold-start reading order
 
-handover → `private/notes/D373-macros-that-should-be-fns.md` (D-373 finished-form
-design, READ FIRST) → `.dev/debt.yaml` D-373 + D-293 → CLAUDE.md § Autonomous Workflow.
+handover → `.dev/debt.yaml` D-375 + D-374 (the named next units) →
+`.dev/decisions/0128_instance_of_fn_class_value_surface.md` → CLAUDE.md
+§ Autonomous Workflow.
 
 ## Stopped — user requested
 
 User instruction (2026-06-10, verbatim): 「クリアセッションから続行 D-373 を
 finished-form で続けて、そこでしばらく freeze（人間が明示するまで進めない）という予定で、
 配線・参照チェーンを監査して止めてください。」
-→ Audit done (this turn). Plan: a CLEARED session resumes **D-373 in finished-form**
-(read the design note first); **after D-373 lands, FREEZE** — do not self-select the
-next unit, wait for an explicit human go. This directive applies until the human lifts
-it; it is the one sanctioned suspension of the loop's self-select rule.
+→ D-373 LANDED this session (ADR-0128, finished form). Per the directive the loop is
+now **frozen**: do not self-select the next unit; wait for an explicit human go. This
+is a STANDING directive that persists across sessions until the human lifts it (not a
+single-session stop) — when go is given, start D-375 (see Resume contract).
+</content>
