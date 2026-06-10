@@ -1,0 +1,23 @@
+;; java.util.Map + Map.Entry read methods on NATIVE collections (D-379, F-013).
+;; clj's collections implement java.util.Map/Map.Entry, so perf libs call these as
+;; interop on native colls (flatland.ordered's OrderedMap: `(.get ^Map backing m k)`
+;; / `(.getKey e)` / `(.val e)`). cljw routes `.member` on a native coll to the
+;; clojure.core equivalent (clojure_lang_method.zig). clj-oracle-verified 2026-06-10.
+(.get {:a 1 :b 2} :a)
+;;=> 1
+(.get {:a 1} :z)
+;;=> nil
+(.getKey (first {:a 1}))
+;;=> :a
+(.getValue (first {:a 1}))
+;;=> 1
+(.val (first {:a 1}))
+;;=> 1
+(.key (first {:a 1}))
+;;=> :a
+(.size {:a 1 :b 2})
+;;=> 2
+(vec (.values {:a 1 :b 2}))
+;;=> [1 2]
+(vec (.keySet {:a 1 :b 2}))
+;;=> [:a :b]

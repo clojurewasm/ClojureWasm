@@ -603,6 +603,8 @@ run_step "e2e_phase14_lazy_seq_cycle4"       "bash test/e2e/phase14_lazy_seq_cyc
 run_step "e2e_phase14_tagged_literal"        "bash test/e2e/phase14_tagged_literal.sh"
 run_step "e2e_phase14_print_control"         "bash test/e2e/phase14_print_control.sh"
 run_step "e2e_phase14_uuid_literal"          "bash test/e2e/phase14_uuid_literal.sh"
+run_step "e2e_phase14_clojure_lang_coll_hash" "bash test/e2e/phase14_clojure_lang_coll_hash.sh"
+run_step "e2e_phase14_multipair_assoc_extend" "bash test/e2e/phase14_multipair_assoc_extend.sh"
 run_step "e2e_phase14_exit_smoke"            "bash test/e2e/phase14_exit_smoke.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.

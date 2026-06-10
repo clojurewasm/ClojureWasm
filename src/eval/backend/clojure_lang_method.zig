@@ -50,6 +50,20 @@ const METHOD_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "contains", "contains?" }, // IPersistentSet / java.util
     .{ "size", "count" }, // java.util.Collection
     .{ "isEmpty", "empty?" }, // java.util.Collection
+    // java.util.Map + Map.Entry read surface (D-379). clj's collections implement
+    // java.util.Map/Map.Entry, so libs call these on native colls (flatland.ordered's
+    // OrderedMap does `(.get ^Map backing-map k)` / `(.getKey e)` / `(.val e)`). The
+    // canonical cljw equivalent (a seq, not a JVM view, per AD-009) is the core fn.
+    .{ "get", "get" }, // java.util.Map/get (1-arg value-or-nil; +default = getOrDefault)
+    .{ "getOrDefault", "get" }, // java.util.Map/getOrDefault(k, default)
+    .{ "getKey", "key" }, // java.util.Map.Entry/getKey
+    .{ "getValue", "val" }, // java.util.Map.Entry/getValue
+    .{ "key", "key" }, // clojure.lang.IMapEntry/key
+    .{ "val", "val" }, // clojure.lang.IMapEntry/val
+    .{ "keySet", "keys" }, // java.util.Map/keySet → keys (cljw canonical: a seq)
+    .{ "values", "vals" }, // java.util.Map/values → vals
+    .{ "entrySet", "seq" }, // java.util.Map/entrySet → seq of entries
+    .{ "entryAt", "find" }, // clojure.lang.Associative/entryAt → find (a MapEntry)
 });
 
 /// True when `tag` is a native collection clojure.lang methods legitimately apply

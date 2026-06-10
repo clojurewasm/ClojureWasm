@@ -44,7 +44,18 @@ assert_eq 'is_sibling'  "$(run "(instance? java.io.FileInputStream (clojure.java
 assert_eq 'r_cross'     "$(run "(instance? java.io.OutputStream (clojure.java.io/reader \"$TMP/lines.txt\"))")" 'false'
 
 # --- imported simple name resolves (both forms), via ns.imports (D-235) ---
-assert_eq 'import_simple' "$(run "(do (import (quote java.io.BufferedReader)) (instance? BufferedReader (clojure.java.io/reader \"$TMP/lines.txt\")))")" 'true'
+# `(import …)` form as SEPARATE top-level forms (cljw processes top-level forms
+# sequentially, so the import effect is visible to the next form's analysis). The
+# old single `(do (import …) (instance? BareName …))` relied on top-level-`do`
+# unrolling, which cljw lacks (D-374) and which the macro-era `instance?` masked
+# by quoting the class; ADR-0128 made instance? a fn, so the bare imported class
+# now resolves at analysis — use the realistic separate-forms shape (clj-faithful).
+cat > "$TMP/imp.clj" <<EOF
+(import (quote java.io.BufferedReader))
+(require '[clojure.java.io :as io])
+(println (instance? BufferedReader (io/reader "$TMP/lines.txt")))
+EOF
+assert_eq 'import_simple' "$("$BIN" "$TMP/imp.clj" 2>&1 | tail -n 1)" 'true'
 cat > "$TMP/nsimp.clj" <<EOF
 (ns foo (:import [java.io BufferedReader]))
 (require '[clojure.java.io :as io])
