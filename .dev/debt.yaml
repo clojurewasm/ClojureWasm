@@ -1020,14 +1020,27 @@ active:
     status: "PARTIAL (2026-06-10). Cross-impl consistency vs clj on custom (deftype) collections. FACET 3 (`=`) LANDED: `(= deftype-coll native)` consults the LEFT operand's equiv impl pre-tag-gate (equal.zig instanceEquiv), matching clj's `Util.equiv(a,b)` = a.equiv(b) LEFT-operand-only (asymmetric): `(= (ordered-map :a 1) {:a 1})`→true, `(= {:a 1} (ordered-map :a 1))`→false; defrecord type-sensitive `=` preserved. e2e phase14_deftype_equiv. FACET 1 (native map hash cross-path) LANDED: map.entryHash is now the `[k v]` MapEntry's own 2-element vector hash (mixCollHash((1*31+hk)*31+hv,2)), so `(hash m)` (contentHash) == `(hash-unordered-coll m)` (collHash) == clj-shape; all map hash VALUES changed (corpus relational assertions held, 2272/2272); mapHash/AD-028 stay consistent (reuse entryHash). corpus hash_coll_combinators. REMAINING — FACET 2: `(hash deftype-inst)` does NOT consult the deftype's hasheq/IHashEq impl (valueHash's typed_instance arm returns the identity bit-hash for a non-defrecord deftype), so `(hash ordered-map)` ≠ an `=`-equal native map. STRUCTURAL BLOCKER: `equal.valueHash` is rt-FREE (used in HAMT key hashing) and cannot call the vtable to dispatch a deftype's hasheq; the fix needs a vtable hook in valueHash OR threading rt through the hash path (and the map-KEY hash must consult the same, or a deftype map-key mis-buckets). A bigger structural unit than facets 1/3. Surfaced by flatland.ordered (loads+works+`=`; `(hash om)` vs native is the last gap). Distinct from D-375 / D-379."
     category: "polymorphism"
     barrier: |-
-      clj: `(hash m)` == `(hash-unordered-coll m)`; cljw: contentHash (entryHash
-      `vh(k)*31+vh(v)`) ≠ collHash (map_entry-as-vector per entry). Plus `(hash
-      deftype-inst)` ignores the deftype's hasheq impl (identity hash). So a custom
-      map won't `(hash)`-collide with an =-equal native map. Fix: unify the map
-      per-entry hash (contentHash==collHash, clj-shape) + consult deftype hasheq in
-      valueHash via vtable. Changes all map hash values (corpus relational assertions
-      hold; regen goldens). Cross-ref D-375, AD-028, F-011, equal.zig valueHash,
-      map.zig foldHash, core.zig collHash.
+      REMAINING = facet 2 only (facets 1 + `=` LANDED — see status). CONTRACT
+      VIOLATION introduced by the `=` facet: `(= om native)` is now true but
+      `(hash om)` ≠ `(hash native)` (cljw `(hash)` ignores a deftype's hasheq impl,
+      returning the identity bit-hash). Measured: `#{om nm}` → 2 (clj 1, no dedup),
+      `(contains? #{om} nm)` → false (clj true). This breaks the `=`⟹same-hash
+      invariant for a deftype collection vs an `=`-equal native one (edge: only when
+      both are mixed as set elements / map keys; the common `(= om native)` is
+      correct). NEXT-SESSION DIRECTIVE (user 2026-06-10): take this あるべき論 —
+      blast radius may be wide, but NO ad-hoc; the finished form is a proper fix of
+      cljw's hash architecture. STRUCTURAL: `equal.valueHash` is rt-FREE (it is the
+      HAMT key-hash used by map/set insert/lookup), so it cannot dispatch a
+      deftype's hasheq via the per-Runtime vtable. Finished-form sketch: a single
+      rt-aware hash entry point `hashValue(rt, env, v)` = (non-record typed/reified
+      instance with a hasheq impl → dispatch it; else `valueHash(v)`), used by BOTH
+      the `(hash x)` primitive AND the map/set key-hash sites (so a deftype map-KEY
+      and `(hash deftype)` agree — else the key mis-buckets). The map/set ops are
+      already rt-aware (assoc/get take rt), so thread the key hash through the
+      rt-aware entry; HAMT internals keep the precomputed hash. Verify `(= (hash om)
+      (hash native))` + `#{om nm}` dedups + `(contains? #{om} nm)` after. Cross-ref
+      D-375, AD-028, F-011/F-002, equal.zig valueHash + instanceEquiv (the `=`
+      parallel landed this session), map.zig foldHash, dispatch.zig VTable.
     last_reviewed: "2026-06-10"
   - id: "D-378"
     status: "DISCHARGED 2026-06-10. Multi-pair assoc on an Associative deftype/extend-type receiver now folds over pairs into repeated single-pair `-assoc` dispatch (collection.zig: the .typed_instance non-defrecord arm + the else arm), matching clj's reduce-over-pairs and the native-map fast-path. args.len is validated odd≥3 at assocFn top, so the fold needs no extra arity check. e2e phase14_multipair_assoc_extend (multi-pair + single-pair on a Box deftype). flatland.ordered.map advanced map.clj:159→ its NEXT blocker: `(.get ^Map backing-map k)` = java.util.Map `.get` on a native persistent map (D-379)."
@@ -1045,6 +1058,19 @@ active:
       clojure.core (clojure_lang_method.zig). ordered.map/set load + work. Remaining
       cross-impl `=`/hash consistency folded into D-377; ordered-set print into a
       print-method gap (see D-377). corpus native_java_map_methods.txt.
+    last_reviewed: "2026-06-10"
+  - id: "D-380"
+    status: "open (2026-06-10, user-directed standing doc-consolidation mode — to run AFTER D-377 facet 2, self-continuing; NO code changes). Consolidate + modernize the project's docs (do NOT sprawl — merge/update/de-stale existing). Three drains, highest-value first: (DC1) a READABLE, CATEGORY-organised 'differences from upstream Clojure' doc driven by CODE / clj-execution — run the clj oracle vs cljw per category and present examples; consolidate the machine-readable AD ledger (accepted_divergences.yaml AD-001..028) + COVERAGE.md 'acceptable divergences' into one human-facing categorised doc (numeric tower F-005, no-JVM class/AD-003, hash values AD-009/028, set/map print order AD-001, error Kind/format AD-007, …). Use scripts/clj_diff_sweep.sh; never pin a JVM hash constant (AD-009). (DC2) re-organise the debt-resolution status in .dev/debt.yaml (NO code): verify each DISCHARGED row is truly discharged + each open row truly open, move DISCHARGED-in-active rows to the discharged: list, dedup, re-sync — a ledger-hygiene pass (the D-175 5-lens consolidation lens). (DC3, time-permitting, autonomous): CFP draft refresh under private/ — KEEP the originals, create `<NAME>_v2.md` (from TODO.md / REVIEWER_INFO.md / SUBMISSION.md etc.), 経緯 unneeded, latest-necessary-only. CFP prep is otherwise ~done, so DC1/DC2 are the priority; the loop self-continues through DC1→DC2→(DC3 if time)."
+    category: "process"
+    barrier: |-
+      Standing doc-consolidation + debt-status-hygiene mode (user-directed, NO code).
+      Runs after D-377 facet 2 lands; the loop self-selects it next. Priority:
+      DC1 (categorised differences-from-Clojure doc, code/clj-driven, consolidate the
+      AD ledger — readable, not sprawl) → DC2 (debt.yaml resolution-status re-org,
+      move discharged rows, dedup) → DC3 (private/ CFP `_v2.md` refresh, keep
+      originals, latest-only, only if time). Driven by scripts/clj_diff_sweep.sh +
+      the AD ledger + COVERAGE.md. Cross-ref F-010 (docs/works quality loop),
+      .dev/accepted_divergences.yaml, .claude/rules/clj_diff_sweep.md, D-175.
     last_reviewed: "2026-06-10"
   - id: "D-287"
     status: "DISCHARGED ADR-0105 (2026-06-07) - Java arrays implemented: type-erased `.array` JavaArray ([]Value, mirror of TypedInstance) + aget/aset/alength/aclone/array? primitives + object-array/int-array/byte-array/make-array/to-array/into-array/aset-*/amap/areduce in core.clj; seqable/indexed/identity-equal; byte/short/char wrap + per-ctor init defaults (F-011); type-erasure = AD-019. flatland.ordered (rung 4b) advanced aset->IEditableCollection; tools.reader (rung 6) aget->Closeable (both new host-interface blockers). ORIGINAL: now (found 2026-06-07 — ordered's blocker after D-286a, a NON-deftype/NON-host-interface class) — flatland.ordered.set.clj:84 `Unable to resolve symbol: 'aset'`. `aset` (Java array element set) is unimplemented; ordered uses Java object-arrays + aset/aget/make-array internally for its backing store. This is the Java-array-interop capability, distinct from the deftype host-interface work (D-275→D-286). cljw has no Java arrays as such — would need an array surface (object-array/aset/aget/alength/make-array) backed by a cljw mutable vector or a native array Value."
