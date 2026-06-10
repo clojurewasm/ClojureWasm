@@ -26,6 +26,12 @@ export CLJW_GC_TORTURE=1
 
 assert_eq 'arith'        "$("$BIN" -e '(+ 1 2)')"                                              '3'
 assert_eq 'sum_squares'  "$("$BIN" -e '(reduce + (map (fn [x] (* x x)) (range 1 100)))')"      '328350'
+# Frame nil-init regression (the reverted O-005): a deep recursion dirties the
+# high call-frame stack slots, then a shallow fn whose body has a nested fn*
+# runs — if a fn ever leaves its `[frame_size..MAX_LOCALS)` tail uninitialised,
+# the VM publishes that stack garbage as a GC root and a torture collect traces
+# it → SIGSEGV. Deterministic catcher for that whole class.
+assert_eq 'nested_deep'  "$("$BIN" -e '(do (defn dp [n] (if (zero? n) (reduce + (map (fn [a] (* a a)) (range 1 50))) (+ 1 (dp (dec n))))) (dp 40))')" '40465'
 assert_eq 'sqrt'         "$("$BIN" -e '(clojure.math/sqrt 16)')"                               '4.0'
 assert_eq 'filter_count' "$("$BIN" -e '(count (filter even? (range 1 200)))')"                 '99'
 # closure capturing a GC vector — exercises the .fn_val closure_bindings trace.

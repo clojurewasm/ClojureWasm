@@ -126,12 +126,6 @@ pub const FunctionMethod = struct {
     /// ADR-0022). The chunk lives in the analyser arena alongside
     /// `body`/`params`.
     bytecode: ?*const BytecodeChunk = null,
-    /// Analyser-computed frame high-water slot count (O-005). The
-    /// per-call frame nil-inits only `[0, frame_size)` instead of all
-    /// MAX_LOCALS. Defaults to MAX_LOCALS so a method built without an
-    /// analyser frame_size (AOT-deserialized, internal minimal fns)
-    /// keeps the conservative full-frame init.
-    frame_size: u16 = MAX_LOCALS,
 };
 
 pub const Function = struct {
@@ -366,7 +360,6 @@ fn methodFromNode(m: node_mod.FnMethod, bytecode: ?*const BytecodeChunk) Functio
         .params = m.params,
         .body = m.body,
         .bytecode = bytecode,
-        .frame_size = m.frame_size,
     };
 }
 
@@ -1248,9 +1241,7 @@ fn callMethodImpl(rt: *Runtime, env: *Env, f: *Function, args: []const Value, lo
     if (frame_slots > MAX_LOCALS)
         return error_catalog.raise(.fn_frame_exceeds_max_locals, loc, .{ .base = f.slot_base, .arity = m.arity, .max = MAX_LOCALS });
 
-    // PERF: nil-init only the analyser-known frame slots, not all MAX_LOCALS — a fn frame is usually a handful of slots, so this drops a ~2KB memset to a few bytes per call [refs: O-005, D-163]
-    var locals: [MAX_LOCALS]Value = undefined;
-    @memset(locals[0..m.frame_size], .nil_val);
+    var locals: [MAX_LOCALS]Value = [_]Value{.nil_val} ** MAX_LOCALS;
     if (f.closure_bindings) |snap| {
         @memcpy(locals[0..snap.len], snap);
     }

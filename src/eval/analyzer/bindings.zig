@@ -177,12 +177,6 @@ fn analyzeFnMethod(
     else
         Scope{ .recur_target = .{ .arity = recur_arity, .slot_base = 0, .kind = .fn_kw } };
     defer child_scope.deinit(arena);
-    // O-005: this method gets its OWN frame high-water counter (a nested
-    // fn is a separate call frame, so its body slots must not inflate the
-    // enclosing fn's frame_size). `slot_base` is the closure-capture
-    // region, always part of the frame; declares + nested let/loop bump it.
-    var frame_high_water: u16 = slot_base;
-    child_scope.frame_high_water = &frame_high_water;
     for (param_names.items) |name| {
         _ = try child_scope.declare(arena, name);
     }
@@ -193,7 +187,6 @@ fn analyzeFnMethod(
         .has_rest = has_rest,
         .params = try arena.dupe([]const u8, param_names.items),
         .body = body_node,
-        .frame_size = frame_high_water,
     };
 }
 

@@ -142,14 +142,6 @@ pub const Scope = struct {
     /// Stays ≤ u32 for headroom; 16-bit was felt too tight given that
     /// macroexpansion can produce deep `let*` chains.
     recur_target_depth: u32 = 0,
-    /// Shared across every scope of ONE enclosing `fn*` method (set by
-    /// `analyzeFnMethod`, propagated through `child`/`childWithRecur`):
-    /// `declare` bumps `hw.* = max(hw.*, next_slot)` so the method ends
-    /// up knowing the high-water slot count of its whole frame. Lets the
-    /// backend nil-init only the live frame, not all MAX_LOCALS (O-005).
-    /// A nested `fn*` installs its OWN counter (separate call frame), so
-    /// inner-fn body slots do not inflate the outer fn's count.
-    frame_high_water: ?*u16 = null,
 
     pub fn deinit(self: *Scope, alloc: std.mem.Allocator) void {
         self.bindings.deinit(alloc);
@@ -165,7 +157,6 @@ pub const Scope = struct {
             .mutable_fields = parent.mutable_fields,
             .recur_target = parent.recur_target,
             .recur_target_depth = parent.recur_target_depth + 1,
-            .frame_high_water = parent.frame_high_water,
         };
     }
 
@@ -180,7 +171,6 @@ pub const Scope = struct {
             .mutable_fields = parent.mutable_fields,
             .recur_target = target,
             .recur_target_depth = 0,
-            .frame_high_water = parent.frame_high_water,
         };
     }
 
@@ -189,9 +179,6 @@ pub const Scope = struct {
         const slot = self.next_slot;
         try self.bindings.put(alloc, name, slot);
         self.next_slot += 1;
-        if (self.frame_high_water) |hw| {
-            if (self.next_slot > hw.*) hw.* = self.next_slot;
-        }
         return slot;
     }
 
