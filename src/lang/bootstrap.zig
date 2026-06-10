@@ -98,6 +98,9 @@ pub const FILES: []const FileEntry = &.{
     // clojure.instant (D-273) — read-instant-* over the built-in #inst parser;
     // single Date type (no Timestamp/Calendar = AD-030). Appended last.
     .{ .label = "<clojure.instant>", .source = @embedFile("clj/clojure/instant.clj") },
+    // clojure.test.tap (D-273) — TAP reporter for clojure.test; loads after
+    // clojure.test (FILES[10]) + clojure.stacktrace (FILES[19]). Appended last.
+    .{ .label = "<clojure.test.tap>", .source = @embedFile("clj/clojure/test/tap.clj") },
 };
 
 /// First file's source — exposed so `main.zig`'s renderer can fall
@@ -140,6 +143,7 @@ fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
     if (std.mem.eql(u8, ns_name, "clojure.stacktrace")) return FILES[19];
     if (std.mem.eql(u8, ns_name, "clojure.uuid")) return FILES[20];
     if (std.mem.eql(u8, ns_name, "clojure.instant")) return FILES[21];
+    if (std.mem.eql(u8, ns_name, "clojure.test.tap")) return FILES[22];
     return null;
 }
 

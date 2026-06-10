@@ -27,18 +27,42 @@
 (def ^:dynamic *report-counters* nil)
 (def *initial-report-counters* {:test 0 :pass 0 :fail 0 :error 0})
 (def ^:dynamic *testing-contexts* (list))
+;; The Var(s) of the test currently running (test-var binds it) — lets a
+;; reporter name the failing test. clj-compat surface (D-273/D-232).
+(def ^:dynamic *testing-vars* (list))
+;; Stack-trace depth a reporter may pass to clojure.stacktrace (nil = full).
+(def ^:dynamic *stack-trace-depth* nil)
 
 ;; ns-name-symbol -> vector of test Vars (deftest appends; run-tests reads).
 (def *test-registry* (atom {}))
 
 ;; ---------------------------------------------------------------------------
-;; report multimethod (keyed on :type) + do-report.
+;; report multimethod (keyed on :type) + do-report. `^:dynamic` so an
+;; alternate reporter (e.g. clojure.test.tap) can `(binding [report …] …)`.
 ;; ---------------------------------------------------------------------------
-(defmulti report :type)
+(defmulti ^:dynamic report :type)
 
 (defn inc-report [k]
   (when *report-counters*
     (swap! *report-counters* update k (fn [n] (inc (or n 0))))))
+
+;; clj-compat alias: clojure.test/inc-report-counter is the public name a
+;; reporter calls; cljw's internal counter bump is `inc-report`.
+(def inc-report-counter inc-report)
+
+;; clj-compat: `with-test-out` rebinds *test-out* on the JVM; cljw prints
+;; directly to stdout (no *test-out*), so it is an identity body wrapper.
+(defmacro with-test-out [& body] (cons 'do body))
+
+;; A string naming the test(s) currently running, for a reporter's pass/fail
+;; line. cljw has no source line on the Var, so just the qualified name(s).
+(defn testing-vars-str [_m]
+  (clojure.string/join "," (map #(str (:ns (meta %)) "/" (:name (meta %)))
+                                (reverse *testing-vars*))))
+
+;; A string of the active `testing` context strings (outermost first).
+(defn testing-contexts-str []
+  (clojure.string/join " " (reverse *testing-contexts*)))
 
 (defn print-contexts []
   (when (seq *testing-contexts*)
@@ -160,7 +184,9 @@
      (var ~name)))
 
 (defn test-var [v]
-  (when v ((deref v))))
+  (when v
+    (binding [*testing-vars* (conj *testing-vars* v)]
+      ((deref v)))))
 
 (defn run-tests [& ns-syms]
   (let [targets (if (seq ns-syms) ns-syms (list (ns-name *ns*)))]

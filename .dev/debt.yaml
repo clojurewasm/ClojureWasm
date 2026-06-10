@@ -765,14 +765,17 @@ active:
       (`add-lib!`/`add-libs`/`sync-deps`) · clojure.java.shell · clojure.java.process
       · clojure.java.browse · clojure.core.server · clojure.core.specs.alpha ·
       clojure.spec.alpha · clojure.spec.gen.alpha ·
-      clojure.test.tap · clojure.xml · cljw.wasm
+      clojure.xml · cljw.wasm
       (+ `cljw_wasm_builtins`). LANDED since this list was cut: clojure.stacktrace
       (2026-06-10, ex-info cause-chain reimpl; per-frame degrades = AD-029; e2e
       phase15_clojure_stacktrace) + clojure.uuid (2026-06-10, require-compat shim;
       the `#uuid` reader + UUID print are cljw built-ins; e2e phase15_clojure_uuid)
-      + clojure.instant (2026-06-10, read-instant-date over the built-in #inst parser;
-      read-instant-timestamp/calendar deferred to D-382 — no Date-collapse smell; e2e
-      phase15_clojure_instant) + clojure.template (already bundled, FILES[15]).
+      + clojure.instant (2026-06-10, read-instant-date + read-instant-timestamp over the
+      built-in #inst parser + the neutral Timestamp model D-382; e2e phase15_clojure_instant)
+      + clojure.test.tap (2026-06-10, TAP reporter; added clj-compat clojure.test surface
+      with-test-out/inc-report-counter/testing-vars-str/testing-contexts-str/*testing-vars*/
+      *stack-trace-depth* + made report ^:dynamic — also helps D-232; e2e phase15_clojure_test_tap)
+      + clojure.template (already bundled, FILES[15]).
       MISSING app features: deps.edn resolution
       (`app/deps.zig` — campaign Stage 1.2, unblocks the real-lib ladder) ·
       `cljw test` subcommand (`app/test_runner.zig`) · project scaffolding/init.
