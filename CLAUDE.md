@@ -122,7 +122,15 @@ turn 1 must be Japanese.
   principles before adopting an idiom; always note one DIVERGENCE).
 - After each task, write a 5-minute per-task note from hot context
   (`private/notes/<phase>-<task>.md`, gitignored).
-- `bash test/run_all.sh` green **on Mac (host)** before every commit.
+- **Per-commit = smoke**, not the full gate (ADR-0107 two-tier gate;
+  the full e2e suite grew heavy, so "full every commit" is retired).
+  `bash test/run_all.sh --smoke <changed-e2e-step>` (~tens of sec) green
+  **on Mac (host)** authorises a source commit — including shared-code,
+  because the smoke runs the full dual-backend diff oracle + every unit
+  test. The **full gate batches** (run ALONE) at the ≤5-commit ceiling /
+  Phase boundary / pre-tag. Prefer a **ReleaseSafe** binary (`zig build
+  -Doptimize=ReleaseSafe -Dcpu=baseline`) for manual behaviour probes.
+  SSOT: [`.claude/rules/gate_cadence.md`](.claude/rules/gate_cadence.md).
   **Linux x86_64 is no longer per-commit** (ADR-0049, orphan / fan
   hazard): run `bash scripts/run_remote_ubuntu.sh` (→ `ubuntunote` SSH
   host) at Phase boundaries, before the v0.1.0 tag, and on demand.
@@ -269,21 +277,28 @@ Structural improvements only, while green. Then **re-read
 Green → Refactor diff**. If a smell surfaced, choose depth 1-4
 per principle.md and act before commit.
 
-**Step 5 — Test gate** (Mac per-commit; ubuntunote at boundaries)
+**Step 5 — Test gate** (Mac smoke per-commit; full gate batched; ubuntunote at boundaries)
 
-Run the Mac gate every commit via the single-gate launcher:
+Two-tier per ADR-0107 (full e2e is now heavy — never run it per commit
+while batching). SSOT: [`.claude/rules/gate_cadence.md`](.claude/rules/gate_cadence.md).
 
-- `bash scripts/run_gate.sh` (Mac host, `aarch64-darwin`) — reaps any
-  orphan `run_all.sh` tree + PID-1-orphaned `cljw` probes from a prior
-  run, then `exec`s `timeout 300 bash test/run_all.sh` (so `.gate_pass`
-  is written exactly as before; the cadence hook is unaffected). This
-  prevents the gate-stacking that a premature task-completion
-  notification + host load can cause (see
+- **Per commit = smoke**: `bash test/run_all.sh --smoke <changed-e2e-step>`
+  (~tens of sec) — `zig build test` ×2 (the full F-012 diff oracle + all
+  units) + zlinter + `build_cljw` + `corpus_regression` + the changed e2e
+  step(s). Stamps `.dev/.smoke_pass`; authorises the commit (shared-code
+  included) up to the ≤5 ceiling. **Do not block on it** — background it
+  and keep moving. Manual behaviour checks use a **ReleaseSafe** binary
+  (`zig build -Doptimize=ReleaseSafe -Dcpu=baseline`), not the Debug default.
+- **Batched full gate** (run ALONE): `bash scripts/run_gate.sh` reaps any
+  orphan `run_all.sh` tree + PID-1-orphaned `cljw` probes, then `exec`s
+  `timeout 300 bash test/run_all.sh` (writes `.dev/.gate_pass`; cadence
+  hook unaffected; orphan-safe per
   [`.claude/rules/orphan_prevention.md`](.claude/rules/orphan_prevention.md)
-  § Gate launcher + memory `premature-gate-notification`). On-demand
-  reap without a gate: `bash scripts/run_gate.sh reap`.
-- Raw `bash test/run_all.sh` still works (it writes `.gate_pass`), but
-  prefer the launcher so orphans never accumulate.
+  § Gate launcher + memory `premature-gate-notification`). Run it at the
+  5-commit ceiling / Phase boundary / pre-tag — backgroundable as a
+  look-ahead. On-demand reap without a gate: `bash scripts/run_gate.sh reap`.
+  If a full gate fails on ONLY a non-code check (e.g. `check_debt_id_refs`),
+  fix it + re-smoke — do NOT re-run the whole full gate.
 
 If the output exceeds ~200 lines, delegate to a Bash subagent
 and ask for "pass/fail + first failure only".
@@ -543,7 +558,9 @@ test/        unified runner + future suites
 ## Build & test
 
 ```sh
-bash test/run_all.sh   # run everything
+bash test/run_all.sh --smoke <step>  # per-commit smoke (fast; ADR-0107)
+bash test/run_all.sh                 # full gate (batched: ceiling/boundary/pre-tag)
+zig build -Doptimize=ReleaseSafe -Dcpu=baseline  # ReleaseSafe binary for probes
 zig build run          # run executable (`cljw`)
 zig fmt src/           # format
 ```

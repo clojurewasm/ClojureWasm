@@ -56,9 +56,14 @@ spec is not duplicated here — CLAUDE.md is the single source.
 5. `git log --oneline -10` — read the recent commit chain so
    the next task starts with the as-pushed reality, not the
    handover's narration of it.
-6. `bash test/run_all.sh` — confirm the build is green. **If the
-   test output is large (>200 lines), run via subagent and ask
-   only for pass/fail + the first failure.**
+6. Confirm HEAD is green **without re-running the full gate** — the
+   pushed HEAD was already gated when it landed. Check the
+   `.dev/.gate_pass` / `.dev/.smoke_pass` fingerprint (or run a quick
+   `bash test/run_all.sh --smoke`); only run the full gate at resume if
+   the fingerprint is stale or the tree is dirty (ADR-0107 — full e2e is
+   heavy, so resume does not pay for it by default). **If a check's
+   output is large (>200 lines), run via subagent and ask only for
+   pass/fail + the first failure.**
 7. Summarise to the user in 5-10 lines:
    - Phase (number + name)
    - Last commit

@@ -8,39 +8,49 @@ paths:
   - ".claude/settings.json"
 ---
 
-# Gate cadence (batch additive, gate shared-code)
+# Gate cadence (smoke per-commit, batch the full gate)
 
 Auto-loaded when editing the test runner / hook scripts / settings.
-Codifies *when* the full Mac gate (`bash test/run_all.sh`, ~50s) must
-run, and makes the policy **mechanically enforced** rather than prose.
+Codifies *when* the fast smoke (`bash test/run_all.sh --smoke`, ~tens of
+sec) vs the full Mac gate (`bash test/run_all.sh`, **~5 min** — the 248
+e2e shell steps grew heavy) must run, and makes the policy
+**mechanically enforced** rather than prose. SSOT for the decision is
+[ADR-0107](../../.dev/decisions/0107_pipeline_gate_smoke_authorized.md).
 
 ## Why
 
-The full gate is ~50s. Empirically (2026-05-30 session retrospective),
-on **additive coverage** — a new `.clj` def, a new primitive, a new
-`Math` method, a new e2e — the full gate caught **0 regressions** that
-the per-feature smoke (`zig build` + `cljw -e` probes + the single new
-e2e, ~2s) had not already caught. Additive changes cannot break the
-other ~144 tests, so the full gate there is near-pure insurance.
+The full gate is now **~5 min**, ~60% of it the 248 e2e shell steps,
+which also false-time-out under host load (the `gate_parallel_e2e_timeout`
+memory). Running it per commit was the iteration bottleneck. ADR-0107
+found the cost/risk axis is **unit-vs-e2e, not additive-vs-shared**:
 
-Where the gate **earns its ~50s** is **shared-code** changes: editing
-an existing primitive / `promote.zig` / analyzer / `eval/` path / the
-VM, or `build.zig*`. Those carry real regression risk and are the only
-place the dual-backend diff oracle (TreeWalk↔VM parity) can catch a
-divergence the smoke does not.
+- `zig build test` on **both** backends IS the entire F-012 correctness
+  guarantee — `src/lang/diff_test.zig` (the dual-backend differential
+  oracle) is `@import`ed from `src/main.zig`, so every diff case runs
+  inside it. It is timing-independent, contention-tolerant, and fast-ish.
+- The 248 e2e shell steps + perf/bench are the slow, load-flaky part —
+  the only part worth batching.
 
-So: **batch additive, gate shared-code.**
+So the smoke = the fast correctness core (both-backend `zig build test`
++ zlinter + `build_cljw` + `corpus_regression` + **the changed e2e
+step(s)**). Because it carries the full diff oracle, the smoke
+**authorises shared-code commits too** — the old "additive vs risky"
+split is retired. Only the full e2e suite is deferred.
+
+So: **smoke every commit (shared-code included), batch the full gate.**
 
 ## The policy
 
-| Commit class        | Definition                                                                                         | Gate requirement                                                            |
-|---------------------|----------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
-| **Non-source**      | No `src/` / `test/` / `build.zig*` staged (docs, `.dev/`, `.claude/`, `scripts/`)                  | Exempt — never gated, never counted                                        |
-| **Additive source** | Touches `src/` or `test/`, **pure insertion** (no existing line removed/modified), no `build.zig*` | May accumulate up to **5** commits since the last full gate; the 6th blocks |
-| **Risky / shared**  | `build.zig*` staged, OR an existing `src/` or `test/` line removed/modified                        | **Fresh full gate every time**                                              |
+| Commit class   | Definition                                                                        | Gate requirement                                                                               |
+|----------------|-----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| **Non-source** | No `src/` / `test/` / `build.zig*` staged (docs, `.dev/`, `.claude/`, `scripts/`) | Exempt — never gated, never counted                                                           |
+| **Source**     | Touches `src/` / `test/` / `build.zig*` (additive OR shared-code, no distinction) | A fresh **smoke** authorises it; may ride up to **5** since the last full gate, the 6th blocks |
 
-"Fresh full gate" = `test/run_all.sh` ran to a full green (no `--only` /
-`--skip`) on the exact state being committed.
+A fresh **full gate** clears the batch counter (the next 5 ride again).
+"Fresh" (smoke or full) = ran to green on the **exact content** being
+committed (the `gate_state_hash.sh` fingerprint matches). The full gate
+is `test/run_all.sh` with no `--only`/`--skip`, run ALONE (`--serial-e2e`
+for determinism), at the 5-commit ceiling / Phase boundary / pre-tag.
 
 ## Mechanical enforcement (this is law, not advice)
 
@@ -50,48 +60,53 @@ So: **batch additive, gate shared-code.**
   content — not a diff vs HEAD — makes the fingerprint independent of HEAD
   position and of staging, so it still matches after `git add` and survives
   a `git add && git commit` batched into one shell command.
-- **`test/run_all.sh`** — on a full green gate (no `--only`/`--skip`) writes
-  that fingerprint to `.dev/.gate_pass` AND clears the batch counter
-  `.dev/.gate_cadence` to 0 (both gitignored): a full green gate validates
-  everything up to now, so the additive batch restarts.
+- **`test/run_all.sh`** — a **full** green gate (no `--only`/`--skip`) writes
+  the fingerprint to `.dev/.gate_pass` AND clears the batch counter
+  `.dev/.gate_cadence` to 0; a **`--smoke`** green writes it to
+  `.dev/.smoke_pass` (all gitignored). A full gate validates everything up
+  to now, so the batch restarts; a smoke validates the fast core for this
+  exact content.
 - **`scripts/check_gate_cadence.sh`** — PreToolUse hook on `git commit`.
-  Classifies the change from **`git diff HEAD` + an untracked listing**
-  (NOT `git diff --cached`): a PreToolUse hook fires *before* the command,
-  so `git add … && git commit` batched into one call leaves the index empty
-  at hook time — `--cached` would see nothing and wrongly exempt the commit.
-  `git diff HEAD` reflects the working tree regardless of whether `git add`
-  ran. Rule: any deleted line in a tracked `src/`/`test/` file ⇒ risky;
-  `build.zig*` modified ⇒ risky; a new untracked `src/`/`test/` file or a
-  pure insertion ⇒ additive. If the current fingerprint equals
-  `.dev/.gate_pass`, the gate verified this exact content ⇒ authorise +
-  reset the counter (`.dev/.gate_cadence`). Otherwise: risky ⇒ block;
-  additive ⇒ consume a batch slot, block at the 6th.
+  Reads the change from **`git diff HEAD` + an untracked listing** (NOT
+  `git diff --cached`): a PreToolUse hook fires *before* the command, so
+  `git add … && git commit` batched into one call leaves the index empty at
+  hook time — `--cached` would see nothing and wrongly exempt the commit.
+  Non-source change ⇒ exempt. Source change ⇒ authorised iff the current
+  fingerprint equals `.dev/.gate_pass` **or** `.dev/.smoke_pass` (ADR-0107):
+  a `.gate_pass` match resets the counter; a `.smoke_pass`-only match
+  consumes a batch slot and **hard-blocks at the 6th** (forcing a full
+  gate). A source change with neither fingerprint fresh ⇒ block (smoke it
+  first).
 
 `git commit --no-verify` is denied in `.claude/settings.json`, so the
 hook cannot be bypassed. `GATE_MAX_BATCH` (default 5) is overridable
 via env for a one-off.
 
 **Clean-tree implication.** Because classification reads the whole working
-tree vs HEAD (not just the index), a dirty *risky* `src/`/`test/` file
-blocks **every** commit until it is gated, reverted, or committed — even a
-doc-only commit. This is intentional: it enforces the edit → gate → commit
-rhythm (one unit at a time, clean tree between units). Stage-and-commit a
-unit before starting the next; don't leave a half-done risky edit lying
-beside an unrelated commit.
+tree vs HEAD (not just the index), a dirty source file with no fresh
+fingerprint blocks **every** commit until it is smoked, reverted, or
+committed — even a doc-only commit. This is intentional: it enforces the
+edit → smoke → commit rhythm (one unit at a time, clean tree between
+units). Stage-and-commit a unit before starting the next; don't leave a
+half-done source edit lying beside an unrelated commit.
 
 ## Workflow it produces
 
-- Additive coverage sprint: edit → fast smoke (`zig build` + `cljw -e`
-  + the new e2e) → commit. Up to 5 such commits ride without the full
-  gate. Run `bash test/run_all.sh` on the 5th (or whenever convenient) —
-  a full green gate clears the batch counter, so the next 5 additive
+- Coverage / feature sprint: edit → `bash test/run_all.sh --smoke <step>`
+  (background it, don't block) → commit. Up to 5 such commits ride without
+  the full gate. Run `bash test/run_all.sh` (ALONE) on the 5th (or whenever
+  convenient) — a full green gate clears the batch counter, so the next 5
   commits ride again. (A subsequent commit whose exact content the gate
   verified is also authorised as "fresh" and zeroes the counter.)
-- Shared-code change: edit → `bash test/run_all.sh` → commit (the gate
-  stamped `.dev/.gate_pass` for this state, so the commit is authorised).
+- Shared-code change: same path — the smoke carries the full both-backend
+  diff oracle, so it authorises shared-code too (the old "risky ⇒ full
+  every time" rule is retired per ADR-0107). The full gate still catches
+  the e2e-shell miss-window (≤ 5 commits) at the ceiling / boundary.
 
-The fast per-feature smoke is still expected on **every** change — the
-batching only defers the *full* gate, never the smoke.
+The `--smoke` run is expected on **every** source commit — the batching
+only defers the slow *full* e2e suite, never the smoke. Manual behaviour
+probes use a **ReleaseSafe** binary (`zig build -Doptimize=ReleaseSafe
+-Dcpu=baseline`), not the Debug default (memory `verify_against_releasesafe_binary`).
 
 ## Forward-looking (framework_completion note)
 
@@ -104,13 +119,17 @@ sweep. The "discovery recipe" is the classifier in
 
 ## Stale-ness
 
-Stale if: the full gate stops being ~50s (re-measure the additive vs
-shared cost asymmetry); a new shared-risk surface appears that the
-numstat-deleted heuristic misses (e.g. a config file that gates
-behaviour); or the additive batch of 5 proves wrong in practice.
+Stale if: the smoke stops being ≤ ~60s or the full gate's e2e-vs-unit
+cost asymmetry changes (re-measure); a new shared-risk surface the smoke
+core does NOT cover appears (the miss-window grows beyond CLI/REPL/
+filesystem/http/GC e2e — re-scope what the smoke runs); or the batch of
+5 proves wrong in practice.
 
 ## Related
 
+- [ADR-0107](../../.dev/decisions/0107_pipeline_gate_smoke_authorized.md) —
+  the two-tier decision this rule is the SSOT for; the miss-window analysis.
 - `.claude/rules/orphan_prevention.md` — sibling forward-looking hook.
 - `scripts/check_smell_audit.sh` — the other `git`-time blocking hook.
 - CLAUDE.md § Autonomous Workflow Step 5 (test gate) / Step 6 (commit).
+- memory `smoke_first_batch_full_gate` + `verify_against_releasesafe_binary`.

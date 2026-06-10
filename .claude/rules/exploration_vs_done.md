@@ -36,8 +36,10 @@ adopts the same shape with cw-specific gates.
 Before staging a tracked file for commit:
 
 1. **Build is green**: `zig build test` passes for source changes.
-2. **Gate scripts pass**: `bash test/run_all.sh` passes
-   (or the relevant subset via `--only`).
+2. **Smoke passes per commit**: `bash test/run_all.sh --smoke
+   <changed-e2e-step>` is green; the **full gate batches** at the ≤5
+   ceiling / Phase boundary / pre-tag (ADR-0107 two-tier — full e2e is
+   heavy; SSOT `.claude/rules/gate_cadence.md`).
 3. **ADR reference**: the change either implements an existing
    ADR row or carries its own ADR / amendment per ROADMAP §17.
 4. **handover.md updated**: current state reflects the landing.
