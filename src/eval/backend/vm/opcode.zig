@@ -285,6 +285,23 @@ pub const Opcode = enum(u8) {
     op_ge_locals = 0x3E,
     op_eq_locals = 0x3F,
 
+    /// D-386 (O-021) branch superinstructions: fuse a comparison-fused op
+    /// (op_{eq,lt,le}_{local_const,locals}) + the following `op_jump_if_false`
+    /// into ONE dispatch — fib `(if (< n 2) …)`, arith_loop `(if (= i n) …)`.
+    /// `jump_if_false` branches when the test is FALSE, so the fused op is the
+    /// NEGATED comparison: eq→`ne` (branch if a≠b), lt→`ge`, le→`gt`. This op's
+    /// `operand` holds the comparison's slot/const pair (as in the `_local_const`
+    /// / `_locals` family); the IMMEDIATELY-FOLLOWING instruction is a DATA WORD
+    /// (the original `op_jump_if_false`, never dispatched) whose `operand` is the
+    /// i16 jump offset (v0's two-word trick — fits cljw's fixed `{opcode,u16}`
+    /// with no format change). Net stack effect 0 (compare-and-branch, no push).
+    op_branch_ne_local_const = 0x40,
+    op_branch_ge_local_const = 0x41,
+    op_branch_gt_local_const = 0x42,
+    op_branch_ne_locals = 0x43,
+    op_branch_ge_locals = 0x44,
+    op_branch_gt_locals = 0x45,
+
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
     /// (vm.zig:188-201 + :317 `applyJump`). Peephole's IP-remap pass
@@ -355,6 +372,12 @@ pub const Opcode = enum(u8) {
             .op_gt_locals,
             .op_ge_locals,
             .op_eq_locals,
+            .op_branch_ne_local_const,
+            .op_branch_ge_local_const,
+            .op_branch_gt_local_const,
+            .op_branch_ne_locals,
+            .op_branch_ge_locals,
+            .op_branch_gt_locals,
             => false,
         };
     }
@@ -431,6 +454,12 @@ pub const Opcode = enum(u8) {
             .op_gt_locals,
             .op_ge_locals,
             .op_eq_locals,
+            .op_branch_ne_local_const,
+            .op_branch_ge_local_const,
+            .op_branch_gt_local_const,
+            .op_branch_ne_locals,
+            .op_branch_ge_locals,
+            .op_branch_gt_locals,
             => false,
         };
     }

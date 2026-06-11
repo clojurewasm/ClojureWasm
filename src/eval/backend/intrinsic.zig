@@ -147,6 +147,36 @@ pub fn fromLocalsOpcode(op: Opcode) ?ArithOp {
     };
 }
 
+/// D-386 (O-021): the branch superinstruction for a comparison-fused op — the
+/// NEGATED form (jump_if_false branches on FALSE): eq→ne, lt→ge, le→gt. `null`
+/// for a non-comparison-fused op (add/sub/mul; gt/ge have no fused branch).
+pub fn branchVariant(op: Opcode) ?Opcode {
+    return switch (op) {
+        .op_eq_local_const => .op_branch_ne_local_const,
+        .op_lt_local_const => .op_branch_ge_local_const,
+        .op_le_local_const => .op_branch_gt_local_const,
+        .op_eq_locals => .op_branch_ne_locals,
+        .op_lt_locals => .op_branch_ge_locals,
+        .op_le_locals => .op_branch_gt_locals,
+        else => null,
+    };
+}
+
+/// D-386 (O-021): for a branch superinstruction, the ORIGINAL comparison the VM
+/// arm computes (then NEGATES — jump when the test is FALSE) + whether the 2nd
+/// operand is a constant (vs a local). `null` for a non-branch opcode.
+pub fn fromBranchOpcode(op: Opcode) ?struct { cmp: ArithOp, b_is_const: bool } {
+    return switch (op) {
+        .op_branch_ne_local_const => .{ .cmp = .eq, .b_is_const = true },
+        .op_branch_ge_local_const => .{ .cmp = .lt, .b_is_const = true },
+        .op_branch_gt_local_const => .{ .cmp = .le, .b_is_const = true },
+        .op_branch_ne_locals => .{ .cmp = .eq, .b_is_const = false },
+        .op_branch_ge_locals => .{ .cmp = .lt, .b_is_const = false },
+        .op_branch_gt_locals => .{ .cmp = .le, .b_is_const = false },
+        else => null,
+    };
+}
+
 /// Compile-time recogniser: if `var_ptr` is a cached canonical arith Var, return
 /// the opcode to emit. Pointer identity — a let-shadowed name is a `.local_ref`
 /// (never reaches here); the runtime `core_arith_pristine` flag handles a later

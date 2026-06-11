@@ -237,9 +237,47 @@ const Compiler = struct {
         try self.compileNode(&forms[forms.len - 1]);
     }
 
+    /// PERF: D-386 (O-021) — if `cond` is `(<cmp> local const)` / `(<cmp> local
+    /// local)` with cmp ∈ {=,<,<=} (the negatable comparisons), emit ONE
+    /// `op_branch_*` (the compare) + the `op_jump_if_false` DATA WORD, instead of
+    /// [compile cond + op_jump_if_false]. Returns the data-word's index (to
+    /// backpatch, exactly as a normal `op_jump_if_false`), or null to fall back
+    /// to the generic path. fib `(if (< n 2) …)` / arith_loop `(if (= i n) …)`.
+    fn tryFuseBranchCond(self: *Compiler, cond: *const Node) Error!?usize {
+        if (cond.* != .call_node) return null;
+        const c = cond.call_node;
+        if (c.args.len != 2 or c.callee.* != .var_ref) return null;
+        const cmp = intrinsic.recognize(self.rt, c.callee.var_ref.var_ptr) orelse return null;
+        var fused_cmp: opcode_mod.Opcode = undefined;
+        var operand: u16 = undefined;
+        if (c.args[0] == .local_ref and c.args[1] == .constant) {
+            const ls = c.args[0].local_ref.index;
+            if (ls >= 256) return null;
+            fused_cmp = intrinsic.localConstVariant(cmp) orelse return null;
+            const ci = try self.addConstant(c.args[1].constant.value);
+            if (ci >= 256) return null;
+            operand = (@as(u16, @intCast(ls)) << 8) | @as(u16, ci);
+        } else if (c.args[0] == .local_ref and c.args[1] == .local_ref) {
+            const a = c.args[0].local_ref.index;
+            const b = c.args[1].local_ref.index;
+            if (a >= 256 or b >= 256) return null;
+            fused_cmp = intrinsic.localsVariant(cmp) orelse return null;
+            operand = (@as(u16, @intCast(a)) << 8) | @as(u16, @intCast(b));
+        } else return null;
+        const branch_op = intrinsic.branchVariant(fused_cmp) orelse return null; // only =,<,<=
+        if (cond.call_node.loc.line != 0) {
+            self.current_line = cond.call_node.loc.line;
+            self.current_column = cond.call_node.loc.column;
+        }
+        try self.emit(branch_op, operand);
+        return try self.emitJump(.op_jump_if_false); // the offset data word
+    }
+
     fn compileIf(self: *Compiler, n: node_mod.IfNode) Error!void {
-        try self.compileNode(n.cond);
-        const jif = try self.emitJump(.op_jump_if_false);
+        const jif = (try self.tryFuseBranchCond(n.cond)) orelse blk: {
+            try self.compileNode(n.cond);
+            break :blk try self.emitJump(.op_jump_if_false);
+        };
         try self.compileNode(n.then_branch);
         const jend = try self.emitJump(.op_jump);
         try self.patchJump(jif);

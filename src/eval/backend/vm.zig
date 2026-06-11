@@ -731,6 +731,51 @@ inline fn stepOnce(
             stack[sp] = result;
             sp += 1;
         },
+        .op_branch_ne_local_const, .op_branch_ge_local_const, .op_branch_gt_local_const, .op_branch_ne_locals, .op_branch_ge_locals, .op_branch_gt_locals => {
+            // PERF: D-386 (O-021) compare-and-branch superinstruction. `operand` =
+            // the comparison's slot/const pair; the IMMEDIATELY-FOLLOWING instruction
+            // is the DATA WORD carrying the i16 jump offset (the fused
+            // `op_jump_if_false`, never dispatched). Compute the comparison
+            // (locals[a] CMP locals/const[b], fixnum-fast / builtin-deopt) and JUMP
+            // when it is FALSE (jump_if_false semantics). [refs: O-021]
+            const info = intrinsic.fromBranchOpcode(instr.opcode).?;
+            const sa: usize = instr.operand >> 8;
+            const sb: usize = instr.operand & 0xFF;
+            if (ip >= chunk.instructions.len)
+                return raiseInternal("vm: op_branch_* missing offset data word");
+            const offset: i16 = @bitCast(chunk.instructions[ip].operand);
+            ip += 1;
+            if (sa >= locals.len)
+                return error_catalog.raise(.slot_out_of_range, .{}, .{ .form = "Local", .index = @as(u16, @intCast(sa)), .max = locals.len });
+            const a = locals[sa];
+            const b = if (info.b_is_const) bblk: {
+                if (sb >= chunk.constants.len)
+                    return raiseInternal("vm: op_branch_* constant index out of range");
+                break :bblk chunk.constants[sb];
+            } else bblk: {
+                if (sb >= locals.len)
+                    return error_catalog.raise(.slot_out_of_range, .{}, .{ .form = "Local", .index = @as(u16, @intCast(sb)), .max = locals.len });
+                break :bblk locals[sb];
+            };
+            const fast: ?Value = if (rt.core_arith_pristine)
+                try intrinsic.fastBinaryFixnum(rt, info.cmp, a, b)
+            else
+                null;
+            const cmp_result = fast orelse blk: {
+                const vt = rt.vtable orelse
+                    return error_catalog.raiseInternal(.{}, "Runtime vtable not installed; cannot dispatch arith intrinsic");
+                const pv = rt.arith_vars[@intFromEnum(info.cmp)] orelse
+                    return raiseInternal("vm: arith intrinsic emitted without a cached Var");
+                const op_var: *const env_mod.Var = @ptrCast(@alignCast(pv));
+                const two = [2]Value{ a, b };
+                break :blk try vt.callFn(rt, env, op_var.deref(), &two, instr_loc);
+            };
+            // jump_if_false: branch when the comparison is FALSE.
+            if (!cmp_result.isTruthy()) {
+                ip = applyJump(ip, offset) orelse
+                    return raiseInternal("vm: op_branch_* target out of range");
+            }
+        },
         .op_ret => {
             @branchHint(.likely);
             if (sp == 0) return raiseInternal("vm: op_ret on empty stack");
