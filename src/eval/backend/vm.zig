@@ -524,6 +524,7 @@ fn stepOnce(
                         .has_rest = m.has_rest,
                         .params = m.params,
                         .body = m.body,
+                        .frame_slots = m.frame_slots, // ADR-0130 frame-rooting
                     };
                     chunks[i] = m.bytecode;
                 }
@@ -535,6 +536,7 @@ fn stepOnce(
                         .has_rest = v.has_rest,
                         .params = v.params,
                         .body = v.body,
+                        .frame_slots = v.frame_slots, // ADR-0130 frame-rooting
                     };
                     variadic_chunk = v.bytecode;
                 }

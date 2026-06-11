@@ -126,6 +126,11 @@ pub const FunctionMethod = struct {
     /// ADR-0022). The chunk lives in the analyser arena alongside
     /// `body`/`params`.
     bytecode: ?*const BytecodeChunk = null,
+    /// ADR-0130 frame-rooting: exact local-slot count from the analyzer
+    /// (`node.FnMethod.frame_slots`), propagated at construction. `callMethodImpl`
+    /// inits + GC-roots only `locals[0..frame_slots]`. Sentinel 0 → full
+    /// MAX_LOCALS init (safe fallback for any construction site that doesn't set it).
+    frame_slots: u16 = 0,
 };
 
 pub const Function = struct {
@@ -360,6 +365,7 @@ fn methodFromNode(m: node_mod.FnMethod, bytecode: ?*const BytecodeChunk) Functio
         .params = m.params,
         .body = m.body,
         .bytecode = bytecode,
+        .frame_slots = m.frame_slots, // ADR-0130 frame-rooting
     };
 }
 
@@ -1237,11 +1243,21 @@ fn callMethodImpl(rt: *Runtime, env: *Env, f: *Function, args: []const Value, lo
         return raiseArityNotMatched(f, args.len, loc);
     };
 
-    const frame_slots: usize = @as(usize, f.slot_base) + m.arity + @intFromBool(m.has_rest);
-    if (frame_slots > MAX_LOCALS)
+    const arg_region: usize = @as(usize, f.slot_base) + m.arity + @intFromBool(m.has_rest);
+    // PERF: init + GC-root only the slots this method actually uses, not all 256
+    // — cuts the ~2 KB per-call nil-init on the hottest path [refs: O-015]
+    // ADR-0130 frame-rooting: m.frame_slots is the analyzer's exact per-method
+    // high-water (≥ arg_region by construction; the @max defends a runtime/compile
+    // slot_base skew). Sentinel 0 (a no-arg/no-local/no-capture body, or a
+    // non-analyzer FnMethod) falls back to the full MAX_LOCALS. A too-low fs is a
+    // GC UAF / slot_out_of_range (the O-005 failure modes) — locked by the
+    // CLJW_GC_TORTURE `nested_deep` e2e.
+    const fs: usize = if (m.frame_slots == 0) MAX_LOCALS else @max(@as(usize, m.frame_slots), arg_region);
+    if (fs > MAX_LOCALS)
         return error_catalog.raise(.fn_frame_exceeds_max_locals, loc, .{ .base = f.slot_base, .arity = m.arity, .max = MAX_LOCALS });
 
-    var locals: [MAX_LOCALS]Value = [_]Value{.nil_val} ** MAX_LOCALS;
+    var locals: [MAX_LOCALS]Value = undefined;
+    @memset(locals[0..fs], .nil_val);
     if (f.closure_bindings) |snap| {
         @memcpy(locals[0..snap.len], snap);
     }
@@ -1274,7 +1290,7 @@ fn callMethodImpl(rt: *Runtime, env: *Env, f: *Function, args: []const Value, lo
     // leaves `evalChunk` null and always reaches the `eval(...)` line.
     if (m.bytecode) |chunk| {
         if (rt.vtable) |vt| {
-            if (vt.evalChunk) |ec| return ec(rt, env, &locals, @ptrCast(chunk));
+            if (vt.evalChunk) |ec| return ec(rt, env, locals[0..fs], @ptrCast(chunk));
         }
     }
     // A deserialized (AOT) fn has bytecode but only a sentinel body; it must
@@ -1297,7 +1313,7 @@ fn callMethodImpl(rt: *Runtime, env: *Env, f: *Function, args: []const Value, lo
         // ADR-0125: in-process eval budget — TreeWalk fn-tail-recur back-edge
         // (parity with the VM + loop* polls). Unmetered = one optional unwrap.
         if (rt.eval_budget) |*budget| try budget.tick(rt.io);
-        if (eval(rt, env, &locals, m.body)) |result| {
+        if (eval(rt, env, locals[0..fs], m.body)) |result| {
             return result;
         } else |err| switch (err) {
             error.RecurSignaled => {

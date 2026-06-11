@@ -202,6 +202,17 @@ pub const FnMethod = struct {
     /// when `has_rest` is false, `arity + 1` otherwise.
     params: []const []const u8,
     body: *const Node,
+    /// ADR-0130 frame-rooting (O-014 follow-up): the exact number of local slots
+    /// this method's frame uses (captures + params + body let*/loop high-water),
+    /// computed by `analyzeFnMethod`. `callMethodImpl` inits + GC-roots only
+    /// `locals[0..frame_slots]` instead of the full 256, cutting the per-call
+    /// ~2 KB nil-init. **Sentinel 0 = "unknown" → fall back to the full
+    /// MAX_LOCALS init** (safe for any FnMethod not produced by the analyzer; the
+    /// only analyzer case that yields 0 is a no-arg / no-local / no-capture body,
+    /// which has nothing to init anyway). MUST be ≥ every slot accessed at
+    /// runtime — a too-low value is a GC UAF / slot_out_of_range (the O-005
+    /// failure modes); verified under CLJW_GC_TORTURE.
+    frame_slots: u16 = 0,
 };
 
 /// `(fn* [params] body)` or `(fn* ([params] body1) ([params] body2) ...)`.

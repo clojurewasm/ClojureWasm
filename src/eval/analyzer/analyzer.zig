@@ -131,6 +131,14 @@ pub const Scope = struct {
     parent: ?*const Scope = null,
     bindings: std.StringHashMapUnmanaged(u16) = .empty,
     next_slot: u16 = 0,
+    /// ADR-0130 frame-rooting (O-014 follow-up): the enclosing fn-method's
+    /// running max slot high-water. Chain-inherited (let*/loop share it); a
+    /// nested `fn*` gets a FRESH one (its slots live in its own frame). Every
+    /// `declare` bumps `*frame_max` to the post-increment `next_slot`, so it
+    /// captures the peak across sibling `let*`s (which reuse slots). The
+    /// fn-method root sets it; `analyzeFnMethod` reads it back as the exact
+    /// frame size so `callMethodImpl` inits + GC-roots only the used slots.
+    frame_max: ?*u16 = null,
     /// Innermost deftype-method mutable-field context, or null. Chain-inherited
     /// (copied in `child`/`childWithRecur`) like `recur_target`.
     mutable_fields: ?*const MutFieldCtx = null,
@@ -154,6 +162,7 @@ pub const Scope = struct {
         return .{
             .parent = parent,
             .next_slot = parent.next_slot,
+            .frame_max = parent.frame_max,
             .mutable_fields = parent.mutable_fields,
             .recur_target = parent.recur_target,
             .recur_target_depth = parent.recur_target_depth + 1,
@@ -168,6 +177,10 @@ pub const Scope = struct {
         return .{
             .parent = parent,
             .next_slot = parent.next_slot,
+            // Inherited by default (loop* shares the enclosing fn-method's frame);
+            // `analyzeFnMethod` OVERRIDES this with a fresh counter for an fn body
+            // (a nested fn*'s slots live in its own frame, not the outer's).
+            .frame_max = parent.frame_max,
             .mutable_fields = parent.mutable_fields,
             .recur_target = target,
             .recur_target_depth = 0,
@@ -179,6 +192,12 @@ pub const Scope = struct {
         const slot = self.next_slot;
         try self.bindings.put(alloc, name, slot);
         self.next_slot += 1;
+        // ADR-0130 frame-rooting: track the fn-method's peak slot use (used by
+        // sibling let*s reuse slots, so the max — not the final next_slot — is
+        // the frame size). Bump the shared counter to the post-increment value.
+        if (self.frame_max) |fm| {
+            if (self.next_slot > fm.*) fm.* = self.next_slot;
+        }
         return slot;
     }
 

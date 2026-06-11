@@ -177,16 +177,27 @@ fn analyzeFnMethod(
     else
         Scope{ .recur_target = .{ .arity = recur_arity, .slot_base = 0, .kind = .fn_kw } };
     defer child_scope.deinit(arena);
+    // ADR-0130 frame-rooting: a FRESH per-method slot high-water (overrides the
+    // inherited counter so a nested fn*'s slots do NOT pollute the outer method's
+    // count — the exact mistake O-005 made). `declare` (params + body let*/loop)
+    // bumps it; `&fm` outlives the synchronous body analysis below.
+    var fm: u16 = 0;
+    child_scope.frame_max = &fm;
     for (param_names.items) |name| {
         _ = try child_scope.declare(arena, name);
     }
 
     const body_node = try analyzeBody(arena, rt, env, &child_scope, mf.body_forms, form, macro_table);
+    // Exact frame size = max(body high-water, capture+param region). The second
+    // term guarantees coverage of the closure captures [0, slot_base) + params
+    // even for a body that declares no further locals.
+    const frame_slots: u16 = @max(fm, slot_base + recur_arity);
     return .{
         .arity = arity,
         .has_rest = has_rest,
         .params = try arena.dupe([]const u8, param_names.items),
         .body = body_node,
+        .frame_slots = frame_slots,
     };
 }
 
