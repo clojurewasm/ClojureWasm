@@ -51,10 +51,10 @@ Then (the examples assume `cljw` is on your `PATH`):
 
 ```sh
 # Call a WebAssembly module compiled from another language, like a function
-cljw -e '(wasm/call (wasm/load "examples/wasm/add.wasm") "add" 40 2)'   ;=> 42
+cljw -e '(wasm/call (wasm/load "examples/wasm/add.wasm") "add" 40 2)'   # => 42
 
 # Evaluate an expression
-cljw -e '(->> (range) (filter even?) (take 5))'     ;=> (0 2 4 6 8)
+cljw -e '(->> (range) (filter even?) (take 5))'     # => (0 2 4 6 8)
 
 # Run a file
 cljw script.clj
