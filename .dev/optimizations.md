@@ -68,6 +68,8 @@
 
 | O-024 | `runtime/regex/match.zig` (ThreadList reuse) + `lang/primitive/regex.zig` (`re-find-from` fromSlice) | `re-find-from` (backs `re-seq`) built `[match start end]` via THREE persistent-vector `conj` copies per match + `findFrom` alloc'd 2 ThreadLists per scanned position | Build the 3-tuple in ONE `vector.fromSlice`; allocate the matcher's `current`/`next` ThreadLists ONCE per `findFrom` scan and `clear`+reuse them per position (was alloc+free per position) | regex_count's malloc profile was dominated by these per-match allocs. **regex_count 55→45 ms** (Python 24.8; the fromSlice cut is the win, the ThreadList reuse is a companion alloc reduction — neutral on this short string, helps long scans). 10-run ReleaseSafe | `zig build test` ×2 (diff oracle incl. regex suite) + `CLJW_GC_TORTURE` (`(re-seq #"\d+" …)`→5) + spot-check re-seq/re-find/lookahead | D-386 |
 
+| O-025 | `lang/clj/clojure/core.clj` — `update-in` indexed descent | The 3-arg `update-in` recursed via `(next ks)`, which on a VECTOR path (the common shape) allocates a subvec/seq view per level | `-update-in-idx` walks the path by INDEX (`(nth ks i)`, O(1) on a vector) passing the path unchanged — no per-level `next-ks` alloc. The variadic `& args` arity keeps the `next` form | **nested_update 27→25 ms** (Python 20.5; 1.33×→1.22×). The residual is the get+assoc per level (inherent). 10-run ReleaseSafe | `zig build test` ×2 (diff oracle) + spot-check vector path `[:a :b :c]`→inc + list path `(:a :b)`→+10 | D-386 |
+
 ## Identified high-ROI candidates (measured, not yet implemented)
 
 Ranked by ROI (impact × frequency / effort·risk). Measured 2026-05-31 on

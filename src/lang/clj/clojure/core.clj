@@ -762,17 +762,24 @@
 ;; `(update-in m ks f & args)` — apply `f` (with trailing `args`) to
 ;; the value at the nested path `ks`. Recursive descent like assoc-in;
 ;; the leaf calls `(apply f old args)`.
-;; PERF: a 3-arg fast arity avoids the variadic rest-pack + `apply` + `into` on
-;; the hot no-extra-args path (`(update-in m ks inc)` in a tight loop recurses
-;; directly + calls `f` directly). The variadic arity keeps the `& args` form
-;; [refs: O-020, D-386].
+;; PERF: O-025 indexed descent for the 3-arg fast path — `(nth ks i)` per level
+;; instead of `(next ks)`, which on a vector path (the common shape) allocates a
+;; subvec/seq view EACH level. The path is passed unchanged + walked by index, so
+;; `(update-in m [:a :b :c] inc)` ×10000 (nested_update) pays no per-level next-ks
+;; alloc. [refs: O-025, D-386]
+(def -update-in-idx
+  (fn* [m ks f i n]
+    (let [k (nth ks i)
+          ni (inc i)]
+      (if (< ni n)
+        (assoc m k (-update-in-idx (get m k) ks f ni n))
+        (assoc m k (f (get m k)))))))
+;; PERF: a 3-arg fast arity avoids the variadic rest-pack + `apply` + `into`
+;; (O-020) and descends by index (O-025). The variadic arity keeps the `& args`
+;; form. [refs: O-020, O-025, D-386].
 (def update-in
   (fn*
-    ([m ks f]
-     (let [k (first ks) nks (next ks)]
-       (if nks
-         (assoc m k (update-in (get m k) nks f))
-         (assoc m k (f (get m k))))))
+    ([m ks f] (-update-in-idx m ks f 0 (count ks)))
     ([m ks f & args]
      (let [k (first ks) nks (next ks)]
        (if nks
