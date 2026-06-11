@@ -2317,6 +2317,14 @@ active:
       all-or-nothing — no resume-from-middle, no incremental "only what changed"
       run, no tiered partial-then-full. A throughput drain on the perf campaign
       (many source commits → many gates); user-flagged for review 2026-06-11.
+      SLICE 1 LANDED (timing: total wall + slowest-N, 6a0da79e). SLICE 2 LANDED
+      (2026-06-11): `--resume` — a content-fingerprint ledger (`.dev/.gate_ledger`,
+      keyed on gate_state_hash) skips steps already-passed for the current source;
+      a re-run after a timeout CONTINUES instead of redoing from scratch. Remaining
+      gap (3): incremental "only-affected" selection (a code change still flips the
+      whole-tree FP → full re-run); a tiered/affected-subset default is the next
+      slice. Campaign uses `--serial-e2e --resume` + the fast-mode in
+      `.dev/perf_campaign_essence.md` (per-commit = diff oracle, e2e batched).
     category: "tooling"
     barrier: |-
       Not blocked — a design/review task, deferred only by priority (user: "next or

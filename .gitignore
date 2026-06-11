@@ -36,3 +36,4 @@ private/
 # clojure-lsp / clj-kondo caches (appear when LSP analyses verified_projects/*.clj)
 .clj-kondo/
 .lsp/
+.dev/.gate_ledger

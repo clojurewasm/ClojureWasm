@@ -37,6 +37,7 @@ ONLY_STEPS=""
 # Steps that must stay serial are listed in SERIAL_STEPS below. --serial-e2e
 # forces the old sequential path (used to validate parity).
 PARALLEL_E2E=1
+RESUME=0
 E2E_JOBS="${E2E_JOBS:-8}"
 # ADR-0107 two-tier gate: --smoke runs the fast, contention-tolerant correctness
 # core (zig build test ×2 = the FULL dual-backend diff oracle + all unit, + lint
@@ -76,6 +77,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --serial-e2e)
             PARALLEL_E2E=0
+            shift
+            ;;
+        --resume)
+            # D-385: skip steps that already passed for the CURRENT source
+            # content (content-fingerprint keyed). A re-run after a timeout
+            # continues instead of redoing from scratch. A code change flips the
+            # fingerprint → the ledger no longer matches → full re-run (safe).
+            RESUME=1
             shift
             ;;
         --jobs)
@@ -150,6 +159,13 @@ run_step() {
         return 0
     fi
 
+    # D-385 resume: this step already passed for the current source content.
+    if resume_done "$name"; then
+        echo "[resume-skip] $name"
+        STEPS_SKIPPED+=("$name")
+        return 0
+    fi
+
     # Defer functional e2e into the parallel pool (flushed at the end).
     # Optional steps and perf-sensitive steps stay on the serial path.
     if (( PARALLEL_E2E )) && [[ "$name" == e2e_* ]] && [[ -z "$optional" ]] \
@@ -165,6 +181,7 @@ run_step() {
         local elapsed=$(( $(date +%s) - start ))
         echo "    [pass] (${elapsed}s)"
         STEPS_PASSED+=("$name")
+        record_pass "$name"
         STEP_TIMES+=("$elapsed $name")  # D-385: per-step timing for the slowest-N summary
     else
         local exit_code=$?
@@ -218,6 +235,7 @@ flush_e2e_queue() {
         if [[ "$res" == pass* ]]; then
             echo "    [pass] ${name} (${res#pass }s)"
             STEPS_PASSED+=("$name")
+            record_pass "$name"
             STEP_TIMES+=("${res#pass } $name")  # D-385: per-step timing for the slowest-N summary
         else
             echo "    [fail] ${name} (exit ${res#fail })"
@@ -259,6 +277,19 @@ print_summary() {
     fi
     return 0
 }
+
+# --- D-385 resume ledger ---
+# A step that passed for the CURRENT source content (the gate_state_hash
+# fingerprint of src/ + test/ + build.zig*) need not re-run. `record_pass`
+# appends `<FP> <name>` as each step passes; `--resume` skips lines already
+# present. A fresh (non-resume) run truncates the ledger so it rebuilds; a
+# content change flips FP so old lines never match (full re-validate). The
+# ledger is gitignored scratch (`.dev/.gate_ledger`).
+GATE_LEDGER="${PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}/.dev/.gate_ledger"
+GATE_FP="$(bash "${PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}/scripts/gate_state_hash.sh" 2>/dev/null || echo nofp)"
+if (( ! RESUME )); then : > "$GATE_LEDGER" 2>/dev/null || true; fi
+record_pass() { printf '%s %s\n' "$GATE_FP" "$1" >> "$GATE_LEDGER" 2>/dev/null || true; }
+resume_done() { (( RESUME )) && grep -qxF "$GATE_FP $1" "$GATE_LEDGER" 2>/dev/null; }
 
 # --- Steps ---
 
