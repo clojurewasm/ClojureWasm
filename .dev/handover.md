@@ -12,38 +12,40 @@
   (`bench/run_bench.sh --quick` / `scripts/perf.sh`), never `time zig-out/bin/cljw`
   (Debug) — `.claude/rules/perf_measure_release.md`.
 
-- **First commit on resume MUST be: the lazy-seq fused-reduce lever** (sieve/mfr —
-  the dispatch arc is DONE, these are alloc/lazy-bound). The cljw-clean plan (IReduce-
-  on-lazy-source vs chunk-the-cons-walk vs transduce-backed) is in
-  `private/notes/9.2.S-v0-perf-deep-survey.md § DISPATCH ARC COMPLETE`. NOT ROI-gated
-  (relentless until cljw beats Python on EVERY bench, then toward v0); fast-mode in
+- **First commit on resume MUST be: one of the 2 remaining cold-losers** — regex_count
+  (45 vs 24.8, 1.8× — the WORST) or sieve (28 vs 20, 1.4×). Both are STRUCTURAL levers
+  (not the alloc/variadic quick-wins already done): regex needs a simple-pattern
+  matcher fast-path (literal / char-class loop, skipping the Pike-VM per-position
+  setup — `runtime/regex/match.zig`); sieve needs the nested-filter-chain collapse
+  (intricate — interleaved `rest`s, `core.clj` filter). NOT ROI-gated; fast-mode in
   `.dev/perf_campaign_essence.md`. Autonomous; only an explicit user stop halts.
 
-  **Current standing (cljw vs Python ms, 2026-06-11)**: fib 24=24, tak 13<18 (WIN),
-  arith_loop 50<58 (WIN), nested_update 24 vs 20 (1.2×), sieve 33 vs 20 (1.65×),
-  map_filter_reduce 27 vs 16 (1.7×). Session arc: fib 56→24, arith_loop 170→50,
-  nested_update 58→24.
+  **Current standing (cljw vs Python COLD ms, 2026-06-11 — authoritative
+  `compare_langs --lang=cw,py`)**: cljw WINS/parity on the vast majority (its ~ms
+  startup beats Python's ~30ms on every startup-light bench). Beats/parity: fib 26≈24,
+  tak (WIN), arith_loop (WIN), **mfr 15<16 (WIN)**, nested_update 25 vs 20 (1.22×),
+  gc_stress 32 vs 30 (1.07×), bigint/lazy_chain (~parity). LOSE: **regex_count 45 vs
+  24.8 (1.8×)**, **sieve 28 vs 20 (1.4×)** — the 2 structural levers above.
 
-  **Landed this session (all on `main`, diff-oracle-validated per fast-mode)**:
-  ADR-0131 in-VM frame stack (2a arena O-016 / 2b flatten — fixes the deep-recursion
-  SIGSEGV; do NOT re-do); **the D-386 DISPATCH ARC, now COMPLETE** — O-017 inline
-  stepOnce, O-018 `op_*_local_const`, O-019 `op_*_locals`, O-021 `op_branch_*`
-  (compare+branch), O-022 `op_recur_loop` (loop back-edge) → fib/tak/arith_loop now
-  beat/match Python; **O-020 update-in 3-arg arity** (nested_update 58→24); + the
-  velocity MECHANIZATION (gate `--resume` D-385 slice-2, `perf_campaign_essence.md`
-  fast-mode, `scripts/perf_campaign_remind.sh` lookahead hook); + the **v0 deep
-  survey** (`private/notes/9.2.S-v0-perf-deep-survey.md`). PIVOT finding: the fib tax
-  was per-instruction DISPATCH, not call structure — superinstructions were the fix.
+  **Landed this session (12 perf wins O-016..027, all `main`, diff-oracle + (for
+  GC/frame) torture-validated; ubuntunote 311/0 through O-026)**: ADR-0131 in-VM frame
+  stack (2a/2b — do NOT re-do); **D-386 DISPATCH ARC** (O-017 inline, O-018
+  `op_*_local_const`, O-019 `op_*_locals`, O-021 `op_branch_*`, O-022 `op_recur_loop`)
+  → fib/tak/arith_loop beat/match Python; **O-023 fused-reduce** (mfr 27→15, beats
+  Python — LazySeq `fuse` slot + `-fused-reduce` over the existing transduce engine);
+  **O-024** regex one-alloc tuple + ThreadList reuse (regex 55→45); **O-025** update-in
+  indexed (27→25); **O-026** one-alloc array-map literal (gc_stress 41→32); **O-027**
+  not= 2-arg arity (sieve 32→28); + the velocity MECHANIZATION + the v0 deep survey +
+  the **full 38-bench sweep** (`9.2.S-v0-perf-deep-survey.md §10` — the real cold-losers
+  are compute-heavy, NOT the startup-light benches).
 
-  **Next levers** (v0 catalogue, re-derive cljw-clean F-004): fused-reduce / IReduce-
-  on-lazy-source (v0 24C.1, mfr 1293→14) for map_filter_reduce; filter-chain collapse
-  (24C.7) for sieve; a small update-in/assoc-in Zig builtin (24C.9) for nested_update
-  (1.2×, close); then the JIT (37.4, cross-platform required) for the last mile.
+  **Next levers** (after regex/sieve): JIT (v0 37.4, cross-platform required) for the
+  last mile toward v0's numbers; a Zig update-in builtin (GC-careful) to fully close
+  nested_update. The alloc/variadic quick-wins are exhausted.
 
-  **OWED (validation debt — fast-mode defers the heavy e2e)**: full e2e ran 311/0 on
-  ubuntunote at HEAD dd4a56db (O-019); O-020/021/022 are validating on ubuntunote NOW
-  (`scripts/run_remote_ubuntu.sh`, the tree is clean). The local serial gate times out
-  (D-385) — prefer ubuntunote or `--serial-e2e --resume`.
+  **OWED**: full e2e ran 311/0 on ubuntunote through O-026 (`28d97118`); O-027 (.clj
+  not=) is validating on ubuntunote NOW. Prefer ubuntunote / `--serial-e2e --resume`
+  (the local serial gate times out, D-385).
 
   **Measurement cadence (keep iteration fast)**: per iteration a FOCUSED quick bench
   only (`bash bench/run_bench.sh --quick --bench=<name>`); do NOT full-bench or
