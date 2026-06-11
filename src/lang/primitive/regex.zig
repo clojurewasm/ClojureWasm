@@ -143,13 +143,17 @@ pub fn reFindFrom(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     const start_i = args[2].asInteger();
     if (start_i < 0 or start_i > input.len) return .nil_val;
     const result = (try regex_match.findFrom(rt.gpa, r.program, input, @intCast(start_i))) orelse return .nil_val;
-    var v = vector_collection.empty();
-    // The match element is the `re-find` shape (group vector when the pattern
-    // has groups, else the whole-match string); start/end advance the re-seq loop.
-    v = try vector_collection.conj(rt, v, try buildMatchResult(rt, r.program, input, result));
-    v = try vector_collection.conj(rt, v, Value.initInteger(@intCast(result.start)));
-    v = try vector_collection.conj(rt, v, Value.initInteger(@intCast(result.end)));
-    return v;
+    // PERF: D-386 (O-024) build `[match start end]` in ONE `fromSlice` alloc, not
+    // three persistent-vector `conj` copies (re-seq calls this per match ×10000;
+    // the 3-conj churn dominated regex_count's malloc profile). The match element
+    // is the `re-find` shape (group vector / whole-match string); start/end advance
+    // the re-seq loop. [refs: O-024]
+    const match_val = try buildMatchResult(rt, r.program, input, result);
+    return try vector_collection.fromSlice(rt, &.{
+        match_val,
+        Value.initInteger(@intCast(result.start)),
+        Value.initInteger(@intCast(result.end)),
+    });
 }
 
 /// Coerce a Value to `*const Regex`. Accepts an existing regex

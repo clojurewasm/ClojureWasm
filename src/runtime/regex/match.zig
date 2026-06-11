@@ -84,9 +84,15 @@ pub fn findFrom(
     input: []const u8,
     start: u32,
 ) MatchError!?MatchResult {
+    // PERF: D-386 (O-024) allocate the two ThreadLists ONCE for the whole scan;
+    // tryMatchAt clears + reuses them per position (was: alloc+free per position).
+    var current = try ThreadList.init(alloc, program.insts.len);
+    defer current.deinit(alloc);
+    var next = try ThreadList.init(alloc, program.insts.len);
+    defer next.deinit(alloc);
     var pos: u32 = start;
     while (pos <= input.len) : (pos += 1) {
-        if (try tryMatchAt(alloc, program, input, pos)) |result| return result;
+        if (try tryMatchAt(&current, &next, alloc, program, input, pos)) |result| return result;
     }
     return null;
 }
@@ -98,7 +104,11 @@ pub fn matchFull(
     program: *const compile.Program,
     input: []const u8,
 ) MatchError!?MatchResult {
-    const result = (try tryMatchAt(alloc, program, input, 0)) orelse return null;
+    var current = try ThreadList.init(alloc, program.insts.len);
+    defer current.deinit(alloc);
+    var next = try ThreadList.init(alloc, program.insts.len);
+    defer next.deinit(alloc);
+    const result = (try tryMatchAt(&current, &next, alloc, program, input, 0)) orelse return null;
     if (result.end != input.len) return null;
     return result;
 }
@@ -173,7 +183,14 @@ fn addThread(
             // numbering); a NEGATIVE lookahead exports no captures (it succeeds
             // only when the sub fails, so there is nothing to capture).
             const sub_prog = compile.Program{ .insts = lk.sub, .capture_count = 0, .flags = program.flags };
-            const m = try tryMatchAt(alloc, &sub_prog, input, pos);
+            // Lookahead runs a SEPARATE sub-program (different inst count) — it
+            // needs its own ThreadLists (cannot reuse the outer scan's); rare
+            // path (only lookahead patterns), so the per-eval alloc is fine.
+            var sub_current = try ThreadList.init(alloc, sub_prog.insts.len);
+            defer sub_current.deinit(alloc);
+            var sub_next = try ThreadList.init(alloc, sub_prog.insts.len);
+            defer sub_next.deinit(alloc);
+            const m = try tryMatchAt(&sub_current, &sub_next, alloc, &sub_prog, input, pos);
             if ((m != null) != lk.negate) {
                 var next_caps = caps;
                 if (m) |res| if (!lk.negate) {
@@ -225,20 +242,24 @@ fn isWordByte(b: u8) bool {
 /// Returns the longest greedy match anchored at `start`, or null
 /// if no thread reaches `.match` from `start`.
 fn tryMatchAt(
+    current: *ThreadList,
+    next: *ThreadList,
     alloc: std.mem.Allocator,
     program: *const compile.Program,
     input: []const u8,
     start: u32,
 ) MatchError!?MatchResult {
-    var current = try ThreadList.init(alloc, program.insts.len);
-    defer current.deinit(alloc);
-    var next = try ThreadList.init(alloc, program.insts.len);
-    defer next.deinit(alloc);
+    // PERF: D-386 (O-024) `current`/`next` are caller-owned + reused across every
+    // position in `findFrom` (a single `clear` = a memset of `seen` + retained
+    // ArrayList capacity), instead of an alloc+free of two ThreadLists per
+    // position. re-seq drove ~30 ThreadList allocs per call ×10000 → ~2. [refs: O-024]
+    current.clear();
+    next.clear();
 
     var best: ?MatchResult = null;
     var pos: u32 = start;
     const empty: [MAX_SLOTS_INLINE]i32 = [_]i32{-1} ** MAX_SLOTS_INLINE;
-    try addThread(&current, alloc, program, 0, pos, input, empty);
+    try addThread(current, alloc, program, 0, pos, input, empty);
 
     while (true) {
         // Record any .match in the current set — greedy semantics keep
@@ -259,14 +280,14 @@ fn tryMatchAt(
         const next_pos = pos + 1;
         for (current.threads.items) |t| {
             switch (program.insts[t.pc]) {
-                .char => |cc| if (c == cc) try addThread(&next, alloc, program, t.pc + 1, next_pos, input, t.caps),
-                .class => |cls| if (cls.contains(c)) try addThread(&next, alloc, program, t.pc + 1, next_pos, input, t.caps),
-                .range => |r| if (c >= r.lo and c <= r.hi) try addThread(&next, alloc, program, t.pc + 1, next_pos, input, t.caps),
+                .char => |cc| if (c == cc) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps),
+                .class => |cls| if (cls.contains(c)) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps),
+                .range => |r| if (c >= r.lo and c <= r.hi) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps),
                 .match => {},
                 else => {}, // epsilon ops are pre-expanded by addThread
             }
         }
-        std.mem.swap(ThreadList, &current, &next);
+        std.mem.swap(ThreadList, current, next);
         next.clear();
         pos = next_pos;
     }
