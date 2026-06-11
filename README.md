@@ -5,7 +5,7 @@
 <h1 align="center">ClojureWasm</h1>
 
 <p align="center">
-  <em>A from-scratch Clojure runtime in Zig — no JVM, WebAssembly at the core.</em>
+  <em>A JVM-free Clojure runtime in Zig, with a WebAssembly FFI.</em>
 </p>
 
 > [!NOTE]
@@ -16,48 +16,55 @@
 
 ## What it is
 
-ClojureWasm is a ground-up implementation of Clojure written in Zig 0.16. It
-runs as a small native binary with no JVM, embeds a WebAssembly engine so
-Clojure can call modules compiled from other languages, and is designed to
-compile to WebAssembly itself.
+ClojureWasm is a Clojure runtime written from scratch in Zig and Clojure, with
+no JVM. It builds to a small native binary (arm64 / amd64) that starts in
+milliseconds. Its main feature is a **WebAssembly FFI**: from your Clojure code
+you can load a module compiled from another language — Rust, Go, Zig, C — and
+call it like an ordinary function. The idea is to stay in the Clojure world and
+still use what other languages have already built.
 
 ## Features
 
-- **A real numeric tower** — `Long`→`BigInt` promotion, `Ratio`, `BigDecimal`.
-- **Software transactional memory** — `ref` / `dosync` / `alter` / `commute` / `ensure`.
-- **Concurrency** — `agent`, `future` / `promise` / `delay`, `atom`, reference watches.
-- **Lazy and chunked sequences**, transducers.
-- **Protocols, records, multimethods**, `deftype` / `reify`.
-- **Namespaces** and a **CIDER-compatible nREPL**, plus a growing set of
-  `clojure.*` standard-library namespaces.
-- **WebAssembly as an FFI** — load a sandboxed module compiled from Rust / Zig /
-  C and call it like a namespace.
-- **A dual backend** — every end-to-end test runs on both a tree-walking
-  interpreter and a bytecode VM in lockstep; a disagreement fails the build.
+- **Small and quick to start** — about 3.8 MB, starting in ~5 ms, which suits
+  short-lived, start-and-stop workloads (CLI tools, serverless, scripts).
+- **A lot of everyday Clojure runs** — `clojure.core` plus a growing set of
+  standard-library namespaces (`clojure.string` / `set` / `walk` / `zip` /
+  `edn` / `data.json` / `data.csv` / `math` / `pprint` / `test` / `tools.cli` …).
+- **A CIDER-compatible nREPL** — `cljw nrepl` and connect your editor to
+  evaluate real Clojure live.
+- **WebAssembly as an FFI** — `(wasm/load "mod.wasm")` then
+  `(wasm/call m "fn" …)`: a sandboxed module from any language, called like a
+  namespace.
+- **Single-binary builds** — `cljw build script.clj -o app` compiles your
+  program (and the runtime) into one self-contained executable.
 
 ## Quickstart
 
-Build it (needs Zig 0.16 — `direnv allow` loads it via Nix, or `nix develop`):
+Build the optimized, Wasm-enabled binary (needs Zig 0.16 — `direnv allow` loads
+it via Nix, or `nix develop`):
 
 ```sh
-zig build
-alias cljw=./zig-out/bin/cljw
+zig build -Dwasm -Doptimize=ReleaseSafe   # → ./zig-out/bin/cljw
 ```
 
-Then:
+Then (the examples assume `cljw` is on your `PATH`):
 
 ```sh
-# Exact rational arithmetic — a real Ratio, not a float
-cljw -e '(/ 1 3)'                                  ;=> 1/3
+# Call a WebAssembly module compiled from another language, like a function
+cljw -e '(wasm/call (wasm/load "examples/wasm/add.wasm") "add" 40 2)'   ;=> 42
 
-# Arbitrary-precision integers
-cljw -e '(* (bigint 1000000000000) 1000000000000)' ;=> 1000000000000000000000000N
+# Evaluate an expression
+cljw -e '(->> (range) (filter even?) (take 5))'     ;=> (0 2 4 6 8)
 
-# Software transactional memory
-cljw -e '(let [a (ref 0)] (dosync (alter a + 41) (alter a inc)) @a)'  ;=> 42
+# Run a file
+cljw script.clj
 
-# A REPL (and an nREPL via `cljw nrepl` for CIDER)
+# A REPL — and an nREPL for CIDER / your editor
 cljw
+cljw nrepl --port 7888
+
+# Compile a program to a single self-contained native binary
+cljw build script.clj -o app
 ```
 
 ## Try it live
@@ -72,15 +79,13 @@ cljw
 
 ## Documentation
 
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — a 5-minute orientation (zones, dual
-  backend, error system, compatibility tiers).
-- [`docs/clojure_vs_clojurewasm.md`](./docs/clojure_vs_clojurewasm.md) —
-  intentional divergences from JVM Clojure and the not-yet-implemented surface.
-- [`compat_tiers.yaml`](./compat_tiers.yaml) — the tiered JVM-compatibility
-  ledger.
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — a short orientation to how the runtime
+  is put together.
+- [`docs/clojure_vs_clojurewasm.md`](./docs/clojure_vs_clojurewasm.md) — what
+  matches JVM Clojure, the intentional divergences, and what is not yet there.
+- [`bench/README.md`](./bench/README.md) — the benchmark catalogue and
+  cross-language cold-start numbers.
 
 ## License
 
 Eclipse Public License 2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
-EPL-2.0 follows the Clojure ecosystem convention (Clojure, Babashka, and SCI use
-EPL-1.0; newer projects such as Malli use EPL-2.0).
