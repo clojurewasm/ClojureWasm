@@ -2,9 +2,8 @@
 //! Bytecode VM dispatch loop — the default backend (F-012, ADR-0005);
 //! TreeWalk is the differential oracle the VM is checked against.
 //! `eval` consumes a `BytecodeChunk` produced by `vm/compiler.zig` and
-//! executes its instructions against a per-frame operand stack of
-//! `OPERAND_STACK_MAX` Values, mirroring TreeWalk's `MAX_LOCALS`
-//! discipline so the recursion bound matches across backends.
+//! executes its instructions against the per-thread operand arena
+//! (`VmArena`, ADR-0131 2a), borrowing a region at `op_base` per invocation.
 //!
 //! Per ADR-0022 the VM must produce bit-for-bit identical Values to
 //! TreeWalk for the same source. Errors raised here therefore reuse
@@ -54,12 +53,6 @@ const Runtime = runtime_mod.Runtime;
 const SourceLocation = error_mod.SourceLocation;
 const Function = tree_walk.Function;
 
-/// Per-frame operand stack ceiling. Matches `tree_walk.MAX_LOCALS` so
-/// the VM's per-call working set equals TreeWalk's. The analyser does
-/// not compute max stack depth; the runtime check raises
-/// `internal_error` if a malformed chunk overflows.
-pub const OPERAND_STACK_MAX: u16 = 256;
-
 /// Per-frame exception-handler stack ceiling. Deep `try` nesting is
 /// rare; oversize raises `internal_error`. Mirrors v1's `HANDLERS_MAX`
 /// but per-call rather than VM-global (cw v2 dispatcher is single-frame
@@ -79,35 +72,60 @@ const Handler = struct {
     kind: HandlerKind,
 };
 
+/// ADR-0131 increment 2a: per-thread reusable VM operand arena. The operand
+/// stack + its parallel loc stack move OFF the per-`eval` host C stack INTO this
+/// shared heap arena, so increment 2b's flattened in-VM call frames can share one
+/// operand region. Each `eval` borrows from the GLOBAL watermark `op_top` (its
+/// operands live at `stack[op_base..op_top]`); a nested reentrant `eval` borrows
+/// above it; `op_top` is restored to `op_base` on return. The live prefix
+/// `stack[0..op_top]` is GC-rooted via the EvalFrame (A1). Allocated lazily on
+/// first use, reused for the thread's life (never freed — matching the other
+/// threadlocal call-scoped state in `dispatch.zig`). `ARENA_SLOTS` is sized so
+/// `op_top` stays within `u16`, keeping `root_set.EvalFrame.sp` unchanged.
+const ARENA_SLOTS: usize = 1 << 14; // 16384; keeps `op_top` within u16
+/// The thread's reusable operand arena: the operand stack + its parallel loc
+/// stack, as inline arrays so the storage is threadlocal STATIC (BSS,
+/// demand-paged) — nothing to allocate or free (a never-freed heap arena leaks
+/// under the test DebugAllocator). `op_top` is the global operand watermark.
+const VmArena = struct {
+    stack: [ARENA_SLOTS]Value = undefined,
+    loc: [ARENA_SLOTS]SourceLocation = undefined,
+    op_top: u16 = 0,
+};
+threadlocal var vm_arena: VmArena = .{};
+
 /// Evaluate a compiled chunk. `locals` is the caller-owned slot array
 /// (typically a fixed 256-entry stack array, matching `tree_walk.eval`).
-/// Returns the value produced by `op_ret`.
+/// Returns the value produced by `op_ret`. The operand stack lives in the
+/// per-thread `VmArena` (ADR-0131 2a), borrowed at `op_base`.
 pub fn eval(
     rt: *Runtime,
     env: *Env,
     locals: []Value,
     chunk: *const BytecodeChunk,
 ) anyerror!Value {
-    var stack: [OPERAND_STACK_MAX]Value = undefined;
-    var sp: u16 = 0;
+    // ADR-0131 2a: borrow this invocation's operand region from the per-thread
+    // arena at `op_base`; restore `op_top` on return so a nested reentrant eval
+    // stacks above us. Operands + parallel locs now live in the arena (`stack`
+    // is `ar.stack`, `sp` is the absolute `ar.op_top`), not on the host C stack.
+    const ar = &vm_arena;
+    const op_base = ar.op_top;
+    defer ar.op_top = op_base;
     var ip: usize = 0;
     var handlers: [HANDLER_STACK_MAX]Handler = undefined;
     var handler_count: u16 = 0;
-    // ADR-0118 cycle 2.5: a parallel stack of per-operand source locations,
-    // mirroring `stack`. Each push records the producing instruction's loc so
-    // `op_call` can publish arg-precise caret positions for a failing callee.
-    var loc_stack: [OPERAND_STACK_MAX]SourceLocation = undefined;
 
     // Publish this invocation's operand-stack roots on the thread's eval-frame
-    // chain so a GC collect() walks live operand Values `stack[0..sp]` + `locals`
-    // (ADR-0091 / D-244 #3b — the per-thread CHAIN built by the op_call recursion).
-    // Runtime-inert today: collect() runs only at quiescent points where this is
-    // off the C stack; the #3b-step2 alloc-boundary safepoint makes it fire
-    // mid-eval for Phase-B workers. Two pointer writes on the hottest path.
+    // chain so a GC collect() walks live operand Values `stack[0..op_top]` +
+    // `locals` (ADR-0091 / D-244 #3b). The arena's whole live prefix is rooted
+    // (each chain EvalFrame over-roots into parent operands — harmless, all live;
+    // each still distinguishes its own `locals`). Runtime-inert today: collect()
+    // runs only at quiescent points; the #3b-step2 alloc-boundary safepoint makes
+    // it fire mid-eval for Phase-B workers.
     // GC-ROOT: A1 — the VM activation's operand stack + locals + chunk constants [ref: .dev/gc_rooting.md §A]
     var gc_frame: root_set.EvalFrame = .{
-        .stack = &stack,
-        .sp = &sp,
+        .stack = &ar.stack,
+        .sp = &ar.op_top,
         .locals = locals,
         // D-251: root this chunk's literal constant pool for its whole
         // execution — a literal is reachable only here until an `op_const`
@@ -146,7 +164,7 @@ pub fn eval(
         if (gc_torture.period != 0 and !root_set.is_registered_worker and gc_torture.tick()) {
             mark_sweep.collectStopTheWorld(&rt.gc, .{ .envs = &.{env}, .gc = &rt.gc }, false);
         }
-        const step_result = stepOnce(rt, env, locals, chunk, &stack, &loc_stack, &sp, &ip, &handlers, &handler_count);
+        const step_result = stepOnce(rt, env, locals, chunk, &ar.stack, &ar.loc, &ar.op_top, &ip, &handlers, &handler_count);
         if (step_result) |maybe_return| {
             if (maybe_return) |v| return v;
         } else |err| {
@@ -166,7 +184,7 @@ pub fn eval(
                 const h = handlers[handler_count];
                 dispatch.vm_pending_reraise = thrown_err;
                 ip = h.catch_ip;
-                sp = h.saved_sp;
+                ar.op_top = h.saved_sp;
                 continue;
             }
             // ADR-0060: convert a catchable internal error (error_catalog)
@@ -188,19 +206,19 @@ pub fn eval(
                 handler_count -= 1;
                 const h = handlers[handler_count];
                 ip = h.catch_ip;
-                sp = h.saved_sp;
+                ar.op_top = h.saved_sp;
                 const thrown = dispatch.last_thrown_exception orelse
                     return raiseInternal("vm: ThrownValue without payload");
                 dispatch.last_thrown_exception = null;
                 dispatch.last_thrown_context = null;
-                if (sp >= OPERAND_STACK_MAX)
+                if (ar.op_top >= ar.stack.len)
                     return raiseInternal("vm: handler unwind overflow");
-                stack[sp] = thrown;
+                ar.stack[ar.op_top] = thrown;
                 // ADR-0118 cycle 2.5: the caught value has no compiled operand
                 // loc; record an unknown loc so a later op_call never reads an
                 // uninitialized loc_stack slot (renderer falls back gracefully).
-                loc_stack[sp] = .{};
-                sp += 1;
+                ar.loc[ar.op_top] = .{};
+                ar.op_top += 1;
                 continue;
             }
             return err;
@@ -217,8 +235,8 @@ fn stepOnce(
     env: *Env,
     locals: []Value,
     chunk: *const BytecodeChunk,
-    stack: *[OPERAND_STACK_MAX]Value,
-    loc_stack: *[OPERAND_STACK_MAX]SourceLocation,
+    stack: []Value,
+    loc_stack: []SourceLocation,
     sp_ptr: *u16,
     ip_ptr: *usize,
     handlers: *[HANDLER_STACK_MAX]Handler,
@@ -251,7 +269,7 @@ fn stepOnce(
             @branchHint(.likely);
             if (instr.operand >= chunk.constants.len)
                 return raiseInternal("vm: op_const constant index out of range");
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = chunk.constants[instr.operand];
             sp += 1;
@@ -259,7 +277,7 @@ fn stepOnce(
         .op_load_local => {
             if (instr.operand >= locals.len)
                 return error_catalog.raise(.slot_out_of_range, .{}, .{ .form = "Local", .index = instr.operand, .max = locals.len });
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = locals[instr.operand];
             sp += 1;
@@ -295,7 +313,7 @@ fn stepOnce(
             var_ptr.flags.dynamic = (instr.operand & opcode_mod.DEF_FLAG_DYNAMIC) != 0;
             var_ptr.flags.macro_ = (instr.operand & opcode_mod.DEF_FLAG_MACRO) != 0;
             var_ptr.flags.private = (instr.operand & opcode_mod.DEF_FLAG_PRIVATE) != 0;
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = Value.encodeHeapPtr(.var_ref, var_ptr);
             sp += 1;
@@ -315,7 +333,7 @@ fn stepOnce(
             var_ptr.flags.dynamic = (instr.operand & opcode_mod.DEF_FLAG_DYNAMIC) != 0;
             var_ptr.flags.macro_ = (instr.operand & opcode_mod.DEF_FLAG_MACRO) != 0;
             var_ptr.flags.private = (instr.operand & opcode_mod.DEF_FLAG_PRIVATE) != 0;
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = Value.encodeHeapPtr(.var_ref, var_ptr);
             sp += 1;
@@ -325,7 +343,7 @@ fn stepOnce(
                 return raiseInternal("vm: op_get_var constant index out of range");
             const var_value = chunk.constants[instr.operand];
             const var_ptr = var_value.decodePtr(*Var);
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = var_ptr.deref();
             sp += 1;
@@ -339,7 +357,7 @@ fn stepOnce(
             const here = env.current_ns orelse
                 return error_catalog.raise(.current_namespace_missing, .{}, .{ .sym = imp.simple });
             try here.addImport(env.alloc, imp.simple, imp.fqcn);
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = Value.nil_val;
             sp += 1;
@@ -417,7 +435,7 @@ fn stepOnce(
             const prev_arg_sources = error_mod.swapArgSources(loc_stack[sp + 1 .. sp + 1 + arg_count]);
             defer _ = error_mod.swapArgSources(prev_arg_sources);
             const result = try vt.callFn(rt, env, callee, args, call_loc);
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             // The result's own loc is the call form (this op pops below sp_entry,
             // so the post-switch sweep does not reach this slot).
@@ -454,7 +472,7 @@ fn stepOnce(
                 defer _ = error_mod.swapArgSources(prev_arg_sources);
                 break :blk try vt.callFn(rt, env, op_var.deref(), &two, instr_loc);
             };
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             loc_stack[sp] = instr_loc;
             stack[sp] = result;
@@ -472,7 +490,7 @@ fn stepOnce(
         },
         .op_dup => {
             if (sp == 0) return raiseInternal("vm: op_dup on empty stack");
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = stack[sp - 1];
             sp += 1;
@@ -497,7 +515,7 @@ fn stepOnce(
             // captures its enclosing scope.
             if (instr.operand >= chunk.constants.len)
                 return raiseInternal("vm: op_make_fn constant index out of range");
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             const template_val = chunk.constants[instr.operand];
             const template = template_val.decodePtr(*const Function);
@@ -660,7 +678,7 @@ fn stepOnce(
                 return raiseInternal("vm: op_match_class constant is not a String");
             const thrown = stack[sp - 1];
             const matches = matchExceptionClass(string_mod.asString(class_val), thrown);
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = if (matches) Value.true_val else Value.false_val;
             sp += 1;
@@ -673,7 +691,7 @@ fn stepOnce(
             const kw_val = chunk.constants[instr.operand];
             const thrown = stack[sp - 1];
             const matches = matchExceptionTypeKeyword(rt, kw_val, thrown);
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = if (matches) Value.true_val else Value.false_val;
             sp += 1;
@@ -694,7 +712,7 @@ fn stepOnce(
                 return raiseInternal("vm: op_in_ns constant is not a String");
             const target_ns = try env.findOrCreateNs(string_mod.asString(name_val));
             env.setCurrentNs(target_ns);
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             // Return the namespace value (clj parity, ADR-0083 / ADR-0085).
             stack[sp] = Env.nsValue(target_ns);
@@ -717,7 +735,7 @@ fn stepOnce(
             if (env.findNs("clojure.core")) |clojure_core_ns| {
                 try env.referAll(clojure_core_ns, env.current_ns.?);
             }
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = Value.nil_val;
             sp += 1;
@@ -736,7 +754,7 @@ fn stepOnce(
             if (env.findNs("clojure.core")) |clojure_core_ns| {
                 try env.referAllWithFilter(clojure_core_ns, env.current_ns.?, f.exclude, f.only);
             }
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = Value.nil_val;
             sp += 1;
@@ -760,7 +778,7 @@ fn stepOnce(
                     return error_catalog.raise(.lib_not_found, .{}, .{ .ns = ns_name });
                 try loader.loadNamespace(rt, env, ns_name, resolved, .{});
             }
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = Value.nil_val;
             sp += 1;
@@ -815,7 +833,7 @@ fn stepOnce(
                     },
                 }
             }
-            if (sp >= OPERAND_STACK_MAX)
+            if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = Value.nil_val;
             sp += 1;
