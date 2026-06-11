@@ -727,12 +727,22 @@
 ;; `(update-in m ks f & args)` — apply `f` (with trailing `args`) to
 ;; the value at the nested path `ks`. Recursive descent like assoc-in;
 ;; the leaf calls `(apply f old args)`.
+;; PERF: a 3-arg fast arity avoids the variadic rest-pack + `apply` + `into` on
+;; the hot no-extra-args path (`(update-in m ks inc)` in a tight loop recurses
+;; directly + calls `f` directly). The variadic arity keeps the `& args` form
+;; [refs: O-020, D-386].
 (def update-in
-  (fn* [m ks f & args]
-    (let [k (first ks) nks (next ks)]
-      (if nks
-        (assoc m k (apply update-in (into [(get m k) nks f] args)))
-        (assoc m k (apply f (into [(get m k)] args)))))))
+  (fn*
+    ([m ks f]
+     (let [k (first ks) nks (next ks)]
+       (if nks
+         (assoc m k (update-in (get m k) nks f))
+         (assoc m k (f (get m k))))))
+    ([m ks f & args]
+     (let [k (first ks) nks (next ks)]
+       (if nks
+         (assoc m k (apply update-in (get m k) nks f args))
+         (assoc m k (apply f (get m k) args)))))))
 
 ;; `(-concat2 x y)` — lazy catenation of two seqables. Walks `x`
 ;; element-by-element under `lazy-seq`, then hands off to `(seq y)`.
