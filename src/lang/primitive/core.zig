@@ -712,6 +712,18 @@ fn writeArgsSpaced(rt: *Runtime, env: *Env, w: *std.Io.Writer, args: []const Val
 /// output (a general bindable `*out*` writer var is a later D-238 slice).
 threadlocal var out_capture: ?*std.Io.Writer.Allocating = null;
 
+/// Redirect `print`/`println`/`prn`/`pr`/`newline` output into `sink` for the
+/// current thread (or back to process stdout when `sink` is null), returning the
+/// previous sink so the caller can restore it. The nREPL eval loop uses this to
+/// capture a form's stdout and stream it to the client as an `out` message;
+/// `with-out-str` uses the same threadlocal (nesting saves/restores). Threadlocal
+/// → each connection thread / worker captures only its own output.
+pub fn setOutCapture(sink: ?*std.Io.Writer.Allocating) ?*std.Io.Writer.Allocating {
+    const saved = out_capture;
+    out_capture = sink;
+    return saved;
+}
+
 fn emitToStdout(rt: *Runtime, env: *Env, args: []const Value, readable: bool, newline: bool) anyerror!Value {
     if (out_capture) |aw| {
         // Capturing (`with-out-str`): render into the in-memory sink, no stdout,

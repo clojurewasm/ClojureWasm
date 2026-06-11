@@ -52,6 +52,7 @@ const Env = @import("../runtime/env.zig").Env;
 const Value = @import("../runtime/value/value.zig").Value;
 const bootstrap = @import("../lang/bootstrap.zig");
 const print = @import("../runtime/print.zig");
+const core_prim = @import("../lang/primitive/core.zig");
 
 /// Run the nREPL server until SIGINT / fatal accept error. Writes a
 /// `.nrepl-port` file in CWD on bind so CIDER + similar clients can
@@ -125,7 +126,7 @@ pub fn run(
         };
         defer stream.close(io);
         session_counter += 1;
-        handleSession(io, gpa, arena, stderr, &rt, &env, &macro_table, stream, session_counter) catch |err| {
+        handleSession(io, arena, stderr, &rt, &env, &macro_table, stream, session_counter) catch |err| {
             try stderr.print("nrepl: session {d} error: {s}\n", .{ session_counter, @errorName(err) });
             try stderr.flush();
             // Continue to accept the next connection.
@@ -135,7 +136,6 @@ pub fn run(
 
 fn handleSession(
     io: std.Io,
-    gpa: std.mem.Allocator,
     arena: std.mem.Allocator,
     stderr: *Writer,
     rt: *Runtime,
@@ -182,7 +182,18 @@ fn handleSession(
         } else if (std.mem.eql(u8, op_name, "describe")) {
             try replyDescribe(arena, conn_writer, session_id_str, id_val);
         } else if (std.mem.eql(u8, op_name, "eval")) {
-            try replyEval(arena, gpa, conn_writer, rt, env, macro_table, request, session_id_str, id_val);
+            // `eval`: run the `code` string, emit one `value` per top-level form.
+            try replyEval(arena, conn_writer, rt, env, macro_table, request, "code", true, session_id_str, id_val);
+        } else if (std.mem.eql(u8, op_name, "load-file")) {
+            // `load-file` (CIDER `C-c C-k` / `, e b`): run the whole `file` buffer,
+            // emit only the LAST form's value (clj load-file semantics).
+            try replyEval(arena, conn_writer, rt, env, macro_table, request, "file", false, session_id_str, id_val);
+        } else if (std.mem.eql(u8, op_name, "interrupt")) {
+            // Single-threaded eval has no preemption point yet (D-117); ack so the
+            // client's interrupt round-trip completes cleanly.
+            try replyDoneStatus(arena, conn_writer, session_id_str, id_val, &.{"done"});
+        } else if (std.mem.eql(u8, op_name, "ls-sessions")) {
+            try replyLsSessions(arena, conn_writer, session_id_str, id_val);
         } else if (std.mem.eql(u8, op_name, "close")) {
             try replyClose(arena, conn_writer, session_id_str, id_val);
             break;
@@ -233,7 +244,7 @@ fn replyDescribe(arena: std.mem.Allocator, w: *Writer, session_id: []const u8, i
     const base = try baseDict(arena, session_id, id_val);
     // ops dict with each op pointing at an empty dict (no per-op
     // metadata yet; CIDER tolerates this).
-    const op_names = [_][]const u8{ "clone", "describe", "eval", "close" };
+    const op_names = [_][]const u8{ "clone", "describe", "eval", "load-file", "interrupt", "ls-sessions", "close" };
     var op_entries = try arena.alloc(bencode.Decoded.Entry, op_names.len);
     for (op_names, 0..) |name, i| {
         op_entries[i] = .{ .key = name, .value = .{ .dict = &.{} } };
@@ -253,29 +264,36 @@ fn replyDescribe(arena: std.mem.Allocator, w: *Writer, session_id: []const u8, i
     try writeBencode(w, arena, .{ .dict = all });
 }
 
+/// Shared `eval` / `load-file` handler. `code_key` selects which request field
+/// holds the source (`"code"` for eval, `"file"` for load-file). `send_each_value`
+/// true → emit a `value` per top-level form (REPL eval); false → emit only the
+/// LAST form's value (clj `load-file` semantics). Each form's stdout (println /
+/// pr / …) is captured and streamed to the client as an `out` message BEFORE its
+/// value, so output shows up in the editor REPL, not just the server terminal.
 fn replyEval(
     arena: std.mem.Allocator,
-    gpa: std.mem.Allocator,
     w: *Writer,
     rt: *Runtime,
     env: *Env,
     macro_table: *const macro_dispatch.Table,
     request: bencode.Decoded,
+    code_key: []const u8,
+    send_each_value: bool,
     session_id: []const u8,
     id_val: ?bencode.Decoded,
 ) !void {
-    _ = gpa;
-    const code_v = bencode.dictGet(request, "code") orelse {
-        try replyError(arena, w, "missing code", session_id, id_val);
+    const code_v = bencode.dictGet(request, code_key) orelse {
+        try replyError(arena, w, try std.fmt.allocPrint(arena, "missing {s}", .{code_key}), session_id, id_val);
         return;
     };
     if (code_v != .str) {
-        try replyError(arena, w, "code must be string", session_id, id_val);
+        try replyError(arena, w, "source must be a string", session_id, id_val);
         return;
     }
     const code = code_v.str;
 
     var reader = Reader.init(arena, code);
+    var last_value: ?[]const u8 = null;
     while (true) {
         const form_opt = reader.read() catch |err| {
             try replyError(arena, w, @errorName(err), session_id, id_val);
@@ -288,31 +306,73 @@ fn replyEval(
             continue;
         };
         var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
+
+        // Capture this form's stdout (println/print/prn/pr/newline) so it streams
+        // to the client as `out` instead of going only to the server's terminal.
+        var cap: std.Io.Writer.Allocating = .init(arena);
+        const saved_cap = core_prim.setOutCapture(&cap);
         const result = driver.evalForm(rt, env, &locals, arena, node) catch |err| {
+            _ = core_prim.setOutCapture(saved_cap);
+            if (cap.written().len > 0) try replyOut(arena, w, cap.written(), session_id, id_val);
             try replyError(arena, w, @errorName(err), session_id, id_val);
             continue;
         };
-        // pr-str the value into an allocating writer.
-        var aw: std.Io.Writer.Allocating = .init(arena);
-        defer aw.deinit();
-        try print.printResult(rt, env, &aw.writer, result);
-        const value_str = aw.written();
+        _ = core_prim.setOutCapture(saved_cap);
+        if (cap.written().len > 0) try replyOut(arena, w, cap.written(), session_id, id_val);
 
-        const base = try baseDict(arena, session_id, id_val);
-        var all = try arena.alloc(bencode.Decoded.Entry, base.len + 2);
-        @memcpy(all[0..base.len], base);
-        all[base.len] = .{ .key = "value", .value = .{ .str = value_str } };
-        const ns_name = if (env.current_ns) |ns| ns.name else "user";
-        all[base.len + 1] = .{ .key = "ns", .value = .{ .str = ns_name } };
-        try writeBencode(w, arena, .{ .dict = all });
+        var aw: std.Io.Writer.Allocating = .init(arena);
+        try print.printResult(rt, env, &aw.writer, result);
+        const value_str = try arena.dupe(u8, aw.written());
+        if (send_each_value) {
+            try replyValue(arena, w, value_str, env, session_id, id_val);
+        } else {
+            last_value = value_str;
+        }
+    }
+    if (!send_each_value) {
+        if (last_value) |lv| try replyValue(arena, w, lv, env, session_id, id_val);
     }
 
-    // Final "done" status.
+    try replyDoneStatus(arena, w, session_id, id_val, &.{"done"});
+}
+
+/// Stream captured stdout to the client (`{out: <text>}`), tied to the eval's
+/// session + id so the editor routes it to the right REPL buffer.
+fn replyOut(arena: std.mem.Allocator, w: *Writer, text: []const u8, session_id: []const u8, id_val: ?bencode.Decoded) !void {
     const base = try baseDict(arena, session_id, id_val);
-    const status_e = bencode.Decoded.Entry{ .key = "status", .value = try statusEntry(arena, &.{"done"}) };
     var all = try arena.alloc(bencode.Decoded.Entry, base.len + 1);
     @memcpy(all[0..base.len], base);
-    all[base.len] = status_e;
+    all[base.len] = .{ .key = "out", .value = .{ .str = text } };
+    try writeBencode(w, arena, .{ .dict = all });
+}
+
+fn replyValue(arena: std.mem.Allocator, w: *Writer, value_str: []const u8, env: *Env, session_id: []const u8, id_val: ?bencode.Decoded) !void {
+    const base = try baseDict(arena, session_id, id_val);
+    var all = try arena.alloc(bencode.Decoded.Entry, base.len + 2);
+    @memcpy(all[0..base.len], base);
+    all[base.len] = .{ .key = "value", .value = .{ .str = value_str } };
+    const ns_name = if (env.current_ns) |ns| ns.name else "user";
+    all[base.len + 1] = .{ .key = "ns", .value = .{ .str = ns_name } };
+    try writeBencode(w, arena, .{ .dict = all });
+}
+
+fn replyDoneStatus(arena: std.mem.Allocator, w: *Writer, session_id: []const u8, id_val: ?bencode.Decoded, items: []const []const u8) !void {
+    const base = try baseDict(arena, session_id, id_val);
+    var all = try arena.alloc(bencode.Decoded.Entry, base.len + 1);
+    @memcpy(all[0..base.len], base);
+    all[base.len] = .{ .key = "status", .value = try statusEntry(arena, items) };
+    try writeBencode(w, arena, .{ .dict = all });
+}
+
+/// `ls-sessions` — the single live session (single-session server today).
+fn replyLsSessions(arena: std.mem.Allocator, w: *Writer, session_id: []const u8, id_val: ?bencode.Decoded) !void {
+    const base = try baseDict(arena, session_id, id_val);
+    var all = try arena.alloc(bencode.Decoded.Entry, base.len + 2);
+    @memcpy(all[0..base.len], base);
+    const sessions = try arena.alloc(bencode.Decoded, 1);
+    sessions[0] = .{ .str = session_id };
+    all[base.len] = .{ .key = "sessions", .value = .{ .list = sessions } };
+    all[base.len + 1] = .{ .key = "status", .value = try statusEntry(arena, &.{"done"}) };
     try writeBencode(w, arena, .{ .dict = all });
 }
 

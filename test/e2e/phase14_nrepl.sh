@@ -3,8 +3,12 @@
 #
 # Phase 14 §9.16 row 14.10 — `cljw nrepl` minimal nREPL server
 # (F142 re-introduction) per ADR-0015 amendment 2 + ADR-0048
-# nREPL chart. Single concurrent session, 4 ops (clone / describe /
-# eval / close).
+# nREPL chart. Single concurrent session. Ops: clone / describe /
+# eval / load-file / interrupt / ls-sessions / close, plus stdout
+# (println / pr) streamed to the client as `out`. The nREPL wire
+# contract is fixed by the real CIDER/nREPL spec, so these cases
+# pin cljw against it: start the server, send the bencode op,
+# assert the expected response shape comes back.
 #
 # Uses Python's socket module to drive the protocol — neither nc nor
 # ncat is reliably present everywhere and a python3 dependency is
@@ -123,5 +127,114 @@ PY
 [[ "$result" == "3" ]] || fail "nrepl_eval: expected value '3', got '$result'"
 echo "PASS nrepl_eval_plus_1_2 -> 3"
 
+# --- Case 3: CIDER ops — load-file, out routing, interrupt, ls-sessions,
+# describe. One python driver: clone a session, then drive each op and assert
+# the response shape matches the nREPL/CIDER contract. ---
+python3 - "$PORT" <<'PY' || fail "nrepl_cider_ops: $(tail -5 /tmp/cljw_nrepl_stderr.$$ 2>/dev/null)"
+import socket, sys, time
+
+def encode(v):
+    if isinstance(v, int): return f"i{v}e".encode()
+    if isinstance(v, (bytes, str)):
+        b = v.encode() if isinstance(v, str) else v
+        return f"{len(b)}:".encode() + b
+    if isinstance(v, list): return b"l" + b"".join(encode(x) for x in v) + b"e"
+    if isinstance(v, dict):
+        out = b"d"
+        for k in sorted(v.keys()): out += encode(k) + encode(v[k])
+        return out + b"e"
+    raise ValueError(type(v))
+
+def decode(buf, i=0):
+    c = buf[i:i+1]
+    if c == b"i":
+        j = buf.index(b"e", i); return int(buf[i+1:j]), j+1
+    if c.isdigit():
+        j = buf.index(b":", i); n = int(buf[i:j]); return buf[j+1:j+1+n], j+1+n
+    if c == b"l":
+        i += 1; out = []
+        while buf[i:i+1] != b"e":
+            v, i = decode(buf, i); out.append(v)
+        return out, i+1
+    if c == b"d":
+        i += 1; out = {}
+        while buf[i:i+1] != b"e":
+            k, i = decode(buf, i); v, i = decode(buf, i); out[k.decode()] = v
+        return out, i+1
+    raise ValueError(buf[i:i+4])
+
+port = int(sys.argv[1])
+s = socket.create_connection(("127.0.0.1", port), timeout=5); s.settimeout(3)
+
+def roundtrip(msg):
+    """Send one op; collect every response dict up to a `done` status."""
+    s.sendall(encode(msg))
+    buf, msgs, t0 = b"", [], time.time()
+    while time.time() - t0 < 4.0:
+        try: chunk = s.recv(4096)
+        except socket.timeout: break
+        if not chunk: break
+        buf += chunk
+        try:
+            i = 0
+            while i < len(buf):
+                v, j = decode(buf, i); msgs.append(v); i = j
+            buf = b""
+        except (ValueError, IndexError):
+            continue
+        if any(isinstance(r, dict) and b"done" in r.get("status", []) for r in msgs):
+            break
+    return msgs
+
+def s_of(d, k):
+    v = d.get(k); return v.decode() if isinstance(v, bytes) else v
+
+# Handshake: clone → a session id.
+clone = roundtrip({"op": "clone", "id": "c1"})
+session = next((s_of(r, "new-session") for r in clone if isinstance(r, dict) and "new-session" in r), None)
+assert session, f"clone: no new-session: {clone}"
+print(f"PASS nrepl_clone -> {session[:8]}")
+
+# describe must advertise the new ops (the CIDER capability handshake).
+desc = roundtrip({"op": "describe", "session": session, "id": "d1"})
+ops = next((r.get("ops") for r in desc if isinstance(r, dict) and "ops" in r), {})
+opkeys = set(ops.keys()) if isinstance(ops, dict) else set()
+for need in ("eval", "load-file", "interrupt", "ls-sessions"):
+    assert need in opkeys, f"describe: op '{need}' not advertised: {sorted(opkeys)}"
+print(f"PASS nrepl_describe_advertises -> {sorted(opkeys)}")
+
+# eval with println: an `out` response carrying the stdout, then the value.
+ev = roundtrip({"op": "eval", "session": session, "code": '(println "hi-nrepl") 7', "id": "e1"})
+outs = [s_of(r, "out") for r in ev if isinstance(r, dict) and "out" in r]
+vals = [s_of(r, "value") for r in ev if isinstance(r, dict) and "value" in r]
+assert any("hi-nrepl" in (o or "") for o in outs), f"eval: stdout not streamed as out: {ev}"
+assert "7" in vals, f"eval: value 7 missing: {vals}"
+print(f"PASS nrepl_eval_out_routing -> out={outs} value=7")
+
+# load-file: run a whole buffer, get ONLY the last form's value (clj semantics).
+lf = roundtrip({"op": "load-file", "session": session,
+                "file": '(def yy 3) (println "loaded") (+ yy 39)',
+                "file-name": "t.clj", "file-path": "/tmp/t.clj", "id": "l1"})
+lvals = [s_of(r, "value") for r in lf if isinstance(r, dict) and "value" in r]
+louts = [s_of(r, "out") for r in lf if isinstance(r, dict) and "out" in r]
+assert lvals == ["42"], f"load-file: expected only last value ['42'], got {lvals}"
+assert any("loaded" in (o or "") for o in louts), f"load-file: stdout not streamed: {lf}"
+print(f"PASS nrepl_load_file -> value=42 (last only), out={louts}")
+
+# interrupt: acked with a clean done status, no error.
+it = roundtrip({"op": "interrupt", "session": session, "id": "i1"})
+assert any(isinstance(r, dict) and b"done" in r.get("status", []) for r in it), f"interrupt: no done: {it}"
+assert not any(isinstance(r, dict) and b"error" in r.get("status", []) for r in it), f"interrupt: errored: {it}"
+print("PASS nrepl_interrupt_ack")
+
+# ls-sessions: a non-empty sessions list including ours.
+ls = roundtrip({"op": "ls-sessions", "session": session, "id": "s1"})
+sessions = next((r.get("sessions") for r in ls if isinstance(r, dict) and "sessions" in r), [])
+assert sessions, f"ls-sessions: empty: {ls}"
+print(f"PASS nrepl_ls_sessions -> {len(sessions)} session(s)")
+
+s.close()
+PY
+
 echo
-echo "Phase 14 row 14.10 nREPL minimal e2e: all green."
+echo "Phase 14 row 14.10 nREPL e2e (eval / out / load-file / interrupt / ls-sessions): all green."
