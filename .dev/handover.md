@@ -12,32 +12,30 @@
   (`bench/run_bench.sh --quick` / `scripts/perf.sh`), never `time zig-out/bin/cljw`
   (Debug) — `.claude/rules/perf_measure_release.md`.
 
-- **First commit on resume MUST be: implement ADR-0131 increment 1 — the in-VM
-  call-frame stack RESTRUCTURE-ONLY step** (the flat-frame call-dispatch lever).
-  The campaign is NOT ROI-gated (optimize relentlessly until cljw beats Python
-  across `bench/`); user-directed 2026-06-11. Autonomous; only an explicit user
-  stop halts it.
+- **First commit on resume MUST be: implement ADR-0131 increment 2b — the FLATTEN**
+  (op_call pushes an in-VM frame + continues ONE eval loop; op_ret pops). The
+  campaign is NOT ROI-gated (optimize relentlessly until cljw beats Python across
+  `bench/`); user-directed 2026-06-11. Autonomous; only an explicit user stop halts.
 
-  **State**: cljw beats Python **12/23** cross-lang. Landed: O-014 arith intrinsics
-  + O-015 frame rooting; **`bindCallFrame` extraction `ab1959c2`** (the shared
-  single-source binder ADR-0131 reuses). Steps 1-2 of the original plan (mine v0 /
-  equivalence audit = PASS) are DONE — do NOT re-do them.
+  **State**: cljw beats Python ≥12/23. Landed THIS campaign: O-014 arith + O-015
+  frame rooting; `bindCallFrame` extraction (`ab1959c2`); ADR-0131 (Alt A, +DA);
+  the `frame_local_alloc` allocating-per-frame torture gate (`13cefee8`); and
+  **2a: the per-thread operand arena `VmArena` (`a12fdb09`, O-016) — fib 56→41 ms,
+  tak 18→15** (an unexpected win; arena stays warm vs cold per-eval host arrays).
+  The arena + its `op_top`-rooting are PROVEN under torture. Do NOT re-do 2a.
 
-  **The flat-frame lever is settled (ADR-0131, Accepted, Alt A).** Design 2 (a
-  monomorphic op_call fast path calling eval() inline) was prototyped + measured
-  this cycle: fib 57→56, tak 18 — **NO win**, reverted as excessive-skeleton. A
-  `sample` profile of `(fib 35)` proved why: 100% in a 5-host-frame recursion
-  cycle, no GC/alloc — the tax is the **non-tail `eval` re-entry per call**, which
-  only flattening removes. ADR-0131 decision = **Alt A**: flatten op_call to push
-  an in-VM frame + continue ONE eval loop, PRESERVING v1's locals/operand split
-  (= the F-011 `bindCallFrame` seam; Alt B's v0 unification was rejected for
-  forking that binder). Devil's-advocate corrections folded in: NO `saved_ns`
-  (v1 doesn't switch ns per call), per-`eval` handler stacks scope reentry for
-  free, window `loc_stack`, and **the torture e2e MUST allocate per frame** (fib
-  allocates nothing → proves no rooting). 2 increments: (1) frame array + struct,
-  top-level runs `frame_count==1`, behaviour-identical, A1 reshape under torture;
-  (2) op_call push / op_ret pop / frame-aware throw-unwind / deep-recursion cap.
-  Read ADR-0131 + the survey's EMPIRICAL UPDATE before touching the eval loop.
+  **2b (the flatten — where the host `eval` re-entry, the real tax, is removed).**
+  Settled design in **`.dev/decisions/0131…`** + the survey's `## CONVERGED
+  INCREMENT-2a SPEC` + `## 2a LANDED` sections (read both). Plan: add
+  `BytecodeChunk.has_handlers: bool` (compile-finalize). op_call flattens iff callee
+  `.fn_val` + selectMethod hits a bytecode method + `!has_rest` + `!has_handlers`
+  → `bindCallFrame` into a locals window in the arena + push a `CallFrame` +
+  `continue`; op_ret pops; bounded throw-unwind (flattened frames are handler-free);
+  deep recursion → catchable `StackOverflow` at the arena cap. Gates: the
+  `frame_local_alloc` torture + diff oracle + **a new reduce-throw-outer-try diff
+  case** (per-`eval` handler stacks scope reentry — the highest parity risk) +
+  fib/tak quick bench (expect the drop toward v0's 16 ms). DA: NO `saved_ns`
+  (v1 doesn't switch ns per call). Intricate + GC-critical — give it fresh focus.
 
   **Measurement cadence (keep iteration fast)**: per iteration a FOCUSED quick bench
   only (`bash bench/run_bench.sh --quick --bench=<name>`); do NOT full-bench or
