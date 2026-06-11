@@ -322,6 +322,23 @@ pub fn setupCorePrefix(rt: *Runtime, env: *Env, macro_table: *macro_dispatch.Tab
     // ADR-0088: intern *print-length* / *print-level* (root nil = unlimited)
     // + cache pointers so the renderer honours a user `binding`.
     try registerPrintLimitVars(rt, env);
+    // ADR-0130: cache clojure.core/+ for the arithmetic-intrinsic fast path.
+    cacheArithIntrinsics(rt, env);
+}
+
+/// ADR-0130: cache the canonical `clojure.core/+` Var so the VM compiler can
+/// recognise `(+ a b)` by pointer identity and emit `op_add`. `+` is interned in
+/// `rt/` and referred into `clojure.core`, so `resolve` finds the same Var from
+/// either ns. Leaves `plus_var` null if `+` is absent (compiler then never emits
+/// op_add). Sets pristine = true; `alter-var-root` on `+` clears it.
+pub fn cacheArithIntrinsics(rt: *Runtime, env: *Env) void {
+    const plus: ?*env_mod.Var = blk: {
+        if (env.findNs("clojure.core")) |core| if (core.resolve("+")) |p| break :blk p;
+        if (env.findNs("rt")) |rt_ns| if (rt_ns.resolve("+")) |p| break :blk p;
+        break :blk null;
+    };
+    if (plus) |p| rt.plus_var = p;
+    rt.core_arith_pristine = true;
 }
 
 /// Intern `clojure.core/*print-length*` and `*print-level*` as `^:dynamic`

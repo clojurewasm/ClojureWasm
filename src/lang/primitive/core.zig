@@ -1412,6 +1412,12 @@ pub fn alterVarRootFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     @memcpy(call_args[1..], args[2..]);
     const newroot = try higher_order.invokeCallable(rt, env, args[1], call_args, loc);
     v.setRoot(newroot);
+    // ADR-0130: redefining clojure.core/+ deopts the op_add intrinsic so the new
+    // root is honoured — the one rebinding case the analyzer's local_ref gate does
+    // NOT cover (alter-var-root mutates the SAME Var pointer the gate matched).
+    if (rt.plus_var) |pv| {
+        if (@intFromPtr(pv) == @intFromPtr(v)) rt.core_arith_pristine = false;
+    }
     try iref.notifyWatches(rt, env, args[0], env_mod.varWatchesOf(args[0]), old_root, newroot);
     return newroot;
 }

@@ -157,6 +157,15 @@ pub const Runtime = struct {
     data_readers_var: ?*anyopaque = null,
     default_data_reader_fn_var: ?*anyopaque = null,
 
+    /// ADR-0130: cached `clojure.core/+` Var (type-erased like the data-reader
+    /// vars; cast back to `*const env.Var` at the compiler gate + VM `op_add`
+    /// dispatch). `plus_var` is populated at bootstrap; `core_arith_pristine`
+    /// starts true and is cleared when `+` is redefined via `alter-var-root`,
+    /// deopting `op_add` to the builtin so a redefed `+` is honoured (F-011).
+    /// `null` plus_var (pre-bootstrap) means the compiler never emits op_add.
+    plus_var: ?*anyopaque = null,
+    core_arith_pristine: bool = true,
+
     /// Monotonic counter for `gensym` / auto-gensym (`foo#`). Lives on
     /// the Runtime so multiple macros within one analyse pass share a
     /// single sequence; per-Runtime so parallel tests don't collide.

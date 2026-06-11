@@ -295,6 +295,24 @@ const Compiler = struct {
     }
 
     fn compileCall(self: *Compiler, n: node_mod.CallNode) Error!void {
+        // ADR-0130: emit op_add for a 2-arg call whose callee resolves (by Var
+        // pointer identity) to canonical `clojure.core/+`. A let-shadowed `+` is
+        // a `.local_ref`, not a `.var_ref`, so this gate cannot fire on it. A
+        // later alter-var-root is handled by the runtime `core_arith_pristine`
+        // deopt in the op_add dispatch arm.
+        if (n.args.len == 2 and n.callee.* == .var_ref) {
+            if (self.rt.plus_var) |pv| {
+                if (@intFromPtr(pv) == @intFromPtr(n.callee.var_ref.var_ptr)) {
+                    for (n.args) |*a| try self.compileNode(a);
+                    if (n.loc.line != 0) {
+                        self.current_line = n.loc.line;
+                        self.current_column = n.loc.column;
+                    }
+                    try self.emit(.op_add, 0);
+                    return;
+                }
+            }
+        }
         try self.compileNode(n.callee);
         if (n.args.len > std.math.maxInt(u16)) return error.TooManyCallArgs;
         for (n.args) |*a| try self.compileNode(a);

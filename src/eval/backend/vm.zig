@@ -20,6 +20,7 @@ const std = @import("std");
 const node_mod = @import("../node.zig");
 const loader = @import("../loader.zig");
 const opcode_mod = @import("vm/opcode.zig");
+const intrinsic = @import("intrinsic.zig");
 const value_mod = @import("../../runtime/value/value.zig");
 const env_mod = @import("../../runtime/env.zig");
 const runtime_mod = @import("../../runtime/runtime.zig");
@@ -421,6 +422,40 @@ fn stepOnce(
             // The result's own loc is the call form (this op pops below sp_entry,
             // so the post-switch sweep does not reach this slot).
             loc_stack[sp] = call_loc;
+            stack[sp] = result;
+            sp += 1;
+        },
+        .op_add => {
+            // ADR-0130: `(+ a b)` intrinsic. Fixnum fast path skips the
+            // var-resolve + BuiltinFn dispatch; any other case (incl. errors)
+            // defers to the cached `+` builtin for full parity. `pristine` is
+            // cleared by alter-var-root on `+` (deopt → always the builtin).
+            if (sp < 2) return raiseInternal("vm: op_add underflow");
+            sp -= 2;
+            const a = stack[sp];
+            const b = stack[sp + 1];
+            const fast: ?Value = if (rt.core_arith_pristine)
+                try intrinsic.fastBinaryFixnum(rt, .add, a, b)
+            else
+                null;
+            const result = fast orelse blk: {
+                const vt = rt.vtable orelse
+                    return error_catalog.raiseInternal(.{}, "Runtime vtable not installed; cannot dispatch op_add");
+                const pv = rt.plus_var orelse
+                    return raiseInternal("vm: op_add emitted without a cached + Var");
+                const plus_var: *const env_mod.Var = @ptrCast(@alignCast(pv));
+                const two = [2]Value{ a, b };
+                // Publish the operands' recorded locs so a builtin error
+                // (e.g. `(+ 1 "a")`) resolves an arg-precise caret, matching
+                // op_call / TreeWalk (ADR-0118). Only the fallback can error;
+                // the fixnum fast path cannot.
+                const prev_arg_sources = error_mod.swapArgSources(loc_stack[sp .. sp + 2]);
+                defer _ = error_mod.swapArgSources(prev_arg_sources);
+                break :blk try vt.callFn(rt, env, plus_var.deref(), &two, instr_loc);
+            };
+            if (sp >= OPERAND_STACK_MAX)
+                return raiseInternal("vm: operand stack overflow");
+            loc_stack[sp] = instr_loc;
             stack[sp] = result;
             sp += 1;
         },

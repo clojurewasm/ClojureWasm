@@ -21,6 +21,7 @@ const Env = env_mod.Env;
 const Value = @import("../runtime/value/value.zig").Value;
 const primitive = @import("primitive.zig");
 const macro_transforms = @import("macro_transforms.zig");
+const bootstrap = @import("bootstrap.zig");
 const Reader = @import("../eval/reader.zig").Reader;
 const analyze = @import("../eval/analyzer/analyzer.zig").analyze;
 const driver = @import("../eval/driver.zig");
@@ -48,6 +49,9 @@ const Fixture = struct {
         f.table = macro_dispatch.Table.init(alloc);
         try primitive.registerAll(&f.env);
         try macro_transforms.registerInto(&f.env, &f.table);
+        // ADR-0130: arm the arith-intrinsic Var cache so the VM compiler emits
+        // op_add — without this the oracle would silently test only op_call.
+        bootstrap.cacheArithIntrinsics(&f.rt, &f.env);
         return f;
     }
 
@@ -64,12 +68,47 @@ const Fixture = struct {
         try testing.expect(r.equal);
         try testing.expectEqual(expected, (try r.tree_walk).asInteger());
     }
+
+    /// Assert only that both backends agree (VM == TreeWalk) — for results whose
+    /// type is not an inline integer (bigint / float / string), where
+    /// `asInteger()` cannot be used. `r.equal` is the dual-backend parity oracle.
+    fn checkEqual(self: *Fixture, source: []const u8) !void {
+        const r = evaluator.compare(&self.rt, &self.env, &self.table, self.arena.allocator(), source);
+        _ = try r.tree_walk; // surface an eval error rather than a silent mismatch
+        try testing.expect(r.equal);
+    }
 };
 
 test "diff: arithmetic primitive" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
     try f.check("(+ 1 2 3)", 6);
+}
+
+test "diff: op_add intrinsic (ADR-0130) — VM op_add ≡ builtin + (inline results)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // 2-arg `(+ a b)` is op_add in the VM, the builtin in TreeWalk; r.equal +
+    // the value lock the parity. (The harness bit-compares NaN-boxed Values, so
+    // only INLINE-valued results belong here — heap results like the i48-boundary
+    // Long or a String have per-backend pointers and are e2e-tested instead.)
+    try f.check("(+ 1 2)", 3);
+    try f.check("(+ -5 8)", 3);
+    try f.check("(let* [x 100] (+ x 23))", 123);
+    // float operand: op_add defers (fixnum-only fast path) → builtin → parity.
+    // A float Value is inline (NaN-box), so r.equal holds.
+    try f.checkEqual("(+ 0.1 0.2)");
+}
+
+test "diff: op_add deopt on alter-var-root of + (ADR-0130 F-011 hole)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // Redefining + via alter-var-root must make BOTH backends use the new root on
+    // integers (op_add deopts via core_arith_pristine). Without the deopt, VM
+    // op_add would compute 3 while TreeWalk computes 999 → r.equal false. The
+    // alter-var-root mutates the SAME Var pointer the compiler gate matched, so
+    // the analyzer's local_ref gate cannot catch this — the runtime flag does.
+    try f.check("(do (alter-var-root (var +) (fn* [_] (fn* [a b] 999))) (+ 1 2))", 999);
 }
 
 test "diff: let* binding" {

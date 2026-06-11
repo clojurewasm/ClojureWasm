@@ -41,6 +41,15 @@ CASES=(
     'if_let_falsy|(if-let [x false] (+ x 1) 99)'
     'loop_recur|(loop* [i 0] (if (< i 3) (recur (+ i 1)) i))'
     'closure|((let* [x 10] (fn* [y] (+ x y))) 5)'
+    # ADR-0130 op_add intrinsic: heap-valued + deopt traps. The output-string
+    # diff (unlike the bit-compare unit oracle) validates op_add (vm) ≡ builtin
+    # (tree-walk) for results that are NOT inline NaN-boxed Values:
+    #   - i48 boundary → a heap-Long (must NOT become a float); both print same.
+    #   - a shadowed + (a local) must NOT hit op_add → calls str → "ab".
+    #   - alter-var-root on + deopts op_add → the redefined root is honoured (999).
+    'add_i48_boundary|(+ 140737488355327 1)'
+    'add_shadow|(let [+ str] (+ "a" "b"))'
+    'add_deopt|(do (alter-var-root (var +) (fn* [_] (fn* [a b] 999))) (+ 1 2))'
 )
 
 run_cases() {

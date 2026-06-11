@@ -233,6 +233,16 @@ pub const Opcode = enum(u8) {
     /// `.typed_instance` (the analyzer only emits this for an in-method `this`).
     op_set_field = 0x27,
 
+    /// ADR-0130: `(+ a b)` arithmetic intrinsic — emitted by the compiler when
+    /// the callee resolves (by Var pointer identity) to canonical `clojure.core/+`
+    /// with exactly 2 args. No operand. Stack on entry: `[…, a, b]`; pops both,
+    /// pushes the sum. Dispatch: if `rt.core_arith_pristine` and both operands are
+    /// inline fixnums → `intrinsic.fastBinaryFixnum(.add)` (= `promote.addPromoting`,
+    /// F-005 overflow→bigint); else `vt.callFn` the cached `+` builtin Var (full
+    /// numeric-tower + arg-precise error parity). Net stack effect −1 (not a pure
+    /// push). First cut of the intrinsic family (op_sub/op_mul/op_lt… follow).
+    op_add = 0x28,
+
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
     /// (vm.zig:188-201 + :317 `applyJump`). Peephole's IP-remap pass
@@ -279,6 +289,7 @@ pub const Opcode = enum(u8) {
             .op_set_var,
             .op_ns_import,
             .op_set_field,
+            .op_add,
             => false,
         };
     }
@@ -331,6 +342,7 @@ pub const Opcode = enum(u8) {
             .op_set_var,
             .op_ns_import,
             .op_set_field,
+            .op_add,
             => false,
         };
     }
