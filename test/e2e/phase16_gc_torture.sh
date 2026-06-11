@@ -32,6 +32,14 @@ assert_eq 'sum_squares'  "$("$BIN" -e '(reduce + (map (fn [x] (* x x)) (range 1 
 # the VM publishes that stack garbage as a GC root and a torture collect traces
 # it → SIGSEGV. Deterministic catcher for that whole class.
 assert_eq 'nested_deep'  "$("$BIN" -e '(do (defn dp [n] (if (zero? n) (reduce + (map (fn [a] (* a a)) (range 1 50))) (+ 1 (dp (dec n))))) (dp 40))')" '40465'
+# ADR-0131 in-VM call-frame stack gate: a HEAP value (vector `v`) held in a
+# LOCAL across a NON-TAIL recursive call. nested_deep allocates only at the
+# base; THIS allocates per frame AND keeps it live across the recursive op_call,
+# so a flattened frame that fails to GC-root its own locals window gets `v` swept
+# mid-recursion → `(first v)` after the call reads freed memory (the O-005 UAF
+# class, now for the shared-arena locals). fib proves nothing here (fixnum-only).
+# dp(n) = (first [n n n]) + dp(n-1) = n + dp(n-1) = sum(1..200) = 20100.
+assert_eq 'frame_local_alloc' "$("$BIN" -e '(do (defn dp [n] (if (zero? n) 0 (let [v [n n n]] (+ (first v) (dp (dec n)))))) (dp 200))')" '20100'
 assert_eq 'sqrt'         "$("$BIN" -e '(clojure.math/sqrt 16)')"                               '4.0'
 assert_eq 'filter_count' "$("$BIN" -e '(count (filter even? (range 1 200)))')"                 '99'
 # closure capturing a GC vector — exercises the .fn_val closure_bindings trace.
