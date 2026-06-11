@@ -12,35 +12,32 @@
   (`bench/run_bench.sh --quick` / `scripts/perf.sh`), never `time zig-out/bin/cljw`
   (Debug) — `.claude/rules/perf_measure_release.md`.
 
-- **First commit on resume MUST be: continue the cljw-vs-Python PERF campaign at
-  the next lever — the FLAT-FRAME call-dispatch** (the call-bound residue). The
-  campaign is well underway and NOT ROI-gated (optimize relentlessly until cljw
-  beats Python across `bench/`); user-directed 2026-06-11. Autonomous; only an
-  explicit user stop halts it.
+- **First commit on resume MUST be: implement ADR-0131 increment 1 — the in-VM
+  call-frame stack RESTRUCTURE-ONLY step** (the flat-frame call-dispatch lever).
+  The campaign is NOT ROI-gated (optimize relentlessly until cljw beats Python
+  across `bench/`); user-directed 2026-06-11. Autonomous; only an explicit user
+  stop halts it.
 
-  **State**: cljw now beats Python **12/23** cross-lang (was ~6/19 pre-campaign).
-  Landed: ADR-0130 arith intrinsic family (O-014: arith_loop 170→107 ms 37%, fib
-  71→61) + exact-count frame rooting (O-015: fib 61→58, GC-torture-verified — the
-  O-005 redo done right). Steps 1-2 of the original plan (mine v0 / equivalence
-  audit = PASS, benches are fair) are DONE — do NOT re-do them.
+  **State**: cljw beats Python **12/23** cross-lang. Landed: O-014 arith intrinsics
+  + O-015 frame rooting; **`bindCallFrame` extraction `ab1959c2`** (the shared
+  single-source binder ADR-0131 reuses). Steps 1-2 of the original plan (mine v0 /
+  equivalence audit = PASS) are DONE — do NOT re-do them.
 
-  **Behind Python (the targets), cold µs cljw vs py**: fib_recursive 58 vs 24
-  (2.4×) + nested_update 64 vs 20 (3.1×) are **call-bound** → the flat-frame lever.
-  arith_loop 119 vs 58, sieve 39 vs 20, regex 53 vs 24, map_filter_reduce, gc_stress
-  are **algorithmic/alloc** → v0's 24C wins. Already winning: fib_loop/tak/vector_ops/
-  map_ops/list_build/atom_swap/lazy_chain/transduce/keyword_lookup/protocol/multimethod/sort.
-
-  **Next lever — flat-frame call-dispatch** (survey: `private/notes/9.2.S-flat-frame-survey.md`,
-  persists across /clear on disk). fib/tak are call-bound: a 6-hop host-C-stack
-  recursion (`op_call → vt.callFn → treeWalkCall → callFunction → callMethodImpl →
-  vt.evalChunk → vm.eval`) with 2 vtable indirections. The monomorphic IC is a red
-  herring (v1 already has `CallSite.lookupWithCache`; fib uses plain `.fn_val`).
-  **Smallest first slice = Design 2**: a vm-local fast path for a 2-`.fn_val` call
-  that skips the treeWalkCall switch + double vtable hop (A1 GC root shape UNCHANGED
-  → not the O-005 UAF class; correctness net = the diff oracle). Replicate, don't
-  skip, the trace (ADR-0119) + env (ADR-0129) + recur. Full = Design 1 (in-VM call
-  frame: also fixes deep-recursion SIGSEGV; A1 re-root = GC-critical, needs an ADR +
-  CLJW_GC_TORTURE). Intricate — give it fresh focus.
+  **The flat-frame lever is settled (ADR-0131, Accepted, Alt A).** Design 2 (a
+  monomorphic op_call fast path calling eval() inline) was prototyped + measured
+  this cycle: fib 57→56, tak 18 — **NO win**, reverted as excessive-skeleton. A
+  `sample` profile of `(fib 35)` proved why: 100% in a 5-host-frame recursion
+  cycle, no GC/alloc — the tax is the **non-tail `eval` re-entry per call**, which
+  only flattening removes. ADR-0131 decision = **Alt A**: flatten op_call to push
+  an in-VM frame + continue ONE eval loop, PRESERVING v1's locals/operand split
+  (= the F-011 `bindCallFrame` seam; Alt B's v0 unification was rejected for
+  forking that binder). Devil's-advocate corrections folded in: NO `saved_ns`
+  (v1 doesn't switch ns per call), per-`eval` handler stacks scope reentry for
+  free, window `loc_stack`, and **the torture e2e MUST allocate per frame** (fib
+  allocates nothing → proves no rooting). 2 increments: (1) frame array + struct,
+  top-level runs `frame_count==1`, behaviour-identical, A1 reshape under torture;
+  (2) op_call push / op_ret pop / frame-aware throw-unwind / deep-recursion cap.
+  Read ADR-0131 + the survey's EMPIRICAL UPDATE before touching the eval loop.
 
   **Measurement cadence (keep iteration fast)**: per iteration a FOCUSED quick bench
   only (`bash bench/run_bench.sh --quick --bench=<name>`); do NOT full-bench or
@@ -55,23 +52,22 @@
   / any manipulation to fake a cljw win — honest equivalence only, already audited
   PASS); editing zwasm; `git push --force*`.
 
-## Just landed — perf campaign 2026-06-11 (pushed to `main`)
+## Just landed — flat-frame lever settled 2026-06-11 (pushed to `main`)
 
-O-014 arith intrinsic family (op_add/sub/mul/lt/le/gt/ge/eq; ADR-0130) + O-015
-exact-count frame rooting → cljw 12/23 vs Python. cross-lang re-recorded
-(cold-only µs, full machine spec); D-385 added gate `total wall + slowest-N`
-timing (showed zig build test ×2 = 67 s, corpus_regression = 25 s dominate — the
-gate is process-spawn-bound). Earlier batch (O-007…O-013): native sort/sort-by,
-reductions/map-indexed/string-join O(n²)→O(n), strip; json/walk hash_map fixes.
+`bindCallFrame` shared single-source binder extracted (`ab1959c2`); Design 2
+measured null + reverted; **ADR-0131 (in-VM call-frame stack, Alt A) Accepted**
+with a Devil's-advocate fork. Prior batch: O-014 arith intrinsics + O-015 frame
+rooting → cljw 12/23 vs Python; D-385 gate timing.
 - **Cautionary precedents for any dispatch/frame change**: O-005 (frame nil-init
   left rooting at full 256 → traced undefined tail → UAF) + O-013 (concat
-  right-nest → interleave stack overflow). Both reverted; both have regression tests.
+  right-nest → interleave stack overflow). Both reverted; both have regression
+  tests. ADR-0131's torture e2e MUST allocate per frame (fib proves no rooting).
 
 ## Cold-start reading order (resume)
 
-handover → `private/notes/9.2.S-campaign-milestone.md` (this batch's summary +
-next-lever map) → `private/notes/9.2.S-flat-frame-survey.md` (the next lever's
-plan) → `.dev/perf_v0_baseline.md` (§ Call-path lever + § Measurement cadence +
-the v0 catalog) → `.dev/optimizations.md` (O-NNN incl O-005/O-014/O-015) →
-`.dev/debt.yaml` (D-385 gate efficiency, D-133 JIT). v0 ref:
+handover → **`.dev/decisions/0131_in_vm_call_frame_stack.md`** (the lever's full
+design + DA alternatives) → `private/notes/9.2.S-flat-frame-survey.md` (§ EMPIRICAL
+UPDATE: Design 2 null + the profile) → `.dev/perf_v0_baseline.md` (§ Call-path
+lever + Measurement cadence + v0 catalog) → `.dev/optimizations.md` (O-NNN incl
+O-005/O-014/O-015) → `.dev/debt.yaml` (D-385 gate, D-133 JIT). v0 ref:
 `~/Documents/MyProducts/ClojureWasm/` (re-derive per F-004, never copy).
