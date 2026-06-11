@@ -305,6 +305,28 @@ const Compiler = struct {
         // handled by the runtime `core_arith_pristine` deopt in the dispatch arm.
         if (n.args.len == 2 and n.callee.* == .var_ref) {
             if (intrinsic.recognize(self.rt, n.callee.var_ref.var_ptr)) |op| {
+                // PERF: fuse `(<op> local-ref const-literal)` into ONE
+                // `op_*_local_const` superinstruction (the fib/tak hot triple
+                // `(- n 1)` / `(< n 2)`) — no op_load_local + op_const dispatch.
+                // local = arg[0], const = arg[1] (operand order preserved for
+                // non-commutative sub/lt/…); both indices must fit a u8, else fall
+                // back to the 3-op form [refs: O-018, D-386]
+                if (n.args[0] == .local_ref and n.args[1] == .constant) {
+                    if (intrinsic.localConstVariant(op)) |fused| {
+                        const lslot = n.args[0].local_ref.index;
+                        if (lslot < 256) {
+                            const cidx = try self.addConstant(n.args[1].constant.value);
+                            if (cidx < 256) {
+                                if (n.loc.line != 0) {
+                                    self.current_line = n.loc.line;
+                                    self.current_column = n.loc.column;
+                                }
+                                try self.emit(fused, (@as(u16, @intCast(lslot)) << 8) | @as(u16, cidx));
+                                return;
+                            }
+                        }
+                    }
+                }
                 for (n.args) |*a| try self.compileNode(a);
                 if (n.loc.line != 0) {
                     self.current_line = n.loc.line;

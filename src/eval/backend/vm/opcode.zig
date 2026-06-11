@@ -255,6 +255,22 @@ pub const Opcode = enum(u8) {
     op_ge = 0x2E,
     op_eq = 0x2F,
 
+    /// D-386 (O-018) local-const arith superinstructions: fuse the hot
+    /// `(<op> local-ref const-literal)` triple (op_load_local + op_const + op_*)
+    /// into ONE dispatch (fib `(- n 1)`/`(- n 2)`/`(< n 2)`). Operand packs
+    /// `(local_slot << 8) | const_idx` (both < 256; the compiler falls back to the
+    /// 3-op form otherwise). Same fixnum-fast / builtin-deopt semantics as the
+    /// op_add family, but loads the operands from `locals[slot]` + `constants[idx]`
+    /// instead of the stack — net stack effect +1 (a pure push of the result).
+    op_add_local_const = 0x30,
+    op_sub_local_const = 0x31,
+    op_mul_local_const = 0x32,
+    op_lt_local_const = 0x33,
+    op_le_local_const = 0x34,
+    op_gt_local_const = 0x35,
+    op_ge_local_const = 0x36,
+    op_eq_local_const = 0x37,
+
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
     /// (vm.zig:188-201 + :317 `applyJump`). Peephole's IP-remap pass
@@ -309,6 +325,14 @@ pub const Opcode = enum(u8) {
             .op_gt,
             .op_ge,
             .op_eq,
+            .op_add_local_const,
+            .op_sub_local_const,
+            .op_mul_local_const,
+            .op_lt_local_const,
+            .op_le_local_const,
+            .op_gt_local_const,
+            .op_ge_local_const,
+            .op_eq_local_const,
             => false,
         };
     }
@@ -369,6 +393,14 @@ pub const Opcode = enum(u8) {
             .op_gt,
             .op_ge,
             .op_eq,
+            .op_add_local_const,
+            .op_sub_local_const,
+            .op_mul_local_const,
+            .op_lt_local_const,
+            .op_le_local_const,
+            .op_gt_local_const,
+            .op_ge_local_const,
+            .op_eq_local_const,
             => false,
         };
     }

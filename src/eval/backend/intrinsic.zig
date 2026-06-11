@@ -82,6 +82,40 @@ pub fn fromOpcode(op: Opcode) ?ArithOp {
     };
 }
 
+/// D-386 (O-018): the `*_local_const` superinstruction variant of a plain arith
+/// opcode (op_add → op_add_local_const). The compiler emits this when an
+/// intrinsic call's args are `(local-ref, const-literal)`. `null` for a
+/// non-arith opcode.
+pub fn localConstVariant(op: Opcode) ?Opcode {
+    return switch (op) {
+        .op_add => .op_add_local_const,
+        .op_sub => .op_sub_local_const,
+        .op_mul => .op_mul_local_const,
+        .op_lt => .op_lt_local_const,
+        .op_le => .op_le_local_const,
+        .op_gt => .op_gt_local_const,
+        .op_ge => .op_ge_local_const,
+        .op_eq => .op_eq_local_const,
+        else => null,
+    };
+}
+
+/// D-386 (O-018): the `ArithOp` a `*_local_const` opcode computes (the VM
+/// dispatch arm reuses `fastBinaryFixnum`). `null` for a non-fused opcode.
+pub fn fromLocalConstOpcode(op: Opcode) ?ArithOp {
+    return switch (op) {
+        .op_add_local_const => .add,
+        .op_sub_local_const => .sub,
+        .op_mul_local_const => .mul,
+        .op_lt_local_const => .lt,
+        .op_le_local_const => .le,
+        .op_gt_local_const => .gt,
+        .op_ge_local_const => .ge,
+        .op_eq_local_const => .eq,
+        else => null,
+    };
+}
+
 /// Compile-time recogniser: if `var_ptr` is a cached canonical arith Var, return
 /// the opcode to emit. Pointer identity — a let-shadowed name is a `.local_ref`
 /// (never reaches here); the runtime `core_arith_pristine` flag handles a later

@@ -666,6 +666,40 @@ inline fn stepOnce(
             stack[sp] = result;
             sp += 1;
         },
+        .op_add_local_const, .op_sub_local_const, .op_mul_local_const, .op_lt_local_const, .op_le_local_const, .op_gt_local_const, .op_ge_local_const, .op_eq_local_const => {
+            // PERF: D-386 (O-018) local-const arith superinstruction — operands come
+            // from `locals[slot]` + `constants[idx]` (packed in the operand), NOT the
+            // stack, fusing op_load_local + op_const + op_<arith> into one dispatch.
+            // Same fixnum-fast / builtin-deopt semantics as the op_add family; net
+            // stack effect +1 (a pure push). [refs: O-018]
+            const lslot: usize = instr.operand >> 8;
+            const cidx: usize = instr.operand & 0xFF;
+            if (lslot >= locals.len)
+                return error_catalog.raise(.slot_out_of_range, .{}, .{ .form = "Local", .index = @as(u16, @intCast(lslot)), .max = locals.len });
+            if (cidx >= chunk.constants.len)
+                return raiseInternal("vm: local_const constant index out of range");
+            const a = locals[lslot];
+            const b = chunk.constants[cidx];
+            const aop = intrinsic.fromLocalConstOpcode(instr.opcode).?;
+            const fast: ?Value = if (rt.core_arith_pristine)
+                try intrinsic.fastBinaryFixnum(rt, aop, a, b)
+            else
+                null;
+            const result = fast orelse blk: {
+                const vt = rt.vtable orelse
+                    return error_catalog.raiseInternal(.{}, "Runtime vtable not installed; cannot dispatch arith intrinsic");
+                const pv = rt.arith_vars[@intFromEnum(aop)] orelse
+                    return raiseInternal("vm: arith intrinsic emitted without a cached Var");
+                const op_var: *const env_mod.Var = @ptrCast(@alignCast(pv));
+                const two = [2]Value{ a, b };
+                break :blk try vt.callFn(rt, env, op_var.deref(), &two, instr_loc);
+            };
+            if (sp >= stack.len)
+                return raiseInternal("vm: operand stack overflow");
+            loc_stack[sp] = instr_loc;
+            stack[sp] = result;
+            sp += 1;
+        },
         .op_ret => {
             @branchHint(.likely);
             if (sp == 0) return raiseInternal("vm: op_ret on empty stack");
