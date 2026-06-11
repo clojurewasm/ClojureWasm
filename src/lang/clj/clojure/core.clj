@@ -562,7 +562,15 @@
 ;; `(not= x …)` — logical complement of `=`. `(fnext x)` = `(first (next x))`,
 ;; `(nnext x)` = `(next (next x))` — the first/next combinators. `(run! f
 ;; coll)` applies f to each element for side effects, returns nil (D-134).
-(def not= (fn* [& args] (not (apply = args))))
+;; PERF: O-027 a 2-arg fast arity avoids the variadic rest-pack + `apply` on the
+;; hot 2-arg path (`(not= 0 (mod x p))` in sieve's filter pred, per element ×
+;; per filter-level). The variadic clause starts at 3 args (Clojure requires the
+;; variadic's required-param count to exceed every fixed arity); 0/1 args → false
+;; (`(not (= …))` of ≤1 arg). [refs: O-027, D-386]
+(def not= (fn* ([] false)
+                ([a] false)
+                ([a b] (not (= a b)))
+                ([a b c & more] (not (apply = a b c more)))))
 (def fnext (fn* [x] (first (next x))))
 (def nnext (fn* [x] (next (next x))))
 (def run! (fn* [f coll] (reduce (fn* [_ x] (f x)) nil coll) nil))
