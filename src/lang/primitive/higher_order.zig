@@ -37,6 +37,7 @@ const range_mod = @import("../../runtime/collection/range.zig");
 const vector_mod = @import("../../runtime/collection/vector.zig");
 const compare_mod = @import("../../runtime/compare.zig");
 const chunked_cons = @import("../../runtime/collection/chunked_cons.zig");
+const lazy_seq_mod = @import("../../runtime/lazy_seq.zig");
 const sequence = @import("sequence.zig");
 const tree_walk = @import("../../eval/backend/tree_walk.zig");
 const root_set = @import("../../runtime/gc/root_set.zig");
@@ -241,6 +242,31 @@ pub fn reduceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             racc = rstep;
         }
         return racc;
+    }
+
+    // PERF: D-386 (O-023) fused reduce — when `coll` is a (map/filter …) lazy
+    // chain carrying a `[xform source]` fusion descriptor, reduce its ORIGINAL
+    // source ONCE through the captured transducer (clojure.core/transduce — the
+    // Eduction/transduce engine, which already beats Python), skipping the
+    // per-element lazy thunk-force walk below. Invisible to laziness: reduce
+    // realizes its source fully, so fusing changes no observable Value (ADR-0036
+    // dual-backend parity holds — pure speed). ONLY the 3-arg form: 2-arg reduce
+    // seeds init from (first coll), but transduce seeds from `(f)` — different
+    // semantics for a general f, so 2-arg falls through to the generic walk.
+    // [refs: O-023, D-386]
+    if (args.len == 3 and coll.tag() == .lazy_seq and !lazy_seq_mod.fuseOf(coll).isNil()) {
+        // Delegate to the `.clj` `-fused-reduce`: it walks the `[xform coll]` fuse
+        // chain (composing the transducers inner-first, reaching the base source)
+        // and runs ONE `(transduce composed (completing f) init base)` pass — the
+        // composition uses `comp`/`transduce`/`completing` which exist post-load
+        // (avoids a load-order forward reference in `map`/`filter`).
+        if (env.findNs("clojure.core")) |core| {
+            if (core.resolve("-fused-reduce")) |fr| {
+                gc_roots[1] = args[1]; // init
+                gc_roots[2] = coll; // its fuse descriptor transitively roots the chain
+                return try invokeCallable(rt, env, fr.deref(), &.{ f, args[1], coll }, loc);
+            }
+        }
     }
 
     var acc: Value = undefined;
@@ -575,6 +601,26 @@ fn sortNaturalFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     return vector_mod.fromSlice(rt, buf);
 }
 
+/// PERF: D-386 (O-023) `-lazy-set-fuse` — return a copy of a lazy_seq carrying
+/// the `{:xform :coll}` fusion descriptor (a non-lazy_seq passes through). The
+/// thunk body is unchanged, so seq ops are identical; reduce reads the fuse to
+/// transduce in one pass. [refs: O-023]
+pub fn lazySetFuseFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("-lazy-set-fuse", args, 2, loc);
+    if (args[0].tag() != .lazy_seq) return args[0];
+    return try lazy_seq_mod.setFuse(rt, args[0], args[1]);
+}
+
+/// PERF: D-386 (O-023) `-lazy-get-fuse` — the fusion descriptor of a coll (nil if
+/// none / not a lazy_seq). Used by `map`/`filter` to compose a chain. [refs: O-023]
+pub fn lazyGetFuseFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("-lazy-get-fuse", args, 1, loc);
+    return lazy_seq_mod.fuseOf(args[0]);
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -611,6 +657,8 @@ const LEAF_ENTRIES = [_]Entry{
     .{ .name = "-range", .f = &rangeLeafFn },
     .{ .name = "-sort-natural", .f = &sortNaturalFn },
     .{ .name = "-sort-by-keys", .f = &sortByKeysFn },
+    .{ .name = "-lazy-set-fuse", .f = &lazySetFuseFn },
+    .{ .name = "-lazy-get-fuse", .f = &lazyGetFuseFn },
 };
 
 pub fn register(

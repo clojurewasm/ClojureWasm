@@ -90,6 +90,36 @@
 ;; shortest (D-134). N-coll variadic (`& colls`) deferred: it needs
 ;; every?/identity which are later core.clj defns (def-order; fn-body
 ;; symbols resolve at def time), so it would need a primitive-only seq-all.
+;; PERF: O-023 fusion descriptor `[xform coll]` for the reduce-site fuse. If
+;; `coll` already carries one (a chained map/filter), compose the transducers
+;; (`comp` runs left-to-right per element: inner xform first) + reach past to the
+;; base source — so a whole `(filter p (map g …))` chain collapses to ONE
+;; `[composed-xform base-coll]` that `reduce` runs as a single `transduce` pass.
+;; `comp`/`nth` resolve at call time (map/filter run post-load), so the forward
+;; reference is safe. [refs: O-023, D-386]
+(def -fuse-descriptor
+  (fn* [this-xform coll]
+    [this-xform coll]))
+
+;; PERF: O-023 internal lazy body for `map` — recurses on ITSELF (no fuse stamp)
+;; so the per-node lazy path (first/rest/take) pays nothing; only the public
+;; `map` stamps the descriptor on the outer node reduce sees. [refs: O-023]
+(def -map-lazy
+  (fn* [f coll]
+    ;; PERF: chunked source → transform a whole 32-chunk per thunk (O-004).
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s
+          (if (chunked-seq? s)
+            (let [size (-chunk-count s)
+                  b (chunk-buffer size)]
+              (loop [i 0]
+                (when (< i size)
+                  (chunk-append b (f (-chunk-nth s i)))
+                  (recur (inc i))))
+              (chunk-cons b (-map-lazy f (chunk-rest s))))
+            (cons (f (first s)) (-map-lazy f (rest s))))
+          nil)))))
 (def map
   (fn* ([f]
         ;; transducer arity: (map f) returns a transducer
@@ -103,22 +133,9 @@
                ;; transducer placed first stays 2-arg → arity error (clj parity).
                ([result input & inputs] (rf result (apply f input inputs))))))
        ([f coll]
-        ;; PERF: when the source is chunked (range seq, chunked map/filter),
-        ;; transform a whole 32-chunk per thunk so the lazy-seq machinery is
-        ;; amortised 32x (JVM chunk-cons shape) [refs: O-004, D-163]
-        (lazy-seq
-          (let [s (seq coll)]
-            (if s
-              (if (chunked-seq? s)
-                (let [size (-chunk-count s)
-                      b (chunk-buffer size)]
-                  (loop [i 0]
-                    (when (< i size)
-                      (chunk-append b (f (-chunk-nth s i)))
-                      (recur (inc i))))
-                  (chunk-cons b (map f (chunk-rest s))))
-                (cons (f (first s)) (map f (rest s))))
-              nil))))
+        ;; PERF: O-023 stamp the fusion descriptor on the outer node so `reduce`
+        ;; fuses; the lazy body (`-map-lazy`) is unchanged → seq ops identical.
+        (-lazy-set-fuse (-map-lazy f coll) (-fuse-descriptor (map f) coll)))
        ([f c1 c2]
         (lazy-seq
           (let [s1 (seq c1) s2 (seq c2)]
@@ -132,6 +149,26 @@
               (cons (f (first s1) (first s2) (first s3))
                     (map f (rest s1) (rest s2) (rest s3)))
               nil))))))
+;; PERF: O-023 internal lazy body for `filter` — recurses on itself, no stamp.
+(def -filter-lazy
+  (fn* [pred coll]
+    (lazy-seq
+      (let [s (seq coll)]
+        (if s
+          (if (chunked-seq? s)
+            (let [size (-chunk-count s)
+                  b (chunk-buffer size)]
+              (loop [i 0]
+                (when (< i size)
+                  (let [v (-chunk-nth s i)]
+                    (when (pred v) (chunk-append b v)))
+                  (recur (inc i))))
+              (chunk-cons b (-filter-lazy pred (chunk-rest s))))
+            (let [v (first s)]
+              (if (pred v)
+                (cons v (-filter-lazy pred (rest s)))
+                (-filter-lazy pred (rest s)))))
+          nil)))))
 (def filter
   (fn* ([pred]
         ;; transducer arity
@@ -140,26 +177,8 @@
                ([result] (rf result))
                ([result input] (if (pred input) (rf result input) result)))))
        ([pred coll]
-        ;; PERF: chunk-preserving filter — drop within a 32-chunk, emit a
-        ;; (possibly shorter) chunk; empty chunks are skipped by chunk-cons
-        ;; [refs: O-004, D-163]
-        (lazy-seq
-          (let [s (seq coll)]
-            (if s
-              (if (chunked-seq? s)
-                (let [size (-chunk-count s)
-                      b (chunk-buffer size)]
-                  (loop [i 0]
-                    (when (< i size)
-                      (let [v (-chunk-nth s i)]
-                        (when (pred v) (chunk-append b v)))
-                      (recur (inc i))))
-                  (chunk-cons b (filter pred (chunk-rest s))))
-                (let [v (first s)]
-                  (if (pred v)
-                    (cons v (filter pred (rest s)))
-                    (filter pred (rest s)))))
-              nil))))))
+        ;; PERF: O-023 stamp the fusion descriptor; lazy body is `-filter-lazy`.
+        (-lazy-set-fuse (-filter-lazy pred coll) (-fuse-descriptor (filter pred) coll)))))
 (def take
   (fn* ([n]
         ;; transducer arity: stateful (counts down n), ensure-reduced to stop
@@ -470,6 +489,22 @@
        ([f] f)
        ([f g] (fn* [& args] (f (apply g args))))
        ([f g & fs] (reduce comp (comp f g) fs))))
+
+;; PERF: O-023 reduce-site fusion engine — the Zig `reduce` (3-arg) delegates here
+;; when its source carries a `[xform coll]` fuse descriptor (stamped by map/filter).
+;; Walk the descriptor chain composing the transducers inner-first (`(comp inner
+;; outer)`) and reaching the base source, then run ONE `transduce` pass — so
+;; `(reduce f init (filter p (map g xs)))` collapses to a single zero-intermediate
+;; sweep over `xs`. `completing` keeps the 1-arg arity a no-op (reduce has no
+;; completion step). Defined after `comp`/`transduce`/`completing`; called only at
+;; runtime, so no load-order hazard. [refs: O-023, D-386]
+(def -fused-reduce
+  (fn* [f init coll]
+    (loop [xform nil c coll]
+      (let [fd (-lazy-get-fuse c)]
+        (if fd
+          (recur (if xform (comp (nth fd 0) xform) (nth fd 0)) (nth fd 1))
+          (transduce xform (completing f) init c))))))
 
 ;; `juxt` — `((juxt f g …) & args)` yields `[(apply f args) (apply g args) …]`
 ;; (D-134: multi-fn + multi-arg; previously 2-fn / single-arg only).

@@ -69,6 +69,12 @@ pub const LazySeq = extern struct {
     realized: Value = Value.nil_val,
     /// Optional metadata map.
     meta: Value = Value.nil_val,
+    /// PERF: D-386 (O-023) internal fusion descriptor — a `{:xform :coll}` map
+    /// stamped by `map`/`filter` so `reduce` can fuse the transform chain into a
+    /// single `transduce` pass (no intermediate seq). A SEPARATE slot from `meta`
+    /// (NOT the user meta map) so `(meta (map …))` stays nil = clj parity. Inert
+    /// to every seq op (first/rest/seq/take force the thunk normally). [refs: O-023]
+    fuse: Value = Value.nil_val,
 
     comptime {
         std.debug.assert(@alignOf(LazySeq) >= 8);
@@ -87,6 +93,7 @@ pub fn alloc(rt: *Runtime, thunk_fn: Value) !Value {
         .thunk = thunk_fn,
         .realized = Value.nil_val,
         .meta = Value.nil_val,
+        .fuse = Value.nil_val,
     };
     return Value.encodeHeapPtr(.lazy_seq, ls);
 }
@@ -224,6 +231,7 @@ pub fn traceLazySeq(gc_ptr: *anyopaque, header: *HeapHeader) void {
     if (ls.thunk.heapHeader()) |h| mark_sweep.mark(gc, h);
     if (ls.realized.heapHeader()) |h| mark_sweep.mark(gc, h);
     if (ls.meta.heapHeader()) |h| mark_sweep.mark(gc, h);
+    if (ls.fuse.heapHeader()) |h| mark_sweep.mark(gc, h);
 }
 
 /// Register the LazySeq trace fn into `tag_ops.tag_trace_table`.
@@ -237,11 +245,29 @@ pub fn metaOf(v: Value) Value {
     return v.decodePtr(*const LazySeq).meta;
 }
 
-/// `(with-meta ls newmeta)` — shallow copy sharing thunk/realized, meta set.
+/// `(with-meta ls newmeta)` — shallow copy sharing thunk/realized/fuse, meta set.
 pub fn withMeta(rt: *Runtime, v: Value, m: Value) !Value {
     const ls = v.decodePtr(*const LazySeq);
     const nls = try rt.gc.alloc(LazySeq);
-    nls.* = .{ .header = HeapHeader.init(.lazy_seq), .realized_flag = ls.realized_flag, .thunk = ls.thunk, .realized = ls.realized, .meta = m };
+    nls.* = .{ .header = HeapHeader.init(.lazy_seq), .realized_flag = ls.realized_flag, .thunk = ls.thunk, .realized = ls.realized, .meta = m, .fuse = ls.fuse };
+    return Value.encodeHeapPtr(.lazy_seq, nls);
+}
+
+/// PERF: D-386 (O-023) the fusion descriptor of a lazy seq (or nil for a
+/// non-lazy_seq / un-stamped one). Read by `reduceFn`'s fused arm. [refs: O-023]
+pub fn fuseOf(v: Value) Value {
+    if (v.tag() != .lazy_seq) return Value.nil_val;
+    return v.decodePtr(*const LazySeq).fuse;
+}
+
+/// PERF: D-386 (O-023) shallow copy of a lazy seq sharing thunk/realized/meta
+/// with the fusion descriptor set. The thunk body is byte-for-byte the original,
+/// so every seq op forces it identically — `fuse` is a pure side channel reduce
+/// reads. [refs: O-023]
+pub fn setFuse(rt: *Runtime, v: Value, f: Value) !Value {
+    const ls = v.decodePtr(*const LazySeq);
+    const nls = try rt.gc.alloc(LazySeq);
+    nls.* = .{ .header = HeapHeader.init(.lazy_seq), .realized_flag = ls.realized_flag, .thunk = ls.thunk, .realized = ls.realized, .meta = ls.meta, .fuse = f };
     return Value.encodeHeapPtr(.lazy_seq, nls);
 }
 
