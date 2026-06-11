@@ -495,6 +495,28 @@ const Compiler = struct {
         if (n.args.len != frame.bindings.len) unreachable;
         if (n.args.len > std.math.maxInt(u16)) return error.TooManyCallArgs;
         for (n.args) |*a| try self.compileNode(a);
+
+        // PERF: D-386 (O-022) recur_loop fusion — if the loop bindings occupy
+        // CONTIGUOUS slots [base, base+N), collapse op_recur + N op_store_local +
+        // back-jump into ONE op_recur_loop + an offset data word. The VM stores
+        // the top N operands to locals[base..base+N) (arg k → binding k, the same
+        // mapping the reverse-order stores below produce) and jumps. [refs: O-022]
+        const nb = frame.bindings.len;
+        fuse: {
+            if (nb == 0 or nb >= 256) break :fuse;
+            const base = frame.bindings[0].index;
+            if (base >= 256) break :fuse;
+            for (frame.bindings, 0..) |b, k| {
+                if (b.index != base + @as(u16, @intCast(k))) break :fuse;
+            }
+            // data word follows op_recur_loop, so the jump lands ip at op+2.
+            const bd: usize = self.instructions.items.len + 2 - frame.top_ip;
+            if (bd > std.math.maxInt(i16)) break :fuse;
+            try self.emit(.op_recur_loop, (@as(u16, base) << 8) | @as(u16, @intCast(nb)));
+            try self.emit(.op_jump, @as(u16, @bitCast(-@as(i16, @intCast(bd)))));
+            return;
+        }
+
         try self.emit(.op_recur, @intCast(n.args.len));
         var i: usize = frame.bindings.len;
         while (i > 0) {
@@ -1241,11 +1263,13 @@ test "compile loop* emits initial bindings then body without exit op" {
     try testing.expectEqual(Opcode.op_ret, chunk.instructions[3].opcode);
 }
 
-test "compile recur emits args, op_recur, reverse op_store_locals, back-edge op_jump" {
+test "compile recur fuses into op_recur_loop + back-edge data word (O-022)" {
     var f = Fixture.init(testing.allocator);
     defer f.deinit();
 
-    // (loop* [i 0] (recur 1)) — one-arg recur drains stack into i.
+    // (loop* [i 0] (recur 1)) — one contiguous binding (slot 0) → the recur
+    // back-edge fuses (O-022): op_recur + op_store_local + op_jump collapse into
+    // op_recur_loop ((base<<8)|N) + an op_jump DATA WORD (the i16 back-offset).
     const init_val: Node = .{ .constant = .{ .value = Value.nil_val } };
     const recur_arg: Node = .{ .constant = .{ .value = Value.true_val } };
     const recur_args = [_]Node{recur_arg};
@@ -1256,15 +1280,14 @@ test "compile recur emits args, op_recur, reverse op_store_locals, back-edge op_
     const node: Node = .{ .loop_node = .{ .bindings = &bindings, .body = &body } };
     const chunk = try f.compile(&node);
 
-    // op_const nil ; op_store_local 0 ; <body starts here>
-    // op_const true ; op_recur 1 ; op_store_local 0 ; op_jump -4 ; op_ret
+    // op_const nil ; op_store_local 0 ; <body> op_const true ;
+    // op_recur_loop (base=0,N=1) ; op_jump <data word, back-offset> ; op_ret
     try testing.expectEqual(Opcode.op_store_local, chunk.instructions[1].opcode);
     try testing.expectEqual(Opcode.op_const, chunk.instructions[2].opcode);
-    try testing.expectEqual(Opcode.op_recur, chunk.instructions[3].opcode);
-    try testing.expectEqual(@as(u16, 1), chunk.instructions[3].operand);
-    try testing.expectEqual(Opcode.op_store_local, chunk.instructions[4].opcode);
-    try testing.expectEqual(Opcode.op_jump, chunk.instructions[5].opcode);
-    const back_offset: i16 = @bitCast(chunk.instructions[5].operand);
+    try testing.expectEqual(Opcode.op_recur_loop, chunk.instructions[3].opcode);
+    try testing.expectEqual(@as(u16, (0 << 8) | 1), chunk.instructions[3].operand);
+    try testing.expectEqual(Opcode.op_jump, chunk.instructions[4].opcode);
+    const back_offset: i16 = @bitCast(chunk.instructions[4].operand);
     try testing.expect(back_offset < 0);
 }
 

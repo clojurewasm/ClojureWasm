@@ -776,6 +776,30 @@ inline fn stepOnce(
                     return raiseInternal("vm: op_branch_* target out of range");
             }
         },
+        .op_recur_loop => {
+            // PERF: D-386 (O-022) fused loop back-edge. `operand` = (base << 8) | N;
+            // the IMMEDIATELY-FOLLOWING instruction is the DATA WORD with the i16
+            // back-jump offset. Store the top N operands to `locals[base..base+N)`
+            // (arg k → binding k) and jump back to the loop body — collapses
+            // op_recur + N op_store_local + op_jump. [refs: O-022]
+            const base: usize = instr.operand >> 8;
+            const nb: usize = instr.operand & 0xFF;
+            if (ip >= chunk.instructions.len)
+                return raiseInternal("vm: op_recur_loop missing offset data word");
+            const offset: i16 = @bitCast(chunk.instructions[ip].operand);
+            ip += 1;
+            if (sp < nb) return raiseInternal("vm: op_recur_loop underflow");
+            if (base + nb > locals.len)
+                return error_catalog.raise(.slot_out_of_range, .{}, .{ .form = "loop*", .index = @as(u16, @intCast(base + nb)), .max = locals.len });
+            const top: u16 = sp - @as(u16, @intCast(nb));
+            var k: usize = 0;
+            while (k < nb) : (k += 1) {
+                locals[base + k] = stack[top + k];
+            }
+            sp = top;
+            ip = applyJump(ip, offset) orelse
+                return raiseInternal("vm: op_recur_loop target out of range");
+        },
         .op_ret => {
             @branchHint(.likely);
             if (sp == 0) return raiseInternal("vm: op_ret on empty stack");

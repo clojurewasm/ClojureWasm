@@ -302,6 +302,15 @@ pub const Opcode = enum(u8) {
     op_branch_ge_locals = 0x44,
     op_branch_gt_locals = 0x45,
 
+    /// D-386 (O-022) recur_loop superinstruction: fuse `op_recur N` + the N
+    /// `op_store_local` + the back-`op_jump` into ONE dispatch (the loop/recur
+    /// back-edge: arith_loop / make-list). Requires the loop bindings to occupy
+    /// CONTIGUOUS slots `[base, base+N)` (the compiler checks; else it emits the
+    /// unfused form). `operand` = `(base << 8) | N`; the IMMEDIATELY-FOLLOWING
+    /// instruction is a DATA WORD holding the i16 back-jump offset. The VM stores
+    /// the top N operands to `locals[base..base+N)` (arg k → binding k) and jumps.
+    op_recur_loop = 0x46,
+
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
     /// (vm.zig:188-201 + :317 `applyJump`). Peephole's IP-remap pass
@@ -378,6 +387,7 @@ pub const Opcode = enum(u8) {
             .op_branch_ne_locals,
             .op_branch_ge_locals,
             .op_branch_gt_locals,
+            .op_recur_loop,
             => false,
         };
     }
@@ -460,6 +470,7 @@ pub const Opcode = enum(u8) {
             .op_branch_ne_locals,
             .op_branch_ge_locals,
             .op_branch_gt_locals,
+            .op_recur_loop,
             => false,
         };
     }
