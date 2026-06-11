@@ -139,11 +139,14 @@ raises an explicit error rather than quietly mis-behaving.
 
 The concurrency *primitives* are complete (`future` / `promise` / `delay`,
 full STM `dosync` / `alter` / `commute` / `ensure` / `ref-set`, `atom` with
-CAS, `agent` with error modes, `locking`, `volatile`, real threads,
-`Thread/sleep`). The lower-frequency tail is deferred:
+CAS, `agent` with error modes, reference **watches** — `add-watch` /
+`remove-watch` fire uniformly across atoms, agents, refs and vars —
+`locking`, `volatile`, real threads, `Thread/sleep`). The lower-frequency
+tail is deferred:
 
-- agent **watches** and **validators**
-- `await-for`, `shutdown-agents`
+- **validators** are `atom`-only today (`set-validator!` / `get-validator`);
+  `agent` / `ref` / `var` validators are not yet wired
+- `await-for`, `shutdown-agents`, agent error-handlers
 
 ### Host / IO
 
