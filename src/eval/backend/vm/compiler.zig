@@ -295,11 +295,12 @@ const Compiler = struct {
     }
 
     fn compileCall(self: *Compiler, n: node_mod.CallNode) Error!void {
-        // ADR-0130: emit op_add for a 2-arg call whose callee resolves (by Var
-        // pointer identity) to canonical `clojure.core/+`. A let-shadowed `+` is
-        // a `.local_ref`, not a `.var_ref`, so this gate cannot fire on it. A
-        // later alter-var-root is handled by the runtime `core_arith_pristine`
-        // deopt in the op_add dispatch arm.
+        // PERF: emit op_add for `(+ a b)` instead of a generic op_call, skipping
+        // var-resolution + BuiltinFn dispatch + arg-slice on the hot path [refs: O-014]
+        // ADR-0130: gate on Var pointer identity to canonical `clojure.core/+`. A
+        // let-shadowed `+` is a `.local_ref`, not a `.var_ref`, so this gate cannot
+        // fire on it. A later alter-var-root is handled by the runtime
+        // `core_arith_pristine` deopt in the op_add dispatch arm.
         if (n.args.len == 2 and n.callee.* == .var_ref) {
             if (self.rt.plus_var) |pv| {
                 if (@intFromPtr(pv) == @intFromPtr(n.callee.var_ref.var_ptr)) {
