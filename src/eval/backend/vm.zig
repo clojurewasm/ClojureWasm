@@ -382,7 +382,12 @@ pub fn eval(
 /// a non-null Value when `op_ret` fires, or propagates the Zig error
 /// so the outer loop can route `error.ThrownValue` through the
 /// handler stack.
-fn stepOnce(
+// PERF: force-inline the per-op dispatch into the `eval` loop. ReleaseSafe was
+// NOT inlining this 11-arg hot function, so each instruction paid a real call
+// boundary (v0 dispatches a 2-arg step; cljw's wide signature made the call
+// expensive). Inlining: fib_recursive 40→33 ms, tak 15→13 (D-386 step 1). The
+// naive form is a plain `fn`; behaviour is identical (diff oracle). [refs: O-017]
+inline fn stepOnce(
     rt: *Runtime,
     env: *Env,
     locals: []Value,
