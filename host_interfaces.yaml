@@ -138,6 +138,15 @@ interfaces:
     note: "D-397: nth→Indexed/-nth; the 2-arity (i, not-found) impl shares -nth via D-279 multi-arity. `nthFn`'s else-arm already dispatches Indexed/-nth on a typed_instance (D-089 row 8.6 cycle 2) — a REAL win (nth routes to the deftype's impl). instaparse's AutoFlattenSeq declares it."
     methods:
       nth: { status: wired, wires_to_protocol: Indexed, wires_to_method: "-nth" }
+  - name: clojure.lang.IReduceInit
+    derives_from: "clojure.lang.IReduceInit — internal-reduce contract `(reduce [coll f init])` (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "IReduce (defprotocol IReduce (-reduce [c f]), core.clj:1677 — arity-overloaded, collapses JVM's IReduce+IReduceInit per D-069)"
+    note: "D-399: reduce→IReduce/-reduce. `reduce`'s fast-path (higher_order.zig D-069) already dispatches -reduce on a typed_instance, so a custom reducible deftype reduces via its own impl — a REAL win. The 3-arg (self f init) impl shares -reduce via D-279 multi-arity."
+    methods:
+      reduce: { status: wired, wires_to_protocol: IReduce, wires_to_method: "-reduce" }
   # --- editable / transient collection family (D-286, F-013 definition-derived) ---
   # flatland.ordered drives this: OrderedSet declares IEditableCollection (the LOAD
   # blocker) + IPersistentSet with clj-named methods (D-286b); the Transient* types

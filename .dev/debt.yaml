@@ -2458,7 +2458,42 @@ active:
       error printing. MODERATE value. Cross-ref D-232, AD-029, AD-024 (user-frames),
       AD-003 (simple `:type`), ADR-0120 (trace_ptr), F-003 (frame shape = D-232's).
     last_reviewed: "2026-06-12"
+  - id: "D-400"
+    status: "open (2026-06-12 ENUMERATION — the clojure.lang.* deftype-marker family big-bang remainder). A precise sweep of deftype/reify SUPERTYPE-position `clojure.lang.*` across ~50 corpus libs (`grep -rhoE '^\\s+clojure\\.lang\\.(I[A-Z]…|Seqable|…)'`) found exactly 6 interfaces NOT in host_interface.zig MARKERS. D-399 cleared the clean one (IReduceInit). 5 remain, each needing per-interface dispatch-target verification (real-win vs load-but-misbehave) before adding."
+    category: "polymorphism"
+    barrier: |-
+      **5 remaining clojure.lang.* deftype-supertype markers** (freq in corpus):
+      `IPersistentVector` (18) + `IPersistentList` (4) — COMPOSITES (extend Indexed/
+      Associative/Counted/Seqable/IPersistentStack/Reversible); a declaring deftype
+      implements many methods → map each to the existing cljw protocol (most already
+      dispatch), larger surface. `IBlockingDeref` (15) — `(deref [self ms timeout-val])`
+      3-arity blocking deref; cljw IDeref/-deref is 1-arity, needs a timeout-aware
+      target or its own protocol (future/promise). `IReference` (8) — `alterMeta`/
+      `resetMeta` meta-mutation; cljw has no typed_instance meta-mutation dispatch.
+      `IKVReduce` (6) — `(kvreduce [self f init])`; cljw has NO -kv-reduce protocol /
+      reduce-kv typed_instance dispatch (only a core.clj:959 comment) → load-but-
+      misbehave until one is added. DISCIPLINE: do these big-bang (clj_diff_sweep
+      Discipline 2) — for EACH, first confirm cljw has a protocol that DISPATCHES on
+      a typed_instance (the D-394/395/397/399 scoping pattern: real-win, not just
+      'defines'), else build the dispatch first. Also fold the D-397 follow-ups
+      (3-arg nth typed_instance dispatch; IFn/applyTo arity collision). Cross-ref
+      D-394/395/397/399 (the IMeta/Sequential/ISeq/Indexed/IReduceInit slices already
+      landed), host_interfaces.yaml (the recognised set), G4 check_host_interface.
+    last_reviewed: "2026-06-12"
 discharged:
+  - id: "D-399"
+    discharged_at: "feat(host-interface): clojure.lang.IReduceInit deftype marker"
+    resolution: |-
+      Found + fixed 2026-06-12 (the clojure.lang.* marker-family big-bang clean
+      subset). A precise deftype-supertype enumeration of ~50 corpus libs found 6
+      `clojure.lang.*` interfaces not in MARKERS; IReduceInit is the clean one (the
+      other 5 → D-400, rough edges / no dispatch target). A deftype declaring
+      clojure.lang.IReduceInit `(reduce [self f init] …)` now routes to cljw's
+      IReduce/-reduce (core.clj:1677), which `reduce`'s fast-path already dispatches
+      on a typed_instance (D-069 — cljw collapses JVM's IReduce+IReduceInit into one
+      arity-overloaded -reduce). REAL win (reduce calls the deftype's impl, not just
+      defines): e2e phase14_deftype_ireduce (reduce + into, 2 cases clj-matched);
+      G4 51 ⊆ 52; lint clean. IREDUCEINIT protocol_remap + MARKERS + yaml row.
   - id: "D-398"
     discharged_at: "fix(error): catch exceptions by FQCN (java.lang.AssertionError + reflective family)"
     resolution: |-

@@ -175,6 +175,15 @@ const INDEXED: HostInterface = .{ .kind = .protocol_remap, .canonical = "Indexed
     .{ .clj = "nth", .protocol = "Indexed", .method = "-nth" },
 } };
 
+// clojure.lang.IReduceInit (D-399) — a custom reducible deftype declares
+// `(reduce [self f init] …)`. cljw collapses JVM's IReduce+IReduceInit into one
+// arity-overloaded IReduce/-reduce (D-069), which `reduce`'s fast-path already
+// dispatches on a typed_instance — a REAL win. (clj's IReduce 2-arg `reduce`
+// shares the same -reduce via D-279 multi-arity.)
+const IREDUCEINIT: HostInterface = .{ .kind = .protocol_remap, .canonical = "IReduceInit", .remap = &.{
+    .{ .clj = "reduce", .protocol = "IReduce", .method = "-reduce" },
+} };
+
 // clojure.lang.IDeref / IPending — the deref-able family (D-307). A deftype
 // declaring IDeref registers deref→IDeref/-deref; `deref`/`@` consult it for a
 // typed_instance (stm.zig derefFn). IPending's isRealized→IPending/-realized?,
@@ -378,6 +387,7 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "clojure.lang.ISeq", ISEQ },
     .{ "clojure.lang.Sequential", SEQUENTIAL },
     .{ "clojure.lang.Indexed", INDEXED },
+    .{ "clojure.lang.IReduceInit", IREDUCEINIT },
     // D-306: collection-base interfaces declarable as DIRECT deftype supertypes
     // (core.cache's defcache). Qualified spelling only — the bare Associative/
     // Seqable/IPersistentCollection are cljw protocol Vars that resolve already.
