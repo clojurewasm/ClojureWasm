@@ -21,6 +21,8 @@ const type_descriptor = @import("../../type_descriptor.zig");
 const Value = @import("../../value/value.zig").Value;
 const Runtime = @import("../../runtime.zig").Runtime;
 const Env = @import("../../env.zig").Env;
+const string_collection = @import("../../collection/string.zig");
+const java_array = @import("../../collection/java_array.zig");
 const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const charset = @import("../../charset.zig");
@@ -100,6 +102,54 @@ fn forDigit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return Value.initChar(charset.forDigit(@intCast(d), @intCast(r)));
 }
 
+/// `(Character/codePointAt text index)` — the codepoint at `index`. cljw
+/// chars ARE codepoints (no UTF-16 surrogates), so for a native string this
+/// is the D-217 codepoint indexer; a CharSequence deftype (instaparse's
+/// Segment) dispatches its `.charAt`. Index semantics are cljw's
+/// codepoint-based indexing (the string_indexed divergence family).
+fn codePointAt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("Character/codePointAt", args, 2, loc);
+    const idx = try error_catalog.expectInteger(args[1], "Character/codePointAt", loc);
+    const text = args[0];
+    if (text.tag() == .string) {
+        const sbytes = string_collection.asString(text);
+        if (idx >= 0) {
+            if (string_collection.codepointAt(sbytes, @intCast(idx))) |cp| {
+                return Value.initInteger(@intCast(cp));
+            }
+        }
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "Character/codePointAt" });
+    }
+    // CharSequence deftype: dispatch its charAt; the char IS the codepoint.
+    const td_of: ?*const type_descriptor.TypeDescriptor = switch (text.tag()) {
+        .typed_instance => text.decodePtr(*const type_descriptor.TypedInstance).descriptor,
+        .reified_instance => text.decodePtr(*const type_descriptor.ReifiedInstance).descriptor,
+        else => null,
+    };
+    if (td_of) |t| {
+        if (t.lookupMethod(null, "charAt")) |me| {
+            const vt = rt.vtable orelse return error.NoVTable;
+            const c = try vt.callFn(rt, env, me.method_val, &.{ text, args[1] }, loc);
+            if (c.tag() == .char) return Value.initInteger(@intCast(c.asChar()));
+            return c;
+        }
+    }
+    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "Character/codePointAt", .expected = "CharSequence", .actual = @tagName(text.tag()) });
+}
+
+/// `(Character/toChars cp)` — a char array for the codepoint. cljw chars are
+/// codepoints, so this is always a 1-element array (the JVM's surrogate-pair
+/// 2-element case cannot arise).
+fn toChars(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("Character/toChars", args, 1, loc);
+    const cp = try error_catalog.expectInteger(args[0], "Character/toChars", loc);
+    if (cp < 0 or cp > 0x10FFFF) {
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "Character/toChars", .expected = "valid codepoint", .actual = "out-of-range int" });
+    }
+    return java_array.fromSlice(rt, &.{Value.initChar(@intCast(cp))});
+}
+
 fn initCharacter(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent re-run
     const specs = .{
@@ -114,6 +164,8 @@ fn initCharacter(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) an
         .{ "digit", &digit },
         .{ "getNumericValue", &getNumericValue },
         .{ "forDigit", &forDigit },
+        .{ "codePointAt", &codePointAt },
+        .{ "toChars", &toChars },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

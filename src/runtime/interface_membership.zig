@@ -100,6 +100,18 @@ const IPENDING_TAGS = [_]Tag{ .delay, .future, .promise, .lazy_seq };
 /// IBlockingDeref — a blocking deref (with timeout): future + promise.
 const IBLOCKING_TAGS = [_]Tag{ .future, .promise };
 
+/// IObj — ACTIVATED 2026-06-13 (ADR-0134 value-driven slice; pullers:
+/// instaparse's safe-with-meta + clojure.datafy's guard). Limited to the
+/// tags where `(with-meta x m)` WORKS today (measured live), preserving
+/// clj's `(instance? IObj x)` ⟹ with-meta-works invariant — the
+/// not-yet-metable clj-IObj tags (range, chunked_cons, sorted colls,
+/// queue, string_seq/array_seq, promise/future, fns) answer false until
+/// their meta slots land (the remaining ADR-0134 substrates). A deftype
+/// DECLARING clojure.lang.IObj answers true via matchUserType regardless.
+const IOBJ_TAGS = [_]Tag{ .vector, .list, .lazy_seq, .hash_set, .array_map, .hash_map, .symbol };
+/// IMeta — meta-READABLE: the metable IObj set ∪ the reference family.
+const IMETA_TAGS = [_]Tag{ .vector, .list, .lazy_seq, .hash_set, .array_map, .hash_map, .symbol, .atom, .agent, .ref, .var_ref, .ns };
+
 /// One interface → its native implementor tag set.
 pub const Entry = struct { name: []const u8, tags: []const Tag };
 
@@ -128,6 +140,8 @@ pub const TABLE = [_]Entry{
     .{ .name = "Reversible", .tags = &REVERSIBLE_TAGS },
     .{ .name = "Sorted", .tags = &SORTED_TAGS },
     .{ .name = "IEditableCollection", .tags = &EDITABLE_TAGS },
+    .{ .name = "IObj", .tags = &IOBJ_TAGS },
+    .{ .name = "IMeta", .tags = &IMETA_TAGS },
     .{ .name = "List", .tags = &JLIST_TAGS },
     .{ .name = "Collection", .tags = &JCOLLECTION_TAGS },
     // deref / pending / ref family (D-308)

@@ -699,6 +699,7 @@ run_step "e2e_phase14_clojure_lang_coll_hash" "bash test/e2e/phase14_clojure_lan
 run_step "e2e_phase14_multipair_assoc_extend" "bash test/e2e/phase14_multipair_assoc_extend.sh"
 run_step "e2e_phase14_deftype_equiv"          "bash test/e2e/phase14_deftype_equiv.sh"
 run_step "e2e_phase14_deftype_key_hash"       "bash test/e2e/phase14_deftype_key_hash.sh"
+run_step "e2e_phase14_instaparse_substrate"   "bash test/e2e/phase14_instaparse_substrate.sh"
 run_step "e2e_phase14_exit_smoke"            "bash test/e2e/phase14_exit_smoke.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.

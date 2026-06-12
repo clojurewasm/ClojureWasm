@@ -34,6 +34,17 @@
 ;; run modes set its root via alter-var-root before the app forms eval (D-310,
 ;; ADR-0111); a plain `cljw <file>` / `-e` leaves it nil.
 (def ^:dynamic *command-line-args* nil)
+
+;; `*out*` / `*err*` — the bindable output writer vars (D-238, second half;
+;; pulled by instaparse's `(defmethod print-method Failure [x w] (binding
+;; [*out* w] …))`). The ROOT is a sentinel keyword meaning "the process
+;; stream"; print/println/pr/prn/newline (core.zig emitToStdout) deref *out*
+;; AFTER the nREPL capture lane and write through any non-sentinel value
+;; (a print-method writer handle, a java.io.StringWriter, or a user writer
+;; type with a `.write` method). `.write` on the UNBOUND sentinel root is a
+;; documented residual (rebind first, as real code does).
+(def ^:dynamic *out* :clojure.core/stdout)
+(def ^:dynamic *err* :clojure.core/stderr)
 ;; `*print-length*` / `*print-level*` (ADR-0088) are interned in Zig
 ;; (`bootstrap.registerPrintLimitVars`) alongside the other cached-pointer
 ;; dynamic vars (*ns*, *data-readers*) so the renderer reads them via a cached

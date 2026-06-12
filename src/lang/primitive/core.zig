@@ -28,6 +28,7 @@ const list = @import("../../runtime/collection/list.zig");
 const map = @import("../../runtime/collection/map.zig");
 const print_mod = @import("../../runtime/print.zig");
 const charset_mod = @import("../../runtime/charset.zig");
+const writer_value_mod = @import("../../runtime/writer_value.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
 const protocol_mod = @import("../../runtime/protocol.zig");
 const class_name = @import("../../runtime/class_name.zig");
@@ -726,12 +727,32 @@ pub fn setOutCapture(sink: ?*std.Io.Writer.Allocating) ?*std.Io.Writer.Allocatin
 
 fn emitToStdout(rt: *Runtime, env: *Env, args: []const Value, readable: bool, newline: bool) anyerror!Value {
     if (out_capture) |aw| {
-        // Capturing (`with-out-str`): render into the in-memory sink, no stdout,
-        // no flush (the Allocating writer accumulates until the capture ends).
+        // Capturing (`with-out-str` / nREPL): render into the in-memory sink,
+        // no stdout, no flush (the Allocating writer accumulates until the
+        // capture ends). Takes precedence over a *out* binding (the capture
+        // lane is an implementation channel, not a user-visible var).
         const w = &aw.writer;
         try writeArgsSpaced(rt, env, w, args, readable);
         if (newline) try w.writeByte('\n');
         return .nil_val;
+    }
+    // D-238 second half: a `(binding [*out* w] …)` redirects the print
+    // pipeline through the bound writer VALUE (a print-method writer handle,
+    // a java.io.StringWriter, or any type with a `.write` method). The
+    // sentinel keyword root (:clojure.core/stdout) means "the process
+    // stream" — fall through.
+    if (env.findNs("clojure.core")) |core_ns| {
+        if (core_ns.resolve("*out*")) |out_var| {
+            const bound = out_var.deref();
+            if (bound.tag() != .keyword and !bound.isNil()) {
+                var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+                defer aw.deinit();
+                try writeArgsSpaced(rt, env, &aw.writer, args, readable);
+                if (newline) try aw.writer.writeByte('\n');
+                try writeToWriterValue(rt, env, bound, aw.writer.buffered());
+                return .nil_val;
+            }
+        }
     }
     if (rt.stdout) |w| {
         try writeArgsSpaced(rt, env, w, args, readable);
@@ -772,6 +793,31 @@ pub fn prnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 pub fn prFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = loc;
     return emitToStdout(rt, env, args, true, false);
+}
+
+/// Write `bytes` through a writer-ish VALUE: the ADR-0127 writer handle
+/// unwraps to its raw `*std.Io.Writer`; anything else dispatches its
+/// `.write` method with the bytes as a cljw string (covers
+/// java.io.StringWriter and user writer types). An un-writable value
+/// raises — never a silent drop.
+fn writeToWriterValue(rt: *Runtime, env: *Env, wv: Value, bytes: []const u8) anyerror!void {
+    if (writer_value_mod.unwrap(wv)) |w| {
+        try w.writeAll(bytes);
+        return;
+    }
+    const s_val = try string_mod.alloc(rt, bytes);
+    const maybe_td: ?*const td_mod.TypeDescriptor = switch (wv.tag()) {
+        .host_instance => @import("../../runtime/host_instance.zig").asHostInstance(wv).descriptor,
+        .typed_instance => wv.decodePtr(*const td_mod.TypedInstance).descriptor,
+        .reified_instance => wv.decodePtr(*const td_mod.ReifiedInstance).descriptor,
+        else => null,
+    };
+    const td = maybe_td orelse
+        return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "*out* bound to a non-writer value" });
+    const me = td.lookupMethod(null, "write") orelse
+        return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "*out* bound to a value with no .write method" });
+    const vt = rt.vtable orelse return error.NoVTable;
+    _ = try vt.callFn(rt, env, me.method_val, &.{ wv, s_val }, .{});
 }
 
 /// `(__with-out-str thunk)` — run `(thunk)` with `print`/`pr`/`println`/`prn`/
