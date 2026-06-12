@@ -2472,10 +2472,14 @@ discharged:
       `prefix.lib` sub-forms) + `appendLibspecs` (expand a prefix list into one
       RequireNode per sub, recursively; plain libspec → one node), wired into both
       analyzeNs `:require`/`:use` loops and top-level analyzeRequire (multiple subs
-      → a do_node of require_nodes). Verified: e2e phase14_prefix_list_libspec
-      (top-level single/multi/bare + ns :require + ns :use-:only, 5 assertions,
-      clj-matched). potemkin.types advances past :3 (next blocker is the
-      clojure.lang.IMapEntry host-class frontier, D-280 — a separate tracked gap).
+      → a do_node of require_nodes). A follow-up the same cycle completed the LIST
+      form `(prefix sub*)` (the older clj spelling, clojure.data.xml's xml.clj:16) —
+      `isPrefixList` accepts a `.list` (always a prefix list in clj) as well as the
+      `.vector` form. Verified: e2e phase14_prefix_list_libspec (top-level
+      single/multi/bare/list-form + ns :require [vector+list] + ns :use-:only, 7
+      assertions, clj-matched). potemkin.types advances past :3 (next blocker
+      clojure.lang.IMapEntry, D-280); clojure.data.xml advances past xml.clj:16 to
+      jvm/name.clj `QName` (javax host-class frontier) — both separate tracked gaps.
   - id: "D-391"
     discharged_at: "fix(analyzer): bare imported deftype falls back to simple-name rt.types key"
     resolution: |-

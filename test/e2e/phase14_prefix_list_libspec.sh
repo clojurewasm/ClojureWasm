@@ -22,6 +22,9 @@ assert_eq 'top-multi' \
 # top-level require, bare-symbol sub-spec (no opts)
 assert_eq 'top-bare' \
   "$("$BIN" -e "(require '[clojure [string]]) (clojure.string/lower-case \"AB\")" 2>&1 | tail -1)" '"ab"'
+# LIST-form prefix list `(prefix sub*)` — the older clj spelling (clojure.data.xml)
+assert_eq 'top-list-form' \
+  "$("$BIN" -e "(require '(clojure [string :as s] [set :as set])) [(s/upper-case \"x\") (set/union #{1} #{2})]" 2>&1 | tail -1)" '["X" #{1 2}]'
 
 # ns :require prefix list
 CP="$(mktemp -d)"; trap 'rm -rf "$CP"' EXIT; mkdir -p "$CP/app"
@@ -40,4 +43,12 @@ CLJ
 assert_eq 'ns-use-only' \
   "$("$BIN" -cp "$CP" -e '(require (quote app.use)) (app.use/run)' 2>&1 | tail -1)" '#{1 2}'
 
-echo "OK — phase14_prefix_list_libspec (5 cases) green"
+# ns :require LIST-form prefix list (clojure.data.xml's xml.clj:16 shape)
+cat > "$CP/app/listreq.clj" <<'CLJ'
+(ns app.listreq (:require (clojure [string :as s] [set :as set])))
+(defn run [] [(s/trim " a ") (set/difference #{1 2} #{2})])
+CLJ
+assert_eq 'ns-require-list-form' \
+  "$("$BIN" -cp "$CP" -e '(require (quote app.listreq)) (app.listreq/run)' 2>&1 | tail -1)" '["a" #{1}]'
+
+echo "OK — phase14_prefix_list_libspec (7 cases) green"

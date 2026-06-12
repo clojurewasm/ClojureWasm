@@ -749,15 +749,18 @@ pub fn analyzeRequire(
     return n;
 }
 
-/// clj `libspec?` (negated): a vector is a PREFIX LIST `[prefix sub-libspec*]`
-/// iff its 2nd element exists and is NOT a keyword (clj: a plain libspec vector
-/// has `nil` or a keyword as its second element). A bare symbol is always a
-/// plain libspec. The prefix is prepended (`prefix.lib`) to each sub-spec's ns
-/// (D-392; potemkin.types `(:use [clojure [set :only (union)]])`).
+/// clj `libspec?` (negated): a PREFIX LIST `[prefix sub-libspec*]` is either a
+/// LIST `(prefix sub*)` (always a prefix list — the older clj spelling, e.g.
+/// clojure.data.xml) or a VECTOR whose 2nd element exists and is NOT a keyword
+/// (a plain libspec vector has `nil` or a keyword as its 2nd element). A bare
+/// symbol is always a plain libspec. The prefix is prepended (`prefix.lib`) to
+/// each sub-spec's ns (D-392; potemkin.types `(:use [clojure [set :only (union)]])`).
 fn isPrefixList(f: Form) bool {
-    if (f.data != .vector) return false;
-    const vec = f.data.vector;
-    return vec.len >= 2 and vec[0].data == .symbol and vec[1].data != .keyword;
+    switch (f.data) {
+        .list => return true,
+        .vector => |vec| return vec.len >= 2 and vec[0].data == .symbol and vec[1].data != .keyword,
+        else => return false,
+    }
 }
 
 /// Build a plain libspec form from a prefix-list sub-spec by prepending
@@ -791,7 +794,13 @@ fn appendLibspecs(
     default_refer_all: bool,
 ) AnalyzeError!void {
     if (isPrefixList(libspec_form)) {
-        const vec = libspec_form.data.vector;
+        const vec: []const Form = switch (libspec_form.data) {
+            .list => |l| l,
+            .vector => |v| v,
+            else => unreachable, // isPrefixList only returns true for list/vector
+        };
+        if (vec.len == 0 or vec[0].data != .symbol)
+            return error_catalog.raise(.feature_not_supported, libspec_form.location, .{ .name = "prefix-list must begin with a prefix symbol" });
         const prefix = vec[0].data.symbol.name;
         for (vec[1..]) |sub| {
             const expanded = try prependPrefix(arena, prefix, sub);
