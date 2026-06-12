@@ -247,7 +247,10 @@ pub fn analyzeCtorCall(
                     var ibuf: [256]u8 = undefined;
                     if (std.fmt.bufPrint(&ibuf, "cljw.{s}", .{fqcn})) |prefixed| {
                         if (rt.types.get(prefixed) != null) resolved_name = fqcn;
-                    } else |_| {}
+                    } else |_| {
+                        // FQCN longer than the buffer — no registered surface
+                        // could match it; keep the bare eval-time spelling.
+                    }
                 }
             }
         }
