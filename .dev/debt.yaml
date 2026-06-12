@@ -2436,6 +2436,28 @@ active:
       lazy-first-pop or a dispatch-sequence barrier; verify with 20× ubuntunote
       `phase16_agent` + Mac single-await == 1 + CLJW_GC_TORTURE clean. | none
     last_reviewed: "2026-06-12"
+  - id: "D-389"
+    status: "open (found 2026-06-12, polish exception-sweep) — `clojure.core/Throwable->map` is UNIMPLEMENTED (`(Throwable->map (ex-info \"e\" {:k 1}))` → name_error; clj → `{:cause \"e\" :data {:k 1} :via [{:type … :message … :data …}] :trace […]}`). The building blocks are all present (ex-message/ex-data/ex-cause/ex-info), and the ExInfo struct carries frames internally (trace_ptr, ADR-0120), but no var assembles them. NOT tracked anywhere before this row; clojure.stacktrace.clj was reimplemented to AVOID it (ADR-0059 comment)."
+    category: "clj-parity"
+    barrier: |-
+      **`Throwable->map` (clojure.core) is missing.** A faithful impl returns
+      `{:cause <root-msg> :via [{:type :message :data :at} …] :trace [<frames>] :data <ex-data>}`.
+      The `:cause`/`:via`(`:type`/`:message`/`:data`)/`:data` CORE is implementable
+      now over the existing ex-* primitives + class (with AD-003 simple `:type`
+      names). BUT `:trace` and each `:via` entry's `:at` (the top frame) require a
+      decision on the cljw-shaped FRAME representation — the SAME frame-accessor
+      structural decision AD-029 (clojure.stacktrace) deferred to **D-232**
+      (clojure.repl/pst owns the cljw frame-seq shape; F-003: defer to the owner).
+      A `Throwable->map` that omits `:trace`/`:at` is a degraded partial (consumers
+      reading `:trace` get nil) — acceptable only as a PROVISIONAL pending D-232, or
+      defer the whole var to the D-232 frame-shape cycle so `:trace` lands
+      clj-shaped in one push (preferred — avoids a to-be-reworked frame format).
+      A host-builtin impl COULD read trace_ptr directly (no Clojure accessor
+      needed), but the frame SHAPE it would emit is exactly D-232's call. Used by
+      clojure.datafy (Throwable datafy), error-reporting/logging libs, clojure.main
+      error printing. MODERATE value. Cross-ref D-232, AD-029, AD-024 (user-frames),
+      AD-003 (simple `:type`), ADR-0120 (trace_ptr), F-003 (frame shape = D-232's).
+    last_reviewed: "2026-06-12"
 discharged:
   - id: "D-249"
     discharged_at: "docs(diff): Clojure-vs-ClojureWasm differences sheet"
