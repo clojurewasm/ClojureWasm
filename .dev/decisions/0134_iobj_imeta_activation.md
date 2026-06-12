@@ -61,6 +61,21 @@ Per-substrate work (template = `lazy_seq.zig`'s `meta: Value = nil` field):
 5. Resolve `clojure.lang.IObj`/`IMeta` as class values (analyzeSymbol
    interface-marker arm, mirroring IFn/Object).
 
+**Execution sequencing (amended 2026-06-12, same cycle).** Steps 1-3 (adding a
+`meta` field + GC-trace + metaOf/withMeta to a substrate) are an INDEPENDENT
+`(with-meta <substrate> m)` bug-fix per tag and MAY land incrementally — the clj
+invariant is one-directional (`instance? IObj` ⟹ `with-meta`), so making with-meta
+work on a substrate while IObj membership stays INACTIVE introduces no
+inconsistency (nothing yet claims those tags ARE IObj). Steps 4-5 (the membership
+flip + value-resolution) are the FINAL ATOMIC step, landed only once EVERY IObj
+substrate is metable — that is what stays "big-bang" (a consistent, clj-complete
+membership in one flip; never a narrow/partial membership, which the DA ruled
+out). This sequencing is SAFER than a single 13-struct leap: each substrate's GC
+trace is verified independently under torture before the next, and the fn tags
+(cross-zone: `eval/backend/tree_walk.zig` closure ctors + `multimethod.zig` +
+`protocol.zig`) can be sequenced last. It is NOT the drip-feed smell: coverage is
+never claimed mid-way and membership is never shipped narrow.
+
 **Execution mandates (make Full safe):**
 - **Per-tag with-meta round-trip corpus line under `CLJW_GC_TORTURE`** for each
   newly-metable struct (`(meta (with-meta <ctor> {:a 1}))` → `{:a 1}`). This is
