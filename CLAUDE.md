@@ -131,7 +131,8 @@ turn 1 must be Japanese.
   because the smoke runs the full dual-backend diff oracle + every unit
   test. The **full gate batches** (run ALONE) at the ≤5-commit ceiling /
   Phase boundary / pre-tag. Prefer a **ReleaseSafe** binary (`zig build
-  -Doptimize=ReleaseSafe -Dcpu=baseline`) for manual behaviour probes.
+  -Dwasm -Doptimize=ReleaseSafe` = the gate config, so it cache-hits) for
+  manual behaviour probes; `-Dcpu=baseline` only for deploy artifacts.
   SSOT: [`.claude/rules/gate_cadence.md`](.claude/rules/gate_cadence.md).
   **Linux x86_64 is no longer per-commit** (ADR-0049, orphan / fan
   hazard): run `bash scripts/run_remote_ubuntu.sh` (→ `ubuntunote` SSH
@@ -289,7 +290,7 @@ while batching). SSOT: [`.claude/rules/gate_cadence.md`](.claude/rules/gate_cade
   step(s). Stamps `.dev/.smoke_pass`; authorises the commit (shared-code
   included) up to the ≤5 ceiling. **Do not block on it** — background it
   and keep moving. Manual behaviour checks use a **ReleaseSafe** binary
-  (`zig build -Doptimize=ReleaseSafe -Dcpu=baseline`), not the Debug default.
+  (`zig build -Dwasm -Doptimize=ReleaseSafe` = the gate config), not the Debug default.
 - **Batched full gate** (run ALONE): `bash scripts/run_gate.sh` reaps any
   orphan `run_all.sh` tree + PID-1-orphaned `cljw` probes, then `exec`s
   `timeout 300 bash test/run_all.sh` (writes `.dev/.gate_pass`; cadence
@@ -561,7 +562,7 @@ test/        unified runner + future suites
 ```sh
 bash test/run_all.sh --smoke <step>  # per-commit smoke (fast; ADR-0107)
 bash test/run_all.sh                 # full gate (batched: ceiling/boundary/pre-tag)
-zig build -Doptimize=ReleaseSafe -Dcpu=baseline  # ReleaseSafe binary for probes
+zig build -Dwasm -Doptimize=ReleaseSafe  # probe binary (= gate config; -Dcpu=baseline only for deploy)
 zig build run          # run executable (`cljw`)
 zig fmt src/           # format
 ```
