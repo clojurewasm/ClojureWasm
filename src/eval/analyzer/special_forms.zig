@@ -730,10 +730,77 @@ pub fn analyzeRequire(
         else => return error_catalog.raise(.feature_not_supported, arg.location, .{ .name = "require with non-symbol/vector libspec (Phase 6.16.b-4 c.6+)" }),
     };
 
-    const libspec = try parseLibspecForm(arena, inner_form, form.location, false);
+    // A prefix list `[clojure [string :as s] [set :as set]]` expands to one
+    // RequireNode per sub-spec; a plain libspec yields exactly one (D-392).
+    var libspecs: std.ArrayList(node_mod.RequireNode) = .empty;
+    defer libspecs.deinit(arena);
+    try appendLibspecs(arena, &libspecs, inner_form, false);
+
+    if (libspecs.items.len == 1) {
+        const n = try arena.create(Node);
+        n.* = .{ .require_node = libspecs.items[0] };
+        return n;
+    }
+    // Multiple sub-specs → evaluate each require in order (do).
+    const forms = try arena.alloc(Node, libspecs.items.len);
+    for (libspecs.items, 0..) |ls, idx| forms[idx] = .{ .require_node = ls };
     const n = try arena.create(Node);
-    n.* = .{ .require_node = libspec };
+    n.* = .{ .do_node = .{ .forms = forms, .loc = form.location } };
     return n;
+}
+
+/// clj `libspec?` (negated): a vector is a PREFIX LIST `[prefix sub-libspec*]`
+/// iff its 2nd element exists and is NOT a keyword (clj: a plain libspec vector
+/// has `nil` or a keyword as its second element). A bare symbol is always a
+/// plain libspec. The prefix is prepended (`prefix.lib`) to each sub-spec's ns
+/// (D-392; potemkin.types `(:use [clojure [set :only (union)]])`).
+fn isPrefixList(f: Form) bool {
+    if (f.data != .vector) return false;
+    const vec = f.data.vector;
+    return vec.len >= 2 and vec[0].data == .symbol and vec[1].data != .keyword;
+}
+
+/// Build a plain libspec form from a prefix-list sub-spec by prepending
+/// `prefix.` to the sub-spec's leading ns symbol. `sub` is a bare symbol
+/// (`set` → `clojure.set`) or a vector (`[set :as s]` → `[clojure.set :as s]`).
+fn prependPrefix(arena: std.mem.Allocator, prefix: []const u8, sub: Form) AnalyzeError!Form {
+    switch (sub.data) {
+        .symbol => |s| {
+            const full = try std.fmt.allocPrint(arena, "{s}.{s}", .{ prefix, s.name });
+            return .{ .data = .{ .symbol = .{ .ns = null, .name = full } }, .location = sub.location };
+        },
+        .vector => |vec| {
+            if (vec.len == 0 or vec[0].data != .symbol)
+                return error_catalog.raise(.feature_not_supported, sub.location, .{ .name = "prefix-list sub-libspec must begin with a symbol" });
+            const full = try std.fmt.allocPrint(arena, "{s}.{s}", .{ prefix, vec[0].data.symbol.name });
+            const out = try arena.dupe(Form, vec);
+            out[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = full } }, .location = vec[0].location };
+            return .{ .data = .{ .vector = out }, .location = sub.location };
+        },
+        else => return error_catalog.raise(.feature_not_supported, sub.location, .{ .name = "prefix-list sub-libspec must be a symbol or vector" }),
+    }
+}
+
+/// Parse one libspec form into `out`, expanding a prefix list
+/// `[prefix sub*]` into one RequireNode per sub-spec (recursively, since clj
+/// permits nested prefixes). A plain libspec appends exactly one node (D-392).
+fn appendLibspecs(
+    arena: std.mem.Allocator,
+    out: *std.ArrayList(node_mod.RequireNode),
+    libspec_form: Form,
+    default_refer_all: bool,
+) AnalyzeError!void {
+    if (isPrefixList(libspec_form)) {
+        const vec = libspec_form.data.vector;
+        const prefix = vec[0].data.symbol.name;
+        for (vec[1..]) |sub| {
+            const expanded = try prependPrefix(arena, prefix, sub);
+            try appendLibspecs(arena, out, expanded, default_refer_all);
+        }
+        return;
+    }
+    const ls = try parseLibspecForm(arena, libspec_form, libspec_form.location, default_refer_all);
+    try out.append(arena, ls);
 }
 
 /// Shared libspec-vector parser. Used by `analyzeRequire` (top-level
@@ -908,16 +975,14 @@ pub fn analyzeNs(
             try parseReferClojureFilters(arena, inner[1..], &refer_clojure_exclude, &refer_clojure_only, directive.location);
         } else if (std.mem.eql(u8, kw.name, "require")) {
             for (inner[1..]) |libspec_form| {
-                const ls = try parseLibspecForm(arena, libspec_form, libspec_form.location, false);
-                try libspecs.append(arena, ls);
+                try appendLibspecs(arena, &libspecs, libspec_form, false);
             }
         } else if (std.mem.eql(u8, kw.name, "use")) {
             // `(:use foo)` = require foo + refer ALL its publics; `[foo :only
             // (a)]` narrows to a whitelist, `[foo :exclude (a)]` to a blacklist
             // (default_refer_all=true is the bare-`:use` shape).
             for (inner[1..]) |libspec_form| {
-                const ls = try parseLibspecForm(arena, libspec_form, libspec_form.location, true);
-                try libspecs.append(arena, ls);
+                try appendLibspecs(arena, &libspecs, libspec_form, true);
             }
         } else if (std.mem.eql(u8, kw.name, "import")) {
             try parseImportForms(arena, inner[1..], &imports);

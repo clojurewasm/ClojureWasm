@@ -2459,6 +2459,23 @@ active:
       AD-003 (simple `:type`), ADR-0120 (trace_ptr), F-003 (frame shape = D-232's).
     last_reviewed: "2026-06-12"
 discharged:
+  - id: "D-392"
+    discharged_at: "feat(analyzer): prefix-list libspecs in require/use/ns"
+    resolution: |-
+      Found + fixed 2026-06-12 (P4 lib-load: potemkin.types blocked at types.clj:3
+      `(:use [clojure [set :only (union)]])`). cljw's libspec parser rejected the
+      clj PREFIX-LIST form `[prefix sub-libspec*]` (where each sub gets `prefix.`
+      prepended) — `parseLibspecForm` saw vec[1] as a non-keyword and raised
+      "require libspec options must be keyword/value pairs". clj's `libspec?` rule:
+      a vector is a PLAIN libspec iff its 2nd element is nil or a keyword; else it
+      is a prefix list. FIX: `isPrefixList` predicate + `prependPrefix` (synthesise
+      `prefix.lib` sub-forms) + `appendLibspecs` (expand a prefix list into one
+      RequireNode per sub, recursively; plain libspec → one node), wired into both
+      analyzeNs `:require`/`:use` loops and top-level analyzeRequire (multiple subs
+      → a do_node of require_nodes). Verified: e2e phase14_prefix_list_libspec
+      (top-level single/multi/bare + ns :require + ns :use-:only, 5 assertions,
+      clj-matched). potemkin.types advances past :3 (next blocker is the
+      clojure.lang.IMapEntry host-class frontier, D-280 — a separate tracked gap).
   - id: "D-391"
     discharged_at: "fix(analyzer): bare imported deftype falls back to simple-name rt.types key"
     resolution: |-
