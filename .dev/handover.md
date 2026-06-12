@@ -5,10 +5,12 @@
 
 ## Resume contract
 
-- **HEAD**: `main` (`git log` is the SSOT; ≈ f35784ba). All work on `main`;
+- **HEAD**: `main` (`git log` is the SSOT; ≈ 16087139). All work on `main`;
   commit + `git push origin main` is the atomic Step 6 (`--force*` deny-listed).
   Gate cadence ADR-0107: per-commit smoke (background), batch the full gate ALONE
-  at the ≤5 ceiling / boundary. **Perf measured ONLY on a Release binary**
+  at the ≤5 ceiling / boundary. **The full gate is now ~2 min (D-385 root-caused
+  + fixed, ADR-0132) and builds `-Dwasm` throughout (ADR-0133)** — the prior
+  multi-hour/timeout friction is gone. **Perf measured ONLY on a Release binary**
   (`bench/run_bench.sh --quick` / `scripts/perf.sh`), never `time zig-out/bin/cljw`
   (Debug) — `.claude/rules/perf_measure_release.md`.
 
@@ -43,9 +45,9 @@
   last mile toward v0's numbers; a Zig update-in builtin (GC-careful) to fully close
   nested_update. The alloc/variadic quick-wins are exhausted.
 
-  **OWED**: full e2e ran 311/0 on ubuntunote through O-026 (`28d97118`); O-027 (.clj
-  not=) is validating on ubuntunote NOW. Prefer ubuntunote / `--serial-e2e --resume`
-  (the local serial gate times out, D-385).
+  **OWED**: nothing outstanding — ubuntunote ran **314/0 green at HEAD** (`16087139`,
+  incl. wasm + agent e2e); the local full gate no longer times out (D-385 fixed,
+  ~2 min). Run a quick `bench/run_bench.sh --quick` before resuming perf work.
 
   **Measurement cadence (keep iteration fast)**: per iteration a FOCUSED quick bench
   only (`bash bench/run_bench.sh --quick --bench=<name>`); do NOT full-bench or
@@ -60,16 +62,20 @@
   / any manipulation to fake a cljw win — honest equivalence only, already audited
   PASS); editing zwasm; `git push --force*`.
 
-## Just landed — flat-frame lever settled 2026-06-11 (pushed to `main`)
+## Just landed — gate root-caused + wasm in default gate (2026-06-12, on `main`)
 
-`bindCallFrame` shared single-source binder extracted (`ab1959c2`); Design 2
-measured null + reverted; **ADR-0131 (in-VM call-frame stack, Alt A) Accepted**
-with a Devil's-advocate fork. Prior batch: O-014 arith intrinsics + O-015 frame
-rooting → cljw 12/23 vs Python; D-385 gate timing.
-- **Cautionary precedents for any dispatch/frame change**: O-005 (frame nil-init
-  left rooting at full 256 → traced undefined tail → UAF) + O-013 (concat
-  right-nest → interleave stack overflow). Both reverted; both have regression
-  tests. ADR-0131's torture e2e MUST allocate per frame (fib proves no rooting).
+- **D-385 gate root-cause FIXED (ADR-0132)**: the "multi-hour gate" was the e2e
+  running a **Debug** cljw (~1.7s cold-start × ~3200 spawns) — a bare `zig build`
+  in `run_tier_a.sh` + a resume-skipped `build_cljw` reverted the shared binary.
+  Full gate now **~113-190s**. `cljw --version` bakes in the build mode (semantic
+  guard, not a size heuristic).
+- **Wasm in the DEFAULT full gate (F-001 amended → ADR-0133)**: every executing
+  gate `zig build` carries `-Dwasm`; `phase16_wasm_{ffi,run}` are gate steps;
+  zwasm via the build.zig.zon tag-pin (no sibling). Verified GREEN on Mac +
+  **ubuntunote 314/0**. The phase4 reversion (non-wasm rebuild) was the bug.
+- **D-388 agent nested-send**: clj-faithful deferral (`releasePendingSends`,
+  `nested_pending` threadlocal, GC-pinned) + deterministic two-await test.
+  Residual single-await timing (eager-drainer vs clj pool) tracked in D-388.
 
 ## Cold-start reading order (resume)
 
