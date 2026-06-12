@@ -1,0 +1,50 @@
+(clojure.data.priority-map/priority-map :a 3 :b 1 :c 2)
+;;=> {:b 1, :c 2, :a 3}
+(peek (clojure.data.priority-map/priority-map :a 3 :b 1 :c 2))
+;;=> [:b 1]
+(pop (clojure.data.priority-map/priority-map :a 3 :b 1 :c 2))
+;;=> {:c 2, :a 3}
+(count (clojure.data.priority-map/priority-map :a 3 :b 1))
+;;=> 2
+(keys (clojure.data.priority-map/priority-map :a 3 :b 1 :c 2))
+;;=> (:b :c :a)
+(vals (clojure.data.priority-map/priority-map :a 3 :b 1 :c 2))
+;;=> (1 2 3)
+(seq (clojure.data.priority-map/priority-map :a 3 :b 1 :c 2))
+;;=> ([:b 1] [:c 2] [:a 3])
+(rseq (clojure.data.priority-map/priority-map :a 3 :b 1 :c 2))
+;;=> ([:a 3] [:c 2] [:b 1])
+(first (clojure.data.priority-map/priority-map :a 3 :b 1 :c 2))
+;;=> [:b 1]
+(get (clojure.data.priority-map/priority-map :a 3 :b 1) :a)
+;;=> 3
+(get (clojure.data.priority-map/priority-map :a 3 :b 1) :z :nf)
+;;=> :nf
+(assoc (clojure.data.priority-map/priority-map :a 3) :b 1)
+;;=> {:b 1, :a 3}
+(dissoc (clojure.data.priority-map/priority-map :a 3 :b 1) :a)
+;;=> {:b 1}
+(conj (clojure.data.priority-map/priority-map :a 3) [:b 1])
+;;=> {:b 1, :a 3}
+(contains? (clojure.data.priority-map/priority-map :a 3) :a)
+;;=> true
+(contains? (clojure.data.priority-map/priority-map :a 3) :z)
+;;=> false
+(subseq (clojure.data.priority-map/priority-map :a 3 :b 1 :c 2) < 3)
+;;=> ([:b 1] [:c 2])
+(subseq (clojure.data.priority-map/priority-map :a 3 :b 1 :c 2) >= 2)
+;;=> ([:c 2] [:a 3])
+(clojure.data.priority-map/priority-map-keyfn first :a [2 :x] :b [1 :y])
+;;=> {:b [1 :y], :a [2 :x]}
+(peek (clojure.data.priority-map/priority-map-keyfn first :a [2 :x] :b [1 :y]))
+;;=> [:b [1 :y]]
+(meta (with-meta (clojure.data.priority-map/priority-map :a 1) {:m 1}))
+;;=> {:m 1}
+(empty (clojure.data.priority-map/priority-map :a 1))
+;;=> {}
+(reduce-kv (fn [acc k v] (conj acc [k v])) [] (clojure.data.priority-map/priority-map :a 3 :b 1))
+;;=> [[:b 1] [:a 3]]
+(into {} (clojure.data.priority-map/priority-map :a 3 :b 1))
+;;=> {:b 1, :a 3}
+(map key (clojure.data.priority-map/priority-map :a 3 :b 1))
+;;=> (:b :a)

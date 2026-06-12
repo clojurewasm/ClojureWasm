@@ -22,6 +22,9 @@ const std = @import("std");
 const value_mod = @import("../../runtime/value/value.zig");
 const Value = value_mod.Value;
 const equal = @import("../../runtime/equal.zig");
+const sorted = @import("../../runtime/collection/sorted.zig");
+const map_entry_mod = @import("../../runtime/collection/map_entry.zig");
+const vector_mod = @import("../../runtime/collection/vector.zig");
 const Runtime = @import("../../runtime/runtime.zig").Runtime;
 const Env = @import("../../runtime/env.zig").Env;
 const SourceLocation = @import("../../runtime/error/info.zig").SourceLocation;
@@ -100,6 +103,29 @@ pub fn tryClojureLangMethod(
     args: []const Value,
     loc: SourceLocation,
 ) !?Value {
+    // clojure.lang.AFunction implements java.util.Comparator: `(.compare f a b)`
+    // invokes the fn with Comparator int-coercion (clj AFunction.compare —
+    // a BOOLEAN comparator fn maps true→-1 / (f b a)→1 / else 0). `.invoke`
+    // is the IFn surface itself. data.priority-map's mk-bound-fn does
+    // `(.. sc comparator (compare ek key))` on whatever .comparator returned.
+    switch (receiver.tag()) {
+        .fn_val, .builtin_fn, .multi_fn, .protocol_fn => {
+            const vt0 = rt.vtable orelse return null;
+            if (std.mem.eql(u8, name, "compare") and args.len == 2) {
+                const r = try vt0.callFn(rt, env, receiver, args, loc);
+                if (r.tag() == .boolean) {
+                    if (r.isTruthy()) return Value.initInteger(-1);
+                    const back = try vt0.callFn(rt, env, receiver, &.{ args[1], args[0] }, loc);
+                    return Value.initInteger(if (back.isTruthy()) 1 else 0);
+                }
+                return r;
+            }
+            if (std.mem.eql(u8, name, "invoke"))
+                return try vt0.callFn(rt, env, receiver, args, loc);
+            return null;
+        },
+        else => {},
+    }
     if (!isNativeCollection(receiver.tag())) return null;
     // java.util.List value-search trio — no clojure.core equivalent fn exists
     // (clj `.contains` is VALUE membership; core contains? is KEY membership),
@@ -108,6 +134,43 @@ pub fn tryClojureLangMethod(
         if (args.len != 1 or !isSequentialCollection(receiver.tag())) return null;
         const idx = try equal.seqIndexOf(rt, env, receiver, args[0], name[0] == 'l');
         return Value.initInteger(idx);
+    }
+    // clojure.lang.Sorted method surface on the NATIVE sorted colls
+    // (.seqFrom / 2-arity .seq / .entryKey): data.priority-map ships a
+    // patched subseq/rsubseq (CLJ-428) that drives ANY Sorted — including a
+    // backing PersistentTreeMap — via these dot-calls. Definition-derived
+    // (the Sorted interface), not a per-library slot.
+    if (receiver.tag() == .sorted_map or receiver.tag() == .sorted_set) {
+        if (std.mem.eql(u8, name, "seqFrom") and args.len == 2) {
+            // seqFrom(k, asc) = entries from k INCLUSIVE: (subseq sc >= k) /
+            // (rsubseq sc <= k).
+            const asc = args[1].isTruthy();
+            const core_ns = env.findNs("clojure.core") orelse return null;
+            const tv = core_ns.resolve(if (asc) ">=" else "<=") orelse return null;
+            return try sorted.subseqRange(rt, env, receiver, asc, .{ .test1 = tv.deref(), .key1 = args[0] }, loc);
+        }
+        if (std.mem.eql(u8, name, "seq") and args.len == 1) {
+            return if (args[0].isTruthy()) try sorted.seq(rt, receiver) else try sorted.rseq(rt, receiver);
+        }
+        if (std.mem.eql(u8, name, "entryKey") and args.len == 1 and receiver.tag() == .sorted_map) {
+            const e = args[0];
+            return if (e.tag() == .map_entry) map_entry_mod.keyOf(e) else vector_mod.nth(e, 0);
+        }
+    }
+    // clojure.lang.Sorted/comparator on the native sorted colls: the custom
+    // `-by` comparator fn when set, else clojure.core/compare (the callable
+    // cljw analogue of clj's default Comparator). A Sorted deftype's
+    // `(comparator [_] (.comparator backing-sorted-map))` chains through here.
+    if (std.mem.eql(u8, name, "comparator") and args.len == 0) {
+        const comp = switch (receiver.tag()) {
+            .sorted_map => receiver.decodePtr(*const sorted.SortedMap).comparator,
+            .sorted_set => receiver.decodePtr(*const sorted.SortedSet).map.decodePtr(*const sorted.SortedMap).comparator,
+            else => return null,
+        };
+        if (!comp.isNil()) return comp;
+        const core_ns = env.findNs("clojure.core") orelse return null;
+        const v = core_ns.resolve("compare") orelse return null;
+        return v.deref();
     }
     if (std.mem.eql(u8, name, "contains") and receiver.tag() != .hash_set and receiver.tag() != .sorted_set) {
         // Sets fall through to METHOD_MAP (Set membership == contains?); maps

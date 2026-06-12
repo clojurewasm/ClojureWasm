@@ -10,7 +10,7 @@
 | lib                | golden ok | known-DIFF | coverage |
 |--------------------|-----------|------------|----------|
 | core.unify         | 15        | 0          | 100%     |
-| data.priority-map  | 15        | 10         | 60%      |
+| data.priority-map  | 25        | 0          | 100%     |
 | math.combinatorics | 20        | 0          | 100%     |
 | medley             | 46        | 0          | 100%     |
 | potpuri            | 38        | 0          | 100%     |
