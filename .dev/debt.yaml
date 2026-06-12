@@ -2473,21 +2473,22 @@ active:
       resolves. Verify: the minimal repro above + hiccup.core load advances past
       :200. Cross-ref D-235 (per-ns :import simple-name map for java surfaces),
       D-280 (clojure.lang.* deftype-supertype family), the deftype type registry.
-      PRECISE ROOT CAUSE (scoped 2026-06-12): a user deftype is registered in
-      `rt.types` under its SIMPLE name ("RawString"), but `expandImport`
-      (macro_transforms.zig) lowers `[ns Class]` → `(import* "ns.Class")` and
-      `import*` records the simple-name→FQCN map (D-235) as "RawString"→
-      "hiccup.util.RawString". When the bare `RawString` is resolved,
-      `special_forms.resolveJavaSurface` follows the import to the FQCN and does
-      `rt.types.get("hiccup.util.RawString")` → MISS (the type is keyed by the
-      simple name). FIX OPTIONS: (a) `import*` checks whether the FQCN's simple
-      name is a user deftype in `rt.types` and maps the import to the simple name
-      instead of the FQCN; or (b) `resolveJavaSurface` falls back to
-      `rt.types.get(simple_name)` when the FQCN lookup misses AND the FQCN's tail
-      matches a user type. Prefer (a) (resolve at import time, like D-235). NOTE:
-      a fatigue-flagged session deferred the FIX to a fresh cycle (repro +
-      diagnosis + the exact mismatch are done); the analyzer/ns-import machinery
-      is load-bearing, so TDD it carefully with the both-backend diff oracle.
+      DIAGNOSIS — NEEDS RE-VERIFICATION (the scoping was done under a
+      fatigue-flagged session; treat as a HYPOTHESIS, re-derive fresh): the first
+      guess was "import* maps simple→FQCN, resolveJavaSurface's FQCN lookup
+      misses" — BUT `resolveJavaSurface` (special_forms.zig:67) tries
+      `rt.types.get(head)` (the SIMPLE name) FIRST, so a deftype keyed by simple
+      name SHOULD resolve there. So the real path is likely DIFFERENT: bare
+      `RawString` at the use site (compiler.clj:200 — check whether it is
+      `(instance? RawString x)` / `(extend-protocol … RawString …)` / a bare
+      type ref) is probably resolved as a VAR/symbol, NOT routed through
+      resolveJavaSurface at all → name_error. Re-derive which resolution path a
+      bare imported-deftype symbol takes (vs `RawString.` ctor / `RawString/x`
+      static which DO hit resolveJavaSurface) before writing the fix. The REPRO is
+      solid (`(:import [ml.util RawString])` + `(instance? RawString (->RawString
+      "x"))` → name_error; same-ns deftype resolves); the FIX path is NOT yet
+      pinned. Load-bearing ns-import/resolution machinery — TDD carefully with the
+      both-backend diff oracle in a fresh, un-fatigued cycle.
     last_reviewed: "2026-06-12"
 discharged:
   - id: "D-390"
