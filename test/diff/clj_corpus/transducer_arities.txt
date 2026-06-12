@@ -1,0 +1,48 @@
+(into [] (take-while #(< % 4)) [1 2 3 4 5])
+;;=> [1 2 3]
+(into [] (drop-while #(< % 3)) [1 2 3 4 5])
+;;=> [3 4 5]
+(into [] (mapcat range) [1 2 3])
+;;=> [0 0 1 0 1 2]
+(into [] (distinct) [1 1 2 2 3])
+;;=> [1 2 3]
+(into [] (interpose :x) [1 2 3])
+;;=> [1 :x 2 :x 3]
+(into [] (partition-by odd?) [1 1 2 2 3])
+;;=> [[1 1] [2 2] [3]]
+(into [] (keep identity) [1 nil 2 nil 3])
+;;=> [1 2 3]
+(into [] (map-indexed vector) [:a :b :c])
+;;=> [[0 :a] [1 :b] [2 :c]]
+(into [] cat [[1 2] [3 4]])
+;;=> [1 2 3 4]
+(into [] (partition-all 2) [1 2 3 4 5])
+;;=> [[1 2] [3 4] [5]]
+(into [] (take 3) (range 100))
+;;=> [0 1 2]
+(into [] (drop 2) [1 2 3 4 5])
+;;=> [3 4 5]
+(into [] (remove even?) [1 2 3 4 5])
+;;=> [1 3 5]
+(into [] (replace {1 :a 2 :b}) [1 2 3])
+;;=> [:a :b 3]
+(into [] (dedupe) [1 1 2 2 1])
+;;=> [1 2 1]
+(into [] (random-sample 1.0) [1 2 3])
+;;=> [1 2 3]
+(sequence (comp (filter even?) (map inc)) (range 10))
+;;=> (1 3 5 7 9)
+(transduce (map inc) + 100 [1 2 3])
+;;=> 109
+(transduce (filter odd?) + [1 2 3 4 5])
+;;=> 9
+(into {} (map (juxt identity str)) [1 2 3])
+;;=> {1 "1", 2 "2", 3 "3"}
+(into [] (comp (map inc) (filter even?) (take 2)) (range 100))
+;;=> [2 4]
+(eduction (map inc) (filter even?) (range 10))
+;;=> (2 4 6 8 10)
+(into [] (map vector) [1 2 3])
+;;=> [[1] [2] [3]]
+(into [] (mapcat (fn [x] [x x])) [1 2 3])
+;;=> [1 1 2 2 3 3]
