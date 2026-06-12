@@ -229,6 +229,24 @@ fn seqEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     }
 }
 
+/// Linear value-search over a sequential collection — the java.util.List
+/// `.indexOf` / `.lastIndexOf` / `.contains` semantics on native colls
+/// (value membership by `=`, NOT clojure.core/contains? key semantics).
+/// Returns the first (or, when `find_last`, the last) index whose element
+/// is `=` to `item`, or -1 when absent (the JVM List contract).
+pub fn seqIndexOf(rt: *Runtime, env: *Env, coll: Value, item: Value, find_last: bool) anyerror!i64 {
+    var c = Cursor.init(coll);
+    var i: i64 = 0;
+    var found: i64 = -1;
+    while (try c.next(rt, env)) |e| : (i += 1) {
+        if (try valueEqual(rt, env, e, item)) {
+            found = i;
+            if (!find_last) return found;
+        }
+    }
+    return found;
+}
+
 fn mapEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     if (map.count(a) != map.count(b)) return false;
     var ks = try map.keys(rt, a);

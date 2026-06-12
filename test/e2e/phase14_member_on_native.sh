@@ -46,4 +46,30 @@ EOF
 out=$("$BIN" -e '(.valAt 42 :a)' 2>&1 || true)
 echo "$out" | grep -q "member" || fail "case3: expected a <.member> error on (.valAt 42 :a), got '$out'"
 
-echo "PASS phase14_member_on_native (3 cases)"
+# --- Case 4: java.util.List value-search trio on sequentials (clj-verbatim) ---
+# JVM semantics: .indexOf/.lastIndexOf return -1 when absent (NOT nil);
+# .contains is VALUE membership, not clojure.core/contains? key semantics —
+# `(.contains [1 2] 2)` is true on clj. medley.core/index-of depends on this.
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn [(.indexOf [1 2 3] 2)
+      (.indexOf [1 2] 9)
+      (.indexOf (list :a :b) :b)
+      (.indexOf (range 5) 3)
+      (.indexOf [1.0 2] 1)
+      (.indexOf (first {:a 1}) 1)
+      (.lastIndexOf [1 2 1] 1)
+      (.lastIndexOf (list 1 2 1) 1)
+      (.contains [1 2] 2)
+      (.contains [1 2] 0)
+      (.contains #{1 2} 2)
+      (.contains (map inc [0 1]) 2)])
+EOF
+) || fail "case4: non-zero exit ($got)"
+[ "$got" = '[1 -1 1 3 -1 1 2 2 true false true true]' ] || fail "case4: got '$got'"
+
+# --- Case 5: .contains on a MAP raises like clj (java.util.Map has no
+# .contains; clj throws IllegalArgumentException — key lookup is .containsKey) ---
+out=$("$BIN" -e '(.contains {:a 1} :a)' 2>&1 || true)
+echo "$out" | grep -q "member" || fail "case5: expected a <.member> error on (.contains {:a 1} :a), got '$out'"
+
+echo "PASS phase14_member_on_native (5 cases)"

@@ -21,6 +21,7 @@
 const std = @import("std");
 const value_mod = @import("../../runtime/value/value.zig");
 const Value = value_mod.Value;
+const equal = @import("../../runtime/equal.zig");
 const Runtime = @import("../../runtime/runtime.zig").Runtime;
 const Env = @import("../../runtime/env.zig").Env;
 const SourceLocation = @import("../../runtime/error/info.zig").SourceLocation;
@@ -47,7 +48,7 @@ const METHOD_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "more", "rest" }, // ISeq (more ≈ rest, never nil — close enough for interop)
     .{ "equiv", "=" }, // IPersistentCollection value-equality
     .{ "disjoin", "disj" }, // IPersistentSet
-    .{ "contains", "contains?" }, // IPersistentSet / java.util
+    .{ "contains", "contains?" }, // IPersistentSet ONLY (sequentials take the value-search path; maps rejected before this map is consulted)
     .{ "size", "count" }, // java.util.Collection
     .{ "isEmpty", "empty?" }, // java.util.Collection
     // java.util.Map + Map.Entry read surface (D-379). clj's collections implement
@@ -76,6 +77,17 @@ fn isNativeCollection(tag: Value.Tag) bool {
     };
 }
 
+/// The java.util.List-implementing subset (clj's vectors, lists, seqs, queues,
+/// MapEntry — everything ordered). Sets/maps are NOT Lists: on clj, `.indexOf`
+/// on a set or `.contains` on a map throws, so they fall through to the
+/// caller's `<.member>` error here.
+fn isSequentialCollection(tag: Value.Tag) bool {
+    return switch (tag) {
+        .list, .vector, .persistent_queue, .range, .map_entry, .cons, .lazy_seq => true,
+        else => false,
+    };
+}
+
 /// If `name` is a clojure.lang read/op method AND `receiver` is a native
 /// collection, delegate to the `clojure.core` equivalent via the vtable and
 /// return its result; otherwise `null` so the caller raises its original error.
@@ -89,6 +101,20 @@ pub fn tryClojureLangMethod(
     loc: SourceLocation,
 ) !?Value {
     if (!isNativeCollection(receiver.tag())) return null;
+    // java.util.List value-search trio — no clojure.core equivalent fn exists
+    // (clj `.contains` is VALUE membership; core contains? is KEY membership),
+    // so these dispatch to the runtime scan instead of the METHOD_MAP delegate.
+    if (std.mem.eql(u8, name, "indexOf") or std.mem.eql(u8, name, "lastIndexOf")) {
+        if (args.len != 1 or !isSequentialCollection(receiver.tag())) return null;
+        const idx = try equal.seqIndexOf(rt, env, receiver, args[0], name[0] == 'l');
+        return Value.initInteger(idx);
+    }
+    if (std.mem.eql(u8, name, "contains") and receiver.tag() != .hash_set and receiver.tag() != .sorted_set) {
+        // Sets fall through to METHOD_MAP (Set membership == contains?); maps
+        // return null (java.util.Map has no .contains — clj throws).
+        if (args.len != 1 or !isSequentialCollection(receiver.tag())) return null;
+        return Value.initBoolean(try equal.seqIndexOf(rt, env, receiver, args[0], false) >= 0);
+    }
     const core_fn = METHOD_MAP.get(name) orelse return null;
     const core_ns = env.findNs("clojure.core") orelse return null;
     const fn_var = core_ns.resolve(core_fn) orelse return null;
