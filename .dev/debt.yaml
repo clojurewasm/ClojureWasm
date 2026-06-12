@@ -2458,39 +2458,31 @@ active:
       error printing. MODERATE value. Cross-ref D-232, AD-029, AD-024 (user-frames),
       AD-003 (simple `:type`), ADR-0120 (trace_ptr), F-003 (frame shape = D-232's).
     last_reviewed: "2026-06-12"
-  - id: "D-391"
-    status: "open (found 2026-06-12, P4 lib-load: hiccup.core). A user deftype's bare name does NOT resolve when imported from another namespace via `(:import [other.ns DeftypeName])`. Minimal repro (clj-clean): ns ml.util has `(deftype RawString [s])`; ns ml.cons has `(:import [ml.util RawString])` then `(instance? RawString …)` → cljw name_error 'Unable to resolve symbol: RawString' at the import-consuming form. Control: a deftype used WITHIN its defining ns resolves fine (`(do (deftype R [s]) (instance? R (->R 1)))`→true). So the gap is the cross-ns `:import` of a USER deftype — cljw's :import registers Java-surface classes but not a user deftype's type name into the importing ns's symbol resolution. clj makes every deftype a class importable via :import."
-    category: "interop"
-    barrier: |-
-      **`(:import [ns UserDeftype])` doesn't register the deftype's bare name in
-      the importing ns.** Blocks hiccup.core (hiccup.util `(deftype RawString …)`
-      imported by hiccup.compiler via `(:import [hiccup.util RawString])`, then
-      used bare at compiler.clj:200). Likely tractable (the proven P4-fix mode,
-      like D-390 defmacro): wire the ns `:import` handler to recognise a symbol
-      that names a user deftype/defrecord registered in `rt.types` (keyed by its
-      defining ns) and bind the simple name in the importing ns, so a bare
-      `RawString` / `(RawString. …)` / `(instance? RawString x)` / `(->RawString)`
-      resolves. Verify: the minimal repro above + hiccup.core load advances past
-      :200. Cross-ref D-235 (per-ns :import simple-name map for java surfaces),
-      D-280 (clojure.lang.* deftype-supertype family), the deftype type registry.
-      DIAGNOSIS — NEEDS RE-VERIFICATION (the scoping was done under a
-      fatigue-flagged session; treat as a HYPOTHESIS, re-derive fresh): the first
-      guess was "import* maps simple→FQCN, resolveJavaSurface's FQCN lookup
-      misses" — BUT `resolveJavaSurface` (special_forms.zig:67) tries
-      `rt.types.get(head)` (the SIMPLE name) FIRST, so a deftype keyed by simple
-      name SHOULD resolve there. So the real path is likely DIFFERENT: bare
-      `RawString` at the use site (compiler.clj:200 — check whether it is
-      `(instance? RawString x)` / `(extend-protocol … RawString …)` / a bare
-      type ref) is probably resolved as a VAR/symbol, NOT routed through
-      resolveJavaSurface at all → name_error. Re-derive which resolution path a
-      bare imported-deftype symbol takes (vs `RawString.` ctor / `RawString/x`
-      static which DO hit resolveJavaSurface) before writing the fix. The REPRO is
-      solid (`(:import [ml.util RawString])` + `(instance? RawString (->RawString
-      "x"))` → name_error; same-ns deftype resolves); the FIX path is NOT yet
-      pinned. Load-bearing ns-import/resolution machinery — TDD carefully with the
-      both-backend diff oracle in a fresh, un-fatigued cycle.
-    last_reviewed: "2026-06-12"
 discharged:
+  - id: "D-391"
+    discharged_at: "fix(analyzer): bare imported deftype falls back to simple-name rt.types key"
+    resolution: |-
+      Found + fixed 2026-06-12 (P4 lib-load: hiccup.core blocked at compiler.clj:200
+      `(extend-protocol … RawString …)`). The original hypothesis was RIGHT (the
+      re-verification confirmed it): the analyzer's bare-symbol→class-VALUE fallback
+      (`analyzeSymbol`, analyzer.zig) calls `resolveClassImport` which rewrites the
+      bare `RawString` → its imported FQCN `ml.util.RawString` (from `ns.imports`,
+      D-235), then `rt.types.get(cname)` MISSES — because `registerType`
+      (type_descriptor.zig) keys a USER deftype/record by its SIMPLE name
+      ("RawString"), NOT the FQCN. The ctor path `(RawString. …)` works precisely
+      because it keeps the simple name (constructInstance → resolveJavaSurface step
+      1 `rt.types.get("RawString")` hits); the value path broke only because the
+      FQCN rewrite is needed for host-surface (java.net.URI) + classValueKeyFor
+      (Map$Entry) lookups but a user type's FQCN is absent. Since `instance?` is now
+      a FN whose class arg EVALUATES (ADR-0128), the macro-path `resolveInstanceClassArg`
+      rewrite is dead for it, so the value path is the one that matters.
+      FIX: at the rt.types value-lookup, fall back to the bare `sym.name` when the
+      FQCN `cname` misses (`get(cname) orelse (if cname≠name) get(name)`) — host
+      surfaces stay FQCN-keyed, user deftypes resolve by simple name like the ctor.
+      One-block change, zone-clean. Verified: new e2e phase14_deftype_cross_ns_import
+      (cross-ns instance? + extend-protocol, 2 assertions, clj-matched); hiccup.core
+      now LOADS and `(h/html [:div {:class "x"} [:p "hello"]])` renders byte-identical
+      to clj (`<div class="x"><p>hello</p></div>`); smoke 5/0 both backends.
   - id: "D-390"
     discharged_at: "feat(analyzer): defmacro lowers through fn (destructured macro params)"
     resolution: |-

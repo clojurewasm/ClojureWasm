@@ -53,11 +53,14 @@
 
 ## Just landed — daily-polish + P4 validation (2026-06-12, on `main`)
 
-- **D-390 defmacro destructuring fix** (P4 lib-load win): `(defmacro m [{:keys [a]}
-  & body] …)` raised "fn* parameter must be a symbol" at analyze time — defmacro
-  lowered `fn*` directly, bypassing the fn-macro destructuring layer. Fixed by
-  lowering through `fn`; unblocks grammarly/perseverance; full gate 318/0 both
-  backends. Also: **D-389 Throwable->map** partial + **D-267→AD-030** (`%c`).
+- **D-391 cross-ns deftype `:import` fix** (P4 lib-load win, unblocks hiccup.core):
+  a bare imported deftype (`(:import [ns RawString])` then bare `RawString` /
+  `(instance? RawString x)` / `(extend-protocol P RawString …)`) raised name_error
+  — the analyzer's symbol→class-VALUE fallback rewrote the bare name to its import
+  FQCN, but user deftypes are keyed by SIMPLE name in `rt.types`. Fix: fall back to
+  the bare name when the FQCN misses (host surfaces stay FQCN-keyed). hiccup renders
+  byte-identical to clj; e2e phase14_deftype_cross_ns_import; smoke 5/0. Prior:
+  **D-390 defmacro destructuring** (lower through `fn`, unblocked perseverance).
 - **OOM root-cause fixed**: the 2026-06-12 ~138GB Mac exhaustion was my unbounded
   `(take-nth 0)` in a sweep → clj realised an infinite seq with no heap cap. Fix:
   `clj_diff_sweep.sh` clj batch now `-J-Xmx2g` (memory `clj_oracle_heap_cap`).

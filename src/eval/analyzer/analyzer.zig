@@ -684,7 +684,17 @@ fn analyzeSymbol(
             // analogue. Makes `(= (class x) URI)` and `(extend-protocol P
             // java.net.URI …)` reach the type. After native + recognised-name
             // resolution so a user def shadows.
-            if (env.rt.types.get(cname)) |td| {
+            //
+            // rt.types keys host-surface classes by FQCN but a USER deftype/record
+            // by its SIMPLE name (`registerType` uses the bare name). A cross-ns
+            // `(:import [ns UserType])` rewrites the symbol to the FQCN (cname) for
+            // the host-surface + classValueKeyFor paths above — but a user type's
+            // FQCN is not in rt.types, so fall back to the bare name so an imported
+            // user deftype resolves like the ctor path, which keeps the simple name
+            // (D-391: hiccup.util RawString imported by hiccup.compiler).
+            const type_td = env.rt.types.get(cname) orelse
+                (if (!std.mem.eql(u8, cname, sym.name)) env.rt.types.get(sym.name) else null);
+            if (type_td) |td| {
                 const ref = try type_descriptor.makeTypeDescriptorRef(env.rt, td);
                 return try makeConstant(arena, ref, form);
             }
