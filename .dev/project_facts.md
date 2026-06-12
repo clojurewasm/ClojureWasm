@@ -205,6 +205,27 @@ the ADR); debt D-036 (Phase 16 inline-vs-Pod decision); ROADMAP
   resolve zwasm in either mode (the churning relative tree cannot break the
   default gate). The finding-handling split + direct-edit authorization from
   the prior 2026-06-08 entries stay in force.
+- **2026-06-12 (user chat — wasm is now IN the default full gate; AMENDMENT).**
+  The "DEFAULT build + gate never resolve zwasm" invariant above is **lifted**.
+  **Verbatim**: 「F-001を書いたときはまだ、zwasm_from_scratchがまともに動作する
+  状況がなかったため外しました。現在はフェーズがかわり、zwasm v2は一旦完成して
+  いるので、デフォルトゲートフルゲート（Ubuntu含む）に含むべきです。…冒頭から
+  -Dwasmでビルドする…単品でビルドするものもすべてshに-Dwasm必要」. Rationale: the
+  exclusion was provisional — written when zwasm wasn't runnable. zwasm v2 is now
+  provisionally complete, so the Wasm-FFI execution path (cw's headline feature)
+  MUST have gate coverage. **New invariant**: the default full gate
+  (`test/run_all.sh`, Mac AND ubuntunote) builds `-Dwasm` THROUGHOUT (build_cljw,
+  the dual-backend diff oracle `zig build test`, zlinter, run_tier_a, the e2e
+  standalone build lines — every gate-path `zig build` carries `-Dwasm`) and runs
+  the wasm e2e (`phase16_wasm_{ffi,run}`) as ordinary gate steps. zwasm is now a
+  **gate prerequisite**, resolved via the `build.zig.zon` tag-pin (no sibling dir
+  needed — so it works on ubuntunote which has no zwasm checkout); if `-Dwasm`
+  cannot resolve zwasm, build_cljw fails first (intended — wasm is required, not
+  skipped). The wasm scripts' old `[ ! -d ../zwasm_from_scratch ]` skip is removed
+  (it false-skipped on tag-pin hosts). Implementation + the gate-wide `-Dwasm`
+  build differentiation: **ADR-0133**. Mac full gate verified green; ubuntunote
+  verification is the remaining step. `-Dwasm` everywhere (not mixed) per the
+  user's "冒頭から -Dwasm" — a mixed wasm/non-wasm build sequence is what breaks.
 
 ---
 

@@ -2382,17 +2382,15 @@ active:
       default build+gate never resolve zwasm, so wiring into run_all.sh was the
       wrong shape; the (c) "should the shared gate binary be -Dwasm" question is
       answered NO by F-001. Run it pre-release / on wasm-surface changes (the
-      script header documents the cadence). Was: the scripts existed but nothing
-      orchestrated them → zero execution coverage of the headline feature.
-      `test/e2e/phase16_wasm_ffi.sh` + `phase16_wasm_run.sh` exist (they build
-      `-Dwasm` and run `(wasm/load)`/`(wasm/call)` fixtures) but are NOT wired
-      into `test/run_all.sh` (`grep wasm run_all.sh` = empty), so the gate never
-      exercises them. Surfaced 2026-06-12 while root-causing the gate perf cliff
-      (ADR-0132) — they were also the only other unguarded `zig build -Dwasm`
-      (Debug), but being unwired did not affect the gate. Net: ClojureWasm's
-      headline feature (Wasm FFI) has ZERO gate coverage; a `(wasm/call)`
-      regression would ship green. User-flagged 2026-06-12 ("wasm 実行テストが
-      できていなかった系").
+      script header documents the cadence). SUPERSEDED SAME-DAY 2026-06-12: the
+      user amended F-001 (zwasm v2 complete) → the wasm e2e are now in the DEFAULT
+      full gate (Mac + ubuntunote), gate builds `-Dwasm` throughout (ADR-0133).
+      run_wasm_gate.sh remains as a wasm-only quick runner. Verified GREEN on Mac
+      (the phase4 -Dwasm reversion fix landed — phase4 was rebuilding the shared
+      binary non-wasm mid-gate); ubuntunote verification pending. Was: the
+      scripts existed but nothing orchestrated them → zero execution coverage of
+      the headline feature (a `(wasm/call)` regression would have shipped green).
+      User-flagged ("wasm 実行テストができていなかった系").
     category: "testing"
     barrier: |-
       Not blocked — a wiring task. Scope: (a) add `run_step` lines for
