@@ -16,7 +16,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 BIN="zig-out/bin/cljw"
-[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build >/dev/null
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 
 N="${CLJW_STRESS_N:-20}" # iterations per invariant; raise locally to hunt flakes
 

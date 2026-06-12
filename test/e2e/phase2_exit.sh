@@ -21,7 +21,7 @@ cd "$(dirname "$0")/../.."
 BIN="zig-out/bin/cljw"
 
 echo "==> Building (Debug)"
-[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build >/dev/null
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 
 if [[ ! -x "$BIN" ]]; then
     echo "✗ binary missing: $BIN" >&2

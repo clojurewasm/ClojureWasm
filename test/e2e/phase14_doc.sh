@@ -14,7 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 BIN="zig-out/bin/cljw"
-[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build >/dev/null
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 
 fail() { echo "FAIL $1" >&2; exit 1; }
 assert_eq() { local n="$1" g="$2" w="$3"; [[ "$g" == "$w" ]] || { printf 'FAIL %s\n--- got ---\n%s\n--- want ---\n%s\n' "$n" "$g" "$w" >&2; exit 1; }; echo "PASS $n"; }
