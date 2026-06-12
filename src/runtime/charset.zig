@@ -17,6 +17,7 @@
 //!     positions instead (ADR-0014).
 
 const std = @import("std");
+const unicode_case = @import("unicode_case.zig");
 
 pub const Utf8Error = error{InvalidUtf8};
 
@@ -67,26 +68,56 @@ pub fn substring(s: []const u8, start: usize, end: usize) Utf8Error![]const u8 {
     return s[byte_start..byte_end];
 }
 
-/// Allocate a new UTF-8 byte slice with every ASCII lowercase
-/// codepoint replaced by its uppercase pair. Non-ASCII codepoints
-/// pass through verbatim. Full Unicode case folding (Latin Extended,
-/// Greek, Cyrillic, …) is tracked at debt D-057 and lands when
-/// `clojure.string` graduates to JVM-conformance. Caller owns the
-/// returned slice.
+/// Allocate the FULL-Unicode uppercase of `s` (JVM String.toUpperCase
+/// semantics, D-057): SpecialCasing 1:n expansions (ß→SS, ﬁ→FI, ŉ→ʼN)
+/// then the simple map, via the generated `unicode_case` tables. The
+/// result may be LONGER than the input (1:n), so it grows an ArrayList.
+/// Caller owns the returned slice.
 pub fn upperCaseAlloc(alloc: std.mem.Allocator, s: []const u8) ![]u8 {
-    const out = try alloc.alloc(u8, s.len);
-    @memcpy(out, s);
-    for (out) |*c| c.* = std.ascii.toUpper(c.*);
-    return out;
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(alloc);
+    var iter = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
+    while (iter.nextCodepoint()) |cp| {
+        var buf: [3]u21 = undefined;
+        for (unicode_case.toUpperFull(cp, &buf)) |mapped| {
+            try appendCodepoint(&out, alloc, mapped);
+        }
+    }
+    return out.toOwnedSlice(alloc);
 }
 
-/// ASCII case-fold mirror of `upperCaseAlloc`. Same Unicode
-/// case-fold caveat applies (D-057).
+/// FULL-Unicode lowercase (JVM String.toLowerCase, D-057), including the
+/// one CONDITIONAL SpecialCasing rule String.toLowerCase applies:
+/// **Final_Sigma** — Σ lowers to ς when preceded by a cased codepoint and
+/// not followed by one ("ΣΟΦΟΣ" → "σοφος" with a final ς). "Cased" uses
+/// the table's has-a-mapping approximation (full General_Category data is
+/// not carried — covers Greek/Latin, the rule's real population).
 pub fn lowerCaseAlloc(alloc: std.mem.Allocator, s: []const u8) ![]u8 {
-    const out = try alloc.alloc(u8, s.len);
-    @memcpy(out, s);
-    for (out) |*c| c.* = std.ascii.toLower(c.*);
-    return out;
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(alloc);
+    var iter = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
+    var prev_cased = false;
+    while (iter.nextCodepoint()) |cp| {
+        if (cp == 0x3A3) { // Σ — the Final_Sigma condition
+            var look = iter; // value copy: peek the next codepoint
+            const next_cased = if (look.nextCodepoint()) |nc| unicode_case.isCased(nc) else false;
+            const sigma: u21 = if (prev_cased and !next_cased) 0x3C2 else 0x3C3;
+            try appendCodepoint(&out, alloc, sigma);
+        } else {
+            var buf: [3]u21 = undefined;
+            for (unicode_case.toLowerFull(cp, &buf)) |mapped| {
+                try appendCodepoint(&out, alloc, mapped);
+            }
+        }
+        prev_cased = unicode_case.isCased(cp);
+    }
+    return out.toOwnedSlice(alloc);
+}
+
+fn appendCodepoint(out: *std.ArrayList(u8), alloc: std.mem.Allocator, cp: u21) !void {
+    var b: [4]u8 = undefined;
+    const n = std.unicode.utf8Encode(cp, &b) catch return error.InvalidUtf8;
+    try out.appendSlice(alloc, b[0..n]);
 }
 
 /// JVM `Character.isWhitespace` mirror — recognises ASCII space, tab,
@@ -135,15 +166,16 @@ pub fn isLetterCodepoint(cp: u21) bool {
     return (cp >= 'a' and cp <= 'z') or (cp >= 'A' and cp <= 'Z');
 }
 
-/// JVM `Character.toUpperCase` mirror — ASCII a-z → A-Z, all else
-/// unchanged (matches `(Character/toUpperCase \5)` → `\5`). D-057 caveat.
+/// JVM `Character.toUpperCase` mirror — the SIMPLE 1:1 Unicode map (D-057:
+/// ä→Ä, σ→Σ; ß stays ß — SpecialCasing 1:n belongs to STRING upper-case
+/// only, the JVM full-vs-simple split).
 pub fn toUpperCodepoint(cp: u21) u21 {
-    return if (cp >= 'a' and cp <= 'z') cp - ('a' - 'A') else cp;
+    return unicode_case.toUpperSimple(cp);
 }
 
-/// JVM `Character.toLowerCase` mirror — ASCII A-Z → a-z, all else unchanged.
+/// JVM `Character.toLowerCase` mirror — the SIMPLE 1:1 Unicode map.
 pub fn toLowerCodepoint(cp: u21) u21 {
-    return if (cp >= 'A' and cp <= 'Z') cp + ('a' - 'A') else cp;
+    return unicode_case.toLowerSimple(cp);
 }
 
 /// JVM `Character.isUpperCase` mirror (ASCII A-Z; D-057 Unicode caveat).

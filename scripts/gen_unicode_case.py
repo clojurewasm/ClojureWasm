@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+"""Generate src/runtime/unicode_case.zig from the Unicode Character Database.
+
+D-057: cljw's Unicode case mapping is GENERATED from the definition (UCD
+16.0.0, pinned), never hand-rolled (F-013 definition-derived coverage).
+
+Inputs (downloaded to /tmp on each run; the OUTPUT .zig is committed):
+  - UnicodeData.txt   — simple 1:1 mappings (cols 12 upper / 13 lower)
+  - SpecialCasing.txt — full 1:n mappings (ß→SS, ﬁ→FI, ŉ→ʼN, İ→i+̇ …);
+                        only UNCONDITIONAL rules are emitted (locale rules
+                        like tr/az dotted-i and the Final_Sigma CONDITION are
+                        excluded — Final_Sigma is implemented in charset.zig
+                        as the one conditional rule String.toLowerCase has).
+
+Usage: python3 scripts/gen_unicode_case.py        # rewrites the module
+"""
+import urllib.request
+import sys
+from pathlib import Path
+
+UCD_VERSION = "16.0.0"
+BASE = f"https://www.unicode.org/Public/{UCD_VERSION}/ucd"
+OUT = Path(__file__).resolve().parent.parent / "src/runtime/unicode_case.zig"
+
+
+def fetch(name: str) -> str:
+    cache = Path(f"/tmp/ucd_{UCD_VERSION}_{name}")
+    if cache.exists():
+        return cache.read_text()
+    print(f"downloading {name} …", file=sys.stderr)
+    text = urllib.request.urlopen(f"{BASE}/{name}", timeout=60).read().decode()
+    cache.write_text(text)
+    return text
+
+
+def parse_unicode_data(text: str):
+    upper, lower = [], []
+    for line in text.splitlines():
+        f = line.split(";")
+        if len(f) < 15:
+            continue
+        cp = int(f[0], 16)
+        if cp > 0x10FFFF:
+            continue
+        if f[12]:
+            upper.append((cp, int(f[12], 16)))
+        if f[13]:
+            lower.append((cp, int(f[13], 16)))
+    return sorted(upper), sorted(lower)
+
+
+def parse_special_casing(text: str):
+    """Unconditional full mappings that DIFFER from a 1:1 result."""
+    up_full, lo_full = [], []
+    for line in text.splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        f = [x.strip() for x in line.split(";")]
+        # cp; lower; title; upper; (condition)
+        if len(f) >= 5 and f[4]:
+            continue  # conditional (locale / Final_Sigma) — excluded
+        cp = int(f[0], 16)
+        lo = [int(x, 16) for x in f[1].split()] if f[1] else []
+        up = [int(x, 16) for x in f[3].split()] if f[3] else []
+        if len(up) != 1 or up[0] != cp:
+            if up and (len(up) > 1 or True):
+                up_full.append((cp, up))
+        if len(lo) != 1 or lo[0] != cp:
+            if lo:
+                lo_full.append((cp, lo))
+    # Only keep rules that a simple map cannot express (len != 1), or that
+    # override the simple map with a different single target.
+    return sorted(up_full), sorted(lo_full)
+
+
+def fold_classes(upper, lower):
+    """Equivalence classes of the Java UNICODE_CASE fold predicate
+    (a~b iff simple-upper or simple-lower coincide), via union-find over
+    the cp—upper(cp) and cp—lower(cp) edges. Returns rows (cp, members)
+    for every cp in a class of size ≥ 2 — the regex (?iu) compile-time
+    orbit expansion."""
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for cp, to in upper:
+        union(cp, to)
+    for cp, to in lower:
+        union(cp, to)
+    groups = {}
+    for cp in list(parent):
+        groups.setdefault(find(cp), set()).add(cp)
+    rows = []
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        ms = sorted(members)
+        if len(ms) > 4:
+            ms = ms[:4]  # no real class exceeds 3-4 (σ/Σ/ς; K/k/K)
+        for cp in sorted(members):
+            rows.append((cp, ms))
+    return sorted(rows)
+
+
+def emit(upper, lower, up_full, lo_full, fold_rows) -> str:
+    def pairs(rows):
+        return "\n".join(
+            f"    .{{ .cp = 0x{cp:X}, .to = 0x{to:X} }}," for cp, to in rows
+        )
+
+    def orbits(rows):
+        out = []
+        for cp, ms in rows:
+            padded = (ms + [0, 0, 0, 0])[:4]
+            out.append(
+                f"    .{{ .cp = 0x{cp:X}, .members = .{{ "
+                + ", ".join(f"0x{c:X}" for c in padded)
+                + f" }}, .len = {len(ms)} }},"
+            )
+        return "\n".join(out)
+
+    def fulls(rows):
+        out = []
+        for cp, seq in rows:
+            padded = (seq + [0, 0, 0])[:3]
+            out.append(
+                f"    .{{ .cp = 0x{cp:X}, .to = .{{ "
+                + ", ".join(f"0x{c:X}" for c in padded)
+                + f" }}, .len = {len(seq)} }},"
+            )
+        return "\n".join(out)
+
+    return f"""// SPDX-License-Identifier: EPL-2.0
+//! Unicode case-mapping tables — GENERATED by scripts/gen_unicode_case.py
+//! from UCD {UCD_VERSION} (UnicodeData.txt + SpecialCasing.txt). DO NOT EDIT;
+//! re-run the generator to regenerate. D-057.
+//!
+//! Three consumers, three semantics (the JVM split):
+//!   - `toUpperSimple`/`toLowerSimple` — 1:1 (Character/toUpperCase: ß stays).
+//!   - `toUpperFull`/`toLowerFull` — 1:n via SpecialCasing then simple
+//!     (String.toUpperCase: ß→SS). Final_Sigma (the one CONDITIONAL rule)
+//!     lives in charset.zig, not here.
+//!   - regex `(?iu)` folds via the SIMPLE maps (Java UNICODE_CASE: two
+//!     codepoints match iff their simple uppers or simple lowers are equal —
+//!     gives the σ/Σ/ς orbit while ß≁"ss").
+
+const std = @import("std");
+
+const Pair = packed struct {{ cp: u21, to: u21 }};
+const Full = struct {{ cp: u21, to: [3]u21, len: u8 }};
+const Orbit = struct {{ cp: u21, members: [4]u21, len: u8 }};
+
+const UPPER = [_]Pair{{
+{pairs(upper)}
+}};
+
+const LOWER = [_]Pair{{
+{pairs(lower)}
+}};
+
+const UPPER_FULL = [_]Full{{
+{fulls(up_full)}
+}};
+
+const LOWER_FULL = [_]Full{{
+{fulls(lo_full)}
+}};
+
+const FOLD = [_]Orbit{{
+{orbits(fold_rows)}
+}};
+
+fn lookupPair(table: []const Pair, cp: u21) ?u21 {{
+    var lo: usize = 0;
+    var hi: usize = table.len;
+    while (lo < hi) {{
+        const mid = lo + (hi - lo) / 2;
+        if (table[mid].cp == cp) return table[mid].to;
+        if (table[mid].cp < cp) lo = mid + 1 else hi = mid;
+    }}
+    return null;
+}}
+
+fn lookupFull(table: []const Full, cp: u21) ?[]const u21 {{
+    var lo: usize = 0;
+    var hi: usize = table.len;
+    while (lo < hi) {{
+        const mid = lo + (hi - lo) / 2;
+        if (table[mid].cp == cp) return table[mid].to[0..table[mid].len];
+        if (table[mid].cp < cp) lo = mid + 1 else hi = mid;
+    }}
+    return null;
+}}
+
+/// SIMPLE 1:1 uppercase (Character/toUpperCase semantics).
+pub fn toUpperSimple(cp: u21) u21 {{
+    return lookupPair(&UPPER, cp) orelse cp;
+}}
+
+/// SIMPLE 1:1 lowercase (Character/toLowerCase semantics).
+pub fn toLowerSimple(cp: u21) u21 {{
+    return lookupPair(&LOWER, cp) orelse cp;
+}}
+
+/// FULL uppercase (String.toUpperCase): SpecialCasing 1:n first, else the
+/// simple map. `buf` receives the expansion; the returned slice aliases it.
+pub fn toUpperFull(cp: u21, buf: *[3]u21) []const u21 {{
+    if (lookupFull(&UPPER_FULL, cp)) |seq| {{
+        @memcpy(buf[0..seq.len], seq);
+        return buf[0..seq.len];
+    }}
+    buf[0] = toUpperSimple(cp);
+    return buf[0..1];
+}}
+
+/// FULL lowercase (String.toLowerCase, minus the charset.zig-owned
+/// Final_Sigma condition).
+pub fn toLowerFull(cp: u21, buf: *[3]u21) []const u21 {{
+    if (lookupFull(&LOWER_FULL, cp)) |seq| {{
+        @memcpy(buf[0..seq.len], seq);
+        return buf[0..seq.len];
+    }}
+    buf[0] = toLowerSimple(cp);
+    return buf[0..1];
+}}
+
+/// The full fold-equivalence class of `cp` under the Java UNICODE_CASE
+/// predicate (union-find closure over the simple maps), or null when the
+/// class is the singleton {{cp}}. The regex `(?iu)` compiler expands a
+/// literal into an alternation of these members (σ → σ|Σ|ς).
+pub fn foldOrbit(cp: u21) ?[]const u21 {{
+    var lo: usize = 0;
+    var hi: usize = FOLD.len;
+    while (lo < hi) {{
+        const mid = lo + (hi - lo) / 2;
+        if (FOLD[mid].cp == cp) return FOLD[mid].members[0..FOLD[mid].len];
+        if (FOLD[mid].cp < cp) lo = mid + 1 else hi = mid;
+    }}
+    return null;
+}}
+
+/// Java UNICODE_CASE fold: codepoints match iff simple-upper OR simple-lower
+/// coincide (σ/Σ/ς orbit; ß does NOT fold to "ss").
+pub fn foldEq(a: u21, b: u21) bool {{
+    if (a == b) return true;
+    if (toUpperSimple(a) == toUpperSimple(b)) return true;
+    return toLowerSimple(a) == toLowerSimple(b);
+}}
+
+/// True iff `cp` participates in casing at all (has a simple mapping in
+/// either direction) — the cheap "cased letter" approximation charset.zig's
+/// Final_Sigma condition uses (full General_Category data is not carried).
+pub fn isCased(cp: u21) bool {{
+    if (cp < 0x80) return (cp >= 'A' and cp <= 'Z') or (cp >= 'a' and cp <= 'z');
+    return lookupPair(&UPPER, cp) != null or lookupPair(&LOWER, cp) != null;
+}}
+
+test "simple vs full split (the JVM 3-way)" {{
+    try std.testing.expectEqual(@as(u21, 0xC4), toUpperSimple(0xE4)); // ä→Ä
+    try std.testing.expectEqual(@as(u21, 0xDF), toUpperSimple(0xDF)); // ß stays (simple)
+    var buf: [3]u21 = undefined;
+    const ss = toUpperFull(0xDF, &buf); // ß→SS (full)
+    try std.testing.expectEqual(@as(usize, 2), ss.len);
+    try std.testing.expectEqual(@as(u21, 'S'), ss[0]);
+    try std.testing.expectEqual(@as(u21, 'S'), ss[1]);
+    // σ(03C3)/Σ(03A3)/ς(03C2) fold orbit; ß does not fold to s.
+    try std.testing.expect(foldEq(0x3C3, 0x3A3));
+    try std.testing.expect(foldEq(0x3C2, 0x3C3));
+    try std.testing.expect(!foldEq(0xDF, 's'));
+}}
+"""
+
+
+def main():
+    upper, lower = parse_unicode_data(fetch("UnicodeData.txt"))
+    up_full, lo_full = parse_special_casing(fetch("SpecialCasing.txt"))
+    fold_rows = fold_classes(upper, lower)
+    OUT.write_text(emit(upper, lower, up_full, lo_full, fold_rows))
+    print(
+        f"wrote {OUT} — simple upper {len(upper)} / lower {len(lower)}; "
+        f"full upper {len(up_full)} / lower {len(lo_full)}; fold rows {len(fold_rows)}"
+    )
+
+
+if __name__ == "__main__":
+    main()

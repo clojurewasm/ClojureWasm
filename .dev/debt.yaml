@@ -1198,11 +1198,18 @@ active:
         The anchor predated ADR-0115 and was never re-swept — the exact failure
         mode this anchor exists to catch, caught.
         compat-tier de-scope decision unrecorded; implement OR record de-scope.
-      - **D-057** (regex/string, soft) — IN DRAIN 2026-06-13: gaps confirmed live
-        ((?iu) raises Not-implemented; string lower-case "ÄÖÜ" unchanged vs clj
-        "äöü"; ß→SS special-casing absent). The Unicode case-mapping unit is the
-        active floor drain.
-        fold table OR record an accepted divergence (AD-NNN).
+      - **D-057** (regex/string, soft) — RESOLVED 2026-06-13 (the drain landed):
+        UCD-16.0.0-generated tables (scripts/gen_unicode_case.py →
+        src/runtime/unicode_case.zig; simple 1477/1460 + SpecialCasing 102/28 +
+        fold-orbit 2934) reproduce the JVM 3-way split — clojure.string =
+        FULL mapping + Final_Sigma (ß→SS, ΣΟΦΟΣ→σοφος); Character/* = SIMPLE
+        1:1 (ß stays); regex (?u)/(?iu) = simple-map fold orbit as a
+        compile-time alternation (σ~Σ~ς, ß≁"ss"). e2e phase14_unicode_case +
+        corpus unicode_case (14 golden). EXPLICITLY OUT (documented, not
+        silent): isUpper/isLower/isLetter stay ASCII (needs General_Category
+        data — a separate UCD file, add when a consumer pulls per ADR-0134);
+        non-ASCII inside [...] under (?iu) stays a clean not-implemented
+        (byte-bitmap CharClass).
       - **D-049** (structure, USER-OWNED) — ADR-0029 layout-lock F-NNN promotion;
         minting an F-NNN is user-owned (project_facts amendment rule) — do NOT
         auto-mint; awaits user decision.

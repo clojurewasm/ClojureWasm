@@ -23,12 +23,18 @@
 //! lookaround, and Unicode category `\p{L}` / script names.
 
 const std = @import("std");
+const unicode_case = @import("../unicode_case.zig");
 
 /// Compile flags. `(?i)` inline modifier rewrites at compile
 /// time into case-folded character classes; the runtime sees only
 /// the folded form.
 pub const Flags = packed struct(u8) {
     case_insensitive: bool = false,
+    /// `(?u)` UNICODE_CASE — with `(?i)`, the fold uses the generated simple
+    /// Unicode maps (the σ/Σ/ς orbit) instead of ASCII-only (D-057). Encoded
+    /// at compile time: a non-ASCII literal's UTF-8 run becomes an alternation
+    /// of its fold-orbit byte sequences; the runtime sees only the expansion.
+    unicode_case: bool = false,
     /// `(?s)` DOTALL — `.` matches every byte incl. `\n`/`\r`. Default off:
     /// `.` excludes `\n`/`\r` (Java line terminators), built at parse time.
     dotall: bool = false,
@@ -36,7 +42,7 @@ pub const Flags = packed struct(u8) {
     /// Encoded into `line_start_multi`/`line_end_multi` anchors at parse time,
     /// so this flag is informational once compiled (the variant carries it).
     multiline: bool = false,
-    _pad: u5 = 0,
+    _pad: u4 = 0,
 };
 
 /// Parsed AST node. The parser produces this tree; the IR
@@ -195,12 +201,14 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) Comp
         var ci = false;
         var da = false;
         var ml = false;
+        var uc = false;
         var only_flags = true;
         while (j < pat.len and pat[j] != ')' and pat[j] != ':') : (j += 1) {
             switch (pat[j]) {
                 'i' => ci = true,
                 's' => da = true,
                 'm' => ml = true,
+                'u' => uc = true,
                 else => {
                     only_flags = false;
                     break;
@@ -211,12 +219,13 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) Comp
             f.case_insensitive = f.case_insensitive or ci;
             f.dotall = f.dotall or da;
             f.multiline = f.multiline or ml;
+            f.unicode_case = f.unicode_case or uc;
             pat = pat[j + 1 ..];
         }
     }
     var group_count: u16 = 0;
     const node = try parsePattern(arena.allocator(), pat, f, &group_count);
-    if (f.case_insensitive) foldCI(@constCast(node));
+    if (f.case_insensitive) try foldCase(arena.allocator(), @constCast(node), f.unicode_case);
     // D-344: a single global compile budget shared across the top-level program
     // and every lookahead sub-program, so the TOTAL emitted instruction count is
     // bounded (not just each program by the per-emitNode cap).
@@ -240,10 +249,15 @@ fn foldClassBits(cls: *CharClass) void {
     }
 }
 
-/// Case-insensitive AST fold (cycle-4 `(?i)`): a `lit` letter becomes a
-/// 2-element class `{c, swapcase(c)}`; a `class` gains each letter's other
-/// case. Mutates the arena-owned AST in place; recurses into all children.
-fn foldCI(node: *Node) void {
+/// Case-insensitive AST fold (cycle-4 `(?i)` + D-057 `(?iu)`): an ASCII
+/// `lit` letter becomes a 2-element class `{c, swapcase(c)}`; a `class`
+/// gains each ASCII letter's other case. Under `unicode` (the `(?u)` flag),
+/// a NON-ASCII literal's UTF-8 byte run (consecutive `.lit` children of a
+/// concat) is reassembled into codepoints and each fold-orbit member
+/// (σ → σ|Σ|ς via the generated simple-map equivalence classes) becomes an
+/// alternation branch — the runtime sees only the expansion (P3: the Pike
+/// matcher stays byte-level, no runtime fold). Mutates the arena-owned AST.
+fn foldCase(arena: std.mem.Allocator, node: *Node, unicode: bool) CompileError!void {
     switch (node.*) {
         .lit => |c| {
             const s = asciiSwapCase(c);
@@ -256,16 +270,88 @@ fn foldCI(node: *Node) void {
         },
         .class => |*cls| foldClassBits(cls),
         .anchor => {},
-        .concat => |children| for (children) |*ch| foldCI(ch),
-        .alt => |children| for (children) |*ch| foldCI(ch),
-        .star => |child| foldCI(child),
-        .plus => |child| foldCI(child),
-        .quest => |child| foldCI(child),
-        .non_capture => |child| foldCI(child),
-        .group => |g| foldCI(g.child),
-        .repeat => |r| foldCI(r.child),
-        .look => |lk| foldCI(lk.child),
+        .concat => |children| {
+            if (unicode) {
+                if (try foldConcatUnicode(arena, node, children)) return;
+            }
+            for (children) |*ch| try foldCase(arena, ch, unicode);
+        },
+        .alt => |children| for (children) |*ch| try foldCase(arena, ch, unicode),
+        .star => |child| try foldCase(arena, @constCast(child), unicode),
+        .plus => |child| try foldCase(arena, @constCast(child), unicode),
+        .quest => |child| try foldCase(arena, @constCast(child), unicode),
+        .non_capture => |child| try foldCase(arena, @constCast(child), unicode),
+        .group => |g| try foldCase(arena, @constCast(g.child), unicode),
+        .repeat => |r| try foldCase(arena, @constCast(r.child), unicode),
+        .look => |lk| try foldCase(arena, @constCast(lk.child), unicode),
     }
+}
+
+/// The `(?iu)` concat pass: reassemble consecutive `.lit` byte children into
+/// UTF-8 codepoints; a codepoint with a non-trivial fold orbit is replaced by
+/// an `.alt` of its members' byte sequences; everything else folds normally.
+/// Rebuilds the concat's child slice (arena-owned). Returns true when it
+/// handled the node (the caller skips the per-child recursion).
+fn foldConcatUnicode(arena: std.mem.Allocator, node: *Node, children: []Node) CompileError!bool {
+    var out: std.ArrayList(Node) = .empty;
+    var i: usize = 0;
+    while (i < children.len) {
+        const ch = children[i];
+        if (ch == .lit and ch.lit >= 0x80) {
+            // Decode one UTF-8 codepoint from the lit run.
+            const len = std.unicode.utf8ByteSequenceLength(ch.lit) catch {
+                try out.append(arena, ch);
+                i += 1;
+                continue;
+            };
+            var bytes: [4]u8 = undefined;
+            var ok = i + len <= children.len;
+            if (ok) {
+                for (0..len) |k| {
+                    if (children[i + k] != .lit) {
+                        ok = false;
+                        break;
+                    }
+                    bytes[k] = children[i + k].lit;
+                }
+            }
+            const cp: ?u21 = if (ok) blk: {
+                const view = std.unicode.Utf8View.init(bytes[0..len]) catch break :blk null;
+                var vit = view.iterator();
+                break :blk vit.nextCodepoint();
+            } else null;
+            if (cp != null) {
+                if (unicode_case.foldOrbit(cp.?)) |members| {
+                    // alt of each member's UTF-8 byte concat.
+                    const branches = try arena.alloc(Node, members.len);
+                    for (members, 0..) |m, bi| {
+                        var mb: [4]u8 = undefined;
+                        const mlen = std.unicode.utf8Encode(m, &mb) catch return CompileError.NotImplemented;
+                        const lits = try arena.alloc(Node, mlen);
+                        for (0..mlen) |k| lits[k] = .{ .lit = mb[k] };
+                        branches[bi] = .{ .concat = lits };
+                    }
+                    const alt_node = try arena.create(Node);
+                    alt_node.* = .{ .alt = branches };
+                    // .alt children are stored by value in the out list.
+                    try out.append(arena, alt_node.*);
+                } else {
+                    for (0..len) |k| try out.append(arena, children[i + k]);
+                }
+                i += len;
+                continue;
+            }
+            try out.append(arena, ch);
+            i += 1;
+            continue;
+        }
+        var copy = ch;
+        try foldCase(arena, &copy, true);
+        try out.append(arena, copy);
+        i += 1;
+    }
+    node.* = .{ .concat = try out.toOwnedSlice(arena) };
+    return true;
 }
 
 /// Recursive-descent parser entry: produces an AST `Node` tree
@@ -294,7 +380,7 @@ pub fn parsePattern(arena: std.mem.Allocator, pattern: []const u8, flags: Flags,
         group_count_out.* = 0;
         return node;
     }
-    var parser: Parser = .{ .src = pattern, .pos = 0, .arena = arena, .dotall = flags.dotall, .multiline = flags.multiline };
+    var parser: Parser = .{ .src = pattern, .pos = 0, .arena = arena, .dotall = flags.dotall, .multiline = flags.multiline, .unicode_case = flags.unicode_case };
     const node = try parser.parseAlt();
     if (!parser.atEnd()) return CompileError.UnexpectedToken;
     group_count_out.* = parser.group_count;
@@ -313,6 +399,9 @@ const Parser = struct {
     /// MULTILINE scope (`(?m)` / `(?m:…)`): when true, `^`/`$` build their
     /// embedded-line-boundary anchor variants.
     multiline: bool = false,
+    /// UNICODE_CASE scope (`(?u)` leading flag): a scoped `(?i:…)` under it
+    /// folds with the Unicode orbit (matches Java's flag composition).
+    unicode_case: bool = false,
 
     fn atEnd(self: Parser) bool {
         return self.pos >= self.src.len;
@@ -469,6 +558,7 @@ const Parser = struct {
             var capturing = true;
             var idx: u16 = 0;
             var fold_i = false;
+            var fold_u = false;
             var scoped_dotall = false;
             var scoped_multi = false;
             if (self.peek() == @as(?u8, '?')) {
@@ -495,6 +585,7 @@ const Parser = struct {
                         if (f == ':') break;
                         switch (f) {
                             'i' => fold_i = true,
+                            'u' => fold_u = true,
                             's' => scoped_dotall = true,
                             'm' => scoped_multi = true,
                             else => return CompileError.NotImplemented,
@@ -517,7 +608,7 @@ const Parser = struct {
             self.dotall = saved_dotall;
             self.multiline = saved_multi;
             if (self.advance() != @as(?u8, ')')) return CompileError.UnclosedGroup;
-            if (fold_i) foldCI(child);
+            if (fold_i) try foldCase(self.arena, child, fold_u or self.unicode_case);
             node.* = if (capturing) .{ .group = .{ .child = child, .index = idx } } else .{ .non_capture = child };
             return node;
         }

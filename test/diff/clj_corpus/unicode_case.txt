@@ -1,0 +1,28 @@
+(clojure.string/upper-case "straße")
+;;=> "STRASSE"
+(clojure.string/lower-case "ΣΟΦΟΣ")
+;;=> "σοφος"
+(clojure.string/upper-case "ﬁre")
+;;=> "FIRE"
+(clojure.string/capitalize "ßx")
+;;=> "SSx"
+(clojure.string/lower-case "İ")
+;;=> "i̇"
+(clojure.string/upper-case "ŉ")
+;;=> "ʼN"
+(Character/toUpperCase \ß)
+;;=> \ß
+(Character/toLowerCase \Σ)
+;;=> \σ
+(re-find #"(?iu)Ä" "ä")
+;;=> "ä"
+(re-find #"(?iu)ς" "σ")
+;;=> "σ"
+(re-find #"(?iu)ss" "ß")
+;;=> nil
+(clojure.string/lower-case "Иван")
+;;=> "иван"
+(clojure.string/upper-case "иван")
+;;=> "ИВАН"
+(re-find #"(?iu)иван" "ИВАН")
+;;=> "ИВАН"
