@@ -14,20 +14,25 @@
   (`bench/run_bench.sh --quick` / `scripts/perf.sh`), never `time zig-out/bin/cljw`
   (Debug) — `.claude/rules/perf_measure_release.md`.
 
-- **First commit on resume MUST be: the next P4 lib-load triage unit** — load the
-  next un-tried clojure-corpus lib (`~/Documents/OSS/clojure-corpus/`) via
-  `cljw -cp <src> -e "(require 'NS)"`, triage the first blocker: tractable
-  clj-parity bug → fix + e2e (the proven mode — it just found+fixed D-390 defmacro
-  destructuring, unblocking grammarly/perseverance); structural JVM-interop
-  (bare host-class symbol resolution like `Thread`/`Agent`, or `.getStackTrace`
-  frame-shape) → a tracked gap, move on. P4 detail: `private/notes/polish-priority-audit.md`
-  + `private/notes/phase14-p4-validation.md` (the convergence map: small pure libs
-  LOAD — qbits.ex/perseverance/medley; JVM-interop libs block on the host-class
-  frontier). Both the clj-diff HAND-sweep AND bounds/numeric edges have CONVERGED
-  (10+ surfaces clean, 6 corpora pinned ~330 golden); value now comes from
-  real-lib load triage, NOT more hand-sweeps. SAFETY: every `clj` oracle batch now
-  needs `-J-Xmx2g` + bounded seqs (the 2026-06-12 take-nth-0 OOM; memory
-  `clj_oracle_heap_cap`).
+- **First commit on resume MUST be: the clojure.lang.* deftype-marker family
+  big-bang (NOT more single-lib clean-bug triage).** The 2026-06-12 triage swept
+  ~50 corpus libs and CONVERGED: pure libs LOAD + FUNCTION correctly (verified
+  end-to-end — math.combinatorics / priority-map / core.unify / data.json all
+  clj-match), and the 8 clean single-bug wins landed (D-391 cross-ns deftype
+  import, D-392 prefix-list libspecs, D-393 `extend`, D-394 IMeta, D-395
+  Sequential/ISeq, D-396 `destructure`, D-397 Indexed, D-398 FQCN catch). The
+  remaining frontier is UNIFORMLY host-frontier: the clojure.lang.* deftype-marker
+  family (partially cleared — IMeta/Sequential/ISeq/Indexed done; remaining +
+  dispatch follow-ups), `definterface` (deferred-structural, debt:1475), bare
+  host-class symbols (Thread/Class/System), reflection (getConstructor/newInstance),
+  and JVM internals (clojure.lang.Compiler/RT/PersistentArrayMap statics). Doing
+  ONE marker per cycle is now the drip-feed smell — instead ENUMERATE the whole
+  remaining marker surface (instaparse's AutoFlattenSeq alone needs IFn/applyTo +
+  2-arity-nth dispatch; potemkin.collections needs IMapEntry) and drive it big-bang
+  per `.claude/rules/clj_diff_sweep.md` Discipline 2. Open follow-ups: D-397
+  (3-arg nth typed_instance dispatch + IFn/applyTo arity collision). SAFETY: every
+  `clj` oracle batch needs `-J-Xmx2g` + bounded seqs (memory `clj_oracle_heap_cap`);
+  register every new e2e in run_all.sh same-commit (memory `e2e-register-in-run-all`).
 
   **D-271 is NOT a mandate** (ADR-0134, value-driven re-amend): the finished form
   is full IObj/IMeta metable-ness, but a substrate joins membership ONLY when a
@@ -51,24 +56,19 @@
   direction); editing zwasm except via the F-001 finding-handling policy;
   `git push --force*`.
 
-## Just landed — daily-polish + P4 validation (2026-06-12, on `main`)
+## Just landed — P4 lib-load triage, 8 clean fixes (2026-06-12, on `main`)
 
-- **D-391 cross-ns deftype `:import` fix** (P4 lib-load win, unblocks hiccup.core):
-  a bare imported deftype (`(:import [ns RawString])` then bare `RawString` /
-  `(instance? RawString x)` / `(extend-protocol P RawString …)`) raised name_error
-  — the analyzer's symbol→class-VALUE fallback rewrote the bare name to its import
-  FQCN, but user deftypes are keyed by SIMPLE name in `rt.types`. Fix: fall back to
-  the bare name when the FQCN misses (host surfaces stay FQCN-keyed). hiccup renders
-  byte-identical to clj; e2e phase14_deftype_cross_ns_import; smoke 5/0. Prior:
-  **D-390 defmacro destructuring** (lower through `fn`, unblocked perseverance).
-- **OOM root-cause fixed**: the 2026-06-12 ~138GB Mac exhaustion was my unbounded
-  `(take-nth 0)` in a sweep → clj realised an infinite seq with no heap cap. Fix:
-  `clj_diff_sweep.sh` clj batch now `-J-Xmx2g` (memory `clj_oracle_heap_cap`).
-- **6 corpora pinned** (~330 golden cljw≡clj): division_ops / format_sorted_edges /
-  transducer_arities / clojure_1_11_additions / bounds_edges / numeric_tower_ops.
-- **D-271 value-driven re-amend** (ADR-0134): not a speculative 13-substrate
-  megaproject — a substrate joins IObj/IMeta membership only when a consumer pulls
-  it (the scope-escalation smell the user caught). Parity SSOT staleness fixed (7 ns).
+Each found via real-lib triage, verified vs the lib + clj oracle, e2e-registered,
+full gate green (325/0): **D-391** cross-ns deftype `:import` (hiccup renders
+clj-identical) · **D-392** prefix-list libspecs both forms (potemkin, data.xml) ·
+**D-393** `clojure.core/extend` runtime fn (tools.reader) · **D-394** IMeta deftype
+marker · **D-395** Sequential/ISeq deftype markers w/ real dispatch (instaparse) ·
+**D-396** `clojure.core/destructure` port (kezban; 11 shapes clj-matched) · **D-397**
+Indexed marker (1-arity nth, rough edges scoped out) · **D-398** FQCN exception catch
+(`java.lang.AssertionError` + reflective family). Infra: the e2e-registration trap
+(smoke passes an orphan, full gate's check_e2e_reach fails it) caught + fixed +
+memory'd (`e2e-register-in-run-all`). Rough edges deferred not shipped half-done
+(D-397 follow-ups).
 
 ## Cold-start reading order (resume)
 
