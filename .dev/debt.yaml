@@ -559,21 +559,7 @@ active:
       .dev/accepted_divergences.yaml, .claude/rules/clj_diff_sweep.md, D-175.
     last_reviewed: "2026-06-10"
   - id: "D-381"
-    status: "open (2026-06-10, ADR-0129 deferred perf — NOT a correctness gap). A
-      deftype/reify with a custom Object/hasheq used as a map key / set element
-      currently re-dispatches its hasheq on every HAMT bucket op (assoc/get/contains/
-      dissoc + each node-split rehash of an existing key), and a COLLECTION deftype
-      (flatland.ordered) whose hasheq is `(hash-unordered-coll this)` recomputes its
-      O(size) content hash each time → O(N²) to build an N-entry such map. clj caches
-      hasheq lazily per instance (idempotent IHashEq). The DA fork (ADR-0129
-      Alternatives) recommended a per-instance hasheq cache as the hash-side
-      representation; it was deferred because correctness comes from arming coverage,
-      not caching, and eager-at-construction caching makes ordered-map construction
-      O(N²). Land a LAZY cache when the perf window opens (F-010 / D-180 optimization
-      campaign): a `hasheq_cache` slot on TypedInstance/ReifiedInstance populated on
-      first armed hashDispatch, read rt-free by valueHash thereafter (also closes the
-      theoretical insert-armed/lookup-unarmed consistency edge). Lazy not eager (eager
-      reintroduces the O(N²) + a top-level-literal unarmed-construction gap)."
+    status: "open (2026-06-10, ADR-0129 deferred perf — NOT a correctness gap). A deftype/reify with a custom Object/hasheq used as a map key / set element currently re-dispatches its hasheq on every HAMT bucket op (assoc/get/contains/ dissoc + each node-split rehash of an existing key), and a COLLECTION deftype (flatland.ordered) whose hasheq is `(hash-unordered-coll this)` recomputes its O(size) content hash each time → O(N²) to build an N-entry such map. clj caches hasheq lazily per instance (idempotent IHashEq). The DA fork (ADR-0129 Alternatives) recommended a per-instance hasheq cache as the hash-side representation; it was deferred because correctness comes from arming coverage, not caching, and eager-at-construction caching makes ordered-map construction O(N²). Land a LAZY cache when the perf window opens (F-010 / D-180 optimization campaign): a `hasheq_cache` slot on TypedInstance/ReifiedInstance populated on first armed hashDispatch, read rt-free by valueHash thereafter (also closes the theoretical insert-armed/lookup-unarmed consistency edge). Lazy not eager (eager reintroduces the O(N²) + a top-level-literal unarmed-construction gap)."
     category: "performance"
     barrier: |-
       Blocked-by: deferred to the F-010 perf window (D-180 optimization campaign),
@@ -588,25 +574,7 @@ active:
       deferred it), D-377 (the discharged facet), F-010, D-180, equal.zig hashDispatch.
     last_reviewed: "2026-06-10"
   - id: "D-382"
-    status: "PARTIAL (2026-06-10, user-directed neutral-time modeling). STAGE 1 (Timestamp)
-      LANDED: java.sql.Timestamp is a real nanosecond-precision instant — a no-slot 2-field
-      `.typed_instance` ([epoch_ms, nanos]) with a per-Runtime descriptor (runtime/time/
-      timestamp.zig, mirroring the Date model ADR-0079 — NO new NaN-box tag, the debt's
-      earlier 'likely needs a slot' was wrong per the survey). parseInstantMillis refactored
-      to a shared `parseInstantFields` {epoch_ms, nanos, offset_min} (one grammar SSOT, F-011);
-      `formatInstantNanos` prints the 9-digit fraction. `clojure.instant/read-instant-timestamp`
-      wraps the `rt/__read-instant-timestamp` primitive (F-009 thin surface); inst?/inst-ms
-      broadened to Timestamp (clj's Inst protocol). CLJ-EXACT (oracle-verified): print form
-      `#inst \"…123456789-00:00\"`, (class)→Timestamp, inst?/inst-ms, `=` by epoch+nanos,
-      Timestamp ≠ an =-instant Date. e2e phase15_clojure_instant. Collapsing to Date was the
-      rejected smell (user 2026-06-10: 「Date にcollapseはbad smellを感じる」). REMAINING —
-      STAGE 2 (Calendar): java.util.Calendar is field-rich (tz + .get FIELD + mutable); a
-      minimal offset-only Calendar is low-value (unusable without fields), so the field API is
-      a larger unit (a reduced-field cljw Calendar would need a new AD). read-instant-calendar
-      stays absent (honest NameError) until the field surface is designed. STAGE 3 (optional):
-      java.sql.Timestamp / java.util.Calendar HOST surfaces (compat_tiers) wrapping the same
-      neutral model (F-009). The neutral runtime/time/ home + the Timestamp template are now in
-      place, so Stage 2/3 extend rather than design anew."
+    status: "PARTIAL (2026-06-10, user-directed neutral-time modeling). STAGE 1 (Timestamp) LANDED: java.sql.Timestamp is a real nanosecond-precision instant — a no-slot 2-field `.typed_instance` ([epoch_ms, nanos]) with a per-Runtime descriptor (runtime/time/ timestamp.zig, mirroring the Date model ADR-0079 — NO new NaN-box tag, the debt's earlier 'likely needs a slot' was wrong per the survey). parseInstantMillis refactored to a shared `parseInstantFields` {epoch_ms, nanos, offset_min} (one grammar SSOT, F-011); `formatInstantNanos` prints the 9-digit fraction. `clojure.instant/read-instant-timestamp` wraps the `rt/__read-instant-timestamp` primitive (F-009 thin surface); inst?/inst-ms broadened to Timestamp (clj's Inst protocol). CLJ-EXACT (oracle-verified): print form `#inst \"…123456789-00:00\"`, (class)→Timestamp, inst?/inst-ms, `=` by epoch+nanos, Timestamp ≠ an =-instant Date. e2e phase15_clojure_instant. Collapsing to Date was the rejected smell (user 2026-06-10: 「Date にcollapseはbad smellを感じる」). REMAINING — STAGE 2 (Calendar): java.util.Calendar is field-rich (tz + .get FIELD + mutable); a minimal offset-only Calendar is low-value (unusable without fields), so the field API is a larger unit (a reduced-field cljw Calendar would need a new AD). read-instant-calendar stays absent (honest NameError) until the field surface is designed. STAGE 3 (optional): java.sql.Timestamp / java.util.Calendar HOST surfaces (compat_tiers) wrapping the same neutral model (F-009). The neutral runtime/time/ home + the Timestamp template are now in place, so Stage 2/3 extend rather than design anew."
     category: "interop"
     barrier: |-
       Blocked-by: needs a neutral richer-instant model in runtime/time/ (Zig 0.16.0
@@ -622,17 +590,7 @@ active:
       instant.zig (the existing neutral parser read-instant-date already reuses).
     last_reviewed: "2026-06-10"
   - id: "D-383"
-    status: "open (2026-06-10, reader asymmetry found during the clojure.instant backfill).
-      A regex literal `#\"…\"` LOADS + works at RUNTIME (`(re-find #\"a+\" \"baaab\")`→\"aaa\")
-      but FAILS in a bootstrap-loaded `.clj` (anything `@embedFile`d from src/lang/clj/**):
-      `regex literal (unsupported syntax in cycle 1) is not supported`. So a bundled
-      namespace cannot use `#\"…\"` — clojure.instant had to guard with `(some #{\\\" \\\\} s)`
-      instead of `(re-find #\"[\\\"\\\\]\" s)`. The bootstrap/cycle-1 reader is a narrower
-      reader than the runtime one; regex-literal support is the gap. Also: the error
-      renderer mis-attributes the location to `<bootstrap>` core.clj (D-058 renderer
-      context gap), so the caret points at the wrong file. LOW priority (clean char-set/
-      string workaround; few bundled ns need regex), but a real definition-coverage gap
-      (F-013): a bundled ns should reach the full reader."
+    status: "open (2026-06-10, reader asymmetry found during the clojure.instant backfill). A regex literal `#\"…\"` LOADS + works at RUNTIME (`(re-find #\"a+\" \"baaab\")`→\"aaa\") but FAILS in a bootstrap-loaded `.clj` (anything `@embedFile`d from src/lang/clj/**): `regex literal (unsupported syntax in cycle 1) is not supported`. So a bundled namespace cannot use `#\"…\"` — clojure.instant had to guard with `(some #{\\\" \\\\} s)` instead of `(re-find #\"[\\\"\\\\]\" s)`. The bootstrap/cycle-1 reader is a narrower reader than the runtime one; regex-literal support is the gap. Also: the error renderer mis-attributes the location to `<bootstrap>` core.clj (D-058 renderer context gap), so the caret points at the wrong file. LOW priority (clean char-set/ string workaround; few bundled ns need regex), but a real definition-coverage gap (F-013): a bundled ns should reach the full reader."
     category: "reader"
     barrier: |-
       Blocked-by: the bootstrap/cycle-1 reader lacks regex-literal (`#\"…\"`) support that
@@ -1369,33 +1327,11 @@ active:
       namespace is the first real consumer. corpus alter_meta (8) covers the
       var/atom surface.
   - id: "D-238"
-    status: "PARTIAL (2026-06-05; barrier RE-EVALUATED 2026-06-13) — `with-out-str` LANDED via the threadlocal capture sink (core.zig `out_capture`), clj-verified. **The owner-gate has DISSOLVED**: the writer-representation question the gate protected (an F-004 NaN-box writer slot) was settled WITHOUT a slot by ADR-0127's `writer_value` (a host_instance wrapper minted for print-method writers) + java.io.StringWriter (2026-06-13, same container) — writers ARE host_instance values now, no slot decision pending. REMAINING (now unblocked, pulled by instaparse's `(defmethod print-method Failure [x w] (binding [*out* w] …))`): intern `*out*`/`*err*` as dynamic vars (root = stdout sentinel), emitToStdout derefs `*out*` after the nREPL capture lane (precedence: out_capture → *out* binding → rt.stdout), writing through a writer-ish Value generically (writer_value unwrap OR the descriptor's `write` method via callFn — covers StringWriter + user writer deftypes)."
+    status: "LANDED 2026-06-13 (commit d6c84985, e2e phase14_instaparse_substrate) — `*out*`/`*err*` interned as dynamic vars in core.clj (root = :clojure.core/stdout|stderr sentinels); emitToStdout precedence = out_capture (with-out-str/nREPL lane) → non-sentinel *out* binding (written through writer_value unwrap OR the descriptor `.write` method — covers java.io.StringWriter, print-method writer handles, user writer deftypes) → rt.stdout. Verified: (binding [*out* w] (print/println/pr …)) + with-out-str + direct stdout fallthrough. instaparse print-method Failure unblocked. RESIDUAL (narrow): *err* is interned but NO output path derefs it yet (cljw has no user-facing stderr-printing fn wired through *err*; wire the consult when one lands)."
     category: "runtime"
     barrier: |-
-      **`*out*` / `*err*` are not rebindable; `with-out-str` is impossible.**
-      print/println/pr/prn write straight to `rt.stdout`; `*out*` does not exist
-      as a var, so `(with-out-str (println "x"))` (capture to string) and
-      `(binding [*out* w] …)` cannot work. Real code + clojure.test-clojure.control
-      (with-err-string-writer) need it. Step-0 survey:
-      `private/notes/phase15-out-err-streams-survey.md`. The mechanism is mostly
-      ready: **one shared choke point** `emitToStdout` (core.zig:600) resolves the
-      target — a single redirect (`(deref *out*)` → capture buffer vs fd) covers
-      every print primitive, backend-agnostic (F-011/F-012); `pr-str` already has
-      the string-capture machinery (prStrFn IS with-out-str minus the redirect);
-      `*out*`/`*err*` intern at bootstrap mirroring `*ns*` (ADR-0083); `with-out-str`
-      is a ~4-line `.clj` macro. **STRUCTURAL BLOCKER (F-003/F-004 — owner decides):**
-      `*out*` must hold a **writer Value**, which needs a NaN-box heap tag. Group D's
-      named reserves are consumed except `box` (slot 58, enumerated, zero impl). A
-      mandatory Devil's-advocate fork must choose **(A) repurpose `box` as the writer
-      slot** (zero layout growth; `box`/clojure.lang.Box is low-value for cljw —
-      leading candidate) vs **(B) mint a fresh `io_writer` slot** — an F-004
-      reservation-table decision the handover flags as do-NOT-cold-seize. `Runtime.stdout`'s
-      docstring already pre-reserved this migration ("Superseded by `*out*` … Phase 15").
-      `with-in-str`/`*in*`/`read-line` is a SEPARATE deferred big-bang (cljw has no
-      `*in*`/read-line/string-input-reader). Cross-ref F-004 (slot) / F-003 (defer) /
-      F-011 (shared mechanism) / ADR-0083 (*ns* intern pattern). recall trigger: an
-      F-004 slot-owner session, or a real lib/with-out-str need.
-    last_reviewed: "2026-06-04"
+      CLOSED 2026-06-13: rebinding works through the generic writer-Value sink; only the *err* deref consult is unwired (no consumer path). Was: *out*/*err* not rebindable, with-out-str impossible. Cross-ref ADR-0127 (writer_value), D-310 (nREPL capture lane).
+    last_reviewed: "2026-06-13"
   - id: "D-232"
     status: |-
       now (validation campaign, opened 2026-06-03) — find real cljw↔clj bugs via
@@ -2520,6 +2456,21 @@ active:
       analyzer-policy change (eager-vs-lazy host resolution) needing its own
       DA-forked ADR. recall trigger: a consumer needing abbreviate/grapheme
       precision, or the analyzer-policy ADR.
+    last_reviewed: "2026-06-13"
+  - id: "D-411"
+    status: "open (2026-06-13 — the bench/perf half of the build-config unification, ADR-0133 Revision 2026-06-13). The 310 test/e2e standalone fallbacks now match build_cljw exactly (-Dwasm -Doptimize=${CLJW_OPT:-ReleaseSafe}); the REMAINING non-unified builders are bench/build_bench.sh + bench/release_metrics.sh + bench/compare_langs.sh + bench/run_bench.sh (zig build -Doptimize=ReleaseSafe, no -Dwasm — they overwrite zig-out with a non-wasm binary and add a third zig-cache config) and scripts/perf.sh (separate -p prefix, no overwrite, but measures a non-wasm binary while the shipped form is wasm-enabled)."
+    category: "infra"
+    barrier: |-
+      Measurement continuity: adding -Dwasm changes the measured binary (code
+      size, possibly cold-start) vs the recorded baselines
+      (.dev/perf_v0_baseline.md, bench history). The perf campaign is PAUSED
+      (resume = explicit user direction), so flipping bench flags now would
+      silently shift comparability with zero consumers running. Resolve when
+      bench next runs for real: either re-baseline under -Dwasm (preferred —
+      the shipped form is wasm-enabled, measure what ships) or record an
+      explicit non-wasm-bench rationale in ADR-0133. Interim state: e2e +
+      manual-probe paths are unified, so the bench scripts are the only
+      remaining zig-out overwriters with a divergent config.
     last_reviewed: "2026-06-13"
 discharged:
   - id: "D-409"

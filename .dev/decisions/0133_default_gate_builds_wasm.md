@@ -81,3 +81,22 @@ i.e. phase4, not the skipped e2e lines).
 - **Make the shared binary `-Dwasm` only via a dedicated wasm-binary path.**
   Cleaner isolation but needs `build.zig` to emit a second artifact name;
   deferred — the "all gate builds carry `-Dwasm`" rule keeps one binary.
+
+## Revision history
+
+- **2026-06-13 (user-directed)**: the "all 291 e2e standalone build lines"
+  alternative is UN-rejected and landed (310 files by now). The original
+  rejection reasoned only about in-gate behaviour (the lines are
+  `CLJW_SKIP_BUILD`-skipped there — still true). What it missed is the
+  **standalone path**: a bare `zig build` fallback (a) builds **Debug**,
+  overwriting the gate's ReleaseSafe `zig-out/bin/cljw` so subsequent manual
+  probes run the ~10-100× Debug cliff, and (b) uses a third build config
+  (non-wasm Debug) so alternating standalone e2e ↔ gate builds thrashes the
+  zig cache (the "zig build is slow" report, 2026-06-13). Every
+  `test/e2e/*.sh` fallback now reads
+  `zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}"` — identical to
+  `build_cljw`, so a standalone run is a cache hit (~0.6s measured) and never
+  degrades the shared binary. In-gate behaviour is unchanged (lines stay
+  dead). Manual-probe guidance follows the same form; remaining non-unified
+  builders (`bench/*.sh`, `scripts/perf.sh` — measurement-continuity
+  question) are tracked as a debt row, not silently flipped.
