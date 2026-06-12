@@ -14,18 +14,24 @@
   (`bench/run_bench.sh --quick` / `scripts/perf.sh`), never `time zig-out/bin/cljw`
   (Debug) — `.claude/rules/perf_measure_release.md`.
 
-- **First commit on resume MUST be: a daily-polish unit** (CFP submitted →
-  磨き込み mode). Priority order + full wiring: **`private/notes/polish-priority-audit.md`**.
-  **P1** (start here) a `scripts/clj_diff_sweep.sh` drain cycle — sweep an un-swept
-  `clojure.core`/stdlib area, classify each DIFF as bug-fix+corpus or a new `AD-NNN`
-  (`.dev/accepted_divergences.yaml`), drain highest-value-first (D-210 floor). **P2**
-  the cleanest found bug **D-271** (`(with-meta (range 3) m)` type_error — also lands
-  IObj/IMeta `instance?`). Then P3 ns-backfill (D-273, `.dev/v0_v1_feature_parity.md`,
-  pure-Clojure ns first), P4 validation (D-232 upstream suites + real libs), P5 edges
-  (D-321/322/239). Low-risk, incremental, value-first; only a user stop halts.
+- **First commit on resume MUST be: the D-271 IObj/IMeta activation cycle**
+  (now VALUE-RAISED — it transitively BLOCKS clojure.datafy, not merely the NICHE
+  range-meta facet). Take the host-interface-marker VALUE+membership half first:
+  resolve `clojure.lang.IObj`/`IMeta` as class values + `instance?` membership,
+  mirroring the already-landed IFn/Object (cljw currently name_errors both); this
+  unblocks datafy's `(instance? clojure.lang.IObj v)` guard. The 7-substrate
+  with-meta layout (F-003 structural half) sequences after, via the mandated DA
+  fork. SSOT: D-271 row (SCOPE CORRECTION + VALUE RAISED notes) + interface_membership.zig
+  (IObj/IMeta enumerated INACTIVE). The daily-polish clj-diff hand-sweep has
+  CONVERGED (9 surfaces probed → 0 new bugs; remaining divergences all tracked or
+  AD-classified), so the next value tier is the tracked structural/backfill work,
+  not more sweeps. Low-risk halves first; only a user stop halts.
 
   **State**: Phase 14 (v0.1.0 milestone) ~95% done — only 14.14 (exit-smoke + tag)
-  left; user is NOT cutting the tag yet. Full gate green on Mac + ubuntunote 314/0.
+  left; user is NOT cutting the tag yet. Full gate green on Mac (317/0).
+  Polish-priority detail (P3 ns-backfill / P4 validation / P5 edges) still in
+  **`private/notes/polish-priority-audit.md`**, but P1-sweep + P2-as-clean-fix are
+  superseded (sweeps converged; D-271 is structural, value-raised).
 
   **Paused (not abandoned)**: the §9.2.S perf campaign — cljw already WINS/parity vs
   Python on most benches; the 2 cold-losers (regex_count 1.8×, sieve 1.4×) + JIT are
@@ -37,20 +43,19 @@
   direction); editing zwasm except via the F-001 finding-handling policy;
   `git push --force*`.
 
-## Just landed — gate root-caused + wasm in default gate (2026-06-12, on `main`)
+## Just landed — daily-polish loop (2026-06-12, on `main`)
 
-- **D-385 gate root-cause FIXED (ADR-0132)**: the "multi-hour gate" was the e2e
-  running a **Debug** cljw (~1.7s cold-start × ~3200 spawns) — a bare `zig build`
-  in `run_tier_a.sh` + a resume-skipped `build_cljw` reverted the shared binary.
-  Full gate now **~113-190s**. `cljw --version` bakes in the build mode (semantic
-  guard, not a size heuristic).
-- **Wasm in the DEFAULT full gate (F-001 amended → ADR-0133)**: every executing
-  gate `zig build` carries `-Dwasm`; `phase16_wasm_{ffi,run}` are gate steps;
-  zwasm via the build.zig.zon tag-pin (no sibling). Verified GREEN on Mac +
-  **ubuntunote 314/0**. The phase4 reversion (non-wasm rebuild) was the bug.
-- **D-388 agent nested-send**: clj-faithful deferral (`releasePendingSends`,
-  `nested_pending` threadlocal, GC-pinned) + deterministic two-await test.
-  Residual single-await timing (eager-drainer vs clj pool) tracked in D-388.
+- **D-389 Throwable->map** partial landed (`.clj` defn, core :cause/:via/:data;
+  :trace/:at OMITTED as honest-degraded PROVISIONAL pending D-232 frame-shape;
+  DA-fork Alt 1; e2e phase14_throwable_map). **D-267 → AD-030** (`%c` int-reject,
+  F-005-derived; e2e phase14_format_char_int).
+- **4 corpora pinned** (145 golden cljw≡clj): division_ops, format_sorted_edges,
+  transducer_arities, clojure_1_11_additions — the bug-prone edges the sweeps
+  proved clean.
+- **Parity SSOT staleness fixed**: 7 backfilled namespaces (java.io / core.protocols
+  / instant / stacktrace / template / test.tap / uuid) MISSING→present.
+- **D-271 value-raised**: its IObj/IMeta activation blocks clojure.datafy (the
+  next-resume task above), so no longer NICHE — but still an F-003 structural cycle.
 
 ## Cold-start reading order (resume)
 
