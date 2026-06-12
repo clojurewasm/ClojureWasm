@@ -823,7 +823,7 @@ active:
       memory), F-011. recall: when a Wasm/edge demo needs flat numeric buffers.
     last_reviewed: "2026-06-06"
   - id: "D-267"
-    status: "open (found 2026-06-06, format clj-diff sweep) — `(format \"%c\" <int>)` diverges: clj accepts an Integer (`(int 66)`→\"B\") but rejects a Long (`65`→IllegalFormatConversionException); cljw collapses int/Long (F-005) so it rejects ALL integers (type_error). char args work in both."
+    status: "DISCHARGED 2026-06-12 (polish loop) → AD-030. Classified as an F-005-derived accepted divergence (the audit's recommended disposition): cljw collapses int/Long (F-005) so it cannot reproduce clj's Integer-accepts (`(int 66)`→\"B\") / Long-rejects (`65`→IllegalFormatConversionException) split; cljw takes D-267 option (b) — reject `%c` on EVERY integer (the conservative surface, no silent codepoint coercion). char args are clj-parity in both. Pinned by test/e2e/phase14_format_char_int.sh (format_c_int_rejected + format_c_long_rejected lock the rejection; format_c_char locks parity). Error-kind divergence is AD-007. ORIGINAL: open (found 2026-06-06, format clj-diff sweep) — `(format \"%c\" <int>)` diverges; cljw collapses int/Long (F-005) so it rejects ALL integers (type_error). char args work in both."
     category: "clj-parity"
     barrier: |-
       **`%c` with an integer arg can't replicate clj's Integer-vs-Long split.**

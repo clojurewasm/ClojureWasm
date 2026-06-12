@@ -464,3 +464,20 @@ accepted:
       user-frames-only (when frames do appear) is AD-024.
     derives_from: "ADR-0059 (no JVM Throwable / StackTraceElement) + AD-024 (user-frames-only trace) + AD-003 (simple class name) + F-003 (the frame-accessor surface is D-232's structural decision, deferred)"
     pin: "test/e2e/phase15_clojure_stacktrace.sh — print_cause_trace locks cljw's degraded marker + clj-faithful cause-chain output"
+  - id: "AD-030"
+    summary: "`(format \"%c\" <integer>)` is rejected by cljw for EVERY integer, where clj accepts an Integer (`(format \"%c\" (int 65))` → \"A\") but rejects a Long (`(format \"%c\" 65)` → IllegalFormatConversionException). cljw collapses int/Long into ONE integer type (F-005), so it cannot reproduce clj's Integer-accepts / Long-rejects split and chooses to reject all integers (D-267 option (b)). `%c` with an actual char (`\\A` / `(char 65)`) is clj-parity in both."
+    example: '(format "%c" (int 65)) => cljw type_error / clj "A" ; (format "%c" 65) => cljw type_error / clj IllegalFormatConversionException ; (format "%c" (char 65)) => both "A"'
+    why: |-
+      clj's `%c` accepts Character/Byte/Short/Integer and rejects Long. cljw has a
+      single integer representation (F-005: `(int x)` ≡ `(long x)` ≡ `.integer`), so
+      `(int 65)` and `65` are INDISTINGUISHABLE — cljw cannot match clj's both-ways
+      behaviour (accept the Integer form, reject the Long form) at once. Of the two
+      F-005-consequence options (D-267): (a) accept any integer as a codepoint —
+      then `(format "%c" 65)` → "A" where clj throws; (b) reject every integer —
+      then `(int 65)` errors where clj gives "A". cljw takes (b): the common path is
+      `%c` with an actual char (clj-parity in both), and an integer `%c` arg is rare;
+      rejecting is the more conservative surface (no silent codepoint coercion of a
+      value clj would refuse). The error KIND also differs (cljw type_error vs clj
+      IllegalFormatConversionException) per AD-007.
+    derives_from: "F-005 (numeric tower: int/Long collapse — cljw has no distinct Integer, so the Integer-accepts/Long-rejects split is unreproducible) + AD-007 (error Kind, not the JVM exception class)"
+    pin: "test/e2e/phase14_format_char_int.sh — format_c_int_rejected + format_c_long_rejected lock cljw's integer rejection; format_c_char locks the char-arg parity"

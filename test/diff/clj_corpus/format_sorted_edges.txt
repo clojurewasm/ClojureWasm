@@ -1,0 +1,52 @@
+(format "%05.2f" 3.14159)
+;;=> "03.14"
+(format "%+d" 5)
+;;=> "+5"
+(format "%x" 255)
+;;=> "ff"
+(format "%X" 255)
+;;=> "FF"
+(format "%o" 8)
+;;=> "10"
+(format "%e" 12345.678)
+;;=> "1.234568e+04"
+(format "%g" 0.0001234)
+;;=> "0.000123400"
+(format "%,d" 1234567)
+;;=> "1,234,567"
+(format "%-10s|" "hi")
+;;=> "hi        |"
+(format "%10s|" "hi")
+;;=> "        hi|"
+(format "%.3s" "abcdef")
+;;=> "abc"
+(format "%b" true)
+;;=> "true"
+(format "%b" nil)
+;;=> "false"
+(format "%%")
+;;=> "%"
+(format "%2$s %1$s" "a" "b")
+;;=> "b a"
+(format "%08.3f" 3.14)
+;;=> "0003.140"
+(subseq (sorted-set 1 2 3 4 5) >= 3)
+;;=> (3 4 5)
+(subseq (sorted-set 1 2 3 4 5) > 2 < 5)
+;;=> (3 4)
+(rsubseq (sorted-set 1 2 3 4 5) < 4)
+;;=> (3 2 1)
+(subseq (sorted-map 1 :a 2 :b 3 :c) >= 2)
+;;=> ([2 :b] [3 :c])
+(rsubseq (sorted-map 1 :a 2 :b 3 :c) <= 2)
+;;=> ([2 :b] [1 :a])
+(first (sorted-set 3 1 2))
+;;=> 1
+(last (sorted-map 1 :a 2 :b))
+;;=> [2 :b]
+(sorted-set-by > 1 2 3)
+;;=> #{3 2 1}
+(get (sorted-map :a 1) :a)
+;;=> 1
+(seq (sorted-set 3 1 2))
+;;=> (1 2 3)
