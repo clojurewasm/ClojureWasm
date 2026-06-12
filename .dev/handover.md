@@ -14,13 +14,20 @@
   (`bench/run_bench.sh --quick` / `scripts/perf.sh`), never `time zig-out/bin/cljw`
   (Debug) — `.claude/rules/perf_measure_release.md`.
 
-- **First commit on resume MUST be: a P4 validation unit** — load a real library
-  (clojure-corpus) or run an upstream `clojure.test` fragment through cljw, triage
-  each failure → a small clj-parity fix + corpus line, or a tracked debt gap.
-  Detail: **`private/notes/polish-priority-audit.md`** (P4 = D-232). The
-  daily-polish clj-diff HAND-sweep has CONVERGED (9 surfaces → 0 new bugs; all
-  remaining divergences tracked or AD-classified), so value now comes from
-  real-lib validation surfacing what hand-sweeps miss — not more hand-sweeps.
+- **First commit on resume MUST be: the next P4 lib-load triage unit** — load the
+  next un-tried clojure-corpus lib (`~/Documents/OSS/clojure-corpus/`) via
+  `cljw -cp <src> -e "(require 'NS)"`, triage the first blocker: tractable
+  clj-parity bug → fix + e2e (the proven mode — it just found+fixed D-390 defmacro
+  destructuring, unblocking grammarly/perseverance); structural JVM-interop
+  (bare host-class symbol resolution like `Thread`/`Agent`, or `.getStackTrace`
+  frame-shape) → a tracked gap, move on. P4 detail: `private/notes/polish-priority-audit.md`
+  + `private/notes/phase14-p4-validation.md` (the convergence map: small pure libs
+  LOAD — qbits.ex/perseverance/medley; JVM-interop libs block on the host-class
+  frontier). Both the clj-diff HAND-sweep AND bounds/numeric edges have CONVERGED
+  (10+ surfaces clean, 6 corpora pinned ~330 golden); value now comes from
+  real-lib load triage, NOT more hand-sweeps. SAFETY: every `clj` oracle batch now
+  needs `-J-Xmx2g` + bounded seqs (the 2026-06-12 take-nth-0 OOM; memory
+  `clj_oracle_heap_cap`).
 
   **D-271 is NOT a mandate** (ADR-0134, value-driven re-amend): the finished form
   is full IObj/IMeta metable-ness, but a substrate joins membership ONLY when a
@@ -44,19 +51,21 @@
   direction); editing zwasm except via the F-001 finding-handling policy;
   `git push --force*`.
 
-## Just landed — daily-polish loop (2026-06-12, on `main`)
+## Just landed — daily-polish + P4 validation (2026-06-12, on `main`)
 
-- **D-389 Throwable->map** partial landed (`.clj` defn, core :cause/:via/:data;
-  :trace/:at OMITTED as honest-degraded PROVISIONAL pending D-232 frame-shape;
-  DA-fork Alt 1; e2e phase14_throwable_map). **D-267 → AD-030** (`%c` int-reject,
-  F-005-derived; e2e phase14_format_char_int).
-- **4 corpora pinned** (145 golden cljw≡clj): division_ops, format_sorted_edges,
-  transducer_arities, clojure_1_11_additions — the bug-prone edges the sweeps
-  proved clean.
-- **Parity SSOT staleness fixed**: 7 backfilled namespaces (java.io / core.protocols
-  / instant / stacktrace / template / test.tap / uuid) MISSING→present.
-- **D-271 value-raised**: its IObj/IMeta activation blocks clojure.datafy (the
-  next-resume task above), so no longer NICHE — but still an F-003 structural cycle.
+- **D-390 defmacro destructuring fix** (P4 lib-load win): `(defmacro m [{:keys [a]}
+  & body] …)` raised "fn* parameter must be a symbol" at analyze time — defmacro
+  lowered `fn*` directly, bypassing the fn-macro destructuring layer. Fixed by
+  lowering through `fn`; unblocks grammarly/perseverance; full gate 318/0 both
+  backends. Also: **D-389 Throwable->map** partial + **D-267→AD-030** (`%c`).
+- **OOM root-cause fixed**: the 2026-06-12 ~138GB Mac exhaustion was my unbounded
+  `(take-nth 0)` in a sweep → clj realised an infinite seq with no heap cap. Fix:
+  `clj_diff_sweep.sh` clj batch now `-J-Xmx2g` (memory `clj_oracle_heap_cap`).
+- **6 corpora pinned** (~330 golden cljw≡clj): division_ops / format_sorted_edges /
+  transducer_arities / clojure_1_11_additions / bounds_edges / numeric_tower_ops.
+- **D-271 value-driven re-amend** (ADR-0134): not a speculative 13-substrate
+  megaproject — a substrate joins IObj/IMeta membership only when a consumer pulls
+  it (the scope-escalation smell the user caught). Parity SSOT staleness fixed (7 ns).
 
 ## Cold-start reading order (resume)
 
