@@ -2459,26 +2459,27 @@ active:
       AD-003 (simple `:type`), ADR-0120 (trace_ptr), F-003 (frame shape = D-232's).
     last_reviewed: "2026-06-12"
   - id: "D-400"
-    status: "open (2026-06-12 ENUMERATION — the clojure.lang.* deftype-marker family big-bang remainder). A precise sweep of deftype/reify SUPERTYPE-position `clojure.lang.*` across ~50 corpus libs (`grep -rhoE '^\\s+clojure\\.lang\\.(I[A-Z]…|Seqable|…)'`) found exactly 6 interfaces NOT in host_interface.zig MARKERS. D-399 cleared the clean one (IReduceInit). 5 remain, each needing per-interface dispatch-target verification (real-win vs load-but-misbehave) before adding."
+    status: "open (2026-06-12 ENUMERATION + class-facet audit — clojure.lang.* deftype-marker family remainder). A precise sweep of SUPERTYPE-position `clojure.lang.*` across ~50 corpus libs found 6 interfaces NOT in host_interface.zig MARKERS; D-399 cleared IReduceInit. **AUDIT CORRECTION**: the supertype-position grep over-counts — IPersistentVector/IPersistentList/IReference ALREADY WORK at the CLASS facet (verified: `(instance? clojure.lang.IPersistentVector [1 2])`→true, `(extend-protocol P clojure.lang.IPersistentVector …)`→ok, `(instance? clojure.lang.IReference (atom 1))`→true). The gap is ONLY a deftype declaring them as a SUPERTYPE-WITH-METHODS (a full custom vector/list/reference) — RARE + large composite, low value. So the genuinely actionable remainder is narrow."
     category: "polymorphism"
     barrier: |-
-      **5 remaining clojure.lang.* deftype-supertype markers** (freq in corpus):
-      `IPersistentVector` (18) + `IPersistentList` (4) — COMPOSITES (extend Indexed/
-      Associative/Counted/Seqable/IPersistentStack/Reversible); a declaring deftype
-      implements many methods → map each to the existing cljw protocol (most already
-      dispatch), larger surface. `IBlockingDeref` (15) — `(deref [self ms timeout-val])`
-      3-arity blocking deref; cljw IDeref/-deref is 1-arity, needs a timeout-aware
-      target or its own protocol (future/promise). `IReference` (8) — `alterMeta`/
-      `resetMeta` meta-mutation; cljw has no typed_instance meta-mutation dispatch.
-      `IKVReduce` (6) — `(kvreduce [self f init])`; cljw has NO -kv-reduce protocol /
-      reduce-kv typed_instance dispatch (only a core.clj:959 comment) → load-but-
-      misbehave until one is added. DISCIPLINE: do these big-bang (clj_diff_sweep
-      Discipline 2) — for EACH, first confirm cljw has a protocol that DISPATCHES on
-      a typed_instance (the D-394/395/397/399 scoping pattern: real-win, not just
-      'defines'), else build the dispatch first. Also fold the D-397 follow-ups
-      (3-arg nth typed_instance dispatch; IFn/applyTo arity collision). Cross-ref
-      D-394/395/397/399 (the IMeta/Sequential/ISeq/Indexed/IReduceInit slices already
-      landed), host_interfaces.yaml (the recognised set), G4 check_host_interface.
+      **Genuinely-actionable remainder** (after the class-facet audit):
+      - `IKVReduce` (6) — `(kvreduce [self f init])`: cljw has NO -kv-reduce protocol
+        / reduce-kv typed_instance dispatch (only a core.clj:959 comment). Must BUILD
+        the dispatch first (a `-kv-reduce` protocol + `reduce-kv` consult), else
+        load-but-misbehave. Medium.
+      - `IBlockingDeref` (15) — `(deref [self ms timeout-val])` 3-arity blocking deref:
+        cljw IDeref/-deref is 1-arity; needs a timeout-aware target (future/promise).
+        Medium.
+      - D-397 follow-ups: 3-arg `(nth coll i not-found)` typed_instance dispatch
+        (nthFn else-arm is 2-arg only); IFn/applyTo arity collision (applyTo→-invoke
+        clashes with invoke→-invoke). Small-but-fiddly.
+      **LOW value / defer**: IPersistentVector / IPersistentList / IReference as
+      deftype-supertype-WITH-METHODS (class facet already covers the common
+      instance?/extend-protocol/type-ref use; full custom-collection deftypes are
+      rare). DISCIPLINE (clj_diff_sweep Discipline 2): for each, first confirm/BUILD
+      a protocol that DISPATCHES on a typed_instance (the D-394/395/397/399 scoping
+      pattern: real-win, not just 'defines'). Cross-ref D-394/395/397/399 (landed
+      slices), host_interfaces.yaml, G4 check_host_interface.
     last_reviewed: "2026-06-12"
 discharged:
   - id: "D-399"
