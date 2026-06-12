@@ -2473,9 +2473,21 @@ active:
       resolves. Verify: the minimal repro above + hiccup.core load advances past
       :200. Cross-ref D-235 (per-ns :import simple-name map for java surfaces),
       D-280 (clojure.lang.* deftype-supertype family), the deftype type registry.
-      NOTE: a fatigue-flagged session deferred the FIX to a fresh cycle (the repro
-      + diagnosis are done); the analyzer/ns-import machinery is load-bearing, so
-      TDD it carefully with the both-backend diff oracle.
+      PRECISE ROOT CAUSE (scoped 2026-06-12): a user deftype is registered in
+      `rt.types` under its SIMPLE name ("RawString"), but `expandImport`
+      (macro_transforms.zig) lowers `[ns Class]` → `(import* "ns.Class")` and
+      `import*` records the simple-name→FQCN map (D-235) as "RawString"→
+      "hiccup.util.RawString". When the bare `RawString` is resolved,
+      `special_forms.resolveJavaSurface` follows the import to the FQCN and does
+      `rt.types.get("hiccup.util.RawString")` → MISS (the type is keyed by the
+      simple name). FIX OPTIONS: (a) `import*` checks whether the FQCN's simple
+      name is a user deftype in `rt.types` and maps the import to the simple name
+      instead of the FQCN; or (b) `resolveJavaSurface` falls back to
+      `rt.types.get(simple_name)` when the FQCN lookup misses AND the FQCN's tail
+      matches a user type. Prefer (a) (resolve at import time, like D-235). NOTE:
+      a fatigue-flagged session deferred the FIX to a fresh cycle (repro +
+      diagnosis + the exact mismatch are done); the analyzer/ns-import machinery
+      is load-bearing, so TDD it carefully with the both-backend diff oracle.
     last_reviewed: "2026-06-12"
 discharged:
   - id: "D-390"
