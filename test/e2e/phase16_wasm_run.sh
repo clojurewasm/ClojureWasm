@@ -16,7 +16,10 @@ if [ ! -d "../zwasm_from_scratch" ]; then
   echo "SKIP phase16_wasm_run (../zwasm_from_scratch not present)"
   exit 0
 fi
-if ! zig build -Dwasm >/dev/null 2>&1; then
+# Honor the wasm-gate's shared-binary contract (CLJW_SKIP_BUILD): skip our own
+# build to avoid clobbering the shared binary mid-run. Standalone, build it
+# ReleaseSafe (NOT a bare -Dwasm = Debug; ADR-0132).
+if [ -z "${CLJW_SKIP_BUILD:-}" ] && ! zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null 2>&1; then
   fail "zig build -Dwasm failed (zwasm relative-path consume broken?)"
 fi
 

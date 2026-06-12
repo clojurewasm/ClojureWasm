@@ -2374,7 +2374,16 @@ active:
     last_reviewed: "2026-06-11"
   - id: "D-387"
     status: |-
-      open (2026-06-12) — the Wasm-FFI EXECUTION path is not gate-tested.
+      DISCHARGED 2026-06-12 — `scripts/run_wasm_gate.sh` now orchestrates the
+      Wasm-FFI execution e2e (builds `-Dwasm` ReleaseSafe ONCE, CLJW_SKIP_BUILD so
+      the scripts reuse it without clobbering, runs phase16_wasm_ffi + _wasm_run).
+      Verified GREEN 2026-06-12 (add→42, no-leak, catchability, wasm/run WASI). It
+      is a SEPARATE opt-in runner, NOT in the default gate — F-001 mandates the
+      default build+gate never resolve zwasm, so wiring into run_all.sh was the
+      wrong shape; the (c) "should the shared gate binary be -Dwasm" question is
+      answered NO by F-001. Run it pre-release / on wasm-surface changes (the
+      script header documents the cadence). Was: the scripts existed but nothing
+      orchestrated them → zero execution coverage of the headline feature.
       `test/e2e/phase16_wasm_ffi.sh` + `phase16_wasm_run.sh` exist (they build
       `-Dwasm` and run `(wasm/load)`/`(wasm/call)` fixtures) but are NOT wired
       into `test/run_all.sh` (`grep wasm run_all.sh` = empty), so the gate never
