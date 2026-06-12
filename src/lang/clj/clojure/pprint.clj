@@ -52,3 +52,37 @@
           (println sep)
           (reduce (fn* [_ s] (println s)) nil row-strs)
           nil)))))
+
+;; `(cl-format stream fmt & args)` — a bounded Common-Lisp-format subset (D-403):
+;; ~A aesthetic, ~S standard (pr-readable), ~D decimal, ~% newline, ~~ literal ~.
+;; A nil stream returns the string; any other stream prints to *out* + returns nil.
+;; Unsupported directives raise (no silent mishandle); the full DSL (~F float,
+;; ~{~} iteration, column/justification, …) stays deferred.
+(def cl-format
+  (fn* [stream fmt & args]
+    (let* [n (count fmt)
+           result
+           (loop* [i 0 as (seq args) acc ""]
+             (if (>= i n)
+               acc
+               (let* [c (nth fmt i)]
+                 (if (and (= c \~) (< (inc i) n))
+                   (let* [d (nth fmt (inc i))]
+                     (cond
+                       (or (= d \a) (= d \A))
+                       (let* [x (first as)]
+                         (recur (+ i 2) (next as) (str acc (if (string? x) x (pr-str x)))))
+                       (or (= d \s) (= d \S))
+                       (recur (+ i 2) (next as) (str acc (pr-str (first as))))
+                       (or (= d \d) (= d \D))
+                       (recur (+ i 2) (next as) (str acc (str (first as))))
+                       (= d \%)
+                       (recur (+ i 2) as (str acc \newline))
+                       (= d \~)
+                       (recur (+ i 2) as (str acc \~))
+                       :else
+                       (throw (ex-info (str "cl-format: directive ~" d " is not supported in ClojureWasm") {}))))
+                   (recur (inc i) as (str acc c))))))]
+      (if (nil? stream)
+        result
+        (do (print result) nil)))))

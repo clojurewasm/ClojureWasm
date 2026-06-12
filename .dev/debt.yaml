@@ -2488,6 +2488,20 @@ active:
       slices), host_interfaces.yaml, G4 check_host_interface.
     last_reviewed: "2026-06-12"
 discharged:
+  - id: "D-403"
+    discharged_at: "feat(pprint): cl-format common subset (~A ~S ~D ~% ~~)"
+    resolution: |-
+      Found + fixed 2026-06-12 (function-triage: `clojure.pprint/cl-format` was
+      missing entirely). Implemented a bounded, useful subset in pprint.clj:
+      ~A aesthetic, ~S standard (pr-readable), ~D decimal, ~% newline, ~~ literal
+      tilde. `(cl-format nil fmt & args)` returns the string; any other stream
+      prints to *out*. Unsupported directives raise EXPLICITLY (no silent
+      mishandle — provisional-marker row-4 compliance). Pure Clojure (loop/recur
+      over the fmt string, char-literal directive dispatch — char literals work in
+      bundle, verified). e2e phase14_cl_format (~A/~S/~D/~%/~~ + aesthetic-string +
+      unsupported-raises, 7 cases clj-matched). DEFERRED (the rest of the DSL):
+      ~F/~E float formatting, ~{~} iteration, ~R/~B/~O radices, column/justification
+      (~T/~<~>), ~P plural, conditional ~[~]. Add directives as real libs demand them.
   - id: "D-402"
     discharged_at: "feat(pprint): dispatch system (with-pprint-dispatch/code-dispatch) + pr-readable pprint"
     resolution: |-
