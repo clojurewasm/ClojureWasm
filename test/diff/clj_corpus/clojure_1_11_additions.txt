@@ -1,0 +1,102 @@
+(parse-long "42")
+;;=> 42
+(parse-long "-42")
+;;=> -42
+(parse-long "999999999999")
+;;=> 999999999999
+(parse-long "abc")
+;;=> nil
+(parse-long "4.2")
+;;=> nil
+(parse-long "")
+;;=> nil
+(parse-double "3.14")
+;;=> 3.14
+(parse-double "-0.0")
+;;=> -0.0
+(parse-double "1e10")
+;;=> 1.0E10
+(parse-double "abc")
+;;=> nil
+(parse-double "Infinity")
+;;=> ##Inf
+(parse-double "NaN")
+;;=> ##NaN
+(parse-boolean "true")
+;;=> true
+(parse-boolean "false")
+;;=> false
+(parse-boolean "yes")
+;;=> nil
+(parse-uuid "00000000-0000-0000-0000-000000000000")
+;;=> #uuid "00000000-0000-0000-0000-000000000000"
+(abs -5)
+;;=> 5
+(abs -5.5)
+;;=> 5.5
+(abs 3)
+;;=> 3
+(NaN? ##NaN)
+;;=> true
+(NaN? 1.0)
+;;=> false
+(infinite? ##Inf)
+;;=> true
+(infinite? 1.0)
+;;=> false
+(abs -1/2)
+;;=> 1/2
+(update-keys {:a 1 :b 2} name)
+;;=> {"a" 1, "b" 2}
+(update-vals {:a 1 :b 2} inc)
+;;=> {:a 2, :b 3}
+(update-vals {} inc)
+;;=> {}
+(merge {:a 1} {:b 2} {:a 3})
+;;=> {:a 3, :b 2}
+(merge nil {:a 1})
+;;=> {:a 1}
+(merge {:a 1} nil)
+;;=> {:a 1}
+(get-in {:a {:b 1}} [:a :c] :default)
+;;=> :default
+(update {:a 1} :a + 10)
+;;=> {:a 11}
+(update {:a 1} :b (fnil inc 0))
+;;=> {:a 1, :b 1}
+(dissoc {:a 1 :b 2 :c 3} :a :c)
+;;=> {:b 2}
+(zipmap [:a :b] [1 2 3])
+;;=> {:a 1, :b 2}
+(group-by odd? (range 6))
+;;=> {false [0 2 4], true [1 3 5]}
+(frequencies "aabbbc")
+;;=> {\a 2, \b 3, \c 1}
+(into (sorted-map) {:b 2 :a 1})
+;;=> {:a 1, :b 2}
+(namespace :foo/bar)
+;;=> "foo"
+(name :foo/bar)
+;;=> "bar"
+(namespace 'a/b)
+;;=> "a"
+(keyword "ns" "n")
+;;=> :ns/n
+(keyword "n")
+;;=> :n
+(symbol "ns" "n")
+;;=> ns/n
+(symbol "n")
+;;=> n
+(keyword :existing)
+;;=> :existing
+(name "plain-string")
+;;=> "plain-string"
+(namespace :plain)
+;;=> nil
+(ident? :a/b)
+;;=> true
+(qualified-keyword? :a/b)
+;;=> true
+(simple-symbol? 'foo)
+;;=> true
