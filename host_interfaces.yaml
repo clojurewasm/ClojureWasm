@@ -105,6 +105,30 @@ interfaces:
     note: "D-271 / D-280d7: a deftype may declare IMeta SEPARATELY from IObj (instaparse's AutoFlattenSeq: IObj withMeta + IMeta meta). meta→IObj/-meta, mirroring IObj's meta. Load-level (registers; `meta` fn consulting -meta for a typed_instance is the IObj follow-up)."
     methods:
       meta: { status: wired, wires_to_protocol: IObj, wires_to_method: "-meta" }
+  - name: clojure.lang.ISeq
+    derives_from: "clojure.lang.ISeq — a custom seq instance (first/next/more/cons); ISeq extends IPersistentCollection + Seqable (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "ISeq (-first/-rest/-next) + IPersistentCollection (-cons/-count/-empty) + Object/equiv + Seqable/-seq — the inherited-interface methods route to their existing cljw protocols"
+    note: "D-395 (D-271/D-280 family): a custom-seq deftype (instaparse's AutoFlattenSeq) declares first/next/more/cons + inherited count/empty/equiv/seq. Every target exists AND DISPATCHES on a typed_instance (first/next/more via the D-280d sequence.zig else-arms; cons/count/empty via IPersistentCollection; equiv via Object; seq via Seqable) — a REAL win, not load-level-only. `more` = clj's rest."
+    methods:
+      first: { status: wired, wires_to_protocol: ISeq, wires_to_method: "-first" }
+      next: { status: wired, wires_to_protocol: ISeq, wires_to_method: "-next" }
+      more: { status: wired, wires_to_protocol: ISeq, wires_to_method: "-rest" }
+      cons: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-cons" }
+      count: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-count" }
+      empty: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-empty" }
+      equiv: { status: wired, wires_to: "Object method-family equiv (D-280d8 — clj collection =; ISeq inherits it from IPersistentCollection)" }
+      seq: { status: wired, wires_to_protocol: Seqable, wires_to_method: "-seq" }
+  - name: clojure.lang.Sequential
+    derives_from: "clojure.lang.Sequential — zero-method order marker (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: marker
+    modeled_as: "Sequential (cljw's own `(defprotocol Sequential)`, core.clj:1715)"
+    note: "D-395: zero-method marker; canonical is the cljw `Sequential` protocol (NOT the full clojure.lang name) so a declaring deftype records protocol_impls[Sequential] and `sequential?` (declaresProtocol Sequential) + seq-style print answer true. class_name.zig already normalises clojure.lang.Sequential → Sequential at the class facet (ADR-0068 marker precedent)."
+    methods: {}
   # --- editable / transient collection family (D-286, F-013 definition-derived) ---
   # flatland.ordered drives this: OrderedSet declares IEditableCollection (the LOAD
   # blocker) + IPersistentSet with clj-named methods (D-286b); the Transient* types

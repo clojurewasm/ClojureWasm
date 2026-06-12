@@ -142,6 +142,31 @@ const IMETA: HostInterface = .{ .kind = .protocol_remap, .canonical = "IMeta", .
     .{ .clj = "meta", .protocol = "IObj", .method = "-meta" },
 } };
 
+// clojure.lang.ISeq (D-395, D-271/D-280 family) — a custom seq deftype
+// (instaparse's AutoFlattenSeq) declares it with first/next/more/cons + the
+// inherited count/empty/equiv/seq. Every target already exists AND dispatches on
+// a typed_instance: first/next/more → ISeq -first/-next/-rest (D-280d sequence.zig
+// else-arms), cons/count/empty → IPersistentCollection -cons/-count/-empty,
+// equiv → Object/equiv, seq → Seqable/-seq — so the seq ops route to the deftype's
+// impls (a REAL win, not load-level-only). `more` is clj's name for rest.
+const ISEQ: HostInterface = .{ .kind = .protocol_remap, .canonical = "ISeq", .remap = &.{
+    .{ .clj = "first", .protocol = "ISeq", .method = "-first" },
+    .{ .clj = "next", .protocol = "ISeq", .method = "-next" },
+    .{ .clj = "more", .protocol = "ISeq", .method = "-rest" },
+    .{ .clj = "cons", .protocol = "IPersistentCollection", .method = "-cons" },
+    .{ .clj = "count", .protocol = "IPersistentCollection", .method = "-count" },
+    .{ .clj = "empty", .protocol = "IPersistentCollection", .method = "-empty" },
+    .{ .clj = "equiv", .protocol = "Object", .method = "equiv" },
+    .{ .clj = "seq", .protocol = "Seqable", .method = "-seq" },
+} };
+
+// clojure.lang.Sequential (D-395) — a zero-method marker. Canonical is the cljw
+// `Sequential` protocol (core.clj:1715, NOT the full clojure.lang name) so a
+// declaring deftype records protocol_impls["Sequential"] and `sequential?`
+// (declaresProtocol "Sequential") + seq-style print answer true. class_name.zig
+// already normalises clojure.lang.Sequential → Sequential at the class facet.
+const SEQUENTIAL: HostInterface = .{ .kind = .marker, .canonical = "Sequential" };
+
 // clojure.lang.IDeref / IPending — the deref-able family (D-307). A deftype
 // declaring IDeref registers deref→IDeref/-deref; `deref`/`@` consult it for a
 // typed_instance (stm.zig derefFn). IPending's isRealized→IPending/-realized?,
@@ -342,6 +367,8 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "clojure.lang.IFn", IFN },
     .{ "clojure.lang.IObj", IOBJ },
     .{ "clojure.lang.IMeta", IMETA },
+    .{ "clojure.lang.ISeq", ISEQ },
+    .{ "clojure.lang.Sequential", SEQUENTIAL },
     // D-306: collection-base interfaces declarable as DIRECT deftype supertypes
     // (core.cache's defcache). Qualified spelling only — the bare Associative/
     // Seqable/IPersistentCollection are cljw protocol Vars that resolve already.

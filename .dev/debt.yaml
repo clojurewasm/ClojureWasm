@@ -2458,32 +2458,29 @@ active:
       error printing. MODERATE value. Cross-ref D-232, AD-029, AD-024 (user-frames),
       AD-003 (simple `:type`), ADR-0120 (trace_ptr), F-003 (frame shape = D-232's).
     last_reviewed: "2026-06-12"
-  - id: "D-395"
-    status: "open (found 2026-06-12, P4 lib-load: instaparse auto_flatten_seq.cljc:112). A deftype declaring `clojure.lang.Sequential` + `clojure.lang.ISeq` as supertypes fails: Sequential/ISeq are NOT in host_interface.zig MARKERS, so the deftype macro resolves them as type_descriptor CLASS values (they ARE recognised at the class facet via interface_membership.ISEQ_NAMES) and passes that to __extend-type! → 'expected protocol, got type_descriptor'. D-394 (IMeta) was the same family's first half."
-    category: "polymorphism"
-    barrier: |-
-      **`clojure.lang.Sequential` + `clojure.lang.ISeq` are not deftype SUPERTYPE
-      markers** (only class-facet recognised). Blocks instaparse (AutoFlattenSeq
-      is a custom seq deftype). Sequential is a trivial zero-method marker (mirror
-      MAP_EQUIVALENCE / the existing cljw `(defprotocol Sequential)`, D-280a). ISeq
-      is the real work: instaparse declares 6 methods under it — equiv / empty /
-      first / next / more / cons. cljw's ISeq protocol (core.clj:1678) has ONLY
-      `-first`/`-rest`/`-next`, and `first`/`rest`/`next` already consult those via
-      dispatchOrNull (D-280d / debt row at sequence.zig), so first→-first /
-      more→-rest / next→-next map cleanly AND dispatch (a REAL win, not load-level-
-      only). But equiv / empty / cons need targets: equiv→Object/equiv (exists),
-      empty→IPersistentCollection/-empty + cons→? need verifying cljw has those
-      protocol methods AND that `empty`/`cons`/`=` actually consult a typed_instance
-      (the dispatch follow-up — else instaparse loads but its seq misbehaves, a
-      silent-semantics risk). DEPTH-2+ STRUCTURAL: do as its own focused cycle with
-      a DA fork — scope the full method→protocol remap, confirm each target exists +
-      dispatches, then add ISEQ + SEQUENTIAL to host_interface.zig MARKERS + the
-      yaml rows (G4). Cross-ref D-394 (IMeta, the family's first slice), D-280d
-      (ISeq first/rest/next dispatch), ADR-0068 (Sequential marker precedent), the
-      core.clj:1678 ISeq protocol. Verify: instaparse.core loads + a round-trip
-      parse returns correct results (NOT just 'defines').
-    last_reviewed: "2026-06-12"
 discharged:
+  - id: "D-395"
+    discharged_at: "feat(host-interface): clojure.lang.Sequential + ISeq deftype markers"
+    resolution: |-
+      Found + fixed 2026-06-12 (P4 lib-load: instaparse auto_flatten_seq.cljc:112).
+      A custom-seq deftype declaring `clojure.lang.Sequential` + `clojure.lang.ISeq`
+      failed — neither was a host_interface.zig MARKER (only class-facet recognised),
+      so the deftype macro saw them as type_descriptor class values → __extend-type!
+      'expected protocol, got type_descriptor'. The depth-2 scoping (this row, pre-
+      fix) found every target already EXISTS + DISPATCHES, so no DA fork / new
+      protocol was needed — a mechanical mirror after all: ISEQ protocol_remap
+      (first/next/more → ISeq -first/-next/-rest [D-280d sequence.zig else-arms];
+      cons/count/empty → IPersistentCollection -cons/-count/-empty [core.clj:1675];
+      equiv → Object method-family; seq → Seqable/-seq) + SEQUENTIAL zero-method
+      marker (canonical "Sequential" = cljw's own protocol so `sequential?` answers
+      true). host_interface.zig ISEQ+SEQUENTIAL+MARKERS + 2 yaml rows (G4: 49 ⊆ 50;
+      equiv uses `wires_to:` description, not wires_to_protocol — Object is a
+      method_family not a defprotocol). Verified REAL dispatch (not load-level):
+      e2e phase14_deftype_iseq (first/seq/count/rest dispatch to the deftype's impls
+      + sequential? true, 5 cases clj-matched). instaparse advances past :112 to
+      :387 (clojure.lang.IFn/applyTo + Reversible/rseq + Indexed/nth — further
+      incremental method gaps on the SAME AutoFlattenSeq deftype, separate D-NNN).
+  - id: "D-396"
   - id: "D-396"
     discharged_at: "feat(core): clojure.core/destructure (binding expander fn)"
     resolution: |-
