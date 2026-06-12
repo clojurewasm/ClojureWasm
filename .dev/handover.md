@@ -14,24 +14,25 @@
   (`bench/run_bench.sh --quick` / `scripts/perf.sh`), never `time zig-out/bin/cljw`
   (Debug) — `.claude/rules/perf_measure_release.md`.
 
-- **First commit on resume MUST be: the D-271 IObj/IMeta activation cycle**
-  (now VALUE-RAISED — it transitively BLOCKS clojure.datafy, not merely the NICHE
-  range-meta facet). Take the host-interface-marker VALUE+membership half first:
-  resolve `clojure.lang.IObj`/`IMeta` as class values + `instance?` membership,
-  mirroring the already-landed IFn/Object (cljw currently name_errors both); this
-  unblocks datafy's `(instance? clojure.lang.IObj v)` guard. The 7-substrate
-  with-meta layout (F-003 structural half) sequences after, via the mandated DA
-  fork. SSOT: D-271 row (SCOPE CORRECTION + VALUE RAISED notes) + interface_membership.zig
-  (IObj/IMeta enumerated INACTIVE). The daily-polish clj-diff hand-sweep has
-  CONVERGED (9 surfaces probed → 0 new bugs; remaining divergences all tracked or
-  AD-classified), so the next value tier is the tracked structural/backfill work,
-  not more sweeps. Low-risk halves first; only a user stop halts.
+- **First commit on resume MUST be: a P4 validation unit** — load a real library
+  (clojure-corpus) or run an upstream `clojure.test` fragment through cljw, triage
+  each failure → a small clj-parity fix + corpus line, or a tracked debt gap.
+  Detail: **`private/notes/polish-priority-audit.md`** (P4 = D-232). The
+  daily-polish clj-diff HAND-sweep has CONVERGED (9 surfaces → 0 new bugs; all
+  remaining divergences tracked or AD-classified), so value now comes from
+  real-lib validation surfacing what hand-sweeps miss — not more hand-sweeps.
+
+  **D-271 is NOT a mandate** (ADR-0134, value-driven re-amend): the finished form
+  is full IObj/IMeta metable-ness, but a substrate joins membership ONLY when a
+  real consumer PULLS it — NOT a speculative 13-substrate megaproject (the
+  Progress-pressure/scope-escalation smell the user caught 2026-06-12). The first
+  value-driven slice, IF taken: resolve IObj/IMeta as values + membership for the
+  already-metable tags (clears the name_error); but datafy (the lone near-term
+  puller) has OTHER blockers too (class/.getName, host-class extends,
+  clojure.reflect), so verify the whole datafy load before committing to it.
 
   **State**: Phase 14 (v0.1.0 milestone) ~95% done — only 14.14 (exit-smoke + tag)
   left; user is NOT cutting the tag yet. Full gate green on Mac (317/0).
-  Polish-priority detail (P3 ns-backfill / P4 validation / P5 edges) still in
-  **`private/notes/polish-priority-audit.md`**, but P1-sweep + P2-as-clean-fix are
-  superseded (sweeps converged; D-271 is structural, value-raised).
 
   **Paused (not abandoned)**: the §9.2.S perf campaign — cljw already WINS/parity vs
   Python on most benches; the 2 cold-losers (regex_count 1.8×, sieve 1.4×) + JIT are
