@@ -2488,6 +2488,24 @@ active:
       slices), host_interfaces.yaml, G4 check_host_interface.
     last_reviewed: "2026-06-12"
 discharged:
+  - id: "D-401"
+    discharged_at: "feat(json): clojure.data.json read-str/write-str :key-fn / :value-fn options"
+    resolution: |-
+      Found + fixed 2026-06-12 (function-level triage: `(json/read-str s :key-fn
+      keyword)` raised 'Wrong number of args (3)… expected 1'). cljw's bundled
+      clojure.data.json read-str/write-str were Zig primitives registered 1-arity —
+      the `:key-fn` form was a documented follow-up (json.zig:22). NOTE: the corpus
+      data.json is shadowed by cljw's BUNDLED ns (embedded nses win the require
+      chain), so this is OUR lib, a clean fixable gap — not the corpus lib's
+      definterface. FIX: rename the raw primitives to `-read-str-impl` /
+      `-write-str-impl` (1-arity) + add Clojure `read-str` / `write-str` wrappers in
+      json.clj (`(fn [s & {:keys [key-fn value-fn]}] …)` — `fn` not `fn*`, since
+      `& {:keys}` needs the destructuring macro, the D-390 lesson) applying the
+      options via `clojure.walk/postwalk` + reduce-kv. Verified: e2e
+      phase14_json_options (read :key-fn/:value-fn + write :key-fn + 1-arity
+      defaults, 5 cases clj-matched vs real data.json 2.5.0); phase9_json 16/16 +
+      phase16_cljw_json_fs still green; lint clean. Follow-up: `:bigdec` /
+      `:eof-error?` / `:eof-value` (parse-level, need `-read-str-impl` support).
   - id: "D-399"
     discharged_at: "feat(host-interface): clojure.lang.IReduceInit deftype marker"
     resolution: |-

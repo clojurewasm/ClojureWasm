@@ -19,8 +19,9 @@
 //! | object        | array_map      |
 //!
 //! Object keys are coerced to cw strings (NOT keywords) by default,
-//! matching JVM `clojure.data.json/read-str`'s default. The 2-arity
-//! `(read-str s opts)` form with `:key-fn` is a follow-up.
+//! matching JVM `clojure.data.json/read-str`'s default. The `:key-fn` /
+//! `:value-fn` options land in the json.clj wrapper over these raw impls
+//! (D-401); `:bigdec` / `:eof-error?` (parse-level) remain a follow-up here.
 //!
 //! **Location note (D-095)**: this Zig primitive lives under
 //! `src/lang/primitive/` per D-095 (Zig 0.16 module-path constraint).
@@ -236,8 +237,10 @@ const Entry = struct {
 };
 
 const ENTRIES = [_]Entry{
-    .{ .name = "read-str", .f = &readStrFn },
-    .{ .name = "write-str", .f = &writeStrFn },
+    // Raw 1-arity parsers; the public `read-str`/`write-str` (clojure.data.json
+    // ns, json.clj) wrap these to add the `:key-fn`/`:value-fn` options (D-401).
+    .{ .name = "-read-str-impl", .f = &readStrFn },
+    .{ .name = "-write-str-impl", .f = &writeStrFn },
 };
 
 pub fn register(env: *Env) !void {
