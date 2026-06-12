@@ -669,6 +669,7 @@ run_step "e2e_phase14_var_resolve"           "bash test/e2e/phase14_var_resolve.
 run_step "e2e_phase14_biginteger"            "bash test/e2e/phase14_biginteger.sh"
 run_step "e2e_phase14_format_char_int"       "bash test/e2e/phase14_format_char_int.sh"
 run_step "e2e_phase14_throwable_map"         "bash test/e2e/phase14_throwable_map.sh"
+run_step "e2e_phase14_defmacro_destructure"  "bash test/e2e/phase14_defmacro_destructure.sh"
 run_step "e2e_phase14_read_string"           "bash test/e2e/phase14_read_string.sh"
 run_step "e2e_phase14_range_indexed"         "bash test/e2e/phase14_range_indexed.sh"
 run_step "e2e_phase14_lazy_seq"              "bash test/e2e/phase14_lazy_seq.sh"

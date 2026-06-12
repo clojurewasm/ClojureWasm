@@ -459,17 +459,24 @@ pub fn analyzeDefmacro(
         placeholder_var.meta = try analyzer_mod.formToValue(rt, env, try unquoteMetaValues(arena, meta_map));
     }
 
-    // Build the synthetic fn* Form, then analyse it through the regular path
+    // Build the synthetic `fn` Form, then analyse it through the regular path
     // so multi-arity / closure / arg checks all ride existing FnNode
-    // infrastructure. Every arity's param vector is prefixed with the implicit
-    // `&form &env` (ADR-0086) so the macro body can introspect its call form +
-    // lexical environment; `expandIfMacro` prepends the matching two Values.
-    // Single arity → `(fn* [&form &env PARAMS…] BODY…)`; multi-arity →
-    // `(fn* ([&form &env a] …) …)`.
+    // infrastructure. Lowering through `fn` (NOT `fn*` directly) routes the
+    // user-params through the fn-macro destructuring layer (`expandFn` →
+    // `transformFnArity`), so a destructured macro param —
+    // `(defmacro m [{:keys [a]} & body] …)` — works; clj's defmacro likewise
+    // expands to a `defn` that destructures, so the prior raw-`fn*` lowering was
+    // the divergence (D-390; P4 finding, grammarly/perseverance load). `analyze`
+    // macro-expands the `fn` head (analyzer.zig `expandIfMacro`), so the synthetic
+    // form is fully lowered before the FnNode is built. Every arity's param vector
+    // is prefixed with the implicit `&form &env` (ADR-0086) so the macro body can
+    // introspect its call form + lexical environment; `expandIfMacro` prepends the
+    // matching two Values. Single arity → `(fn [&form &env PARAMS…] BODY…)`;
+    // multi-arity → `(fn ([&form &env a] …) …)`.
     const fn_form: Form = if (multi_arity) blk: {
         const clauses = items[head..];
         const fn_items = try arena.alloc(Form, 1 + clauses.len);
-        fn_items[0] = macro_dispatch.makeSymbol("fn*", form.location);
+        fn_items[0] = macro_dispatch.makeSymbol("fn", form.location);
         for (clauses, 0..) |c, j| {
             const sub = c.data.list; // ([params] body…) — validated above
             const new_clause = try arena.alloc(Form, sub.len);
@@ -480,7 +487,7 @@ pub fn analyzeDefmacro(
         break :blk .{ .data = .{ .list = fn_items }, .location = form.location };
     } else blk: {
         const fn_items = try arena.alloc(Form, 2 + (items.len - head - 1));
-        fn_items[0] = macro_dispatch.makeSymbol("fn*", form.location);
+        fn_items[0] = macro_dispatch.makeSymbol("fn", form.location);
         fn_items[1] = try prependImplicitMacroParams(arena, items[head], form.location);
         @memcpy(fn_items[2..], items[head + 1 ..]);
         break :blk .{ .data = .{ .list = fn_items }, .location = form.location };

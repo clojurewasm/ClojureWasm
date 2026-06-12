@@ -2459,6 +2459,29 @@ active:
       AD-003 (simple `:type`), ADR-0120 (trace_ptr), F-003 (frame shape = D-232's).
     last_reviewed: "2026-06-12"
 discharged:
+  - id: "D-390"
+    discharged_at: "feat(analyzer): defmacro lowers through fn (destructured macro params)"
+    resolution: |-
+      Found + fixed 2026-06-12 (P4 lib-load: grammarly/perseverance blocked at
+      core.clj:127 `(defmacro … [{:keys [strategy selector log-fn]} & body] …)`).
+      `(defmacro m [{:keys [a]}] …)` raised "fn* parameter must be a symbol" at
+      ANALYZE time: cljw's `analyzeDefmacro` (special_forms.zig) built the macro fn
+      as a synthetic `(fn* [&form &env PARAMS…] …)` DIRECTLY, but `fn*` is the
+      low-level primitive that requires plain-symbol params — the fn-macro
+      destructuring layer (`expandFn` → `transformFnArity`, lang/) was bypassed.
+      defn/fn destructuring already worked; only defmacro (a special form, not a
+      macro) didn't — the asymmetry clj avoids by making defmacro expand to defn.
+      FIX: lower through `fn` (the destructuring macro), not `fn*` — `analyze`
+      macro-expands the `fn` head (expandIfMacro), so the synthetic form is fully
+      lowered (destructured) before the FnNode is built. One-token change ×2
+      (single + multi arity); zone-clean (no eval/→lang/ import; the existing
+      analyze pipeline does the expansion). Verified: perseverance.core now LOADS;
+      e2e phase14_defmacro_destructure (map/vector/rest/multi-arity destructuring +
+      plain-param regression, 6 assertions, clj-matched); both backends green via
+      the F-012 diff oracle. NOTE: a macro must be defined in a SEPARATE top-level
+      form before use (cljw analyses a whole `(do …)` before eval — a same-`do`
+      define-then-call sees the macro var's root unset; unrelated cljw eval-model
+      property, not this bug)."
   - id: "D-249"
     discharged_at: "docs(diff): Clojure-vs-ClojureWasm differences sheet"
     resolution: |-
