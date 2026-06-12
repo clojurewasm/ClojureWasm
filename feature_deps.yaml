@@ -644,3 +644,30 @@ entries:
       row 7.12 cycle 2 landed the literal pass-through; D-051 cycle 3 /
       §A26 capture groups unblocked the discharge.
 
+  - name: clojure.core/Throwable->map
+    kind: var
+    defined_in: src/lang/clj/clojure/core.clj
+    status: provisional
+    requires_features: []
+    requires_debts:
+      - D-389
+    provisional_markers:
+      - "src/lang/clj/clojure/core.clj (Throwable->map — omits :trace + per-via :at pending D-232 frame shape)"
+    notes: |
+      D-389 (polish loop 2026-06-12, DA-fork Alt 1). cljw exceptions are
+      ex-info VALUES (ADR-0059: no JVM Throwable/StackTraceElement), so the
+      partial computes the keys derivable from the ex-* primitives —
+      :cause (root message), :via (cause chain via ex-cause, each
+      {:type (simple-name symbol, AD-003) :message :data}), :data (root
+      ex-data). The per-frame :trace + per-via :at keys are OMITTED (absent,
+      NOT emitted empty — the honest-degraded invariant; an empty :trace
+      would lie that the exception has zero frames). Adding :trace/:at is
+      ADDITIVE (pure key-addition) once D-232 decides the cljw frame-shape
+      (the same frame-accessor surface AD-029 deferred to D-232; F-003: the
+      frame representation is D-232's structural decision). A host-builtin
+      reading trace_ptr (ADR-0120) now would SEIZE that decision (forbidden),
+      so the impl is a .clj defn over the primitives, not Zig. Pin:
+      test/e2e/phase14_throwable_map.sh (trace_absent / at_absent lock the
+      honest-degraded invariant). Close-out: D-232 lands the frame accessor →
+      add :trace/:at, flip status to landed, drop this marker.
+
