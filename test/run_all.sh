@@ -654,6 +654,7 @@ run_step "e2e_phase14_extend_protocol_targets" "bash test/e2e/phase14_extend_pro
 run_step "e2e_phase14_extend_fn"             "bash test/e2e/phase14_extend_fn.sh"
 run_step "e2e_phase14_deftype_imeta"         "bash test/e2e/phase14_deftype_imeta.sh"
 run_step "e2e_phase14_deftype_iseq"          "bash test/e2e/phase14_deftype_iseq.sh"
+run_step "e2e_phase14_deftype_indexed"       "bash test/e2e/phase14_deftype_indexed.sh"
 run_step "e2e_phase14_destructure_fn"        "bash test/e2e/phase14_destructure_fn.sh"
 run_step "e2e_phase14_deftype_cross_ns_import" "bash test/e2e/phase14_deftype_cross_ns_import.sh"
 run_step "e2e_phase14_prefix_list_libspec"   "bash test/e2e/phase14_prefix_list_libspec.sh"

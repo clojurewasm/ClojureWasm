@@ -2459,6 +2459,26 @@ active:
       AD-003 (simple `:type`), ADR-0120 (trace_ptr), F-003 (frame shape = D-232's).
     last_reviewed: "2026-06-12"
 discharged:
+  - id: "D-397"
+    discharged_at: "feat(host-interface): clojure.lang.Indexed deftype marker (1-arity nth)"
+    resolution: |-
+      Found 2026-06-12 (P4 lib-load: instaparse auto_flatten_seq.cljc:380 + potemkin
+      collection types). A deftype declaring clojure.lang.Indexed `(nth [self i])`
+      now resolves: INDEXED protocol_remap (nth→Indexed/-nth) + MARKERS + yaml row.
+      REAL dispatch verified — `nthFn`'s else-arm already routes Indexed/-nth on a
+      typed_instance (D-089 row 8.6 cycle 2), so `(nth inst i)` calls the deftype's
+      impl. e2e phase14_deftype_indexed (2 cases, clj-matched). G4 50 ⊆ 51.
+      BOUNDED — two rough edges on the SAME instaparse deftype were scoped OUT (not
+      shipped half-done): (1) the 3-arg `(nth coll i not-found)` on a typed_instance
+      — nthFn's else-arm dispatches a 2-arg -nth only, so a deftype's 2-arity
+      `(nth [self i nf])` impl is not reached (a nthFn dispatch follow-up); (2)
+      clojure.lang.IFn/applyTo — applyTo→-invoke COLLIDES with invoke→-invoke at the
+      same arity (1) ('fn*: two overloads same arity'), so applyTo needs a distinct
+      target or the IFn call-path work (the existing IFn load-level follow-up).
+      So instaparse does NOT fully load yet (still blocks on those two + possibly
+      more AutoFlattenSeq methods); Indexed is a clean standalone win for any
+      1-arity Indexed deftype. Cross-ref D-394/D-395 (the IMeta/Sequential/ISeq
+      slices of this family), D-089 (Indexed -nth slow-path), the IFn row.
   - id: "D-395"
     discharged_at: "feat(host-interface): clojure.lang.Sequential + ISeq deftype markers"
     resolution: |-

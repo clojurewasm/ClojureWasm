@@ -129,6 +129,15 @@ interfaces:
     modeled_as: "Sequential (cljw's own `(defprotocol Sequential)`, core.clj:1715)"
     note: "D-395: zero-method marker; canonical is the cljw `Sequential` protocol (NOT the full clojure.lang name) so a declaring deftype records protocol_impls[Sequential] and `sequential?` (declaresProtocol Sequential) + seq-style print answer true. class_name.zig already normalises clojure.lang.Sequential → Sequential at the class facet (ADR-0068 marker precedent)."
     methods: {}
+  - name: clojure.lang.Indexed
+    derives_from: "clojure.lang.Indexed — O(1) indexed access `(nth coll i)` (Clojure, stable)."
+    tier: A
+    recognised: true
+    kind: protocol_remap
+    modeled_as: "Indexed (defprotocol Indexed (-nth [c i]), core.clj:1680)"
+    note: "D-397: nth→Indexed/-nth; the 2-arity (i, not-found) impl shares -nth via D-279 multi-arity. `nthFn`'s else-arm already dispatches Indexed/-nth on a typed_instance (D-089 row 8.6 cycle 2) — a REAL win (nth routes to the deftype's impl). instaparse's AutoFlattenSeq declares it."
+    methods:
+      nth: { status: wired, wires_to_protocol: Indexed, wires_to_method: "-nth" }
   # --- editable / transient collection family (D-286, F-013 definition-derived) ---
   # flatland.ordered drives this: OrderedSet declares IEditableCollection (the LOAD
   # blocker) + IPersistentSet with clj-named methods (D-286b); the Transient* types

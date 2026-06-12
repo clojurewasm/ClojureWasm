@@ -167,6 +167,14 @@ const ISEQ: HostInterface = .{ .kind = .protocol_remap, .canonical = "ISeq", .re
 // already normalises clojure.lang.Sequential → Sequential at the class facet.
 const SEQUENTIAL: HostInterface = .{ .kind = .marker, .canonical = "Sequential" };
 
+// clojure.lang.Indexed (D-397) — `(nth coll i)` / `(nth coll i not-found)`. The
+// 2-arity not-found impl shares -nth via D-279 multi-arity. `nthFn`'s else-arm
+// already dispatches Indexed/-nth on a typed_instance (D-089 row 8.6) — a REAL
+// win. instaparse's AutoFlattenSeq + potemkin's collection types declare it.
+const INDEXED: HostInterface = .{ .kind = .protocol_remap, .canonical = "Indexed", .remap = &.{
+    .{ .clj = "nth", .protocol = "Indexed", .method = "-nth" },
+} };
+
 // clojure.lang.IDeref / IPending — the deref-able family (D-307). A deftype
 // declaring IDeref registers deref→IDeref/-deref; `deref`/`@` consult it for a
 // typed_instance (stm.zig derefFn). IPending's isRealized→IPending/-realized?,
@@ -369,6 +377,7 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "clojure.lang.IMeta", IMETA },
     .{ "clojure.lang.ISeq", ISEQ },
     .{ "clojure.lang.Sequential", SEQUENTIAL },
+    .{ "clojure.lang.Indexed", INDEXED },
     // D-306: collection-base interfaces declarable as DIRECT deftype supertypes
     // (core.cache's defcache). Qualified spelling only — the bare Associative/
     // Seqable/IPersistentCollection are cljw protocol Vars that resolve already.
