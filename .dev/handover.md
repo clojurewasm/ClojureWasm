@@ -3,15 +3,6 @@
 > ≤ 100 lines. Driving doc; framing per
 > [`.claude/rules/handover_framing.md`](../.claude/rules/handover_framing.md).
 
-## Stopped — user requested
-
-User instruction (2026-06-13): persist the recent strategy durably, "整理を
-しばらくやってください。それが完了したら止めてOK". Done: **ADR-0135**
-(Wasm-component-as-namespace finished form + WIT↔clj mapping table), ROADMAP
-§1.2 axis 4 (Zig-level optimisation-ceiling thesis) + §1.5 (3-track working
-strategy) + §8.2 (component-as-ns), and debt **D-404–D-407** (the actionable
-hooks). Resume per the Resume contract; this stop applied to that session only.
-
 ## Resume contract
 
 - **HEAD**: `main` (`git log` is the SSOT; ≈ 16087139). All work on `main`;
