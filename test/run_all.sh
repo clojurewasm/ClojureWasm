@@ -440,6 +440,7 @@ run_step "e2e_phase9_csv"                    "bash test/e2e/phase9_csv.sh"
 run_step "e2e_phase9_cli"                    "bash test/e2e/phase9_cli.sh"
 run_step "e2e_phase9_exit_smoke"             "bash test/e2e/phase9_exit_smoke.sh"
 run_step "e2e_phase10_pprint"                "bash test/e2e/phase10_pprint.sh"
+run_step "e2e_phase14_pprint_dispatch"       "bash test/e2e/phase14_pprint_dispatch.sh"
 run_step "e2e_phase10_exit_smoke"            "bash test/e2e/phase10_exit_smoke.sh"
 # phase11_clojure_test retired: the D-099-era minimal `is`/`run-tests` surface it
 # tested was replaced by the real clojure.test (D-227) — see e2e_phase15_clojure_test.

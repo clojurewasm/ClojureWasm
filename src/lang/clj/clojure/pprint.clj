@@ -19,8 +19,25 @@
 (ns clojure.pprint
   (:refer-clojure))
 
+;; Dispatch surface (D-402). cljw has no width-aware indenter / code-specific
+;; formatter, so both dispatches are the SAME pr-readable single-line printer (a
+;; documented divergence from JVM pprint's multi-line layout + code indentation).
+;; The indirection exists so `with-pprint-dispatch` / `code-dispatch` resolve and
+;; bind — what macro-pretty-printing libs need (clojure.tools.logging's `spy`).
+;; Using `pr` (not `println`) also fixes the string-quoting divergence: cljw
+;; `(pprint "x")` now prints `"x"`, matching clj, not the bare `x` println gave.
+(def simple-dispatch (fn* [x] (pr x)))
+(def code-dispatch (fn* [x] (pr x)))
+
+(def ^:dynamic *print-pprint-dispatch* simple-dispatch)
+
+(defmacro with-pprint-dispatch
+  "Evaluate `body` with *print-pprint-dispatch* bound to `dispatch`."
+  [dispatch & body]
+  `(binding [*print-pprint-dispatch* ~dispatch] ~@body))
+
 (def pprint
-  (fn* [x] (println x)))
+  (fn* [x] (*print-pprint-dispatch* x) (newline)))
 
 (def print-table
   (fn* [rows]

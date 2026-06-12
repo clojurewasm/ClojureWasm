@@ -2488,6 +2488,25 @@ active:
       slices), host_interfaces.yaml, G4 check_host_interface.
     last_reviewed: "2026-06-12"
 discharged:
+  - id: "D-402"
+    discharged_at: "feat(pprint): dispatch system (with-pprint-dispatch/code-dispatch) + pr-readable pprint"
+    resolution: |-
+      Found + fixed 2026-06-12 (function-triage: `clojure.pprint/cl-format` missing
+      + pprint string-quoting divergence). cljw's `pprint` was `println` — NOT
+      pr-readable (`(pprint "x")`→`x` not `"x"`, diverging from clj) AND it lacked
+      the dispatch surface that macro-pretty-printing libs need (tools.logging's
+      `spy`: `(with-pprint-dispatch code-dispatch (pprint …))`). FIX (pprint.clj):
+      add `simple-dispatch`/`code-dispatch` (pr-based; cljw has no width-aware/code
+      formatter so both are the same single-line pr printer — a documented
+      divergence), a `^:dynamic *print-pprint-dispatch*`, the `with-pprint-dispatch`
+      binding macro, and rewire `pprint` to consult the dispatch (`pr` + newline).
+      This fixes string quoting (now clj-matched) AND unblocks the pprint-dispatch
+      surface. Verified via with-out-str: e2e phase14_pprint_dispatch (string quoted
+      + map + returns-nil + with-pprint-dispatch/code-dispatch/simple-dispatch run,
+      5 cases clj-matched); phase10_pprint 4/4 still green; lint clean. tools.logging
+      advances past the code-dispatch blocker to Class/forName (reflection, separate
+      gap). STILL DEFERRED: `cl-format` (the format-DSL) + real width-aware/code
+      indentation (cljw single-lines; documented).
   - id: "D-401"
     discharged_at: "feat(json): clojure.data.json read-str/write-str :key-fn / :value-fn options"
     resolution: |-
