@@ -42,6 +42,17 @@ const map_collection = @import("../../runtime/collection/map.zig");
 const sorted_collection = @import("../../runtime/collection/sorted.zig");
 const print = @import("../../runtime/print.zig");
 const big_int_mod = @import("../../runtime/numeric/big_int.zig");
+const ratio_mod = @import("../../runtime/numeric/ratio.zig");
+const keyword_mod = @import("../../runtime/keyword.zig");
+
+/// JVM data.json write defaults: every escape is ON (`:escape-unicode` /
+/// `:escape-slash` / `:escape-js-separators` all true). The `.clj` wrapper
+/// passes the user's option map through as the optional 2nd impl arg.
+const WriteOpts = struct {
+    escape_unicode: bool = true,
+    escape_slash: bool = true,
+    escape_js_separators: bool = true,
+};
 
 pub fn readStrFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
@@ -123,12 +134,33 @@ fn jsonToCw(rt: *Runtime, jv: std.json.Value, loc: SourceLocation) anyerror!Valu
     };
 }
 
+/// Read one `:escape-*` boolean from the wrapper's option map (absent → the
+/// JVM default true).
+fn boolOpt(m: Value, kw_name: []const u8) bool {
+    if (m.tag() != .array_map and m.tag() != .hash_map) return true;
+    var ctx: struct { name: []const u8, out: bool = true } = .{ .name = kw_name };
+    map_collection.forEachEntry(m, &ctx, struct {
+        fn f(c: *@TypeOf(ctx), k: Value, v: Value) anyerror!void {
+            if (k.tag() == .keyword and std.mem.eql(u8, keyword_mod.asKeyword(k).name, c.name))
+                c.out = v.isTruthy();
+        }
+    }.f) catch {};
+    return ctx.out;
+}
+
 pub fn writeStrFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    try error_catalog.checkArity("write-str", args, 1, loc);
+    if (args.len < 1 or args.len > 2) {
+        return error_catalog.raise(.arity_not_expected, loc, .{ .fn_name = "write-str", .expected = 1, .got = args.len });
+    }
+    const opts: WriteOpts = if (args.len == 2) .{
+        .escape_unicode = boolOpt(args[1], "escape-unicode"),
+        .escape_slash = boolOpt(args[1], "escape-slash"),
+        .escape_js_separators = boolOpt(args[1], "escape-js-separators"),
+    } else .{};
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     errdefer aw.deinit();
-    cwToJson(args[0], &aw.writer, loc) catch |err| switch (err) {
+    cwToJson(args[0], &aw.writer, opts) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error_catalog.raise(.feature_not_supported, loc, .{
             .name = "JSON write error in clojure.data.json/write-str",
@@ -146,27 +178,23 @@ const JsonWriteError = error{
 };
 
 /// Per-map-entry emitter for `forEachEntry` (array_map + hash_map). Holds the
-/// writer + a running first-flag for comma separation.
-const MapEmitCtx = struct { w: *std.Io.Writer, first: bool };
+/// writer + opts + a running first-flag for comma separation.
+const MapEmitCtx = struct { w: *std.Io.Writer, opts: WriteOpts, first: bool };
 
 fn emitJsonEntry(ctx: *MapEmitCtx, k: Value, val: Value) anyerror!void {
     if (!ctx.first) try ctx.w.writeAll(",");
     ctx.first = false;
     // Coerce non-string keys to their string form (JSON keys must be strings).
     switch (k.tag()) {
-        .string => try writeJsonString(ctx.w, string_collection.asString(k)),
-        .keyword => {
-            const kw_mod = @import("../../runtime/keyword.zig");
-            try writeJsonString(ctx.w, kw_mod.asKeyword(k).name);
-        },
+        .string => try writeJsonString(ctx.w, string_collection.asString(k), ctx.opts),
+        .keyword => try writeJsonString(ctx.w, keyword_mod.asKeyword(k).name, ctx.opts),
         else => return JsonWriteError.UnsupportedJsonTag,
     }
     try ctx.w.writeAll(":");
-    try cwToJson(val, ctx.w, .{});
+    try cwToJson(val, ctx.w, ctx.opts);
 }
 
-fn cwToJson(v: Value, w: *std.Io.Writer, loc: SourceLocation) anyerror!void {
-    _ = loc;
+fn cwToJson(v: Value, w: *std.Io.Writer, opts: WriteOpts) anyerror!void {
     switch (v.tag()) {
         .nil => try w.writeAll("null"),
         .boolean => try w.writeAll(if (v == Value.true_val) "true" else "false"),
@@ -179,20 +207,23 @@ fn cwToJson(v: Value, w: *std.Io.Writer, loc: SourceLocation) anyerror!void {
         // `N` suffix. `Managed.format` (`{f}`) renders just the digits
         // (printBigInt adds the `N` for pr-str; JSON must not). (D-182)
         .big_int => try w.print("{f}", .{big_int_mod.asManaged(v)}),
-        .string => try writeJsonString(w, string_collection.asString(v)),
-        .keyword => {
-            // Keywords serialise as their name string (JVM data.json
-            // default: `:keyword-fn` keyword? → str).
-            const kw_mod = @import("../../runtime/keyword.zig");
-            try writeJsonString(w, kw_mod.asKeyword(v).name);
+        // JVM data.json writes a Ratio as its double value (1/2 → 0.5).
+        .ratio => {
+            const r = v.decodePtr(*const ratio_mod.Ratio);
+            const f = (r.numer.m.toFloat(f64, .nearest_even)[0]) / (r.denom.m.toFloat(f64, .nearest_even)[0]);
+            try print.printFloat(w, f);
         },
+        .string => try writeJsonString(w, string_collection.asString(v), opts),
+        // Keywords serialise as their name string (JVM data.json
+        // default: `:keyword-fn` keyword? → str).
+        .keyword => try writeJsonString(w, keyword_mod.asKeyword(v).name, opts),
         .vector => {
             try w.writeAll("[");
             const n = vector_collection.count(v);
             var i: u32 = 0;
             while (i < n) : (i += 1) {
                 if (i > 0) try w.writeAll(",");
-                try cwToJson(vector_collection.nth(v, i), w, .{});
+                try cwToJson(vector_collection.nth(v, i), w, opts);
             }
             try w.writeAll("]");
         },
@@ -201,13 +232,13 @@ fn cwToJson(v: Value, w: *std.Io.Writer, loc: SourceLocation) anyerror!void {
         // so `write-str` errored on any map past the 8-entry promotion threshold.
         .array_map, .hash_map => {
             try w.writeAll("{");
-            var ctx = MapEmitCtx{ .w = w, .first = true };
+            var ctx = MapEmitCtx{ .w = w, .opts = opts, .first = true };
             try map_collection.forEachEntry(v, &ctx, emitJsonEntry);
             try w.writeAll("}");
         },
         .sorted_map => {
             try w.writeAll("{");
-            var ctx = MapEmitCtx{ .w = w, .first = true };
+            var ctx = MapEmitCtx{ .w = w, .opts = opts, .first = true };
             try sorted_collection.forEachEntry(v, &ctx, emitJsonEntry);
             try w.writeAll("}");
         },
@@ -215,17 +246,60 @@ fn cwToJson(v: Value, w: *std.Io.Writer, loc: SourceLocation) anyerror!void {
     }
 }
 
-fn writeJsonString(w: *std.Io.Writer, s: []const u8) JsonWriteError!void {
+/// One `\uXXXX` escape (lowercase hex, the JVM data.json form).
+fn writeUEscape(w: *std.Io.Writer, unit: u16) JsonWriteError!void {
+    try w.print("\\u{x:0>4}", .{unit});
+}
+
+/// Re-encode one codepoint as UTF-8 (the unescaped output path).
+fn writeCp(w: *std.Io.Writer, cp: u21) JsonWriteError!void {
+    var buf: [4]u8 = undefined;
+    const n = std.unicode.utf8Encode(cp, &buf) catch return JsonWriteError.WriteFailed;
+    try w.writeAll(buf[0..n]);
+}
+
+fn writeJsonString(w: *std.Io.Writer, s: []const u8, opts: WriteOpts) JsonWriteError!void {
     try w.writeAll("\"");
-    for (s) |c| {
-        switch (c) {
+    // Codepoint walk (not bytes): `:escape-unicode` emits UTF-16 units —
+    // an astral codepoint becomes a SURROGATE PAIR (U+1F600 →
+    // backslash-uD83D backslash-uDE00), exactly as the JVM writes it.
+    var it = std.unicode.Utf8View.init(s) catch {
+        // Invalid UTF-8 — emit bytes raw (a cw string is normally valid).
+        try w.writeAll(s);
+        try w.writeAll("\"");
+        return;
+    };
+    var cps = it.iterator();
+    while (cps.nextCodepoint()) |cp| {
+        switch (cp) {
             '"' => try w.writeAll("\\\""),
             '\\' => try w.writeAll("\\\\"),
             '\n' => try w.writeAll("\\n"),
             '\r' => try w.writeAll("\\r"),
             '\t' => try w.writeAll("\\t"),
-            0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F => try w.print("\\u{x:0>4}", .{c}),
-            else => try w.writeByte(c),
+            0x08 => try w.writeAll("\\b"),
+            0x0C => try w.writeAll("\\f"),
+            '/' => try w.writeAll(if (opts.escape_slash) "\\/" else "/"),
+            0x00...0x07, 0x0B, 0x0E...0x1F => try writeUEscape(w, @intCast(cp)),
+            // JS string separators: escaped even under `:escape-unicode false`
+            // unless `:escape-js-separators false` (the JVM option split).
+            0x2028, 0x2029 => if (opts.escape_unicode or opts.escape_js_separators)
+                try writeUEscape(w, @intCast(cp))
+            else
+                try writeCp(w, cp),
+            else => {
+                if (cp > 0x7E and opts.escape_unicode) {
+                    if (cp <= 0xFFFF) {
+                        try writeUEscape(w, @intCast(cp));
+                    } else {
+                        const v20: u21 = cp - 0x10000;
+                        try writeUEscape(w, @intCast(0xD800 + (v20 >> 10)));
+                        try writeUEscape(w, @intCast(0xDC00 + (v20 & 0x3FF)));
+                    }
+                } else {
+                    try writeCp(w, cp);
+                }
+            },
         }
     }
     try w.writeAll("\"");

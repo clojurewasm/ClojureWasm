@@ -14,25 +14,21 @@
   (`bench/run_bench.sh --quick` / `scripts/perf.sh`), never `time zig-out/bin/cljw`
   (Debug) — `.claude/rules/perf_measure_release.md`.
 
-- **First commit on resume: follow ROADMAP §1.5 (3-track working strategy) —
-  the direction is now persisted, pick the highest-ROI track.** The 2026-06-12/13
-  triage CONVERGED (pure libs load+function correctly; **13 clean fixes landed,
-  D-391..D-403** — cross-ns deftype import / prefix-list libspecs / `extend` /
-  IMeta·Sequential·ISeq·Indexed·IReduceInit markers / `destructure` / FQCN catch /
-  data.json options / pprint dispatch / cl-format). The clean single-bug vein is
-  spent; remaining gaps are host-frontier or deferred-structural. So shift from
-  ad-hoc grind to the **§1.5 tracks**:
-  (1) **D-405** build the standing library-conformance harness (measured
-  function-level triage) → then big-bang the clojure.lang.* marker remainder
-  (**D-400**: actionable = IKVReduce/IBlockingDeref need new dispatch + the D-397
-  follow-ups; composites are class-facet-covered) and grow the **D-406** Tier
-  boundary doc; (2) **D-407** the 3 differentiation standing-proofs (fast-Zig-
-  primitive bench / Wasm-FFI demo / startup-size); (3) keep hot paths clean for the
-  later perf campaign. **Wasm-component-as-namespace (D-404 / ADR-0135) is the
-  north star but BLOCKED-BY zwasm's CM embedding-API freeze** — design is frozen,
-  re-check the zwasm freeze each Phase boundary. SAFETY: every
-  `clj` oracle batch needs `-J-Xmx2g` + bounded seqs (memory `clj_oracle_heap_cap`);
-  register every new e2e in run_all.sh same-commit (memory `e2e-register-in-run-all`).
+- **First commit on resume MUST be: grow the D-405 conformance harness to the
+  next verified_projects batch (hiccup / honeysql / integrant / core.cache /
+  data.zip / qbits.ex corpora via `scripts/lib_conformance.sh <lib> --oracle`),
+  fixing root-causes the authoring surfaces — then the D-400 marker remainder
+  (IKVReduce/IBlockingDeref dispatch + D-397 follow-ups) and the D-406 boundary
+  doc.** D-405 is DISCHARGED (2026-06-13): 9 seed corpora 100% golden
+  (test/conformance/ + generated COVERAGE.md; replay = `lib_conformance.sh
+  --all`, fixable-DIFF promotion = `--promote`); bouncer dropped (clj-time/joda
+  = Java-library dep, the first D-406 boundary example). Track 2 next: **D-407**
+  standing proofs (fast-Zig-primitive bench / Wasm-FFI demo / startup+size).
+  **Wasm-component-as-namespace (D-404 / ADR-0135) stays the north star,
+  BLOCKED-BY zwasm's CM embedding-API freeze** — re-check each Phase boundary.
+  SAFETY: every `clj` oracle batch needs `-J-Xmx2g` + bounded seqs (memory
+  `clj_oracle_heap_cap`); register every new e2e in run_all.sh same-commit
+  (memory `e2e-register-in-run-all`).
 
   **D-271 is NOT a mandate** (ADR-0134, value-driven re-amend): the finished form
   is full IObj/IMeta metable-ness, but a substrate joins membership ONLY when a
@@ -58,19 +54,20 @@
   direction); editing zwasm except via the F-001 finding-handling policy;
   `git push --force*`.
 
-## Just landed — P4 lib-load triage, 8 clean fixes (2026-06-12, on `main`)
+## Just landed — D-405 conformance harness + facet fixes (2026-06-13, on `main`)
 
-Each found via real-lib triage, verified vs the lib + clj oracle, e2e-registered,
-full gate green (325/0): **D-391** cross-ns deftype `:import` (hiccup renders
-clj-identical) · **D-392** prefix-list libspecs both forms (potemkin, data.xml) ·
-**D-393** `clojure.core/extend` runtime fn (tools.reader) · **D-394** IMeta deftype
-marker · **D-395** Sequential/ISeq deftype markers w/ real dispatch (instaparse) ·
-**D-396** `clojure.core/destructure` port (kezban; 11 shapes clj-matched) · **D-397**
-Indexed marker (1-arity nth, rough edges scoped out) · **D-398** FQCN exception catch
-(`java.lang.AssertionError` + reflective family). Infra: the e2e-registration trap
-(smoke passes an orphan, full gate's check_e2e_reach fails it) caught + fixed +
-memory'd (`e2e-register-in-run-all`). Rough edges deferred not shipped half-done
-(D-397 follow-ups).
+scripts/lib_conformance.sh (verified_projects deps.edn as the dual-runtime
+classpath SSOT; eval-quote clj batches; golden-pair + ;;DIFF[tag] corpus) and
+9 corpora at 100%. The authoring drove root-cause fixes, each oracle-verified:
+java.util.List value-search trio (.indexOf/.lastIndexOf/.contains semantics)
+· nested-lazy print in map/set values · deftype ILookup 3-arity get ·
+declared-interface class facet (instance? on remapped interfaces + zero-method
+declarations) · IPersistentMap deftype map-style print (realize-ctx) ·
+clojure.lang.Sorted deftype subseq/rsubseq + native Sorted/Comparator surface
+· java.io.StringWriter host class · data.csv JVM shapes (seq return,
+writer-first write-csv, :separator/:quote/:newline) · data.json escape
+defaults (unicode/slash/js-separators, surrogate pairs) + Ratio · tools.cli
+pure-clj parse-opts rewrite (Zig MVP retired). data.priority-map 60%→100%.
 
 ## Cold-start reading order (resume)
 

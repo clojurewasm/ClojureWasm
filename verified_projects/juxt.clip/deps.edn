@@ -1,0 +1,5 @@
+{:paths ["."]
+ :deps {juxt/clip
+        {:git/url "https://github.com/juxt/clip.git"
+         :git/sha "277021436144abed02f4a987557b7d3e36483cde"}}
+ :aliases {:verify {:main-opts ["-m" "verify"]}}}

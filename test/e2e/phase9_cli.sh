@@ -49,7 +49,8 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
   :errors))
 EOF
 ) || fail "case3: non-zero exit"
-assert_eq 'unknown_option_error' "$(last_line "$got")" '["Unknown option: '"'"'--unknown'"'"'"]'
+# clj-faithful error format (pr-str quoting; oracle-verified vs JVM tools.cli).
+assert_eq 'unknown_option_error' "$(last_line "$got")" '["Unknown option: \"--unknown\""]'
 
 # --- Case 4: --name=value form ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
@@ -79,7 +80,8 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
   :errors))
 EOF
 ) || fail "case6: non-zero exit"
-assert_eq 'missing_value_error' "$(last_line "$got")" '["missing argument for '"'"'--port'"'"'"]'
+# clj-faithful error format (oracle-verified vs JVM tools.cli).
+assert_eq 'missing_value_error' "$(last_line "$got")" '["Missing required argument for \"--port PORT\""]'
 
 # --- Case 7: summary string includes both opts ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
@@ -90,6 +92,6 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
   :summary))
 EOF
 ) || fail "case7: non-zero exit"
-assert_eq 'summary_lines' "$(last_line "$got")" '"  -p, --port PORT  Port\n  -v, --verbose  Verbose"'
+assert_eq 'summary_lines' "$(last_line "$got")" '"  -p, --port PORT  Port\n  -v, --verbose    Verbose"'
 
 echo "phase9_cli: 7/7 cases pass"

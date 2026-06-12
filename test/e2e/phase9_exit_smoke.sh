@@ -47,12 +47,15 @@ EOF
 ) || fail "(2): non-zero exit"
 assert_eq 'json_round_trip' "$(last_line "$got")" '[1 "x" nil true]'
 
-# --- (3) CSV round-trip ---
+# --- (3) CSV round-trip (JVM shape: write-csv writer-first; read-csv → seq) ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
-(prn (clojure.data.csv/read-csv (clojure.data.csv/write-csv [["a" "b,c"] ["d" "e\"f"]])))
+(prn (clojure.data.csv/read-csv
+       (let [w (java.io.StringWriter.)]
+         (clojure.data.csv/write-csv w [["a" "b,c"] ["d" "e\"f"]])
+         (str w))))
 EOF
 ) || fail "(3): non-zero exit"
-assert_eq 'csv_round_trip' "$(last_line "$got")" '[["a" "b,c"] ["d" "e\"f"]]'
+assert_eq 'csv_round_trip' "$(last_line "$got")" '(["a" "b,c"] ["d" "e\"f"])'
 
 # --- (4) tools.cli parse-opts smoke ---
 got=$("$BIN" - <<'EOF' 2>/dev/null

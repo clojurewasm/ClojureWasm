@@ -1,0 +1,32 @@
+(clojure.tools.cli/parse-opts ["-p" "80"] [["-p" "--port PORT" "Port" :parse-fn (fn [s] (Long/parseLong s))]])
+;;=> {:options {:port 80}, :arguments [], :summary "  -p, --port PORT  Port", :errors nil}
+(:options (clojure.tools.cli/parse-opts ["-p" "80"] [["-p" "--port PORT" :parse-fn (fn [s] (Long/parseLong s))]]))
+;;=> {:port 80}
+(:arguments (clojure.tools.cli/parse-opts ["-v" "extra" "args"] [["-v" "--verbose"]]))
+;;=> ["extra" "args"]
+(:options (clojure.tools.cli/parse-opts ["-vvv"] [["-v" nil "Verbosity" :id :verbosity :default 0 :update-fn inc]]))
+;;=> {:verbosity 3}
+(:options (clojure.tools.cli/parse-opts [] [["-p" "--port PORT" :default 8080]]))
+;;=> {:port 8080}
+;;DIFF[AD-007] (:errors (clojure.tools.cli/parse-opts ["-p" "abc"] [["-p" "--port PORT" :parse-fn (fn [s] (Long/parseLong s)) :validate [(fn [v] (pos? v)) "must be positive"]]]))
+;;clj=> ["Error while parsing option \"-p abc\": java.lang.NumberFormatException: For input string: \"abc\""]
+(:options (clojure.tools.cli/parse-opts ["--no-daemon"] [[nil "--[no-]daemon" :default true]]))
+;;=> {:daemon false}
+(:options (clojure.tools.cli/parse-opts ["--port=80"] [["-p" "--port PORT" :parse-fn (fn [s] (Long/parseLong s))]]))
+;;=> {:port 80}
+(string? (:summary (clojure.tools.cli/parse-opts [] [["-p" "--port PORT" "the port"]])))
+;;=> true
+(:options (clojure.tools.cli/parse-opts ["-ab"] [["-a" "--alpha"] ["-b" "--beta"]]))
+;;=> {:alpha true, :beta true}
+(:options (clojure.tools.cli/parse-opts ["x" "-a"] [["-a" "--alpha"]] :in-order true))
+;;=> {}
+(:arguments (clojure.tools.cli/parse-opts ["x" "-a"] [["-a" "--alpha"]] :in-order true))
+;;=> ["x" "-a"]
+(:errors (clojure.tools.cli/parse-opts ["-p" "0"] [["-p" "--port PORT" :parse-fn (fn [s] (Long/parseLong s)) :validate [(fn [v] (pos? v)) "must be positive"]]]))
+;;=> ["Failed to validate \"-p 0\": must be positive"]
+(:errors (clojure.tools.cli/parse-opts ["-x"] [["-a" "--alpha"]]))
+;;=> ["Unknown option: \"-x\""]
+(:errors (clojure.tools.cli/parse-opts ["--port"] [["-p" "--port PORT"]]))
+;;=> ["Missing required argument for \"--port PORT\""]
+(:options (clojure.tools.cli/parse-opts ["-p" "80" "-p" "90"] [["-p" "--port PORT"]]))
+;;=> {:port "90"}

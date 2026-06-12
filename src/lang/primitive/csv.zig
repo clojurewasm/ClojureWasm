@@ -34,10 +34,45 @@ const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const vector_collection = @import("../../runtime/collection/vector.zig");
+const list_collection = @import("../../runtime/collection/list.zig");
+const keyword_mod = @import("../../runtime/keyword.zig");
+const lazy_seq = @import("../../runtime/lazy_seq.zig");
+const print_mod = @import("../../runtime/print.zig");
+const sequence = @import("sequence.zig");
+
+/// Shared option surface (JVM data.csv): `:separator` / `:quote` are char
+/// options on both read and write; `:newline` (`:lf` default | `:cr+lf`) is
+/// write-only. Parsed from the trailing kv args.
+const CsvOpts = struct {
+    separator: u8 = ',',
+    quote: u8 = '"',
+    crlf: bool = false,
+};
+
+fn parseOpts(kvs: []const Value, fn_name: []const u8, loc: SourceLocation) !CsvOpts {
+    var o: CsvOpts = .{};
+    if (kvs.len % 2 != 0)
+        return error_catalog.raise(.arity_not_expected, loc, .{ .fn_name = fn_name, .expected = 2, .got = kvs.len });
+    var i: usize = 0;
+    while (i < kvs.len) : (i += 2) {
+        if (kvs[i].tag() != .keyword) continue;
+        const name = keyword_mod.asKeyword(kvs[i]).name;
+        const v = kvs[i + 1];
+        if (std.mem.eql(u8, name, "separator") and v.tag() == .char) {
+            o.separator = @intCast(v.asChar());
+        } else if (std.mem.eql(u8, name, "quote") and v.tag() == .char) {
+            o.quote = @intCast(v.asChar());
+        } else if (std.mem.eql(u8, name, "newline") and v.tag() == .keyword) {
+            o.crlf = std.mem.eql(u8, keyword_mod.asKeyword(v).name, "cr+lf");
+        }
+    }
+    return o;
+}
 
 pub fn readCsvFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
-    try error_catalog.checkArity("read-csv", args, 1, loc);
+    if (args.len < 1)
+        return error_catalog.raise(.arity_not_expected, loc, .{ .fn_name = "read-csv", .expected = 1, .got = args.len });
     const arg = args[0];
     if (arg.tag() != .string) {
         return error_catalog.raise(.type_arg_not_string, loc, .{
@@ -45,6 +80,7 @@ pub fn readCsvFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
             .actual = @tagName(arg.tag()),
         });
     }
+    const opts = try parseOpts(args[1..], "read-csv", loc);
     const source = string_collection.asString(arg);
 
     var arena = std.heap.ArenaAllocator.init(rt.gpa);
@@ -60,9 +96,9 @@ pub fn readCsvFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     while (i < source.len) {
         const c = source[i];
         if (in_quotes) {
-            if (c == '"') {
-                if (i + 1 < source.len and source[i + 1] == '"') {
-                    try field_buf.append(aalloc, '"');
+            if (c == opts.quote) {
+                if (i + 1 < source.len and source[i + 1] == opts.quote) {
+                    try field_buf.append(aalloc, opts.quote);
                     i += 2;
                 } else {
                     in_quotes = false;
@@ -73,16 +109,18 @@ pub fn readCsvFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
                 i += 1;
             }
         } else {
+            if (c == opts.quote) {
+                in_quotes = true;
+                i += 1;
+                continue;
+            }
+            if (c == opts.separator) {
+                try current_row.append(aalloc, try aalloc.dupe(u8, field_buf.items));
+                field_buf.clearRetainingCapacity();
+                i += 1;
+                continue;
+            }
             switch (c) {
-                '"' => {
-                    in_quotes = true;
-                    i += 1;
-                },
-                ',' => {
-                    try current_row.append(aalloc, try aalloc.dupe(u8, field_buf.items));
-                    field_buf.clearRetainingCapacity();
-                    i += 1;
-                },
                 '\r' => {
                     // CRLF — consume the LF too if present
                     if (i + 1 < source.len and source[i + 1] == '\n') i += 1;
@@ -112,60 +150,61 @@ pub fn readCsvFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
         try rows.append(aalloc, try aalloc.dupe([]const u8, current_row.items));
     }
 
-    // Materialise rows into cw vector<vector<string>>.
-    var out = vector_collection.empty();
-    for (rows.items) |row| {
+    // Materialise rows as a LIST of row-VECTORS — clj's read-csv is a (lazy)
+    // seq of vectors, so the realized shape prints `(["a" "b"] …)`, not
+    // `[["a" "b"] …]`. Built back-to-front by cons.
+    var out = try list_collection.emptyList(rt);
+    var ri = rows.items.len;
+    while (ri > 0) {
+        ri -= 1;
         var row_vec = vector_collection.empty();
-        for (row) |cell| {
+        for (rows.items[ri]) |cell| {
             const s = try string_collection.alloc(rt, cell);
             row_vec = try vector_collection.conj(rt, row_vec, s);
         }
-        out = try vector_collection.conj(rt, out, row_vec);
+        out = try list_collection.consHeap(rt, row_vec, out);
     }
     return out;
 }
 
+/// `(-write-csv-str data & options)` — serialise rows to a CSV string. The
+/// public JVM-shape `write-csv` (csv.clj) writes this string to its Writer
+/// arg. Rows and cells walk via the generic seq protocol (vector / list /
+/// lazy all accepted, like JVM data.csv); a non-string cell writes its
+/// str-form (`(write-csv w [[1 2]])` → "1,2").
 pub fn writeCsvFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
-    try error_catalog.checkArity("write-csv", args, 1, loc);
-    const data = args[0];
-    if (data.tag() != .vector) {
-        return error_catalog.raise(.type_arg_invalid, loc, .{
-            .fn_name = "write-csv",
-            .expected = "vector of vector-of-strings",
-            .actual = @tagName(data.tag()),
-        });
-    }
+    if (args.len < 1)
+        return error_catalog.raise(.arity_not_expected, loc, .{ .fn_name = "-write-csv-str", .expected = 1, .got = args.len });
+    const opts = try parseOpts(args[1..], "-write-csv-str", loc);
 
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     errdefer aw.deinit();
+    const nl: []const u8 = if (opts.crlf) "\r\n" else "\n";
 
-    const n_rows = vector_collection.count(data);
-    var ri: u32 = 0;
-    while (ri < n_rows) : (ri += 1) {
-        const row = vector_collection.nth(data, ri);
-        if (row.tag() != .vector) {
-            return error_catalog.raise(.type_arg_invalid, loc, .{
-                .fn_name = "write-csv",
-                .expected = "inner row must be a vector",
-                .actual = @tagName(row.tag()),
-            });
-        }
-        const n_cells = vector_collection.count(row);
-        var ci: u32 = 0;
-        while (ci < n_cells) : (ci += 1) {
-            if (ci > 0) try aw.writer.writeAll(",");
-            const cell = vector_collection.nth(row, ci);
-            if (cell.tag() != .string) {
-                return error_catalog.raise(.type_arg_invalid, loc, .{
-                    .fn_name = "write-csv",
-                    .expected = "cell must be a string",
-                    .actual = @tagName(cell.tag()),
-                });
+    // `sequence.seqFn` (the core `seq`) coerces ANY seqable — vector / list /
+    // lazy — into the walkable seq; `lazy_seq.seq/first/rest` alone pass a
+    // vector through with nil first/rest (Layer-0 accessors don't convert).
+    var rows = try sequence.seqFn(rt, env, &.{args[0]}, loc);
+    while (rows.tag() != .nil) {
+        const row = try lazy_seq.first(rt, env, rows);
+        var cells = try sequence.seqFn(rt, env, &.{row}, loc);
+        var first = true;
+        while (cells.tag() != .nil) {
+            if (!first) try aw.writer.writeByte(opts.separator);
+            first = false;
+            const cell = try lazy_seq.first(rt, env, cells);
+            if (cell.tag() == .string) {
+                try writeCsvField(&aw.writer, string_collection.asString(cell), opts);
+            } else {
+                var cw: std.Io.Writer.Allocating = .init(rt.gpa);
+                defer cw.deinit();
+                try print_mod.writeStrValue(rt, env, &cw.writer, cell);
+                try writeCsvField(&aw.writer, cw.writer.buffered(), opts);
             }
-            try writeCsvField(&aw.writer, string_collection.asString(cell));
+            cells = try lazy_seq.seq(rt, env, try lazy_seq.rest(rt, env, cells));
         }
-        try aw.writer.writeAll("\n");
+        try aw.writer.writeAll(nl);
+        rows = try lazy_seq.seq(rt, env, try lazy_seq.rest(rt, env, rows));
     }
 
     const owned = try aw.toOwnedSlice();
@@ -173,11 +212,11 @@ pub fn writeCsvFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     return try string_collection.alloc(rt, owned);
 }
 
-fn writeCsvField(w: *std.Io.Writer, s: []const u8) !void {
-    // Quote the field iff it contains comma, double-quote, CR, or LF.
+fn writeCsvField(w: *std.Io.Writer, s: []const u8, opts: CsvOpts) !void {
+    // Quote the field iff it contains the separator, the quote char, CR, or LF.
     var needs_quote = false;
     for (s) |c| {
-        if (c == ',' or c == '"' or c == '\r' or c == '\n') {
+        if (c == opts.separator or c == opts.quote or c == '\r' or c == '\n') {
             needs_quote = true;
             break;
         }
@@ -186,15 +225,16 @@ fn writeCsvField(w: *std.Io.Writer, s: []const u8) !void {
         try w.writeAll(s);
         return;
     }
-    try w.writeAll("\"");
+    try w.writeByte(opts.quote);
     for (s) |c| {
-        if (c == '"') {
-            try w.writeAll("\"\"");
+        if (c == opts.quote) {
+            try w.writeByte(opts.quote);
+            try w.writeByte(opts.quote);
         } else {
             try w.writeByte(c);
         }
     }
-    try w.writeAll("\"");
+    try w.writeByte(opts.quote);
 }
 
 const Entry = struct {
@@ -204,7 +244,9 @@ const Entry = struct {
 
 const ENTRIES = [_]Entry{
     .{ .name = "read-csv", .f = &readCsvFn },
-    .{ .name = "write-csv", .f = &writeCsvFn },
+    // The public JVM-shape `write-csv` (writer-first, returns nil) wraps this
+    // in csv.clj; the impl serialises to a string.
+    .{ .name = "-write-csv-str", .f = &writeCsvFn },
 };
 
 pub fn register(env: *Env) !void {

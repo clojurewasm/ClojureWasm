@@ -5,10 +5,17 @@
 
 ;; clojure.data.csv — CSV read/write (RFC 4180). cw v1 §9.11 row 9.4.
 ;;
-;; The Layer-2 primitives `read-csv` + `write-csv` are interned by
-;; `src/lang/primitive/csv.zig::register`. cw v1 deviates from JVM
-;; on signatures: `read-csv` takes a string (not a Reader); `write-csv`
-;; takes data + returns a string (not data + Writer + returns nil).
-;; Reader/Writer stream APIs land alongside the streaming-IO abstractions.
+;; `read-csv` (string input + :separator/:quote options) is the Zig
+;; primitive interned by `src/lang/primitive/csv.zig::register`; JVM's
+;; Reader input is satisfied by the string arm (JVM read-csv accepts
+;; String too). `write-csv` below is the JVM shape — writer-first,
+;; returns nil — over the `-write-csv-str` impl (data + :separator/
+;; :quote/:newline options → string); `(java.io.StringWriter.)` collects
+;; output in memory exactly as on the JVM.
 (ns clojure.data.csv
   (:refer-clojure))
+
+(def write-csv
+  (fn [writer data & options]
+    (.write writer (apply -write-csv-str data options))
+    nil))

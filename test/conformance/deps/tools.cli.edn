@@ -1,0 +1,2 @@
+{:deps {org.clojure/tools.cli {:git/url "https://github.com/clojure/tools.cli.git"
+                               :git/sha "865e988e6af3b2a7ea7fad218ce2160b72157c27"}}}

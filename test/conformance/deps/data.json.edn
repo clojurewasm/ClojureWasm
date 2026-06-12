@@ -1,0 +1,2 @@
+{:deps {org.clojure/data.json {:git/url "https://github.com/clojure/data.json.git"
+                               :git/sha "94463ffb54482427fd9b31f264b06bff6dcfd557"}}}

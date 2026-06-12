@@ -2504,21 +2504,6 @@ active:
       deprecated). Cross-ref ADR-0135 (design SSOT), ADR-0099 (core spike), F-001,
       ROADMAP §1.2 axis 2 + §8.2. Re-check the zwasm freeze each Phase boundary.
     last_reviewed: "2026-06-13"
-  - id: "D-405"
-    status: "open (2026-06-13, ROADMAP §1.5 track 1 — systematic compat grind). Build a STANDING library-conformance harness: function-level triage (load a real corpus lib → exercise its core functions → diff vs the clj oracle) made into a measured, repeatable suite with a coverage number + worklist. Function-level triage (vs load-only) found D-401/402/403 that load-triage missed — make it a harness, not an accident."
-    category: "tooling"
-    barrier: |-
-      **No standing function-level conformance suite** — the 2026-06-12 grind was
-      ad-hoc (`dt()` shell helper). Build `scripts/lib_conformance.sh` (or extend
-      `clj_diff_sweep.sh`): a corpus under `test/conformance/<lib>.txt` of
-      `(require '[lib]) (fn-call …)` exprs, run on BOTH cljw + clj (`-J-Xmx2g` +
-      bounded seqs per orphan_prevention), diff, report PASS/DIFF + a coverage %.
-      Seed with the libs that already LOAD (medley/potpuri/bouncer/core.unify/
-      data.priority-map/math.combinatorics/juxt.clip/data.json/data.csv/tools.cli).
-      This converts "what real Clojure code still doesn't run" from accidental
-      discovery to a converging metric. Cross-ref clj_diff_sweep.md (Discipline 2
-      big-bang), ROADMAP §1.5 track 1, §11.
-    last_reviewed: "2026-06-13"
   - id: "D-406"
     status: "open (2026-06-13, ROADMAP §1.5 track 1 — the host-frontier Tier boundary). Document the language-feature ↔ Tier-D line for the JVM host surface AS IT IS HIT during the compat grind, so 'Clojure assets run as-is' CONVERGES instead of being an unbounded treadmill. Currently the line is implicit (reactive marker-by-marker)."
     category: "scope"
@@ -2530,8 +2515,11 @@ active:
       interface (IMeta/ISeq/Indexed/IReduceInit — D-394/395/397/399 landed) = language
       feature; reflection (`getConstructor`/`newInstance`), `clojure.lang.Compiler/*`,
       bytecode emission (`definterface`/`gen-class`), JVM-internal statics
-      (`PersistentArrayMap/createAsIfByAssoc`) = Tier D. Drawing the line is the
-      finished-form discipline that lets the grind have a goal. Cross-ref ADR-0013
+      (`PersistentArrayMap/createAsIfByAssoc`) = Tier D. First concrete
+      lib-blocked-by-the-line example (2026-06-13): bouncer hard-requires
+      clj-time (joda-time, a Java LIBRARY dep) — a lib whose deps cross into
+      Java libraries is on the Tier-D side; cljw offers no shim. Drawing the
+      line is the finished-form discipline that lets the grind have a goal. Cross-ref ADR-0013
       (Tier D), compat_tiers.yaml, host_interfaces.yaml, D-086 (record __extmap is
       a structural cycle, not Tier D), ROADMAP §1.5 / §6.
     last_reviewed: "2026-06-13"
@@ -2551,6 +2539,11 @@ active:
       track 2 + §10, D-133 (JIT), D-180/perf campaign (paused).
     last_reviewed: "2026-06-13"
 discharged:
+  - id: "D-405"
+    status: "DISCHARGED 2026-06-13 — scripts/lib_conformance.sh landed (replay / --oracle authoring / --promote / --all + generated test/conformance/COVERAGE.md). 9 seed corpora at 100% golden (medley 46, potpuri 38, data.priority-map 25, data.json 25, math.combinatorics 20, core.unify 15, tools.cli 15(+1 AD-007 known-DIFF), data.csv 10, juxt.clip 6) — every claim mechanically re-checkable via the corpora (anti D-177). bouncer DROPPED from the seed: upstream hard-requires clj-time (joda-time, a Java library) so it can never load on cljw — recorded as a D-406 boundary example (Java-library deps = Tier D frontier). The authoring sessions drove real fixes: java.util.List value-search trio, nested-lazy print in map/set, deftype ILookup 3-arity / declared-interface instance? / map-style print / Sorted+subseq dispatch, java.io.StringWriter, data.csv JVM shapes, data.json escape defaults + ratio, tools.cli pure-clj parse-opts rewrite."
+    category: "tooling"
+    barrier: "none — standing harness; growth (new libs) is ROADMAP §1.5 track 1 day-to-day work, not this row."
+    last_reviewed: "2026-06-13"
   - id: "D-403"
     discharged_at: "feat(pprint): cl-format common subset (~A ~S ~D ~% ~~)"
     resolution: |-

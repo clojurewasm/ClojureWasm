@@ -1,0 +1,20 @@
+(clojure.data.csv/read-csv "a,b\n1,2\n")
+;;=> (["a" "b"] ["1" "2"])
+(clojure.data.csv/read-csv "a;b\n1;2\n" :separator \;)
+;;=> (["a" "b"] ["1" "2"])
+(clojure.data.csv/read-csv "a,\"x,y\"\n")
+;;=> (["a" "x,y"])
+(clojure.data.csv/read-csv "a,\"he said \"\"hi\"\"\"\n")
+;;=> (["a" "he said \"hi\""])
+(clojure.data.csv/read-csv "a,b\r\n1,2\r\n")
+;;=> (["a" "b"] ["1" "2"])
+(clojure.data.csv/write-csv (java.io.StringWriter.) [["a" "b"] [1 2]])
+;;=> nil
+(let [w (java.io.StringWriter.)] (clojure.data.csv/write-csv w [["a" "b"] [1 2]]) (str w))
+;;=> "a,b\n1,2\n"
+(let [w (java.io.StringWriter.)] (clojure.data.csv/write-csv w [["x,y" "q\"q"]]) (str w))
+;;=> "\"x,y\",\"q\"\"q\"\n"
+(let [w (java.io.StringWriter.)] (clojure.data.csv/write-csv w [[1 2]] :separator \;) (str w))
+;;=> "1;2\n"
+(let [w (java.io.StringWriter.)] (clojure.data.csv/write-csv w [["a"]] :newline :cr+lf) (str w))
+;;=> "a\r\n"

@@ -1,0 +1,50 @@
+(clojure.data.json/read-str "{\"a\":1,\"b\":[true,null]}")
+;;=> {"a" 1, "b" [true nil]}
+(clojure.data.json/read-str "{\"a\":1}" :key-fn keyword)
+;;=> {:a 1}
+(clojure.data.json/read-str "[1,2.5,\"x\"]")
+;;=> [1 2.5 "x"]
+(clojure.data.json/read-str "\"\\u3042\"")
+;;=> "あ"
+(clojure.data.json/read-str "3" :value-fn (fn [k v] v))
+;;=> 3
+(clojure.data.json/read-str "" :eof-error? false :eof-value :eof)
+;;=> :eof
+(clojure.data.json/write-str {:a 1 :b [true nil]})
+;;=> "{\"a\":1,\"b\":[true,null]}"
+(clojure.data.json/write-str "あ" :escape-unicode false)
+;;=> "\"あ\""
+(clojure.data.json/write-str "あ")
+;;=> "\"\\u3042\""
+(clojure.data.json/write-str {:a 1} :key-fn (fn [k] (str "k_" (name k))))
+;;=> "{\"k_a\":1}"
+(clojure.data.json/write-str 1.5)
+;;=> "1.5"
+(clojure.data.json/write-str [1/2])
+;;=> "[0.5]"
+(clojure.data.json/read-str "{\"a\":{\"b\":[1,2]}}" :key-fn keyword)
+;;=> {:a {:b [1 2]}}
+(clojure.data.json/write-str {"x" {"y" [1 2]}})
+;;=> "{\"x\":{\"y\":[1,2]}}"
+(clojure.data.json/read-str "true")
+;;=> true
+(clojure.data.json/read-str "1e3")
+;;=> 1000.0
+(clojure.data.json/write-str {:a "s\"q"})
+;;=> "{\"a\":\"s\\\"q\"}"
+(clojure.data.json/write-str "a/b")
+;;=> "\"a\\/b\""
+(clojure.data.json/write-str "a/b" :escape-slash false)
+;;=> "\"a/b\""
+(clojure.data.json/write-str "😀")
+;;=> "\"\\ud83d\\ude00\""
+(clojure.data.json/write-str "😀" :escape-unicode false)
+;;=> "\"😀\""
+(clojure.data.json/read-str "\"\\ud83d\\ude00\"")
+;;=> "😀"
+(clojure.data.json/write-str 1/3)
+;;=> "0.3333333333333333"
+(clojure.data.json/write-str (str "x" (char 8232) "y"))
+;;=> "\"x\\u2028y\""
+(clojure.data.json/write-str "backform")
+;;=> "\"back\\bform\\f\""

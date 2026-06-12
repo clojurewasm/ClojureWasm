@@ -23,7 +23,7 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
 1,2,3"))
 EOF
 ) || fail "read_basic: non-zero exit"
-assert_eq 'read_basic' "$(last_line "$got")" '[["a" "b" "c"] ["1" "2" "3"]]'
+assert_eq 'read_basic' "$(last_line "$got")" '(["a" "b" "c"] ["1" "2" "3"])'
 
 # --- read-csv quoted ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
@@ -36,7 +36,7 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
 \"Doe, Jane\",30"))
 EOF
 ) || fail "read_quoted2: non-zero exit"
-assert_eq 'read_quoted_comma' "$(last_line "$got")" '[["name" "age"] ["Doe, Jane" "30"]]'
+assert_eq 'read_quoted_comma' "$(last_line "$got")" '(["name" "age"] ["Doe, Jane" "30"])'
 
 # --- read-csv escaped double-quote ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
@@ -48,34 +48,37 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
 \"he said \"\"hi\"\"\""))
 EOF
 ) || fail "read_escq: non-zero exit"
-assert_eq 'read_escaped_dquote' "$(last_line "$got")" '[["x"] ["he said \"hi\""]]'
+assert_eq 'read_escaped_dquote' "$(last_line "$got")" '(["x"] ["he said \"hi\""])'
 
 # --- write-csv basic ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
-(prn (clojure.data.csv/write-csv [["a" "b"] ["1" "2"]]))
+(prn (let [w (java.io.StringWriter.)] (clojure.data.csv/write-csv w [["a" "b"] ["1" "2"]]) (str w)))
 EOF
 ) || fail "write_basic: non-zero exit"
 assert_eq 'write_basic' "$(last_line "$got")" '"a,b\n1,2\n"'
 
 # --- write-csv with comma triggers quoting ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
-(prn (clojure.data.csv/write-csv [["name" "age"] ["Doe, Jane" "30"]]))
+(prn (let [w (java.io.StringWriter.)] (clojure.data.csv/write-csv w [["name" "age"] ["Doe, Jane" "30"]]) (str w)))
 EOF
 ) || fail "write_quoted: non-zero exit"
 assert_eq 'write_with_comma' "$(last_line "$got")" '"name,age\n\"Doe, Jane\",30\n"'
 
 # --- write-csv with embedded double-quote ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
-(prn (clojure.data.csv/write-csv [["x"] ["he said \"hi\""]]))
+(prn (let [w (java.io.StringWriter.)] (clojure.data.csv/write-csv w [["x"] ["he said \"hi\""]]) (str w)))
 EOF
 ) || fail "write_dquote: non-zero exit"
 assert_eq 'write_embedded_dquote' "$(last_line "$got")" '"x\n\"he said \"\"hi\"\"\"\n"'
 
 # --- round-trip ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
-(prn (clojure.data.csv/read-csv (clojure.data.csv/write-csv [["a" "b,c"] ["d" "e\"f"]])))
+(prn (clojure.data.csv/read-csv
+       (let [w (java.io.StringWriter.)]
+         (clojure.data.csv/write-csv w [["a" "b,c"] ["d" "e\"f"]])
+         (str w))))
 EOF
 ) || fail "round_trip: non-zero exit"
-assert_eq 'round_trip' "$(last_line "$got")" '[["a" "b,c"] ["d" "e\"f"]]'
+assert_eq 'round_trip' "$(last_line "$got")" '(["a" "b,c"] ["d" "e\"f"])'
 
 echo "phase9_csv: 7/7 cases pass"

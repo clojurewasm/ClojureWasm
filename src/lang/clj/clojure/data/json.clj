@@ -51,11 +51,18 @@
           (-transform-json raw key-fn value-fn)
           raw)))))
 
-;; `(write-str x & {:keys [key-fn value-fn]})` — apply the options, then
-;; serialise. key-fn typically stringifies keyword keys (e.g. `name`).
+;; `(write-str x & {:keys [key-fn value-fn escape-unicode escape-slash
+;; escape-js-separators]})` — apply the transform options, then serialise.
+;; key-fn typically stringifies keyword keys (e.g. `name`). The escape
+;; options default true (the JVM data.json defaults) and ride through to
+;; the Zig writer as a map.
 (def write-str
-  (fn [x & {:keys [key-fn value-fn]}]
+  (fn [x & {:keys [key-fn value-fn escape-unicode escape-slash escape-js-separators]
+            :or {escape-unicode true escape-slash true escape-js-separators true}}]
     (-write-str-impl
       (if (or key-fn value-fn)
         (-transform-json x key-fn value-fn)
-        x))))
+        x)
+      {:escape-unicode escape-unicode
+       :escape-slash escape-slash
+       :escape-js-separators escape-js-separators})))

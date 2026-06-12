@@ -1,0 +1,12 @@
+(let [sys {:components {:a {:start 1}}}] (juxt.clip.core/start sys))
+;;=> {:a 1}
+(let [sys {:components {:a {:start 1} :b {:start (juxt.clip.core/ref :a)}}}] (juxt.clip.core/start sys))
+;;=> {:a 1, :b 1}
+(let [sys {:components {:a {:start (list (quote inc) 41)}}}] (juxt.clip.core/start sys))
+;;=> {:a 42}
+(let [sys {:components {:a {:start 1 :stop (list (quote identity) (quote this))}}} running (juxt.clip.core/start sys)] (juxt.clip.core/stop sys running))
+;;=> {:a 1}
+(let [sys {:components {:a {:start 1} :b {:start (list (quote +) (juxt.clip.core/ref :a) 1)}}}] (juxt.clip.core/start sys))
+;;=> {:a 1, :b 2}
+(juxt.clip.core/select {:components {:a {:start 1} :b {:start 2}}} [:b])
+;;=> {:components {:b {:start 2}}}

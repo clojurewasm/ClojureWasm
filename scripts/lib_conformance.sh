@@ -101,12 +101,20 @@ run_cljw() {
 }
 
 # ---------- replay one lib's corpus; accumulates REPLAY_* globals ----------
+# PROMOTE=1 (--promote): additionally REWRITE the corpus, converting every
+# ;;DIFF line whose cljw output now matches the stored clj output into a
+# golden pair (the FIXED? detection made mechanical). Golden pairs, comments
+# and still-DIFF lines pass through unchanged.
 replay_lib() {
     local lib="$1" f="$DIR/$1.txt"
     [ -f "$f" ] || { echo "no corpus: $f" >&2; return 2; }
     resolve_ctx "$lib" || return 2
+    local promote_buf=""
+    if [ "$PROMOTE" = 1 ]; then
+        promote_buf="$(mktemp /tmp/lib_conf_promote.XXXXXX)"
+    fi
     local pass=0 drift=0 diffs=0 fixed=0
-    local expr="" diff_expr="" line want got
+    local expr="" diff_expr="" diff_tag="" line want got
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             ';;=> '*)
@@ -119,10 +127,13 @@ replay_lib() {
                     printf 'DRIFT [%s] %s\n   want=[%s]\n    got=[%s]\n' "$lib" "$expr" "$want" "$got"
                     drift=$((drift + 1))
                 fi
+                [ "$PROMOTE" = 1 ] && printf '%s\n;;=> %s\n' "$expr" "$want" >> "$promote_buf"
                 expr=""
                 ;;
             ';;DIFF['*'] '*)
                 diff_expr="${line#';;DIFF['*'] '}"
+                diff_tag="${line#';;DIFF['}"
+                diff_tag="${diff_tag%%']'*}"
                 diffs=$((diffs + 1))
                 ;;
             ';;clj=> '*)
@@ -130,16 +141,35 @@ replay_lib() {
                     want="${line#';;clj=> '}"
                     got="$(run_cljw "$diff_expr")"
                     if [ "$got" = "$want" ]; then
-                        printf 'FIXED? [%s] %s now matches clj [%s] — promote to golden pair\n' "$lib" "$diff_expr" "$want"
+                        if [ "$PROMOTE" = 1 ]; then
+                            printf '%s\n;;=> %s\n' "$diff_expr" "$want" >> "$promote_buf"
+                            printf 'PROMOTED [%s] %s ;;=> %s\n' "$lib" "$diff_expr" "$want"
+                        else
+                            printf 'FIXED? [%s] %s now matches clj [%s] — promote to golden pair\n' "$lib" "$diff_expr" "$want"
+                        fi
                         fixed=$((fixed + 1))
+                    elif [ "$PROMOTE" = 1 ]; then
+                        printf ';;DIFF[%s] %s\n;;clj=> %s\n' "$diff_tag" "$diff_expr" "$want" >> "$promote_buf"
                     fi
                     diff_expr=""
                 fi
                 ;;
-            ''|';'*) : ;;
+            ''|';'*)
+                [ "$PROMOTE" = 1 ] && printf '%s\n' "$line" >> "$promote_buf"
+                ;;
             *) expr="$line" ;;
         esac
     done < "$f"
+    if [ "$PROMOTE" = 1 ]; then
+        if [ "$fixed" -gt 0 ]; then
+            mv "$promote_buf" "$f"
+            diffs=$((diffs - fixed))
+            pass=$((pass + fixed))
+            echo "promoted $fixed line(s) in $f"
+        else
+            rm -f "$promote_buf"
+        fi
+    fi
     local total=$((pass + drift + diffs))
     local pct=0
     [ "$total" -gt 0 ] && pct=$(((pass * 100) / total))
@@ -247,15 +277,16 @@ all_libs() {
 }
 
 # ---------- arg parsing ----------
+PROMOTE=0
 case "${1:-}" in
     --all) all_libs ;;
-    '') echo "usage: lib_conformance.sh <lib> [--oracle FILE|-] | --all" >&2; exit 2 ;;
+    '') echo "usage: lib_conformance.sh <lib> [--oracle FILE|-] [--promote] | --all" >&2; exit 2 ;;
     *)
         lib="$1"; shift
-        if [ "${1:-}" = "--oracle" ]; then
-            oracle_lib "$lib" "${2:--}"
-        else
-            replay_lib "$lib"
-        fi
+        case "${1:-}" in
+            --oracle) oracle_lib "$lib" "${2:--}" ;;
+            --promote) PROMOTE=1; replay_lib "$lib" ;;
+            *) replay_lib "$lib" ;;
+        esac
         ;;
 esac
