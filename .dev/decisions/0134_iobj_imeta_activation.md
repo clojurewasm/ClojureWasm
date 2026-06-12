@@ -47,11 +47,17 @@ needed). This is the terminal target and does not change.
 **Execution = VALUE-DRIVEN, not speculative-complete-now (amended 2026-06-12 after
 a user finished-form reconsideration that caught a Progress-pressure /
 scope-escalation smell in the original "do all 13 substrates now" framing).** The
-original D-271 bug (`(with-meta (range 3) m)`) is NICHE and the lone near-term
-consumer is clojure.datafy (one P3 ns-backfill). NOTHING currently pulls the full
-13-substrate change — and the cross-zone fn-meta (tree_walk closure ctors +
-multimethod + protocol, for the rare `(with-meta a-fn m)`) is high-effort /
-near-zero-value. So:
+original D-271 bug (`(with-meta (range 3) m)`) is NICHE, but the IObj/IMeta
+VALUE-RESOLUTION + membership half now has **TWO real consumers** (found via P4
+lib-load, 2026-06-12): **clojure.datafy** (its core guards
+`(instance? clojure.lang.IObj v)`) and **instaparse** (instaparse.auto_flatten_seq
+is a deftype EXTENDING `clojure.lang.IObj`/`IMeta` + `(instance? clojure.lang.IObj
+obj)`; blocks at auto_flatten_seq.cljc:157). instaparse additionally needs the
+clojure.lang.* deftype-supertype recognition/remap (D-280 family) for the
+extend-type half. So the value-resolution + metable-tag-membership slice (the
+first slice below) is now PULLED — no longer purely speculative; the remaining
+cross-zone fn-meta (tree_walk closure ctors + multimethod + protocol, for the rare
+`(with-meta a-fn m)`) is still high-effort / near-zero-value and stays last. So:
 
 - A substrate is made metable + admitted to IObj/IMeta membership **when a real
   consumer pulls it** (or opportunistically when its module is already open), NOT
