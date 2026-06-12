@@ -2458,6 +2458,25 @@ active:
       error printing. MODERATE value. Cross-ref D-232, AD-029, AD-024 (user-frames),
       AD-003 (simple `:type`), ADR-0120 (trace_ptr), F-003 (frame shape = D-232's).
     last_reviewed: "2026-06-12"
+  - id: "D-391"
+    status: "open (found 2026-06-12, P4 lib-load: hiccup.core). A user deftype's bare name does NOT resolve when imported from another namespace via `(:import [other.ns DeftypeName])`. Minimal repro (clj-clean): ns ml.util has `(deftype RawString [s])`; ns ml.cons has `(:import [ml.util RawString])` then `(instance? RawString …)` → cljw name_error 'Unable to resolve symbol: RawString' at the import-consuming form. Control: a deftype used WITHIN its defining ns resolves fine (`(do (deftype R [s]) (instance? R (->R 1)))`→true). So the gap is the cross-ns `:import` of a USER deftype — cljw's :import registers Java-surface classes but not a user deftype's type name into the importing ns's symbol resolution. clj makes every deftype a class importable via :import."
+    category: "interop"
+    barrier: |-
+      **`(:import [ns UserDeftype])` doesn't register the deftype's bare name in
+      the importing ns.** Blocks hiccup.core (hiccup.util `(deftype RawString …)`
+      imported by hiccup.compiler via `(:import [hiccup.util RawString])`, then
+      used bare at compiler.clj:200). Likely tractable (the proven P4-fix mode,
+      like D-390 defmacro): wire the ns `:import` handler to recognise a symbol
+      that names a user deftype/defrecord registered in `rt.types` (keyed by its
+      defining ns) and bind the simple name in the importing ns, so a bare
+      `RawString` / `(RawString. …)` / `(instance? RawString x)` / `(->RawString)`
+      resolves. Verify: the minimal repro above + hiccup.core load advances past
+      :200. Cross-ref D-235 (per-ns :import simple-name map for java surfaces),
+      D-280 (clojure.lang.* deftype-supertype family), the deftype type registry.
+      NOTE: a fatigue-flagged session deferred the FIX to a fresh cycle (the repro
+      + diagnosis are done); the analyzer/ns-import machinery is load-bearing, so
+      TDD it carefully with the both-backend diff oracle.
+    last_reviewed: "2026-06-12"
 discharged:
   - id: "D-390"
     discharged_at: "feat(analyzer): defmacro lowers through fn (destructured macro params)"
