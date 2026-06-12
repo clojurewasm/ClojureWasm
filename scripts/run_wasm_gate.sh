@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# scripts/run_wasm_gate.sh — opt-in Wasm-FFI gate (D-387 / ADR-0099 / ADR-0124).
+# scripts/run_wasm_gate.sh — wasm-only quick runner (D-387 / ADR-0099 / ADR-0124).
 #
-# NOT part of the default `test/run_all.sh` gate: F-001 mandates that cw v1's
-# DEFAULT build + gate never resolve zwasm (`.dev/project_facts.md` F-001 rev
-# 2026-06-08). This runner is the F-001-compliant home for Wasm-FFI *execution*
-# coverage — run it explicitly when touching the wasm surface, before a release,
-# or whenever `../zwasm_from_scratch` is present and you want the headline FFI
-# path exercised (it was previously uncovered: the scripts existed but nothing
-# orchestrated them — D-387).
+# Since F-001 was amended 2026-06-12 (zwasm v2 complete), the DEFAULT
+# `test/run_all.sh` gate ALSO covers the wasm e2e (builds `-Dwasm` throughout,
+# ADR-0133) — so this is no longer the *only* wasm coverage. Keep it as a fast
+# wasm-only path: build `-Dwasm` + run just the two wasm e2e, without the full
+# ~250s gate, when iterating on the wasm surface.
 #
 # It builds the `-Dwasm` ReleaseSafe binary ONCE (ADR-0132: never a bare
 # `zig build -Dwasm` = Debug), then runs the wasm e2e against that shared binary

@@ -46,11 +46,11 @@ BLOCKERS=(
     # backends (name_error), tracked separately as D-197. Do not add here.
 )
 
-restore() { zig build -Doptimize=ReleaseSafe >/dev/null 2>&1 || true; }
+restore() { zig build -Dwasm -Doptimize=ReleaseSafe >/dev/null 2>&1 || true; }
 trap restore EXIT
 
 echo "check_vm_parity: building -Dbackend=vm -Doptimize=ReleaseSafe…"
-if ! zig build -Doptimize=ReleaseSafe -Dbackend=vm >/tmp/vmp_build.txt 2>&1; then
+if ! zig build -Dwasm -Doptimize=ReleaseSafe -Dbackend=vm >/tmp/vmp_build.txt 2>&1; then
     echo "check_vm_parity: VM BUILD FAILED (see /tmp/vmp_build.txt)"; exit 1
 fi
 export CLJW_SKIP_BUILD=1

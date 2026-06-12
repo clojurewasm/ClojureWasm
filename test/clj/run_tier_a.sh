@@ -20,7 +20,7 @@ BIN="zig-out/bin/cljw"
 # (NOT a bare `zig build` = Debug, which would clobber the shared binary to
 # Debug right before the parallel e2e pool — the ~100x silent perf cliff that
 # made the whole gate take hours; D-385).
-[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+[ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 
 OUT=$("$BIN" test/clj/cw_ported.clj 2>&1) || {
     echo "FAIL test_clj exit non-zero" >&2

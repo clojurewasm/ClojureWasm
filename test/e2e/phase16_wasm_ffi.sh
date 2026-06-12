@@ -16,19 +16,17 @@ cd "$(dirname "$0")/../.."
 BIN="zig-out/bin/cljw"
 fail() { echo "FAIL $1" >&2; exit 1; }
 
-# Build the -Dwasm binary (resolves ../zwasm_from_scratch). Skip cleanly if the
-# zwasm tree is absent (e.g. CI without the sibling checkout).
-if [ ! -d "../zwasm_from_scratch" ]; then
-  echo "SKIP phase16_wasm_ffi (../zwasm_from_scratch not present)"
-  exit 0
-fi
-# Honor the wasm-gate's shared-binary contract (run_wasm_gate.sh builds the
-# -Dwasm binary ONCE + sets CLJW_SKIP_BUILD): skip our own build to avoid a
-# mid-run rebuild that would clobber the shared binary. Standalone, build it
-# ReleaseSafe (NOT a bare -Dwasm = Debug; ADR-0132 perf cliff).
+# Honor the gate's shared-binary contract (the gate builds -Dwasm ONCE + sets
+# CLJW_SKIP_BUILD): skip our own build to avoid clobbering the shared binary
+# mid-run. Standalone, build -Dwasm ReleaseSafe (NOT bare -Dwasm = Debug,
+# ADR-0132). zwasm resolves via the tag-pin in build.zig.zon (no sibling dir
+# needed) — so this runs on ubuntunote too (F-001 amended 2026-06-12).
 if [ -z "${CLJW_SKIP_BUILD:-}" ] && ! zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null 2>&1; then
-  fail "zig build -Dwasm failed (zwasm relative-path consume broken?)"
+  fail "zig build -Dwasm failed (zwasm dep unresolved?)"
 fi
+# The binary MUST be wasm-enabled to run these fixtures (the gate guarantees it
+# via build_cljw -Dwasm; a non-wasm binary means zwasm did not resolve).
+"$BIN" --version | grep -q wasm || fail "cljw is not wasm-enabled ($("$BIN" --version)) — zwasm did not resolve"
 
 FIX="test/e2e/fixtures/wasm_ffi_smoke.clj"
 

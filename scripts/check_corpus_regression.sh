@@ -18,7 +18,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 BIN="zig-out/bin/cljw"
-[ -x "$BIN" ] || { echo "building cljw…" >&2; zig build -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null; }
+[ -x "$BIN" ] || { echo "building cljw…" >&2; zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null; }
 
 dir="test/diff/clj_corpus"
 if [ ! -d "$dir" ]; then

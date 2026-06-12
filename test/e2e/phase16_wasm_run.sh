@@ -12,16 +12,15 @@ cd "$(dirname "$0")/../.."
 BIN="zig-out/bin/cljw"
 fail() { echo "FAIL $1" >&2; exit 1; }
 
-if [ ! -d "../zwasm_from_scratch" ]; then
-  echo "SKIP phase16_wasm_run (../zwasm_from_scratch not present)"
-  exit 0
-fi
-# Honor the wasm-gate's shared-binary contract (CLJW_SKIP_BUILD): skip our own
-# build to avoid clobbering the shared binary mid-run. Standalone, build it
-# ReleaseSafe (NOT a bare -Dwasm = Debug; ADR-0132).
+# Honor the gate's shared-binary contract (CLJW_SKIP_BUILD): skip our own build
+# to avoid clobbering the shared binary mid-run. Standalone, build -Dwasm
+# ReleaseSafe (NOT bare -Dwasm = Debug; ADR-0132). zwasm resolves via the
+# build.zig.zon tag-pin (no sibling dir), so this runs on ubuntunote too
+# (F-001 amended 2026-06-12).
 if [ -z "${CLJW_SKIP_BUILD:-}" ] && ! zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null 2>&1; then
-  fail "zig build -Dwasm failed (zwasm relative-path consume broken?)"
+  fail "zig build -Dwasm failed (zwasm dep unresolved?)"
 fi
+"$BIN" --version | grep -q wasm || fail "cljw is not wasm-enabled ($("$BIN" --version)) — zwasm did not resolve"
 
 out="$("$BIN" test/e2e/fixtures/wasm_run_probe.clj 2>&1)" || fail "cljw exited non-zero:
 $out"

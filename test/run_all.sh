@@ -310,8 +310,8 @@ resume_done() { (( RESUME )) && grep -qxF "$GATE_FP $1" "$GATE_LEDGER" 2>/dev/nu
 # Unit tests on BOTH backends. `zig build test` now defaults to vm (the
 # production default, ADR-0070 flip); tree_walk (the differential oracle) is
 # kept explicit so both backends retain unit coverage after the flip.
-run_step "zig_build_test_vm"        "zig build test"
-run_step "zig_build_test_tree_walk" "zig build test -Dbackend=tree_walk"
+run_step "zig_build_test_vm"        "zig build test -Dwasm"
+run_step "zig_build_test_tree_walk" "zig build test -Dwasm -Dbackend=tree_walk"
 run_step "zone_check"           "bash scripts/zone_check.sh --gate"
 run_step "surface_marker"       "bash scripts/check_surface_marker.sh --gate"
 run_step "feature_keyword"      "bash scripts/check_feature_keyword.sh --gate"
@@ -339,7 +339,7 @@ run_step "accepted_divergences" "bash scripts/check_accepted_divergences.sh --ga
 # fetched via `zig fetch` against GitHub; OrbStack runs are network-
 # free per .dev/orbstack_setup.md.
 if [[ "$(uname -s)" == "Darwin" ]]; then
-    run_step "zlinter"          "zig build lint -- --max-warnings 0"
+    run_step "zlinter"          "zig build lint -Dwasm -- --max-warnings 0"
 fi
 
 # Build the default (vm — production, ADR-0070 flip) cljw binary ONCE here,
@@ -359,7 +359,7 @@ fi
 # (e.g. transducer 8s -> 0.6s). Unit tests (zig_build_test above) stay
 # Debug for the richest assertion diagnostics; they are a separate exe.
 export CLJW_OPT="${CLJW_OPT:-ReleaseSafe}"
-run_step "build_cljw"           "zig build -Doptimize=$CLJW_OPT"
+run_step "build_cljw"           "zig build -Dwasm -Doptimize=$CLJW_OPT"
 export CLJW_SKIP_BUILD=1
 
 # Loud guard for the silent perf cliff (D-385): the ~3200-spawn e2e suite
@@ -559,6 +559,13 @@ run_step "e2e_phase16_clojure_java_io_streams" "bash test/e2e/phase16_clojure_ja
 run_step "e2e_phase16_clojure_java_io_copy" "bash test/e2e/phase16_clojure_java_io_copy.sh"
 run_step "e2e_phase16_cljw_json_fs"         "bash test/e2e/phase16_cljw_json_fs.sh"
 run_step "e2e_phase16_tokenizer_long_input" "bash test/e2e/phase16_tokenizer_long_input.sh"
+# Wasm-FFI execution e2e — now part of the DEFAULT full gate (F-001 amended
+# 2026-06-12: zwasm v2 is complete, so the gate builds `-Dwasm` throughout and
+# exercises the headline FFI path). They reuse the shared -Dwasm binary
+# (CLJW_SKIP_BUILD), so no per-step rebuild. On a host where `zig build -Dwasm`
+# cannot resolve zwasm, build_cljw fails first — wasm is a gate prerequisite now.
+run_step "e2e_phase16_wasm_ffi"             "bash test/e2e/phase16_wasm_ffi.sh"
+run_step "e2e_phase16_wasm_run"             "bash test/e2e/phase16_wasm_run.sh"
 run_step "e2e_phase15_for_while"            "bash test/e2e/phase15_for_while.sh"
 run_step "e2e_phase15_ns_import"            "bash test/e2e/phase15_ns_import.sh"
 run_step "e2e_phase15_dot_form"             "bash test/e2e/phase15_dot_form.sh"

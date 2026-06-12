@@ -69,14 +69,14 @@ run_cases() {
 }
 
 echo "==> Building (tree-walk)"
-zig build -Dbackend=tree_walk -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+zig build -Dwasm -Dbackend=tree_walk -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 [[ -x "$BIN" ]] || fail "tree-walk binary missing: $BIN"
 TW_LOG="$WORK/tw.txt"
 run_cases tree_walk "$TW_LOG"
 echo "    ✓ tree-walk captured ${#CASES[@]} cases"
 
 echo "==> Building (vm)"
-zig build -Dbackend=vm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+zig build -Dwasm -Dbackend=vm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 [[ -x "$BIN" ]] || fail "vm binary missing: $BIN"
 VM_LOG="$WORK/vm.txt"
 run_cases vm "$VM_LOG"
@@ -94,4 +94,4 @@ echo "    ✓ all ${#CASES[@]} cases produce byte-identical output under both ba
 # run_all.sh steps so the cached binary matches the post-build state callers
 # expect. Bare `zig build` (no -Dbackend) follows build.zig's default, so this
 # stays correct across a future default change.
-zig build -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null

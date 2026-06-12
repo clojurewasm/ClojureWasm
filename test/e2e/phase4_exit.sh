@@ -40,15 +40,15 @@ run_smoke() {
 }
 
 echo "==> Building (tree-walk)"
-zig build -Dbackend=tree_walk -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+zig build -Dwasm -Dbackend=tree_walk -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 [[ -x "$BIN" ]] || fail "tree-walk binary missing"
 run_smoke tree_walk
 
 echo "==> Building (vm)"
-zig build -Dbackend=vm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+zig build -Dwasm -Dbackend=vm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 [[ -x "$BIN" ]] || fail "vm binary missing"
 run_smoke vm
 
 # Restore the DEFAULT build (vm, production — ADR-0070) for subsequent steps.
 # Bare `zig build` follows build.zig's default (flip-agnostic).
-zig build -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
+zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
