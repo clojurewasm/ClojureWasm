@@ -243,6 +243,16 @@ pub fn containsQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
                 }
                 break :blk .false_val;
             }
+            // A deftype SET answers `contains?` via membership: clj's `contains?`
+            // calls IPersistentSet.contains, but a real-world set (flatland.ordered)
+            // writes that method under the java.util.Set header (host_inert, not
+            // dispatchable here). cljw wires IPersistentSet/get → ILookup/-lookup,
+            // and a set's `get` returns the element-or-nil — so `(some? (-lookup s k))`
+            // is the portable membership test, independent of which header `contains`
+            // sits under. (Divergence: a set literally holding nil/false mis-reports —
+            // exotic for a custom deftype-set; the common case is exact.)
+            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, ILOOKUP_FQCN, "-lookup", args, loc)) |v|
+                break :blk if (v.isNil()) .false_val else .true_val;
             break :blk try dispatch.dispatch(rt, env, &cs, coll, ASSOCIATIVE_FQCN, "-contains-key?", args, loc);
         },
         else => blk: {

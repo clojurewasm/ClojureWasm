@@ -15,6 +15,7 @@
 | data.json          | 25        | 0          | 100%     |
 | data.priority-map  | 25        | 0          | 100%     |
 | data.zip           | 8         | 0          | 100%     |
+| flatland.ordered   | 17        | 0          | 100%     |
 | hiccup             | 29        | 0          | 100%     |
 | honeysql           | 22        | 0          | 100%     |
 | integrant          | 8         | 0          | 100%     |

@@ -1,0 +1,34 @@
+(seq (flatland.ordered.set/ordered-set 3 1 2 1 3))
+;;=> (3 1 2)
+(vec (flatland.ordered.set/ordered-set 5 4 4 3 2 2 1))
+;;=> [5 4 3 2 1]
+(flatland.ordered.set/ordered-set 3 1 2)
+;;=> #ordered/set (3 1 2)
+(count (flatland.ordered.set/ordered-set 1 1 2 3 3))
+;;=> 3
+(contains? (flatland.ordered.set/ordered-set :a :b) :b)
+;;=> true
+(vec (conj (flatland.ordered.set/ordered-set 1 2) 3 2 4))
+;;=> [1 2 3 4]
+(vec (disj (flatland.ordered.set/ordered-set 1 2 3) 2))
+;;=> [1 3]
+(vec (into (flatland.ordered.set/ordered-set) [3 1 2 1 3]))
+;;=> [3 1 2]
+(seq (flatland.ordered.map/ordered-map :c 3 :a 1 :b 2))
+;;=> ([:c 3] [:a 1] [:b 2])
+(flatland.ordered.map/ordered-map :c 3 :a 1 :b 2)
+;;=> #ordered/map ([:c 3] [:a 1] [:b 2])
+(get (flatland.ordered.map/ordered-map :a 1 :b 2) :b)
+;;=> 2
+(keys (flatland.ordered.map/ordered-map :z 1 :y 2 :x 3))
+;;=> (:z :y :x)
+(vals (flatland.ordered.map/ordered-map :z 1 :y 2 :x 3))
+;;=> (1 2 3)
+(seq (assoc (flatland.ordered.map/ordered-map :a 1) :b 2 :a 9))
+;;=> ([:a 9] [:b 2])
+(seq (dissoc (flatland.ordered.map/ordered-map :a 1 :b 2 :c 3) :b))
+;;=> ([:a 1] [:c 3])
+(count (flatland.ordered.map/ordered-map :a 1 :b 2))
+;;=> 2
+(seq (into (flatland.ordered.map/ordered-map) [[:c 3] [:a 1] [:b 2]]))
+;;=> ([:c 3] [:a 1] [:b 2])

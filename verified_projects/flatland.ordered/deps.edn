@@ -1,0 +1,4 @@
+{:paths ["."]
+ :deps {org.flatland/ordered
+        {:git/url "https://github.com/clj-commons/ordered.git"
+         :git/sha "b5315081f24858e3169923f0de6b9f08bc0dda5a"}}}
