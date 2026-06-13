@@ -2396,6 +2396,17 @@ fn sectionNeedsRemap(hi: host_interface.HostInterface, impls: []const Form) bool
     for (impls) |impl| {
         if (impl.data != .list or impl.data.list.len < 1 or impl.data.list[0].data != .symbol) continue;
         const m = impl.data.list[0].data.symbol.name;
+        // A cljw-direct method spelling (`-seq`, `-cons`, `-peek`) is cljw core's
+        // own protocol-Var impl declared under a bare name that ALSO carries a
+        // protocol_remap row (Seqable / IPersistentCollection / IPersistentStack /
+        // … — the D-416 bare aliases). The remap table only keys clj names
+        // (`seq`/`cons`/`peek`), so a `-`-prefixed method is already in target
+        // form ⇒ do NOT route; fall through to the bare protocol-Var arm exactly
+        // as before the aliases existed. clj/Java interface method names never
+        // start with `-`, so the prefix is an unambiguous clj-vs-cljw signal. This
+        // is what lets core's `(extend-type X Seqable (-seq …))` and a lib's
+        // `(deftype Y … Seqable (seq …))` share the one bare `Seqable`. (D-286b)
+        if (m.len > 0 and m[0] == '-') return false;
         const r = hi.remapMethod(m) orelse return true;
         // Identity = unchanged method name AND already under the interface's OWN
         // protocol (a self-targeting method the rewrite emitted) ⇒ second pass, skip.

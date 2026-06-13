@@ -444,9 +444,14 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "MapEquivalence", MAP_EQUIVALENCE },
     .{ "IPersistentMap", IPERSISTENT_MAP },
     .{ "java.io.Serializable", SERIALIZABLE },
+    // D-416 bare aliases (data.finger-tree declares these bare) — see the D-306
+    // collection-base note below.
+    .{ "ILookup", ILOOKUP },
     .{ "clojure.lang.ILookup", ILOOKUP },
     .{ "clojure.lang.IPersistentMap", IPERSISTENT_MAP },
+    .{ "Reversible", REVERSIBLE },
     .{ "clojure.lang.Reversible", REVERSIBLE },
+    .{ "IPersistentStack", IPERSISTENT_STACK },
     .{ "clojure.lang.IPersistentStack", IPERSISTENT_STACK },
     .{ "clojure.lang.IHashEq", IHASHEQ },
     // bare alias (D-286a): libs `:import [clojure.lang IHashEq]` + use it bare.
@@ -459,21 +464,36 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
     .{ "clojure.lang.IFn", IFN },
     .{ "clojure.lang.IObj", IOBJ },
     .{ "clojure.lang.IMeta", IMETA },
+    // D-416 bare aliases (data.finger-tree declares these bare) — see the D-306
+    // collection-base note below for why the bare spelling needs its own row.
+    .{ "ISeq", ISEQ },
     .{ "clojure.lang.ISeq", ISEQ },
+    .{ "Sequential", SEQUENTIAL },
     .{ "clojure.lang.Sequential", SEQUENTIAL },
+    .{ "Indexed", INDEXED },
     .{ "clojure.lang.Indexed", INDEXED },
     .{ "clojure.lang.IReduceInit", IREDUCEINIT },
-    // D-306: collection-base interfaces declarable as DIRECT deftype supertypes
-    // (core.cache's defcache). The bare Associative/Seqable/IPersistentCollection
-    // are cljw protocol Vars that resolve already, so only their qualified
-    // spelling needs a MARKERS row. `Counted` is the exception: cljw has NO
-    // `Counted` protocol Var (count routes via IPersistentCollection), so the
-    // BARE spelling must be recognised here too — data.finger-tree imports it
-    // bare (`(:import (clojure.lang Counted …))`) and names it as a supertype.
+    // D-306 / D-416: collection-base interfaces declarable as DIRECT deftype
+    // supertypes (core.cache's defcache; data.finger-tree). A bare spelling like
+    // `Associative` DOES resolve (it is a cljw protocol Var) — but resolution
+    // alone does NOT remap the clj method names (`cons`/`seq`/`assoc`) to the
+    // cljw `-method` spellings; only a MARKERS row drives `isProtocolRemap` →
+    // the method-name rewrite. So the BARE spelling needs its own row too, not
+    // just the qualified one (the earlier "Var resolves ⇒ done" assumption was
+    // wrong: it left `(conj x)` → "No implementation of method '-cons'" on a
+    // bare-IPersistentCollection deftype). Safe because every method here remaps
+    // to a `-`-prefixed name that is NOT itself a remapMethod key, so the
+    // rewrite's second pass is a no-op (no D-286b self-recursion — contrast
+    // Comparable / IPersistentSet, which carry identity entries and stay
+    // qualified-only / hand-guarded). `Counted` has no cljw protocol Var at all
+    // (count routes via IPersistentCollection).
     .{ "Counted", COUNTED },
     .{ "clojure.lang.Counted", COUNTED },
+    .{ "Seqable", SEQABLE },
     .{ "clojure.lang.Seqable", SEQABLE },
+    .{ "Associative", ASSOCIATIVE },
     .{ "clojure.lang.Associative", ASSOCIATIVE },
+    .{ "IPersistentCollection", IPERSISTENT_COLLECTION },
     .{ "clojure.lang.IPersistentCollection", IPERSISTENT_COLLECTION },
     // D-307: the deref-able family (core.memoize's RetryingDelay).
     .{ "clojure.lang.IDeref", IDEREF },

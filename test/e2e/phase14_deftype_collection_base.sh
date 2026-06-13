@@ -87,4 +87,31 @@ CLJ
 assert_eq 'maplike_print' "$PRINT_OUT" '{:b 2, :a 1}
 [{:x {:a 1}}]'
 
-echo "OK — phase14_deftype_collection_base (8 cases) green"
+# BARE collection-interface spellings must trigger the SAME method remap as the
+# qualified ones (data.finger-tree imports `(clojure.lang Seqable ISeq
+# IPersistentStack IPersistentCollection Associative Reversible Indexed ILookup)`
+# and declares them bare). These are cljw protocol Vars, so the bare symbol
+# resolves — but resolution alone does NOT remap the clj method names to the
+# cljw `-method` spellings; only a MARKERS alias does. Without it `(conj x)` →
+# "No implementation of method '-cons'".
+BARE_OUT="$("$BIN" - <<'CLJ' 2>&1
+(deftype BareWrap [v]
+  Seqable               (seq  [_] (seq v))
+  IPersistentCollection (cons [_ x] (BareWrap. (conj v x)))
+                        (count [_] (count v))
+                        (empty [_] (BareWrap. []))
+                        (equiv [_ o] (= v o))
+  IPersistentStack      (peek [_] (peek v))
+                        (pop  [_] (BareWrap. (pop v)))
+  Reversible            (rseq [_] (rseq v))
+  Indexed               (nth  [_ i] (nth v i))
+  ILookup               (valAt [_ k] (nth v k nil)))
+(def bw (->BareWrap [10 20 30]))
+(prn [(count (conj bw 99)) (seq bw) (count bw) (peek bw)
+      (seq (pop bw)) (nth bw 1) (get bw 0) (rseq bw)])
+CLJ
+)"
+assert_eq 'bare_iface_remap' "$(printf '%s' "$BARE_OUT" | tail -1)" \
+  '[4 (10 20 30) 3 30 (10 20) 20 10 (30 20 10)]'
+
+echo "OK — phase14_deftype_collection_base (9 cases) green"

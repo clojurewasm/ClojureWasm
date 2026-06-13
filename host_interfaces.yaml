@@ -181,6 +181,7 @@ interfaces:
     methods:
       meta: { status: wired, wires_to_protocol: IObj, wires_to_method: "-meta" }
   - name: clojure.lang.ISeq
+    aliases: [ISeq]
     derives_from: "clojure.lang.ISeq — a custom seq instance (first/next/more/cons); ISeq extends IPersistentCollection + Seqable (Clojure, stable)."
     tier: A
     recognised: true
@@ -197,6 +198,7 @@ interfaces:
       equiv: { status: wired, wires_to: "Object method-family equiv (D-280d8 — clj collection =; ISeq inherits it from IPersistentCollection)" }
       seq: { status: wired, wires_to_protocol: Seqable, wires_to_method: "-seq" }
   - name: clojure.lang.Sequential
+    aliases: [Sequential]
     derives_from: "clojure.lang.Sequential — zero-method order marker (Clojure, stable)."
     tier: A
     recognised: true
@@ -205,6 +207,7 @@ interfaces:
     note: "D-395: zero-method marker; canonical is the cljw `Sequential` protocol (NOT the full clojure.lang name) so a declaring deftype records protocol_impls[Sequential] and `sequential?` (declaresProtocol Sequential) + seq-style print answer true. class_name.zig already normalises clojure.lang.Sequential → Sequential at the class facet (ADR-0068 marker precedent)."
     methods: {}
   - name: clojure.lang.Indexed
+    aliases: [Indexed]
     derives_from: "clojure.lang.Indexed — O(1) indexed access `(nth coll i)` (Clojure, stable)."
     tier: A
     recognised: true
@@ -395,6 +398,7 @@ interfaces:
 
   # --- clojure.data.priority-map closed set (the campaign driver, lines 265-450) ---
   - name: clojure.lang.ILookup
+    aliases: [ILookup]
     derives_from: "clojure.lang.ILookup — get/valAt lookup (Clojure, stable)."
     tier: A
     recognised: true
@@ -430,6 +434,7 @@ interfaces:
   # already remaps to; these rows make the qualified spellings resolve. Bare
   # Associative/Seqable/IPersistentCollection already resolve as cljw protocol Vars.
   - name: clojure.lang.Associative
+    aliases: [Associative]
     derives_from: "clojure.lang.Associative — assoc/containsKey/entryAt; a base interface clj's IPersistentMap extends, declarable directly (Clojure, stable)."
     tier: A
     recognised: true
@@ -441,6 +446,7 @@ interfaces:
       containsKey: { status: wired, wires_to_protocol: Associative, wires_to_method: "-contains-key?" }
       entryAt: { status: wired, wires_to_protocol: Associative, wires_to_method: "-entry-at" }
   - name: clojure.lang.Seqable
+    aliases: [Seqable]
     derives_from: "clojure.lang.Seqable — seq; the base of every persistent collection, declarable directly (Clojure, stable)."
     tier: A
     recognised: true
@@ -450,6 +456,7 @@ interfaces:
     methods:
       seq: { status: wired, wires_to_protocol: Seqable, wires_to_method: "-seq" }
   - name: clojure.lang.IPersistentCollection
+    aliases: [IPersistentCollection]
     derives_from: "clojure.lang.IPersistentCollection — count/cons/empty/equiv; the persistent-collection base clj's IPersistentMap/Vector/Set extend, declarable directly (Clojure, stable)."
     tier: A
     recognised: true
@@ -462,6 +469,7 @@ interfaces:
       empty: { status: wired, wires_to_protocol: IPersistentCollection, wires_to_method: "-empty" }
       equiv: { status: wired, wires_to: "Object method-family equiv (D-280d8 — clj collection =; same-type, cross-type residual)" }
   - name: clojure.lang.IPersistentStack
+    aliases: [IPersistentStack]
     derives_from: "clojure.lang.IPersistentStack — peek/pop (Clojure, stable)."
     tier: A
     recognised: true
@@ -471,6 +479,7 @@ interfaces:
       peek: { status: wired, wires_to_protocol: IPersistentStack, wires_to_method: "-peek" }
       pop: { status: wired, wires_to_protocol: IPersistentStack, wires_to_method: "-pop" }
   - name: clojure.lang.Reversible
+    aliases: [Reversible]
     derives_from: "clojure.lang.Reversible — rseq (Clojure, stable)."
     tier: A
     recognised: true
