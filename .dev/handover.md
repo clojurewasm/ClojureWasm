@@ -14,23 +14,23 @@
   experiments only; it Debug-overwrites zig-out). Bench re-baselined under the
   unified config (bench/cross-lang-latest.yaml, 39 benches; D-411 discharged).
 
-- **First task on resume MUST be: the ADR-0135 Wasm-component-as-namespace
-  EXPERIMENT (D-404, now UNBLOCKING)** — the north-star differentiator, opened
-  by the user 2026-06-13: zwasm's embedding API is ready except
-  interface-internal function enumeration (zwasm ADR-0184, lands next zwasm
-  session). Full wiring + the zwasm-side report verbatim + step plan:
-  **`private/notes/p14-wasm-component-experiment.md`**. Mode = EXPLORATION
-  (exploration_vs_done.md): flip build.zig.zon to relative-path
-  `../zwasm_from_scratch` LOCALLY (uncommitted; `git stash` it before any
-  tracked landing), experiment in private/ scratch, **do NOT push experimental
-  artifacts**. Start with: design / EDN↔WIT mapping / require-macro skeleton
-  against introspect + typed invoke + resources; the enumeration-dependent
-  wiring waits for zwasm ADR-0184 landed (check the zwasm repo's git log).
-  Tracked landings resume the normal gate + atomic push once stable AND the
-  zon is back on a tag pin.
+- **zwasm-watch mode (user directive 2026-06-13, supersedes the earlier
+  "experiment first" contract)**: zwasm's Component-Model surface is NOT yet
+  complete for CWFS — the D-404 experiment (ADR-0135 component-as-namespace)
+  starts only when it is. **At every task boundary (Step 0) + session resume,
+  peek `git -C ~/Documents/MyProducts/zwasm_from_scratch log --oneline -15`.**
+  Readiness predicate (both must be landed): (a) zwasm ADR-0184 step 4
+  (C-API preopen smoke; Status: Implemented), AND (b) the
+  `TypeInfo.exportedFuncs` interface-nested function ENUMERATION chunk
+  (queued right after ADR-0184; zwasm commit 2789899f names it). When BOTH
+  land → next task = the D-404 experiment per
+  **`private/notes/p14-wasm-component-experiment.md`** (EXPLORATION mode:
+  local relative-path zon flip, uncommitted, push-suppressed). Until then →
+  normal development continues on the queue below. Checked 2026-06-13: step 4
+  pending, enumeration not started → NOT ready.
 
-  **Queue after (or interleaved when blocked on zwasm)**: re-matcher +
-  java.util.regex.Matcher host_instance — design + oracle table pre-laid in
+- **First task on resume MUST be: re-matcher + java.util.regex.Matcher
+  host_instance** — design + oracle table pre-laid in
   `private/notes/p14-instaparse-campaign.md` (incl. the StringBuilder
   int-capacity-ctor bug Segment.toString hits); then instaparse end-to-end →
   verified_projects corpus; flatland.ordered corpus registration; cuerdas
@@ -64,22 +64,12 @@ builders → `-Dwasm -Doptimize=ReleaseSafe`; bench cw column re-baselined
 D-238 LANDED, IObj/IMeta, Character statics). Earlier same day: D-405 harness
 15 corpora, ADR-0136 boundary, D-407 proofs, Unicode D-057/D-409.
 
-## Stopped — user requested
-
-User instruction (2026-06-13): 「週次 rate limit が近いので、次のクリア
-セッションが /continue だけで継続できるよう配線・参照チェーンを監査して停止」
-+ 同日追記でベンチ再ベースライン実行と component 実験の配線を指示。Wiring
-audited: Resume contract above; experiment wiring in
-`private/notes/p14-wasm-component-experiment.md`; debt rows
-D-404 (UNBLOCKING) / D-411 (discharged) / D-238 (LANDED) synced; bench
-baseline committed. Resume = `/continue` (this section is history — the next
-session deletes it per handover_framing.md).
-
 ## Cold-start reading order (resume)
 
-handover → **`private/notes/p14-wasm-component-experiment.md`** (the active
-experiment wiring) → `.dev/decisions/0135_*.md` (WIT↔clj mapping, FROZEN) →
-`.dev/debt.yaml` D-404 → (queue) `private/notes/p14-instaparse-campaign.md`.
+handover → **`private/notes/p14-instaparse-campaign.md`** (the active task:
+re-matcher design + oracle table) → (when zwasm-watch fires)
+`private/notes/p14-wasm-component-experiment.md` + `.dev/decisions/0135_*.md`
+(WIT↔clj mapping, FROZEN) + `.dev/debt.yaml` D-404.
 clj oracle = `~/Documents/OSS/clojure/` + `clj -J-Xmx2g -M` (`timeout 60`,
 bound seqs); zwasm repo = `~/Documents/MyProducts/zwasm_from_scratch/`
-(read-only here; ADR-0184 landing check via its git log).
+(read-only here; readiness check via its git log per the watch predicate).
