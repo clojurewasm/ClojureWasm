@@ -1,0 +1,4 @@
+{:paths ["."]
+ :deps {org.clojure/math.numeric-tower
+        {:git/url "https://github.com/clojure/math.numeric-tower.git"
+         :git/sha "52ad35601360e3644d063bf210b4dcd38a9981c3"}}}
