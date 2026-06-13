@@ -553,7 +553,10 @@ fn evalNs(rt: *Runtime, env: *Env, n: node_mod.NsNode) !Value {
             try env.referAllWithFilter(rt_ns, env.current_ns.?, n.refer_clojure_exclude, n.refer_clojure_only);
         }
         if (env.findNs("clojure.core")) |cc_ns| {
-            try env.referAllWithFilter(cc_ns, env.current_ns.?, n.refer_clojure_exclude, n.refer_clojure_only);
+            // ADR-0035 D9 revision: clojure.core OVERRIDES rt on collision —
+            // the public layer's redefinition (e.g. matcher-arity re-find)
+            // wins over the internal primitive.
+            try env.referAllOverriding(cc_ns, env.current_ns.?, n.refer_clojure_exclude, n.refer_clojure_only);
         }
     }
     // Row 14.7 (D-098): walk ns-level (:require [...]) libspecs. Each

@@ -457,6 +457,34 @@ pub const Env = struct {
         exclude: []const []const u8,
         only: ?[]const []const u8,
     ) !void {
+        return self.referAllImpl(from, to, exclude, only, false);
+    }
+
+    /// Like `referAllWithFilter`, but an existing refer of the same name is
+    /// REPLACED instead of skipped. Used for the `clojure.core` half of the
+    /// `(:refer-clojure)` auto-refer pair (ADR-0035 D9 revision): `rt/` lands
+    /// first (internal primitives), then clojure.core overrides any name it
+    /// redefines — the public layer wins over the internal one, so a core.clj
+    /// wrapper of an rt primitive (e.g. the matcher-arity `re-find`) is the
+    /// one user code reaches unqualified.
+    pub fn referAllOverriding(
+        self: *Env,
+        from: *Namespace,
+        to: *Namespace,
+        exclude: []const []const u8,
+        only: ?[]const []const u8,
+    ) !void {
+        return self.referAllImpl(from, to, exclude, only, true);
+    }
+
+    fn referAllImpl(
+        self: *Env,
+        from: *Namespace,
+        to: *Namespace,
+        exclude: []const []const u8,
+        only: ?[]const []const u8,
+        override: bool,
+    ) !void {
         var it = from.mappings.iterator();
         while (it.next()) |entry| {
             const name = entry.key_ptr.*;
@@ -465,7 +493,10 @@ pub const Env = struct {
                 if (!containsName(whitelist, name)) continue;
             }
             if (containsName(exclude, name)) continue;
-            if (to.refers.contains(name)) continue;
+            if (to.refers.getPtr(name)) |slot| {
+                if (override) slot.* = entry.value_ptr.*;
+                continue;
+            }
             const owned_key = try self.alloc.dupe(u8, name);
             errdefer self.alloc.free(owned_key);
             try to.refers.put(self.alloc, owned_key, entry.value_ptr.*);
@@ -793,6 +824,34 @@ test "referAll exposes source mappings under target.refers" {
 
     // Idempotent — second call doesn't double-insert or leak.
     try env.referAll(rt_ns, user);
+    try testing.expectEqual(@as(usize, 1), user.refers.count());
+}
+
+test "referAllOverriding replaces an existing refer; referAll keeps it (ADR-0035 D9 rev)" {
+    var fix: TestFixture = undefined;
+    fix.init(testing.allocator);
+    defer fix.deinit();
+
+    var env = try Env.init(&fix.rt);
+    defer env.deinit();
+
+    const rt_ns = env.findNs("rt").?;
+    const user = env.findNs("user").?;
+    const core = try env.findOrCreateNs("clojure.core");
+    const rt_var = try env.intern(rt_ns, "re-find", .true_val, null);
+    const core_var = try env.intern(core, "re-find", .false_val, null);
+
+    // rt refers first (boot fan-out order).
+    try env.referAll(rt_ns, user);
+    try testing.expectEqual(rt_var, user.refers.get("re-find").?);
+
+    // Plain referAll skips the collision — rt would win (the latent bug).
+    try env.referAll(core, user);
+    try testing.expectEqual(rt_var, user.refers.get("re-find").?);
+
+    // The overriding variant replaces it — the public layer wins.
+    try env.referAllOverriding(core, user, &.{}, null);
+    try testing.expectEqual(core_var, user.refers.get("re-find").?);
     try testing.expectEqual(@as(usize, 1), user.refers.count());
 }
 

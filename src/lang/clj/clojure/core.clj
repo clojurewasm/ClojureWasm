@@ -1971,6 +1971,33 @@
           (recur (if (= (nth m 2) (nth m 1)) (inc (nth m 2)) (nth m 2))
                  (conj acc (nth m 0))))))))
 
+;; `(re-matcher re s)` — a stateful java.util.regex.Matcher over `re` + `s`.
+;; A non-string CharSequence (e.g. instaparse's Segment deftype) is coerced
+;; via str.
+(def re-matcher
+  (fn* [re s]
+    (.matcher re (if (string? s) s (str s)))))
+
+;; `(re-groups m)` — the groups of the matcher's last match: the whole match
+;; for a group-less pattern, else `[whole g1 g2 …]`.
+(def re-groups
+  (fn* [m]
+    (let [gc (.groupCount m)]
+      (if (zero? gc)
+        (.group m)
+        (loop [ret [] c 0]
+          (if (<= c gc)
+            (recur (conj ret (.group m c)) (inc c))
+            ret))))))
+
+;; `(re-find m)` / `(re-find re s)` — the matcher 1-arity advances the cursor
+;; (`.find`) and returns `(re-groups m)`; the 2-arity delegates to the rt
+;; primitive (this def shadows the auto-referred rt/re-find).
+(def re-find
+  (fn*
+    ([m] (when (.find m) (re-groups m)))
+    ([re s] (rt/re-find re s))))
+
 ;; ----------------------------------------------------------------
 ;; Ad-hoc hierarchies — make-hierarchy / derive / underive / isa? /
 ;; parents / ancestors / descendants over a global hierarchy.

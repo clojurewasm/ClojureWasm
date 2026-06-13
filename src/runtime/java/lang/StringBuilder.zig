@@ -41,23 +41,57 @@ fn appendStr(rt: *Runtime, env: *Env, lp: *ByteList, v: Value) !void {
     try lp.appendSlice(rt.gc.infra, aw.writer.buffered());
 }
 
-/// `(StringBuilder.)` / `(StringBuilder. "seed")` — Java also has int-capacity
-/// and CharSequence ctors; cljw seeds from the str-form of a 1-arg value.
+/// `(StringBuilder.)` / `(StringBuilder. "seed")` / `(StringBuilder. n)` —
+/// a 1-arg integer is the JVM int-capacity ctor (a hint; cljw's buffer grows
+/// on demand, so it is accepted and ignored — NOT seeded as "n"); any other
+/// 1-arg value seeds the buffer with its str-form.
 fn initSb(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (args.len > 1)
         return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = "java.lang.StringBuilder.", .expected = 1 });
     const lp = try rt.gc.infra.create(ByteList);
     lp.* = .empty;
-    if (args.len == 1) try appendStr(rt, env, lp, args[0]);
+    if (args.len == 1 and args[0].tag() != .integer) try appendStr(rt, env, lp, args[0]);
     const td = sb_descriptor orelse return error.NoVTable;
     return host_instance.alloc(rt, td, .{ @intFromPtr(lp), 0, 0, 0 });
 }
 
 /// `(.append sb x)` — append `x`'s str-form; returns the builder (Java chains).
+/// `(.append sb s start end)` — the JVM CharSequence sub-range arity: append
+/// the `[start, end)` codepoint slice of `s`'s str-form (instaparse's
+/// Segment.toString drives this arm).
 fn append(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("append", args, 2, loc);
-    try appendStr(rt, env, listOf(args[0]), args[1]);
+    if (args.len == 2) {
+        try appendStr(rt, env, listOf(args[0]), args[1]);
+        return args[0];
+    }
+    if (args.len != 4)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = ".append", .got = args.len, .min = 2, .max = 4 });
+    if (args[2].tag() != .integer or args[3].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = ".append", .actual = @tagName(if (args[2].tag() != .integer) args[2].tag() else args[3].tag()) });
+    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+    defer aw.deinit();
+    try print_mod.writeStrValue(rt, env, &aw.writer, args[1]);
+    const s = aw.writer.buffered();
+    const from_i = args[2].asInteger();
+    const to_i = args[3].asInteger();
+    const from = byteOffsetOfCodepoint(s, from_i);
+    const to = byteOffsetOfCodepoint(s, to_i);
+    if (from_i < 0 or to_i < from_i or from == null or to == null)
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/append" });
+    try listOf(args[0]).appendSlice(rt.gc.infra, s[from.?..to.?]);
     return args[0];
+}
+
+/// Byte offset of codepoint index `i` in `s` (s.len when `i` == codepoint
+/// count); null when `i` is negative or past the end.
+fn byteOffsetOfCodepoint(s: []const u8, i: i64) ?usize {
+    if (i < 0) return null;
+    var it = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
+    var n: i64 = 0;
+    while (n < i) : (n += 1) {
+        if (it.nextCodepointSlice() == null) return null;
+    }
+    return it.i;
 }
 
 /// `(.toString sb)` / `(str sb)` — the accumulated bytes as a cljw String.

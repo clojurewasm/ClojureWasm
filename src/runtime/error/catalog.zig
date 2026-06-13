@@ -386,6 +386,10 @@ pub const Code = enum {
     /// catchable IllegalArgumentException (JVM's `PatternSyntaxException` is also
     /// an IllegalArgumentException), not an OOM that ends the process (INV-1).
     regex_pattern_too_large,
+    /// args: `.{}` — a Matcher `group`/`start`/`end` query before any
+    /// successful match op (JVM IllegalStateException; template mirrors the
+    /// JVM message — Kind divergence is AD-007).
+    matcher_not_matched,
 
     // --- Wasm FFI (ADR-0099) ---
     /// A WebAssembly module loaded via `wasm/load` trapped during a
@@ -1448,6 +1452,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .value_error,
             .phase = .eval,
             .template = "re-pattern: the regular expression is too large to compile",
+        },
+        .matcher_not_matched => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "No match found",
         },
         .wasm_trap => .{
             .kind = .value_error,

@@ -28,6 +28,7 @@ const Env = @import("../../../env.zig").Env;
 const SourceLocation = @import("../../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../../error/catalog.zig");
 const string_collection = @import("../../../collection/string.zig");
+const matcher_mod = @import("Matcher.zig");
 
 /// Implements `(java.util.regex.Pattern/quote s)`.
 /// Spec: returns a literal-pattern string — `s` wrapped in `\Q…\E` so every
@@ -68,6 +69,32 @@ fn quote(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anye
     try out.appendSlice(gpa, s[current..]);
     try out.appendSlice(gpa, "\\E");
     return string_collection.alloc(rt, out.items);
+}
+
+/// Implements `(.matcher re s)` — mint a `java.util.regex.Matcher` cursor
+/// over the receiver pattern + input string (`clojure.core/re-matcher`'s body).
+/// JVM reference: java.util.regex.Pattern#matcher. cw v1 tier: A.
+fn matcherMethod(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("matcher", args, 2, loc);
+    return matcher_mod.fromPattern(rt, args[0], args[1], loc);
+}
+
+/// Install the `.regex`-tag native instance methods (`(.matcher re s)`).
+/// Called at runtime init alongside `String.installNativeMethods` (ADR-0050
+/// am1 caveat 3) — a native-tag receiver dispatches via `rt.nativeDescriptor`,
+/// not this file's `___HOST_EXTENSION` static-surface descriptor.
+pub fn installNativeMethods(rt: *Runtime) !void {
+    const td = try rt.nativeDescriptor(.regex);
+    if (td.method_table.len != 0) return; // idempotent re-run
+    const gpa = rt.gc.infra;
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 1);
+    entries[0] = .{
+        .protocol_name = "",
+        .method_name = try gpa.dupe(u8, "matcher"),
+        .method_val = Value.initBuiltinFn(&matcherMethod),
+    };
+    td.method_table = entries;
 }
 
 fn initPattern(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {

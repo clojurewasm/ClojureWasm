@@ -1055,7 +1055,8 @@ inline fn stepOnce(
                 try env.referAll(rt_ns, env.current_ns.?);
             }
             if (env.findNs("clojure.core")) |clojure_core_ns| {
-                try env.referAll(clojure_core_ns, env.current_ns.?);
+                // ADR-0035 D9 revision: clojure.core overrides rt on collision.
+                try env.referAllOverriding(clojure_core_ns, env.current_ns.?, &.{}, null);
             }
             if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
@@ -1074,7 +1075,8 @@ inline fn stepOnce(
                 try env.referAllWithFilter(rt_ns, env.current_ns.?, f.exclude, f.only);
             }
             if (env.findNs("clojure.core")) |clojure_core_ns| {
-                try env.referAllWithFilter(clojure_core_ns, env.current_ns.?, f.exclude, f.only);
+                // ADR-0035 D9 revision: clojure.core overrides rt on collision.
+                try env.referAllOverriding(clojure_core_ns, env.current_ns.?, f.exclude, f.only);
             }
             if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");

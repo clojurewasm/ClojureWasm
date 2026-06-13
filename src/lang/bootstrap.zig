@@ -221,7 +221,9 @@ fn loadCoreFiles(
 fn finalizeUserNs(env: *Env) !void {
     if (env.findNs("clojure.core")) |clojure_core_ns| {
         if (env.findNs("user")) |target| {
-            try env.referAll(clojure_core_ns, target);
+            // ADR-0035 D9 revision: clojure.core overrides the boot-time rt
+            // refer on collision (the public layer wins).
+            try env.referAllOverriding(clojure_core_ns, target, &.{}, null);
         }
     }
     if (env.findNs("user")) |user_ns| {

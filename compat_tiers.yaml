@@ -314,8 +314,8 @@ tiers:
           surface: runtime/java/util/regex/Matcher.zig
           impl: runtime/regex/match.zig
           clojure_peer: lang/primitive/regex.zig
-        methods: [find, matches, group, groupCount, start, end]
-        clojure_peer_vars: [clojure.core/re-find, clojure.core/re-matches, clojure.core/re-seq, clojure.core/re-groups]
+        methods: [find, lookingAt, matches, group, groupCount, start, end, reset]
+        clojure_peer_vars: [clojure.core/re-matcher, clojure.core/re-find, clojure.core/re-matches, clojure.core/re-seq, clojure.core/re-groups]
       - {fqn: "java.util.concurrent.Future", native_ns: "cljw.host.java.util.concurrent.Future", phase: 14}
       - {fqn: "java.util.concurrent.atomic.AtomicLong", native_ns: "cljw.host.java.util.concurrent.atomic.AtomicLong", phase: 15}
       # java.time

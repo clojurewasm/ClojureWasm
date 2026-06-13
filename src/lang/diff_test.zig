@@ -759,6 +759,13 @@ test "diff: ns_node :refer-clojure :only filter (D-098 VM op_ns_with_filter)" {
     try f.check("(do (ns diff-ns-only (:refer-clojure :only [+])) (+ 1 2))", 3);
 }
 
+// The ADR-0035 D9 refer-override (clojure.core wins over rt on collision)
+// is NOT diff-cased here: `compare` reuses one env across both backend runs,
+// so a def/in-ns-mutating source diverges by residue, not by backend. The
+// override semantics are unit-locked in env.zig ("referAllOverriding replaces
+// an existing refer") and end-to-end-locked by e2e phase14_re_matcher.sh;
+// both backends share the same env.referAllOverriding helper at their ns ops.
+
 test "diff: vector_literal_node" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

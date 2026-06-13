@@ -667,6 +667,7 @@ run_step "e2e_phase14_destructure_fn"        "bash test/e2e/phase14_destructure_
 run_step "e2e_phase14_deftype_cross_ns_import" "bash test/e2e/phase14_deftype_cross_ns_import.sh"
 run_step "e2e_phase14_prefix_list_libspec"   "bash test/e2e/phase14_prefix_list_libspec.sh"
 run_step "e2e_phase14_regex_lookahead"       "bash test/e2e/phase14_regex_lookahead.sh"
+run_step "e2e_phase14_re_matcher"            "bash test/e2e/phase14_re_matcher.sh"
 run_step "e2e_phase14_locale"                "bash test/e2e/phase14_locale.sh"
 run_step "e2e_phase14_short_byte"            "bash test/e2e/phase14_short_byte.sh"
 run_step "e2e_phase14_syntax_quote_exclude"   "bash test/e2e/phase14_syntax_quote_exclude.sh"
