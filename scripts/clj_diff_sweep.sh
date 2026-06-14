@@ -39,16 +39,21 @@ cd "$(dirname "$0")/.."
 BIN="zig-out/bin/cljw"
 CLJ="${CLJ:-clj}"
 CORPUS=""
+CORPUS_DIR="test/diff/clj_corpus"
 
 src="${1:-}"
 if [ -z "$src" ]; then
-    echo "usage: clj_diff_sweep.sh <exprs-file|-> [--corpus NAME]" >&2
+    echo "usage: clj_diff_sweep.sh <exprs-file|-> [--corpus NAME | --class-corpus Class]" >&2
     exit 2
 fi
 shift || true
 while [ $# -gt 0 ]; do
     case "$1" in
-        --corpus) CORPUS="${2:-}"; shift 2 ;;
+        # General behaviour corpus (clj_corpus/) vs the F-014/ADR-0136 per-class
+        # Java-completeness corpus (class_corpus/); both are gated by
+        # check_corpus_regression.sh, which scans both directories.
+        --corpus) CORPUS="${2:-}"; CORPUS_DIR="test/diff/clj_corpus"; shift 2 ;;
+        --class-corpus) CORPUS="${2:-}"; CORPUS_DIR="test/diff/class_corpus"; shift 2 ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
 done
@@ -129,7 +134,7 @@ echo "$((n - fails))/$n matched, $fails diff(s)"
 # clj) lines. The regression check (scripts/check_corpus_regression.sh) re-runs
 # cljw against the stored `;;=>` value, so it is cljw-only / clj-free / gateable.
 if [ -n "$CORPUS" ] && [ "${#ok_exprs[@]}" -gt 0 ]; then
-    dir="test/diff/clj_corpus"
+    dir="$CORPUS_DIR"
     mkdir -p "$dir"
     f="$dir/$CORPUS.txt"
     for i in $(seq 0 $((${#ok_exprs[@]} - 1))); do

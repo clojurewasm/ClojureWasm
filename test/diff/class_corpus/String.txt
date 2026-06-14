@@ -1,0 +1,88 @@
+(.length "hello")
+;;=> 5
+(.length "")
+;;=> 0
+(.isEmpty "")
+;;=> true
+(.isEmpty "x")
+;;=> false
+(.charAt "hello" 1)
+;;=> \e
+(.charAt "hello" 0)
+;;=> \h
+(.indexOf "hello" "l")
+;;=> 2
+(.indexOf "hello" "l" 3)
+;;=> 3
+(.indexOf "hello" 108)
+;;=> 2
+(.indexOf "hello" 108 3)
+;;=> 3
+(.indexOf "hello" "z")
+;;=> -1
+(.lastIndexOf "hello" "l")
+;;=> 3
+(.lastIndexOf "hello" 108)
+;;=> 3
+(.lastIndexOf "hello" "l" 2)
+;;=> 2
+(.lastIndexOf "hello" "x")
+;;=> -1
+(.substring "hello" 1)
+;;=> "ello"
+(.substring "hello" 1 3)
+;;=> "el"
+(.subSequence "hello" 1 3)
+;;=> "el"
+(.toUpperCase "hello")
+;;=> "HELLO"
+(.toLowerCase "HELLO")
+;;=> "hello"
+(.trim "  hi  ")
+;;=> "hi"
+(.strip "  hi  ")
+;;=> "hi"
+(.stripLeading "  hi  ")
+;;=> "hi  "
+(.stripTrailing "  hi  ")
+;;=> "  hi"
+(.isBlank "   ")
+;;=> true
+(.isBlank "x")
+;;=> false
+(.startsWith "hello" "he")
+;;=> true
+(.endsWith "hello" "lo")
+;;=> true
+(.contains "hello" "ell")
+;;=> true
+(.replace "hello" "l" "L")
+;;=> "heLLo"
+(.replace "hello" \l \L)
+;;=> "heLLo"
+(.concat "foo" "bar")
+;;=> "foobar"
+(.repeat "ab" 3)
+;;=> "ababab"
+(.compareTo "abc" "abd")
+;;=> -1
+(.compareToIgnoreCase "ABC" "abc")
+;;=> 0
+(.equalsIgnoreCase "ABC" "abc")
+;;=> true
+(.matches "abc" "[a-z]+")
+;;=> true
+(.replaceAll "a1b2" "[0-9]" "#")
+;;=> "a#b#"
+(.replaceFirst "a1b2" "[0-9]" "#")
+;;=> "a#b2"
+(.codePointAt "hello" 0)
+;;=> 104
+(.intern "abc")
+;;=> "abc"
+(vec (.split "a,b,c" ","))
+;;=> ["a" "b" "c"]
+(vec (.toCharArray "abc"))
+;;=> [\a \b \c]
+(seq (.getBytes "AB"))
+;;=> (65 66)

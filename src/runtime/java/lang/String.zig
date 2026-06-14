@@ -114,40 +114,79 @@ fn substring(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     return string_collection.alloc(rt, slice);
 }
 
-/// Implements `(.indexOf s needle)` → codepoint index of the first
-/// occurrence of the substring `needle`, or -1 when absent. JVM
-/// reference: java.lang.String#indexOf. cw v1 tier: A.
+/// Resolve a `needle` arg to its UTF-8 bytes for both JVM overload families:
+/// `(String)` (substring) and `(int codepoint)`. An out-of-range codepoint
+/// yields `null` (treated as "not found" by the callers, matching the JVM
+/// where an invalid char simply never matches). `buf` backs an int needle's
+/// encoded bytes, so it must outlive the returned slice.
+fn needleBytes(arg: Value, buf: *[4]u8, loc: SourceLocation, fn_name: []const u8) anyerror!?[]const u8 {
+    if (arg.tag() == .integer) {
+        const cp = arg.asInteger();
+        if (cp < 0 or cp > 0x10FFFF) return null;
+        const n = std.unicode.utf8Encode(@intCast(cp), buf) catch return null;
+        return buf[0..n];
+    }
+    if (arg.tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = fn_name, .actual = @tagName(arg.tag()) });
+    return string_collection.asString(arg);
+}
+
+/// `(.indexOf s needle)` / `(.indexOf s needle fromIndex)` → codepoint index
+/// of the first occurrence of `needle` at or after `fromIndex` (default 0),
+/// or -1 when absent. `needle` is a substring (String) or a codepoint (int);
+/// `fromIndex` is clamped to `[0, len]` (a negative value behaves as 0, per
+/// the JVM). JVM reference: java.lang.String#indexOf. cw v1 tier: A.
 fn indexOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    try error_catalog.checkArity(".indexOf", args, 2, loc);
+    if (args.len < 2 or args.len > 3)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = ".indexOf", .got = args.len, .min = 2, .max = 3 });
     const hay = string_collection.asString(args[0]);
-    // JVM overloads `indexOf(String)` and `indexOf(int codepoint)`.
-    if (args[1].tag() == .integer) {
-        const cp = args[1].asInteger();
-        if (cp < 0 or cp > 0x10FFFF) return Value.initInteger(-1);
-        var buf: [4]u8 = undefined;
-        const n = std.unicode.utf8Encode(@intCast(cp), &buf) catch return Value.initInteger(-1);
-        const idx = charset.codepointIndexOf(hay, buf[0..n]) orelse return Value.initInteger(-1);
+    var buf: [4]u8 = undefined;
+    const needle = (try needleBytes(args[1], &buf, loc, ".indexOf")) orelse return Value.initInteger(-1);
+    if (args.len == 2) {
+        const idx = charset.codepointIndexOf(hay, needle) orelse return Value.initInteger(-1);
         return Value.initInteger(@intCast(idx));
     }
-    if (args[1].tag() != .string)
-        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".indexOf", .actual = @tagName(args[1].tag()) });
-    const idx = charset.codepointIndexOf(hay, string_collection.asString(args[1])) orelse
-        return Value.initInteger(-1);
-    return Value.initInteger(@intCast(idx));
+    if (args[2].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = ".indexOf", .actual = @tagName(args[2].tag()) });
+    const len = charset.codepointCount(hay) catch return Value.initInteger(-1);
+    const from = args[2].asInteger();
+    const start: usize = if (from < 0) 0 else @min(@as(usize, @intCast(from)), len);
+    const sub = charset.substring(hay, start, len) catch return Value.initInteger(-1);
+    const idx = charset.codepointIndexOf(sub, needle) orelse return Value.initInteger(-1);
+    return Value.initInteger(@intCast(start + idx));
 }
 
-/// `(.lastIndexOf s needle)` → codepoint index of the LAST occurrence, or
-/// -1. JVM reference: java.lang.String#lastIndexOf(String).
+/// `(.lastIndexOf s needle)` / `(.lastIndexOf s needle fromIndex)` → codepoint
+/// index of the LAST occurrence of `needle` at or before `fromIndex` (default:
+/// search the whole string), or -1. `needle` is a substring (String) or a
+/// codepoint (int). A negative `fromIndex` yields -1 (JVM). JVM reference:
+/// java.lang.String#lastIndexOf.
 fn lastIndexOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    try error_catalog.checkArity(".lastIndexOf", args, 2, loc);
-    if (args[1].tag() != .string)
-        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".lastIndexOf", .actual = @tagName(args[1].tag()) });
-    const idx = charset.codepointLastIndexOf(string_collection.asString(args[0]), string_collection.asString(args[1])) orelse
-        return Value.initInteger(-1);
+    if (args.len < 2 or args.len > 3)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = ".lastIndexOf", .got = args.len, .min = 2, .max = 3 });
+    const hay = string_collection.asString(args[0]);
+    var buf: [4]u8 = undefined;
+    const needle = (try needleBytes(args[1], &buf, loc, ".lastIndexOf")) orelse return Value.initInteger(-1);
+    if (args.len == 2) {
+        const idx = charset.codepointLastIndexOf(hay, needle) orelse return Value.initInteger(-1);
+        return Value.initInteger(@intCast(idx));
+    }
+    if (args[2].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = ".lastIndexOf", .actual = @tagName(args[2].tag()) });
+    const from = args[2].asInteger();
+    if (from < 0) return Value.initInteger(-1);
+    const len = charset.codepointCount(hay) catch return Value.initInteger(-1);
+    // A match starting at k ≤ fromIndex occupies [k, k+needleLen); bound the
+    // search region's end at fromIndex + needleLen so the last match within it
+    // is guaranteed to start at or before fromIndex.
+    const needle_cp = charset.codepointCount(needle) catch return Value.initInteger(-1);
+    const end: usize = @min(@as(usize, @intCast(from)) + needle_cp, len);
+    const sub = charset.substring(hay, 0, end) catch return Value.initInteger(-1);
+    const idx = charset.codepointLastIndexOf(sub, needle) orelse return Value.initInteger(-1);
     return Value.initInteger(@intCast(idx));
 }
 
@@ -170,6 +209,23 @@ fn strip(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anye
     _ = env;
     try error_catalog.checkArity(".strip", args, 1, loc);
     return string_collection.alloc(rt, charset.trim(string_collection.asString(args[0])));
+}
+
+/// `(.stripLeading s)` → leading whitespace removed (trailing kept). Sibling
+/// of `.strip`; ships with it per per-class completeness (F-014). JVM ref:
+/// java.lang.String#stripLeading (ASCII whitespace; D-057 Unicode caveat).
+fn stripLeading(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity(".stripLeading", args, 1, loc);
+    return string_collection.alloc(rt, charset.trimLeft(string_collection.asString(args[0])));
+}
+
+/// `(.stripTrailing s)` → trailing whitespace removed (leading kept). Sibling
+/// of `.strip`. JVM ref: java.lang.String#stripTrailing (D-057 Unicode caveat).
+fn stripTrailing(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity(".stripTrailing", args, 1, loc);
+    return string_collection.alloc(rt, charset.trimRight(string_collection.asString(args[0])));
 }
 
 /// `(.equalsIgnoreCase a b)` → ASCII case-insensitive equality. JVM ref:
@@ -222,6 +278,40 @@ fn compareTo(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         }
         if (ca.? != cb.?) return Value.initInteger(@as(i64, ca.?) - @as(i64, cb.?));
     }
+}
+
+/// `(.compareToIgnoreCase a b)` → like `.compareTo` but ASCII case-folded at
+/// each codepoint. Sibling of `.compareTo`; ships with it (F-014). JVM ref:
+/// java.lang.String#compareToIgnoreCase (D-057 Unicode caveat).
+fn compareToIgnoreCase(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity(".compareToIgnoreCase", args, 2, loc);
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = ".compareToIgnoreCase", .actual = @tagName(args[1].tag()) });
+    const sa = string_collection.asString(args[0]);
+    const sb = string_collection.asString(args[1]);
+    var ia = std.unicode.Utf8Iterator{ .bytes = sa, .i = 0 };
+    var ib = std.unicode.Utf8Iterator{ .bytes = sb, .i = 0 };
+    while (true) {
+        const ca = ia.nextCodepoint();
+        const cb = ib.nextCodepoint();
+        if (ca == null and cb == null) return Value.initInteger(0);
+        if (ca == null or cb == null) {
+            const na: i64 = @intCast(charset.codepointCount(sa) catch sa.len);
+            const nb: i64 = @intCast(charset.codepointCount(sb) catch sb.len);
+            return Value.initInteger(na - nb);
+        }
+        const fa = foldAscii(ca.?);
+        const fb = foldAscii(cb.?);
+        if (fa != fb) return Value.initInteger(@as(i64, fa) - @as(i64, fb));
+    }
+}
+
+/// ASCII lower-case fold of a codepoint (non-ASCII passes through), for
+/// case-insensitive compare. Mirrors `std.ascii.toLower` at codepoint width.
+fn foldAscii(cp: u21) u21 {
+    return if (cp >= 'A' and cp <= 'Z') cp + 32 else cp;
 }
 
 /// Implements `(.charAt s i)` → the char at codepoint index `i`
@@ -439,6 +529,16 @@ fn getBytes(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return java_array.fromSlice(rt, buf);
 }
 
+/// `(.intern s)` → the canonical interned instance. cw v1 has no string pool
+/// and strings compare by value, so the receiver is already canonical: return
+/// it unchanged. JVM ref: java.lang.String#intern.
+fn intern(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity(".intern", args, 1, loc);
+    return args[0];
+}
+
 /// Populate the per-Runtime native `.string` descriptor's `method_table`
 /// with String instance methods. Driven from `lang/primitive.zig` at
 /// runtime init (Layer 2 — Layer 0 `runtime/` may not import this
@@ -461,7 +561,9 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "repeat", &repeat },           .{ "replace", &replace },
         .{ "lastIndexOf", &lastIndexOf }, .{ "isBlank", &isBlank },
         .{ "strip", &strip },             .{ "equalsIgnoreCase", &equalsIgnoreCase },
+        .{ "stripLeading", &stripLeading }, .{ "stripTrailing", &stripTrailing },
         .{ "codePointAt", &codePointAt }, .{ "compareTo", &compareTo },
+        .{ "compareToIgnoreCase", &compareToIgnoreCase }, .{ "intern", &intern },
         .{ "matches", &matches },         .{ "replaceAll", &replaceAll },
         .{ "replaceFirst", &replaceFirst }, .{ "split", &split },
         .{ "toCharArray", &toCharArray },   .{ "getBytes", &getBytes },
@@ -577,6 +679,10 @@ test "installNativeMethods populates the native .string descriptor" {
     try testing.expect(td.lookupMethod(null, "concat") != null);
     try testing.expect(td.lookupMethod(null, "repeat") != null);
     try testing.expect(td.lookupMethod(null, "replace") != null);
+    try testing.expect(td.lookupMethod(null, "stripLeading") != null); // F-014 sibling-of-strip
+    try testing.expect(td.lookupMethod(null, "stripTrailing") != null);
+    try testing.expect(td.lookupMethod(null, "compareToIgnoreCase") != null);
+    try testing.expect(td.lookupMethod(null, "intern") != null);
     try testing.expect(td.lookupMethod(null, "noSuchMethod") == null);
 
     // Idempotent: a second call leaves the table length unchanged.

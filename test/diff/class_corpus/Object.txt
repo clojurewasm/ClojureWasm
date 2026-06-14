@@ -1,0 +1,30 @@
+(.toString 42)
+;;=> "42"
+(.toString "hi")
+;;=> "hi"
+(.toString :kw)
+;;=> ":kw"
+(.toString [1 2 3])
+;;=> "[1 2 3]"
+(.toString {:a 1})
+;;=> "{:a 1}"
+(.toString true)
+;;=> "true"
+(.toString \a)
+;;=> "a"
+(.toString 3.5)
+;;=> "3.5"
+(.equals 1 1)
+;;=> true
+(.equals 1 2)
+;;=> false
+(.equals "a" "a")
+;;=> true
+(.equals "a" "b")
+;;=> false
+(.equals [1 2] [1 2])
+;;=> true
+(.equals :k :k)
+;;=> true
+(.equals {:a 1} {:a 1})
+;;=> true
