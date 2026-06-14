@@ -1046,7 +1046,7 @@ concern of clause 4) · principle.md "Ad-hoc-pass smell".
 ## F-014 — Scope goal line: linguistically-general Java only (not a JVM reimpl), per-class completeness when touched, pure-leaning Clojure-lib re-selection, cljw.* = the differentiator
 
 **Status**: `confirmed` — user-declared scope boundary. Amendable only by user
-direction + a Revision history entry. Operationalised by ADR-0136; complements
+direction + a Revision history entry. Operationalised by ADR-0137; complements
 F-013 (F-013 = *how* to respond to a discovered gap; F-014 = *where* the boundary is).
 
 **Declared**: 2026-06-14 (user chat, after the session-stop scope review).
@@ -1068,7 +1068,7 @@ F-013 (F-013 = *how* to respond to a discovered gap; F-014 = *where* the boundar
    Math/System, regex, time, Random, UUID, string/byte IO, the throwable
    vocabulary). JVM-platform artifacts are OUT (gen-class/proxy/compile/bean,
    deep reflection, JDBC, Jackson, AWT, nio channels, StAX, OS threads-as-Java).
-   The D-425 six-model tree + the linguistically-general test decide; ADR-0136 §1.
+   The D-425 six-model tree + the linguistically-general test decide; ADR-0137 §1.
 
 2. **Per-class completeness when touched (the central new invariant).** Any Java
    class that exposes ANY surface method MUST be complete for its *commonly-used
@@ -1100,4 +1100,4 @@ Micro-coverage-grind smell), and it forbids the partial-class trap.
 - 2026-06-14 added: user drew the scope goal line during the post-session review,
   asking for per-class completeness, a linguistically-general Java boundary,
   pure-leaning lib re-selection, and a cljw.* differentiator purpose. Recorded as
-  law; operationalised by ADR-0136.
+  law; operationalised by ADR-0137.

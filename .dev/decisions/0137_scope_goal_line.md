@@ -1,9 +1,16 @@
-# ADR-0136 — Scope goal line: Java surface boundary, per-class completeness, pure-leaning library re-selection, cljw.* differentiator surface
+# ADR-0137 — Scope goal line: Java surface boundary, per-class completeness, pure-leaning library re-selection, cljw.* differentiator surface
 
 **Status**: Proposed → Accepted (2026-06-14). User-directed (chat 2026-06-14);
 operationalises the new **F-014** (project_facts). Complements F-013 (how to
 respond to a discovered gap: comprehensive + canonical) by fixing **where the
 boundary is**.
+
+> **Renumbered 0136 → 0137 (2026-06-14)**: this ADR was issued the day after
+> ADR-0136 (host-frontier boundary, 2026-06-13) but collided on the same number.
+> Per the time-ordered max+1 rule (CLAUDE.md), the earlier host-frontier ADR
+> keeps 0136 and this scope ADR becomes 0137. The two are siblings: 0136 is the
+> per-method admit/deny decision procedure; 0137 (this) is the per-class
+> completeness + library + cljw.* goal line built on top of it.
 
 ## Context
 
@@ -84,6 +91,25 @@ against the `clj` oracle**:
     OPAQUE/Tier-D line, never silent absence.
   - `compat_tiers.yaml` `methods:` becomes a generated index derived from the
     passing corpus, not a hand-maintained list.
+
+**Mechanism LANDED (2026-06-14, D-431 first cut).** The infra is wired and the
+two highest-frequency bare classes are closed:
+  - `scripts/clj_diff_sweep.sh` gained `--class-corpus <Class>` (writes
+    `test/diff/class_corpus/<Class>.txt`); `scripts/check_corpus_regression.sh`
+    now scans `clj_corpus/` AND `class_corpus/`, so the per-class corpus is gated
+    by the existing smoke step (`corpus_regression`) — no new gate wiring.
+  - `String.txt` (44 goldens) + `Object.txt` (15 goldens, universal methods)
+    landed. Building String's corpus surfaced real completeness gaps the JVM
+    surface had and cljw lacked — `.indexOf`/`.lastIndexOf` fromIndex+codepoint
+    overloads, `.stripLeading`/`.stripTrailing`, `.compareToIgnoreCase`,
+    `.intern` — all fixed in the same cycle (the oracle-catches-under-scoping
+    property in action). Accepted-divergence methods (`.hashCode` AD-009,
+    `.getClass` AD-003, nil-receiver) are correctly OUT of the corpus (locked by
+    their AD pins instead).
+  - REMAINING (D-431 continues): the ~18 other in-scope bare classes
+    (java.util containers / Pattern-Matcher / throwable family), the mechanical
+    stop-chasing rule (sharpening b), the frequency-anchored Axis-1 list
+    (sharpening c), and the generated `compat_tiers.yaml` `methods:` index.
 
 ### Axis 3 — Clojure libraries: pure-leaning re-selection
 

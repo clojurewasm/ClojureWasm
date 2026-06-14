@@ -12,13 +12,16 @@
   -Doptimize=ReleaseSafe` — bare `zig build` = Debug and overwrites zig-out, so
   it is for hand experiments only.
 
-- **First task on resume MUST be**: **D-431** — operationalise the F-014 / ADR-0136
-  goal line's per-class completeness as a REAL gate (the DA-corrected mechanism =
-  oracle-derived per-class method corpus). Step 1: verify the `clojure-corpus`
-  method-frequency data exists in usable form (`docs/works/` / `00a_frequency_overview.md`);
-  then build `test/diff/class_corpus/<Class>.txt` for String + Object first (most-used,
-  currently `methods:`-bare), gate via the EXISTING `clj_diff_sweep.sh` +
-  `check_corpus_regression.sh`. Big-bang per class (clj_diff_sweep.md Discipline 2).
+- **First task on resume MUST be**: **D-431** (PARTIAL) — continue the F-014 /
+  ADR-0137 per-class completeness gate. Mechanism is LANDED: `clj_diff_sweep.sh
+  --class-corpus <Class>` → `test/diff/class_corpus/<Class>.txt`, gated by the
+  EXISTING `corpus_regression` smoke step (now scans `clj_corpus/` + `class_corpus/`).
+  `String` (44) + `Object` (15) closed (the surface gaps they surfaced — `.indexOf`/
+  `.lastIndexOf` overloads, `.stripLeading/Trailing`, `.compareToIgnoreCase`, `.intern`
+  — fixed same cycle). NEXT: the ~18 remaining in-scope bare classes, java.util
+  containers / Pattern-Matcher / throwable family first. Frequency source =
+  `private/clojure_frequent_java_interop/00a_frequency_overview.md`. Big-bang per
+  class (clj_diff_sweep.md Discipline 2).
 - **Resume PRIORITY SEQUENCE** (so the goal + opinion-residuals resolve by
   `/continue` alone, finished-form-first): (1) D-431 completeness gate; (2) then
   pure-lib verification per F-014 clause 3 (grow `verified_projects/`, stop-chasing
@@ -73,22 +76,9 @@ AD-031/032. Filed D-424/430 (open); D-414/421-429 discharged.
 ## Cold-start reading order (resume)
 
 handover → **`.dev/project_facts.md` F-014** (scope goal line, user-owned) +
-**ADR-0136** (its operationalisation) → `.dev/debt.yaml` (next: D-431 completeness
+**ADR-0137** (its operationalisation; 0136 = sibling host-frontier ADR) → `.dev/debt.yaml` (next: D-431 completeness
 gate; open: D-418/424/430/432; discharged this session: D-414/421-429) →
 for the experiment: `private/notes/p14-wasm-component-experiment.md` +
 `private/20260613_handover_from_zwasm/handover_v2.md`. zwasm repo =
 `~/Documents/MyProducts/zwasm_from_scratch/` (read-only; HEAD ≥ `33e0100c`).
 clj oracle = `~/Documents/OSS/clojure/` + `clj -J-Xmx2g -M` (`timeout 60`).
-
-## Stopped — user requested
-
-User instruction (2026-06-14): "今引いたゴールと…意見についての残件的なやつが、
-新たなクリアセッションからcontinueするだけで逐次解消していけるように…配線、参照
-チェーン監査を再度行ってください。そしたら止めてください". Done: drew the scope
-goal line (F-014 + ADR-0136, DA-corrected), then audited the resume wiring —
-ref-integrity clean (check_debt_id_refs green; a stray comm hit was the
-Unicode-version string UCD-16.0.0, not a debt ref), filed D-431 (completeness
-gate) + D-432 (seq-key hash residual,
-was buried in D-427), and rewired this handover's first-task + PRIORITY SEQUENCE
-so a fresh `/continue` resolves the goal + residuals finished-form-first.
-Resume per the Resume contract above (first = D-431).
