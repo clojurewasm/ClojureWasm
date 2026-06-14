@@ -1,0 +1,14 @@
+(.pattern (java.util.regex.Pattern/compile "a+"))
+;;=> "a+"
+(.pattern (java.util.regex.Pattern/compile "\\d+"))
+;;=> "\\d+"
+(.pattern #"\d+")
+;;=> "\\d+"
+(java.util.regex.Pattern/quote "a.b")
+;;=> "\\Qa.b\\E"
+(java.util.regex.Pattern/matches "\\d+" "123")
+;;=> true
+(java.util.regex.Pattern/matches "\\d+" "12a")
+;;=> false
+(java.util.regex.Pattern/matches "[a-z]+" "abc")
+;;=> true

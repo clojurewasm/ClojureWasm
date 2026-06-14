@@ -14,10 +14,11 @@
 //! the entry point for `(java.util.regex.Pattern/compile ...)`
 //! and similar Java-style invocations.
 //!
-//! Status: `quote` (the static literal-quoting method) is wired; the
-//! remaining static surface (`compile` / `matches` + flag constants) is
-//! still an empty reservation. The `runtime/regex/` impl is complete and
-//! already honors `\Q…\E`, so `quote` is a pure string transform over it.
+//! Status: static `quote` / `compile` / `matches` are wired (D-431 per-class
+//! completeness); flag constants remain a reservation. Instance `.matcher` +
+//! `.pattern` (source accessor) are on the `.regex` native descriptor. The
+//! `runtime/regex/` impl is complete and already honors `\Q…\E`, so `quote` is
+//! a pure string transform and `compile` is `re-pattern`'s `regex_value.alloc`.
 
 const std = @import("std");
 const host_api = @import("../../_host_api.zig");
@@ -29,6 +30,9 @@ const SourceLocation = @import("../../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../../error/catalog.zig");
 const string_collection = @import("../../../collection/string.zig");
 const matcher_mod = @import("Matcher.zig");
+const regex_value = @import("../../../regex/value.zig");
+const regex_match = @import("../../../regex/match.zig");
+const compile_mod = @import("../../../regex/compile.zig");
 
 /// Implements `(java.util.regex.Pattern/quote s)`.
 /// Spec: returns a literal-pattern string — `s` wrapped in `\Q…\E` so every
@@ -71,6 +75,46 @@ fn quote(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anye
     return string_collection.alloc(rt, out.items);
 }
 
+/// Implements `(java.util.regex.Pattern/compile s)` — compile a pattern source
+/// into a regex value. Identical semantics to `clojure.core/re-pattern` (shares
+/// `regex_value.alloc`); an already-compiled regex passes through. JVM ref:
+/// java.util.regex.Pattern#compile. cw v1 tier: A.
+fn compile(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.util.regex.Pattern/compile", args, 1, loc);
+    if (args[0].tag() == .regex) return args[0];
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_invalid, loc, .{
+            .fn_name = "java.util.regex.Pattern/compile",
+            .expected = "string",
+            .actual = @tagName(args[0].tag()),
+        });
+    return regex_value.alloc(rt, string_collection.asString(args[0]), .{}) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.PatternTooLarge => error_catalog.raise(.regex_pattern_too_large, loc, .{}),
+        else => error_catalog.raise(.feature_not_supported, loc, .{ .name = "java.util.regex.Pattern/compile (unsupported pattern syntax)" }),
+    };
+}
+
+/// Implements `(java.util.regex.Pattern/matches regex input)` — whether `input`
+/// matches the pattern string `regex` in FULL (anchored both ends), the static
+/// convenience form of `Pattern.compile(regex).matcher(input).matches()`. JVM
+/// ref: java.util.regex.Pattern#matches. cw v1 tier: A.
+fn matches(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.util.regex.Pattern/matches", args, 2, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "java.util.regex.Pattern/matches", .actual = @tagName(args[0].tag()) });
+    if (args[1].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "java.util.regex.Pattern/matches", .actual = @tagName(args[1].tag()) });
+    var program = compile_mod.compile(rt.gpa, string_collection.asString(args[0]), .{}) catch
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "java.util.regex.Pattern/matches (invalid regex pattern)" });
+    defer program.deinit(rt.gpa);
+    const m = regex_match.matchFull(rt.gpa, &program, string_collection.asString(args[1])) catch
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "java.util.regex.Pattern/matches" });
+    return Value.initBoolean(m != null);
+}
+
 /// Implements `(.matcher re s)` — mint a `java.util.regex.Matcher` cursor
 /// over the receiver pattern + input string (`clojure.core/re-matcher`'s body).
 /// JVM reference: java.util.regex.Pattern#matcher. cw v1 tier: A.
@@ -78,6 +122,17 @@ fn matcherMethod(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     _ = env;
     try error_catalog.checkArity("matcher", args, 2, loc);
     return matcher_mod.fromPattern(rt, args[0], args[1], loc);
+}
+
+/// Implements `(.pattern re)` — the pattern source string the regex was
+/// compiled from (e.g. `#"\d+"` → `"\\d+"`). Also Java `Pattern.toString()`.
+/// JVM reference: java.util.regex.Pattern#pattern. cw v1 tier: A.
+fn patternMethod(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("pattern", args, 1, loc);
+    if (args[0].tag() != .regex)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "pattern", .expected = "regex", .actual = @tagName(args[0].tag()) });
+    return string_collection.alloc(rt, regex_value.asRegex(args[0]).source());
 }
 
 /// Install the `.regex`-tag native instance methods (`(.matcher re s)`).
@@ -88,23 +143,36 @@ pub fn installNativeMethods(rt: *Runtime) !void {
     const td = try rt.nativeDescriptor(.regex);
     if (td.method_table.len != 0) return; // idempotent re-run
     const gpa = rt.gc.infra;
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 1);
-    entries[0] = .{
-        .protocol_name = "",
-        .method_name = try gpa.dupe(u8, "matcher"),
-        .method_val = Value.initBuiltinFn(&matcherMethod),
+    const specs = .{
+        .{ "matcher", &matcherMethod },
+        .{ "pattern", &patternMethod },
     };
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
+    inline for (specs, 0..) |spec, i| {
+        entries[i] = .{
+            .protocol_name = "",
+            .method_name = try gpa.dupe(u8, spec[0]),
+            .method_val = Value.initBuiltinFn(spec[1]),
+        };
+    }
     td.method_table = entries;
 }
 
 fn initPattern(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent re-run
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 1);
-    entries[0] = .{
-        .protocol_name = "",
-        .method_name = try gpa.dupe(u8, "quote"),
-        .method_val = Value.initBuiltinFn(&quote),
+    const specs = .{
+        .{ "quote", &quote },
+        .{ "compile", &compile },
+        .{ "matches", &matches },
     };
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
+    inline for (specs, 0..) |spec, i| {
+        entries[i] = .{
+            .protocol_name = "",
+            .method_name = try gpa.dupe(u8, spec[0]),
+            .method_val = Value.initBuiltinFn(spec[1]),
+        };
+    }
     td.method_table = entries;
 }
 
