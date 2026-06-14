@@ -502,3 +502,18 @@ accepted:
       (not the FQCN) is additionally the AD-003 no-JVM-class surface.
     derives_from: "F-005 (numeric tower: collapse + narrow-when-fits) + AD-016 (biginteger ≡ bigint, narrow integer results) + AD-003 (simple class name, no JVM Class)"
     pin: "test/e2e/phase14_ratio_accessors.sh — num + long_eq lock cljw's Long-narrowed numerator/denominator (the divergent type, not clj's BigInteger); floor/ceil-on-ratio derive directly from this narrowing. verified_projects/math.numeric-tower/verify.clj exercises the full surface (round/floor/ceil/sqrt/expt/gcd/lcm/abs) value-equal to clj."
+  - id: "AD-032"
+    summary: "`(seq (java.util.HashMap. …))` yields cljw MapEntry pairs (`[k v]`), not clj's `java.util.HashMap$Node` objects; `(seq (java.util.ArrayList. …))` yields a plain element seq. into / keys / vals / count / destructuring are identical."
+    example: '(seq hm) => cljw ([:a 9]) / clj (#object[java.util.HashMap$Node 0x.. :a=9]) ; (into {} hm) => {:a 9} in both'
+    why: |-
+      cljw's java.util.HashMap/ArrayList are `.host_instance` surfaces backed by a
+      cljw map / vector Value (D-425); their `(Seqable -seq)` returns cljw's own
+      entry/element seq. clj wraps each entry in a `java.util.HashMap$Node` (a Java
+      Map.Entry whose pr form embeds a non-reproducible `0xADDR` identity hash —
+      the AD-002 class). cljw is no-JVM (ADR-0059): there is no Map$Node type and
+      no identity hash to mirror, so it yields the cljw MapEntry, which is strictly
+      MORE useful (works with key/val/destructuring directly). The VALUE is
+      equivalent — `(into {} hm)` / `(keys hm-via-seq)` / `(count hm)` agree with
+      clj — only the raw entry OBJECT type in `(seq hm)` differs.
+    derives_from: "ADR-0059 (no-JVM: no java.util.HashMap$Node) + AD-002 (Java entry pr embeds a non-reproducible identity hash) + D-425"
+    pin: "test/e2e/phase14_hashmap.sh — seq_cljw_entry asserts ([:a 9]) (the cljw MapEntry form); into asserts {:a 9} (clj-equal). test/e2e/phase14_arraylist.sh — seq asserts the plain element seq."
