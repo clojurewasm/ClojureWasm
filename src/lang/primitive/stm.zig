@@ -285,6 +285,16 @@ pub fn ensureFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return lock_tx.doEnsure(tx, args[0].decodePtr(*ref_mod.Ref));
 }
 
+/// `(__in-transaction?)` — true iff an STM transaction is running on this thread
+/// (clj `LockingTransaction/isRunning`). Backs the `io!` macro's guard so an I/O
+/// form inside `dosync` (which may retry) raises instead of running repeatedly.
+pub fn inTransactionFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("__in-transaction?", args, 0, loc);
+    return Value.initBoolean(lock_tx.inTransaction());
+}
+
 // --- registration ---
 
 const Entry = struct {
@@ -295,6 +305,7 @@ const Entry = struct {
 const ENTRIES = [_]Entry{
     .{ .name = "ref", .f = &refFn },
     .{ .name = "deref", .f = &derefFn },
+    .{ .name = "__in-transaction?", .f = &inTransactionFn },
     .{ .name = "__run-in-transaction", .f = &runInTransactionFn },
     .{ .name = "ref-set", .f = &refSetFn },
     .{ .name = "alter", .f = &alterFn },

@@ -960,6 +960,18 @@
 (def error-mode
   (fn* [a] (if (__agent-fail-mode? a) :fail :continue)))
 
+;; `(io! & body)` — guard I/O against transaction retry. A `dosync` body may run
+;; more than once, so I/O inside it would repeat; `io!` throws
+;; IllegalStateException when a transaction is running on this thread, else runs
+;; body. An optional leading string is the exception message (clj `io!`). Uses
+;; `new` (not the `.`-suffix form) so the class symbol survives syntax-quote.
+(defmacro io! [& body]
+  (let [message (when (string? (first body)) (first body))
+        body (if message (next body) body)]
+    `(if (__in-transaction?)
+       (throw (new IllegalStateException ~(if message message "I/O in transaction")))
+       (do ~@body))))
+
 ;; `(filterv pred coll)` — eager `filter` returning a vector.
 (def filterv
   (fn* [pred coll]

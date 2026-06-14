@@ -25,6 +25,7 @@ const higher_order = @import("higher_order.zig");
 const root_set = @import("../../runtime/gc/root_set.zig");
 const map_mod = @import("../../runtime/collection/map.zig");
 const list_mod = @import("../../runtime/collection/list.zig");
+const vector_mod = @import("../../runtime/collection/vector.zig");
 const ex_info = @import("../../runtime/collection/ex_info.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
 
@@ -154,6 +155,49 @@ pub fn swapFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
         if (atom_mod.compareAndSet(a, old, newval)) {
             try notifyWatches(rt, env, a, old, newval, loc);
             return newval;
+        }
+    }
+}
+
+/// `(swap-vals! a f & args)` — like `swap!` but returns `[old-value new-value]`
+/// (clj 1.9 Atom.swapVals). Same CAS-retry + validate + watch-fire as `swap!`;
+/// only the return shape differs.
+pub fn swapValsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    if (args.len < 2) {
+        return error_catalog.raise(.arity_below_min, loc, .{ .fn_name = "swap-vals!", .got = args.len, .min = 2 });
+    }
+    try requireAtom("swap-vals!", args[0], loc);
+    const a = args[0];
+    const f = args[1];
+    while (true) {
+        const old = atom_mod.current(a);
+        var call_args: std.ArrayList(Value) = .empty;
+        defer call_args.deinit(rt.gpa);
+        try call_args.append(rt.gpa, old);
+        try call_args.appendSlice(rt.gpa, args[2..]);
+        const newval = try higher_order.invokeCallable(rt, env, f, call_args.items, loc);
+        try validateOrThrow(rt, env, a, newval, loc);
+        if (atom_mod.compareAndSet(a, old, newval)) {
+            try notifyWatches(rt, env, a, old, newval, loc);
+            return vector_mod.fromSlice(rt, &[_]Value{ old, newval });
+        }
+    }
+}
+
+/// `(reset-vals! a newval)` — like `reset!` but returns `[old-value new-value]`
+/// (clj 1.9 Atom.resetVals). A CAS-retry so the returned `old` is exactly the
+/// value this call replaced under contention (`reset!` does a plain store).
+pub fn resetValsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("reset-vals!", args, 2, loc);
+    try requireAtom("reset-vals!", args[0], loc);
+    const a = args[0];
+    const newval = args[1];
+    try validateOrThrow(rt, env, a, newval, loc);
+    while (true) {
+        const old = atom_mod.current(a);
+        if (atom_mod.compareAndSet(a, old, newval)) {
+            try notifyWatches(rt, env, a, old, newval, loc);
+            return vector_mod.fromSlice(rt, &[_]Value{ old, newval });
         }
     }
 }
@@ -366,7 +410,9 @@ const Entry = struct {
 const ENTRIES = [_]Entry{
     .{ .name = "atom", .f = &atomFn },
     .{ .name = "swap!", .f = &swapFn },
+    .{ .name = "swap-vals!", .f = &swapValsFn },
     .{ .name = "reset!", .f = &resetFn },
+    .{ .name = "reset-vals!", .f = &resetValsFn },
     .{ .name = "compare-and-set!", .f = &compareAndSetFn },
     .{ .name = "add-watch", .f = &addWatchFn },
     .{ .name = "remove-watch", .f = &removeWatchFn },

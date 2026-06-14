@@ -42,3 +42,13 @@
 ;;=> true
 (let [a (agent 0)] (send a (fn [s] (Thread/sleep 200) (inc s))) [(await-for 10 a) @a])
 ;;=> [false 0]
+(let [a (atom 1)] (swap-vals! a inc))
+;;=> [1 2]
+(let [a (atom 1)] (swap-vals! a + 10))
+;;=> [1 11]
+(let [a (atom 5)] (reset-vals! a 9))
+;;=> [5 9]
+(io! 42)
+;;=> 42
+(try (dosync (io! 1)) (catch IllegalStateException e :io-in-txn))
+;;=> :io-in-txn
