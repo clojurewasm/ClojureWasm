@@ -1,0 +1,30 @@
+(let [sb (StringBuilder.)] (.append sb "a") (.append sb "b") (.toString sb))
+;;=> "ab"
+(let [sb (StringBuilder.)] (.append sb "x") (.length sb))
+;;=> 1
+(let [sb (StringBuilder. "init")] (.toString sb))
+;;=> "init"
+(let [sb (StringBuilder.)] (.append sb 42) (.toString sb))
+;;=> "42"
+(let [sb (StringBuilder.)] (.append sb true) (.toString sb))
+;;=> "true"
+(let [sb (StringBuilder.)] (.append sb \z) (.toString sb))
+;;=> "z"
+(let [sb (StringBuilder.)] (.append sb 3.5) (.toString sb))
+;;=> "3.5"
+(let [sb (StringBuilder.)] (.append sb "a") (.append sb "b") (.reverse sb) (.toString sb))
+;;=> "ba"
+(let [sb (StringBuilder.)] (.append sb "hello") (.charAt sb 1))
+;;=> \e
+(let [sb (StringBuilder.)] (.append sb "hello") (.deleteCharAt sb 0) (.toString sb))
+;;=> "ello"
+(let [sb (StringBuilder.)] (.append sb "hello") (.insert sb 0 "X") (.toString sb))
+;;=> "Xhello"
+(let [sb (StringBuilder.)] (.append sb "hello") (.setLength sb 3) (.toString sb))
+;;=> "hel"
+(let [sb (StringBuilder.)] (.append sb "abc") (.isEmpty sb))
+;;=> false
+(let [sb (StringBuilder.)] (.isEmpty sb))
+;;=> true
+(let [sb (StringBuilder.)] (.append sb "a") (.append sb "b") (.append sb "c") (.toString sb))
+;;=> "abc"

@@ -12,6 +12,12 @@
 //! through `print.writeStrValue` (so it matches `(str x)` / Java
 //! String.valueOf) and grows the buffer; the descriptor's `host_finalise` hook
 //! frees the buffer + the list struct when the instance is swept.
+//!
+//! Methods (D-431 per-class completeness): <init> + append (+ sub-range arity) /
+//! toString / length / isEmpty / charAt / deleteCharAt / insert / setLength /
+//! reverse. The index/mutate methods are codepoint-indexed (ADR-0014, like
+//! String); `.length` returns BYTE length (pre-existing; == codepoint count for
+//! ASCII, the common StringBuilder content).
 
 const std = @import("std");
 const host_api = @import("../_host_api.zig");
@@ -109,6 +115,111 @@ fn length(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
     return Value.initInteger(@intCast(listOf(args[0]).items.len));
 }
 
+/// `(.isEmpty sb)` — whether the buffer has length zero (JVM 15+).
+fn isEmpty(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("isEmpty", args, 1, loc);
+    return Value.initBoolean(listOf(args[0]).items.len == 0);
+}
+
+/// `(.charAt sb i)` — the char at codepoint index `i` (codepoint-indexed per
+/// ADR-0014, like String.charAt). JVM ref: java.lang.StringBuilder#charAt.
+fn charAt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("charAt", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = ".charAt", .actual = @tagName(args[1].tag()) });
+    const s = listOf(args[0]).items;
+    const off = byteOffsetOfCodepoint(s, args[1].asInteger()) orelse
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/charAt" });
+    if (off >= s.len)
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/charAt" });
+    var cit = std.unicode.Utf8Iterator{ .bytes = s[off..], .i = 0 };
+    const cp = cit.nextCodepoint() orelse
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/charAt" });
+    return Value.initChar(cp);
+}
+
+/// `(.deleteCharAt sb i)` — remove the codepoint at index `i`; returns the
+/// builder (Java chains). JVM ref: java.lang.StringBuilder#deleteCharAt.
+fn deleteCharAt(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("deleteCharAt", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = ".deleteCharAt", .actual = @tagName(args[1].tag()) });
+    const lp = listOf(args[0]);
+    const i = args[1].asInteger();
+    const off = byteOffsetOfCodepoint(lp.items, i) orelse
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/deleteCharAt" });
+    if (off >= lp.items.len)
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/deleteCharAt" });
+    const next = byteOffsetOfCodepoint(lp.items, i + 1) orelse
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/deleteCharAt" });
+    try lp.replaceRange(rt.gc.infra, off, next - off, &.{});
+    return args[0];
+}
+
+/// `(.insert sb offset x)` — insert `x`'s str-form at codepoint `offset`;
+/// returns the builder. JVM ref: java.lang.StringBuilder#insert.
+fn insert(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity("insert", args, 3, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = ".insert", .actual = @tagName(args[1].tag()) });
+    const lp = listOf(args[0]);
+    const off = byteOffsetOfCodepoint(lp.items, args[1].asInteger()) orelse
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/insert" });
+    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+    defer aw.deinit();
+    try print_mod.writeStrValue(rt, env, &aw.writer, args[2]);
+    try lp.insertSlice(rt.gc.infra, off, aw.writer.buffered());
+    return args[0];
+}
+
+/// `(.setLength sb n)` — truncate to `n` codepoints, or pad with NUL bytes
+/// when extending (JVM behaviour); returns nil (void). JVM ref:
+/// java.lang.StringBuilder#setLength.
+fn setLength(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("setLength", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = ".setLength", .actual = @tagName(args[1].tag()) });
+    const n = args[1].asInteger();
+    if (n < 0)
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/setLength" });
+    const lp = listOf(args[0]);
+    const cur: i64 = @intCast(std.unicode.utf8CountCodepoints(lp.items) catch lp.items.len);
+    if (n <= cur) {
+        const off = byteOffsetOfCodepoint(lp.items, n).?; // n ≤ cur ⇒ in range
+        try lp.resize(rt.gc.infra, off);
+    } else {
+        var k: i64 = cur;
+        while (k < n) : (k += 1) try lp.append(rt.gc.infra, 0); // JVM pads with NUL bytes (clj-faithful extend)
+    }
+    return Value.nil_val;
+}
+
+/// `(.reverse sb)` — reverse the buffer by codepoint (surrogate-safe like the
+/// JVM, since cljw stores whole codepoints); returns the builder. JVM ref:
+/// java.lang.StringBuilder#reverse.
+fn reverse(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("reverse", args, 1, loc);
+    const lp = listOf(args[0]);
+    const s = lp.items;
+    const tmp = try rt.gpa.alloc(u8, s.len);
+    defer rt.gpa.free(tmp);
+    var write_end: usize = s.len;
+    var it = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
+    while (it.nextCodepointSlice()) |slice| {
+        write_end -= slice.len;
+        @memcpy(tmp[write_end .. write_end + slice.len], slice);
+    }
+    @memcpy(lp.items, tmp);
+    return args[0];
+}
+
 fn finaliseState(infra: std.mem.Allocator, state: *[host_instance.STATE_WORDS]u64) void {
     const lp: *ByteList = @ptrFromInt(state[0]);
     lp.deinit(infra);
@@ -122,6 +233,12 @@ const METHODS = [_]MethodSpec{
     .{ .name = "append", .f = &append },
     .{ .name = "toString", .f = &toString },
     .{ .name = "length", .f = &length },
+    .{ .name = "isEmpty", .f = &isEmpty },
+    .{ .name = "charAt", .f = &charAt },
+    .{ .name = "deleteCharAt", .f = &deleteCharAt },
+    .{ .name = "insert", .f = &insert },
+    .{ .name = "setLength", .f = &setLength },
+    .{ .name = "reverse", .f = &reverse },
 };
 
 fn initSbDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
