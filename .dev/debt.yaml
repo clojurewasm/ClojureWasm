@@ -2203,13 +2203,13 @@ active:
       **`add-watch` / `remove-watch` unimplemented** — `(add-watch a key (fn [k r old new] …))`→cljw `name_error` / clj registers a watcher fired on every `swap!`/`reset!`/`compare-and-set!` change with `[key ref old new]`. Needs: a watch table on the atom struct (`runtime/atom.zig` — a `key→fn` map, key compared by `=`), `add-watch`/`remove-watch` primitives (or `.clj` over a `rt/__add-watch!` leaf), and a notification call in `swapFn`/`resetFn`/`compare-and-set!` after the value changes (iterate watches, `vtable.callFn` each with `[key ref old new]`). Order is unspecified in clj (cljw map order is fine). `swap-vals!`/`reset-vals!` from the same sweep landed §A26 (`.clj` over swap!/reset!). Surfaced 2026-06-02 by the atom/state clj sweep. **Resolution: see D-157** (the authoritative Phase-15 atom+watch row) — `add-watch`/`remove-watch` land when the Atom struct's additive `watches` field is appended at Phase 15. Cross-ref D-157 / F-003 / F-011. | Phase 15 (folded into D-157)
     last_reviewed: "2026-06-02"
   - id: "D-005"
-    status: "Phase 17 target"
+    status: "gap area III — VM perf→JIT (§9.22): broad ARM64/x86_64 JIT go/no-go. Future/distal — decided after the fusion slice + the narrow ARM64 JIT (milestone M) land. (Was 'Phase 17 target'; re-barriered per ADR-0142.)"
     category: "perf"
     barrier: |-
       ARM64 JIT decision (go / no-go) | Phase 17 bench σ < 5%
     last_reviewed: "2026-05-23"
   - id: "D-006"
-    status: "Phase 16 target"
+    status: "gap area II — Wasm/edge-native (§9.18): Wasm FFI re-introduction via Pod boundary. Future. zwasm v2 is now stable + SHA-pinned (done); the Pod-boundary FFI shape is the remaining gap. (Was 'Phase 16 target'; ADR-0142.)"
     category: "scope"
     barrier: |-
       Wasm FFI re-introduction via Pod boundary | zwasm v2 stable + ADR-0006 review
@@ -2233,7 +2233,7 @@ active:
       ARCHITECTURE.md drift — new subsystems (GC / STM / lazy-seq / multimethod) must appear in the "Where to look" map | Phase 5/7/11/14 boundary audit
     last_reviewed: "2026-05-23"
   - id: "D-020"
-    status: "Phase 15 target (partial-discharge 8864ca4)"
+    status: "gap area I — Concurrency (§9.17): cmpxchgLockBits header CAS. mark-bit set/clear discharged (5.3.b.2). The lock-bit CAS likely LANDED with object_monitor.zig (ADR-0092 Option A locking) — verify the residual + discharge. (Was 'Phase 15 target'; re-barriered per ADR-0142.)"
     category: "runtime"
     barrier: |-
       Object header bit helpers per JVM_TO_ZIG §8.2. **mark-bit set/clear discharged at 5.3.b.2** via `runtime/gc/mark_sweep.zig` mark + clearMarks (read/write `gc_and_lock.gc_mark` bit 0). **`cmpxchgLockBits` still pending** — wires at Phase 15 alongside `monitor-enter` / `monitor-exit` / `locking` activation per ADR-0009 amendment 2 (lock_state side of gc_and_lock). | Phase 15 entry — STM activation
@@ -2281,13 +2281,13 @@ active:
       `src/lang/primitive/` (math / core / error today, 3 files) will grow with collection / sequence / io / numeric / type / spec primitives across Phase 5-14. ROADMAP A6 ≤ 1000-lines cap will breach on `core.zig` (general primitives bucket) first. Sub-directory restructure (`primitive/core/`, `primitive/sequence/`, etc.) should land when the second primitive file passes ~500 lines. Owner picks exact split shape **within F-NNN envelope** (= F-005 numeric tower primitives organisation must remain coherent across the split). | each Phase 5+ primitive wave
     last_reviewed: "2026-05-28"
   - id: "D-035"
-    status: "Phase 17 entry"
+    status: "gap area III — VM perf→JIT (§9.19): extract a backend-shared callable-dispatch layer BEFORE adding the JIT vtable. Future — opens with the narrow-JIT (milestone M) / broad-JIT decision. (Was 'Phase 17 entry'; ADR-0142.)"
     category: "structure"
     barrier: |-
       `vm.installVTable` currently reuses `tree_walk.treeWalkCall` + `valueTypeKey` + `callFunction` (4.8 design — single seam is the `evalChunk` vtable hook). Phase 17 adds a 3rd backend (JIT per ADR-0005); 3-backend reuse of TreeWalk's `callFunction` skews the dependency graph. Extract a backend-shared "callable dispatch" layer (likely `src/runtime/dispatch/callable.zig`) at Phase 17 entry before adding the JIT vtable. Owner picks exact extraction shape **within F-NNN envelope** (= F-004 type set + F-005 numeric tower dispatch + F-006 GC root through callable dispatch must work unchanged through the new layer). | Phase 17 entry
     last_reviewed: "2026-05-23"
   - id: "D-036"
-    status: "Phase 16 entry"
+    status: "gap area II — Wasm/edge-native (§9.18): zwasm v2 integration master row. Direction confirmed (F-001/004/006/008); zwasm is SHA-pinned + interp-embedded (done). Remaining: the finished-form embedding shape (D-350) + JIT-coordination (D-035). (Was 'Phase 16 entry'; ADR-0142.)"
     category: "scope"
     barrier: |-
       wasm FFI confirmed **unavoidable**. **Direction confirmed (F-001 + F-004 + F-006 + F-008)**: F-004 day-1 reserves NaN-box `funcref` / `externref` inline slots in Group D for zwasm-v2 reference types. F-006 keeps cw heap and Wasm linear memory in **separate spaces**; zwasm internal bookkeeping accepts cw GC allocator via `Engine.init(allocator)` (cw v0 D110 dual-GC leak does not recur). F-008 pins zwasm v2 spec (ADR-0109) review + cw v1 stances. JIT-coordination with cw v1 Phase 17 JIT (D-035) lands at Phase 16 entry. | Phase 16 entry + zwasm v2 rewrite (ADR-0109) completion
@@ -2347,7 +2347,7 @@ active:
       in-repo during the D-037 spike; residual gaps re-defer per the D-037 guardrail
     last_reviewed: "2026-06-05"
   - id: "D-039"
-    status: "Phase 16 entry"
+    status: "gap area II — Wasm/edge-native (§9.18): cw io_interface (Tier 1) vs zwasm WASI responsibility split. Future — decided when the unified wasm embedding (D-350) lands. (Was 'Phase 16 entry'; ADR-0142.)"
     category: "structure"
     barrier: |-
       cw v1 `io_interface.zig` (Tier 1) と zwasm v2 WASI (`linker.defineWasi(cfg)`) の責務分離。 (a) 別 layer に分離 default (cw io_interface は cw v1 内部 I/O 抽象、 WASI は wasm 統合用に独立)、 vs (b) cw `io_default.zig` (Tier 2) の実装を WASI 経由にする option。 Phase 16 entry owner が `structure_plan.md` の `runtime/wasm/` + `runtime/io_default.zig` 配置を見て判定。 | Phase 16 entry
