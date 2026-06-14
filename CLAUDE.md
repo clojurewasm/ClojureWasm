@@ -192,11 +192,12 @@ lands in `private/notes/<phase>-<task>-survey.md`.
 **Step 0.5 — Debt sweep**
 Read `.dev/debt.yaml`. For each row whose `Last reviewed > 14 days
 ago`, re-evaluate the Barrier predicate. Flip Status if the barrier
-dissolved. **At a Phase entry** (the §9.<N> task list is about to
-open), additionally read every row whose Status names the entering
-phase (`Phase N entry` / `Phase N target` / `Phase N+ ...`) — these
-are the structural-imagination outputs from earlier sessions that
-the current Phase owner is meant to resolve.
+dissolved. **When opening a gap-area unit** (ROADMAP §9.0 / ADR-0142;
+the phase-entry model is retired), additionally read every row whose
+barrier names that gap area (`gap area I/II/III`) — these are the
+draining rows that gap area owns. Any residual `Phase N` status string
+is a not-yet-re-barriered row (R4 work, D-440); resolve it via the §9.0
+phase-number→gap-area redirect.
 
 **Quality-loop floor drain (post-M / F-010 operating mode).** The
 post-M quality-elevation loop is a *repeatable* mode, not a Phase, so
@@ -250,21 +251,19 @@ horizon, record gaps as debt rows scheduled at the owning Phase
 entry, and **defer the structural decision to that owner**; do not
 resolve here. If something feels off, adjust before Step 2.
 
-**Step 1a — Phase reading list** (every Phase entry)
-Read in order: `.dev/handover.md`, **`.dev/project_facts.md`**
-(user-declared invariants the loop must treat as fact, even when
-ROADMAP / ADR text admits other readings), `.dev/ROADMAP.md`
-§9.<N> placeholder (Entry ADRs / **Entry debts** / Reference /
-Skeletons to activate / Deliverables / Final activation step),
-each ADR listed in the placeholder's "Entry ADRs:" line
-**including the Phase N+ migration note section AND every
-Revision history amendment if present** (this is where
-existing-code rewrite scope and inter-Phase corrections are
-narrated per §A25), each `D-NNN` debt row listed in the
-placeholder's "Entry debts:" line (full row text in
-`.dev/debt.yaml`), `compat_tiers.yaml` entry for the function, and
-the JVM Clojure source (`~/Documents/OSS/clojure/`) for the
-function.
+**Step 1a — Unit reading list** (at each gap-area unit's start)
+The phase-entry/placeholder model is retired (ROADMAP §9.0 /
+ADR-0142); read per **gap-area unit** instead. Read in order:
+`.dev/handover.md`, **`.dev/project_facts.md`** (user-declared
+invariants the loop must treat as fact, even when ROADMAP / ADR text
+admits other readings), the relevant `.dev/ROADMAP.md` **§9.0 gap-area
+section** (I Concurrency / II Wasm-edge-native / III VM-perf) — its
+BUILT status + named gaps + the draining `D-NNN` rows — each ADR cited
+there **including any Phase N+ migration note + every Revision history
+amendment** (where existing-code rewrite scope + inter-unit corrections
+are narrated per §A25), the full text of each cited `D-NNN` row (in
+`.dev/debt.yaml`), the `compat_tiers.yaml` entry for the function, and
+the JVM Clojure source (`~/Documents/OSS/clojure/`) for the function.
 
 **Step 2 — Red**
 Write the failing test (Edit / Write). Run; confirm red.
@@ -371,26 +370,30 @@ Copy `.claude/skills/code_learning_doc/TEMPLATE_TASK_NOTE.md` to
 設計判断 / 章を書くときに必ず触れる点. Gitignored. Then immediately
 begin the next task's Step 0.
 
-### When the current phase's task queue empties
+### When the active work unit completes (gap-area model, ADR-0142)
 
-When the active phase's §9.<N> task list has no remaining `[ ]`
-rows:
+The phase-queue model is **RETIRED** (ROADMAP §9.0 / ADR-0142): the
+project is near-complete, so there is no "next PENDING phase
+placeholder" to expand. Phases 9-14 are DONE; the remaining work lives
+in three **gap areas** (I Concurrency-hardening / II Wasm-edge-native /
+III VM-perf fusion→JIT) + a small genuinely-future bucket. When the
+active unit's work runs low, the loop **self-selects** the next unit (it
+never asks the user — see § The only stop's next-task rule):
 
-1. Check `.dev/handover.md` "Next Phase Queue" — if populated,
-   promote those entries to §9.<N+1>'s task table.
-2. Otherwise: read `.dev/ROADMAP.md` Phase tracker → find the
-   first PENDING phase → read **only that phase's placeholder
-   section** in §9.<N+1>. The placeholder lists entry ADRs,
-   reference sections in `private/JVM_TO_ZIG.md`, and skeletons
-   to activate from earlier phases.
-3. Expand §9.<N+1> inline: mirror the §9.6 structure (table of
-   `[ ]` task rows + Exit criterion). Pull task content from the
-   listed entry ADRs and reference sections; size each row so it
-   is one to three TDD cycles.
-4. Update the Phase tracker: mark current phase DONE, next phase
-   IN-PROGRESS.
-5. Commit alone: `git commit -m "roadmap: open Phase <N+1> task list"`.
-6. Proceed to §9.<N+1>.1 Step 0.
+1. Check `.dev/handover.md` "First task on resume" — if it names a
+   concrete next unit, take it.
+2. Otherwise self-select from the live **gap areas** (ROADMAP §9.0) +
+   their draining `.dev/debt.yaml` rows (the Step 0.5 sweep surfaces
+   them), **highest-value first** per F-002 / F-015. A correctness /
+   clj-parity floor outranks new coverage.
+3. Size the unit at one-to-three TDD cycles; run the per-task loop
+   (Step 0 → 7). Gap areas are **drained, not opened** — there is no
+   "open Phase N+1 task list" commit any more.
+
+The genuinely-future bucket (ClojureScript→JS / C-FFI / broad-JIT,
+§9.0) is distal and **not** self-selected absent a user nod. The
+capability-matrix successor to this gap-area model is forward debt
+**D-443** (open after the D-440 arc completes).
 
 ### The only stop
 
