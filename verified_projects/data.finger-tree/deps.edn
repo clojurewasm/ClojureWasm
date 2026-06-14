@@ -1,4 +1,5 @@
 {:paths ["."]
  :deps {org.clojure/data.finger-tree
         {:git/url "https://github.com/clojure/data.finger-tree.git"
-         :git/sha "28b130d74aed97da72708101f44c7510c94f280b"}}}
+         :git/sha "28b130d74aed97da72708101f44c7510c94f280b"}}
+ :aliases {:verify {:main-opts ["-m" "verify"]}}}
