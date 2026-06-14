@@ -498,10 +498,37 @@ fn valueOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return string_collection.alloc(rt, aw.writer.buffered());
 }
 
+/// `(String.)` → "". `(String. s)` → a copy of the string `s`. `(String. bytes
+/// [charset])` → the UTF-8 string of a cljw byte array (the `.getBytes` inverse;
+/// each element's low 8 bits form a byte, so a signed -61 and unsigned 195 both
+/// give 0xC3). cljw is UTF-8-only (charset arg accepted, UTF-8 used). `(String.
+/// char-array)` is a follow-up (cljw `.toCharArray` returns a vector, not `.array`).
+fn stringCtor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len == 0) return string_collection.alloc(rt, "");
+    if (args.len > 2)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = "java.lang.String.", .got = args.len, .min = 0, .max = 2 });
+    const a = args[0];
+    if (a.tag() == .string) return string_collection.alloc(rt, string_collection.asString(a)); // copy
+    if (java_array.isArray(a)) {
+        const arr = java_array.asArray(a);
+        const buf = try rt.gpa.alloc(u8, arr.len);
+        defer rt.gpa.free(buf);
+        for (arr.items(), 0..) |v, i| {
+            if (v.tag() != .integer)
+                return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "byte array", .actual = @tagName(v.tag()) });
+            buf[i] = @intCast(v.asInteger() & 0xFF); // low 8 bits → byte (signed or unsigned in)
+        }
+        return string_collection.alloc(rt, buf);
+    }
+    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "string or byte array", .actual = @tagName(a.tag()) });
+}
+
 fn initStringStatics(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 1);
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 2);
     entries[0] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "valueOf"), .method_val = Value.initBuiltinFn(&valueOf) };
+    entries[1] = .{ .protocol_name = "", .method_name = try gpa.dupe(u8, "<init>"), .method_val = Value.initBuiltinFn(&stringCtor) };
     td.method_table = entries;
 }
 

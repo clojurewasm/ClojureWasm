@@ -18,4 +18,11 @@ assert_eq 'empty'      "$("$BIN" -e '(seq (.getBytes ""))' 2>/dev/null | tail -1
 # round-trips through aget (it is a real byte array)
 assert_eq 'aget0'      "$("$BIN" -e '(aget (.getBytes "Xyz") 0)' 2>/dev/null | tail -1)" '88'
 
-echo "OK — phase14_string_getbytes (6 cases) green"
+# (String. bytes) — the inverse; full byte<->string roundtrip incl. multibyte.
+assert_eq 'from_bytes'  "$("$BIN" -e '(String. (.getBytes "hello"))' 2>/dev/null | tail -1)" '"hello"'
+assert_eq 'roundtrip_utf8' "$("$BIN" -e '(= "café" (String. (.getBytes "café")))' 2>/dev/null | tail -1)" 'true'
+assert_eq 'string_empty' "$("$BIN" -e '(String.)' 2>/dev/null | tail -1)" '""'
+assert_eq 'string_copy'  "$("$BIN" -e '(String. "x")' 2>/dev/null | tail -1)" '"x"'
+assert_eq 'from_bytes_charset' "$("$BIN" -e '(String. (.getBytes "hi") "UTF-8")' 2>/dev/null | tail -1)" '"hi"'
+
+echo "OK — phase14_string_getbytes (11 cases) green"
