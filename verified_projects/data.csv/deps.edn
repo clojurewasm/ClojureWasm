@@ -1,0 +1,5 @@
+{:paths ["."]
+ :deps {org.clojure/data.csv
+        {:git/url "https://github.com/clojure/data.csv.git"
+         :git/sha "179b1c9dc03c99c4ff93c26c3c6a202b61df8b81"}}
+ :aliases {:verify {:main-opts ["-m" "verify"]}}}
