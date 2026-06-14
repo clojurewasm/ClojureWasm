@@ -27,6 +27,7 @@ const regex_compile = @import("../../regex/compile.zig");
 const regex_match = @import("../../regex/match.zig");
 const regex_replace = @import("../../regex/replace.zig");
 const vector_collection = @import("../../collection/vector.zig");
+const java_array = @import("../../collection/java_array.zig");
 
 /// Implements `(.toUpperCase s)`.
 /// Spec: returns a copy of the string with all codepoints upper-cased.
@@ -422,6 +423,22 @@ fn toCharArray(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return result;
 }
 
+/// Implements `(.getBytes s)` / `(.getBytes s charset)` — the UTF-8 bytes of `s`
+/// as a byte array (cljw `.array` of SIGNED-byte ints, matching clj's `byte[]`:
+/// a byte > 127 is negative, e.g. "é" → (-61 -87)). cljw is UTF-8-only, so a
+/// charset arg (a name String — or any object) is accepted and the encoding is
+/// always UTF-8 (documented limitation; the common `(.getBytes s "UTF-8")` works).
+fn getBytes(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    if (args.len < 1 or args.len > 2)
+        return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = ".getBytes", .got = args.len, .min = 1, .max = 2 });
+    const s = string_collection.asString(args[0]);
+    const buf = try rt.gpa.alloc(Value, s.len);
+    defer rt.gpa.free(buf);
+    for (s, 0..) |b, i| buf[i] = Value.initInteger(@as(i8, @bitCast(b))); // signed byte (clj byte[])
+    return java_array.fromSlice(rt, buf);
+}
+
 /// Populate the per-Runtime native `.string` descriptor's `method_table`
 /// with String instance methods. Driven from `lang/primitive.zig` at
 /// runtime init (Layer 2 — Layer 0 `runtime/` may not import this
@@ -447,7 +464,7 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "codePointAt", &codePointAt }, .{ "compareTo", &compareTo },
         .{ "matches", &matches },         .{ "replaceAll", &replaceAll },
         .{ "replaceFirst", &replaceFirst }, .{ "split", &split },
-        .{ "toCharArray", &toCharArray },
+        .{ "toCharArray", &toCharArray },   .{ "getBytes", &getBytes },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

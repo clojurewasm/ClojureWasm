@@ -501,6 +501,7 @@ run_step "e2e_phase14_thread_runtime"        "bash test/e2e/phase14_thread_runti
 run_step "e2e_phase14_arraylist"             "bash test/e2e/phase14_arraylist.sh"
 run_step "e2e_phase14_hashmap"               "bash test/e2e/phase14_hashmap.sh"
 run_step "e2e_phase14_date_ctor"             "bash test/e2e/phase14_date_ctor.sh"
+run_step "e2e_phase14_string_getbytes"       "bash test/e2e/phase14_string_getbytes.sh"
 run_step "e2e_phase14_some_doto"             "bash test/e2e/phase14_some_doto.sh"
 run_step "e2e_phase14_iteration_macros"      "bash test/e2e/phase14_iteration_macros.sh"
 run_step "e2e_phase14_case"                  "bash test/e2e/phase14_case.sh"
