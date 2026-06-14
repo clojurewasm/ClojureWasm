@@ -51,13 +51,23 @@ assert_eq 'agent_concurrent_sends' "$got" '400'
 got=$("$BIN" -e '(let [as (mapv (fn [_] (agent 0)) (range 8))] (run! (fn [a] (dotimes [_ 50] (send a inc))) as) (run! await as) (mapv deref as))' 2>/dev/null | last_line)
 assert_eq 'agent_concurrent_agents' "$got" '[50 50 50 50 50 50 50 50]'
 
-# Option kwargs are a later slice — a clean error, not a silent drop.
-diag=$("$BIN" -e '(agent 0 :validator pos?)' 2>&1 || true)
+# Option kwargs (:validator / :meta / :error-handler / :error-mode) now ship
+# (D-441). A passing validator lets actions through.
+got=$("$BIN" -e '(let [a (agent 0 :validator number?)] (send a inc) (await a) @a)' 2>/dev/null | last_line)
+assert_eq 'agent_options_validator' "$got" '1'
+
+# :meta is readable via (meta agent).
+got=$("$BIN" -e '(meta (agent 0 :meta {:a 1}))' 2>/dev/null | last_line)
+assert_eq 'agent_options_meta' "$got" '{:a 1}'
+
+# The validator validates the INITIAL value (clj ARef.setValidator) — a bad
+# initial throws IllegalStateException "Invalid reference state".
+diag=$("$BIN" -e '(agent -1 :validator pos?)' 2>&1 || true)
 case "$diag" in
-    *"option"*|*"not yet supported"*)
-        echo "PASS agent_options_error -> diagnostic" ;;
+    *"Invalid reference state"*)
+        echo "PASS agent_options_validator_reject -> diagnostic" ;;
     *)
-        fail "agent_options_error: expected an options-not-yet diagnostic, got '$diag'" ;;
+        fail "agent_options_validator_reject: expected 'Invalid reference state', got '$diag'" ;;
 esac
 
 # send to a non-agent is a clean type error.
