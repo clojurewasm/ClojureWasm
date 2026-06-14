@@ -1,0 +1,8 @@
+(meta (atom 1 :meta {:a 1}))
+;;=> {:a 1}
+(deref (atom 5 :validator pos?))
+;;=> 5
+(meta (atom 1 :validator pos?))
+;;=> nil
+(meta (atom 9 :meta {:x 1} :validator odd?))
+;;=> {:x 1}

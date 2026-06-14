@@ -40,4 +40,15 @@ assert_eq 'cas_concurrent'  "$("$BIN" -e '(let [a (atom 0)] (run! deref (mapv (f
 # error propagates.
 assert_eq 'swap_throw_unchanged' "$("$BIN" -e '(let [a (atom 5)] (try (swap! a (fn [_] (throw (ex-info "x" {})))) (catch Throwable e :caught)) @a)' 2>/dev/null)" '5'
 
-echo "OK — phase14_atom smoke (19 cases) green"
+# D-223: (atom x & {:keys [meta validator]}) ctor kwargs (clj-parity).
+assert_eq 'ctor_meta'      "$("$BIN" -e '(meta (atom 1 :meta {:a 1}))')"                 '{:a 1}'
+assert_eq 'ctor_validator_ok' "$("$BIN" -e '@(atom 5 :validator pos?)')"                 '5'
+assert_eq 'ctor_both'      "$("$BIN" -e '[(meta (atom 5 :meta {:a 1} :validator pos?)) @(atom 5 :meta {:a 1} :validator pos?)]')" '[{:a 1} 5]'
+# validator does NOT set meta (clj: nil).
+assert_eq 'ctor_validator_no_meta' "$("$BIN" -e '(meta (atom 1 :validator pos?))')"      'nil'
+# initial value rejected by the validator throws (clj IllegalStateException).
+assert_eq 'ctor_validator_reject' "$("$BIN" -e '(try (atom -1 :validator pos?) (catch Throwable e :threw))' 2>/dev/null)" ':threw'
+# a later swap! past the ctor validator throws + leaves the atom unchanged.
+assert_eq 'ctor_validator_swap_reject' "$("$BIN" -e '(let [a (atom 2 :validator even?)] (try (swap! a inc) (catch Throwable e :rejected)))' 2>/dev/null)" ':rejected'
+
+echo "OK — phase14_atom smoke (25 cases) green"

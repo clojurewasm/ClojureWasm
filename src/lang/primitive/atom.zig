@@ -26,6 +26,7 @@ const root_set = @import("../../runtime/gc/root_set.zig");
 const map_mod = @import("../../runtime/collection/map.zig");
 const list_mod = @import("../../runtime/collection/list.zig");
 const ex_info = @import("../../runtime/collection/ex_info.zig");
+const keyword_mod = @import("../../runtime/keyword.zig");
 
 /// Run the atom's validator (if any) against the proposed `newval` BEFORE the
 /// change is committed (ADR-0081). A falsey return throws IllegalStateException
@@ -83,13 +84,38 @@ fn requireAtom(name: []const u8, v: Value, loc: SourceLocation) !void {
     }
 }
 
-/// `(atom x)` — construct an atom holding x. (JVM also accepts
-/// `:meta` / `:validator` ctor kwargs; those are not accepted yet
-/// — D-157. `set-validator!` / `add-watch` are already wired.)
+/// `(atom x & {:keys [meta validator]})` — construct an atom holding x, with
+/// optional `:meta` map + `:validator` fn ctor kwargs (clj `setup-reference`,
+/// D-223). The validator validates the INITIAL value (clj `ARef.setValidator`),
+/// so `(atom -1 :validator pos?)` throws IllegalStateException. Unknown keys are
+/// ignored (clj's setup-reference only acts on :meta/:validator). An odd-length
+/// options tail is an error (no value for the trailing key).
 pub fn atomFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
-    try error_catalog.checkArity("atom", args, 1, loc);
-    return try atom_mod.alloc(rt, args[0]);
+    if (args.len < 1) {
+        return error_catalog.raise(.arity_below_min, loc, .{ .fn_name = "atom", .got = args.len, .min = 1 });
+    }
+    const a = try atom_mod.alloc(rt, args[0]);
+    if (args.len == 1) return a;
+    if ((args.len - 1) % 2 != 0)
+        return error_catalog.raise(.ref_options_odd, loc, .{ .fn_name = "atom" });
+
+    const kw_meta = try keyword_mod.intern(rt, null, "meta");
+    const kw_validator = try keyword_mod.intern(rt, null, "validator");
+    var validator: Value = .nil_val;
+    var i: usize = 1;
+    while (i + 1 < args.len) : (i += 2) {
+        const k = args[i];
+        const val = args[i + 1];
+        if (@intFromEnum(k) == @intFromEnum(kw_meta)) {
+            atom_mod.setMeta(a, val);
+        } else if (@intFromEnum(k) == @intFromEnum(kw_validator)) {
+            atom_mod.setValidator(a, val);
+            validator = val;
+        }
+    }
+    // clj's setValidator validates the current (initial) value — throw if rejected.
+    if (!validator.isNil()) try validateOrThrow(rt, env, a, args[0], loc);
+    return a;
 }
 
 /// `(reset! a newval)` — set the atom to newval, return newval.

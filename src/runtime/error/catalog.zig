@@ -288,6 +288,10 @@ pub const Code = enum {
     /// dispatch with no matching arity. args: `.{ .fn_name = "...",
     /// .got = N, .arities = "1, 2, or 3" }`.
     arity_not_expected_multi,
+    /// A reference ctor (`atom` / `ref` / `agent`) got an odd-length trailing
+    /// options list — the `:meta`/`:validator` kwargs must be key/value pairs.
+    /// args: `.{ .fn_name = "atom" }`
+    ref_options_odd,
 
     // --- Unsupported / Tier ---
     /// Feature is on the cw roadmap but not yet implemented in this
@@ -1368,6 +1372,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .arity_error,
             .phase = .eval,
             .template = "Wrong number of args ({[got]d}) passed to {[fn_name]s}, expected one of: {[arities]s}",
+        },
+        .ref_options_odd => .{
+            .kind = .arity_error,
+            .phase = .eval,
+            .template = "{[fn_name]s}: options must be :meta and/or :validator key/value pairs",
         },
 
         // --- Unsupported / Tier ---
