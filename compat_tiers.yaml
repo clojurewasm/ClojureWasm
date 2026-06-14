@@ -194,7 +194,7 @@ tiers:
         files:
           surface: runtime/java/lang/System.zig
           impl: runtime/clock.zig
-        methods: [currentTimeMillis, nanoTime, getProperty, getenv]
+        methods: [currentTimeMillis, nanoTime, getProperty, getenv, lineSeparator, exit, arraycopy]
         clojure_peer_vars: []
       - {fqn: "java.lang.Throwable", native_ns: "cljw.host.java.lang.Throwable", phase: 5}
       - {fqn: "java.lang.Exception", native_ns: "cljw.host.java.lang.Exception", phase: 5}

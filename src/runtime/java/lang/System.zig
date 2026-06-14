@@ -13,8 +13,9 @@
 //! forms resolve (java.lang auto-import).
 //!
 //! D-121 + ADR-0050: populates `method_table` for `currentTimeMillis`,
-//! `nanoTime`, `getProperty`. Dispatched via `InteropCallNode { .kind =
-//! .static_method }`. Runtime init per UUID.zig rationale.
+//! `nanoTime`, `getProperty`, `getenv`, `lineSeparator`, `exit`, `arraycopy`.
+//! Dispatched via `InteropCallNode { .kind = .static_method }`. Runtime init
+//! per UUID.zig rationale.
 
 const host_api = @import("../_host_api.zig");
 const type_descriptor = @import("../../type_descriptor.zig");
@@ -25,6 +26,7 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const clock = @import("../../clock.zig");
 const process_env = @import("../../process_env.zig");
+const java_array = @import("../../collection/java_array.zig");
 
 /// Implements `(java.lang.System/currentTimeMillis)`.
 /// Spec: returns the current epoch milliseconds as a long.
@@ -127,9 +129,71 @@ fn getenv(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
     return Value.nil_val;
 }
 
+/// Implements `(java.lang.System/lineSeparator)`.
+/// Spec: returns the system line separator — "\n" (POSIX) / "\r\n" (Windows),
+/// the same value as `(getProperty "line.separator")`.
+/// JVM reference: java.lang.System#lineSeparator().
+/// cw v1 tier: A.
+fn lineSeparator(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.lang.System/lineSeparator", args, 0, loc);
+    return string_mod.alloc(rt, staticProperty("line.separator").?);
+}
+
+/// Implements `(java.lang.System/exit code)`.
+/// Spec: terminates the process with status `code` (the OS sees the low 8 bits,
+/// matching POSIX + the JVM's effective behaviour). cljw flushes the shared
+/// stdout first so buffered output is not lost; it runs NO shutdown hooks
+/// (cljw has none — a divergence from the JVM, which runs registered hooks).
+/// JVM reference: java.lang.System#exit(int).
+/// cw v1 tier: A.
+fn exit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.lang.System/exit", args, 1, loc);
+    if (args[0].tag() != .integer)
+        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = "java.lang.System/exit", .actual = @tagName(args[0].tag()) });
+    if (rt.stdout) |out| out.flush() catch {};
+    // The OS exit code is the low 8 bits (POSIX); `& 0xFF` is two's-complement
+    // correct for a negative code too (JVM `exit(-1)` → 255).
+    std.process.exit(@intCast(args[0].asInteger() & 0xFF));
+}
+
+/// Implements `(java.lang.System/arraycopy src srcPos dest destPos length)`.
+/// Spec: copies `length` elements from `src[srcPos..]` into `dest[destPos..]`.
+/// Both are cljw Java arrays (ADR-0105 type-erased []Value). A same-array
+/// overlapping copy is correct (JVM semantics: as if through a temp — @memmove).
+/// Out-of-range positions/length raise an index error (JVM throws
+/// ArrayIndexOutOfBoundsException; cljw's Kind differs per AD-007).
+/// JVM reference: java.lang.System#arraycopy.
+/// cw v1 tier: A.
+fn arraycopy(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("java.lang.System/arraycopy", args, 5, loc);
+    if (!java_array.isArray(args[0]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.System/arraycopy", .expected = "array", .actual = @tagName(args[0].tag()) });
+    if (!java_array.isArray(args[2]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.System/arraycopy", .expected = "array", .actual = @tagName(args[2].tag()) });
+    for ([_]usize{ 1, 3, 4 }) |i| {
+        if (args[i].tag() != .integer)
+            return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = "java.lang.System/arraycopy", .actual = @tagName(args[i].tag()) });
+    }
+    const src = java_array.asArray(args[0]);
+    const dst = java_array.asArray(args[2]);
+    const src_pos = args[1].asInteger();
+    const dst_pos = args[3].asInteger();
+    const length = args[4].asInteger();
+    if (length < 0 or src_pos < 0 or dst_pos < 0 or
+        src_pos + length > src.len or dst_pos + length > dst.len)
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.System/arraycopy" });
+    const n: usize = @intCast(length);
+    @memmove(dst.items_ptr[@intCast(dst_pos)..][0..n], src.items_ptr[@intCast(src_pos)..][0..n]);
+    return Value.nil_val;
+}
+
 fn initSystem(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent re-run
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 4);
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 7);
     entries[0] = .{
         .protocol_name = "",
         .method_name = try gpa.dupe(u8, "currentTimeMillis"),
@@ -149,6 +213,21 @@ fn initSystem(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyer
         .protocol_name = "",
         .method_name = try gpa.dupe(u8, "getenv"),
         .method_val = Value.initBuiltinFn(&getenv),
+    };
+    entries[4] = .{
+        .protocol_name = "",
+        .method_name = try gpa.dupe(u8, "lineSeparator"),
+        .method_val = Value.initBuiltinFn(&lineSeparator),
+    };
+    entries[5] = .{
+        .protocol_name = "",
+        .method_name = try gpa.dupe(u8, "exit"),
+        .method_val = Value.initBuiltinFn(&exit),
+    };
+    entries[6] = .{
+        .protocol_name = "",
+        .method_name = try gpa.dupe(u8, "arraycopy"),
+        .method_val = Value.initBuiltinFn(&arraycopy),
     };
     td.method_table = entries;
 }
