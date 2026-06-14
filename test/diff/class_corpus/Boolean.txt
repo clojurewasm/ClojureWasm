@@ -1,0 +1,22 @@
+(Boolean/parseBoolean "true")
+;;=> true
+(Boolean/parseBoolean "false")
+;;=> false
+(Boolean/parseBoolean "TRUE")
+;;=> true
+(Boolean/valueOf "true")
+;;=> true
+(Boolean/valueOf true)
+;;=> true
+(Boolean/toString true)
+;;=> "true"
+(Boolean/logicalAnd true false)
+;;=> false
+(Boolean/logicalOr true false)
+;;=> true
+(Boolean/logicalXor true true)
+;;=> false
+Boolean/TRUE
+;;=> true
+Boolean/FALSE
+;;=> false

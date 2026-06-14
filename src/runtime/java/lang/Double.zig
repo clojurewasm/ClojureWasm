@@ -61,6 +61,9 @@ fn isNanF(x: f64) bool {
 fn isInfF(x: f64) bool {
     return std.math.isInf(x);
 }
+fn isFiniteF(x: f64) bool {
+    return !std.math.isNan(x) and !std.math.isInf(x);
+}
 
 /// `(Double/toString d)` — the f64's print form (same as `(str d)`).
 /// JVM reference: java.lang.Double#toString.
@@ -135,6 +138,7 @@ fn initDouble(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyer
         .{ "parseDouble", &parseDouble },
         .{ "isNaN", &Predicate("isNaN", isNanF).call },
         .{ "isInfinite", &Predicate("isInfinite", isInfF).call },
+        .{ "isFinite", &Predicate("isFinite", isFiniteF).call },
         .{ "toString", &toString },
         .{ "valueOf", &valueOf },
         .{ "compare", &FBinOp2(.compare, "compare").call },

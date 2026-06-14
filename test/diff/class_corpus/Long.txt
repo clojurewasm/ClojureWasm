@@ -1,0 +1,38 @@
+(Long/parseLong "123")
+;;=> 123
+(Long/parseLong "-45")
+;;=> -45
+(Long/valueOf "67")
+;;=> 67
+(Long/valueOf 89)
+;;=> 89
+(Long/toBinaryString 10)
+;;=> "1010"
+(Long/toHexString 255)
+;;=> "ff"
+(Long/toOctalString 8)
+;;=> "10"
+(Long/toString 42)
+;;=> "42"
+(Long/compare 3 7)
+;;=> -1
+(Long/compare 7 3)
+;;=> 1
+(Long/max 3 7)
+;;=> 7
+(Long/min 3 7)
+;;=> 3
+Long/MAX_VALUE
+;;=> 9223372036854775807
+Long/MIN_VALUE
+;;=> -9223372036854775808
+(Long/bitCount 7)
+;;=> 3
+(Long/signum -5)
+;;=> -1
+(Long/parseLong "ff" 16)
+;;=> 255
+(Long/numberOfLeadingZeros 1)
+;;=> 63
+(Long/highestOneBit 100)
+;;=> 64

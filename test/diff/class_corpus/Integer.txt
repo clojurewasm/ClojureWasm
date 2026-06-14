@@ -1,0 +1,38 @@
+(Integer/parseInt "123")
+;;=> 123
+(Integer/parseInt "-45")
+;;=> -45
+(Integer/parseInt "ff" 16)
+;;=> 255
+(Integer/valueOf "67")
+;;=> 67
+(Integer/valueOf 89)
+;;=> 89
+(Integer/toBinaryString 10)
+;;=> "1010"
+(Integer/toHexString 255)
+;;=> "ff"
+(Integer/toOctalString 8)
+;;=> "10"
+(Integer/toString 42)
+;;=> "42"
+(Integer/compare 3 7)
+;;=> -1
+(Integer/max 3 7)
+;;=> 7
+(Integer/min 3 7)
+;;=> 3
+Integer/MAX_VALUE
+;;=> 2147483647
+Integer/MIN_VALUE
+;;=> -2147483648
+(Integer/bitCount 7)
+;;=> 3
+(Integer/signum -5)
+;;=> -1
+(Integer/numberOfLeadingZeros 1)
+;;=> 31
+(Integer/highestOneBit 100)
+;;=> 64
+(Integer/reverse 1)
+;;=> -2147483648

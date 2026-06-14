@@ -150,6 +150,43 @@ fn toChars(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return java_array.fromSlice(rt, &.{Value.initChar(@intCast(cp))});
 }
 
+/// Codepoint from a `.char` OR an `.integer` — Java's `int codePoint` overloads
+/// (e.g. `(Character/isAlphabetic (int \a))`).
+fn argCodepoint(v: Value, fn_name: []const u8, loc: SourceLocation) anyerror!u21 {
+    return switch (v.tag()) {
+        .char => v.asChar(),
+        .integer => blk: {
+            const i = v.asInteger();
+            if (i < 0 or i > 0x10FFFF)
+                return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = fn_name });
+            break :blk @intCast(i);
+        },
+        else => error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "char or codepoint int", .actual = @tagName(v.tag()) }),
+    };
+}
+
+/// `(Character/isAlphabetic cp)` — whether the codepoint is a letter. Java's
+/// isAlphabetic also admits LETTER_NUMBER (rare); cljw uses the letter
+/// predicate, which matches for the common surface. Takes a char or an int.
+fn isAlphabetic(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("Character/isAlphabetic", args, 1, loc);
+    const cp = try argCodepoint(args[0], "Character/isAlphabetic", loc);
+    return if (charset.isLetterCodepoint(cp)) .true_val else .false_val;
+}
+
+/// `(Character/toString c)` — a one-char string. JVM Character.toString(char).
+fn toStringChar(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("Character/toString", args, 1, loc);
+    const cp = try argChar(args[0], "Character/toString", loc);
+    var buf: [4]u8 = undefined;
+    const n = std.unicode.utf8Encode(cp, &buf) catch
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "Character/toString" });
+    return string_collection.alloc(rt, buf[0..n]);
+}
+
 fn initCharacter(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent re-run
     const specs = .{
@@ -166,6 +203,8 @@ fn initCharacter(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) an
         .{ "forDigit", &forDigit },
         .{ "codePointAt", &codePointAt },
         .{ "toChars", &toChars },
+        .{ "isAlphabetic", &isAlphabetic },
+        .{ "toString", &toStringChar },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

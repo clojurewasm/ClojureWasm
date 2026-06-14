@@ -1,0 +1,30 @@
+(Double/parseDouble "3.14")
+;;=> 3.14
+(Double/parseDouble "-0.5")
+;;=> -0.5
+(Double/valueOf "2.5")
+;;=> 2.5
+(Double/isNaN (Double/parseDouble "3.0"))
+;;=> false
+(Double/isInfinite 1.0)
+;;=> false
+(Double/isFinite 1.0)
+;;=> true
+(Double/compare 1.0 2.0)
+;;=> -1
+(Double/max 1.5 2.5)
+;;=> 2.5
+(Double/min 1.5 2.5)
+;;=> 1.5
+(Double/sum 1.5 2.5)
+;;=> 4.0
+(Double/toString 3.5)
+;;=> "3.5"
+Double/MAX_VALUE
+;;=> 1.7976931348623157E308
+Double/POSITIVE_INFINITY
+;;=> ##Inf
+Double/NEGATIVE_INFINITY
+;;=> ##-Inf
+(Double/isInfinite Double/POSITIVE_INFINITY)
+;;=> true

@@ -1,0 +1,26 @@
+(Character/isDigit \5)
+;;=> true
+(Character/isLetter \a)
+;;=> true
+(Character/isLetterOrDigit \a)
+;;=> true
+(Character/isWhitespace \space)
+;;=> true
+(Character/isUpperCase \A)
+;;=> true
+(Character/isLowerCase \a)
+;;=> true
+(Character/toUpperCase \a)
+;;=> \A
+(Character/toLowerCase \A)
+;;=> \a
+(Character/digit \f 16)
+;;=> 15
+(Character/getNumericValue \7)
+;;=> 7
+(Character/forDigit 10 16)
+;;=> \a
+(Character/isAlphabetic (int \a))
+;;=> true
+(Character/toString \x)
+;;=> "x"
