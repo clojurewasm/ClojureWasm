@@ -87,6 +87,9 @@ const MethodSpec = struct { name: []const u8, f: *const fn (*Runtime, *Env, []co
 
 const METHODS = [_]MethodSpec{
     .{ .name = "<init>", .f = &initUri },
+    // `(java.net.URI/create s)` — the static factory; same body as the ctor
+    // (parse + wrap the string). The common idiom alongside `(URI. s)`.
+    .{ .name = "create", .f = &initUri },
     .{ .name = "getHost", .f = &getHost },
     .{ .name = "getPath", .f = &getPath },
     .{ .name = "toString", .f = &toString },

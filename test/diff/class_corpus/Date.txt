@@ -1,0 +1,12 @@
+(.getTime (java.util.Date. 1500))
+;;=> 1500
+(.getTime (java.util.Date. 0))
+;;=> 0
+(.getTime (java.util.Date. 1700000000000))
+;;=> 1700000000000
+(.equals (java.util.Date. 100) (java.util.Date. 100))
+;;=> true
+(.before (java.util.Date. 100) (java.util.Date. 200))
+;;=> true
+(.after (java.util.Date. 200) (java.util.Date. 100))
+;;=> true

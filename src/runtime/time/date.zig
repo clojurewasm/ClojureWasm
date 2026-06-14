@@ -36,6 +36,24 @@ fn getTimeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 }
 const TypedInstance = td_mod.TypedInstance;
 
+/// `(.before a b)` / `(.after a b)` — epoch-millis comparison of two Dates
+/// (JVM `Date.before` / `Date.after`). Sibling of `.getTime`; ships with it
+/// (F-014 per-class completeness, D-431).
+fn beforeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("before", args, 2, loc);
+    if (!isDate(rt, args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".before", .expected = "Date", .actual = @tagName(args[1].tag()) });
+    return Value.initBoolean(epochMsOf(args[0]) < epochMsOf(args[1]));
+}
+fn afterFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("after", args, 2, loc);
+    if (!isDate(rt, args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".after", .expected = "Date", .actual = @tagName(args[1].tag()) });
+    return Value.initBoolean(epochMsOf(args[0]) > epochMsOf(args[1]));
+}
+
 /// The per-Runtime canonical Date descriptor (lazily allocated on
 /// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "Date"` so `(class …)`
 /// prints the simple name (AD-003 / no-JVM); `print_tag = "inst"` drives
@@ -53,14 +71,21 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .meta = .nil_val,
         .print_tag = "inst",
     };
-    // `.getTime` instance method (the Date VALUE carries this descriptor, so
-    // instance dispatch resolves here). gc.infra-owned; freed in deinitDescriptor.
-    const entries = try rt.gc.infra.alloc(td_mod.TypeDescriptor.MethodEntry, 1);
-    entries[0] = .{
-        .protocol_name = "",
-        .method_name = try rt.gc.infra.dupe(u8, "getTime"),
-        .method_val = Value.initBuiltinFn(&getTimeFn),
+    // Instance methods (the Date VALUE carries this descriptor, so instance
+    // dispatch resolves here). gc.infra-owned; freed in deinitDescriptor.
+    const specs = .{
+        .{ "getTime", &getTimeFn },
+        .{ "before", &beforeFn },
+        .{ "after", &afterFn },
     };
+    const entries = try rt.gc.infra.alloc(td_mod.TypeDescriptor.MethodEntry, specs.len);
+    inline for (specs, 0..) |spec, i| {
+        entries[i] = .{
+            .protocol_name = "",
+            .method_name = try rt.gc.infra.dupe(u8, spec[0]),
+            .method_val = Value.initBuiltinFn(spec[1]),
+        };
+    }
     td.method_table = entries;
     rt.date_descriptor = td;
     return td;

@@ -1,0 +1,14 @@
+(.getHost (java.net.URI/create "http://example.com/a/b"))
+;;=> "example.com"
+(.getPath (java.net.URI/create "http://example.com/a/b"))
+;;=> "/a/b"
+(.getHost (java.net.URI. "http://h.io/p"))
+;;=> "h.io"
+(.getPath (java.net.URI. "http://h.io/p"))
+;;=> "/p"
+(.toString (java.net.URI/create "https://x.org/y?q=1"))
+;;=> "https://x.org/y?q=1"
+(str (java.net.URI. "ftp://f/g"))
+;;=> "ftp://f/g"
+(.getPath (java.net.URI/create "mailto:a@b.com"))
+;;=> nil
