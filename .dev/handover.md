@@ -12,15 +12,21 @@
   `zig build -Dwasm -Doptimize=ReleaseSafe` — bare `zig build` = Debug and
   Debug-overwrites zig-out, so it is for hand experiments only.
 
-- **First task on resume MUST be**: continue the **Java-class completion campaign
-  (D-425)** — user-directed proactive finished-form push ("よく使うJava Classは
-  先回りで完備 + どういう設計で取り扱うか毎回しっかり決める"). D-425 carries the
-  6-model decision-tree + the prioritized order; next unit is (a) System/setProperty
-  (property store) or (b) Thread/currentThread + Runtime/getRuntime (singleton
-  host_instance). Drain D-425's order highest-value-first; pick the design model
-  per class and cite it in the commit. Survey: private/notes/survey-java-class-coverage.md.
-  (The component experiment below remains the user's other active track; D-418/D-419
-  status changed — D-419 discharged, D-418 still barrier-blocked.)
+- **First task on resume MUST be**: self-select the next unit (the user-directed
+  work is COMPLETE — see below). The clean/obvious feature work has run low, so
+  per § The only stop raise precision via QUALITY work: the standing candidates
+  are D-425's niche follow-ups ONLY on a real consumer (StandardCharsets value,
+  char[] String ctor, Reader/`*in*` subsystem per D-414, Date setTime/toString,
+  general-seqable ArrayList ctor), the quality-loop floor tail (D-086/088/173/
+  183-189/232), D-422 (finger-tree conjl segfault — a real bug, needs a recursion
+  trace), or a new conformance lib. None is high-value; pick finished-form-first.
+  The component experiment (git stash@{0}) remains the user's other active track.
+
+- **Directed work DONE (2026-06-14, comprehensively validated)**: (1) finished-form
+  cleanup of library-surfaced asymmetries; (2) proactive completion of the
+  commonly-used Java surface (D-425). Full gate 345/345, conformance 13/13, no
+  regression. Java surface complete: System / exception-ctors / Thread / Runtime /
+  StringBuilder / ArrayList / HashMap / Date / String⇄bytes.
 
 - **Component experiment (push-suppressed, in `git stash@{0}`)**: zwasm REQ-7
   LANDED (pin `33e0100c`; channel `private/20260613_handover_from_zwasm/
@@ -44,16 +50,16 @@
   relative-path `build.zig.zon` (experiment is local-only); `git push --force*`;
   bare `zig build` for any scripted/probe path (ADR-0133).
 
-## Just landed (2026-06-14, on `main`) — finished-form cleanup period + Java campaign start
+## Just landed (2026-06-14, on `main`) — cleanup period + Java campaign (20 commits)
 
-User-directed cleanup of asymmetries the library work surfaced (3 parallel
-surveys), then the Java campaign opened. Commits: D-421 `(resolve 'Class)` +
-D-420 numeric-tower close; D-419 deftype inheritance-flatten (method under a
-foreign interface header); reify remap-awareness (silent-failure fix) + getFn
-3-arity-default unification; host_interface yaml==zig gate (D-415 S1 closed);
-System exit/lineSeparator/arraycopy (D-425 campaign unit 1). Filed D-422
-(finger-tree conjl segfault), D-423 (qualified protocol name in reify), D-424
-(latent class-resolution seam), D-425 (Java-completion campaign anchor).
+CLEANUP (3 parallel surveys → fixes): D-421 `(resolve 'Class)`→class value +
+D-420 numeric-tower close; D-419 deftype inheritance-flatten; reify remap-
+awareness (silent-failure) + getFn 3-arity-default unification; host_interface
+yaml==zig gate (D-415 S1). JAVA (D-425, each w/ a recorded design model): System
+(8 methods, +rt property store) / 8 exception ctors (comptime family) / Thread+
+Runtime singletons / ArrayList + HashMap (host_instance, GC-traced, seq bridge,
+ctor-from-coll) / Date ctor+getTime / String⇄bytes. AD-031 (ratio narrowing) +
+AD-032 (host-coll seq entry). Filed D-422/423/424/425.
 
 ## Cold-start reading order (resume)
 
