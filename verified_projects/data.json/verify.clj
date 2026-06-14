@@ -1,0 +1,12 @@
+(ns verify (:require [clojure.data.json :as json]))
+(defn -main [& _]
+  (assert (= "{\"a\":1,\"b\":[2,3]}" (json/write-str {:a 1 :b [2 3]})))
+  (assert (= {"a" 1 "b" [2 3]} (json/read-str "{\"a\":1,\"b\":[2,3]}")))
+  (assert (= {:a 1 :b 2} (json/read-str "{\"a\":1,\"b\":2}" :key-fn keyword)))
+  (assert (= "[1,2,3]" (json/write-str [1 2 3])))
+  (assert (= "{\"n\":\"x\"}" (json/write-str {:n "x"})))
+  (assert (= ["a" "b"] (json/read-str "[\"a\",\"b\"]")))
+  (assert (= 3.14 (json/read-str "3.14")))
+  (assert (= true (json/read-str "true")))
+  (assert (nil? (json/read-str "null")))
+  (println "OK data.json — write-str/read-str/:key-fn/scalars"))
