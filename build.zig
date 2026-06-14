@@ -23,19 +23,15 @@ pub fn build(b: *std.Build) void {
         .strip = optimize != .Debug,
     });
 
-    // Phase activation manifest (ADR-0023 Pattern A). One comptime
-    // bool per future phase boundary; each flips from false to true
-    // at the phase's opening commit. Source uses
-    // `if (build_options.phase_at_least_N) ... else stub` to choose
-    // between the real and stub modules without a runtime branch.
+    // Build-time options module (consumed via `@import("build_options")`):
+    // the `--version` banner (below) + the backend gate (below). The ADR-0023
+    // `phase_at_least_N` phase-activation flags were RETIRED 2026-06-15
+    // (ADR-0142 / D-440 R5): they guarded ZERO live code paths (the comptime-stub
+    // staging shipped directly, never behind the flag) and were stale
+    // (phase_at_least_15 = false while concurrency is BUILT). The §9 reframe
+    // replaced the phase model with gap areas; no `phase_at_least_*` reference
+    // remains in src/.
     const build_options = b.addOptions();
-    build_options.addOption(bool, "phase_at_least_5", true);
-    build_options.addOption(bool, "phase_at_least_6", true);
-    build_options.addOption(bool, "phase_at_least_7", true);
-    build_options.addOption(bool, "phase_at_least_11", true);
-    build_options.addOption(bool, "phase_at_least_14", false);
-    build_options.addOption(bool, "phase_at_least_15", false);
-    build_options.addOption(bool, "phase_at_least_17", false);
 
     // `--version` / `--help` banner string, auto-derived from the single
     // source of truth (`build.zig.zon .version`) so the CLI never hand-maintains

@@ -157,3 +157,14 @@ Pattern B is **distinct from a no-op stub** because:
 ## Revision history
 
 - 2026-05-23: Status: Proposed -> Accepted (initial landing).
+- 2026-06-15 (ADR-0142 / D-440 R5): the `build_options.phase_at_least_N`
+  phase-activation manifest (Pattern A) is **RETIRED**. The flags guarded zero
+  live code paths in practice — every comptime-stub-staged feature shipped its
+  real impl directly rather than behind `if (build_options.phase_at_least_N)`,
+  so the flags were defined + unit-tested but never gated source. The §9
+  completion-grade reframe (ADR-0142) replaced the phase-number model with gap
+  areas, making the per-phase flag meaningless. Removed from `build.zig` +
+  `src/main.zig`. The comptime-stub *pattern* itself (real-vs-stub module
+  selection without a runtime branch) remains valid; only the phase-numbered
+  flag manifest is gone. A future capability-gated build flag (if needed) would
+  be named by capability, not phase number (cf. D-443).
