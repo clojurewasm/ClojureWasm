@@ -17,27 +17,26 @@
   zwasm-lazy, untouched). NOTE: reproducibility-for-others also needs read access to
   the (currently pre-tag) clojurewasm/zwasm repo — user's external action.
 
-- **First task on resume**: **self-select the next gap-area unit** (ROADMAP §9.0 /
-  ADR-0142; the loop picks highest-value live per F-002/F-015 — see CLAUDE.md § "When
-  the active work unit completes"). **Track R (D-440) substantive arc is COMPLETE**:
-  R1 concurrency parity (D-441/await-for/swap-vals!/reset-vals!/io!), R2 accurate-position
-  survey, R3 §9 completion-grade reframe (ADR-0142 + D-443), R4 future-row re-barriers
-  (D-005/006/020/035/036/039 → gap-area), R5 (phase_at_least_N retired + CLAUDE.md
-  phase-machinery + principle.md defer-narrowing → gap-area model). The three live gap
-  areas + their highest-value drains:
-  - **I Concurrency** — mostly drained; residuals D-442 (future-cancel/seque/legacy, infra
-    /low-value), D-105 (java.time trio), AD-018 (`:volatile-mutable` cross-thread re-eval);
-    hardening D-244 #4a' / D-245 Option C GATED-defer.
-  - **II Wasm/edge-native** (F-014 differentiator) — D-404 (WIT marshalling), D-036/D-350
-    (zwasm integration finished-form). zwasm is SHA-pinned now.
-  - **III VM perf → JIT** — fusion surface + the narrow ARM64 JIT (milestone M); perf
-    campaign (memory `perf_campaign_roadmap_9_2_s`, beat-Python north-star).
-  - **Tidiness (low-priority, a Step-0.5 sweep absorbs):** R4 discharge-MOVES of done rows
-    still in active (D-037/038/414/426/193 → discharged[]); a few "Phase boundary"
-    gate-cadence prose mentions in CLAUDE.md (loosely-correct). D-443 (capability-matrix
-    successor) opens only after the citations fully drain.
-  - **Reads: `.dev/project_facts.md` F-015 + ADR-0142 + ROADMAP §9.0** + the gap-area's
-    draining debt rows. (W1-remaining / Track S micro-units are fill-in below.)
+- **First task on resume**: **drain `.dev/debt.yaml` `active:` TOP-DOWN.** The
+  2026-06-15 ledger audit re-ordered `active:` EASIEST-FIRST (quick-wins → PERF
+  cluster → large) and split the never-closing trackers + defer-bucket into a new
+  `standing:` section. **The loop is FULLY AUTONOMOUS — no open user-judgment items**
+  (all reflected this session). Standing user decisions (durable: memory
+  `debt-ledger-audit-decisions`):
+  - **work order** = quick-wins (trivial/small) → then **perf 専念** (D-386 dispatch →
+    narrow ARM64 JIT, beat-Python north-star); the `active:` order encodes this.
+  - **future bucket** (broad JIT / CLJS→JS / C-FFI / gen-GC / virtual-threads /
+    out-of-proc isolation / wasm structural-future) = **defer INDEFINITELY** — NEVER
+    auto-start; lives in `standing:`.
+  - **debt.yaml** = `active:`(drain easiest-first) / `standing:`(NOT drained) /
+    `discharged:`. Self-select drain-units from `active:` ONLY; correctness/clj-parity
+    floor outranks coverage.
+  First `active:` rows (easiest-first): D-023, D-025, D-022, D-042, D-046, D-222, D-228,
+  D-240, D-241 … → (medium) … → PERF cluster (D-386 et al) → large. The PERF cluster is
+  the "then perf 専念" phase.
+  - **Reads: `.dev/project_facts.md` F-015 + ADR-0142 + ROADMAP §9.0 + debt.yaml header
+    + `active:` top rows** + memory `debt-ledger-audit-decisions`. Discharging a row =
+    MOVE to `discharged:` (don't inline-discharge), or let D-175 batch-relocate.
 
 - **This session landed (git log = SSOT)** — the full Track R (D-440) arc + the
   zwasm release:
@@ -51,6 +50,10 @@
     git pin (`#412966f7`); the 2026-06-14 local-accumulation/no-push override **LIFTED**;
     ~30 accumulated commits released to origin (memory `local-accumulation-sweep-phase`
     = ENDED). Two full gates green (356/356) against the git-pinned zwasm.
+  - **DEBT-LEDGER AUDIT** (user-directed; 6-agent code+git fan-out over all 121 open-ish
+    rows): 58 rows discharged (23 silently-resolved + 35 already-DONE-status that sat in
+    active and re-surfaced as "remaining"); new `standing:` section (30 rows); `active:`
+    (68) re-ordered easiest-first. 445 rows preserved, parse/dup/refs clean.
 
   SAFETY: `clj` oracle batches need `-J-Xmx2g` + bounded seqs (memory
   `clj_oracle_heap_cap`); register every new e2e in run_all.sh same-commit; **the
@@ -63,6 +66,18 @@
 - **Forbidden this session**: `git push --force*`; bare `zig build` for any
   scripted / probe path (ADR-0133 — use a ReleaseSafe binary). (Local-accumulation /
   no-push is LIFTED — push per Step 6.)
+
+## Stopped — user requested
+
+User instruction (2026-06-15): debt台帳がコード現実と乖離している → 全 active 行を
+コード真実 + git log で監査し、解決済みを discharge、再表示されないよう整理、解消容易順に
+配置、ユーザー判断が要る件は今セッションで確定、次のクリアセッションから完全自律で進める
+状態にして止めて。**Done**: 6-agent audit (121 rows) → 58 discharged + `standing:`
+split + `active:` easiest-first; 3 user decisions captured (work-order quick-wins→perf /
+future-bucket defer-indefinitely / 3-section ledger — memory `debt-ledger-audit-decisions`).
+No open user-judgment items remain → resume is fully autonomous: drain `active:` top-down.
+This stop applies to THIS session only; the next `/continue` resumes the loop (delete this
+section on resume per handover_framing).
 
 ## Cold-start reading order (resume)
 
