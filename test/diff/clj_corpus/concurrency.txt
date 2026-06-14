@@ -36,3 +36,9 @@
 ;;=> true
 (error-handler (agent 0))
 ;;=> nil
+(let [a (agent 0)] (send a inc) (await-for 1000 a) @a)
+;;=> 1
+(await-for 1000)
+;;=> true
+(let [a (agent 0)] (send a (fn [s] (Thread/sleep 200) (inc s))) [(await-for 10 a) @a])
+;;=> [false 0]

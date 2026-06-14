@@ -932,6 +932,24 @@
     (let [ps (mapv (fn* [a] (__agent-await a)) agents)]
       (dorun (map deref ps)))))
 
+;; `(await-for timeout-ms & agents)` — like `await` but bounded: logical true
+;; once every agent's barrier completes within timeout-ms (total, not per-agent),
+;; false on timeout. clj uses one CountDownLatch + a single timeout; here a
+;; per-promise deadline budget over the same barrier promises. `sentinel` is a
+;; fresh atom so `identical?` tells a timeout apart from a delivered agent-state
+;; value (the barrier delivers the agent's state, which can be any value).
+(def await-for
+  (fn* [timeout-ms & agents]
+    (let [ps (mapv (fn* [a] (__agent-await a)) agents)
+          sentinel (atom nil)
+          deadline (+ (System/currentTimeMillis) timeout-ms)]
+      (every? (fn* [p]
+                (let [remaining (- deadline (System/currentTimeMillis))]
+                  (if (pos? remaining)
+                    (not (identical? sentinel (deref p remaining sentinel)))
+                    false)))
+              ps))))
+
 ;; agent error mode — the :fail/:continue keyword over the internal flag.
 ;; :fail (the default with no error-handler) halts the agent on a thrown action
 ;; (agent-error returns it, sends throw, restart-agent recovers); :continue drops
