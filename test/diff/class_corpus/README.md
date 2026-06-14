@@ -68,10 +68,11 @@ statics — abs/sqrt/cbrt/pow/round/floor/ceil/rint, exact-arith, log/exp family
 full trig, hypot/signum/copySign/ulp/IEEEremainder + PI/E; already complete, the
 corpus just locks it), `ArrayList` (17, add/get/set/size/isEmpty/contains/indexOf/
 remove/addAll/clear + seq/vec/count) + `HashMap` (18, put/get/containsKey/
-containsValue/getOrDefault/putIfAbsent/remove/keySet/values/clear + into). The
-remaining in-scope bare classes are tracked by **D-431**; `java.util.HashSet`/
-`TreeMap` are not yet implemented (absent, not partial — candidates, not a
-completeness gap).
+containsValue/getOrDefault/putIfAbsent/remove/keySet/values/clear + into),
+`StringBuilder` (15, append all types + sub-range, toString/length/isEmpty/
+charAt/deleteCharAt/insert/setLength/reverse). The remaining in-scope bare
+classes are tracked by **D-431**; `java.util.HashSet`/`TreeMap` are not yet
+implemented (absent, not partial — candidates, not a completeness gap).
 
 > Note: `(Math/scalb 1.0 3)` is excluded — clj raises a COMPILE error ("More
 > than one matching method found") because it needs a type hint to pick the
