@@ -278,14 +278,25 @@ accepted:
     why: |-
       On the JVM the two keywords differ only in cross-thread memory visibility
       (`:volatile-mutable` → a `volatile` field with happens-before ordering;
-      `:unsynchronized-mutable` → a plain field). cljw is single-threaded by
-      default through Phase 14 (no concurrent method invocation), so both
-      collapse to the same observable behaviour: a plain in-place slot write.
-      The original keyword is recoverable from source, so a future Phase-15
-      concurrency story can route `:volatile-mutable` through an atomic store
-      then; treating them identically now is correct, not lossy. Records reject
-      BOTH (clj parity, defrecord_mutable_field).
-    derives_from: "single-thread runtime posture (Phase ≤14, no concurrent method dispatch) + ADR-0104; revisit at Phase 15+ concurrency"
+      `:unsynchronized-mutable` → a plain field). Both collapse in cljw to the
+      same observable behaviour: a plain in-place slot write.
+      **Re-evaluated 2026-06-15 (F-015 / ADR-0142, gap area I):** the original
+      accept derived from "cljw is single-threaded" — that is NO LONGER TRUE
+      (future / agent drainers run user code on real OS threads). A deftype
+      instance with a `:volatile-mutable` field CAN now be shared across threads
+      (put in an atom/ref/agent) and mutated via a method on one thread + read on
+      another, where cljw's plain slot write lacks the JVM happens-before barrier.
+      So the divergence is now REAL, not dormant. It stays an accepted divergence
+      (not a bug-to-fix-now) because: (a) it is **non-deterministic** — a
+      memory-ordering race, so it cannot be deterministically pinned/TDD'd;
+      (b) it is low-frequency (mutable-field deftypes shared+mutated cross-thread
+      are rare); (c) the keyword is recoverable from source, so the finished-form
+      fix is well-defined. **Finished form** = route `:volatile-mutable` slot
+      read/write through an atomic load(.acquire)/store(.release) while
+      `:unsynchronized-mutable` stays a plain access; this needs the TypeDescriptor
+      to track per-field volatility (currently collapsed) — tracked as **D-444**.
+      Records reject BOTH (clj parity, defrecord_mutable_field).
+    derives_from: "non-deterministic cross-thread memory-ordering divergence — real since threading landed (F-015 re-eval 2026-06-15) but unpinnable + low-frequency; finished-form atomic-store routing tracked D-444. ADR-0104."
     pin: "test/e2e/phase14_deftype_mutable.sh — volatile_mutable_same_as_unsynchronized (a :volatile-mutable counter increments identically)"
   - id: "AD-019"
     summary: "Java arrays are type-erased: element type hints (`^\"[B\"`, `^ints`, `^bytes`) are advisory only, and a typed-array constructor / `aset` does not coerce or type-check non-byte/short/char elements."
