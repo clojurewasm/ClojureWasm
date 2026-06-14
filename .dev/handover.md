@@ -5,24 +5,36 @@
 
 ## Resume contract
 
-- **HEAD**: `main` (`git log` is the SSOT; ≈ `4f7cb796`+). All work on `main`;
-  commit + `git push origin main` is the atomic Step 6 (`--force*` deny-listed).
-  Full gate 351/351 + verify_projects 19/19 (2026-06-14, all validated; data.json
-  + data.csv newly verified). Build config UNIFIED (ADR-0133): every e2e/bench/probe
-  uses `zig build -Dwasm -Doptimize=ReleaseSafe` — bare `zig build` = Debug and
-  overwrites zig-out, so it is for hand experiments only.
+- **HEAD**: `main` (`git log` is the SSOT). **PHASE MODE = LOCAL ACCUMULATION
+  (NO push), wasm = RELATIVE-path zon** — user override 2026-06-14. Commit each
+  unit locally; do NOT `git push` (ignore the push reminders this phase); keep
+  `build.zig.zon` `.zwasm = .{ .path = "../zwasm_from_scratch" }` (push-forbidden;
+  the local zwasm HEAD has REQ-7). SSOT: memory `local-accumulation-sweep-phase`
+  + `.dev/sweep_plan.md` § Phase mode. Per-commit = smoke (default build is
+  zwasm-lazy-safe); wasm work also runs `-Dwasm`.
 
-- **First task on resume MUST be**: **D-434** — the `*out*` writer-interop gap.
-  cljw's `*out*`/`*err*` root is the keyword SENTINEL `:clojure.core/stdout`, not a
-  Writer, so `(.write *out* s)` / `.append` / `.flush` fail (`.write` on a Keyword) —
-  blocking any lib that writes to `*out*` via the Java Writer interface (surfaced by
-  clojure.data.csv `write-csv` to `*out*`; likely clojure.pprint too). Fix is
-  cross-zone (dot-call dispatch = Layer-1 eval; emitToStdout + the `out_capture`
-  threadlocal = Layer-2 core.zig): relocate `out_capture` to an rt field + add a
-  Layer-1 dot-call arm that routes `.write/.append/.flush` on the *out*/*err*
-  sentinel to rt.out_capture→rt.stdout. ADR-level (DA fork) — the sentinel +
-  emitToStdout precedence (core.zig:740) is deliberate. Pairs with D-105 (time/io
-  build-out) + the pprint writer surface.
+- **First task on resume MUST be**: **Track C — the `*out*`/`*in*` cljw-native
+  writer/reader value** (user chose recommended Option C, 2026-06-14). Full order
+  in **`.dev/sweep_plan.md`** (the phase SSOT — READ IT). C = ADR + DA fork for one
+  cljw writer value + one reader value (NOT a java.io hierarchy clone); bind
+  `*out*`/`*err*`/`*in*`; route `.write`/`.append`/`.flush` + `read`/`read-char`/…
+  on it; `with-out-str` = rebind to a string-backed writer (kills the `out_capture`
+  threadlocal cross-zone hack + the D-434 `out_writer_method` sentinel special-case).
+  Discharges D-436(b); folds the D-414 reader shims. Then Track S (debt sweep,
+  per sweep_plan.md) + Track W (wasm enrich, W1).
+
+- **D-434 DONE** (this session, superseded by Track C): `*out*` sentinel
+  `.write`/`.append`/`.flush` routed through `clojure.core/print` via the shared
+  `out_writer_method` fallback (both backends). Track C replaces this with the
+  writer-value model. Filed D-435 (diff-oracle full-runtime gap) + D-436 (大整理
+  epic) per the user's finished-form directive.
+
+- **Track W (wasm north-star, F-014.4) — W0 RE-LANDED this session**: the
+  instance-caching component work is un-stashed (relative zon, local-only):
+  `(wasm/load-component p)` + `(wasm/component-call h …)` + component-exports/invoke;
+  `-Dwasm` builds green against the REQ-7 zwasm. Next = W1 enrich (require-as-
+  namespace: one Var per export; dropResource GC-finaliser D-325). [D-404/ADR-0135;
+  zwasm handover `private/20260613_handover_from_zwasm/handover_v2.md` COMPLETED]
 
 - **D-431 per-class completeness CLOSED** (the prior directed task — DONE this
   session): mechanism wired + **18 built+deterministic+touched classes** corpus'd
@@ -49,19 +61,6 @@
   class (D-422/423/426/427), Java surface D-425, the `*in*`/LispReader$StringReader
   reader subsystem (D-414) + D-428/429. This session: D-431 (above) + D-433/D-434
   filed. Discharged: D-414/421-429; open: D-418/424/430/432/433/434.
-
-- **Component experiment (push-suppressed, in `git stash@{0}`)**: zwasm REQ-7
-  LANDED (pin `33e0100c`; channel `private/20260613_handover_from_zwasm/
-  handover_v2.md` COMPLETED — root cause was input-buffer lifetime, not
-  relocatability; the opened handle now owns its bytes). Instance caching is
-  RE-LANDED + VALIDATED: `(wasm/load-component p)` + `(wasm/component-call h …)`
-  — greet roundtrips across calls AND the resource chain works (ctor own-handle
-  → method borrow: counter 5 → increment 6 → get 6). The D-404 / ADR-0135
-  substrate is proven. Stashed to keep the tree clean (relative-path zon is
-  push-forbidden). Next layer = require-as-namespace (one callable per export —
-  needs a closure/Var-interning design) + dropResource GC-finaliser (D-325 also
-  fixed at zwasm `65a760e2`). Re-land: pop the stash, flip zon relative, build
-  `-Dwasm`. Notes: `private/notes/p14-wasm-component-experiment.md`.
 
   SAFETY: every `clj` oracle batch needs `-J-Xmx2g` + bounded seqs (memory
   `clj_oracle_heap_cap`); register every new e2e in run_all.sh same-commit.
