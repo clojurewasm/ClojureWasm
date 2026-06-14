@@ -27,7 +27,12 @@ burden items #1–#5 from the 2026-06-14 chat audit, and to wire them so `/conti
 acts concretely. **The audit corrected the list**: #2 and #5 were ALREADY RESOLVED
 and #4 is GATED; the actionable, ease-ordered queue is **D1 → D2 → D3**.
 
-- **D1 — seq-as-map-KEY content hash (D-432 + D-408). READY — DO FIRST.**
+- **D1 — seq-as-map-KEY content hash (D-432 + D-408). ✅ DONE 2026-06-14 (ADR-0139,
+  Option A + Alt-1).** rt-aware `hashDispatch`/`eqConsult` via the ADR-0129
+  `current_env`; `runEnvelope` armed (Alt-1, closed an AOT silent-miss the DA fork
+  found). Corpus `seq_key_hash.txt` (10) + e2e `phase14_seq_key_hash.sh` (7). Nested
+  + rt-free-memoized finished form deferred → **D-437** (standalone quality-loop,
+  NOT Phase-gated). **Resume → D2.** Original entry below.
   Bug: a content-equal `lazy_seq` / `cons` / `range` / Sequential-deftype used as a
   map/set KEY hashes by IDENTITY → `(get {(map inc [0 1 2]) :x} '(1 2 3))` silently
   `nil` (clj `:x`). `=` already content-matches; only the key-HASH diverges.
