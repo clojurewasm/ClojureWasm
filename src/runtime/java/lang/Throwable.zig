@@ -67,6 +67,9 @@ pub fn installNativeMethods(rt: *Runtime) !void {
     const gpa = rt.gc.infra;
     const specs = .{
         .{ "getMessage", &getMessage },
+        // Throwable.getLocalizedMessage() defaults to getMessage() (no locale
+        // table in cljw); ships with getMessage per per-class completeness (F-014).
+        .{ "getLocalizedMessage", &getMessage },
         .{ "getCause", &getCause },
         .{ "getData", &getData },
     };

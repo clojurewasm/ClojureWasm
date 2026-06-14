@@ -1,0 +1,30 @@
+(.getMessage (Exception. "boom"))
+;;=> "boom"
+(.getMessage (RuntimeException. "rt"))
+;;=> "rt"
+(.getMessage (IllegalArgumentException. "bad"))
+;;=> "bad"
+(.getMessage (IllegalStateException. "state"))
+;;=> "state"
+(.getMessage (UnsupportedOperationException. "nope"))
+;;=> "nope"
+(.getMessage (Throwable. "thr"))
+;;=> "thr"
+(.getMessage (ex-info "ei" {:a 1}))
+;;=> "ei"
+(.getLocalizedMessage (Exception. "loc"))
+;;=> "loc"
+(.getLocalizedMessage (RuntimeException. "rloc"))
+;;=> "rloc"
+(.getMessage (.getCause (Exception. "x" (RuntimeException. "inner"))))
+;;=> "inner"
+(.getMessage (.getCause (RuntimeException. "y" (Exception. "deep"))))
+;;=> "deep"
+(nil? (.getCause (Exception. "nocause")))
+;;=> true
+(ex-message (Exception. "boom"))
+;;=> "boom"
+(ex-data (ex-info "ei" {:a 1}))
+;;=> {:a 1}
+(.getData (ex-info "ei" {:k 7}))
+;;=> {:k 7}
