@@ -247,6 +247,16 @@ pub const TypeDescriptor = struct {
         }
         return false;
     }
+
+    /// True iff this descriptor declares `IPersistentMap` (bare D-417 or
+    /// `clojure.lang.`-qualified). clj `keys`/`vals` (RT.keys/RT.vals) require an
+    /// IPersistentMap (or java.util.Map) — a non-map type throws ClassCastException,
+    /// NOT a seq-derived key/val list. So `keys`/`vals` derive from a deftype/reify
+    /// ONLY when this holds (a defrecord, which IS an IPersistentMap, is handled by
+    /// its field path before this check).
+    pub fn isPersistentMap(self: *const TypeDescriptor) bool {
+        return self.declaresProtocol("IPersistentMap") or self.declaresProtocol("clojure.lang.IPersistentMap");
+    }
 };
 
 /// A `deftype` / `defrecord` runtime value. **Extern struct** so

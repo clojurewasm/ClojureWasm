@@ -794,10 +794,13 @@ pub fn keysFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             if (map.count(coll) == 0) break :blk .nil_val;
             break :blk try map.keys(rt, coll);
         },
-        .typed_instance => blk: {
-            const inst = coll.decodePtr(*const td_mod.TypedInstance);
-            if (inst.descriptor.kind == .defrecord) {
-                const layout = inst.descriptor.field_layout orelse break :blk .nil_val;
+        // deftype + reify share one arm (D-426): a reify map (declares IPersistentMap)
+        // must derive keys the same way a deftype does, not fall into the else arm's
+        // bare -keys dispatch that errors (the D-422/D-423 reify-bypass class).
+        .typed_instance, .reified_instance => blk: {
+            const desc = td_mod.descriptorOfInstance(coll);
+            if (desc.kind == .defrecord) {
+                const layout = desc.field_layout orelse break :blk .nil_val;
                 if (layout.len == 0) break :blk .nil_val;
                 // Build list backwards so declared-order iteration falls out.
                 var result: Value = .nil_val;
@@ -809,12 +812,19 @@ pub fn keysFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
                 }
                 break :blk result;
             }
-            // D-285: a non-record map deftype (priority-map etc.). Try the optional
-            // IPersistentMap/-keys impl; else derive from seq, clj-faithfully:
-            // keys = (map key (seq m)). Mirrors apply's seq-walk (higher_order.zig).
-            var cs: dispatch.CallSite = .{};
-            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPM_FQCN, "-keys", args, loc)) |v| break :blk v;
-            break :blk try seqDeriveEntryColumn(rt, env, coll, 0, loc);
+            // D-285: a non-record map deftype/reify (priority-map etc.). clj keys/vals
+            // require an IPersistentMap (else ClassCastException) — gate on it, then try
+            // the optional -keys impl, else derive from seq: keys = (map key (seq m)).
+            if (desc.isPersistentMap()) {
+                var cs: dispatch.CallSite = .{};
+                if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPM_FQCN, "-keys", args, loc)) |v| break :blk v;
+                break :blk try seqDeriveEntryColumn(rt, env, coll, 0, loc);
+            }
+            return error_catalog.raise(.protocol_no_satisfies, loc, .{
+                .protocol = IPM_FQCN,
+                .method = "-keys",
+                .type_name = desc.fqcn orelse "<anonymous>",
+            });
         },
         else => blk: {
             // D-089 row 8.6 cycle 3: IPersistentMap -keys slow-path.
@@ -846,10 +856,11 @@ pub fn valsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             if (map.count(coll) == 0) break :blk .nil_val;
             break :blk try map.vals(rt, coll);
         },
-        .typed_instance => blk: {
-            const inst = coll.decodePtr(*const td_mod.TypedInstance);
-            if (inst.descriptor.kind == .defrecord) {
-                const fields_slice = inst.fields();
+        // deftype + reify share one arm (see keysFn / D-426).
+        .typed_instance, .reified_instance => blk: {
+            const desc = td_mod.descriptorOfInstance(coll);
+            if (desc.kind == .defrecord) {
+                const fields_slice = coll.decodePtr(*const td_mod.TypedInstance).fields();
                 if (fields_slice.len == 0) break :blk .nil_val;
                 var result: Value = .nil_val;
                 var i: usize = fields_slice.len;
@@ -859,11 +870,19 @@ pub fn valsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
                 }
                 break :blk result;
             }
-            // D-285: non-record map deftype — -vals impl, else derive from seq
-            // (clj: vals = (map val (seq m))). col 1 = val of each 2-vector entry.
-            var cs: dispatch.CallSite = .{};
-            if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPM_FQCN, "-vals", args, loc)) |v| break :blk v;
-            break :blk try seqDeriveEntryColumn(rt, env, coll, 1, loc);
+            // D-285: non-record map deftype/reify — gate on IPersistentMap (clj vals
+            // requires it), then -vals impl, else derive from seq (vals = (map val
+            // (seq m))). col 1 = val of each 2-vector entry.
+            if (desc.isPersistentMap()) {
+                var cs: dispatch.CallSite = .{};
+                if (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPM_FQCN, "-vals", args, loc)) |v| break :blk v;
+                break :blk try seqDeriveEntryColumn(rt, env, coll, 1, loc);
+            }
+            return error_catalog.raise(.protocol_no_satisfies, loc, .{
+                .protocol = IPM_FQCN,
+                .method = "-vals",
+                .type_name = desc.fqcn orelse "<anonymous>",
+            });
         },
         else => blk: {
             // D-089 row 8.6 cycle 3: IPersistentMap -vals slow-path

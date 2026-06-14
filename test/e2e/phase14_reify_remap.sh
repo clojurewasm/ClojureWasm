@@ -50,6 +50,27 @@ cat > "$FIX" <<'CLJ'
          (valAt [_ k nf] k)))
 (println (.valAt d :x))                       ; -> :x
 (println (instance? clojure.lang.ILookup d))  ; -> true (membership recorded)
+
+;; D-426(A): a reify method that REMAPS to the Object method-family (equiv →
+;; Object/equiv; also hashCode/equals) now CONSTRUCTS. Formerly failed
+;; `__reify!: expected [string proto fn], got row shape` — the remap put a BARE
+;; `Object` in the method row, which resolves to the Object class value, not a
+;; marker. Now quote-wrapped like the interfaces-vector path (D-423).
+(def e (reify clojure.lang.IPersistentCollection
+         (count [_] 0) (cons [this x] this) (empty [_] nil) (equiv [_ o] false)))
+(println (= e e))               ; -> true (identity short-circuit; proves it CONSTRUCTED)
+
+;; D-426(B): a map-like reify (declares IPersistentMap) derives keys/vals from
+;; its seq, exactly like the equivalent deftype. Formerly the reify hit the
+;; keys/vals else-arm (bare -keys dispatch) and errored.
+(def mm (reify
+          clojure.lang.Seqable (seq [_] (list [:a 1] [:b 2]))
+          clojure.lang.IPersistentMap
+          (valAt [_ k] ({:a 1 :b 2} k)) (valAt [_ k nf] (get {:a 1 :b 2} k nf))
+          (assoc [this k v] this) (count [_] 2) (cons [this x] this)
+          (empty [_] nil) (equiv [_ o] false) (without [this k] this)))
+(println (keys mm))             ; -> (:a :b)
+(println (vals mm))             ; -> (1 2)
 CLJ
 
 out=$("$BIN" "$FIX" 2>&1) || fail "run: non-zero exit ($out)"
@@ -62,5 +83,13 @@ assert_eq 'nth_under_indexed'    "$(sed -n '5p' <<< "$out")" '2'
 assert_eq 'valAt_under_ilookup'  "$(sed -n '6p' <<< "$out")" 'k=:q'
 assert_eq 'qualified_valAt'      "$(sed -n '7p' <<< "$out")" ':x'
 assert_eq 'qualified_instance'   "$(sed -n '8p' <<< "$out")" 'true'
+assert_eq 'reify_equiv_construct' "$(sed -n '9p' <<< "$out")" 'true'
+assert_eq 'reify_map_keys'       "$(sed -n '10p' <<< "$out")" '(:a :b)'
+assert_eq 'reify_map_vals'       "$(sed -n '11p' <<< "$out")" '(1 2)'
 
-echo "OK — phase14_reify_remap (8 cases) green"
+# clj keys/vals require IPersistentMap (else ClassCastException): a non-map reify
+# (Seqable only) must ERROR, not silently seq-derive keys.
+"$BIN" -e '(keys (reify clojure.lang.Seqable (seq [_] (list 1 2 3))))' >/dev/null 2>&1 \
+  && fail 'nonmap_reify_keys: expected error, got success' || echo "PASS nonmap_reify_keys -> error"
+
+echo "OK — phase14_reify_remap (12 cases) green"

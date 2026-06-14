@@ -3424,7 +3424,16 @@ fn expandReify(
                     if (host_interface.isJavaUtilMethod(method_name)) continue;
                     return error_catalog.raise(.feature_not_supported, name_loc, .{ .name = "deftype/reify clojure.lang.* method not yet wired" });
                 };
-                const proto_sym = sym(r.protocol, name_loc);
+                // A remap target that is a host-supertype MARKER (`equiv`/`hashCode`/
+                // `equals` → Object/…, the method_family) must be quote-wrapped, like
+                // the interfaces-vector path (D-423): a bare `Object` symbol resolves
+                // to the Object CLASS VALUE which __reify! rejects ("expected protocol,
+                // got type_descriptor"). A real cljw protocol target (ILookup, …) stays
+                // bare → its protocol Var. D-426(A).
+                const proto_sym = if (host_interface.isMarker(r.protocol))
+                    try quoteWrap(arena, sym(r.protocol, name_loc))
+                else
+                    sym(r.protocol, name_loc);
                 try method_rows.append(arena, try reifyMethodRow(arena, r.method, proto_sym, fn_form, name_loc));
                 // D-283: also register the original clj name under the same protocol
                 // so a `.cljname` dot-call on the reified instance resolves.
