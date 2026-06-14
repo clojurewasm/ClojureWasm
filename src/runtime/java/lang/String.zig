@@ -465,6 +465,8 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "matches", &matches },         .{ "replaceAll", &replaceAll },
         .{ "replaceFirst", &replaceFirst }, .{ "split", &split },
         .{ "toCharArray", &toCharArray },   .{ "getBytes", &getBytes },
+        // CharSequence.subSequence(start, end) ≡ substring(start, end) (D-429).
+        .{ "subSequence", &substring },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {
@@ -565,6 +567,7 @@ test "installNativeMethods populates the native .string descriptor" {
     try testing.expect(td.lookupMethod(null, "trim") != null);
     try testing.expect(td.lookupMethod(null, "length") != null);
     try testing.expect(td.lookupMethod(null, "substring") != null);
+    try testing.expect(td.lookupMethod(null, "subSequence") != null); // D-429 (≡ substring)
     try testing.expect(td.lookupMethod(null, "indexOf") != null);
     try testing.expect(td.lookupMethod(null, "charAt") != null);
     try testing.expect(td.lookupMethod(null, "contains") != null);
