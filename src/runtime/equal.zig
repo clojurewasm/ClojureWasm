@@ -48,7 +48,9 @@ const td_mod = @import("type_descriptor.zig");
 const date_mod = @import("time/date.zig");
 const timestamp_mod = @import("time/timestamp.zig");
 const dispatch_mod = @import("dispatch.zig");
+const root_set = @import("gc/root_set.zig");
 const ClojureWasmError = @import("error/info.zig").ClojureWasmError;
+const SourceLocation = @import("error/info.zig").SourceLocation;
 
 const NumCat = enum { integer, floating, ratio, decimal, none };
 
@@ -66,7 +68,16 @@ fn isSequential(v: Value) bool {
     const t = v.tag();
     // A MapEntry is a 2-vector (D-209), so `(= (first {:a 1}) [:a 1])`→true.
     // A queue is Sequential, so `(= (conj EMPTY 1 2) [1 2])`→true (ADR-0087).
-    return t == .vector or t == .list or t == .lazy_seq or t == .range or t == .map_entry or t == .persistent_queue;
+    if (t == .vector or t == .list or t == .lazy_seq or t == .range or t == .map_entry or t == .persistent_queue)
+        return true;
+    // A deftype/reify declaring clojure.lang.Sequential (e.g. data.finger-tree's
+    // double-list) compares element-wise like clj's `=` (Util.pcequiv over the
+    // sequential operand), NOT by its own (often stub) `equiv` (D-427). seqEqual
+    // realizes such an instance to a list before walking. Gated on `Sequential`
+    // specifically — a map/set deftype is NOT Sequential and stays identity/equiv.
+    if (t == .typed_instance or t == .reified_instance)
+        return td_mod.descriptorOfInstance(v).declaresProtocol("Sequential");
+    return false;
 }
 
 /// O(1)-countable sequentials (length short-circuit eligible). A
@@ -212,7 +223,87 @@ fn decimalKeyEq(a: Value, b: Value) bool {
         big_int.compareManaged(big_decimal.asNormUnscaled(a).m, big_decimal.asNormUnscaled(b).m) == .eq;
 }
 
+/// Realize a Sequential deftype/reify (D-427) to a native `.list` by walking the
+/// ISeq protocol (`-first`/`-next`), GC-rooted (a `-next` builds a FRESH instance
+/// not reachable from the original operand, so a collect mid-walk could free it —
+/// the accumulator + cursor must be rooted). Returns a single `.list` value the
+/// caller can then walk with the rt-free Cursor. Mirrors print.zig
+/// realizeInstanceSeq; an instance whose `-next` hands off to a native seq tail
+/// (lazy/list) folds that tail in too.
+fn realizeSequentialInstance(rt: *Runtime, env: *Env, start: Value) anyerror!Value {
+    var items: std.ArrayList(Value) = .empty;
+    defer items.deinit(rt.gpa);
+    var cur = start;
+    var cur_root: [1]Value = .{cur};
+    var cur_sp: u16 = 1;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &cur_root, .sp = &cur_sp, .locals = items.items, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
+    const noloc = SourceLocation{ .line = 0, .column = 0 };
+    // RT.seq normalization: a self-ISeq -seq returns the instance (walked below);
+    // a Seqable-only Sequential -seq returns a native seq (folded by the tail loop).
+    {
+        var cs0: dispatch_mod.CallSite = .{};
+        cur = (try dispatch_mod.dispatchOrNull(rt, env, &cs0, cur, "Seqable", "-seq", &.{cur}, noloc)) orelse cur;
+    }
+    while (cur.tag() == .typed_instance or cur.tag() == .reified_instance) {
+        cur_root[0] = cur;
+        gc_frame.locals = items.items;
+        var cs1: dispatch_mod.CallSite = .{};
+        const f = (try dispatch_mod.dispatchOrNull(rt, env, &cs1, cur, "ISeq", "-first", &.{cur}, noloc)) orelse break;
+        try items.append(rt.gpa, f);
+        gc_frame.locals = items.items;
+        var cs2: dispatch_mod.CallSite = .{};
+        cur = (try dispatch_mod.dispatchOrNull(rt, env, &cs2, cur, "ISeq", "-next", &.{cur}, noloc)) orelse .nil_val;
+    }
+    // A `-next` that handed off to a native seq tail (lazy/list): fold it in.
+    while (!cur.isNil()) {
+        cur_root[0] = cur;
+        gc_frame.locals = items.items;
+        const s = try lazy_seq.seq(rt, env, cur);
+        if (s.isNil()) break;
+        try items.append(rt.gpa, try lazy_seq.first(rt, env, s));
+        cur = try lazy_seq.rest(rt, env, s);
+    }
+    var result: Value = .nil_val;
+    var i: usize = items.items.len;
+    while (i > 0) {
+        i -= 1;
+        result = try list.consHeap(rt, items.items[i], result);
+    }
+    return result;
+}
+
+inline fn isInstanceTag(v: Value) bool {
+    const t = v.tag();
+    return t == .typed_instance or t == .reified_instance;
+}
+
 fn seqEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
+    // A Sequential deftype/reify operand (D-427) takes the rooted instance path;
+    // the common (native-seq) case stays frame-free.
+    if (isInstanceTag(a) or isInstanceTag(b)) return seqEqualInstance(rt, env, a, b);
+    return seqEqualWalk(rt, env, a, b);
+}
+
+/// Realize any Sequential-instance operand to a native list (D-427), GC-rooting
+/// both operands across the realize + walk (a realized list's cons cells, and the
+/// other operand, must survive a collect the second realize / element compares
+/// can trigger), then compare element-wise.
+fn seqEqualInstance(rt: *Runtime, env: *Env, a0: Value, b0: Value) anyerror!bool {
+    var roots: [2]Value = .{ a0, b0 };
+    var sp: u16 = 2;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
+    const a = if (isInstanceTag(a0)) try realizeSequentialInstance(rt, env, a0) else a0;
+    roots[0] = a;
+    const b = if (isInstanceTag(b0)) try realizeSequentialInstance(rt, env, b0) else b0;
+    roots[1] = b;
+    return seqEqualWalk(rt, env, a, b);
+}
+
+fn seqEqualWalk(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     // Length short-circuit only when BOTH are O(1)-countable (vector /
     // list); a lazy seq is walked element-by-element (no cheap length,
     // possibly infinite — the walk terminates as soon as the finite
