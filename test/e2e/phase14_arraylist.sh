@@ -52,4 +52,9 @@ EOF
 ) || fail "arraylist_gc: non-zero exit ($got)"
 assert_eq 'gc_survives' "$(tail -1 <<< "$got")" '[500 "e0" "e499"]'
 
-echo "OK — phase14_arraylist (13 cases) green"
+# ctor-from-vector (D-425 follow-up): (ArrayList. vec) seeds the list.
+assert_eq 'ctor_vec'      "$("$BIN" -e '(vec (java.util.ArrayList. [1 2 3]))' 2>/dev/null | tail -1)" '[1 2 3]'
+assert_eq 'ctor_vec_size' "$("$BIN" -e '(.size (java.util.ArrayList. [:a :b :c]))' 2>/dev/null | tail -1)" '3'
+assert_eq 'ctor_capacity' "$("$BIN" -e '(.size (java.util.ArrayList. 16))' 2>/dev/null | tail -1)" '0'
+
+echo "OK — phase14_arraylist (16 cases) green"

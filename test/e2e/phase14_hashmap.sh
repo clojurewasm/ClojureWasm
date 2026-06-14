@@ -55,4 +55,19 @@ EOF
 ) || fail "hashmap_gc: non-zero exit ($got)"
 assert_eq 'gc_survives' "$(tail -1 <<< "$got")" '[400 "v0" "v399"]'
 
-echo "OK — phase14_hashmap (14 cases) green"
+# ctor-from-map (D-425 follow-up): (HashMap. m) seeds from a cljw map; .put on
+# the HashMap does NOT mutate the source (persistent sharing).
+assert_eq 'ctor_map'     "$("$BIN" -e '(into {} (java.util.HashMap. {:a 1 :b 2}))' 2>/dev/null | tail -1)" '{:a 1, :b 2}'
+assert_eq 'ctor_map_get' "$("$BIN" -e '(.get (java.util.HashMap. {:x 9}) :x)' 2>/dev/null | tail -1)" '9'
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(def src {:a 1})
+(def m (java.util.HashMap. src))
+(.put m :b 2)
+(prn (count src))   ; 1 — source unmutated
+(prn (.size m))     ; 2
+EOF
+) || fail "ctor_src_immut: non-zero exit ($got)"
+assert_eq 'ctor_src_immut'  "$(sed -n '1p' <<< "$got")" '1'
+assert_eq 'ctor_after_put'  "$(sed -n '2p' <<< "$got")" '2'
+
+echo "OK — phase14_hashmap (18 cases) green"

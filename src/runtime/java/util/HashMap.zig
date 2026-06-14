@@ -42,15 +42,24 @@ fn setMap(recv: Value, m: Value) void {
 var hm_descriptor: ?*const type_descriptor.TypeDescriptor = null;
 
 /// `(java.util.HashMap.)` — empty. `(HashMap. n)` int initial-capacity hint
-/// (ignored). `(HashMap. m)` seeding is a follow-up (D-425).
+/// (ignored → empty). `(HashMap. m)` seeds from a cljw map (persistent, so the
+/// shared Value is safe — `.put` rebinds a new map, never mutating the source).
 fn initHashMap(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     if (args.len > 1)
         return error_catalog.raise(.arity_not_expected, loc, .{ .got = args.len, .fn_name = "java.util.HashMap.", .expected = 1 });
-    if (args.len == 1 and args[0].tag() != .integer)
-        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = "java.util.HashMap.", .actual = @tagName(args[0].tag()) });
+    var initial = map.empty();
+    if (args.len == 1) {
+        switch (args[0].tag()) {
+            .integer => {}, // capacity hint → empty
+            // Seed from a cljw unsorted map (the `{…}` forms `.put`'s assoc
+            // handles). A sorted_map would need a rebuild — left as a follow-up.
+            .array_map, .hash_map => initial = args[0],
+            else => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.util.HashMap.", .expected = "int capacity or map", .actual = @tagName(args[0].tag()) }),
+        }
+    }
     const td = hm_descriptor orelse return error.NoVTable;
-    return host_instance.alloc(rt, td, .{ @intFromEnum(map.empty()), 0, 0, 0 });
+    return host_instance.alloc(rt, td, .{ @intFromEnum(initial), 0, 0, 0 });
 }
 
 /// `(.put hm k v)` — associate `k`→`v`, returning the PREVIOUS value for `k`
