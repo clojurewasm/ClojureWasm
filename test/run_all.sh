@@ -506,6 +506,7 @@ run_step "e2e_phase14_count_walk"            "bash test/e2e/phase14_count_walk.s
 run_step "e2e_phase14_sequential_equal"      "bash test/e2e/phase14_sequential_equal.sh"
 run_step "e2e_phase14_with_in_str"           "bash test/e2e/phase14_with_in_str.sh"
 run_step "e2e_phase14_lisp_string_reader"    "bash test/e2e/phase14_lisp_string_reader.sh"
+run_step "e2e_phase14_qualified_deftype"     "bash test/e2e/phase14_qualified_deftype.sh"
 run_step "e2e_phase14_string_getbytes"       "bash test/e2e/phase14_string_getbytes.sh"
 run_step "e2e_phase14_some_doto"             "bash test/e2e/phase14_some_doto.sh"
 run_step "e2e_phase14_iteration_macros"      "bash test/e2e/phase14_iteration_macros.sh"

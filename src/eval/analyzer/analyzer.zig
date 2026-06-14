@@ -569,11 +569,21 @@ pub fn resolveClassValue(rt: *Runtime, env: *Env, sym_ns: ?[]const u8, sym_name:
         const td = try rt.classDescriptor(key);
         return try type_descriptor.makeTypeDescriptorRef(rt, td);
     }
-    // rt.types keys host-surface classes by FQCN but a USER deftype/record by
-    // its simple name; the bare-symbol fallback to `sym_name` covers an imported
-    // user deftype (D-391). A qualified ref has no simple-name fallback.
-    const type_td = rt.types.get(cname) orelse
-        (if (sym_ns == null and !std.mem.eql(u8, cname, sym_name)) rt.types.get(sym_name) else null);
+    // rt.types keys host-surface classes by FQCN but a USER deftype/record by its
+    // SIMPLE name (AD-003: cljw class names are simple, ADR-0059). So a deftype
+    // `Failure` in ns `instaparse.gll` is registered as `Failure`, and a reference
+    // by its qualified `instaparse.gll.Failure` form (cfg.cljc:312
+    // `(instance? instaparse.gll.Failure x)`) must fall back to the simple name —
+    // host classes are already resolved above (nativeTagFor / classValueKeyFor), so
+    // by here a qualified miss is a user-deftype reference (D-428/D-391). Consistent
+    // with cljw's simple-name deftype model: `a.b.T` and bare `T` are the same type.
+    const type_td = rt.types.get(cname) orelse blk: {
+        // A user deftype is keyed by its SIMPLE name, so a dotted reference
+        // (`instaparse.gll.Failure`, parsed as one name since it has no `/`) falls
+        // back to its last `.`-segment; a bare imported name keeps `sym_name`.
+        const simple = if (std.mem.findScalarLast(u8, cname, '.')) |dot| cname[dot + 1 ..] else sym_name;
+        break :blk if (!std.mem.eql(u8, simple, cname)) rt.types.get(simple) else null;
+    };
     if (type_td) |td| return try type_descriptor.makeTypeDescriptorRef(rt, td);
     return null;
 }
