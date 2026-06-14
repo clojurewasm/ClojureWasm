@@ -19,8 +19,13 @@
 #
 # Methodology (memory `clj_diff_sweep_methodology` + this header):
 #   - clj is run ONCE over a batch (one `(prn EXPR)` per line) — fast, and
-#     a multi-line clj error never desyncs the line mapping because each
-#     prn is on its own line.
+#     a multi-line clj RUNTIME error never desyncs the line mapping because the
+#     try/catch prints one `<clj-error>` line. CAVEAT: a clj COMPILE error
+#     (e.g. `(Math/scalb 1.0 3)` → "More than one matching method found" — clj
+#     needs a type hint to disambiguate overloads) aborts the WHOLE `clj -M`
+#     file before any prn runs, so EVERY expr shows `<clj-missing>`. If a batch
+#     reports all-missing, re-run the suspect expr ALONE: it is usually one
+#     compile-error line poisoning the batch, not a cljw gap.
 #   - cljw is run ONE expression at a time (`cljw -e '(prn EXPR)'`, line 1)
 #     — per-expr is the reliable cljw surface; a batch would interleave.
 #   - Both are `timeout`-wrapped (orphan_prevention.md). Bound any seq

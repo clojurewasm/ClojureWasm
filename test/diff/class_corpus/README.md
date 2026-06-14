@@ -52,5 +52,12 @@ Landed: `String` (44), `Object` (15, universal `.toString`/`.equals`),
 `Throwable` (15, the exception family's `.getMessage`/`.getLocalizedMessage`/
 `.getCause`/`.getData` on the shared `.ex_info` descriptor), `Pattern` (7,
 `.pattern`/`/compile`/`/quote`/`/matches`) + `Matcher` (11, `.find`/`.group`/
-`.start`/`.end`/`.groupCount`/`.matches`/`.lookingAt`/`.reset`). The remaining
-in-scope bare classes are tracked by **D-431**.
+`.start`/`.end`/`.groupCount`/`.matches`/`.lookingAt`/`.reset`), `Math` (52
+statics — abs/sqrt/cbrt/pow/round/floor/ceil/rint, exact-arith, log/exp family,
+full trig, hypot/signum/copySign/ulp/IEEEremainder + PI/E; already complete, the
+corpus just locks it). The remaining in-scope bare classes are tracked by
+**D-431**.
+
+> Note: `(Math/scalb 1.0 3)` is excluded — clj raises a COMPILE error ("More
+> than one matching method found") because it needs a type hint to pick the
+> overload; cljw resolves it (→ 8.0). Not a cljw gap; a clj-side limitation.

@@ -1,0 +1,104 @@
+(Math/abs -5)
+;;=> 5
+(Math/abs -5.5)
+;;=> 5.5
+(Math/sqrt 16.0)
+;;=> 4.0
+(Math/cbrt 27.0)
+;;=> 3.0
+(Math/floor 3.7)
+;;=> 3.0
+(Math/ceil 3.2)
+;;=> 4.0
+(Math/round 3.5)
+;;=> 4
+(Math/round 2.4)
+;;=> 2
+(Math/rint 2.5)
+;;=> 2.0
+(Math/pow 2.0 10.0)
+;;=> 1024.0
+(Math/min 3 7)
+;;=> 3
+(Math/max 3 7)
+;;=> 7
+(Math/min 3.5 7.5)
+;;=> 3.5
+(Math/max 3.5 7.5)
+;;=> 7.5
+(Math/floorDiv 7 2)
+;;=> 3
+(Math/floorDiv 7 -2)
+;;=> -4
+(Math/floorMod -7 3)
+;;=> 2
+(Math/floorMod 7 -3)
+;;=> -2
+(Math/addExact 2 3)
+;;=> 5
+(Math/subtractExact 10 4)
+;;=> 6
+(Math/multiplyExact 6 7)
+;;=> 42
+(Math/negateExact 5)
+;;=> -5
+(Math/incrementExact 9)
+;;=> 10
+(Math/decrementExact 9)
+;;=> 8
+(Math/toIntExact 42)
+;;=> 42
+Math/PI
+;;=> 3.141592653589793
+Math/E
+;;=> 2.718281828459045
+(Math/log 1.0)
+;;=> 0.0
+(Math/log10 1000.0)
+;;=> 3.0
+(Math/log1p 0.0)
+;;=> 0.0
+(Math/exp 0.0)
+;;=> 1.0
+(Math/expm1 0.0)
+;;=> 0.0
+(Math/signum -3.5)
+;;=> -1.0
+(Math/hypot 3.0 4.0)
+;;=> 5.0
+(Math/sin 0.0)
+;;=> 0.0
+(Math/cos 0.0)
+;;=> 1.0
+(Math/tan 0.0)
+;;=> 0.0
+(Math/asin 0.0)
+;;=> 0.0
+(Math/acos 1.0)
+;;=> 0.0
+(Math/atan 0.0)
+;;=> 0.0
+(Math/atan2 1.0 1.0)
+;;=> 0.7853981633974483
+(Math/sinh 0.0)
+;;=> 0.0
+(Math/cosh 0.0)
+;;=> 1.0
+(Math/tanh 0.0)
+;;=> 0.0
+(Math/toRadians 180.0)
+;;=> 3.141592653589793
+(Math/toDegrees 3.141592653589793)
+;;=> 180.0
+(Math/copySign 3.0 -1.0)
+;;=> -3.0
+(Math/getExponent 8.0)
+;;=> 3
+(Math/ulp 1.0)
+;;=> 2.220446049250313E-16
+(Math/nextUp 1.0)
+;;=> 1.0000000000000002
+(Math/nextDown 1.0)
+;;=> 0.9999999999999999
+(Math/IEEEremainder 5.0 3.0)
+;;=> -1.0
