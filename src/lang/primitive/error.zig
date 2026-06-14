@@ -31,6 +31,10 @@ const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const ex_info = @import("../../runtime/collection/ex_info.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
+const map_mod = @import("../../runtime/collection/map.zig");
+const vector_mod = @import("../../runtime/collection/vector.zig");
+const keyword_mod = @import("../../runtime/keyword.zig");
+const root_set = @import("../../runtime/gc/root_set.zig");
 
 /// `(ex-info msg data)` / `(ex-info msg data cause)`.
 ///
@@ -88,6 +92,71 @@ pub fn exCause(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return ex_info.cause(v);
 }
 
+/// `(stack-trace e)` — a cljw-shaped frame seq of a CAUGHT exception (ADR-0140):
+/// a vector of `{:ns :fn :file :line :column}` maps, **innermost-first** (clj's
+/// `:trace` convention; `info.trace` is innermost-LAST push order so iterate
+/// reverse). `:fn` is the BARE fn name, `:ns` separate (the renderer combines them
+/// `<ns>/<fn>`). NOT a JVM `StackTraceElement` 4-vector (ADR-0059: no JVM —
+/// class/method are fictions; the map keeps `column` a 4-vector drops). A non-ex_info
+/// OR a never-thrown ex-info (no captured trace) returns an EMPTY vector, so
+/// `clojure.stacktrace` keeps the AD-029 marker for a frame-less exception. Frames
+/// are already user-only (elided at push time, AD-024). Reads the ExInfo's own
+/// deep-copied frames (ADR-0120), so a re-thrown / stored exception is honest.
+pub fn stackTrace(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("stack-trace", args, 1, loc);
+    const v = args[0];
+    if (v.tag() != .ex_info) return vector_mod.fromSlice(rt, &.{});
+    const frames = ex_info.originTrace(v) orelse return vector_mod.fromSlice(rt, &.{});
+
+    // Interned keys are stable GC roots once interned.
+    const kw_ns = try keyword_mod.intern(rt, null, "ns");
+    const kw_fn = try keyword_mod.intern(rt, null, "fn");
+    const kw_file = try keyword_mod.intern(rt, null, "file");
+    const kw_line = try keyword_mod.intern(rt, null, "line");
+    const kw_column = try keyword_mod.intern(rt, null, "column");
+
+    var items: std.ArrayList(Value) = .empty;
+    defer items.deinit(rt.gpa);
+    // GC-root the in-progress pairs (stack) + accumulated maps (locals) across
+    // each `string.alloc` + `fromLiteralPairs`'s single alloc. A string is placed
+    // into the rooted `pairs` immediately after alloc so the next alloc can't
+    // collect it; `items` uses rt.gpa (not GC), so append never collects.
+    var pairs: [10]Value = undefined;
+    var pairs_sp: u16 = 0;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &pairs, .sp = &pairs_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
+
+    var i: usize = frames.len;
+    while (i > 0) {
+        i -= 1;
+        const f = frames[i];
+        pairs[0] = kw_ns;
+        pairs[1] = .nil_val;
+        pairs[2] = kw_fn;
+        pairs[3] = .nil_val;
+        pairs[4] = kw_file;
+        pairs[5] = .nil_val;
+        pairs[6] = kw_line;
+        pairs[7] = Value.initInteger(@intCast(f.line));
+        pairs[8] = kw_column;
+        pairs[9] = Value.initInteger(@intCast(f.column));
+        pairs_sp = 10;
+        gc_frame.locals = items.items;
+        if (f.ns) |s| pairs[1] = try string_collection.alloc(rt, s);
+        gc_frame.locals = items.items;
+        if (f.fn_name) |s| pairs[3] = try string_collection.alloc(rt, s);
+        gc_frame.locals = items.items;
+        if (f.file) |s| pairs[5] = try string_collection.alloc(rt, s);
+        gc_frame.locals = items.items;
+        const m = try map_mod.fromLiteralPairs(rt, pairs[0..10]);
+        try items.append(rt.gpa, m);
+        gc_frame.locals = items.items;
+    }
+    return vector_mod.fromSlice(rt, items.items);
+}
+
 /// `(__assertion-error msg)` — internal carrier that `(assert …)` throws
 /// (D-192). Unlike `ex-info`, it has a class name (`AssertionError`) so it is
 /// catchable as `AssertionError` / `Error` / `Throwable` but NOT `Exception`,
@@ -112,6 +181,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "ex-message", .f = &exMessage },
     .{ .name = "ex-data", .f = &exData },
     .{ .name = "ex-cause", .f = &exCause },
+    .{ .name = "stack-trace", .f = &stackTrace },
     .{ .name = "__assertion-error", .f = &assertionError },
 };
 

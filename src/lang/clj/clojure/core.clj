@@ -2305,22 +2305,27 @@
          (recur (inc ~idx) ~expr)
          ~ret))))
 
-;; PROVISIONAL: omits :trace + per-via :at pending the D-232 cljw frame-shape decision [refs: D-389, feature_deps.yaml#clojure.core/Throwable->map]
 (defn Throwable->map
   "Constructs a data representation for a caught exception with keys:
     :cause - root cause message
-    :via   - cause chain, each {:type (simple class symbol) :message :data}
+    :via   - cause chain, each {:type (simple class symbol) :message :data :at}
+    :trace - root cause's frames
     :data  - root cause ex-data
-  cljw exceptions are ex-info values (no JVM Throwable), so :type is the
-  simple class name and the per-frame :trace / per-via :at keys are OMITTED
-  (not emitted empty) until the cljw frame-shape lands (D-232)."
+  cljw exceptions are ex-info values (no JVM Throwable), so :type is the simple
+  class name (AD-003) and :trace / per-via :at are cljw-shaped frame maps
+  {:ns :fn :file :line :column} (ADR-0140), NOT JVM [class method file line]
+  4-vectors (AD-033). A never-thrown ex-info has no frames, so :trace / :at are
+  omitted (absent, never empty)."
   [e]
   (let [via (loop [acc [] t e] (if t (recur (conj acc t) (ex-cause t)) acc))
         root (peek via)
         base (fn [t]
                (merge {:type (symbol (.getName (class t)))}
                       (when-let [msg (ex-message t)] {:message msg})
-                      (when-let [d (ex-data t)] {:data d})))]
+                      (when-let [d (ex-data t)] {:data d})
+                      (when-let [at (first (stack-trace t))] {:at at})))
+        root-trace (stack-trace root)]
     (merge {:via (vec (map base via))}
            (when-let [rmsg (ex-message root)] {:cause rmsg})
+           (when (seq root-trace) {:trace (vec root-trace)})
            (when-let [d (ex-data root)] {:data d}))))

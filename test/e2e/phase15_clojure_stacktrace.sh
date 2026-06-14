@@ -60,5 +60,55 @@ Caused by: ExceptionInfo: inner
 {}
  at [no stack trace available]'
 
+assert_contains() {
+    local name="$1"; local got="$2"; local needle="$3"
+    [[ "$got" == *"$needle"* ]] || fail "$name: '$got' does not contain '$needle'"
+    echo "PASS $name -> contains '$needle'"
+}
+assert_absent() {
+    local name="$1"; local got="$2"; local needle="$3"
+    [[ "$got" != *"$needle"* ]] || fail "$name: '$got' unexpectedly contains '$needle'"
+    echo "PASS $name -> absent '$needle'"
+}
+
+# --- D2 (ADR-0140): a CAUGHT exception carries frames (ADR-0120), so
+#     print-stack-trace prints per-frame `<ns>/<fn> (<file>:<line>)` lines
+#     instead of the AD-029 marker. A constructed (never-thrown) ex-info has
+#     NO frames, so it KEEPS the marker (the cases above stay green). ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(require 'clojure.stacktrace)
+(defn boom [] (/ 1 0))
+(try (boom)
+  (catch Throwable e
+    (print (with-out-str (clojure.stacktrace/print-stack-trace e)))))
+EOF
+)
+assert_contains 'caught_prints_user_frame' "$got" 'user/boom'
+assert_absent   'caught_no_marker'         "$got" '[no stack trace available]'
+
+# --- (stack-trace e): a cljw-shaped frame seq (maps {:ns :fn :file :line :column}),
+#     innermost-first; :fn is the bare name, :ns separate. ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defn boom [] (/ 1 0))
+(try (boom)
+  (catch Throwable e
+    (print (boolean (some #{"boom"} (map :fn (stack-trace e)))))))
+EOF
+)
+assert_eq 'stack_trace_fn_key' "$got" 'true'
+
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defn boom [] (/ 1 0))
+(try (boom)
+  (catch Throwable e
+    (print (boolean (some #{"user"} (map :ns (stack-trace e)))))))
+EOF
+)
+assert_eq 'stack_trace_ns_key' "$got" 'true'
+
+# --- a constructed ex-info (never thrown) has no frames → empty seq + marker kept. ---
+got=$("$BIN" -e '(count (stack-trace (ex-info "x" {})))' 2>/dev/null)
+assert_eq 'unthrown_no_frames' "$got" '0'
+
 echo
-echo "clojure.stacktrace backfill (D-273) e2e: all green."
+echo "clojure.stacktrace backfill (D-273) + frame accessor (ADR-0140) e2e: all green."
