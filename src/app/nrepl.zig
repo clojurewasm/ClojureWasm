@@ -52,7 +52,8 @@ const Env = @import("../runtime/env.zig").Env;
 const Value = @import("../runtime/value/value.zig").Value;
 const bootstrap = @import("../lang/bootstrap.zig");
 const print = @import("../runtime/print.zig");
-const core_prim = @import("../lang/primitive/core.zig");
+const env_mod = @import("../runtime/env.zig");
+const text_io = @import("../runtime/io/text_io.zig");
 
 /// Run the nREPL server until SIGINT / fatal accept error. Writes a
 /// `.nrepl-port` file in CWD on bind so CIDER + similar clients can
@@ -308,17 +309,26 @@ fn replyEval(
         var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
 
         // Capture this form's stdout (println/print/prn/pr/newline) so it streams
-        // to the client as `out` instead of going only to the server's terminal.
-        var cap: std.Io.Writer.Allocating = .init(arena);
-        const saved_cap = core_prim.setOutCapture(&cap);
+        // to the client as `out`. ADR-0138: bind `*out*` to a fresh string writer
+        // for the eval — the capture IS the bound writer VALUE. The binding frame
+        // is threadlocal (env.zig current_frame), so each connection thread
+        // captures only its own output, exactly as the old threadlocal did.
+        const cap_w = try text_io.mintStringWriter(rt);
+        var out_frame: env_mod.BindingFrame = .{};
+        if (env.findNs("clojure.core")) |core_ns| {
+            if (core_ns.resolve("*out*")) |out_var| try out_frame.bindings.put(arena, out_var, cap_w);
+        }
+        env_mod.pushFrame(&out_frame);
         const result = driver.evalForm(rt, env, &locals, arena, node) catch |err| {
-            _ = core_prim.setOutCapture(saved_cap);
-            if (cap.written().len > 0) try replyOut(arena, w, cap.written(), session_id, id_val);
+            env_mod.popFrame();
+            const captured = text_io.writerBytes(cap_w);
+            if (captured.len > 0) try replyOut(arena, w, captured, session_id, id_val);
             try replyError(arena, w, @errorName(err), session_id, id_val);
             continue;
         };
-        _ = core_prim.setOutCapture(saved_cap);
-        if (cap.written().len > 0) try replyOut(arena, w, cap.written(), session_id, id_val);
+        env_mod.popFrame();
+        const captured = text_io.writerBytes(cap_w);
+        if (captured.len > 0) try replyOut(arena, w, captured, session_id, id_val);
 
         var aw: std.Io.Writer.Allocating = .init(arena);
         try print.printResult(rt, env, &aw.writer, result);

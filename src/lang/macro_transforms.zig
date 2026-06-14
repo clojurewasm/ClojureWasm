@@ -129,7 +129,6 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "future", .expand = expandFuture },
     .{ .name = "dosync", .expand = expandDosync },
     .{ .name = "locking", .expand = expandLocking },
-    .{ .name = "with-out-str", .expand = expandWithOutStr },
     .{ .name = "lazy-seq", .expand = expandLazySeq },
     .{ .name = "letfn", .expand = expandLetfn },
 };
@@ -3161,29 +3160,6 @@ fn expandLocking(
     call_items[0] = sym("__locking", loc);
     call_items[1] = args[0];
     call_items[2] = fn_form;
-    return list(arena, call_items, loc);
-}
-
-/// `(with-out-str body...)` → `(__with-out-str (fn* [] body...))` (D-238). The
-/// thunk's `print`/`pr`/`println` output is captured + returned as a string.
-/// An empty body is allowed (`(fn* [])` returns nil; the capture is "").
-fn expandWithOutStr(
-    arena: std.mem.Allocator,
-    rt: *Runtime,
-    args: []const Form,
-    loc: SourceLocation,
-) macro_dispatch.ExpandError!Form {
-    _ = rt;
-    const empty_params = try arena.dupe(Form, &.{});
-    const params_form: Form = .{ .data = .{ .vector = empty_params }, .location = loc };
-    var fn_items = try arena.alloc(Form, 2 + args.len);
-    fn_items[0] = sym("fn*", loc);
-    fn_items[1] = params_form;
-    @memcpy(fn_items[2..], args);
-    const fn_form: Form = .{ .data = .{ .list = fn_items }, .location = loc };
-    var call_items = try arena.alloc(Form, 2);
-    call_items[0] = sym("__with-out-str", loc);
-    call_items[1] = fn_form;
     return list(arena, call_items, loc);
 }
 

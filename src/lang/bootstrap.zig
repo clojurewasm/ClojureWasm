@@ -41,7 +41,6 @@ const map_collection = @import("../runtime/collection/map.zig");
 const symbol_mod = @import("../runtime/symbol.zig");
 const print_mod = @import("../runtime/print.zig");
 const writer_value = @import("../runtime/writer_value.zig");
-const text_io = @import("../runtime/io/text_io.zig");
 const uuid_prim = @import("primitive/uuid.zig");
 const inst_prim = @import("primitive/inst.zig");
 
@@ -256,7 +255,6 @@ pub fn setupCore(arena: std.mem.Allocator, rt: *Runtime, env: *Env, macro_table:
 fn installPrintMethod(rt: *Runtime, env: *Env) !void {
     _ = rt;
     writer_value.initWriterType();
-    text_io.initTextIoTypes();
     if (env.findNs("clojure.core")) |core| {
         print_mod.initPrintMethodVar(core.resolve("print-method"));
     }

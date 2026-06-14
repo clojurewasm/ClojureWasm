@@ -56,4 +56,27 @@ assert_eq 'stdout_writer_writethrough' "$("$BIN" - <<'EOF' 2>/dev/null
 EOF
 )" 'out-through'
 
-echo "OK — phase14_text_writer (5 cases) green"
+# --- step 2: *out* IS a writer value (root flip + with-out-str over binding) ---
+
+# (type *out*) is the Writer value, not the old keyword sentinel.
+assert_eq 'out_is_writer' "$("$BIN" -e '(type *out*)' 2>/dev/null)" 'Writer'
+
+# with-out-str rebinds *out* to a string writer (no threadlocal) and returns it.
+assert_eq 'with_out_str_print' "$("$BIN" - <<'EOF' 2>/dev/null
+(prn (with-out-str (print "x") (println "y")))
+EOF
+)" '"xy\n"'
+
+# Writer-interop on *out* dispatches on the value's method_table (no D-434 fallback).
+assert_eq 'with_out_str_dotwrite' "$("$BIN" - <<'EOF' 2>/dev/null
+(prn (with-out-str (.write *out* "a") (.append *out* "b") (.write *out* 67)))
+EOF
+)" '"abC"'
+
+# Nested with-out-str: inner capture does not leak into the outer.
+assert_eq 'with_out_str_nested' "$("$BIN" - <<'EOF' 2>/dev/null
+(prn (with-out-str (print "o1") (prn (with-out-str (print "inner"))) (print "o2")))
+EOF
+)" '"o1\"inner\"\no2"'
+
+echo "OK — phase14_text_writer (9 cases) green"

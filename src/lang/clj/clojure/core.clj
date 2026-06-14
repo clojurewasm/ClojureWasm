@@ -35,16 +35,14 @@
 ;; ADR-0111); a plain `cljw <file>` / `-e` leaves it nil.
 (def ^:dynamic *command-line-args* nil)
 
-;; `*out*` / `*err*` — the bindable output writer vars (D-238, second half;
-;; pulled by instaparse's `(defmethod print-method Failure [x w] (binding
-;; [*out* w] …))`). The ROOT is a sentinel keyword meaning "the process
-;; stream"; print/println/pr/prn/newline (core.zig emitToStdout) deref *out*
-;; AFTER the nREPL capture lane and write through any non-sentinel value
-;; (a print-method writer handle, a java.io.StringWriter, or a user writer
-;; type with a `.write` method). `.write` on the UNBOUND sentinel root is a
-;; documented residual (rebind first, as real code does).
-(def ^:dynamic *out* :clojure.core/stdout)
-(def ^:dynamic *err* :clojure.core/stderr)
+;; `*out*` / `*err*` — first-class cljw writer VALUES (ADR-0138). The roots are
+;; a stdout / stderr text_io Writer (UTF-8, no JVM Charset/PrintWriter); print/
+;; println/pr/prn/newline (core.zig emitToStdout) render + push to the bound
+;; `*out*`, and `(.write *out* s)` / `.append` / `.flush` dispatch on the value's
+;; own method_table — no sentinel, no special-case. `with-out-str` / nREPL
+;; capture are plain `(binding [*out* (rt/__string-writer)] …)` rebinds.
+(def ^:dynamic *out* (rt/__stdout-writer))
+(def ^:dynamic *err* (rt/__stderr-writer))
 ;; `*in*` — the bindable input reader var (D-414). ROOT is nil (no process-stdin
 ;; reader yet); `with-in-str` / `(binding [*in* rdr] …)` set it to a host reader
 ;; (e.g. `(rt/__string-reader s)`). `read-line` derefs it.
@@ -2190,6 +2188,16 @@
 (defmacro with-in-str [s & body]
   `(binding [*in* (rt/__string-reader ~s)]
      ~@body))
+
+;; `(with-out-str & body)` — evaluate body with `*out*` bound to a fresh
+;; string-backed writer, then return everything written to it as a String
+;; (the body's own value is discarded). ADR-0138: a plain `binding` rebind of
+;; the `*out*` writer VALUE — no threadlocal capture lane. Mirrors
+;; clojure.core/with-out-str (JVM binds a java.io.StringWriter).
+(defmacro with-out-str [& body]
+  `(let [w# (rt/__string-writer)]
+     (binding [*out* w#] ~@body)
+     (rt/__writer->str w#)))
 
 ;; `(with-local-vars [x init ...] body…)` — bind each name to a FRESH anonymous
 ;; dynamic Var (ADR-0097 / D-237) thread-bound to its init for the body's extent,

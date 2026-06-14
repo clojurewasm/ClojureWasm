@@ -29,6 +29,7 @@ const map = @import("../../runtime/collection/map.zig");
 const print_mod = @import("../../runtime/print.zig");
 const charset_mod = @import("../../runtime/charset.zig");
 const writer_value_mod = @import("../../runtime/writer_value.zig");
+const text_io = @import("../../runtime/io/text_io.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
 const protocol_mod = @import("../../runtime/protocol.zig");
 const class_name = @import("../../runtime/class_name.zig");
@@ -709,43 +710,18 @@ fn writeArgsSpaced(rt: *Runtime, env: *Env, w: *std.Io.Writer, args: []const Val
 /// with the runner's result-print on ONE offset-tracking writer (D-096);
 /// a test-init Runtime with no shared writer falls back to a private one
 /// (correct in isolation — nothing else competes for the fd).
-/// Active `with-out-str` capture sink, or null for the process stdout. Threadlocal
-/// so a `with-out-str` on a future/agent worker captures only its own thread's
-/// output (a general bindable `*out*` writer var is a later D-238 slice).
-threadlocal var out_capture: ?*std.Io.Writer.Allocating = null;
-
-/// Redirect `print`/`println`/`prn`/`pr`/`newline` output into `sink` for the
-/// current thread (or back to process stdout when `sink` is null), returning the
-/// previous sink so the caller can restore it. The nREPL eval loop uses this to
-/// capture a form's stdout and stream it to the client as an `out` message;
-/// `with-out-str` uses the same threadlocal (nesting saves/restores). Threadlocal
-/// → each connection thread / worker captures only its own output.
-pub fn setOutCapture(sink: ?*std.Io.Writer.Allocating) ?*std.Io.Writer.Allocating {
-    const saved = out_capture;
-    out_capture = sink;
-    return saved;
-}
-
+/// Emit `args` through the bound `*out*` writer VALUE (ADR-0138): render
+/// space-separated into a scratch buffer, then push to whatever `*out*` is
+/// bound to — a text_io stdout/stderr/string writer (the root is the stdout
+/// writer), a print-method handle, a user writer type, etc. `with-out-str` and
+/// nREPL capture are now plain `(binding [*out* string-writer] …)` rebinds, not
+/// a threadlocal — the capture is the bound value. The `rt.stdout` fallback
+/// only fires if `*out*` is unresolved/nil (pre-bootstrap, before core.clj:46).
 fn emitToStdout(rt: *Runtime, env: *Env, args: []const Value, readable: bool, newline: bool) anyerror!Value {
-    if (out_capture) |aw| {
-        // Capturing (`with-out-str` / nREPL): render into the in-memory sink,
-        // no stdout, no flush (the Allocating writer accumulates until the
-        // capture ends). Takes precedence over a *out* binding (the capture
-        // lane is an implementation channel, not a user-visible var).
-        const w = &aw.writer;
-        try writeArgsSpaced(rt, env, w, args, readable);
-        if (newline) try w.writeByte('\n');
-        return .nil_val;
-    }
-    // D-238 second half: a `(binding [*out* w] …)` redirects the print
-    // pipeline through the bound writer VALUE (a print-method writer handle,
-    // a java.io.StringWriter, or any type with a `.write` method). The
-    // sentinel keyword root (:clojure.core/stdout) means "the process
-    // stream" — fall through.
     if (env.findNs("clojure.core")) |core_ns| {
         if (core_ns.resolve("*out*")) |out_var| {
             const bound = out_var.deref();
-            if (bound.tag() != .keyword and !bound.isNil()) {
+            if (!bound.isNil()) {
                 var aw: std.Io.Writer.Allocating = .init(rt.gpa);
                 defer aw.deinit();
                 try writeArgsSpaced(rt, env, &aw.writer, args, readable);
@@ -755,6 +731,7 @@ fn emitToStdout(rt: *Runtime, env: *Env, args: []const Value, readable: bool, ne
             }
         }
     }
+    // Pre-bootstrap fallback: *out* not yet defined → direct process stdout.
     if (rt.stdout) |w| {
         try writeArgsSpaced(rt, env, w, args, readable);
         if (newline) try w.writeByte('\n');
@@ -802,6 +779,9 @@ pub fn prFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 /// java.io.StringWriter and user writer types). An un-writable value
 /// raises — never a silent drop.
 fn writeToWriterValue(rt: *Runtime, env: *Env, wv: Value, bytes: []const u8) anyerror!void {
+    // text_io *out*/*err*/string writer — push to its sink directly (no method
+    // round-trip). This is the hot path (the *out* root is a stdout writer).
+    if (try text_io.writeBytesIfWriter(rt, wv, bytes)) return;
     if (writer_value_mod.unwrap(wv)) |w| {
         try w.writeAll(bytes);
         return;
@@ -819,23 +799,6 @@ fn writeToWriterValue(rt: *Runtime, env: *Env, wv: Value, bytes: []const u8) any
         return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "*out* bound to a value with no .write method" });
     const vt = rt.vtable orelse return error.NoVTable;
     _ = try vt.callFn(rt, env, me.method_val, &.{ wv, s_val }, .{});
-}
-
-/// `(__with-out-str thunk)` — run `(thunk)` with `print`/`pr`/`println`/`prn`/
-/// `newline` output captured into an in-memory sink, and return the captured
-/// string (the thunk's own value is discarded — clj `with-out-str`). Nesting is
-/// supported (each level saves/restores the outer sink); a thrown thunk
-/// propagates (the partial output is dropped), matching clj.
-pub fn withOutStrFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    try error_catalog.checkArity("with-out-str", args, 1, loc);
-    var aw: std.Io.Writer.Allocating = .init(rt.gpa);
-    defer aw.deinit();
-    const saved = out_capture;
-    out_capture = &aw;
-    defer out_capture = saved;
-    const vt = rt.vtable orelse return error.InternalError;
-    _ = try vt.callFn(rt, env, args[0], &.{}, loc);
-    return string_mod.alloc(rt, aw.written());
 }
 
 /// `(newline)` — write a single newline to stdout. Spec: clojure.core/newline.
@@ -1727,7 +1690,6 @@ const ENTRIES = [_]Entry{
     .{ .name = "println", .f = &printlnFn },
     .{ .name = "print", .f = &printFn },
     .{ .name = "prn", .f = &prnFn },
-    .{ .name = "__with-out-str", .f = &withOutStrFn },
     .{ .name = "pr", .f = &prFn },
     .{ .name = "__print-method-default", .f = &print_mod.printMethodDefaultFn },
     .{ .name = "newline", .f = &newlineFn },

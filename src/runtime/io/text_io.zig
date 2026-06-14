@@ -178,6 +178,26 @@ pub fn mintWriter(rt: *Runtime, mode: Mode) !Value {
     return host_instance.alloc(rt, &writer_descriptor, .{ @intFromPtr(st), 0, 0, 0 });
 }
 
+/// Mint a fresh `.string` writer — the capture sink for `with-out-str` / nREPL.
+pub fn mintStringWriter(rt: *Runtime) !Value {
+    return mintWriter(rt, .string);
+}
+
+/// The accumulated bytes of a `.string` writer (empty for process modes). Used by
+/// nREPL to read a captured-eval's stdout after the `*out*` binding pops.
+pub fn writerBytes(v: Value) []const u8 {
+    return stateOf(v).buf.items;
+}
+
+/// Fast path for the print pipeline: if `wv` is a text_io Writer, push `bytes`
+/// to its sink directly (no `.write` method-dispatch round-trip) and return
+/// true; otherwise false so the caller tries other writer kinds.
+pub fn writeBytesIfWriter(rt: *Runtime, wv: Value, bytes: []const u8) !bool {
+    if (!isTextWriter(wv)) return false;
+    try emitBytes(rt, stateOf(wv), bytes);
+    return true;
+}
+
 // --- rt/ primitives ---
 
 fn stdoutWriterFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -220,6 +240,10 @@ const PRIMS = [_]Prim{
 /// `primitive.registerAll`. The descriptor method_table is filled at bootstrap
 /// via `initTextIoTypes` (lang/bootstrap.zig), like writer_value.zig.
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {
+    // Fill the method_table BEFORE core.clj loads — its `(def *out* (rt/__stdout-writer))`
+    // (core.clj) mints a Writer at bootstrap, and any print during load dispatches
+    // on this table. register() runs in primitive.registerAll, before loadCore.
+    initTextIoTypes();
     for (PRIMS) |p| {
         _ = try env.intern(rt_ns, p.name, Value.initBuiltinFn(p.f), null);
     }
