@@ -15,6 +15,7 @@
 //! init (D-097, the math.numeric-tower floor/ceil path D-420). Arithmetic
 //! auto-promotion landed earlier via D-014a.
 
+const std = @import("std");
 const host_api = @import("../_host_api.zig");
 const type_descriptor = @import("../../type_descriptor.zig");
 const Runtime = @import("../../runtime.zig").Runtime;
@@ -58,6 +59,55 @@ fn unscaledValueFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     try error_catalog.checkArity("unscaledValue", args, 1, loc);
     try requireBd(args[0], "unscaledValue", loc);
     return big_int.allocFromManaged(rt, big_decimal.asUnscaled(args[0]).m, .bigint);
+}
+
+/// `(.negate bd)` — the value with its sign flipped (same scale). JVM
+/// `BigDecimal.negate()`.
+fn negateFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("negate", args, 1, loc);
+    try requireBd(args[0], "negate", loc);
+    var m = try std.math.big.int.Managed.init(rt.gc.infra);
+    defer m.deinit();
+    try m.copy(big_decimal.asUnscaled(args[0]).m.toConst());
+    m.negate();
+    return big_decimal.allocFromManagedScale(rt, &m, big_decimal.asScale(args[0]));
+}
+
+/// `(.abs bd)` — the absolute value (same scale). JVM `BigDecimal.abs()`.
+fn absFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("abs", args, 1, loc);
+    try requireBd(args[0], "abs", loc);
+    const src = big_decimal.asUnscaled(args[0]).m;
+    if (src.eqlZero() or src.isPositive()) return args[0]; // already non-negative
+    var m = try std.math.big.int.Managed.init(rt.gc.infra);
+    defer m.deinit();
+    try m.copy(src.toConst());
+    m.abs();
+    return big_decimal.allocFromManagedScale(rt, &m, big_decimal.asScale(args[0]));
+}
+
+/// `(.toBigInteger bd)` — truncate toward zero to a BigInteger (cljw big_int).
+/// JVM `BigDecimal.toBigInteger()`.
+fn toBigIntegerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("toBigInteger", args, 1, loc);
+    try requireBd(args[0], "toBigInteger", loc);
+    // setScale(0, ROUND_DOWN=1) truncates toward zero (DOWN never needs rounding);
+    // the resulting scale-0 BigDecimal's unscaled value IS the integer.
+    const truncated = try big_decimal.setScale(rt, args[0], 0, 1);
+    return big_int.allocFromManaged(rt, big_decimal.asUnscaled(truncated).m, .bigint);
+}
+
+/// `(.stripTrailingZeros bd)` — remove trailing zero digits (the scale-independent
+/// normalized projection, ADR-0077). JVM `BigDecimal.stripTrailingZeros()`
+/// (e.g. `1.500` → `1.5`, `100` → `1E+2`).
+fn stripTrailingZerosFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("stripTrailingZeros", args, 1, loc);
+    try requireBd(args[0], "stripTrailingZeros", loc);
+    return big_decimal.allocFromManagedScale(rt, big_decimal.asNormUnscaled(args[0]).m, big_decimal.asNormScale(args[0]));
 }
 
 /// `(.precision bd)` — the number of significant digits in the unscaled value
@@ -114,6 +164,10 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "signum", &signumFn },
         .{ "unscaledValue", &unscaledValueFn },
         .{ "precision", &precisionFn },
+        .{ "negate", &negateFn },
+        .{ "abs", &absFn },
+        .{ "toBigInteger", &toBigIntegerFn },
+        .{ "stripTrailingZeros", &stripTrailingZerosFn },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

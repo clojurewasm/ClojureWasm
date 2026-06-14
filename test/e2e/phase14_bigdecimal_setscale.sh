@@ -60,4 +60,13 @@ assert_eq 'unscaled'     "$("$BIN" -e '(str (.unscaledValue (bigdec "1.23")))' 2
 assert_eq 'precision'    "$("$BIN" -e '(.precision (bigdec "123.45"))' 2>&1 | awk 'END{print}')"         '5'
 assert_eq 'precision_zero' "$("$BIN" -e '(.precision (bigdec "0.00"))' 2>&1 | awk 'END{print}')"         '1'
 
-echo "OK — phase14_bigdecimal_setscale (28 cases) green"
+# BigDecimal value transformers: negate / abs / toBigInteger / stripTrailingZeros.
+assert_eq 'negate'      "$("$BIN" -e '(str (.negate (bigdec "1.5")))' 2>&1 | awk 'END{print}')"               '"-1.5"'
+assert_eq 'abs_neg'     "$("$BIN" -e '(str (.abs (bigdec "-1.5")))' 2>&1 | awk 'END{print}')"                 '"1.5"'
+assert_eq 'abs_pos'     "$("$BIN" -e '(str (.abs (bigdec "1.5")))' 2>&1 | awk 'END{print}')"                  '"1.5"'
+assert_eq 'tobigint'    "$("$BIN" -e '(str (.toBigInteger (bigdec "1.99")))' 2>&1 | awk 'END{print}')"        '"1"'
+assert_eq 'tobigint_neg' "$("$BIN" -e '(str (.toBigInteger (bigdec "-1.99")))' 2>&1 | awk 'END{print}')"      '"-1"'
+assert_eq 'strip'       "$("$BIN" -e '(str (.stripTrailingZeros (bigdec "1.500")))' 2>&1 | awk 'END{print}')" '"1.5"'
+assert_eq 'strip_e'     "$("$BIN" -e '(str (.stripTrailingZeros (bigdec "100")))' 2>&1 | awk 'END{print}')"   '"1E+2"'
+
+echo "OK — phase14_bigdecimal_setscale (35 cases) green"
