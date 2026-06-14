@@ -12,13 +12,15 @@
   `zig build -Dwasm -Doptimize=ReleaseSafe` — bare `zig build` = Debug and
   Debug-overwrites zig-out, so it is for hand experiments only.
 
-- **First task on resume MUST be**: the loop self-selects the next normal-dev
-  unit (finished-form first, F-002) via Step 0.5 debt sweep → highest-value
-  coverage/quality. Concrete standing candidates: the component experiment's
-  next layer (require-as-namespace — see below; the user's active track), D-419
-  (data.finger-tree method-under-foreign-interface-header, niche/D-415-adjacent),
-  D-418 (agent send/await `#<promise>` race — needs an under-load reproducer),
-  or a library-conformance re-probe.
+- **First task on resume MUST be**: continue the **Java-class completion campaign
+  (D-425)** — user-directed proactive finished-form push ("よく使うJava Classは
+  先回りで完備 + どういう設計で取り扱うか毎回しっかり決める"). D-425 carries the
+  6-model decision-tree + the prioritized order; next unit is (a) System/setProperty
+  (property store) or (b) Thread/currentThread + Runtime/getRuntime (singleton
+  host_instance). Drain D-425's order highest-value-first; pick the design model
+  per class and cite it in the commit. Survey: private/notes/survey-java-class-coverage.md.
+  (The component experiment below remains the user's other active track; D-418/D-419
+  status changed — D-419 discharged, D-418 still barrier-blocked.)
 
 - **Component experiment (push-suppressed, in `git stash@{0}`)**: zwasm REQ-7
   LANDED (pin `33e0100c`; channel `private/20260613_handover_from_zwasm/
@@ -42,14 +44,16 @@
   relative-path `build.zig.zon` (experiment is local-only); `git push --force*`;
   bare `zig build` for any scripted/probe path (ADR-0133).
 
-## Just landed (2026-06-14, on `main`)
+## Just landed (2026-06-14, on `main`) — finished-form cleanup period + Java campaign start
 
-D-421 `(resolve 'Class)` → class value: extracted analyzeSymbol's class-value
-arm into shared `analyzer.resolveClassValue`, called from `core.resolvePrim` on
-Var/ns miss (DRY); unblocks `when-available` → numeric-tower `round`. D-420
-math.numeric-tower fully closed: full-surface `verify.clj` green; floor/ceil-on-
-ratio Long-vs-BigInt classified as AD-031 (F-005 narrow-when-fits). e2e
-phase14_var_resolve 11-15. D-418 / D-419 still open.
+User-directed cleanup of asymmetries the library work surfaced (3 parallel
+surveys), then the Java campaign opened. Commits: D-421 `(resolve 'Class)` +
+D-420 numeric-tower close; D-419 deftype inheritance-flatten (method under a
+foreign interface header); reify remap-awareness (silent-failure fix) + getFn
+3-arity-default unification; host_interface yaml==zig gate (D-415 S1 closed);
+System exit/lineSeparator/arraycopy (D-425 campaign unit 1). Filed D-422
+(finger-tree conjl segfault), D-423 (qualified protocol name in reify), D-424
+(latent class-resolution seam), D-425 (Java-completion campaign anchor).
 
 ## Cold-start reading order (resume)
 
