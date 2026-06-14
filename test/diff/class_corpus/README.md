@@ -57,6 +57,14 @@ On the java.util container surface:
 - `.keySet` / `.values` return a cljw seq, not a JVM `Set`/`Collection` view
   (AD-032); corpus sorts them since hash order differs from clj (AD-001 family).
 
+On the boxing / Character surface:
+- `Double/MIN_VALUE` prints `5.0E-324` vs clj `4.9E-324` — the same f64 bits
+  (the smallest denormal, `2^-1074`); only the shortest-decimal rendering of the
+  denormal differs (a float-formatting edge, not a value divergence).
+- `Character/isSpaceChar` is not wired (errors): it is the Unicode
+  SPACE_SEPARATOR category, distinct from `.isWhitespace` and rare in Clojure —
+  outside the common surface (an approximation would be a silent semantic bug).
+
 ## Status
 
 Landed: `String` (44), `Object` (15, universal `.toString`/`.equals`),
@@ -70,9 +78,13 @@ corpus just locks it), `ArrayList` (17, add/get/set/size/isEmpty/contains/indexO
 remove/addAll/clear + seq/vec/count) + `HashMap` (18, put/get/containsKey/
 containsValue/getOrDefault/putIfAbsent/remove/keySet/values/clear + into),
 `StringBuilder` (15, append all types + sub-range, toString/length/isEmpty/
-charAt/deleteCharAt/insert/setLength/reverse). The remaining in-scope bare
-classes are tracked by **D-431**; `java.util.HashSet`/`TreeMap` are not yet
-implemented (absent, not partial — candidates, not a completeness gap).
+charAt/deleteCharAt/insert/setLength/reverse), and the boxing/`Character` family
+`Long` (19) + `Integer` (19) + `Double` (15) + `Boolean` (11) + `Character` (13)
+— parse/valueOf/toString/radix/bit-ops/predicates/case-fold (Long/Integer/Boolean
+already complete; Double gained `isFinite`, Character gained `isAlphabetic`/
+`toString`). The remaining in-scope bare classes are tracked by **D-431**;
+`java.util.HashSet`/`TreeMap` are not yet implemented (absent, not partial —
+candidates, not a completeness gap).
 
 > Note: `(Math/scalb 1.0 3)` is excluded — clj raises a COMPILE error ("More
 > than one matching method found") because it needs a type hint to pick the
