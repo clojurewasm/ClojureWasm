@@ -719,6 +719,7 @@ run_step "e2e_phase14_deftype_equiv"          "bash test/e2e/phase14_deftype_equ
 run_step "e2e_phase14_deftype_key_hash"       "bash test/e2e/phase14_deftype_key_hash.sh"
 run_step "e2e_phase14_instaparse_substrate"   "bash test/e2e/phase14_instaparse_substrate.sh"
 run_step "e2e_phase14_exit_smoke"            "bash test/e2e/phase14_exit_smoke.sh"
+run_step "e2e_phase14_text_writer"           "bash test/e2e/phase14_text_writer.sh"
 
 # Informational scans (ADR-0024). Phase 5+ they become blocking.
 run_step "scan_catalog_only"   "bash scripts/scan_catalog_only.sh" optional
