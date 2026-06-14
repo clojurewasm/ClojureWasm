@@ -46,6 +46,17 @@ not by a corpus line. Examples on the String/Object surface: `.hashCode`
 (AD-009, cljw value-hash ≠ JVM polynomial), `.getClass` (AD-003, simple name),
 and nil-receiver method calls (error-format differs per F-011).
 
+On the java.util container surface:
+- `(.remove al (int i))` index-remove vs value-remove: cljw cannot distinguish
+  `remove(int)` from `remove(Object)` (F-005 int/Long collapse) and always does
+  value-remove — documented in `ArrayList.zig`. Corpus uses a non-integer element
+  to test the unambiguous value-remove parity.
+- `.toString` of an ArrayList/HashMap renders the cljw host-instance opaque form
+  (`#<cljw.java.util.ArrayList>`), not clj's `[1, 2]` — the uniform host-object
+  print. `(vec al)` / `(into {} hm)` give the clj-matching content.
+- `.keySet` / `.values` return a cljw seq, not a JVM `Set`/`Collection` view
+  (AD-032); corpus sorts them since hash order differs from clj (AD-001 family).
+
 ## Status
 
 Landed: `String` (44), `Object` (15, universal `.toString`/`.equals`),
@@ -55,8 +66,12 @@ Landed: `String` (44), `Object` (15, universal `.toString`/`.equals`),
 `.start`/`.end`/`.groupCount`/`.matches`/`.lookingAt`/`.reset`), `Math` (52
 statics — abs/sqrt/cbrt/pow/round/floor/ceil/rint, exact-arith, log/exp family,
 full trig, hypot/signum/copySign/ulp/IEEEremainder + PI/E; already complete, the
-corpus just locks it). The remaining in-scope bare classes are tracked by
-**D-431**.
+corpus just locks it), `ArrayList` (17, add/get/set/size/isEmpty/contains/indexOf/
+remove/addAll/clear + seq/vec/count) + `HashMap` (18, put/get/containsKey/
+containsValue/getOrDefault/putIfAbsent/remove/keySet/values/clear + into). The
+remaining in-scope bare classes are tracked by **D-431**; `java.util.HashSet`/
+`TreeMap` are not yet implemented (absent, not partial — candidates, not a
+completeness gap).
 
 > Note: `(Math/scalb 1.0 3)` is excluded — clj raises a COMPILE error ("More
 > than one matching method found") because it needs a type hint to pick the
