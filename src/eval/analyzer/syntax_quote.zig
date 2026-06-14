@@ -145,9 +145,20 @@ fn walk(arena: std.mem.Allocator, rt: *Runtime, env: *Env, form: Form, gmap: *Ge
         .unquote => |inner| inner.*,
         // `~@x` outside a collection has nothing to splice into.
         .unquote_splicing => error_catalog.raise(.token_invalid, form.location, .{ .token = "~@ (unquote-splicing outside a list/vector/set)" }),
-        // Nested `` ` `` — flatten by expanding the inner template (approximation;
-        // full depth-counted nesting is a stage-2 refinement).
-        .syntax_quote => |inner| try walk(arena, rt, env, inner.*, gmap, loc),
+        // Nested `` ` `` (ADR-0082 / D-228): clj expands an inner syntax-quote at
+        // read time into its `(seq (concat …))` build form, then the OUTER
+        // syntax-quote walks THAT build form as ordinary data — so an inner `~` is
+        // consumed at the INNER level and its expression is PRESERVED as data at
+        // the outer level (`` `(a `(b ~(+ 1 2))) `` keeps `(+ 1 2)` unevaluated,
+        // re-qualified to `clojure.core/+`), not flattened/evaluated. Match it:
+        // expand the inner with a FRESH gensym scope (each backtick is its own
+        // `foo#` scope, clj parity) into its build form, then re-walk that build
+        // form at this (outer) level so its symbols/forms become outer data.
+        .syntax_quote => |inner| blk: {
+            var inner_gmap = GensymMap.init(arena);
+            const inner_expanded = try walk(arena, rt, env, inner.*, &inner_gmap, loc);
+            break :blk try walk(arena, rt, env, inner_expanded, gmap, loc);
+        },
         .symbol => |s| blk: {
             // `foo#` auto-gensym (unqualified only): one stable name per syntax-quote.
             if (s.ns == null and s.name.len > 1 and s.name[s.name.len - 1] == '#') {

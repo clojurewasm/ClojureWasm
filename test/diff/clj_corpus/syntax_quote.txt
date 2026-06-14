@@ -42,3 +42,11 @@
 ;;=> (clojure.core/defn user/f [user/x] (clojure.core/* user/x 2))
 `(fn* [a] (recur a))
 ;;=> (fn* [user/a] (recur user/a))
+;; D-228: nested `` ` `` preserves the inner template as data (an inner ~ is
+;; consumed at the inner level; ~~ escapes one level back to the outer eval).
+`(a `(b ~(+ 1 2)))
+;;=> (user/a (clojure.core/seq (clojure.core/concat (clojure.core/list (quote user/b)) (clojure.core/list (clojure.core/+ 1 2)))))
+`(a `(b ~~(+ 1 2)))
+;;=> (user/a (clojure.core/seq (clojure.core/concat (clojure.core/list (quote user/b)) (clojure.core/list 3))))
+`(a `(b ~@(list 1 2)))
+;;=> (user/a (clojure.core/seq (clojure.core/concat (clojure.core/list (quote user/b)) (clojure.core/list 1 2))))

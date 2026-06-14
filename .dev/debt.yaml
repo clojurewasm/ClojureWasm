@@ -89,12 +89,6 @@ active:
       / D-219 / D-164 / F-011. recall trigger: when print-control binding / the
       lazy-seq-length hang is taken up.
     last_reviewed: "2026-06-04"
-  - id: "D-228"
-    status: "now (minor, found 2026-06-03 during D-226) — nested syntax-quote flattens instead of preserving the inner template."
-    category: "runtime"
-    barrier: |-
-      **Nested `` ` `` is approximated** (`syntax_quote.zig::walk`'s `.syntax_quote` arm recurses, flattening): `` `(a `(b ~(+ 1 2))) `` → cljw evaluates the inner `~` (yields `(... (b 3))`) where clj PRESERVES the inner template as data (`(… (clojure.core/seq (clojure.core/concat …)))`), because clj counts quote DEPTH — an inner `` ` `` increments depth, `~` only unquotes at depth 0. Discharge: thread a `depth` counter through `walk`; a `.syntax_quote` increments it, `.unquote`/`.unquote_splicing` decrement, and only at depth 0 does `~` actually splice (else it expands to a `(list (quote ~) …)` data form). LOW value (nested backtick is rare — mostly macro-writing macros). Cross-ref D-226 / ADR-0082 / F-011. recall trigger: when a macro-defining macro / nested-backtick parity is needed.
-    last_reviewed: "2026-06-03"
   - id: "D-240"
     status: "now (pre-existing, surfaced by ADR-0087 queue diff attempt)"
     category: "tests"
@@ -1933,6 +1927,11 @@ standing:
     last_reviewed: "2026-06-15"
 
 discharged:
+  - id: "D-228"
+    status: "DISCHARGED 2026-06-15 (ADR-0082 / F-011): nested syntax-quote is now depth-correct. `syntax_quote.zig::walk`'s `.syntax_quote` arm expands the inner backtick with a FRESH gensym scope into its (seq (concat …)) build form, then re-walks that build form at the outer level — clj's read-time recursive-expansion model (NOT the debt row's suggested explicit depth counter; the double-walk achieves the same depth semantics more cleanly). Result: an inner `~` is consumed at the INNER level and its expression is PRESERVED as data at the outer level, `~~` escapes one level back to outer eval, nested `~@` is preserved, each backtick is its own auto-gensym scope. clj-oracle-verified: `(a (b ~(+ 1 2)))`-nested → (user/a (clojure.core/seq (clojure.core/concat (clojure.core/list (quote user/b)) (clojure.core/list (clojure.core/+ 1 2))))); ~~ → 3; ~@ → (list 1 2). 3 corpus cases in test/diff/clj_corpus/syntax_quote.txt (3025/3025 reproduced). Simple single-backtick unaffected (regression-checked)."
+    category: "runtime"
+    barrier: "none — gensym-nested matches structurally but the gensym COUNTER values differ from clj (impl-specific, not observable-equivalence, like AD-001); corpus covers the exact-match cases (no gensym)."
+    last_reviewed: "2026-06-15"
   - id: "D-046"
     status: "DISCHARGED 2026-06-15 (ADR-0143; barrier MET — STM/threads live at HEAD, future/agent spawn real std.Thread). LazySeq.force is now thread-safe via an inline lock-free double-checked atomic flag + CAS-claim (the atom.zig/D-246 idiom on the existing realized_flag byte — 3-state PENDING/REALISED/CLAIMING; zero struct growth, zero off-heap cell, zero finaliser). Fast-path read is a lock-free acquire-load (clj's shape — clj nulls a volatile Lock); exactly one CAS winner invokes the thunk (at-most-once, F-011), publishing via a release-store that fences the plain realized write; losers spin honoring the ADR-0092 safepoint (gc_requested poll + park). A thrown thunk resets flag to PENDING (clj retries a thrown realisation; not cached). REJECTED: off-heap Io.Mutex cell (per-element alloc+finaliser on the highest-cardinality heap object — Alt 2, a perf finished-form loss) and at-most-once relaxation (F-011 — Alt 1); Alt 3 (futex on the flag word) is unimplementable — std.Thread sync primitives are gone in Zig 0.16.0. Devil's-advocate fork output is verbatim in ADR-0143 Alternatives. 8-thread concurrent-force unit test (asserts exactly 1 invocation) in lazy_seq.zig; smoke 5/5 green (1109/1109 units -Dwasm). Known limitation (shared with delay/promise/future): a self-forcing lazy-seq hangs vs clj StackOverflow — degenerate, unguarded for memo-family consistency."
     category: "concurrency"
