@@ -83,6 +83,27 @@ pub fn createNsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     return Env.nsValue(ns);
 }
 
+/// `(intern ns name)` / `(intern ns name val)` — intern a Var named `name` (a
+/// symbol) in `ns` (a Namespace or ns-naming symbol), returning the Var. 2-arity
+/// leaves an existing Var's value untouched / creates an UNBOUND Var (clj parity);
+/// 3-arity sets the root to `val`. Spec: clojure.core/intern. (Unblocks
+/// programmatic Var creation — e.g. wasm require-component interning a Var per
+/// component export.)
+pub fn internFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    try error_catalog.checkArityRange("intern", args, 2, 3, loc);
+    const ns = resolveNs(env, args[0]) orelse
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "intern into a non-namespace / unknown ns" });
+    if (args[1].tag() != .symbol)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "intern with a non-symbol name" });
+    const name = symbol_mod.asSymbol(args[1]).name;
+    const v = if (args.len == 3)
+        try env.intern(ns, name, args[2], null)
+    else
+        try env.internDeclare(ns, name);
+    return Value.encodeHeapPtr(.var_ref, v);
+}
+
 /// `(all-ns)` — a seq of every Namespace value. Order is unspecified (clj's is
 /// unordered too). Spec: clojure.core/all-ns.
 pub fn allNsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -429,6 +450,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "ns-name", .f = &nsNameFn },
     .{ .name = "find-ns", .f = &findNsFn },
     .{ .name = "create-ns", .f = &createNsFn },
+    .{ .name = "intern", .f = &internFn },
     .{ .name = "all-ns", .f = &allNsFn },
     .{ .name = "ns-interns", .f = &nsInternsFn },
     .{ .name = "ns-publics", .f = &nsPublicsFn },

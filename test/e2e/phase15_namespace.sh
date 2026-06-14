@@ -31,4 +31,11 @@ assert_eq 'interns'   "$("$BIN" -e '(do (def zzz 7) (contains? (ns-interns *ns*)
 assert_eq 'ad011-pub' "$("$BIN" -e '(contains? (ns-publics (the-ns (quote clojure.core))) (quote reduce))' 2>&1 | tail -1)" 'false'
 assert_eq 'ad011-map' "$("$BIN" -e '(contains? (ns-map (the-ns (quote clojure.core))) (quote reduce))' 2>&1 | tail -1)" 'true'
 
-echo "OK — phase15_namespace (11 cases) green"
+# intern: programmatic Var creation (clojure.core/intern). 3-arity sets the root;
+# 2-arity leaves an existing Var untouched / creates an unbound one. Returns the Var.
+assert_eq 'intern-3ary'  "$("$BIN" -e '(deref (intern (create-ns (quote foo.iv)) (quote x) 42))' 2>&1 | tail -1)" '42'
+assert_eq 'intern-ret'   "$("$BIN" -e '(intern (create-ns (quote foo.iv5)) (quote q) 1)' 2>&1 | tail -1)" "#'foo.iv5/q"
+assert_eq 'intern-2ary-keeps' "$("$BIN" -e '(do (intern (create-ns (quote foo.iv6)) (quote k) 5) (deref (intern (the-ns (quote foo.iv6)) (quote k))))' 2>&1 | tail -1)" '5'
+assert_eq 'intern-2ary-var'   "$("$BIN" -e '(do (intern (create-ns (quote foo.iv4)) (quote w)) (find-var (quote foo.iv4/w)))' 2>&1 | tail -1)" "#'foo.iv4/w"
+
+echo "OK — phase15_namespace (15 cases) green"

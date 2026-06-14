@@ -128,6 +128,12 @@ The user chose recommended **Option C** (see handover § *out*/*in* design + D-4
   `(wasm/load-component p)` + `(wasm/component-call h …)`; greet roundtrip +
   resource chain validated). Local commit only.
 - **W1 — require-a-component (export = a Clojure Var). FULL DESIGN below.**
+  PREREQ LANDED 2026-06-14: `clojure.core/intern` (programmatic Var creation) was
+  the blocker (cljw had `create-ns`/`the-ns` but not `intern`) — now available, so
+  require-component can be a `.clj` over `load-component` + `component-exports` +
+  `intern`. **Resume W1 first slice**: `(require-component path :as g)` → create-ns
+  + intern one Var per cleaned export name wrapping `(component-call handle raw-name …)`;
+  first red `(g/greet "world")` → "Hello, world!".
 - **W2+:** the Phase 15-20 Wasm/edge surface (components as the deploy unit, edge
   runtime). The reason cljw exists over the JVM. North star = **deps.edn
   `{:wasm/component …}` coords** so `(:require [acme.greeter])` resolves + loads a
