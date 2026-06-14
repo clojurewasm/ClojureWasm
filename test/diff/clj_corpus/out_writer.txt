@@ -1,0 +1,10 @@
+(with-out-str (.write *out* "hi"))
+;;=> "hi"
+(with-out-str (.write *out* "a") (.write *out* "b"))
+;;=> "ab"
+(with-out-str (.append *out* "x"))
+;;=> "x"
+(with-out-str (.write *out* 65))
+;;=> "A"
+(with-out-str (.write *out* "line\n") (.write *out* "two"))
+;;=> "line\ntwo"

@@ -1,8 +1,7 @@
 ;; clojure.data.csv — CSV read/write. Verified loadable on cljw via deps.edn git
 ;; coords (cljw also bundles it; the git coord documents the upstream source).
-;; write-csv is exercised through its primary API — an explicit java.io.Writer —
-;; because cljw's `*out*` is a print-sentinel, not a Writer object (the
-;; `(.write *out* …)` path is the separate gap D-434, not a data.csv issue).
+;; write-csv is exercised both through an explicit java.io.Writer AND through
+;; `*out*` (the latter works since D-434 wired Writer-interop on the *out* sentinel).
 (ns verify (:require [clojure.data.csv :as csv]))
 (defn -main [& _]
   (assert (= [["a" "b"] ["1" "2"]] (csv/read-csv "a,b\n1,2")))
@@ -14,4 +13,6 @@
   (let [sw (java.io.StringWriter.)]
     (csv/write-csv sw [["x" "y,z"]])                              ; round-trips the comma-quote
     (assert (= "x,\"y,z\"\n" (.toString sw))))
-  (println "OK data.csv — read-csv/write-csv/quoting/:separator (explicit Writer)"))
+  (assert (= "a,b\n1,2\n"                                          ; D-434: write-csv to *out*
+             (with-out-str (csv/write-csv *out* [["a" "b"] ["1" "2"]]))))
+  (println "OK data.csv — read-csv/write-csv/quoting/:separator (explicit Writer + *out*)"))

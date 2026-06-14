@@ -41,6 +41,7 @@ const keyword_mod = @import("../../runtime/keyword.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
 const object_method = @import("object_method.zig");
 const clojure_lang_method = @import("clojure_lang_method.zig");
+const out_writer_method = @import("out_writer_method.zig");
 const special_forms = @import("../analyzer/special_forms.zig");
 
 const Opcode = opcode_mod.Opcode;
@@ -1295,6 +1296,11 @@ inline fn stepOnce(
                 } else if (try clojure_lang_method.tryClojureLangMethod(rt, env, receiver, cs_entry.method_name, stack[sp - arg_count + 1 .. sp], .{})) |r| {
                     // clojure.lang read/op methods on a native collection (D-371):
                     // .valAt/.cons/.count/… → the clojure.core equivalent.
+                    sp -= arg_count;
+                    stack[sp] = r;
+                    sp += 1;
+                } else if (try out_writer_method.tryOutWriterMethod(rt, env, receiver, cs_entry.method_name, stack[sp - arg_count + 1 .. sp], .{})) |r| {
+                    // Writer-interop on the *out* sentinel (D-434): `(.write *out* s)`.
                     sp -= arg_count;
                     stack[sp] = r;
                     sp += 1;
