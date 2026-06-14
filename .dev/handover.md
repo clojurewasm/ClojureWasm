@@ -13,25 +13,24 @@
   + `.dev/sweep_plan.md` § Phase mode. Per-commit = smoke (default build is
   zwasm-lazy-safe); wasm work also runs `-Dwasm`.
 
-- **First task on resume MUST be**: **Track C step 3 — the `*in*` reader VALUE**
-  (ADR-0138; steps 1+2 DONE — see below). Add a text_io Reader (fqcn "Reader",
-  string-backed + `?u21` codepoint pushback) with `read`/`read-char`/`peek-char`/
-  `unread-char`/`readLine`/`close`; point `with-in-str` at it; fold the D-414
-  `lispStringReader` shim (special_forms.zig:170-175 ctor special-case) into the
-  reader value. KEEP host_stream (file BufferedReader) separate — JVM `*in*`
-  (PushbackReader) ≠ file reader, per ADR-0138's decision. Verify
-  `phase14_with_in_str` + `phase14_instaparse_substrate` stay green (instaparse's
-  safe-read-string rides lispStringReader). Then Track S (debt sweep) + Track W (W1).
+- **First task on resume MUST be**: **Track S — honest debt sweep** (sweep_plan.md
+  §2; Track C COMPLETE — see below). S1 = debt-hygiene 棚卸し (fold DONE/VERIFIED
+  active rows into `discharged:` — D-366/D-362/D-331/D-250/Phase-reserve rows;
+  shrinks the active count to real). Then S2 = clj-parity bugs (D-432/D-408/D-271/
+  D-270/D-374/D-228/D-220/D-223/D-389 + D-433) — correctness floor outranks
+  hygiene, so S2 is the real value. Interleave Track W (wasm W1) per sweep_plan.
 
-- **Track C steps 1+2 DONE** (ADR-0138, this session, LOCAL commits f513c26d /
-  c0557345): `text_io.zig` durable Writer VALUE (`.stdout`/`.stderr`/`.string`
-  modes, host_instance, fqcn "Writer"); `*out*`/`*err*` roots flipped to it;
-  `emitToStdout` renders+pushes to the bound `*out*`; `with-out-str` = defmacro
-  over `(binding [*out* (rt/__string-writer)] …)`; nREPL capture rebinds via a
-  threadlocal BindingFrame. DELETED: sentinel + `out_capture` threadlocal +
-  `out_writer_method.zig` + consult sites + native with-out-str macro. Discharges
-  D-436(b); supersedes D-434. D-435 (diff-oracle full-runtime gap) stays open on
-  the D-436 epic.
+- **Track C DONE (ADR-0138, steps 1-3, this session — LOCAL commits)**: `text_io.zig`
+  durable Writer VALUE (`.stdout`/`.stderr`/`.string`, fqcn "Writer") + Reader VALUE
+  (fqcn "Reader", `?u21` codepoint pushback: `.read`/`.peek`/`.unread`/`.readLine`).
+  `*out*`/`*err*` roots → writer values; `*in*` (`with-in-str`) → text_io Reader;
+  `lispStringReader` folded in. `emitToStdout` pushes to bound `*out*`; `with-out-str`
+  = defmacro over `binding`; nREPL capture rebinds via threadlocal BindingFrame.
+  DELETED: sentinel + `out_capture` + `out_writer_method.zig` + consult sites +
+  native with-out-str macro + host_stream's lispStringReader. host_stream stays the
+  file BufferedReader/Writer (distinct from text_io — JVM class-family faithful).
+  Discharges D-436(b); supersedes D-434; folds D-414 shims. D-435 (diff-oracle
+  full-runtime gap) stays open on the D-436 epic. e2e text_writer(9)+text_reader(6).
 
 - **Track W (wasm north-star, F-014.4) — W0 RE-LANDED this session**: the
   instance-caching component work is un-stashed (relative zon, local-only):
