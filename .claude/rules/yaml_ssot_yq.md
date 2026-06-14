@@ -89,6 +89,25 @@ Golden rule below). This is the single most common yq footgun in this repo.
    block), so it round-trips correctly but reflows the prose onto one line
    and loses the block formatting. Use Edit when the block shape matters.
 
+4. **Appending a NEW entry with `+=` writes its scalars UNQUOTED — which
+   breaks any quote-anchored grep.** `yq -i '.active += [{"id":"D-439", …}]'`
+   emits `- id: D-439` (plain scalar, NO quotes), even though every
+   hand-written row is `- id: "D-439"`. The hazard is not the YAML (both
+   parse) — it is that the **next-free-id recipe and the phantom-audit recipe
+   grep `id: "D-` (with the quote)**, so they SILENTLY UNDERCOUNT the unquoted
+   rows. A 2026-06-14 incident: three `+=`-appended rows (D-437/438/439) were
+   unquoted, the next-id grep returned 436, and the next append would have
+   re-used a live id (duplicate). Mitigations, in order of preference:
+   - **Prefer the Edit tool to add a new debt/AD row** — hand-write the
+     `- id: "D-NNN"` block so it matches the quoted convention (and a fresh
+     `barrier: |-` block keeps its shape, per item 3). This is the default.
+   - If you DO use `+=`, **force double-quote style on the id in the same
+     call**: `yq -i '.active += [{"id":"D-439"}] | (.active[-1].id) style="double"'`
+     (or normalize after: `sed -i '' -E 's/^( *- id: )(D-[0-9]+)$/\1"\2"/' f`).
+   - The **next-id / phantom recipes below are now quote-TOLERANT** (`id: "?D-`)
+     so they survive an unquoted row — but quoting on write is still required
+     so the file stays consistent + greppable by other tools.
+
 ## debt.yaml cookbook (the recurring queries)
 
 Structure: two top-level lists `active:` / `discharged:`. Active entries:
@@ -116,13 +135,14 @@ yq -r '.active[] | select(has("quality_floor")) | .id + " :: " + .quality_floor'
 # is an id discharged? (in discharged: OR an active entry marked DISCHARGED)
 DROW="D-018"; yq -r '.discharged[].id, (.active[] | select(.status | test("DISCHARGED|Discharged")) | .id)' .dev/debt.yaml | grep -qx "$DROW" && echo discharged || echo open
 
-# highest existing id → next free is +1. MUST scope to the `id:` field — a bare
-# `grep -oE 'D-[0-9]+'` over the whole file also matches D-NNN in PROSE (cross-
-# refs, and any typo'd phantom ref), so it can return a number with NO real row
-# (e.g. a stray `D-NNNN` once made it return a too-high phantom when the true max was 363).
-grep -oE 'id: "D-[0-9]+' .dev/debt.yaml | grep -oE '[0-9]+' | sort -n | tail -1
-# yq equivalent (also id-scoped):
-#   yq -r '.active[].id, .discharged[].id' .dev/debt.yaml | grep -oE '[0-9]+' | sort -n | tail -1
+# highest existing id → next free is +1. PREFER the yq form — it reads the PARSED
+# `.id` values, so it is immune to quote-style drift (an unquoted `+=`-appended row
+# is counted; see Golden-rule #4):
+yq -r '.active[].id, .discharged[].id' .dev/debt.yaml | grep -oE '[0-9]+' | sort -n | tail -1
+# grep fallback — MUST scope to the `id:` field (a bare `grep -oE 'D-[0-9]+'` also
+# matches D-NNN in PROSE/cross-refs → a phantom too-high number) AND be
+# quote-TOLERANT (`"?`) so an unquoted `+=` row is not undercounted:
+grep -oE 'id: "?D-[0-9]+' .dev/debt.yaml | grep -oE '[0-9]+' | sort -n | tail -1
 ```
 
 Note: `check_debt_id_refs.sh` does the phantom/undefined-id gate with
@@ -134,8 +154,32 @@ it as defined and the gate does NOT flag it. The id-scoped next-id recipe
 above is the robust cross-check (a phantom never has an `id:` row); to
 audit for phantoms, diff the set of referenced ids against the set of
 `id:`-defined ids:
-`comm -23 <(grep -oE 'D-[0-9]+' .dev/debt.yaml | sort -u) <(grep -oE 'id: "D-[0-9]+' .dev/debt.yaml | grep -oE 'D-[0-9]+' | sort -u)`
-prints any referenced-but-undefined id (empty = clean).
+`comm -23 <(grep -oE 'D-[0-9]+' .dev/debt.yaml | sort -u) <(yq -r '.active[].id, .discharged[].id' .dev/debt.yaml | sort -u)`
+prints any referenced-but-undefined id (empty = clean). (The defined-id side uses
+`yq` so it is quote-style-agnostic per Golden-rule #4; a grep fallback must use
+`id: "?D-`.)
+
+## Auditing the SSOTs (run these when asked to audit, or after bulk yq edits)
+
+```sh
+# (1) Well-formedness — every SSOT must parse:
+for f in .dev/debt.yaml .dev/accepted_divergences.yaml compat_tiers.yaml \
+         placement.yaml feature_deps.yaml host_interfaces.yaml; do
+  yq -e '.' "$f" >/dev/null 2>&1 && echo "OK   $f" || echo "FAIL $f"; done
+
+# (2) Duplicate ids (a stray body-less `- id: "D-NNN"` from a botched edit parses
+#     fine but duplicates a real entry — yq well-formedness does NOT catch it):
+yq -r '.active[].id, .discharged[].id' .dev/debt.yaml | sort | uniq -d   # empty = clean
+yq -r '.[][].id' .dev/accepted_divergences.yaml 2>/dev/null | sort | uniq -d
+
+# (3) Quote-style drift — unquoted ids from `+=` appends (Golden-rule #4):
+grep -nE '^\s*-? *id: [^"'"'"' ]' .dev/debt.yaml   # empty = all quoted
+```
+
+The 2026-06-14 audit caught both classes: a stray `- id: "D-396"` (a body-less
+duplicate of the real discharged row, from a prior botched edit — recipe 2) and
+three unquoted `+=`-appended ids (recipe 3). yq `.' parses both, so these need the
+dedicated dup/quote recipes, not just a well-formedness check.
 
 ## Other SSOTs (same idioms)
 

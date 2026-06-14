@@ -2759,7 +2759,6 @@ discharged:
       :387 (clojure.lang.IFn/applyTo + Reversible/rseq + Indexed/nth — further
       incremental method gaps on the SAME AutoFlattenSeq deftype, separate D-NNN).
   - id: "D-396"
-  - id: "D-396"
     discharged_at: "feat(core): clojure.core/destructure (binding expander fn)"
     resolution: |-
       Found + fixed 2026-06-12 (P4 lib-load: kezban core.cljc:228 `(let* ~(destructure

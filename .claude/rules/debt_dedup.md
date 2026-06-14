@@ -38,7 +38,10 @@ Many additions are actually re-tagging an existing entry (status / barrier
 2. `rg -n '<keyword>' .dev/debt.yaml` to find related entries.
 3. Update the existing entry (status / barrier / last_reviewed) if
    relevant.
-4. Otherwise append a new entry under `active:` with the next ID
-   (highest existing — MUST scope to the `id:` field, else prose `D-NNN`
-   cross-refs / a typo'd phantom inflate it:
-   `grep -oE 'id: "D-[0-9]+' .dev/debt.yaml | grep -oE '[0-9]+' | sort -n | tail -1`).
+4. Otherwise append a new entry under `active:` with the next ID. Prefer the
+   Edit tool (hand-write `- id: "D-NNN"` quoted) over `yq +=` — a `+=` append
+   writes the id UNQUOTED, which the grep recipe undercounts (yaml_ssot_yq.md
+   Golden-rule #4). Highest existing id (style-agnostic via yq; MUST scope to
+   `.id`, else prose `D-NNN` cross-refs / a typo'd phantom inflate it):
+   `yq -r '.active[].id, .discharged[].id' .dev/debt.yaml | grep -oE '[0-9]+' | sort -n | tail -1`
+   (grep fallback must be quote-tolerant: `grep -oE 'id: "?D-[0-9]+'`).
