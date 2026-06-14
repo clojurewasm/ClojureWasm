@@ -84,6 +84,16 @@ accepted:
       (`[type_error]` / `[arithmetic_error]` / ...) is the cljw surface.
       Crucially BOTH runtimes REJECT the same inputs — only the message
       format differs, never the accept/reject decision or the value.
+      Extends to the STACK TRACE / error PRINT representation: cljw's trace
+      is cljw-native (no JVM frames like `[clojure.lang.Compiler eval
+      "Compiler.java" 7757]`), and an exception prints as the compact
+      `#error{:message :data}` form rather than clj's `#error {:cause :via
+      :trace [JVM frames]}`. Reproducing JVM frames would be fiction (they
+      do not exist in cljw) AND clj's trace is precise-but-unreadable —
+      cljw is free to do BETTER, not merely different. User-confirmed
+      (2026-06-14): the trace is intentionally NOT chased. (The narrower
+      `(str ex)` one-liner readability — distinct from the trace — is tracked
+      as the low-priority D-433, not this AD.)
     derives_from: "ADR-0059 (no-JVM); error_catalog_only.md (catalog is the message SSOT)"
     pin: "test/e2e/* error-rendering cases (cljw Kind asserted); behaviour = reject, verified"
   - id: "AD-008"

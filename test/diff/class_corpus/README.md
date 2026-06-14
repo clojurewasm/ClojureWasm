@@ -48,5 +48,7 @@ and nil-receiver method calls (error-format differs per F-011).
 
 ## Status
 
-Landed: `String` (44), `Object` (15, universal `.toString`/`.equals`). The
-remaining ~18 in-scope bare classes are tracked by **D-431**.
+Landed: `String` (44), `Object` (15, universal `.toString`/`.equals`),
+`Throwable` (15, the exception family's `.getMessage`/`.getLocalizedMessage`/
+`.getCause`/`.getData` on the shared `.ex_info` descriptor). The remaining
+in-scope bare classes are tracked by **D-431**.
