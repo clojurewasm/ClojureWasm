@@ -124,3 +124,19 @@
 ;;=> ("x" "x")
 (re-find #"(foo|foobar)baz" "foobarbaz")
 ;;=> ["foobarbaz" "foobar"]
+;; Reluctant (lazy) quantifiers *? +? ?? {n,m}? (D-447 → now implemented): prefer
+;; the fewest reps; re-matches forces the full span even for a lazy quantifier.
+(re-find #"a+?" "aaa")
+;;=> "a"
+(re-find #"a*?" "aaa")
+;;=> ""
+(re-find #"<.+?>" "<a><b>")
+;;=> "<a>"
+(re-find #"a.*?c" "abcabc")
+;;=> "abc"
+(re-find #"a{2,4}?" "aaaa")
+;;=> "aa"
+(re-seq #"a+?" "aaa")
+;;=> ("a" "a" "a")
+(re-matches #"a+?" "aaa")
+;;=> "aaa"

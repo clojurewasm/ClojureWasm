@@ -146,8 +146,15 @@ pub fn findAll(
     }
 }
 
-/// `(re-matches pattern input)` baseline: succeeds iff the
-/// whole input matches the pattern (anchored at both ends).
+/// `(re-matches pattern input)` baseline: succeeds iff the WHOLE input matches
+/// (anchored at both ends). A dedicated VM loop — NOT `tryMatchAt` + an
+/// `end == len` check — because that takes the leftmost-first priority match and,
+/// for a RELUCTANT quantifier (`a+?`), the priority match is the SHORTEST (and the
+/// cut-on-match kills the expansion), so a full match like `(re-matches #"a+?"
+/// "aaa")` → "aaa" would be missed. Here a `.match` thread counts ONLY at
+/// `pos == input.len`; a `.match` reached earlier is dropped WITHOUT cutting, so a
+/// lazy (or greedy) thread keeps consuming until it can satisfy the full span. At
+/// end-of-input the highest-priority `.match` thread supplies the captures.
 pub fn matchFull(
     alloc: std.mem.Allocator,
     program: *const compile.Program,
@@ -157,9 +164,37 @@ pub fn matchFull(
     defer current.deinit(alloc);
     var next = try ThreadList.init(alloc, program.insts.len);
     defer next.deinit(alloc);
-    const result = (try tryMatchAt(&current, &next, alloc, program, input, 0)) orelse return null;
-    if (result.end != input.len) return null;
-    return result;
+    current.clear();
+    next.clear();
+    const empty: [MAX_SLOTS_INLINE]i32 = [_]i32{-1} ** MAX_SLOTS_INLINE;
+    try addThread(&current, alloc, program, 0, 0, input, empty);
+
+    var pos: u32 = 0;
+    while (true) {
+        if (pos == input.len) {
+            // Full match = the highest-priority `.match` thread at end-of-input.
+            for (current.threads.items) |t| {
+                if (program.insts[t.pc] == .match) {
+                    return .{ .start = 0, .end = pos, .captures = .{ .slots = t.caps, .used = @as(usize, program.capture_count) * 2 } };
+                }
+            }
+            return null;
+        }
+        const c = input[pos];
+        const next_pos = pos + 1;
+        for (current.threads.items) |t| {
+            switch (program.insts[t.pc]) {
+                .char => |cc| if (c == cc) try addThread(&next, alloc, program, t.pc + 1, next_pos, input, t.caps),
+                .class => |cls| if (cls.contains(c)) try addThread(&next, alloc, program, t.pc + 1, next_pos, input, t.caps),
+                .range => |r| if (c >= r.lo and c <= r.hi) try addThread(&next, alloc, program, t.pc + 1, next_pos, input, t.caps),
+                else => {}, // `.match` at pos<len is NOT a full match — drop it (no cut, so a still-consuming thread survives); epsilons pre-expanded.
+            }
+        }
+        if (next.threads.items.len == 0) return null;
+        std.mem.swap(ThreadList, &current, &next);
+        next.clear();
+        pos = next_pos;
+    }
 }
 
 /// Anchored match at exactly `start` (no leftmost scan): the leftmost-first
@@ -705,6 +740,54 @@ test "leftmost-first: re-seq x|xy on xyxy yields x,x" {
     try testing.expectEqual(@as(usize, 2), out.items.len);
     try testing.expectEqualStrings("x", "xyxy"[out.items[0].start..out.items[0].end]);
     try testing.expectEqualStrings("x", "xyxy"[out.items[1].start..out.items[1].end]);
+}
+
+// Reluctant (lazy) quantifiers — `*?` / `+?` / `??` / `{n,m}?` (D-447). Prefer the
+// FEWEST reps; the split-priority swap + leftmost-first cut yields the short match.
+
+test "reluctant a+? matches one (re-find), greedy a+ matches all" {
+    var lazy = try compile.compile(testing.allocator, "a+?", .{});
+    defer lazy.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &lazy, "aaa")).?;
+    try testing.expectEqualStrings("a", "aaa"[r.start..r.end]);
+}
+
+test "reluctant a*? / a?? prefer the empty match" {
+    inline for (.{ "a*?", "a??" }) |pat| {
+        var prog = try compile.compile(testing.allocator, pat, .{});
+        defer prog.deinit(testing.allocator);
+        const r = (try find(testing.allocator, &prog, "aaa")).?;
+        try testing.expectEqual(@as(u32, 0), r.end); // empty match at 0
+    }
+}
+
+test "reluctant <.+?> stops at the first close (not greedy to last)" {
+    var prog = try compile.compile(testing.allocator, "<.+?>", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "<a><b>")).?;
+    try testing.expectEqualStrings("<a>", "<a><b>"[r.start..r.end]);
+}
+
+test "reluctant {2,4}? takes the minimum" {
+    var prog = try compile.compile(testing.allocator, "a{2,4}?", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "aaaa")).?;
+    try testing.expectEqualStrings("aa", "aaaa"[r.start..r.end]);
+}
+
+test "matchFull forces a reluctant quantifier to fill the whole input" {
+    // re-matches anchors both ends, so a+? must expand to "aaa" (the bug the
+    // dedicated matchFull loop fixes — tryMatchAt's priority match is the short one).
+    var lazy = try compile.compile(testing.allocator, "a+?", .{});
+    defer lazy.deinit(testing.allocator);
+    const r = (try matchFull(testing.allocator, &lazy, "aaa")).?;
+    try testing.expectEqual(@as(u32, 3), r.end);
+}
+
+test "matchFull still rejects a non-full match (\\d+ over 12a)" {
+    var prog = try compile.compile(testing.allocator, "\\d+", .{});
+    defer prog.deinit(testing.allocator);
+    try testing.expectEqual(@as(?MatchResult, null), try matchFull(testing.allocator, &prog, "12a"));
 }
 
 test "findAll no match yields empty out" {

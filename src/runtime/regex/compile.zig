@@ -15,8 +15,9 @@
 //!      (`(java.util.regex.Pattern/compile ...)` etc.).
 //!
 //! Supported: literal bytes, `.` wildcard, concatenation,
-//! alternation `|`, greedy quantifiers `*` / `+` / `?`, bounded
-//! `{n,m}`, character classes `[...]`, escapes (`\d \w \s` etc.),
+//! alternation `|`, greedy AND reluctant quantifiers `*` / `+` / `?`
+//! / `*?` / `+?` / `??`, bounded `{n,m}` / `{n,m}?`,
+//! character classes `[...]`, escapes (`\d \w \s` etc.),
 //! anchors (`^ $ \b \B`), capture + non-capturing groups, and the
 //! inline flags `(?i) (?m) (?s)` plus `\Q...\E` and POSIX
 //! `\p{Alpha}`-style classes. Not supported: named groups,
@@ -77,14 +78,16 @@ pub const Node = union(enum) {
     concat: []Node,
     /// Alternation (`a|b`).
     alt: []Node,
-    /// `e*` — zero or more (greedy).
-    star: *Node,
-    /// `e+` — one or more (greedy).
-    plus: *Node,
-    /// `e?` — optional.
-    quest: *Node,
-    /// `e{n,m}` — bounded repetition.
-    repeat: struct { child: *Node, min: u16, max: u16 },
+    /// `e*` (greedy) / `e*?` (reluctant — `greedy=false` swaps the split priority
+    /// so the matcher prefers the FEWEST repetitions; D-447).
+    star: Quant,
+    /// `e+` / `e+?`.
+    plus: Quant,
+    /// `e?` / `e??`.
+    quest: Quant,
+    /// `e{n,m}` / `e{n,m}?` — bounded repetition (`greedy=false` makes the
+    /// optional tail reluctant).
+    repeat: struct { child: *Node, min: u16, max: u16, greedy: bool = true },
     /// Capturing group `(e)` — `index` is the slot pair offset.
     group: struct { child: *Node, index: u16 },
     /// Non-capturing group `(?:e)`.
@@ -96,6 +99,11 @@ pub const Node = union(enum) {
     /// POSITIVE lookahead's inner captures thread through (JVM parity, ADR-0115).
     look: struct { child: *Node, negate: bool },
 };
+
+/// A `*` / `+` / `?` quantifier's operand + greediness. `greedy=true` is the
+/// default (`e*`); `greedy=false` is the reluctant form (`e*?`), which emits the
+/// split with its arms swapped so the Pike VM prefers the fewest repetitions.
+pub const Quant = struct { child: *Node, greedy: bool = true };
 
 /// Character-class bitmap: 256 bits over the byte alphabet.
 /// ASCII-only: POSIX `\p{Alpha}`-style names are supported, but
@@ -393,9 +401,9 @@ fn foldCase(arena: std.mem.Allocator, node: *Node, unicode: bool) CompileError!v
             for (children) |*ch| try foldCase(arena, ch, unicode);
         },
         .alt => |children| for (children) |*ch| try foldCase(arena, ch, unicode),
-        .star => |child| try foldCase(arena, @constCast(child), unicode),
-        .plus => |child| try foldCase(arena, @constCast(child), unicode),
-        .quest => |child| try foldCase(arena, @constCast(child), unicode),
+        .star => |q| try foldCase(arena, @constCast(q.child), unicode),
+        .plus => |q| try foldCase(arena, @constCast(q.child), unicode),
+        .quest => |q| try foldCase(arena, @constCast(q.child), unicode),
         .non_capture => |child| try foldCase(arena, @constCast(child), unicode),
         .group => |g| try foldCase(arena, @constCast(g.child), unicode),
         .repeat => |r| try foldCase(arena, @constCast(r.child), unicode),
@@ -583,17 +591,26 @@ const Parser = struct {
     fn parseQuant(self: *Parser) CompileError!*Node {
         const atom = try self.parseAtom();
         const p = self.peek() orelse return atom;
-        const wrapped: Node = switch (p) {
-            '*' => .{ .star = atom },
-            '+' => .{ .plus = atom },
-            '?' => .{ .quest = atom },
+        switch (p) {
+            '*', '+', '?' => {},
             // `{n}` / `{n,}` / `{n,m}` bounded repetition.
             '{' => return try self.parseRepeat(atom),
             else => return atom,
-        };
-        _ = self.advance();
+        }
+        _ = self.advance(); // consume the quantifier
+        // A trailing `?` makes it reluctant (`e*?` / `e+?` / `e??`): the operand
+        // is matched as FEW times as possible. Emitted as the same split with its
+        // arms swapped (see emitStar/Plus/Quest).
+        const greedy = !(self.peek() == @as(?u8, '?'));
+        if (!greedy) _ = self.advance(); // consume the reluctant '?'
+        const q: Quant = .{ .child = atom, .greedy = greedy };
         const node = try self.arena.create(Node);
-        node.* = wrapped;
+        node.* = switch (p) {
+            '*' => .{ .star = q },
+            '+' => .{ .plus = q },
+            '?' => .{ .quest = q },
+            else => unreachable,
+        };
         return node;
     }
 
@@ -613,8 +630,11 @@ const Parser = struct {
         if (self.peek() != @as(?u8, '}')) return CompileError.UnexpectedToken;
         _ = self.advance(); // consume '}'
         if (max != REPEAT_INF and max < min) return CompileError.UnexpectedToken;
+        // `{n,m}?` — reluctant bound (the optional tail prefers the fewest copies).
+        const greedy = !(self.peek() == @as(?u8, '?'));
+        if (!greedy) _ = self.advance();
         const node = try self.arena.create(Node);
-        node.* = .{ .repeat = .{ .child = atom, .min = min, .max = max } };
+        node.* = .{ .repeat = .{ .child = atom, .min = min, .max = max, .greedy = greedy } };
         return node;
     }
 
@@ -1384,9 +1404,9 @@ fn emitNode(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, node: *const N
             for (children) |*ch| try emitNode(list, alloc, ch, budget);
         },
         .alt => |children| try emitAlt(list, alloc, children, budget),
-        .star => |child| try emitStar(list, alloc, child, budget),
-        .plus => |child| try emitPlus(list, alloc, child, budget),
-        .quest => |child| try emitQuest(list, alloc, child, budget),
+        .star => |q| try emitStar(list, alloc, q.child, q.greedy, budget),
+        .plus => |q| try emitPlus(list, alloc, q.child, q.greedy, budget),
+        .quest => |q| try emitQuest(list, alloc, q.child, q.greedy, budget),
         .group => |g| {
             // save(2*idx) … child … save(2*idx+1): slot pair brackets the
             // sub-match so the matcher records group `idx`'s [start,end).
@@ -1408,10 +1428,10 @@ fn emitNode(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, node: *const N
             var i: u16 = 0;
             while (i < r.min) : (i += 1) try emitNode(list, alloc, r.child, budget);
             if (r.max == REPEAT_INF) {
-                try emitStar(list, alloc, r.child, budget);
+                try emitStar(list, alloc, r.child, r.greedy, budget);
             } else {
                 var j: u16 = r.min;
-                while (j < r.max) : (j += 1) try emitQuest(list, alloc, r.child, budget);
+                while (j < r.max) : (j += 1) try emitQuest(list, alloc, r.child, r.greedy, budget);
             }
         },
     }
@@ -1470,7 +1490,7 @@ fn emitAlt(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, children: []con
 /// ```
 /// `split.a = body` puts the consume branch ahead of the skip
 /// branch — greedy semantics fall out of Pike VM thread priority.
-fn emitStar(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const Node, budget: *usize) CompileError!void {
+fn emitStar(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const Node, greedy: bool, budget: *usize) CompileError!void {
     const L0: u32 = @intCast(list.items.len);
     const split_idx = list.items.len;
     try list.append(alloc, .{ .split = .{ .a = 0, .b = 0 } });
@@ -1478,7 +1498,12 @@ fn emitStar(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const 
     try emitNode(list, alloc, child, budget);
     try list.append(alloc, .{ .jmp = L0 });
     const after: u32 = @intCast(list.items.len);
-    list.items[split_idx] = .{ .split = .{ .a = body_start, .b = after } };
+    // Greedy prefers the body (split.a = body); reluctant (`*?`) prefers the exit
+    // (split.a = after) so the Pike VM's priority order yields the fewest reps.
+    list.items[split_idx] = if (greedy)
+        .{ .split = .{ .a = body_start, .b = after } }
+    else
+        .{ .split = .{ .a = after, .b = body_start } };
 }
 
 /// `e+` (greedy) →
@@ -1487,13 +1512,17 @@ fn emitStar(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const 
 ///       split{L0, after}
 ///   after:
 /// ```
-fn emitPlus(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const Node, budget: *usize) CompileError!void {
+fn emitPlus(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const Node, greedy: bool, budget: *usize) CompileError!void {
     const L0: u32 = @intCast(list.items.len);
     try emitNode(list, alloc, child, budget);
     const split_idx = list.items.len;
-    try list.append(alloc, .{ .split = .{ .a = L0, .b = 0 } });
+    try list.append(alloc, .{ .split = .{ .a = 0, .b = 0 } });
     const after: u32 = @intCast(list.items.len);
-    list.items[split_idx].split.b = after;
+    // Greedy loops back first (split.a = L0); reluctant (`+?`) exits first.
+    list.items[split_idx] = if (greedy)
+        .{ .split = .{ .a = L0, .b = after } }
+    else
+        .{ .split = .{ .a = after, .b = L0 } };
 }
 
 /// `e?` (greedy) →
@@ -1502,13 +1531,17 @@ fn emitPlus(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const 
 ///   <e>
 ///   after:
 /// ```
-fn emitQuest(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const Node, budget: *usize) CompileError!void {
+fn emitQuest(list: *std.ArrayList(Inst), alloc: std.mem.Allocator, child: *const Node, greedy: bool, budget: *usize) CompileError!void {
     const split_idx = list.items.len;
     try list.append(alloc, .{ .split = .{ .a = 0, .b = 0 } });
     const body_start: u32 = @intCast(list.items.len);
     try emitNode(list, alloc, child, budget);
     const after: u32 = @intCast(list.items.len);
-    list.items[split_idx] = .{ .split = .{ .a = body_start, .b = after } };
+    // Greedy prefers the body (`e?`); reluctant (`e??`) prefers the empty match.
+    list.items[split_idx] = if (greedy)
+        .{ .split = .{ .a = body_start, .b = after } }
+    else
+        .{ .split = .{ .a = after, .b = body_start } };
 }
 
 // --- tests ---
