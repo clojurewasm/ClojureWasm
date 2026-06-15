@@ -1,8 +1,12 @@
 # ADR-0147 — Regex perf: borrow-and-adapt the literal-prefilter + lazy-DFA techniques into cljw's Pike-NFA, equivalence-locked (goal = properly incorporate the optimizations, not just beat Python)
 
-- **Status**: **Proposed** (direction-setting; the implementing session refines + stamps
-  Accepted after its Devil's-advocate pass — see § Process). Authored 2026-06-15 as
-  the next-session bridge (user-directed "腰を据えて … 工夫をしっかり入れ込む").
+- **Status**: **Accepted** (2026-06-16). Stages 1 (O-034/O-035) + 2 (O-036 leading
+  first-byte prefilter) committed; Stage 3 (lazy DFA) decided = **Alternative 2 —
+  forward + reverse lazy DFA** (true O(input) `find`) per the mandatory Devil's-advocate
+  pass below (§ Alternatives considered). Alt 1 (anchored-restart-only minimal slice) was
+  re-rejected as the cycle-budget-defer smell (CLAUDE.md); Alt 3 (anchors/`\b` folded into
+  the DFA state) is a follow-up ADR carrying a latent byte-vs-Unicode-`\b` F-011 exposure.
+  Authored 2026-06-15 as the next-session bridge (user-directed "腰を据えて … 工夫をしっかり入れ込む").
 - **Relates to**: ADR-0031 (regex engine choice — Pike NFA over backtracking, the
   reserved lazy-DFA design `src/runtime/regex/dfa.zig`), ADR-0145 (regex after sieve +
   nested_update, with the cross-lang equivalence audit as the gate — DONE), F-002
@@ -114,6 +118,58 @@ extraction are settled by direct reasoning). Each stage: design directly → imp
 (self or fork) → diff oracle + corpus 48/48 + bench re-measure → commit. Stamp this ADR
 Accepted (with the Devil's-advocate pass on the lazy-DFA structural choice) when Stage 2
 or 3 is committed; Stages can land as separate commits under this one ADR.
+
+## Alternatives considered (Stage 3 lazy-DFA structural choice — Devil's-advocate pass, 2026-06-16)
+
+Forked `general-purpose` subagent, fresh context, briefed with the F-002 / F-011 /
+F-015 / ADR-0031 envelope. Output reflected verbatim:
+
+> ### Alternative 1 — smallest-diff: the proposed minimal slice, but with the leftmost-start bug made explicit
+>
+> **What it is (concrete).** A new `src/runtime/regex/dfa.zig` implementing an on-the-fly cached lazy DFA whose state is the sorted NFA PC-set in priority order with cut-on-match (leftmost-first). It handles only **anchor-free, look-free, capture-free consuming** patterns; the compiler tags each program with a `dfa_eligible: bool` (set false the moment an `anchor`/`look`/`save` Inst appears, or `$`/`\b` IR is emitted). `find` walks leftmost-start by **anchored-restart from each S2-prefilter candidate position**: at candidate `i`, run the DFA forward from `i`; on a match-state, record the end; the first candidate that produces any match wins the leftmost rule because S2 already enumerates candidates in increasing position order. Transitions are cached in caller-owned scratch keyed by `(state_id, byte_class)` using ezi-gex's byte-equivalence-class compression of the 256-alphabet. The Pike VM stays the base and the sole capture engine.
+>
+> **What it does better than the proposed minimal slice.** Essentially nothing in capability — it *is* the proposed slice — but it removes the brief's one buried hazard: "leftmost-start via anchored-restart from S2 candidates" is only correct when **every** match start coincides with an S2-prefilter member byte. That is true for a leading exact first-byte set (the only S2 form that currently exists), false the instant S2 grows a more permissive prefilter (e.g. a memchr-of-literal-substring anywhere, or a `.`-leading pattern that disables the prefilter entirely → candidate set = all positions → the restart is Θ(n²) again). This alternative pins that down: it asserts `dfa_eligible ⟹ S2 produced an exact-leading-byte-set candidate stream`, and DECLINEs to the Pike VM whenever S2 is in its degenerate all-positions mode. So it is the same constant-factor win as proposed but with the correctness precondition made a compile-time gate instead of an implicit assumption.
+>
+> **What it breaks / risks.** It cements the O(n²) worst-case class (brief acknowledges this — the current Pike `find` is already Θ(n²) on `\d+x` over a long digit run). It ships a *second* engine that must be kept byte-identical to the first forever, doubling the surface the diff oracle must cover, while delivering only a constant-factor improvement on the eligible subset. Under F-002 this is the textbook smallest-diff bias: it leaves the actual quadratic differentiator (the reverse DFA) unbuilt and creates a permanent two-engine maintenance tax for a constant.
+>
+> **Equivalence-lock story.** DFA state = priority-ordered PC-set with cut-on-match ⟹ leftmost-first identical to the Pike VM by construction (same thread-priority discipline, just memoised). The lock is mechanical: feed every eligible pattern in the 51-golden corpus through *both* dfa.zig and the Pike VM in the dual-backend oracle and assert identical spans; add a fuzz harness that generates random eligible patterns + inputs and diffs the two engines (cheap because both are in-process). The `dfa_eligible` gate guarantees ineligible patterns never reach the new path, so the corpus's anchor/look/capture goldens are untouched.
+>
+> ### Alternative 2 — finished-form-clean: forward + reverse lazy DFA, true O(input) `find`
+>
+> **What it is (concrete).** Build the full ezi-gex shape: dfa.zig hosts **two** lazy DFAs over the same byte-level `Inst` IR — a forward DFA and a **reverse DFA** compiled from the program run backwards (reverse each Inst's edges; swap match/start roles). `find` is the classic two-pass RE2 algorithm: (1) forward lazy DFA from the start of input (or from the first S2 candidate) until it reaches a match state → this yields the match **end** offset `e` in O(input) with no restart; (2) reverse lazy DFA from `e` walking backwards until *its* match state → yields the leftmost **start** offset `s`. Both DFAs are lazy/cached in caller-owned scratch with byte-equivalence-class alphabet compression and the priority-ordered cut-on-match state representation for leftmost-first. The eligibility gate is the same (anchor-free / look-free / capture-free consuming patterns); on a hit, the Pike VM is invoked **once** over the now-known `[s, e)` window for capture extraction (two-pass span-then-capture, exactly as the brief frames the Pike VM's residual role). Anchors that are *program-global* (`\A`, `\z`, fully-anchored patterns) are cheap to fold into the forward/reverse start conditions and can stay eligible; only *interior* position-dependent constructs (`\b` mid-pattern, `$` as interior multiline, lookarounds) force DECLINE.
+>
+> **What it does better than the proposed minimal slice.** It kills the quadratic. `\d+x` over a megabyte of digits is O(input) instead of Θ(n²) — this is the *entire* reason the brief cites the reverse DFA as "crucially" part of ezi-gex, and the reason the minimal slice is explicitly a constant-factor-only win. It also removes the dependency on S2's candidate stream being exact-leading-byte-only: the forward DFA scans from position 0 (or memchr-skips to the first plausible byte) and finds the end in one pass regardless of how permissive the prefilter is, so it composes cleanly with any future S2 enhancement instead of silently regressing when S2 grows. It makes `find` and `re-find-all` (Stage 1's one-pass driver) both linear, which is the throughput story Stage 3 was opened to deliver.
+>
+> **What it breaks / risks.** The reverse DFA is the genuinely hard part: compiling the reverse program correctly (especially around zero-width and greedy/lazy quantifier priority) is where leftmost-*longest* vs leftmost-*first* subtleties bite, and a reverse-pass priority bug produces a *wrong start offset* that the forward-only tests won't catch. Two cached DFAs double the scratch-memory footprint and the cache-eviction policy must be defined (lazy DFAs can blow their state cache on adversarial-but-non-backtracking inputs → need a "cache full ⟹ flush, or fall back to Pike VM" path, which is itself a correctness-neutral but must-be-tested branch). Risk: the reverse pass interacts with byte-equivalence classes (the reverse alphabet's classes are not the forward classes) — two class tables to derive and keep consistent.
+>
+> **Equivalence-lock story.** Strongest of the three. The forward DFA's end-offset is locked against the Pike VM's match-end (run both, diff). The reverse DFA's start-offset is locked against the Pike VM's match-start. Critically, because the Pike VM remains the capture engine and is invoked over `[s, e)` on every hit, the *final returned match including all groups* is always produced by the existing, already-corpus-locked Pike VM — the DFA only narrows the window the Pike VM runs over, so a DFA span bug manifests as "Pike VM given the wrong window → group offsets shift" and is caught by the existing 51-golden corpus the moment any golden is eligible. Add: (a) a property test asserting `dfa.find(p,s) == pike.find(p,s)` over fuzzed eligible inputs including the pathological `\d+x`-class quadratic triggers, and (b) an oracle assertion that the cache-full fallback path produces identical spans to the no-fallback path.
+>
+> ### Alternative 3 — wildcard: lazy DFA over the *full* IR via an in-DFA-state position/assertion lattice (anchors & word-boundaries eligible)
+>
+> **What it is (concrete).** Drop the eligibility gate's anchor/look exclusions by encoding position-dependent assertions **into the DFA state itself**, the way RE2/Rust-`regex` handle `^`, `$`, and `\b`. The DFA alphabet is extended from "byte class" to "byte class × entry-context", where entry-context is a small bitset capturing the facts an assertion can test at a position: `was-prev-byte-word`, `is-at-text-start`, `is-at-text-end`, `is-at-line-start`, `is-at-line-end`. The lazy state-construction step, when it crosses an `anchor`/`look` Inst, consults the current entry-context bits to decide whether the zero-width assertion passes, and the cached transition key becomes `(state_id, byte_class, context_bits)`. This makes `^`, `$`, `\A`, `\z`, `\b`, `\B`, and multiline anchors all **DFA-eligible** — only true *lookahead/lookbehind over arbitrary sub-patterns* (which cljw's `look` Inst may or may not generalise to) stays on the Pike VM. Combined with the Alt-2 forward+reverse pair, almost the entire non-capturing regex surface runs on the linear DFA.
+>
+> **What it does better.** Maximal coverage: the common real-world patterns the minimal slice DECLINEs — `^\d+$`, `\bword\b`, `foo$` — all get the linear DFA + reverse-start treatment, so anchored line-scans over big inputs go linear too, not just the bare `\d+` case. This is the closest to "a real production regex engine" and the strongest answer to the user's "腰を据えて工夫をしっかり入れ込む" directive. It also subsumes Alt 2 (Alt 2 is this with the context lattice pinned to the empty set).
+>
+> **What it breaks / risks.** Highest complexity and the sharpest equivalence cliff. `\b` semantics must match JVM Clojure's `java.util.regex` Unicode word-boundary definition exactly — if cljw's IR is byte-level (the brief says it is) but Java's `\b` is codepoint/Unicode-property-level, then a byte-granular `was-prev-byte-word` bit is **wrong for multibyte UTF-8** and would silently diverge on non-ASCII (an F-011 violation). This is the leading risk and it is *not* hypothetical: it is the exact place a byte-level DFA and a Unicode-aware oracle disagree. The context-bit lattice also multiplies the cache key cardinality (state × class × context), worsening the cache-blowup pressure from Alt 2. And the reverse DFA + context bits together is the most subtle correctness territory in the whole engine.
+>
+> **Equivalence-lock story.** Same forward/reverse-vs-Pike-VM diffing as Alt 2, **plus** a mandatory dedicated `\b`/anchor sub-corpus that includes non-ASCII / multibyte inputs (the failure surface), diffed against the JVM oracle directly — not just against the Pike VM, because if cljw's *own* Pike VM `\b` is also byte-granular then DFA-vs-Pike agreement would be a false green (both wrong, identically). The lock therefore must be DFA-vs-`clj`-oracle on the word-boundary sub-corpus, and the eligibility gate must DECLINE any `\b` pattern whose input is detected non-ASCII until the Unicode-word-boundary semantics are proven byte-identical to Java.
+>
+> ### Recommendation
+>
+> **Build Alternative 2 (forward + reverse lazy DFA).** Per F-002, the finished-form-clean shape wins and cycle/LOC is not a constraint, so the minimal slice (Alt 1) is rejected outright: it is a constant-factor win that leaves the project's actual quadratic differentiator — the reverse DFA the brief itself flags as "crucial" — unbuilt, while imposing a permanent two-engine maintenance tax; choosing it on effort grounds would be the forbidden cycle-budget-defer smell. Alt 2 delivers the true O(input) `find` that is the entire point of Stage 3, composes cleanly with future S2 work, and has the strongest equivalence-lock because the Pike VM stays the corpus-locked capture engine over a DFA-narrowed window. Alt 3 is the genuinely-finished production shape and the right *follow-up*, but its `\b`/anchor coverage rides on resolving the byte-level-IR-vs-Unicode-word-boundary semantics (a real F-011 exposure that must be proven against the `clj` oracle, not the Pike VM, before any `\b` pattern is admitted) — so it should be a separate ADR after Alt 2's forward/reverse machinery is locked, not folded into this slice.
+>
+> **Note (not a halt):** none of the three requires violating an F-NNN as proposed. Alt 3 *contains* a latent F-011 violation (byte-granular `\b` on multibyte input) that is avoided by its eligibility gate DECLINEing non-ASCII `\b` until proven — flagging it here as the leading finding so the loop scopes Alt 3 around it rather than discovering it in the oracle.
+
+**Main-loop decision**: Alt 2. The DA's recommendation aligns with F-002; Alt 1 was the
+loop's initial (cycle-budget-driven) instinct and is re-rejected per CLAUDE.md's
+cycle-budget-defer rule. Alt 3 → a follow-up ADR (the byte-vs-Unicode `\b` exposure is
+its scoping constraint; cljw's `\b` is currently `isWordByte` = ASCII-only in
+`match.zig`, so the Alt-3 sub-corpus must diff against `clj`, not the Pike VM). Stage 3
+builds the forward + reverse lazy DFA in `src/runtime/regex/dfa.zig`, span-only, with the
+Pike VM as the two-pass capture engine + the DECLINE fallback. **Reverse-DFA scope note**:
+cljw's current Pike-VM `find` is itself per-position anchored-restart (same Θ(n²) class),
+so even a forward-only milestone is not a regression — but per the DA the *committed* S3
+form is the forward+reverse pair, not a forward-only intermediate.
 
 ## Consequences
 
