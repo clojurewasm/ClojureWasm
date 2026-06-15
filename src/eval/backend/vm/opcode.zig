@@ -311,6 +311,25 @@ pub const Opcode = enum(u8) {
     /// the top N operands to `locals[base..base+N)` (arg k → binding k) and jumps.
     op_recur_loop = 0x46,
 
+    /// O-030 (ADR-0146 redirect / 9.2.S): fixnum `mod`/`rem`/`quot` intrinsics,
+    /// same shape as the op_add family (no operand; pop a,b; fixnum fast path via
+    /// `intrinsic.fastBinaryFixnum` — `@mod`/`@rem`/`@divTrunc` — else defer to the
+    /// cached builtin Var for the full numeric tower / divide-by-zero raise). Net
+    /// stack effect −1.
+    op_mod = 0x47,
+    op_rem = 0x48,
+    op_quot = 0x49,
+    /// O-030: the `(<op> local-ref const-literal)` superinstruction variants
+    /// (operand `(lslot << 8) | cidx`), mirroring op_add_local_const. Net +1.
+    op_mod_local_const = 0x4A,
+    op_rem_local_const = 0x4B,
+    op_quot_local_const = 0x4C,
+    /// O-030: the `(<op> local-ref local-ref)` superinstruction variants
+    /// (operand `(sa << 8) | sb`), mirroring op_add_locals. Net +1.
+    op_mod_locals = 0x4D,
+    op_rem_locals = 0x4E,
+    op_quot_locals = 0x4F,
+
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
     /// (vm.zig:188-201 + :317 `applyJump`). Peephole's IP-remap pass
@@ -388,6 +407,15 @@ pub const Opcode = enum(u8) {
             .op_branch_ge_locals,
             .op_branch_gt_locals,
             .op_recur_loop,
+            .op_mod,
+            .op_rem,
+            .op_quot,
+            .op_mod_local_const,
+            .op_rem_local_const,
+            .op_quot_local_const,
+            .op_mod_locals,
+            .op_rem_locals,
+            .op_quot_locals,
             => false,
         };
     }
@@ -471,6 +499,15 @@ pub const Opcode = enum(u8) {
             .op_branch_ge_locals,
             .op_branch_gt_locals,
             .op_recur_loop,
+            .op_mod,
+            .op_rem,
+            .op_quot,
+            .op_mod_local_const,
+            .op_rem_local_const,
+            .op_quot_local_const,
+            .op_mod_locals,
+            .op_rem_locals,
+            .op_quot_locals,
             => false,
         };
     }

@@ -131,6 +131,25 @@ test "diff: arith intrinsic family (ADR-0130 am1) — sub/mul/comparisons/= (inl
     try f.checkEqual("(let* [< -] (< 10 3))");
 }
 
+test "diff: mod/rem/quot intrinsic (O-030) — VM op_mod/rem/quot ≡ builtin" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // positive divisor → the fixnum fast path (VM op_mod/op_rem/op_quot); negative
+    // numerator exercises the floored-vs-truncated sign difference (clj parity).
+    try f.check("(mod 100 7)", 2);
+    try f.check("(mod -7 3)", 2); // floored
+    try f.check("(rem -7 3)", -7 - (-2) * 3); // = -1, truncated
+    try f.check("(quot -7 3)", -2); // trunc-div
+    try f.check("(quot 100 7)", 14);
+    try f.check("(mod 0 5)", 0);
+    try f.check("(let* [x 100] (mod x 7))", 2); // (local, const) → op_mod_local_const
+    try f.check("(let* [x 100 y 7] (mod x y))", 2); // (local, local) → op_mod_locals
+    // negative divisor defers to the builtin on BOTH backends (fast path is bi>0
+    // only) → parity holds, value is clj-correct (floored: (mod 7 -3) = -2).
+    try f.check("(mod 7 -3)", -2);
+    try f.check("(rem 7 -3)", 1);
+}
+
 test "diff: let* binding" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();

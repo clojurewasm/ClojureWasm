@@ -657,7 +657,7 @@ inline fn stepOnce(
             stack[sp] = result;
             sp += 1;
         },
-        .op_add, .op_sub, .op_mul, .op_lt, .op_le, .op_gt, .op_ge, .op_eq => {
+        .op_add, .op_sub, .op_mul, .op_lt, .op_le, .op_gt, .op_ge, .op_eq, .op_mod, .op_rem, .op_quot => {
             // ADR-0130: binary arith/comparison intrinsic. Fixnum fast path skips
             // var-resolve + BuiltinFn dispatch; any other case (incl. errors)
             // defers to the cached builtin Var for full parity. `pristine` is
@@ -692,7 +692,7 @@ inline fn stepOnce(
             stack[sp] = result;
             sp += 1;
         },
-        .op_add_local_const, .op_sub_local_const, .op_mul_local_const, .op_lt_local_const, .op_le_local_const, .op_gt_local_const, .op_ge_local_const, .op_eq_local_const => {
+        .op_add_local_const, .op_sub_local_const, .op_mul_local_const, .op_lt_local_const, .op_le_local_const, .op_gt_local_const, .op_ge_local_const, .op_eq_local_const, .op_mod_local_const, .op_rem_local_const, .op_quot_local_const => {
             // PERF: D-386 (O-018) local-const arith superinstruction — operands come
             // from `locals[slot]` + `constants[idx]` (packed in the operand), NOT the
             // stack, fusing op_load_local + op_const + op_<arith> into one dispatch.
@@ -726,7 +726,7 @@ inline fn stepOnce(
             stack[sp] = result;
             sp += 1;
         },
-        .op_add_locals, .op_sub_locals, .op_mul_locals, .op_lt_locals, .op_le_locals, .op_gt_locals, .op_ge_locals, .op_eq_locals => {
+        .op_add_locals, .op_sub_locals, .op_mul_locals, .op_lt_locals, .op_le_locals, .op_gt_locals, .op_ge_locals, .op_eq_locals, .op_mod_locals, .op_rem_locals, .op_quot_locals => {
             // PERF: D-386 (O-019) local-LOCAL arith superinstruction — both operands
             // from `locals[]` (slots packed in the operand), fusing op_load_local +
             // op_load_local + op_<arith> into one dispatch. Same fixnum-fast /

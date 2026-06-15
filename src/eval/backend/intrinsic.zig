@@ -37,7 +37,7 @@ const env_mod = @import("../../runtime/env.zig");
 /// equality (unambiguous); every other operand pair defers to the builtin `=`
 /// (which honours `(= 1 1.0)`→false, NaN, value-equality across types). `not=`
 /// is left to the builtin (it is `(not (= …))`, rare in hot loops).
-pub const ArithOp = enum { add, sub, mul, lt, le, gt, ge, eq };
+pub const ArithOp = enum { add, sub, mul, lt, le, gt, ge, eq, mod, rem, quot };
 
 /// Stable index into `Runtime.arith_vars` (the per-op cached canonical Var).
 pub const arith_count = @typeInfo(ArithOp).@"enum".fields.len;
@@ -53,6 +53,9 @@ pub fn coreName(op: ArithOp) []const u8 {
         .gt => ">",
         .ge => ">=",
         .eq => "=",
+        .mod => "mod",
+        .rem => "rem",
+        .quot => "quot",
     };
 }
 
@@ -66,6 +69,9 @@ pub fn toOpcode(op: ArithOp) Opcode {
         .gt => .op_gt,
         .ge => .op_ge,
         .eq => .op_eq,
+        .mod => .op_mod,
+        .rem => .op_rem,
+        .quot => .op_quot,
     };
 }
 
@@ -79,6 +85,9 @@ pub fn fromOpcode(op: Opcode) ?ArithOp {
         .op_gt => .gt,
         .op_ge => .ge,
         .op_eq => .eq,
+        .op_mod => .mod,
+        .op_rem => .rem,
+        .op_quot => .quot,
         else => null,
     };
 }
@@ -97,6 +106,9 @@ pub fn localConstVariant(op: Opcode) ?Opcode {
         .op_gt => .op_gt_local_const,
         .op_ge => .op_ge_local_const,
         .op_eq => .op_eq_local_const,
+        .op_mod => .op_mod_local_const,
+        .op_rem => .op_rem_local_const,
+        .op_quot => .op_quot_local_const,
         else => null,
     };
 }
@@ -113,6 +125,9 @@ pub fn fromLocalConstOpcode(op: Opcode) ?ArithOp {
         .op_gt_local_const => .gt,
         .op_ge_local_const => .ge,
         .op_eq_local_const => .eq,
+        .op_mod_local_const => .mod,
+        .op_rem_local_const => .rem,
+        .op_quot_local_const => .quot,
         else => null,
     };
 }
@@ -129,6 +144,9 @@ pub fn localsVariant(op: Opcode) ?Opcode {
         .op_gt => .op_gt_locals,
         .op_ge => .op_ge_locals,
         .op_eq => .op_eq_locals,
+        .op_mod => .op_mod_locals,
+        .op_rem => .op_rem_locals,
+        .op_quot => .op_quot_locals,
         else => null,
     };
 }
@@ -144,6 +162,9 @@ pub fn fromLocalsOpcode(op: Opcode) ?ArithOp {
         .op_gt_locals => .gt,
         .op_ge_locals => .ge,
         .op_eq_locals => .eq,
+        .op_mod_locals => .mod,
+        .op_rem_locals => .rem,
+        .op_quot_locals => .quot,
         else => null,
     };
 }
@@ -207,6 +228,19 @@ pub fn fastBinaryFixnum(_: *Runtime, op: ArithOp, a: Value, b: Value) !?Value {
         .gt => return Value.initBoolean(ai > bi),
         .ge => return Value.initBoolean(ai >= bi),
         .eq => return Value.initBoolean(ai == bi),
+        // mod/rem/quot: fast path fires ONLY for a positive divisor (the hot case
+        // — e.g. the sieve's `(mod x p)`, p prime > 0). Non-positive divisor defers
+        // (`null`): bi==0 → the builtin raises divide_by_zero with the arg-precise
+        // caret; bi<0 → the builtin computes the correct sign (avoids relying on
+        // Zig `@mod`/`@rem` negative-denominator semantics AND the `@divTrunc(i48min,
+        // -1)` i64-overflow corner — both excluded by bi>0). For bi>0 the mapping is
+        // exact (clj `mod`=floored=@mod, `rem`=truncated=@rem, `quot`=trunc-div=
+        // @divTrunc) and EVERY result fits i48 (|@mod|,|@rem| < bi ≤ i48max;
+        // |@divTrunc| ≤ |ai| ≤ i48max), so the shared window check below is a no-op
+        // safety net, never a defer, on this path.
+        .mod => if (bi <= 0) return null else .{ @mod(ai, bi), 0 },
+        .rem => if (bi <= 0) return null else .{ @rem(ai, bi), 0 },
+        .quot => if (bi <= 0) return null else .{ @divTrunc(ai, bi), 0 },
     };
     // i64 overflow OR a result outside the i48 fixnum window → defer (null) to
     // the slow builtin path, which allocates the heap-Long / BigInt (D-165,
@@ -280,4 +314,41 @@ test "fastBinaryFixnum defers (null) when an operand is not an inline fixnum" {
     const f = Value.initFloat(1.5);
     try testing.expect((try fastBinaryFixnum(&fix.rt, .add, i, f)) == null);
     try testing.expect((try fastBinaryFixnum(&fix.rt, .add, f, i)) == null);
+}
+
+test "fastBinaryFixnum mod/rem/quot positive-divisor fast path matches clj" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+    const Case = struct { a: i48, b: i48, mod: i48, rem: i48, quot: i48 };
+    // clj oracle (positive divisor only — the fast-path domain):
+    //   (mod -7 3)=2 (rem -7 3)=-1 (quot -7 3)=-2 ; (quot 100 7)=14 ; (mod 0 5)=0
+    const cases = [_]Case{
+        .{ .a = -7, .b = 3, .mod = 2, .rem = -1, .quot = -2 },
+        .{ .a = 7, .b = 3, .mod = 1, .rem = 1, .quot = 2 },
+        .{ .a = 100, .b = 7, .mod = 2, .rem = 2, .quot = 14 },
+        .{ .a = 0, .b = 5, .mod = 0, .rem = 0, .quot = 0 },
+    };
+    for (cases) |c| {
+        const a = Value.initInteger(c.a);
+        const b = Value.initInteger(c.b);
+        try testing.expectEqual(c.mod, (try fastBinaryFixnum(&fix.rt, .mod, a, b)).?.asInteger());
+        try testing.expectEqual(c.rem, (try fastBinaryFixnum(&fix.rt, .rem, a, b)).?.asInteger());
+        try testing.expectEqual(c.quot, (try fastBinaryFixnum(&fix.rt, .quot, a, b)).?.asInteger());
+    }
+}
+
+test "fastBinaryFixnum mod/rem/quot defer (null) on non-positive divisor + non-fixnum" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+    const seven = Value.initInteger(7);
+    // divide-by-zero → null (builtin raises divide_by_zero with the arg caret)
+    try testing.expect((try fastBinaryFixnum(&fix.rt, .mod, seven, Value.initInteger(0)) == null));
+    try testing.expect((try fastBinaryFixnum(&fix.rt, .rem, seven, Value.initInteger(0)) == null));
+    try testing.expect((try fastBinaryFixnum(&fix.rt, .quot, seven, Value.initInteger(0)) == null));
+    // negative divisor → null (builtin computes the correct sign; avoids the
+    // @divTrunc(i48min,-1) i64-overflow corner + Zig negative-denominator semantics)
+    try testing.expect((try fastBinaryFixnum(&fix.rt, .mod, seven, Value.initInteger(-3)) == null));
+    try testing.expect((try fastBinaryFixnum(&fix.rt, .quot, Value.initInteger((-1) << 47), Value.initInteger(-1)) == null));
+    // non-fixnum operand → null
+    try testing.expect((try fastBinaryFixnum(&fix.rt, .mod, seven, Value.initFloat(2.0)) == null));
 }
