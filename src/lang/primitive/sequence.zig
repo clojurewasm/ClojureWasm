@@ -49,6 +49,7 @@ const sorted = @import("../../runtime/collection/sorted.zig");
 const set = @import("../../runtime/collection/set.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const chunked_cons = @import("../../runtime/collection/chunked_cons.zig");
+const chunk_transform = @import("chunk_transform.zig");
 const range = @import("../../runtime/collection/range.zig");
 const java_array = @import("../../runtime/collection/java_array.zig");
 const transient_vector = @import("../../runtime/collection/transient/transient_vector.zig");
@@ -781,6 +782,10 @@ const ENTRIES = [_]Entry{
     .{ .name = "chunk-buffer", .f = &chunkBufferFn },
     .{ .name = "chunk-append", .f = &chunkAppendFn },
     .{ .name = "chunk-cons", .f = &chunkConsFn },
+    // O-032: in-Zig chunk-map/filter drain (chunk_transform.zig) — the
+    // producer-side analogue of reduceFn's O-004 chunk drain.
+    .{ .name = "-chunk-map-step", .f = &chunk_transform.chunkMapStepFn },
+    .{ .name = "-chunk-filter-step", .f = &chunk_transform.chunkFilterStepFn },
 };
 
 pub fn register(env: *Env, rt_ns: *env_mod.Namespace) !void {

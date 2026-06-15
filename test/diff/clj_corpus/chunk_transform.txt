@@ -1,0 +1,30 @@
+;; chunk-map/filter in-Zig producer (O-032) — clj-parity goldens (verified vs
+;; `clojure -M -e` 2026-06-15). Chunked map/filter over range/vector realizes each
+;; source chunk in Zig (`-chunk-map-step`/`-chunk-filter-step`); the non-chunked
+;; (list / multi-coll) path is unchanged. Covers partial chunks, empty-filter→nil
+;; tail, laziness over infinite range, multi-coll (non-chunked), and the transducer
+;; (into) path (untouched — uses the O-023 reduce fuse, not the lazy producer).
+(map inc (range 5))
+;;=> (1 2 3 4 5)
+(map inc (range 40))
+;;=> (1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40)
+(filter even? (range 20))
+;;=> (0 2 4 6 8 10 12 14 16 18)
+(filter odd? (range 10))
+;;=> (1 3 5 7 9)
+(map inc [10 20 30])
+;;=> (11 21 31)
+(filter pos? [-2 -1 0 1 2])
+;;=> (1 2)
+(count (filter even? (range 1000)))
+;;=> 500
+(count (map inc (range 1000)))
+;;=> 1000
+(count (filter (constantly false) (range 100)))
+;;=> 0
+(take 5 (map inc (range)))
+;;=> (1 2 3 4 5)
+(map + (range 3) (range 3))
+;;=> (0 2 4)
+(into [] (map inc) (range 10))
+;;=> [1 2 3 4 5 6 7 8 9 10]

@@ -124,13 +124,9 @@
       (let [s (seq coll)]
         (if s
           (if (chunked-seq? s)
-            (let [size (-chunk-count s)
-                  b (chunk-buffer size)]
-              (loop [i 0]
-                (when (< i size)
-                  (chunk-append b (f (-chunk-nth s i)))
-                  (recur (inc i))))
-              (chunk-cons b (-map-lazy f (chunk-rest s))))
+            ;; PERF: O-032 in-Zig chunk drain — the per-element `.clj` loop moved
+            ;; into `-chunk-map-step` (producer analogue of reduceFn's O-004 drain).
+            (chunk-cons (-chunk-map-step f s) (-map-lazy f (chunk-rest s)))
             (cons (f (first s)) (-map-lazy f (rest s))))
           nil)))))
 (def map
@@ -169,14 +165,9 @@
       (let [s (seq coll)]
         (if s
           (if (chunked-seq? s)
-            (let [size (-chunk-count s)
-                  b (chunk-buffer size)]
-              (loop [i 0]
-                (when (< i size)
-                  (let [v (-chunk-nth s i)]
-                    (when (pred v) (chunk-append b v)))
-                  (recur (inc i))))
-              (chunk-cons b (-filter-lazy pred (chunk-rest s))))
+            ;; PERF: O-032 in-Zig chunk drain — the per-element `.clj` loop moved
+            ;; into `-chunk-filter-step` (survivors-only partial chunk).
+            (chunk-cons (-chunk-filter-step pred s) (-filter-lazy pred (chunk-rest s)))
             (let [v (first s)]
               (if (pred v)
                 (cons v (-filter-lazy pred (rest s)))
