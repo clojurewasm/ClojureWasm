@@ -17,6 +17,16 @@ const dispatch = @import("../../runtime/dispatch.zig");
 const file_io = @import("../../runtime/file_io.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 
+/// Map a host I/O error from `slurp`/`spit` to a catchable cljw exception.
+/// A missing path (or missing parent directory) routes to the leaf
+/// `FileNotFoundException` (clj parity, D-321); every other I/O failure stays
+/// the generic `IOException`. Single source so both surfaces classify alike.
+fn raiseFileIoError(op: []const u8, path: []const u8, e: anyerror, loc: SourceLocation) anyerror {
+    if (e == error.FileNotFound)
+        return error_catalog.raise(.file_not_found_error, loc, .{ .op = op, .path = path });
+    return error_catalog.raise(.file_io_error, loc, .{ .op = op, .path = path, .detail = @errorName(e) });
+}
+
 /// `(slurp path)` — read entire file as a UTF-8 String.
 pub fn slurp(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
@@ -33,11 +43,12 @@ pub fn slurp(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     };
     defer if (jailed) |j| rt.gpa.free(j);
     const open_path = jailed orelse path;
-    // Map the host I/O error to a catchable cljw exception (IOException Kind)
-    // rather than letting the raw Zig error abort the program — a real app needs
-    // `(try (slurp f) (catch Throwable _ default))` to work.
+    // Map the host I/O error to a catchable cljw exception (FileNotFoundException
+    // for a missing file, IOException otherwise) rather than letting the raw Zig
+    // error abort the program — a real app needs `(try (slurp f) (catch Throwable
+    // _ default))` to work.
     const content = file_io.readAll(rt.io, rt.gpa, open_path) catch |e|
-        return error_catalog.raise(.file_io_error, loc, .{ .op = "slurp", .path = path, .detail = @errorName(e) });
+        return raiseFileIoError("slurp", path, e, loc);
     defer rt.gpa.free(content);
     return try string_collection.alloc(rt, content);
 }
@@ -63,7 +74,7 @@ pub fn spit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     defer if (jailed) |j| rt.gpa.free(j);
     const open_path = jailed orelse path;
     file_io.writeAll(rt.io, open_path, content) catch |e|
-        return error_catalog.raise(.file_io_error, loc, .{ .op = "spit", .path = path, .detail = @errorName(e) });
+        return raiseFileIoError("spit", path, e, loc);
     return .nil_val;
 }
 

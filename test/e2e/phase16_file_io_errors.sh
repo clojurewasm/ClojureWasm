@@ -24,9 +24,19 @@ assert_eq 'slurp_missing_catchable' "$got" ':caught'
 got=$("$BIN" -e '(try (slurp "/tmp/cljw_no_such_file_zzz.edn") (catch java.io.IOException _ :ioe))' 2>/dev/null)
 assert_eq 'slurp_missing_ioexception' "$got" ':ioe'
 
+# ...and as java.io.FileNotFoundException — the precise leaf class clj raises for
+# a missing file (D-321). FileNotFoundException extends IOException, so the
+# IOException catch above (supertype) and this leaf catch both match.
+got=$("$BIN" -e '(try (slurp "/tmp/cljw_no_such_file_zzz.edn") (catch java.io.FileNotFoundException _ :fnf))' 2>/dev/null)
+assert_eq 'slurp_missing_filenotfound' "$got" ':fnf'
+
 # spit into a non-existent directory is catchable.
 got=$("$BIN" -e '(try (spit "/cljw_no_such_dir_zzz/x" "y") :wrote (catch Throwable _ :caught))' 2>/dev/null)
 assert_eq 'spit_baddir_catchable' "$got" ':caught'
+
+# ...and the missing-directory case is a FileNotFoundException too (clj parity).
+got=$("$BIN" -e '(try (spit "/cljw_no_such_dir_zzz/x" "y") (catch java.io.FileNotFoundException _ :fnf))' 2>/dev/null)
+assert_eq 'spit_baddir_filenotfound' "$got" ':fnf'
 
 # a successful round-trip still works (no regression).
 TMP="/tmp/cljw_io_ok_$$.txt"
@@ -34,4 +44,4 @@ got=$("$BIN" -e "(do (spit \"$TMP\" \"hello\") (slurp \"$TMP\"))" 2>/dev/null)
 rm -f "$TMP"
 assert_eq 'slurp_spit_roundtrip' "$got" '"hello"'
 
-echo "OK — phase16_file_io_errors (4 cases) green"
+echo "OK — phase16_file_io_errors (6 cases) green"

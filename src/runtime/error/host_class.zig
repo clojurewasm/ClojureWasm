@@ -273,6 +273,7 @@ pub fn kindToHostClass(kind: Kind) ?[]const u8 {
         .number_error => "NumberFormatException",
         .name_error, .syntax_error, .string_error => "RuntimeException",
         .io_error => "IOException",
+        .file_not_found => "FileNotFoundException",
         .not_implemented, .internal_error, .out_of_memory, .resource_exhausted => null,
     };
 }
@@ -373,4 +374,14 @@ test "normalizeClassName: simple name passes through unchanged" {
 test "normalizeClassName: unknown FQCN passes through unchanged (caller decides)" {
     try testing.expectEqualStrings("foo.bar.Quux", normalizeClassName("foo.bar.Quux"));
     try testing.expectEqualStrings("", normalizeClassName(""));
+}
+
+test "kindToHostClass: file_not_found maps to the leaf FileNotFoundException (D-321)" {
+    try testing.expectEqualStrings("FileNotFoundException", kindToHostClass(.file_not_found).?);
+    // io_error stays the supertype; a FileNotFoundException catch must NOT match it.
+    try testing.expectEqualStrings("IOException", kindToHostClass(.io_error).?);
+    // FileNotFoundException ⊂ IOException, so an IOException (or Throwable) catch
+    // still catches a missing-file slurp.
+    try testing.expect(isSubclassOf("FileNotFoundException", "IOException"));
+    try testing.expect(!isSubclassOf("IOException", "FileNotFoundException"));
 }

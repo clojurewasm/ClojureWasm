@@ -55,6 +55,13 @@ pub const Kind = enum {
     index_error,
     // I/O (future phases)
     io_error,
+    /// A missing file/directory specifically — the leaf
+    /// `java.io.FileNotFoundException` (a subtype of `IOException`),
+    /// kept distinct from the generic `io_error` so a
+    /// `(catch java.io.FileNotFoundException …)` matches a missing-file
+    /// slurp/spit while `(catch java.io.IOException …)` still catches it
+    /// via the supertype (D-321).
+    file_not_found,
     // System
     internal_error,
     out_of_memory,
@@ -158,6 +165,7 @@ pub const ClojureWasmError = error{
     ArithmeticError,
     IndexError,
     IoError,
+    FileNotFound,
     InternalError,
     OutOfMemory,
     ResourceExhausted,
@@ -176,6 +184,7 @@ fn kindToError(kind: Kind) ClojureWasmError {
         .arithmetic_error => ClojureWasmError.ArithmeticError,
         .index_error => ClojureWasmError.IndexError,
         .io_error => ClojureWasmError.IoError,
+        .file_not_found => ClojureWasmError.FileNotFound,
         .internal_error => ClojureWasmError.InternalError,
         .out_of_memory => ClojureWasmError.OutOfMemory,
         .resource_exhausted => ClojureWasmError.ResourceExhausted,

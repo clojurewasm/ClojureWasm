@@ -322,10 +322,16 @@ pub const Code = enum {
     /// raised when `slurp`/`spit` (clojure.core file I/O) fail to open/read/write
     /// a path. Kind `.io_error` → catchable as `java.io.IOException` (and
     /// Throwable), so `(try (slurp f) (catch Throwable _ default))` works rather
-    /// than the raw Zig error aborting the program. (clj raises the more specific
-    /// FileNotFoundException for a missing file; cljw reports IOException — the
-    /// supertype — until a FileNotFound Kind is minted, D-321.)
+    /// than the raw Zig error aborting the program. The missing-file case routes
+    /// to `file_not_found_error` (the FileNotFoundException leaf) instead; this
+    /// Code covers every other I/O failure (D-321).
     file_io_error,
+    /// args: `.{ .op = "slurp"|"spit", .path = "..." }` — raised when `slurp`/`spit`
+    /// fail because the path (or its parent directory) does not exist. Kind
+    /// `.file_not_found` → catchable as the leaf `java.io.FileNotFoundException`,
+    /// matching clj; `(catch java.io.IOException …)` / `(catch Throwable …)` still
+    /// catch it via the supertype chain (D-321).
+    file_not_found_error,
     /// args: `.{ .fn_name = "slurp"|"spit"|"wasm/load", .path = "..." }` — raised
     /// when a deploy-mode FS jail (`CLJW_FS_ROOT`, ADR-0123) is active and the
     /// path escapes the configured root (`..` traversal or an absolute path
@@ -622,6 +628,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .io_error,
             .phase = .eval,
             .template = "{[op]s} '{[path]s}' failed: {[detail]s}",
+        },
+        .file_not_found_error => .{
+            .kind = .file_not_found,
+            .phase = .eval,
+            .template = "{[op]s} '{[path]s}': no such file or directory",
         },
         .fs_jail_escape => .{
             .kind = .value_error,

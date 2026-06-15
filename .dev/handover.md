@@ -28,13 +28,14 @@
   - **debt.yaml** = `active:`(drain easiest-first) / `standing:`(NOT drained) /
     `discharged:`. Self-select drain-units from `active:` ONLY; correctness/clj-parity
     floor outranks coverage.
-  **First task on resume: continue top-down from D-321** (the next un-dispositioned
-  active row). Drained/disposed this session: D-046/228/248/317 discharged; D-246
-  (a) DONE / (b)(c) explicit-defer; D-240/D-241 re-barriered (deferred/feature-gated);
-  D-023/025/022 opportunistic (barriers unmet); D-042 = audit_scaffolding's領分.
-  Next clj-parity DOs: **D-321** (FileNotFoundException Kind), **D-322** (PARTIAL),
-  **D-433** (exception str/toString vs pr/pr-str — a clear parity bug). Then → PERF
-  cluster (D-386 dispatch → ARM64 JIT, the beat-Python north-star).
+  **First task on resume: evaluate D-322 residual, then top-down from there.**
+  **D-321 discharged 2026-06-15** (FileNotFoundException leaf Kind — slurp/spit of a
+  missing path now raise java.io.FileNotFoundException, not the generic IOException;
+  shared `raiseFileIoError` router, F-011). Next un-dispositioned clj-parity rows:
+  **D-322** (PARTIAL — only the rare `cljw -cp foo` flags-but-no-source REPL path
+  remains; low) and **D-433** (exception str vs pr — user-confirmed LOW, error UX is
+  not the bar; explicit defer stands). Both are below the bar; then → **PERF cluster**
+  (D-386 dispatch → ARM64 JIT, the beat-Python north-star) per the easiest-first order.
   - **GUARDRAIL (user 2026-06-15, durable)**: do NOT defer under progress pressure.
     Re-evaluate every candidate-defer against finished-form / あるべき論. If unifying
     REDUCES a parity gap AND does not scatter the design, DO it even if laborious
@@ -71,18 +72,6 @@
 
 - **Forbidden this session**: `git push --force*`; bare `zig build test` WITHOUT
   `-Dwasm` (false fails); bare `zig build` for scripted/probe (ADR-0133 — ReleaseSafe).
-
-## Stopped — user requested
-
-User instruction (2026-06-15): 「ちょっとPC負荷が高まってきたので、クリアセッションから
-continueだけで継続できる、配線・参照チェーン監査をして止めてください（きりのよいところで
-OK）」. Done: the wiring / reference-chain audit is CLEAN — debt.yaml parses + no dup
-ids; `check_debt_id_refs` reports "all cited debt IDs resolve" (the D-014 / D-16 /
-D-2026 comm-recipe hits are prose substring / a `D-2026-06-13` typo, NOT real
-phantoms); ADR-0143/0027/0116/0096 resolve; this session's discharged rows present.
-HEAD `4ed40f93` is clean + pushed. This stop applies to THIS session only; the next
-`/continue` resumes the loop normally (delete this section on resume): run a full gate
-first (see GATE STATUS above), then continue top-down from D-321 under the GUARDRAIL.
 
 ## Cold-start reading order (resume)
 
