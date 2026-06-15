@@ -24,6 +24,27 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-450"
+    status: "open (2026-06-16, ADR-0148, user-directed). Make cljw the FASTEST script interpreter (among cljw/Python/Ruby/Node.js/Babashka cold-start) on the 9 top-gap benches. The active perf-campaign front; resume target in handover."
+    category: "perf"
+    quality_floor: "fastest-script campaign: 9 targets ratio_sum/gc_alloc_rate/gc_large_heap/destructure/json_parse/bigint_factorial/nested_update/string_ops/sieve"
+    barrier: |-
+      Targets (cljw ÷ fastest-script, bench/cross-lang-latest.yaml 2026-06-16),
+      highest-ROI first — see ADR-0148 for per-target opt directions + the theme groups:
+        ratio_sum 3.15× (Babashka) · gc_alloc_rate 2.81× (bb) · gc_large_heap 2.22× (bb) ·
+        destructure 1.72× (bb) · json_parse 1.59× (Python) · bigint_factorial 1.49× (bb) ·
+        nested_update 1.37× (bb) · string_ops 1.35× (bb) · sieve 1.23× (Python).
+      Themes: (1) GC arch — gc_alloc_rate/gc_large_heap, generational/nursery, F-006,
+      own ADR+DA fork when designed; (2) numeric-tower alloc — ratio_sum/bigint, fused
+      accumulators; (3) conversion/binding alloc — json_parse/destructure/string_ops;
+      (4) cold-start-floor — sieve + partly nested_update, lifted by the D-140 startup
+      cache (highest cross-target leverage). nqueens/regex_count (1.04×) EXCLUDED = noise.
+      Method (v0 mostly mined): winner's internal impl (JVM/GraalVM/CPython) + web search
+      + cljw deep-dive + measurement-driven experiments + recombining deferred levers.
+      Experiment aggressively + revert (reverted-experiment commits MAY stay in the log;
+      never leave main red; diff oracle + corpus stay green; short benches carry noise →
+      ≥10 runs). After the 9 → resume D-386 (dispatch→superinstructions→JIT) + §9.0 gaps.
+    last_reviewed: "2026-06-16"
   - id: "D-449"
     status: "open (2026-06-16, ADR-0147 S3). The Alt-2 forward+reverse lazy DFA (`src/runtime/regex/dfa.zig`) is BUILT + equivalence-locked but UNWIRED — measurement showed wiring it REGRESSES perf vs the S2-prefiltered Pike VM (regex_count 17→23ms, sparse 0.05→0.47s). RESERVED engine, not the default matcher."
     category: "perf"

@@ -10,27 +10,30 @@
   `build.zig.zon` `.zwasm` is SHA-PINNED (`#412966f7…`, `lazy`). Per-commit = smoke;
   full gate batches at ceiling / boundary / pre-tag.
 
-- **First commit on resume MUST be**: **self-selected next quality unit** — the
-  ADR-0147 regex arc is COMPLETE. S1 (O-034/O-035) + S2 (O-036 leading-byte prefilter) are
-  WIRED + winning (regex_count CLOSED, ~tie/win vs Python; sparse ~27× via prefilter). S3
-  (Alt-2 forward+reverse lazy DFA, `dfa.zig`) is BUILT + equivalence-locked but **NOT
-  wired** — measurement (ADR-0147 § Stage 3 measured outcome) showed wiring REGRESSES perf
-  (regex_count 17→23ms, sparse 0.05→0.47s) because the DFA forward scan lacks the S2
-  prefilter + the reverse pass is uncached; the **S2-prefiltered Pike VM is the finished-
-  form default matcher**. DFA = correct RESERVED engine, **D-449** (re-wire needs prefilter-
-  integration + reverse-cache + a huge-input gate, else remove as dead code). Also fixed
-  this session: the Pike-VM **leftmost-FIRST** bug (cut-on-match, `a|ab`→"a"; was leftmost-
-  longest — a false-positive 2026-06-01 discharge); **D-448** = nested-empty-quantifier
-  capture divergence (silently-wrong, deferred). regex correctness floor is solid (full
-  corpus 3120/3120). GOAL (`perf-beat-python-every-bench`): regex CLOSED, bigint_factorial
-  DEFERRED (no cheap touchpoint) → the "beat Python" targets are met/deferred; self-select
-  the next unit (gap-area / debt floor, highest-value first — NEVER ask). NO-GO:
-  backtracking + machine-code JIT. Parity gaps = **D-447**.
-  - **bigint** DEFERRED (profiled: no cheap touchpoint — inherent std.math.big mul +
-    per-step alloc, not dispatch; only lever = a BigInt-reduce-accumulator, involved;
-    `private/notes/9.2.S-bigint-factorial-lookahead.md`).
-  - **JIT (D-133)** re-sequenced LAST (ADR-0145). **D-445** fused-reduce 正しい姿
-    (reduce path). **D-446** arity-divergence audit. **D-244 #4** capstone below.
+- **First commit on resume MUST be**: **ADR-0148 fastest-script perf campaign**
+  (user-directed 2026-06-16) — make cljw the FASTEST script interpreter (among
+  `{cljw, Python, Ruby, Node.js, Babashka}` cold-start) on the **9 top-gap benches**,
+  highest-ROI first: **ratio_sum 3.15× · gc_alloc_rate 2.81× · gc_large_heap 2.22× ·
+  destructure 1.72× · json_parse 1.59× · bigint_factorial 1.49× · nested_update 1.37× ·
+  string_ops 1.35× · sieve 1.23×** (ratios = cljw ÷ fastest-script, `bench/cross-lang-
+  latest.yaml` 2026-06-16). nqueens/regex_count (1.04×) EXCLUDED = cold-start/noise.
+  **Method (v0 mostly exhausted)**: other-language internal-impl study (JVM Ratio/
+  HashMap/BigInteger, GraalVM/Babashka GC, CPython C-json) + web search + cljw deep-
+  dive + measurement-driven experiments + recombining DEFERRED levers. **Experiment
+  aggressively, revert freely — a reverted experiment's commit MAY stay in the log**
+  (tests are the backstop; never leave `main` red); no regressions (diff oracle + corpus
+  3157 stay green); short benches carry noise (≥10 runs, cold-vs-compute). Themes/ROI +
+  per-target opt directions: **ADR-0148**. After the 9 (or provably cold-start-floor +
+  D-140 cache landed) → resume the original front (VM-perf **D-386** dispatch→
+  superinstructions→JIT; §9.0 gap areas). `.dev/.perf_campaign_active` is SET.
+  - **GC architecture** (gc_alloc_rate/gc_large_heap, F-006) is now on the critical path
+    — its design choice gets its own ADR + DA fork. **D-140 startup cache** lifts every
+    cold-start-floor target (sieve, partly nested_update) at once.
+  - regex arc DONE (ADR-0147: S1+S2 wired+winning, S3 DFA reserved/D-449, leftmost-first
+    fixed, reluctant quantifiers landed); **D-448** nested-empty-quant capture deferred.
+  - **bigint** = a target now (was deferred): the BigInt-reduce-accumulator lever, likely
+    combined with the alloc work; `private/notes/9.2.S-bigint-factorial-lookahead.md`.
+  - **JIT (D-133)** re-sequenced LAST (ADR-0145). **D-244 #4** capstone below.
 
 - **Validation infra / D-244 #4 gap**: `CLJW_GC_TORTURE_ALLOC=N` validates MID-ALLOC
   rooting; the O-032/O-033 producers are SAFEPOINT-torture-validated (the primary

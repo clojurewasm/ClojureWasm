@@ -29,12 +29,19 @@ is cheap at AI speed). On wait-clear: build + bench + commit.
 - **Write the next change's real code** (in `src/`, uncommitted, OR a `private/`
   draft) so the instant the wait clears it is build+bench away — not a plan to
   start typing.
-- **Mine v0** (`~/Documents/MyProducts/ClojureWasm/`) for the next lever's proven
-  shape — re-derive cljw-clean (F-004), never copy. v0 beat Python 17/20; catalogue
-  `.dev/perf_v0_baseline.md`: 24A.4 arith fast-path, 37.2-3 superinstructions +
-  compare-branch fusion, 37.4 ARM64 hot-loop JIT (the full target map is in
-  `private/notes/9.2.S-flat-frame-survey.md § CAMPAIGN ROADMAP`).
-- **Survey the next Python-target** (the losing benches) + draft its attack.
+- **Beyond v0 (v0 is mostly mined; ADR-0148)** — source the next lever from:
+  (a) the WINNER's internal impl — read JVM `clojure.lang.{Ratio,PersistentHashMap,
+  BigInteger}`, GraalVM/Babashka native-image GC, CPython `Objects/` + C-json, V8;
+  (b) web search for the published technique (generational GC, rational fast-paths,
+  bignum limb reuse); (c) cljw v1 deep-dive + a measurement-driven hypothesis;
+  (d) recombining DEFERRED `debt.yaml` levers (one alone may be inert, combined pays).
+  Re-derive cljw-clean (F-004), never copy. (v0 catalogue still at
+  `.dev/perf_v0_baseline.md` for residual ideas.)
+- **Survey the next ADR-0148 target** (ratio_sum / the GC pair / …) + draft its attack.
+- **Experiment-and-revert**: try a lever, MEASURE; if it doesn't pay, revert the code —
+  a reverted experiment's commit MAY stay in the log (the test suite is the backstop;
+  never leave `main` red). No regressions (diff oracle + corpus stay green). Short
+  benches carry noise (≥10 runs, cold-vs-compute) — don't optimize noise.
 - **Re-profile / re-read** the hot path; update the survey note's plan.
 
 ## Campaign fast-mode — the gating rules are OURS; relax them for velocity
@@ -62,14 +69,22 @@ by a slow / timing-out gate:
 
 ## The campaign does not stop until
 
-1. cljw beats Python on EVERY `bench/` workload (cold µs), THEN
-2. cljw closes on cw v0's numbers (fib 16 ms, arith_loop 4-5 ms, …) using v0's
-   proven levers (superinstructions → JIT), THEN
+1. cljw is the **FASTEST SCRIPT INTERPRETER** (among `{cljw, Python, Ruby, Node.js,
+   Babashka}` cold µs) on the **ADR-0148 9 top-gap benches** (ratio_sum · gc_alloc_rate
+   · gc_large_heap · destructure · json_parse · bigint_factorial · nested_update ·
+   string_ops · sieve), THEN
+2. cljw closes on cw v0's numbers (fib 16 ms, arith_loop 4-5 ms, …) — VM-perf D-386
+   dispatch → superinstructions → JIT, THEN
 3. the user explicitly says stop (CLAUDE.md § The only stop).
 
-Current front: **D-386 per-instruction dispatch** (kill stepOnce's per-op
-sp/ip copy+writeback v0-style; batch the polls; superinstructions; then JIT).
-Live state: `.dev/handover.md` + `private/notes/9.2.S-flat-frame-survey.md`.
+(The earlier "beat Python on every bench" goal is MET/superseded — cljw is fastest-
+script in 19/30; the bar rose to fastest-script on the 9 not-yet-won, above-noise
+benches. nqueens/regex_count 1.04× are EXCLUDED as cold-start/noise.)
+
+Current front: **ADR-0148 fastest-script campaign** — highest-ROI first (ratio_sum
+3.15× → the GC-arch pair → conversion/alloc → the cold-start-floor pair via D-140).
+Then **D-386** dispatch. Live state: `.dev/handover.md` + ADR-0148 +
+`private/notes/9.2.S-flat-frame-survey.md`.
 
 ## Guard level
 
