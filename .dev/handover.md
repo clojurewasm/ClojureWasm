@@ -28,17 +28,21 @@
   - **debt.yaml** = `active:`(drain easiest-first) / `standing:`(NOT drained) /
     `discharged:`. Self-select drain-units from `active:` ONLY; correctness/clj-parity
     floor outranks coverage.
-  **First task on resume: open the PERF cluster — D-386 (dispatch) → narrow ARM64
-  JIT, the beat-Python north-star.** The clj-parity quick-wins ahead of it are
-  cleared: **D-321** (FileNotFoundException leaf Kind) + **D-322** (classpath-aware
-  REPL across all three entry paths) discharged 2026-06-15. The only remaining
-  clj-parity row, **D-433** (exception str vs pr), stays deferred — user-confirmed
-  LOW, error UX is not the bar (explicit defer on the row, not reflexive). The other
-  `active:` rows below the PERF cluster (D-327/338/343/348/353/376/413 etc.) carry
-  unmet barriers (blocked-by events / forward-looking security reservations) — skip
-  per Step 0.5 until a barrier dissolves. So next = PERF: read `.dev/perf_v0_baseline.md`
-  + memory `perf-campaign-roadmap-9-2-s` + D-386, measure via `scripts/perf.sh`
-  (Release, never Debug).
+  **First task on resume: open the PERF cluster — D-386 (per-instruction dispatch)
+  → narrow ARM64 JIT, the beat-Python north-star.** The actionable clj-parity
+  quick-wins are now drained: **D-321** (FileNotFoundException leaf Kind), **D-322**
+  (classpath-aware REPL, all 3 entry paths), **D-314** (extend-via-metadata dispatch,
+  ADR-0144) all discharged 2026-06-15. Explicit low-priority defers (NOT reflexive —
+  reasons on each row, revisit if a real consumer hits them): **D-433** (exception
+  str vs pr — user-confirmed LOW), **D-374** (top-level `(do …)` unroll — realistic
+  `(ns …)`/separate-form code already works; only the `-e '(do (import) (use))'`
+  bundle diverges), **D-319** (Object-extension fallback — current behaviour CORRECT,
+  perf-cliff only, deferred-optimization envelope), **D-442/D-444** (concurrency —
+  infra-gated `future-cancel` / non-deterministic `:volatile-mutable` race; do when a
+  real workload appears). The remaining `active:` rows (D-327/338/343/348/353/376/413)
+  carry unmet barriers (blocked-by / forward-looking security). So next = PERF: read
+  `.dev/perf_v0_baseline.md` + memory `perf-campaign-roadmap-9-2-s` + D-386, measure
+  via `scripts/perf.sh` (Release, never Debug).
   - **GUARDRAIL (user 2026-06-15, durable)**: do NOT defer under progress pressure.
     Re-evaluate every candidate-defer against finished-form / あるべき論. If unifying
     REDUCES a parity gap AND does not scatter the design, DO it even if laborious

@@ -2153,12 +2153,19 @@ fn expandDefprotocol(
     // Optional protocol-level docstring, then optional `:keyword value` option
     // pairs (clj parity): `(defprotocol P "doc" :extend-via-metadata true (m [a])
     // …)`. Method sigs are lists, options are keywords, so skip a leading string
-    // then consume keyword/value pairs before reading sigs. cljw parses the
-    // options to load the protocol; `:extend-via-metadata` DISPATCH itself is not
-    // yet honored (explicit extend-type/extend-protocol works) — tracked D-314.
+    // then consume keyword/value pairs before reading sigs. `:extend-via-metadata
+    // true` is captured and threaded to the descriptor so receiver-metadata
+    // dispatch is honored (ADR-0144 / D-314); other options are parsed-to-load.
     var sig_start: usize = 1;
     if (sig_start < args.len and args[sig_start].data == .string) sig_start += 1;
-    while (sig_start + 1 < args.len and args[sig_start].data == .keyword) sig_start += 2;
+    var extend_via_metadata = false;
+    while (sig_start + 1 < args.len and args[sig_start].data == .keyword) : (sig_start += 2) {
+        const opt = args[sig_start];
+        if (opt.data.keyword.ns == null and std.mem.eql(u8, opt.data.keyword.name, "extend-via-metadata")) {
+            const val = args[sig_start + 1];
+            extend_via_metadata = if (val.data == .boolean) val.data.boolean else true;
+        }
+    }
     const method_sigs = args[sig_start..];
 
     // Collect each method-name Symbol from `(method-name [params])`.
@@ -2188,11 +2195,15 @@ fn expandDefprotocol(
     quoted_name_items[1] = name_form;
     const quoted_name = try list(arena, quoted_name_items, loc);
 
-    // (rt/__make-protocol! 'name [method-quotes])
-    var make_proto_items = try arena.alloc(Form, 3);
+    // (rt/__make-protocol! 'name [method-quotes] <extend-via-metadata?>) — the
+    // 3rd arg is emitted only when the flag is set; the primitive defaults it to
+    // false for the 2-arg bootstrap forms (ADR-0144 / D-314).
+    const make_proto_len: usize = if (extend_via_metadata) 4 else 3;
+    var make_proto_items = try arena.alloc(Form, make_proto_len);
     make_proto_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "__make-protocol!" } }, .location = loc };
     make_proto_items[1] = quoted_name;
     make_proto_items[2] = methods_vec;
+    if (extend_via_metadata) make_proto_items[3] = .{ .data = .{ .boolean = true }, .location = loc };
     const make_proto_call = try list(arena, make_proto_items, loc);
 
     // (def name (rt/__make-protocol! ...))

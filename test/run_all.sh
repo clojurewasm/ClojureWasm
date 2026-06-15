@@ -568,6 +568,7 @@ run_step "e2e_phase16_http_client"          "bash test/e2e/phase16_http_client.s
 run_step "e2e_phase16_eval_budget"          "bash test/e2e/phase16_eval_budget.sh"
 run_step "e2e_phase16_file_io_errors"       "bash test/e2e/phase16_file_io_errors.sh"
 run_step "e2e_phase16_repl_classpath"       "bash test/e2e/phase16_repl_classpath.sh"
+run_step "e2e_phase16_extend_via_metadata"  "bash test/e2e/phase16_extend_via_metadata.sh"
 run_step "e2e_phase16_fs_jail"              "bash test/e2e/phase16_fs_jail.sh"
 run_step "e2e_phase16_java_io_file"         "bash test/e2e/phase16_java_io_file.sh"
 run_step "e2e_phase16_clojure_java_io"      "bash test/e2e/phase16_clojure_java_io.sh"

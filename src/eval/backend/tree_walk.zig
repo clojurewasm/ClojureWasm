@@ -54,6 +54,7 @@ const symbol_mod = @import("../../runtime/symbol.zig");
 const method_table = @import("../../runtime/dispatch/method_table.zig");
 const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
+const meta_mod = @import("../../runtime/meta.zig");
 const node_mod = @import("../node.zig");
 const loader = @import("../loader.zig");
 const Node = node_mod.Node;
@@ -1197,6 +1198,12 @@ pub fn callProtocolFn(rt: *Runtime, env: *Env, callee: Value, args: []const Valu
         return error_catalog.raise(.arity_below_min, loc, .{ .fn_name = "protocol-fn", .got = args.len, .min = 1 });
     const pfn = protocol_mod.asProtocolFn(callee);
     const receiver = args[0];
+    // D-314 / ADR-0144: `:extend-via-metadata true` protocols dispatch via the
+    // receiver's metadata (per-VALUE) ahead of the per-type impl. It MUST run
+    // before `dispatch.dispatch` (which owns the per-TYPE CallSite cache), so a
+    // meta hit never poisons the type cache. Gated on the flag → other protocols
+    // pay nothing. Both backends share this entry (VM wires callFn=treeWalkCall).
+    if (try meta_mod.metaDispatch(rt, env, pfn.descriptor, receiver, pfn.methodName(), args, loc)) |v| return v;
     var cs: method_table.CallSite = .{};
     return dispatch.dispatch(
         rt,

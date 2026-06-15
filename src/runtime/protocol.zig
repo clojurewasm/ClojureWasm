@@ -41,7 +41,12 @@ pub const MethodEntry = struct {
 /// cycle 3).
 pub const ProtocolDescriptor = extern struct {
     header: HeapHeader,
-    _pad: [6]u8 = .{ 0, 0, 0, 0, 0, 0 },
+    /// `:extend-via-metadata true` (ADR-0144 / D-314): a method call on a value
+    /// carrying `^{<defining-ns>/<method> fn}` metadata dispatches to that fn.
+    /// Per-VALUE; consulted only on the protocol-fn path (`callProtocolFn` →
+    /// `dispatch.metaDispatch`), before the per-type impl lookup.
+    extend_via_metadata: bool = false,
+    _pad: [5]u8 = .{ 0, 0, 0, 0, 0 },
     /// Fully-qualified name backing bytes (interned, runtime-owned).
     fqcn_ptr: [*]const u8,
     fqcn_len: usize,
@@ -51,10 +56,22 @@ pub const ProtocolDescriptor = extern struct {
     /// by raw pointer, ABI-clean).
     methods_ptr: [*]const MethodEntry,
     methods_len: usize,
+    /// The namespace `defprotocol` ran in — the prefix of the metadata key
+    /// `<defining-ns>/<method>` for extend-via-metadata dispatch (ADR-0144). A
+    /// bare protocol name has a bare `fqcn` (no ns to split), so the defining ns
+    /// is captured separately (from the current ns at `__make-protocol!` time).
+    /// Empty (`len == 0`) for protocols defined outside a namespace context.
+    defining_ns_ptr: [*]const u8,
+    defining_ns_len: usize,
 
     /// Return the fqcn as a `[]const u8` slice.
     pub fn fqcn(self: *const ProtocolDescriptor) []const u8 {
         return self.fqcn_ptr[0..self.fqcn_len];
+    }
+
+    /// Return the defining namespace as a `[]const u8` slice (empty when unset).
+    pub fn definingNs(self: *const ProtocolDescriptor) []const u8 {
+        return self.defining_ns_ptr[0..self.defining_ns_len];
     }
 
     /// Return the methods array as a `[]const MethodEntry` slice.
@@ -70,14 +87,19 @@ pub fn makeProtocol(
     rt: *Runtime,
     fqcn_slice: []const u8,
     methods_slice: []const MethodEntry,
+    extend_via_metadata: bool,
+    defining_ns: []const u8,
 ) !Value {
     const pd = try rt.gc.infra.create(ProtocolDescriptor);
     pd.* = .{
         .header = HeapHeader.init(.protocol),
+        .extend_via_metadata = extend_via_metadata,
         .fqcn_ptr = fqcn_slice.ptr,
         .fqcn_len = fqcn_slice.len,
         .methods_ptr = methods_slice.ptr,
         .methods_len = methods_slice.len,
+        .defining_ns_ptr = defining_ns.ptr,
+        .defining_ns_len = defining_ns.len,
     };
     return Value.encodeHeapPtr(.protocol, pd);
 }
@@ -96,6 +118,7 @@ pub fn freeOwnedProtocol(gpa: std.mem.Allocator, ptr: *anyopaque) void {
     const pd: *ProtocolDescriptor = @ptrCast(@alignCast(ptr));
     gpa.free(pd.fqcn());
     if (pd.methods_len > 0) gpa.free(pd.methods());
+    if (pd.defining_ns_len > 0) gpa.free(pd.definingNs());
     gpa.destroy(pd);
 }
 
@@ -268,7 +291,7 @@ test "ProtocolDescriptor: fqcn + method list shape" {
         .{ .name = "rest", .arity = 1 },
         .{ .name = "cons", .arity = 2 },
     };
-    const v = try makeProtocol(&rt, "user/ISeq", &ms);
+    const v = try makeProtocol(&rt, "user/ISeq", &ms, false, "user");
     defer rt.gc.infra.destroy(@constCast(asProtocol(v)));
 
     try testing.expect(v.tag() == .protocol);
@@ -287,7 +310,7 @@ test "makeProtocolFn allocates a .protocol_fn Value carrying descriptor + method
     const ms = [_]MethodEntry{
         .{ .name = "first", .arity = 1 },
     };
-    const proto_val = try makeProtocol(&rt, "user/ISeq", &ms);
+    const proto_val = try makeProtocol(&rt, "user/ISeq", &ms, false, "user");
     defer rt.gc.infra.destroy(@constCast(asProtocol(proto_val)));
     const proto = asProtocol(proto_val);
 
@@ -308,7 +331,7 @@ test "satisfies returns true when td.method_table carries any entry for proto.fq
 
     // Protocol "user/ISeq" with 1 method declared.
     const ms = [_]MethodEntry{ .{ .name = "first", .arity = 1 } };
-    const proto_v = try makeProtocol(&rt, "user/ISeq", &ms);
+    const proto_v = try makeProtocol(&rt, "user/ISeq", &ms, false, "user");
     defer rt.gc.infra.destroy(@constCast(asProtocol(proto_v)));
     const proto = asProtocol(proto_v);
 

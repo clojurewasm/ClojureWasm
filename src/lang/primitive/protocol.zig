@@ -83,8 +83,10 @@ fn allocMethods(rt: *Runtime, methods_vec: Value, loc: SourceLocation) ![]const 
 /// (`'user/ISeq`); `methods-vec` is a Vector of method-name Symbols
 /// (`['first 'rest 'cons]`). Returns a `.protocol`-tagged Value.
 pub fn makeProtocol(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
-    try error_catalog.checkArity("__make-protocol!", args, 2, loc);
+    // 2 args = `(name methods)`; optional 3rd = the `:extend-via-metadata true`
+    // flag (ADR-0144 / D-314). 2-arg forms (bootstrap protocols, older unit
+    // tests) default the flag to false.
+    try error_catalog.checkArityRange("__make-protocol!", args, 2, 3, loc);
     if (args[0].tag() != .symbol) {
         return error_catalog.raise(.type_arg_invalid, loc, .{
             .fn_name = "__make-protocol!",
@@ -103,7 +105,17 @@ pub fn makeProtocol(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     errdefer rt.gc.infra.free(fqcn);
     const methods = try allocMethods(rt, args[1], loc);
     errdefer if (methods.len > 0) rt.gc.infra.free(methods);
-    const v = try protocol_mod.makeProtocol(rt, fqcn, methods);
+    // The flag is truthy iff a 3rd arg is present and not nil/false (clj truthiness).
+    const evm = args.len > 2 and args[2].isTruthy();
+    // The defining ns (the ns `defprotocol` ran in = the current ns at this
+    // `__make-protocol!` call) prefixes the metadata key `<ns>/<method>` for
+    // extend-via-metadata dispatch (ADR-0144). Owned: freed by freeOwnedProtocol.
+    const defining_ns = if (evm and env.current_ns != null)
+        try rt.gc.infra.dupe(u8, env.current_ns.?.name)
+    else
+        "";
+    errdefer if (defining_ns.len > 0) rt.gc.infra.free(defining_ns);
+    const v = try protocol_mod.makeProtocol(rt, fqcn, methods, evm, defining_ns);
     // Register the descriptor + its owned fqcn / methods slices for
     // rt.deinit cleanup. Without this, every `(defprotocol …)` form
     // — including the bootstrap row 7.7 `IPersistentCollection` — leaks
