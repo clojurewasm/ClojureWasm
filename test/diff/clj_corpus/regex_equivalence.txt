@@ -109,3 +109,18 @@
 ;;=> "7"
 (re-seq #"cat|dog" "zzzzzzzzzzcatzzzzzzzzzzdog")
 ;;=> ("cat" "dog")
+;; Leftmost-FIRST (Java priority): an earlier alternative wins over a longer
+;; later one (cut-on-match fix — was leftmost-LONGEST, a false-positive
+;; 2026-06-01 "alt clj-MATCH" discharge that never probed the prefix-alt shape).
+(re-find #"a|ab" "ab")
+;;=> "a"
+(re-find #"a|ab|abc" "abc")
+;;=> "a"
+(re-find #"foo|foobar" "foobar")
+;;=> "foo"
+(re-find #"\d+|\d+px" "12px")
+;;=> "12"
+(re-seq #"x|xy" "xyxy")
+;;=> ("x" "x")
+(re-find #"(foo|foobar)baz" "foobarbaz")
+;;=> ["foobarbaz" "foobar"]

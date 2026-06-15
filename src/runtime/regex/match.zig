@@ -307,8 +307,10 @@ fn isWordByte(b: u8) bool {
 }
 
 /// Try to match the program starting at `start` in `input`.
-/// Returns the longest greedy match anchored at `start`, or null
-/// if no thread reaches `.match` from `start`.
+/// Returns the leftmost-FIRST greedy match anchored at `start` (Java
+/// `java.util.regex` priority semantics — an earlier alternative wins over a
+/// longer later one, e.g. `a|ab` on "ab" → "a"), or null if no thread reaches
+/// `.match` from `start`.
 fn tryMatchAt(
     current: *ThreadList,
     next: *ThreadList,
@@ -329,32 +331,37 @@ fn tryMatchAt(
     const empty: [MAX_SLOTS_INLINE]i32 = [_]i32{-1} ** MAX_SLOTS_INLINE;
     try addThread(current, alloc, program, 0, pos, input, empty);
 
-    while (true) {
-        // Record any .match in the current set — greedy semantics keep
-        // extending so the final best holds the longest match. Threads are in
-        // priority order, so the FIRST `.match` owns the leftmost-greedy
-        // captures (Pike submatch).
-        for (current.threads.items) |t| {
-            if (program.insts[t.pc] == .match) {
-                best = .{ .start = start, .end = pos, .captures = .{ .slots = t.caps, .used = @as(usize, program.capture_count) * 2 } };
-                break;
-            }
-        }
-
-        if (pos >= input.len) break;
-        if (current.threads.items.len == 0) break;
-
-        const c = input[pos];
+    // Leftmost-FIRST (Java/`java.util.regex` semantics, NOT POSIX leftmost-longest):
+    // step threads in PRIORITY order and CUT — at the first `.match` thread, record it
+    // and stop, dropping every lower-priority thread (they cannot beat a higher-priority
+    // match). Higher-priority threads were already advanced into `next` earlier in this
+    // same loop, so a still-consuming greedy / earlier-alternative thread keeps extending
+    // and overwrites `best` at a later position; a lower-priority *longer* alternative is
+    // discarded. This is what makes `(re-find #"a|ab" "ab")` → "a" (clj), not "ab".
+    // The unified step+match loop replaces the prior two-loop form whose second loop
+    // stepped EVERY thread (so a lower-priority longer alt overrode → leftmost-longest bug).
+    while (current.threads.items.len > 0) {
+        const c: ?u8 = if (pos < input.len) input[pos] else null;
         const next_pos = pos + 1;
         for (current.threads.items) |t| {
             switch (program.insts[t.pc]) {
-                .char => |cc| if (c == cc) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps),
-                .class => |cls| if (cls.contains(c)) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps),
-                .range => |r| if (c >= r.lo and c <= r.hi) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps),
-                .match => {},
+                .match => {
+                    best = .{ .start = start, .end = pos, .captures = .{ .slots = t.caps, .used = @as(usize, program.capture_count) * 2 } };
+                    break; // cut every lower-priority thread
+                },
+                .char => |cc| if (c) |ch| {
+                    if (ch == cc) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps);
+                },
+                .class => |cls| if (c) |ch| {
+                    if (cls.contains(ch)) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps);
+                },
+                .range => |r| if (c) |ch| {
+                    if (ch >= r.lo and ch <= r.hi) try addThread(next, alloc, program, t.pc + 1, next_pos, input, t.caps);
+                },
                 else => {}, // epsilon ops are pre-expanded by addThread
             }
         }
+        if (pos >= input.len) break;
         std.mem.swap(ThreadList, current, next);
         next.clear();
         pos = next_pos;
@@ -621,6 +628,65 @@ test "findAll zero-width: a* over aaa yields aaa then empty (re-seq parity)" {
     try testing.expectEqual(@as(u32, 3), out.items[0].end); // "aaa"
     try testing.expectEqual(@as(u32, 3), out.items[1].start);
     try testing.expectEqual(@as(u32, 3), out.items[1].end); // ""
+}
+
+// Leftmost-FIRST (Java priority) — an earlier alternative wins over a longer
+// later one (was leftmost-LONGEST before the cut-on-match fix).
+
+test "leftmost-first: a|ab on ab matches a, not ab" {
+    var prog = try compile.compile(testing.allocator, "a|ab", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "ab")).?;
+    try testing.expectEqualStrings("a", "ab"[r.start..r.end]);
+}
+
+test "leftmost-first: a|ab|abc on abc matches a" {
+    var prog = try compile.compile(testing.allocator, "a|ab|abc", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "abc")).?;
+    try testing.expectEqualStrings("a", "abc"[r.start..r.end]);
+}
+
+test "leftmost-first: foo|foobar on foobar matches foo" {
+    var prog = try compile.compile(testing.allocator, "foo|foobar", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "foobar")).?;
+    try testing.expectEqualStrings("foo", "foobar"[r.start..r.end]);
+}
+
+test "leftmost-first: prefix-alt that fails overall falls through to longer alt" {
+    // foo-branch consumes "foo" then needs "baz" but sees "bar" → dies; the
+    // foobar-branch survives to match. Cut must not pre-empt this.
+    var prog = try compile.compile(testing.allocator, "(foo|foobar)baz", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "foobarbaz")).?;
+    try testing.expectEqualStrings("foobarbaz", "foobarbaz"[r.start..r.end]);
+}
+
+test "leftmost-first preserves greedy: a* on aaa still matches aaa" {
+    var prog = try compile.compile(testing.allocator, "a*", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "aaa")).?;
+    try testing.expectEqual(@as(u32, 0), r.start);
+    try testing.expectEqual(@as(u32, 3), r.end);
+}
+
+test "leftmost-first preserves greedy: ab? on ab still matches ab" {
+    var prog = try compile.compile(testing.allocator, "ab?", .{});
+    defer prog.deinit(testing.allocator);
+    const r = (try find(testing.allocator, &prog, "ab")).?;
+    try testing.expectEqualStrings("ab", "ab"[r.start..r.end]);
+}
+
+test "leftmost-first: re-seq x|xy on xyxy yields x,x" {
+    var prog = try compile.compile(testing.allocator, "x|xy", .{});
+    defer prog.deinit(testing.allocator);
+    var out: std.ArrayList(MatchResult) = .empty;
+    defer out.deinit(testing.allocator);
+    try findAll(testing.allocator, &prog, "xyxy", &out);
+    try testing.expectEqual(@as(usize, 2), out.items.len);
+    try testing.expectEqualStrings("x", "xyxy"[out.items[0].start..out.items[0].end]);
+    try testing.expectEqualStrings("x", "xyxy"[out.items[1].start..out.items[1].end]);
 }
 
 test "findAll no match yields empty out" {
