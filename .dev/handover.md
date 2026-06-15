@@ -13,12 +13,15 @@
 - **First commit on resume MUST be**: continue the **ADR-0148 fastest-script campaign**
   (`.dev/.perf_campaign_active` SET). Cycle 1 is DONE — all 9 top-gap benches crushed from
   their multi-× gaps to ≤1.25× (ratio_sum + nested_update CLOSED <1.0×; see Last landed).
-  Next, highest-ROI first: **(1) D-140 startup-cache** — PROFILE the ~0.48 s cold start
-  (AOT-envelope restore is the suspect; `bench/`), the residual 1.1–1.25× on the small
-  benches is largely the ~3 ms spawn floor → one lever lifts sieve/gc_alloc/gc_large/json/
-  string together. **(2)** per-target: bigint_factorial 1.25× (deep bignum / fused
-  accumulator) · destructure 1.23× (dispatch). **(3)** the original front: VM-perf **D-386**
-  dispatch → superinstructions → **D-133** ARM64 JIT (§9.0 gap area III). Method: cljw
+  Next, highest-ROI first: **(1) D-452 cold-start AOT** — cold start is **6 ms** (PROFILED:
+  2.4 ms spawn + 0.9 ms core-envelope restore + **2.9 ms re-parsing the 23 non-core `.clj`
+  libs from SOURCE every startup** — they're eager-loaded, not lazy; the 0.48 s figure was
+  a stale Debug ghost). AOT-caching them into the envelope (ADR-0056 Cycle 3) cuts ~2.9 ms
+  across ALL benches (closes sieve+string_ops, helps 5). **BLOCKED**: the envelope
+  serializer rejects `multi_fn`/`atom`/`big_int` (pprint/test use `defmulti`) — extend
+  `serialize.zig` first (attempt reverted 2026-06-16; see D-452). **(2)** per-target:
+  bigint_factorial 1.25× (deep bignum) · destructure 1.23× (dispatch). **(3)** original
+  front: VM-perf **D-386** dispatch → superinstructions → **D-133** ARM64 JIT. Method: cljw
   deep-dive + measure-first (5 campaign hypotheses already refuted by measurement — see
   ADR-0148); experiment-and-revert (reverted commits MAY stay in log; never leave `main`
   red; diff oracle + corpus 3181 stay green; ≥10 runs, ReleaseSafe only).

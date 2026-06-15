@@ -24,6 +24,24 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-452"
+    status: "open (2026-06-16, ADR-0148 cold-start lever = ADR-0056 Cycle 3). The 23 NON-core bundled `.clj` libs (clojure.string/set/walk/zip/edn/data.json/csv/cli/pprint/test/data/math/protocols/template/java.io/cljw.json/cljw.fs/stacktrace/uuid/instant/test.tap/cljw.wasm/cljw.error) are re-parsed+analyzed+evaled FROM SOURCE on EVERY startup by `bootstrap.loadCoreFiles(FILES[1..])` — MEASURED ~2.9 ms (cold start 6.2→3.3 ms when skipped; the core AOT-envelope restore is only ~0.9 ms). They are eager-loaded (string/set/pprint work WITHOUT require — the optimizations.md 'lazy on require' note is STALE). AOT-caching them into the envelope (like core, ADR-0056) would cut ~2.9 ms across ALL benches — CLOSES sieve + string_ops, pushes json/gc_alloc/gc_large/bigint/destructure ~3 ms closer."
+    category: "perf"
+    barrier: |-
+      BLOCKED on envelope-serializer Value-tag coverage. Attempted 2026-06-16
+      (cache_gen: buildEnvelope over all FILES concatenated; loadCoreAot:
+      runEnvelope only, drop loadCoreFiles) — hit `UnsupportedValueTag` at build
+      time: `serialize.zig` rejects `multi_fn` / `atom` / `big_int` (`else =>`),
+      and pprint/test use `defmulti` (multimethods). Reverted (experiment-and-
+      revert; main green). Unblock: extend `serialize.zig`/`deserialize` to cover
+      `multi_fn` (dispatch fn + method table + hierarchy) + `atom` + `big_int`,
+      THEN AOT all FILES + drop the eager `loadCoreFiles`. Verify: diff oracle +
+      corpus 3181 + the 23 libs' behaviour (string/set/pprint/test/json …) ==
+      eager-load. A substantial focused unit (the serializer extension is the
+      hard part). ALT: lazy-on-require the non-core files (more clj-like — require
+      needed) but corpus/tests rely on eager availability → wide breakage; AOT is
+      the finished form.
+    last_reviewed: "2026-06-16"
   - id: "D-450"
     status: "open (2026-06-16, ADR-0148, user-directed). Make cljw the FASTEST script interpreter (among cljw/Python/Ruby/Node.js/Babashka cold-start) on the 9 top-gap benches. The active perf-campaign front; resume target in handover."
     category: "perf"
