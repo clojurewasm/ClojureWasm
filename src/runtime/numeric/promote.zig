@@ -185,10 +185,16 @@ fn ratioArith(rt: *Runtime, a: Value, b: Value, op: RatioOp) !Value {
     defer owned_b.deinit();
     const bp = try partsOf(rt, b, &owned_b);
 
-    var rn = try Managed.init(rt.gc.infra);
-    defer rn.deinit();
-    var rd = try Managed.init(rt.gc.infra);
-    defer rd.deinit();
+    // PERF: rn/rd/lhs/rhs are transient cross-multiply scratch — one stack
+    // arena replaces 2-4 individual GPA malloc/free per ratio op (O-038).
+    // `allocFromManagedPair` keeps its own arena, so reducing rn/rd there
+    // does not alias this arena.
+    var arena = std.heap.ArenaAllocator.init(rt.gc.infra);
+    defer arena.deinit();
+    const sa = arena.allocator();
+
+    var rn = try Managed.init(sa);
+    var rd = try Managed.init(sa);
 
     switch (op) {
         .mul => {
@@ -202,10 +208,8 @@ fn ratioArith(rt: *Runtime, a: Value, b: Value, op: RatioOp) !Value {
         },
         .add, .sub => {
             // (an*bd ± bn*ad) / (ad*bd)
-            var lhs = try Managed.init(rt.gc.infra);
-            defer lhs.deinit();
-            var rhs = try Managed.init(rt.gc.infra);
-            defer rhs.deinit();
+            var lhs = try Managed.init(sa);
+            var rhs = try Managed.init(sa);
             try lhs.mul(ap.num, bp.den);
             try rhs.mul(bp.num, ap.den);
             if (op == .add) try rn.add(&lhs, &rhs) else try rn.sub(&lhs, &rhs);
@@ -222,10 +226,8 @@ fn ratioArith(rt: *Runtime, a: Value, b: Value, op: RatioOp) !Value {
     // `(+ 1/3 2/3)`→1N — JVM Ratio's Numbers.divide returns BigInt when denom=1),
     // NOT a Long. `ratioArith` is only reached with a ratio operand, so the
     // collapse is always a genuine BigInt (F-005 expressed-behaviour parity).
-    var q = try Managed.init(rt.gc.infra);
-    defer q.deinit();
-    var rem = try Managed.init(rt.gc.infra);
-    defer rem.deinit();
+    var q = try Managed.init(sa);
+    var rem = try Managed.init(sa);
     try q.divTrunc(&rem, &rn, &rd);
     return try big_int.allocFromManaged(rt, &q, .bigint);
 }

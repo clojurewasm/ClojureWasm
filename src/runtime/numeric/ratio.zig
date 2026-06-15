@@ -87,16 +87,20 @@ pub fn allocFromManagedPair(
 ) RatioError!?Value {
     if (den.eqlZero()) return error.DivideByZero;
 
-    var gcd_m = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer gcd_m.deinit();
+    // PERF: all four reduce-scratch Managed share one stack arena, so the
+    // gcd + 2× divTrunc allocate from one chunk and bulk-free on return —
+    // not 4 individual GPA malloc/free per ratio result (O-038). The result
+    // BigInts (numer/denom) still clone onto gc.infra below.
+    var arena = std.heap.ArenaAllocator.init(rt.gc.infra);
+    defer arena.deinit();
+    const sa = arena.allocator();
+
+    var gcd_m = try std.math.big.int.Managed.init(sa);
     try gcd_m.gcd(num, den);
 
-    var r_num = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer r_num.deinit();
-    var r_den = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer r_den.deinit();
-    var rem_scratch = try std.math.big.int.Managed.init(rt.gc.infra);
-    defer rem_scratch.deinit();
+    var r_num = try std.math.big.int.Managed.init(sa);
+    var r_den = try std.math.big.int.Managed.init(sa);
+    var rem_scratch = try std.math.big.int.Managed.init(sa);
     try r_num.divTrunc(&rem_scratch, num, &gcd_m);
     try r_den.divTrunc(&rem_scratch, den, &gcd_m);
 
