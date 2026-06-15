@@ -1,0 +1,103 @@
+;; SPDX-License-Identifier: EPL-2.0
+;; Regex cljw/clj equivalence goldens (ADR-0145 equivalence audit, 9.2.S).
+;; Format: expr line, then ";;=> <clj pr-str output>" golden line
+;; (per check_corpus_regression.sh). All 48 verified cljw==clj.
+;; Divergences (reluctant quantifiers / lookbehind / named groups /
+;; backreferences / \A \z \Z / POSIX [[:class:]]) are EXCLUDED — they are
+;; D-051/D-447 parity gaps (cljw raises NotImplemented), not goldens.
+(re-find #"\d+" "ab12cd34")
+;;=> "12"
+(re-find #"\D+" "ab12cd34")
+;;=> "ab"
+(re-find #"\w+" " hi_there ")
+;;=> "hi_there"
+(re-find #"\W+" "ab!!cd")
+;;=> "!!"
+(re-find #"\s+" "a   b")
+;;=> "   "
+(re-find #"\S+" "   abc   ")
+;;=> "abc"
+(re-find #"[a-z]+" "ABCdefGHI")
+;;=> "def"
+(re-find #"[^abc]+" "abcXYZ")
+;;=> "XYZ"
+(re-find #"." "x")
+;;=> "x"
+(re-find #"\p{Alpha}+" "abc123")
+;;=> "abc"
+(re-find #"\p{Digit}+" "abc123")
+;;=> "123"
+(re-matches #"\p{L}+" "abc")
+;;=> "abc"
+(re-find #"a*" "aaab")
+;;=> "aaa"
+(re-find #"a+" "baaab")
+;;=> "aaa"
+(re-find #"a?b" "ab")
+;;=> "ab"
+(re-find #"a{3}" "aaaaa")
+;;=> "aaa"
+(re-find #"a{2,}" "aaaa")
+;;=> "aaaa"
+(re-find #"a{2,4}" "aaaaaa")
+;;=> "aaaa"
+(re-find #"a{0}" "aaa")
+;;=> ""
+(re-find #"colou?r" "color")
+;;=> "color"
+(re-find #"^abc" "abcdef")
+;;=> "abc"
+(re-find #"^abc" "xabcdef")
+;;=> nil
+(re-find #"abc$" "xxabc")
+;;=> "abc"
+(re-find #"abc$" "abcd")
+;;=> nil
+(re-find #"\bword\b" "a word z")
+;;=> "word"
+(re-find #"\bword\b" "swordfish")
+;;=> nil
+(re-find #"(\d)(\d)" "x42y")
+;;=> ["42" "4" "2"]
+(re-find #"(?:ab)+" "ababab")
+;;=> "ababab"
+(re-find #"a|bc" "xbc")
+;;=> "bc"
+(re-find #"(a+)(b+)" "aaabbb")
+;;=> ["aaabbb" "aaa" "bbb"]
+(re-find #"(a)?(b)" "b")
+;;=> ["b" nil "b"]
+(re-find #"foo(?=bar)" "foobar")
+;;=> "foo"
+(re-find #"foo(?=bar)" "foobaz")
+;;=> nil
+(re-find #"foo(?!bar)" "foobaz")
+;;=> "foo"
+(re-find #"(?i)hello" "HELLO")
+;;=> "HELLO"
+(re-matches #"(?i)hello" "HeLLo")
+;;=> "HeLLo"
+(re-seq #"(?m)^\w+" "foo\nbar\nbaz")
+;;=> ("foo" "bar" "baz")
+(re-find #"(?s)a.b" "a\nb")
+;;=> "a\nb"
+(re-find #"a.b" "a\nb")
+;;=> nil
+(re-find #"(?x) a b c " "abc")
+;;=> "abc"
+(re-matches #"\d+" "12345")
+;;=> "12345"
+(re-matches #"\d+" "12a45")
+;;=> nil
+(re-find #"" "abc")
+;;=> ""
+(re-seq #"\d+" "a12b345c6789d0e")
+;;=> ("12" "345" "6789" "0")
+(re-seq #"\w+" "foo bar baz")
+;;=> ("foo" "bar" "baz")
+(re-seq #"(\d)(\w)" "1a2b3c")
+;;=> (["1a" "1" "a"] ["2b" "2" "b"] ["3c" "3" "c"])
+(re-seq #"a*" "aaa")
+;;=> ("aaa" "")
+(map count (re-seq #"\d+" "a12b345c6789d0e"))
+;;=> (2 3 4 1)
