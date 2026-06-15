@@ -36,6 +36,7 @@ const Runtime = @import("../runtime/runtime.zig").Runtime;
 const Env = @import("../runtime/env.zig").Env;
 const Value = @import("../runtime/value/value.zig").Value;
 const bootstrap = @import("../lang/bootstrap.zig");
+const require_resolver = @import("../lang/require_resolver.zig");
 const error_print = @import("../runtime/error/print.zig");
 const print = @import("../runtime/print.zig");
 
@@ -52,6 +53,13 @@ pub fn run(
     arena: std.mem.Allocator,
     stdout: *Writer,
     stderr: *Writer,
+    /// Filesystem classpath the REPL's `(require …)` searches, so a REPL
+    /// prompt resolves user libs off disk exactly as a file/`-e` run does
+    /// (D-322). Mirrors `runner.runSource`.
+    load_paths: []const []const u8,
+    /// Deploy-mode FS jail root (`CLJW_FS_ROOT`), or null for an unconfined
+    /// local REPL (ADR-0123 / SE-6/7).
+    fs_jail_root: ?[]const u8,
 ) !void {
     var rt = Runtime.init(io, gpa);
     defer rt.deinit();
@@ -75,6 +83,14 @@ pub fn run(
     bootstrap.loadCoreAot(arena, &rt, &env, &macro_table, @import("bootstrap_cache").data) catch |err| {
         error_render.renderAndExitRegistry(stderr, &rt, bootstrap_ctx, err);
     };
+
+    // ADR-0084 / D-322: enable filesystem `require` for user libs at the REPL.
+    // setupCore* installs the embedded-only resolver; swap to the embedded-FIRST
+    // chain + the classpath so `(require '[my.lib])` loads off `load_paths` —
+    // identical to runner.runSource, so REPL and script `require` are uniform.
+    rt.load_paths = load_paths;
+    rt.fs_jail_root = fs_jail_root;
+    require_resolver.installChained(&rt);
 
     try stdout.writeAll("ClojureWasm REPL — :exit / Ctrl-D quits.\n");
 

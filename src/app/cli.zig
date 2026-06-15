@@ -101,13 +101,23 @@ pub fn dispatch(init: std.process.Init) !void {
     var args = init.minimal.args.iterate();
     _ = args.skip(); // argv[0]
 
+    // Env-derived run config, hoisted so every dispatch path (REPL entries +
+    // dispatchArgsRest) shares one source (F-011). `git_cache_base` =
+    // $CLJW_HOME, else ~/.cljw, else null (a HOME-less env; git-fetch raises a
+    // clear error if a git dep needs it).
+    const cljw_path = init.environ_map.get("CLJW_PATH");
+    const fs_jail_root = init.environ_map.get("CLJW_FS_ROOT");
+    const git_cache_base: ?[]const u8 = init.environ_map.get("CLJW_HOME") orelse
+        if (init.environ_map.get("HOME")) |h| try std.fmt.allocPrint(arena, "{s}/.cljw", .{h}) else null;
+
     // `cljw repl` subcommand (ADR-0048) — peek the first positional
     // and route to the REPL when it matches. The REPL takes no further
     // argv; trailing args are not allowed today (a future `--init` /
     // `--port` would relax this).
     if (args.next()) |first| {
         if (std.mem.eql(u8, first, "repl")) {
-            return repl.run(io, gpa, arena, stdout, stderr);
+            const load_paths = try resolveDefaultClasspath(io, arena, stderr, cljw_path, git_cache_base);
+            return repl.run(io, gpa, arena, stdout, stderr, load_paths, fs_jail_root);
         }
         if (std.mem.eql(u8, first, "render-error")) {
             // D-100(c): decode CLJW_ERROR_LOG EDN events.
@@ -199,9 +209,7 @@ pub fn dispatch(init: std.process.Init) !void {
                 try stderr.flush();
                 std.process.exit(1);
             }
-            const git_cache_base: ?[]const u8 = init.environ_map.get("CLJW_HOME") orelse
-                if (init.environ_map.get("HOME")) |h| try std.fmt.allocPrint(arena, "{s}/.cljw", .{h}) else null;
-            const cp_spec = build_cp orelse init.environ_map.get("CLJW_PATH") orelse ".";
+            const cp_spec = build_cp orelse cljw_path orelse ".";
             const base_paths = try splitClasspath(arena, cp_spec);
             const deps = try loadDepsEdn(io, arena, stderr, base_paths, build_aliases.items, git_cache_base);
             // ADR-0034 am4 A4-D4: with no explicit `-m`, a selected alias's
@@ -237,18 +245,17 @@ pub fn dispatch(init: std.process.Init) !void {
         }
         // Not a recognised subcommand — fall through to legacy flag
         // parsing by re-routing `first` through the existing arm.
-        // deps.edn `:git/url` cache base: $CLJW_HOME, else ~/.cljw, else null
-        // (a HOME-less env; git-fetch raises a clear error if a git dep needs it).
-        const git_cache_base: ?[]const u8 = init.environ_map.get("CLJW_HOME") orelse
-            if (init.environ_map.get("HOME")) |h| try std.fmt.allocPrint(arena, "{s}/.cljw", .{h}) else null;
-        try dispatchArgsRest(io, gpa, arena, stdout, stderr, first, &args, init.environ_map.get("CLJW_PATH"), git_cache_base, init.environ_map.get("CLJW_FS_ROOT"));
+        try dispatchArgsRest(io, gpa, arena, stdout, stderr, first, &args, cljw_path, git_cache_base, fs_jail_root);
         return;
     }
 
-    // No argv at all → start the REPL (clj-本家 alignment, ADR-0117 D-322).
-    // `repl.run` reads stdin via takeDelimiter until EOF, so a piped/closed
-    // stdin exits cleanly; an interactive TTY gets the prompt loop.
-    return repl.run(io, gpa, arena, stdout, stderr);
+    // No argv at all → start a classpath-aware REPL (clj-本家 alignment,
+    // ADR-0117 D-322): honour $CLJW_PATH (else cwd) + ./deps.edn so a REPL
+    // `(require '[my.lib])` resolves user libs off disk. `repl.run` reads stdin
+    // via takeDelimiter until EOF, so a piped/closed stdin exits cleanly; an
+    // interactive TTY gets the prompt loop.
+    const load_paths = try resolveDefaultClasspath(io, arena, stderr, cljw_path, git_cache_base);
+    return repl.run(io, gpa, arena, stdout, stderr, load_paths, fs_jail_root);
 }
 
 /// Legacy flag-parse loop for non-subcommand invocations. Lifted
@@ -422,9 +429,12 @@ fn dispatchArgsRest(
     }
 
     if (source_text == null) {
-        try stdout.writeAll("ClojureWasm\n");
-        try stdout.flush();
-        return;
+        // Flags (e.g. `-cp DIR`) but no source / run-mode ⇒ start a
+        // classpath-aware REPL honouring those flags (D-322; clj parity:
+        // `clj -cp src` opens a REPL that can require off `src`). `deps.load_paths`
+        // is already resolved above, so this hands the same classpath the
+        // `-e`/file path would use straight to the REPL.
+        return repl.run(io, gpa, arena, stdout, stderr, deps.load_paths, fs_jail_root);
     }
 
     if (compare_mode) {
@@ -468,6 +478,17 @@ fn loadDepsEdn(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, bas
     try merged.appendSlice(arena, dep_paths);
     try merged.appendSlice(arena, base);
     return .{ .load_paths = try merged.toOwnedSlice(arena), .cfg = cfg };
+}
+
+/// The default classpath for a no-`-cp` REPL entry (the `repl` subcommand + the
+/// bare no-args fallback): `$CLJW_PATH` (else cwd ".") split into roots, with a
+/// `./deps.edn` `:paths`/source-deps prepended. Mirrors `dispatchArgsRest`'s
+/// resolution minus the `-cp` flag + `-A` aliases, so the classpath-resolution
+/// behaviour lives in one place rather than duplicated per REPL entry (F-011).
+fn resolveDefaultClasspath(io: std.Io, arena: std.mem.Allocator, stderr: *std.Io.Writer, cljw_path_env: ?[]const u8, git_cache_base: ?[]const u8) ![]const []const u8 {
+    const base_paths = try splitClasspath(arena, cljw_path_env orelse ".");
+    const deps = try loadDepsEdn(io, arena, stderr, base_paths, &.{}, git_cache_base);
+    return deps.load_paths;
 }
 
 /// Split a colon-separated classpath string into its directory roots, allocated
