@@ -184,10 +184,10 @@ captures via two-pass Pike-VM `matchAnchored`) — clj-equivalence held (full co
 3120/3120, captures correct, anchors→Pike fallback). **But the wired DFA REGRESSED
 perf** (ReleaseSafe, measured directly):
 
-| workload | S2-prefiltered Pike VM | wired lazy DFA | result |
-|----------|------------------------|----------------|--------|
-| regex_count (dense `\d+`, 10000×) | 17 ms | 23 ms | **~35% slower** |
-| sparse `\d+` (~4000-char, 20000×) | 0.05 s | 0.47 s | **~9× slower** |
+| workload                           | S2-prefiltered Pike VM | wired lazy DFA | result          |
+|------------------------------------|------------------------|----------------|-----------------|
+| regex_count (dense `\d+`, 10000×) | 17 ms                  | 23 ms          | **~35% slower** |
+| sparse `\d+` (~4000-char, 20000×) | 0.05 s                 | 0.47 s         | **~9× slower** |
 
 **Why** (the falsified premise): the DA's recommendation assumed the DFA's O(input)
 `find` would win. It does not, for cljw's regime, because (1) the DFA's forward scan
