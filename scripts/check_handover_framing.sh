@@ -13,10 +13,11 @@
 # next resume's Step 1 scan caught it.
 #
 # Behaviour:
-#   - No-op unless the post-edit `.dev/handover.md` file is dirty.
-#   - On a hit, prints the forbidden phrase(s) and line numbers, and
-#     exits 2 to block.
-#   - Also blocks if the post-edit file exceeds the 100-line cap.
+#   - On a forbidden phrase / section, prints it + line numbers and
+#     exits 2 to BLOCK (both modes).
+#   - The 100-line cap is ADVISORY in hook mode (per-edit: warn, never
+#     block — the trim-Edit deadlock fix, 2026-06-15) and STRICT in
+#     --check mode (audit: over-cap fails). See the line-cap block below.
 #
 # Modes:
 #   default       (hook): runs the check against current
@@ -84,27 +85,32 @@ FAIL=0
 
 LINES=$(wc -l < "$TARGET_FILE" | tr -d ' ')
 if (( LINES > MAX_LINES )); then
-  # Trim-Edit exemption (D-129): in hook mode, when the post-edit
-  # state is still over cap but strictly smaller than the pre-edit
-  # state recorded at git HEAD, allow the edit so a trim chain can
-  # land in multiple steps. `--check` mode (audit-time) never grants
-  # the exemption — any over-cap snapshot fails the audit.
-  EXEMPT=0
-  if [[ "$MODE" == "hook" ]]; then
-    PREV_LINES=$(git show "HEAD:$TARGET_FILE" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
-    if [[ -n "$PREV_LINES" ]] && (( PREV_LINES > MAX_LINES )) && (( LINES < PREV_LINES )); then
-      EXEMPT=1
-      echo "" >&2
-      echo "⚠ handover.md still over the $MAX_LINES-line cap ($LINES lines)" >&2
-      echo "  but reduced from $PREV_LINES → $LINES; trim-Edit exemption granted." >&2
-      echo "  Keep trimming until ≤ $MAX_LINES lines (handover_framing.md)." >&2
-    fi
-  fi
-  if (( EXEMPT == 0 )); then
+  # Line-cap policy (2026-06-15, user-directed — the trim-Edit deadlock fix):
+  #
+  #   - hook mode (per-edit): ADVISORY only, NEVER blocks. Blocking here
+  #     created a deadlock the user hit repeatedly — an Edit that REDUCES the
+  #     file toward the cap was itself rejected for the file being over cap, so
+  #     the only way to trim was a Bash rewrite that bypasses this hook. The
+  #     prior git-HEAD-based "trim-Edit exemption" did not cover the common case
+  #     (the over-cap state was introduced by THIS session's own uncommitted
+  #     edits, so HEAD was still ≤ cap → exemption never granted). Per-edit we
+  #     now only WARN so a trim chain lands freely via the Edit tool.
+  #   - --check mode (audit, audit_scaffolding A5b): STRICT — any over-cap
+  #     snapshot fails, so the 100-line cap is still enforced, just at the audit
+  #     boundary rather than as a per-edit block.
+  #
+  # The forbidden-phrase / section checks below STAY blocking in both modes —
+  # those (surrender framing etc.) are the load-bearing gate; the line cap is a
+  # soft quality bound. (Mirrors the md-table-align hook → advisory, 2026-06-11.)
+  if [[ "$MODE" == "check" ]]; then
     echo "" >&2
     echo "✗ handover.md exceeds the $MAX_LINES-line cap (= $LINES lines)" >&2
     echo "  Trim per handover_framing.md before commit." >&2
     FAIL=1
+  else
+    echo "" >&2
+    echo "⚠ handover.md is over the $MAX_LINES-line cap ($LINES lines) — advisory" >&2
+    echo "  only (the audit enforces it); keep trimming toward ≤ $MAX_LINES." >&2
   fi
 fi
 
