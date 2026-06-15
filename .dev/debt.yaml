@@ -832,6 +832,17 @@ active:
     category: "testing"
     barrier: "none — design choice (bootstrapping Fixture vs separate harness vs cached-runtime fixture). Bounded once chosen. Until then, full-runtime behavior parity rests on the shared-helper structural guarantee + single-backend clj_corpus — documented, not silently assumed."
     last_reviewed: "2026-06-14"
+  - id: "D-445"
+    status: "open (2026-06-15, ADR-0146 redirect + user direction). fused-reduce in its 正しい姿. cljw already has O-023 fused-reduce (the `fuse` `[xform coll]` slot stamped by map/filter; reduceFn's 3-arg arm delegates to `-fused-reduce` → one transduce pass; beats Python on `map_filter_reduce` 27→15ms). The finished form (DA-fork Alt 3 of ADR-0146) is to UNIFY the reduce-fusion descriptor with a lazy-walk transform descriptor into ONE `xf_desc` slot consumed by both `-fused-reduce` (reduce path) and a flat producer (lazy path), retiring the would-be `fuse`/`chain` duplication and future-proofing map-chain collapse. SCOPED to the REDUCE path: the sieve (ADR-0146's unit) never reduces, so this does NOT help it (the sieve is fn-call-bound — separate lever). Pursue when a reduce-heavy bench needs the richer descriptor; verify `map_filter_reduce` does not regress (O-023 gate-green) and ideally improves. User interest is explicit (2026-06-15: fused-reduce was hugely effective, want it in proper form) — open, NOT deferred-forever."
+    category: "perf"
+    barrier: "none hard — O-023 already ships the effective form. The 正しい姿 unification is a deliberate refactor that touches the gate-green O-023 path; a transducer stack (map's fn) ≠ a pred vector, so the unified representation needs design. Take up alongside a reduce-heavy bench that the current `[xform coll]` descriptor under-serves, or when the lazy-walk collapse is revisited with a real workload. Not blocking; the existing fused-reduce is correct + fast."
+    last_reviewed: "2026-06-15"
+  - id: "D-446"
+    status: "open (2026-06-15, user-directed). Arity-divergence audit + alignment phase: sweep every cljw fn/builtin/macro's arity set against clj and align (a future focused quality-loop unit, clj-parity floor / F-011). Surfaced by the `not=` case (ADR/O-031 cycle): cljw's `not=` carried an over-lenient `([] false)` 0-arg clause clj lacks → `(not=)` returned false instead of throwing an ArityException (fixed that one in-cycle). The class is broader: any cljw fn that ADDED a lenient arity (0-arg / extra) clj rejects, OR is MISSING an arity clj accepts, is a silent divergence a user hits as 'works in cljw, throws in clj' (or vice-versa). The audit: enumerate cljw `.clj` defns + Zig builtins, diff each arity envelope vs clj (clojure source / `clojure -M -e` arity probes), classify each mismatch bug→fix (align to clj) OR accepted→AD-NNN (with derives_from). Mechanise: a corpus of `(<fn>)` / `(<fn> a..)` arity-boundary probes re-checked vs clj. NOT urgent; a contained clj-parity sweep, big-bang-then-closed (clj_diff_sweep Discipline 2)."
+    category: "clj-parity"
+    quality_floor: "clj-parity: fn arity envelopes match clj (no silent over-lenient / missing arities)"
+    barrier: "none — repro pattern in hand (the not= 0-arg case). A focused sweep: enumerate cljw fn arities, diff vs clj, fix-or-AD each. Bounded; take up as a quality-loop clj-parity unit. Mechanise with an arity-boundary corpus so it stays re-checkable."
+    last_reviewed: "2026-06-15"
 
 # === STANDING (epics / campaigns / capstones / deferred-future bucket) ===
 # Not drained as single units by the autonomous loop (CLAUDE.md self-select reads active: only).
@@ -5221,11 +5232,6 @@ discharged:
     category: clj-parity
     barrier: none — DONE this cycle (ADR-0140).
     last_reviewed: "2026-06-14"
-  - id: "D-445"
-    status: "open (2026-06-15, ADR-0146 redirect + user direction). fused-reduce in its 正しい姿. cljw already has O-023 fused-reduce (the `fuse` `[xform coll]` slot stamped by map/filter; reduceFn's 3-arg arm delegates to `-fused-reduce` → one transduce pass; beats Python on `map_filter_reduce` 27→15ms). The finished form (DA-fork Alt 3 of ADR-0146) is to UNIFY the reduce-fusion descriptor with a lazy-walk transform descriptor into ONE `xf_desc` slot consumed by both `-fused-reduce` (reduce path) and a flat producer (lazy path), retiring the would-be `fuse`/`chain` duplication and future-proofing map-chain collapse. SCOPED to the REDUCE path: the sieve (ADR-0146's unit) never reduces, so this does NOT help it (the sieve is fn-call-bound — separate lever). Pursue when a reduce-heavy bench needs the richer descriptor; verify `map_filter_reduce` does not regress (O-023 gate-green) and ideally improves. User interest is explicit (2026-06-15: fused-reduce was hugely effective, want it in proper form) — open, NOT deferred-forever."
-    category: "perf"
-    barrier: "none hard — O-023 already ships the effective form. The 正しい姿 unification is a deliberate refactor that touches the gate-green O-023 path; a transducer stack (map's fn) ≠ a pred vector, so the unified representation needs design. Take up alongside a reduce-heavy bench that the current `[xform coll]` descriptor under-serves, or when the lazy-walk collapse is revisited with a real workload. Not blocking; the existing fused-reduce is correct + fast."
-    last_reviewed: "2026-06-15"
 conventions: |-
   - Structure: two top-level lists — `active:` and `discharged:`. Active entries carry id / status / category / barrier (+ optional quality_floor / last_reviewed); discharged entries carry id / discharged_at / resolution. Edit as YAML (no Markdown table to align).
   - New debt: grep `.dev/debt.yaml` for class-overlap before adding (per `.claude/rules/debt_dedup.md`).
