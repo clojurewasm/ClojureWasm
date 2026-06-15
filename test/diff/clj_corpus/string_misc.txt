@@ -48,3 +48,9 @@
 ;;=> "\\$1 and \\\\2"
 (clojure.string/replace "abc" #"b" (clojure.string/re-quote-replacement "$X"))
 ;;=> "a$Xc"
+;; leftmost-FIRST ripple into replace / replace-first (the matcher cut-on-match
+;; fix): a|ab matches the "a" branch (Java priority), not the longer "ab".
+(clojure.string/replace "abab" #"a|ab" "X")
+;;=> "XbXb"
+(clojure.string/replace-first "abab" #"a|ab" "X")
+;;=> "Xbab"

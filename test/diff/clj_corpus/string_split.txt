@@ -22,3 +22,7 @@
 ;;=> ["1" "2" "3"]
 (clojure.string/split "hello world" #"\s")
 ;;=> ["hello" "world"]
+;; leftmost-FIRST ripple into split (the matcher's cut-on-match fix): a|ab on
+;; "1a2ab3" splits on the "a" matches (not the longer "ab"), per Java priority.
+(clojure.string/split "1a2ab3" #"a|ab")
+;;=> ["1" "2" "b3"]
