@@ -11,42 +11,46 @@
   clojurewasm/zwasm commit (`#412966f7…`, `lazy`) — not the local path.
   Per-commit = smoke; full gate batches at ceiling / boundary / pre-tag.
 
-- **First commit on resume MUST be**: the perf campaign's **3-loser runtime
-  campaign — sieve first** (ADR-0145, the JIT go/no-go decision). sieve is ~1.5×
-  behind Python; v0 won it with **filter-chain collapsing / fused-reduce** (24C.7,
-  103×) — a cross-platform, no-machine-code runtime lever. Step 0 survey the lazy
-  `filter`/`first`/`rest` walk hot path (`src/lang/clj/clojure/core.clj` filter +
-  the lazy-seq machinery; cross-ref O-004 chunked-seq + O-023 fused-reduce); the
-  fix is GC-rooting-sensitive (O-005/O-013 class) → torture-gate with
-  `CLJW_GC_TORTURE` + `CLJW_GC_TORTURE_ALLOC`. Then nested_update (update-in/assoc-in
-  Zig builtins) then regex_count (after a cross-lang equivalence audit). Validate
-  each: diff oracle + `clj` corpus (F-011) + bench re-measure (hyperfine ReleaseSafe).
-  - **JIT (D-133) is re-sequenced LAST** (ADR-0145): `04_arith_loop` already beats
-    Python 1.87× (cold + compute), so the JIT is v0-parity-only at the project's
-    highest cost/risk; it touches none of the 3 losers. Re-open only when its ROI
-    predicate fires (a hot loop the runtime levers can't reach, OR losers closed,
-    OR user re-affirms). Do NOT open the executable-memory/codegen surface now.
-  - **SKIP D-386 sub-step 2** (op_top register hoist): LOW-ROI (LOAD-only ~1% noise)
-    + blocked on D-244 #4 `gc_self_guard` fabrication rooting. Details in D-386.
+- **First commit on resume MUST be**: **fixnum `mod`/`rem`/`quot` intrinsic** (the
+  sieve's real lever). GOAL (user-affirmed 2026-06-15): beat Python on EVERY bench
+  via Zig-backed equivalent-semantics impls (memory `perf-beat-python-every-bench`).
+  Current Python-losers (re-measured): **regex_count 1.75× / sieve 1.40× /
+  nested_update 1.21× / bigint_factorial 1.19×** (fib FLIPPED to cljw-win via
+  O-028/029). sieve is **fn-call-bound** (not depth-bound — filter-chain collapse
+  was NO-GO, ADR-0146): user-`fn*` predicate `mod` ~230ns + `not=` ~260ns are NOT
+  intrinsic. Fix = extend the O-029 `fastBinaryFixnum` family to `mod`/`rem`/`quot`
+  (`@mod`/`@rem`/`@divTrunc`, div0 + i48min/-1 corner → null defer). FULL change
+  list (MINIMUM 8 edits + the superinstruction variants) + the F-011 correctness
+  table is in `private/notes/9.2.S-intrinsic-mod-survey.md`. Then re-measure `not=`
+  (intrinsic as eq-then-negate?), then nested_update (update-in/assoc-in Zig
+  builtins), then regex_count (after cross-lang equivalence audit). Validate each:
+  diff oracle (TreeWalk≡VM) + new `diff_test.zig` case + `clj` corpus (F-011) + bench.
+  - **JIT (D-133) re-sequenced LAST** (ADR-0145): re-open only when its ROI
+    predicate fires. Do NOT open the executable-memory/codegen surface now.
+  - **D-445** = fused-reduce 正しい姿 (reduce path, user interest) — open, separate
+    from the sieve (which never reduces).
 
-- **New this session — validation infra**: alloc-driven GC torture
-  (`CLJW_GC_TORTURE_ALLOC=N`, inert-by-default) forces a collect inside `gc.alloc`
-  so MID-OP rooting gaps surface deterministically. It already caught a real latent
-  gap (`[1 2 3]` panics @memcpy-alias — op_vector_literal's partial is unrooted;
-  D-244 #4 work, independent of op_top). Pure-dispatch (fib/tak/arith/str) PASSES.
-  Use it when touching any alloc-site rooting (audit: run it over the suite).
+- **Validation infra**: alloc-driven GC torture (`CLJW_GC_TORTURE_ALLOC=N`,
+  inert-by-default) forces a collect inside `gc.alloc` so MID-OP rooting gaps
+  surface deterministically (caught the filter-chain vector-base gap this session).
+  KEY LESSON: the diff oracle (TreeWalk≡VM) is necessary but NOT sufficient — a bug
+  identical on both backends passes it; clj corpus + torture + direct probe are the
+  backstops. (Intrinsic arith fast path is VM-only; TreeWalk uses the builtin, so
+  parity is structural via the diff oracle.)
 
 - **Forbidden this session**: `git push --force*`; bare `zig build test` WITHOUT
   `-Dwasm` (false fails — memory `zig_build_test_needs_dwasm`); bare `zig build`
   for scripted/probe (ADR-0133 — ReleaseSafe). Measure perf only ReleaseSafe.
 
-## Last landed (git log = SSOT; HEAD `ec2ee67b`, all pushed)
+## Last landed (git log = SSOT; HEAD `a5eb3fe9`, all pushed)
 
-Perf dispatch + GC-validation arc: **O-028** (ip→loop register, fib 536→472) +
-**O-029** (alloc-free fixnum arith fast path — `fastBinaryFixnum` returns null on
-i48-overflow → slow path; fib 472→420; +the sub-step-2 prerequisite) + the
-**alloc-driven GC torture** infra (D-386 / D-244 #4 unblock tool; found the
-op_vector_literal rooting gap on first run). Smoke green each commit.
+**ADR-0146 filter-chain collapse = NO-GO** (doc-only; the Zig producer was built,
+measured, reverted). It collapses correctly (2.6× on deep cheap-pred nests) but
+moves the sieve ~0 — the sieve is **fn-call-bound** (mod/not= non-intrinsic), not
+depth-bound; v0's 1645ms depth pathology did not transfer (cljw starts at 27ms).
+Redirect = the fixnum mod/rem/quot intrinsic (above). D-445 = fused-reduce proper
+form (reduce path). Prior arc still in: O-028/029 (fib flipped to cljw-win) +
+alloc-driven GC torture.
 
 SAFETY: `clj` batches need `-J-Xmx2g` + bounded seqs; `zig build test` needs
 `-Dwasm`; name changed e2e steps to `--smoke`; new debt rows via Edit (quoted id,
