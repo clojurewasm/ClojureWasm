@@ -71,20 +71,27 @@ Above 100 lines, the framing has drifted into log / deliberation /
 forecast. Trim before commit. `git log` and `.dev/ROADMAP.md`
 already carry the history and the forecast.
 
-### Trim-Edit exemption (D-129)
+### The cap is advisory in hook mode (2026-06-15 — the trim-Edit deadlock fix)
 
-When the current `.dev/handover.md` is already over the cap (the
-previous session left it bloated), the PreToolUse:Edit hook
-grants a **trim-Edit exemption**: an Edit whose post-edit state
-is still over cap but strictly *smaller* than the pre-edit state
-(read from `git HEAD:.dev/handover.md`) is allowed through with a
-warning, so a multi-step trim chain can land. A bloating Edit (=
-post-edit ≥ pre-edit) or a fresh Edit that newly exceeds the cap
-is still blocked.
+The 100-line cap is a **soft quality bound**, so the PreToolUse:Edit
+hook (`scripts/check_handover_framing.sh`) treats it as **advisory**:
+when `.dev/handover.md` is over cap, hook mode **warns but does NOT
+block** the edit. This lets a multi-step trim chain — or any edit that
+*reduces* the file toward the cap — land freely via the Edit/Write
+tool. (The earlier git-HEAD-based "trim-Edit exemption" did not cover
+the common case: when the over-cap state was introduced by the *same
+session's* uncommitted edits, HEAD was still ≤ cap so no exemption was
+granted, and the only escape was a Bash rewrite bypassing the hook —
+the recurring deadlock this fix removes.)
 
-The exemption applies only in hook mode. `audit_scaffolding` A5b
-runs `--check` mode and fails any over-cap snapshot — that gate
-ensures the trim chain eventually reaches ≤ 100.
+The cap is still **enforced at the audit boundary**: `--check` mode
+(`audit_scaffolding` A5b) **fails** any over-cap snapshot. So the
+≤ 100 discipline holds — the gate just moves from per-edit to audit.
+
+The **forbidden-phrase / section checks STAY blocking** (exit 2) in
+both modes — those (surrender framing etc.) are the load-bearing gate;
+only the line cap softened. (Mirrors the `md-table-align` hook →
+advisory, 2026-06-11, for the same mid-edit-drift reason.)
 
 ## Update frequency cap (≤ 2 / session)
 
@@ -203,10 +210,13 @@ next resume's Step 1 scan.
 
 - **Live gate** — `scripts/check_handover_framing.sh` wired into
   `.claude/settings.json` PreToolUse Edit|Write chain. Every edit
-  to `.dev/handover.md` runs the script; a forbidden phrase / over-
-  cap length / `## Future ... shopping list` / `## Notes for the
-  next session` heading / >1 `## Just landed` sections blocks the
-  edit (exit 2) with the offending lines printed.
+  to `.dev/handover.md` runs the script; a forbidden phrase /
+  `## Future ... shopping list` / `## Notes for the next session`
+  heading / >1 `## Just landed` sections **blocks** the edit (exit 2)
+  with the offending lines printed. The **over-cap length is ADVISORY
+  in hook mode** (warns, does not block — the trim-Edit deadlock fix,
+  2026-06-15; see § "The cap is advisory in hook mode") and **strict
+  in `--check`** (audit) mode.
 - **Audit-time fallback** — `audit_scaffolding/CHECKS.md` A5b runs
   the same script in `--check` mode at Phase boundary, catching
   drift that may have slipped past the live gate (e.g. if a future
