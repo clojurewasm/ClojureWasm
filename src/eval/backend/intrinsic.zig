@@ -33,11 +33,13 @@ const env_mod = @import("../../runtime/env.zig");
 
 /// The intrinsifiable binary operations (ADR-0130 + am1). `/` stays absent
 /// (integer `/` yields a Ratio / divide-by-zero raise — no fixnum fast path).
-/// `=` is INCLUDED but **fixnum-only**: two inline fixnums compare by integer
-/// equality (unambiguous); every other operand pair defers to the builtin `=`
-/// (which honours `(= 1 1.0)`→false, NaN, value-equality across types). `not=`
-/// is left to the builtin (it is `(not (= …))`, rare in hot loops).
-pub const ArithOp = enum { add, sub, mul, lt, le, gt, ge, eq, mod, rem, quot };
+/// `=`/`not=` are INCLUDED but **fixnum-only**: two inline fixnums compare by
+/// integer (in)equality (unambiguous); every other operand pair defers to the
+/// builtin `=` / the `.clj` `not=` Var (which honour `(= 1 1.0)`→false, NaN,
+/// value-equality across types). `not=` (op_ne, O-031) was intrinsic'd once the
+/// sieve measurement showed its `.clj` `(not (= a b))` call is hot (~260 ns) —
+/// the "rare in hot loops" rationale predated the perf campaign.
+pub const ArithOp = enum { add, sub, mul, lt, le, gt, ge, eq, mod, rem, quot, ne };
 
 /// Stable index into `Runtime.arith_vars` (the per-op cached canonical Var).
 pub const arith_count = @typeInfo(ArithOp).@"enum".fields.len;
@@ -56,6 +58,7 @@ pub fn coreName(op: ArithOp) []const u8 {
         .mod => "mod",
         .rem => "rem",
         .quot => "quot",
+        .ne => "not=",
     };
 }
 
@@ -72,6 +75,7 @@ pub fn toOpcode(op: ArithOp) Opcode {
         .mod => .op_mod,
         .rem => .op_rem,
         .quot => .op_quot,
+        .ne => .op_ne,
     };
 }
 
@@ -88,6 +92,7 @@ pub fn fromOpcode(op: Opcode) ?ArithOp {
         .op_mod => .mod,
         .op_rem => .rem,
         .op_quot => .quot,
+        .op_ne => .ne,
         else => null,
     };
 }
@@ -109,6 +114,7 @@ pub fn localConstVariant(op: Opcode) ?Opcode {
         .op_mod => .op_mod_local_const,
         .op_rem => .op_rem_local_const,
         .op_quot => .op_quot_local_const,
+        .op_ne => .op_ne_local_const,
         else => null,
     };
 }
@@ -128,6 +134,7 @@ pub fn fromLocalConstOpcode(op: Opcode) ?ArithOp {
         .op_mod_local_const => .mod,
         .op_rem_local_const => .rem,
         .op_quot_local_const => .quot,
+        .op_ne_local_const => .ne,
         else => null,
     };
 }
@@ -147,6 +154,7 @@ pub fn localsVariant(op: Opcode) ?Opcode {
         .op_mod => .op_mod_locals,
         .op_rem => .op_rem_locals,
         .op_quot => .op_quot_locals,
+        .op_ne => .op_ne_locals,
         else => null,
     };
 }
@@ -165,6 +173,7 @@ pub fn fromLocalsOpcode(op: Opcode) ?ArithOp {
         .op_mod_locals => .mod,
         .op_rem_locals => .rem,
         .op_quot_locals => .quot,
+        .op_ne_locals => .ne,
         else => null,
     };
 }
@@ -228,6 +237,10 @@ pub fn fastBinaryFixnum(_: *Runtime, op: ArithOp, a: Value, b: Value) !?Value {
         .gt => return Value.initBoolean(ai > bi),
         .ge => return Value.initBoolean(ai >= bi),
         .eq => return Value.initBoolean(ai == bi),
+        // `not=` (op_ne) — fixnum-only fast path; the non-(fixnum,fixnum) case
+        // defers to the cached `not=` Var (.clj `(not (= a b))`, full value-equality
+        // incl. `(not= 1 1.0)`→true). Mirrors `.eq`. [refs: O-031]
+        .ne => return Value.initBoolean(ai != bi),
         // mod/rem/quot: fast path fires ONLY for a positive divisor (the hot case
         // — e.g. the sieve's `(mod x p)`, p prime > 0). Non-positive divisor defers
         // (`null`): bi==0 → the builtin raises divide_by_zero with the arg-precise
@@ -305,6 +318,10 @@ test "fastBinaryFixnum comparisons are exact" {
     try testing.expect((try fastBinaryFixnum(&fix.rt, .gt, one, two)).? == Value.false_val);
     try testing.expect((try fastBinaryFixnum(&fix.rt, .le, two, two)).? == Value.true_val);
     try testing.expect((try fastBinaryFixnum(&fix.rt, .ge, one, two)).? == Value.false_val);
+    // O-031: `=` / `not=` are mirror fixnum fast paths.
+    try testing.expect((try fastBinaryFixnum(&fix.rt, .eq, two, two)).? == Value.true_val);
+    try testing.expect((try fastBinaryFixnum(&fix.rt, .ne, two, two)).? == Value.false_val);
+    try testing.expect((try fastBinaryFixnum(&fix.rt, .ne, one, two)).? == Value.true_val);
 }
 
 test "fastBinaryFixnum defers (null) when an operand is not an inline fixnum" {

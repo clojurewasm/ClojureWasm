@@ -578,10 +578,10 @@
 ;; PERF: O-027 a 2-arg fast arity avoids the variadic rest-pack + `apply` on the
 ;; hot 2-arg path (`(not= 0 (mod x p))` in sieve's filter pred, per element ×
 ;; per filter-level). The variadic clause starts at 3 args (Clojure requires the
-;; variadic's required-param count to exceed every fixed arity); 0/1 args → false
-;; (`(not (= …))` of ≤1 arg). [refs: O-027, D-386]
-(def not= (fn* ([] false)
-                ([a] false)
+;; variadic's required-param count to exceed every fixed arity). Arities match
+;; clj exactly: `([x])`→false, `([x y])`, `([x y & more])` — NO 0-arg clause, so
+;; `(not=)` throws an arity error like clj (it does NOT return false). [refs: O-027, D-386]
+(def not= (fn* ([a] false)
                 ([a b] (not (= a b)))
                 ([a b c & more] (not (apply = a b c more)))))
 (def fnext (fn* [x] (first (next x))))

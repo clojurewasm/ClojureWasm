@@ -329,6 +329,17 @@ pub const Opcode = enum(u8) {
     op_mod_locals = 0x4D,
     op_rem_locals = 0x4E,
     op_quot_locals = 0x4F,
+    /// O-031 (9.2.S): fixnum `not=` intrinsic (op_ne), mirroring op_eq — fixnum
+    /// fast path `ai != bi`, else defer to the cached `not=` Var (.clj
+    /// `(not (= a b))`, full value-equality). The sieve filter pred
+    /// `(not= 0 (mod x p))` is the hot case. Plain net −1; the _local_const /
+    /// _locals variants net +1 (operands from locals/constants), like the op_eq
+    /// family — all three are `isPurePush=false` (only op_const/op_load_local are
+    /// pure pushes). Distinct from `op_branch_ne_*` (0x40-0x43) = the NEGATED-eq
+    /// branch fusion.
+    op_ne = 0x50,
+    op_ne_local_const = 0x51,
+    op_ne_locals = 0x52,
 
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
@@ -416,6 +427,9 @@ pub const Opcode = enum(u8) {
             .op_mod_locals,
             .op_rem_locals,
             .op_quot_locals,
+            .op_ne,
+            .op_ne_local_const,
+            .op_ne_locals,
             => false,
         };
     }
@@ -508,6 +522,9 @@ pub const Opcode = enum(u8) {
             .op_mod_locals,
             .op_rem_locals,
             .op_quot_locals,
+            .op_ne,
+            .op_ne_local_const,
+            .op_ne_locals,
             => false,
         };
     }

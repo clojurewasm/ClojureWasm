@@ -164,10 +164,10 @@ pub const Runtime = struct {
     /// op) means the compiler never emits that intrinsic opcode.
     /// `core_arith_pristine` starts true and is cleared when ANY of these Vars is
     /// redefined via `alter-var-root`, deopting the intrinsic opcodes to the
-    /// builtin so a redefed op is honoured (F-011). Size 11 = intrinsic.arith_count
-    /// (add/sub/mul/lt/le/gt/ge/eq + mod/rem/quot; runtime/ is Layer 0 and cannot
-    /// import the Layer-1 intrinsic module).
-    arith_vars: [11]?*anyopaque = .{ null, null, null, null, null, null, null, null, null, null, null },
+    /// builtin so a redefed op is honoured (F-011). Size 12 = intrinsic.arith_count
+    /// (add/sub/mul/lt/le/gt/ge/eq + mod/rem/quot + ne(not=); runtime/ is Layer 0 and
+    /// cannot import the Layer-1 intrinsic module).
+    arith_vars: [12]?*anyopaque = .{ null, null, null, null, null, null, null, null, null, null, null, null },
     core_arith_pristine: bool = true,
 
     /// Monotonic counter for `gensym` / auto-gensym (`foo#`). Lives on

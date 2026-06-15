@@ -1,0 +1,37 @@
+;; not= (op_ne intrinsic, O-031) — clj-parity goldens (verified vs `clojure -M -e`
+;; 2026-06-15). Fixnum 2-arg hits the VM op_ne fast path; non-fixnum / 3+ args /
+;; 1-arg defer to the .clj `not=` (full value-equality). `(not=)` (0-arg) now
+;; throws an arity error like clj — the prior cljw `([] false)` over-lenient clause
+;; was removed 2026-06-15 (clj `not=` has no 0-arg arity). A value-corpus can't
+;; assert a throw so `(not=)` stays out of the goldens; `(not= 5)` (1-arg→false,
+;; clj-matching) IS asserted below.
+(not= 1 2)
+;;=> true
+(not= 3 3)
+;;=> false
+(not= 1 1.0)
+;;=> true
+(not= :a :a)
+;;=> false
+(not= :a :b)
+;;=> true
+(not= 0 (mod 15 7))
+;;=> true
+(not= 0 (mod 14 7))
+;;=> false
+(not= "x" "y")
+;;=> true
+(not= nil nil)
+;;=> false
+(not= nil 0)
+;;=> true
+(not= [1 2] [1 2])
+;;=> false
+(not= [1 2] [1 3])
+;;=> true
+(not= 1 2 3)
+;;=> true
+(not= 1 1 1)
+;;=> false
+(not= 5)
+;;=> false

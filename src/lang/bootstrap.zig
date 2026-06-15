@@ -191,7 +191,7 @@ pub fn loadCore(
     macro_table: *const macro_dispatch.Table,
 ) !void {
     try loadCoreFiles(arena, rt, env, macro_table, FILES);
-    try finalizeUserNs(env);
+    try finalizeUserNs(rt, env);
 }
 
 /// Read+analyze+eval each `.clj` file in `files` (a sub-slice of `FILES`).
@@ -227,7 +227,7 @@ fn loadCoreFiles(
 /// not a `.clj` file, so it gets the explicit refer + becomes current here.
 /// Shared by the source (`loadCore`) and AOT (`setupCoreAot`) paths so both
 /// leave the env in the identical final state.
-fn finalizeUserNs(env: *Env) !void {
+fn finalizeUserNs(rt: *Runtime, env: *Env) !void {
     if (env.findNs("clojure.core")) |clojure_core_ns| {
         if (env.findNs("user")) |target| {
             // ADR-0035 D9 revision: clojure.core overrides the boot-time rt
@@ -238,6 +238,13 @@ fn finalizeUserNs(env: *Env) !void {
     if (env.findNs("user")) |user_ns| {
         env.setCurrentNs(user_ns);
     }
+    // O-031: re-cache the arith intrinsics now that core.clj is fully loaded, so
+    // the `.clj`-defined ops (`not=`) are interned and recognised by the VM
+    // compiler. setupCorePrefix's earlier pass only saw the Zig builtins
+    // (+/-/*/<.../mod/rem/quot); `not=` did not exist yet. Re-resolving is safe:
+    // core.clj does NOT redefine any arith op, so every builtin slot re-resolves
+    // to the same referred Var (idempotent), and the `not=` slot fills in.
+    cacheArithIntrinsics(rt, env);
 }
 
 /// Bootstrap an already-init'd runtime in one shared chain (F-009):
@@ -449,7 +456,7 @@ pub fn loadCoreAot(
     try rt.registerSource(FILES[0].label, FILES[0].source);
     try driver.runEnvelope(rt, env, arena, core_blob);
     try loadCoreFiles(arena, rt, env, macro_table, FILES[1..]);
-    try finalizeUserNs(env);
+    try finalizeUserNs(rt, env);
 }
 
 // --- tests ---

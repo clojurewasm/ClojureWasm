@@ -150,6 +150,15 @@ test "diff: mod/rem/quot intrinsic (O-030) — VM op_mod/rem/quot ≡ builtin" {
     try f.check("(rem 7 -3)", 1);
 }
 
+// NB: `not=` (op_ne, O-031) is NOT diff-tested here — the diff_test Fixture loads
+// only the Zig builtins + macros (no core.clj), and `not=` is a `.clj`-defined fn
+// (core.clj:583), so it is unresolved in this fixture and op_ne never fires here.
+// op_ne's fixnum fast path is unit-tested directly (intrinsic.zig
+// "fastBinaryFixnum comparisons are exact"); its end-to-end clj-parity is locked by
+// the `not_equal` clj corpus (test/diff/clj_corpus/) on the real (core-loaded)
+// binary. The VM≡TreeWalk parity is structural: op_ne mirrors op_eq (diff-tested
+// above), and the non-fixnum path defers to the same .clj `not=` on both backends.
+
 test "diff: let* binding" {
     var f = try Fixture.init(testing.allocator);
     defer f.deinit();
