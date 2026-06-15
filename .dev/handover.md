@@ -52,21 +52,24 @@
 
 ## Last landed (git log = SSOT; all pushed)
 
-ADR-0148 fastest-script campaign, cycle 1 (numeric-tower + GC-pair alloc/construction):
-**O-037** ratio operand zero-copy refs · **O-038** ratio stack-arena scratch →
-ratio_sum 108.1→85.8 ms (3.15×→2.45×) · **O-039** alias BigInt operands →
-bigint_factorial 26.4→22.8 ms (1.49×→1.29×) · **O-040** `op_vector_literal` `fromSlice`
-(was empty+N×conj; mirrors O-026 map fast path) → **gc_alloc_rate 108.4→48.1 ms
-(2.81×→1.36×)**, biggest win. All diff-oracle + corpus 3157 + smoke green.
-**KEY FINDING (ADR-0148 amended):** `sample` proved gc_alloc_rate/gc_large_heap are
-**dispatch/construction-bound, NOT malloc-bound** (~0.5% leaf in malloc) — the GC-arch
-bump-allocator hypothesis is refuted for the GC pair; the universal residual lever is
-**D-386 dispatch**. None of the 4 CLOSED yet (residuals = dispatch). SAFETY: `clj` →
-`clojure -J-Xmx2g` + bounded seqs; measure ReleaseSafe only.
+ADR-0148 fastest-script campaign, **cycle 1 = 9 wins (O-037…O-045)**. Standing vs
+fastest-script (Babashka/Python): nested_update 0.95× CLOSED · string_ops 1.08× ·
+json_parse 1.14× · gc_alloc_rate 1.15× · gc_large_heap 1.18× · sieve 1.18× (cold-start
+floor, D-140) · destructure 1.22× · bigint_factorial 1.30× · **ratio_sum 2.34× (lone
+deep holdout)**. 8/9 ≤1.30×. Levers: O-037/38 ratio zero-copy+arena · O-039 alias BigInt
+operands · O-040 op_vector_literal fromSlice · O-041 json bulk-build · O-042 str int
+fast-path · O-043 op_get/op_nth collection intrinsics · O-044 op_nth2 · O-045 fusion gate
+(gc_large_heap 1.99→1.18×). All diff-oracle + corpus 3157 + smoke green.
+**4 hypotheses refuted by measurement** (recorded ADR-0148): GC-arch bump-allocator,
+closure-call cost (~3ns), call-site-cache, fusion-always-wins (O-023 was a 2.5×
+regression for chunked sources). SAFETY: `clj` → `clojure -J-Xmx2g` + bounded seqs;
+measure ReleaseSafe only.
 
-**Next (self-select):** mine the conversion group (destructure 1.72× / json_parse 1.59× /
-string_ops 1.35×) for localized O-040-style levers; then D-386 dispatch (the universal
-front). Detail: ADR-0148 Measurement update + `private/notes/9.2.S-ratio-bigint-alloc-levers.md`.
+**Next (self-select):** **ratio_sum** is the lone far target — needs DEEP numeric work
+(small-ratio inline-i64 repr, OR fused rational accumulator in reduce, OR faster bignum;
+all F-004/F-005, need ADR + DA fork). Detail + lever analysis:
+`private/notes/9.2.S-ratio-bigint-alloc-levers.md`. Secondary: nudge bigint_factorial
+1.30× / sieve 1.18× (D-140 startup cache). Then D-386 dispatch / D-133 JIT.
 
 ## Cold-start reading order (resume)
 
