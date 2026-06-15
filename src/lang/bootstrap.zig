@@ -364,6 +364,18 @@ pub fn cacheArithIntrinsics(rt: *Runtime, env: *Env) void {
         if (v) |p| rt.arith_vars[@intFromEnum(op)] = p;
     }
     rt.core_arith_pristine = true;
+
+    // Collection-accessor intrinsics (op_get / op_nth; ADR-0130 extended, O-043).
+    inline for (std.meta.tags(intrinsic.CollOp)) |op| {
+        const name = intrinsic.collCoreName(op);
+        const v: ?*env_mod.Var = blk: {
+            if (core) |c| if (c.resolve(name)) |p| break :blk p;
+            if (rt_ns) |r| if (r.resolve(name)) |p| break :blk p;
+            break :blk null;
+        };
+        if (v) |p| rt.coll_vars[@intFromEnum(op)] = p;
+    }
+    rt.core_coll_pristine = true;
 }
 
 /// Intern `clojure.core/*print-length*` and `*print-level*` as `^:dynamic`

@@ -30,6 +30,8 @@ const Runtime = @import("../../runtime/runtime.zig").Runtime;
 const nb = @import("../../runtime/value/nan_box.zig");
 const Opcode = @import("vm/opcode.zig").Opcode;
 const env_mod = @import("../../runtime/env.zig");
+const map_mod = @import("../../runtime/collection/map.zig");
+const vector_mod = @import("../../runtime/collection/vector.zig");
 
 /// The intrinsifiable binary operations (ADR-0130 + am1). `/` stays absent
 /// (integer `/` yields a Ratio / divide-by-zero raise — no fixnum fast path).
@@ -220,6 +222,79 @@ pub fn recognize(rt: *const Runtime, var_ptr: *const env_mod.Var) ?Opcode {
         }
     }
     return null;
+}
+
+// --- Collection-accessor intrinsics (ADR-0130 extended; O-043) ---
+//
+// `op_get` (2-arg `(get coll k)`) and `op_nth` (3-arg `(nth coll i default)`)
+// skip the `op_get_var` callee push + the generic `op_call` dispatch. The VM
+// arm runs `fastGet` / `fastNth3` — a subset of the `get` / `nth` builtins that
+// is PROVABLY EQUIVALENT for the cases it handles and returns `null` for every
+// other case (so the VM defers to the cached builtin Var, identical to op_call).
+// Like the arith family, the whole fast path allocates nothing, so the VM arm
+// needs no GC `op_top` sync.
+
+/// The intrinsifiable collection accessors. Index order MUST match
+/// `Runtime.coll_vars` (0=get, 1=nth).
+pub const CollOp = enum { get, nth };
+
+pub const coll_count = @typeInfo(CollOp).@"enum".fields.len;
+
+/// The `clojure.core` symbol each collection op resolves to (bootstrap caches).
+pub fn collCoreName(op: CollOp) []const u8 {
+    return switch (op) {
+        .get => "get",
+        .nth => "nth",
+    };
+}
+
+pub fn collOpcode(op: CollOp) Opcode {
+    return switch (op) {
+        .get => .op_get,
+        .nth => .op_nth,
+    };
+}
+
+/// Compile-time recogniser for the collection accessors (pointer identity to a
+/// cached canonical Var). A let-shadowed name is a `.local_ref` (never reaches
+/// here); a later `alter-var-root` is handled by `core_coll_pristine`.
+pub fn recognizeColl(rt: *const Runtime, var_ptr: *const env_mod.Var) ?CollOp {
+    for (rt.coll_vars, 0..) |cached, i| {
+        const pv = cached orelse continue;
+        if (@intFromPtr(pv) == @intFromPtr(var_ptr)) return @enumFromInt(i);
+    }
+    return null;
+}
+
+/// 2-arg `(get coll k)` fast path. Handles the map + nil cases inline (the
+/// destructure / map-read hot cases) EXACTLY as `getFn` does for a 2-arg call
+/// (default = nil); returns `null` for every other collection kind so the VM
+/// defers to the builtin (vector/set/string/transient/record/reify/…). Reads
+/// only — allocates nothing.
+pub fn fastGet(coll: Value, k: Value) !?Value {
+    return switch (coll.tag()) {
+        .nil => Value.nil_val,
+        .array_map, .hash_map => if (try map_mod.contains(coll, k))
+            try map_mod.get(coll, k)
+        else
+            Value.nil_val,
+        else => null,
+    };
+}
+
+/// 3-arg `(nth coll i default)` fast path. Handles the vector case inline
+/// (destructure `(nth v i nil)`) EXACTLY as `nthFn`'s 3-arg vector arm: a
+/// non-integer index defers (the builtin raises a type error even with a
+/// default); an in-range index returns the element; out-of-range / negative
+/// returns the default. Every non-vector collection defers. Reads only.
+pub fn fastNth3(coll: Value, i_val: Value, default: Value) ?Value {
+    if (coll.tag() != .vector) return null;
+    if (i_val.tag() != .integer) return null;
+    const idx = i_val.asInteger();
+    if (idx < 0) return default;
+    const n = vector_mod.count(coll);
+    if (idx >= n) return default;
+    return vector_mod.nth(coll, @intCast(idx));
 }
 
 /// Fixnum fast path. Returns `null` unless BOTH operands are inline fixnums, so

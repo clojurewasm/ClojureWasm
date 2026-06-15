@@ -1461,6 +1461,16 @@ pub fn alterVarRootFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
             }
         }
     }
+    // Same deopt for the collection-accessor intrinsics (op_get / op_nth, O-043):
+    // an alter-var-root on the cached `get`/`nth` Var must honour the new root.
+    for (rt.coll_vars) |cached| {
+        if (cached) |pv| {
+            if (@intFromPtr(pv) == @intFromPtr(v)) {
+                rt.core_coll_pristine = false;
+                break;
+            }
+        }
+    }
     try iref.notifyWatches(rt, env, args[0], env_mod.varWatchesOf(args[0]), old_root, newroot);
     return newroot;
 }

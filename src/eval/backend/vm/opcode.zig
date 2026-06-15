@@ -341,6 +341,16 @@ pub const Opcode = enum(u8) {
     op_ne_local_const = 0x51,
     op_ne_locals = 0x52,
 
+    /// Collection-accessor intrinsics (ADR-0130 extended; O-043). `op_get` is
+    /// 2-arg `(get coll k)` (pop k, coll; push coll-get-or-nil); `op_nth` is
+    /// 3-arg `(nth coll i default)` (pop default, i, coll; push). Both skip the
+    /// `op_get_var` callee push + the generic `op_call` dispatch. The VM arm runs
+    /// `intrinsic.fastGet`/`fastNth3` (a provably-equivalent subset of the
+    /// `get`/`nth` builtins) when `core_coll_pristine`, else defers to the cached
+    /// (possibly redefined) Var. No operand.
+    op_get = 0x53,
+    op_nth = 0x54,
+
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
     /// (vm.zig:188-201 + :317 `applyJump`). Peephole's IP-remap pass
@@ -430,6 +440,8 @@ pub const Opcode = enum(u8) {
             .op_ne,
             .op_ne_local_const,
             .op_ne_locals,
+            .op_get,
+            .op_nth,
             => false,
         };
     }
@@ -525,6 +537,8 @@ pub const Opcode = enum(u8) {
             .op_ne,
             .op_ne_local_const,
             .op_ne_locals,
+            .op_get,
+            .op_nth,
             => false,
         };
     }

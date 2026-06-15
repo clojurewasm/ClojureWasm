@@ -692,6 +692,66 @@ inline fn stepOnce(
             stack[sp] = result;
             sp += 1;
         },
+        .op_get => {
+            // Collection-accessor intrinsic (O-043): 2-arg `(get coll k)`.
+            // `fastGet` handles map/nil inline (== getFn for a 2-arg call);
+            // any other kind defers to the cached `get` Var. `pristine` cleared
+            // by alter-var-root on `get` → always defer (honour the new root).
+            if (sp < 2) return raiseInternal("vm: op_get underflow");
+            sp -= 2;
+            const coll = stack[sp];
+            const k = stack[sp + 1];
+            const fast: ?Value = if (rt.core_coll_pristine)
+                try intrinsic.fastGet(coll, k)
+            else
+                null;
+            const result = fast orelse blk: {
+                const vt = rt.vtable orelse
+                    return error_catalog.raiseInternal(.{}, "Runtime vtable not installed; cannot dispatch op_get");
+                const pv = rt.coll_vars[@intFromEnum(intrinsic.CollOp.get)] orelse
+                    return raiseInternal("vm: op_get emitted without a cached Var");
+                const gv: *const env_mod.Var = @ptrCast(@alignCast(pv));
+                const two = [2]Value{ coll, k };
+                const prev = error_mod.swapArgSources(loc_stack[sp .. sp + 2]);
+                defer _ = error_mod.swapArgSources(prev);
+                break :blk try vt.callFn(rt, env, gv.deref(), &two, instr_loc);
+            };
+            if (sp >= stack.len)
+                return raiseInternal("vm: operand stack overflow");
+            loc_stack[sp] = instr_loc;
+            stack[sp] = result;
+            sp += 1;
+        },
+        .op_nth => {
+            // Collection-accessor intrinsic (O-043): 3-arg `(nth coll i default)`.
+            // `fastNth3` handles the vector arm inline (== nthFn 3-arg vector);
+            // every other kind / non-int index defers to the cached `nth` Var.
+            if (sp < 3) return raiseInternal("vm: op_nth underflow");
+            sp -= 3;
+            const coll = stack[sp];
+            const i_val = stack[sp + 1];
+            const default = stack[sp + 2];
+            const fast: ?Value = if (rt.core_coll_pristine)
+                intrinsic.fastNth3(coll, i_val, default)
+            else
+                null;
+            const result = fast orelse blk: {
+                const vt = rt.vtable orelse
+                    return error_catalog.raiseInternal(.{}, "Runtime vtable not installed; cannot dispatch op_nth");
+                const pv = rt.coll_vars[@intFromEnum(intrinsic.CollOp.nth)] orelse
+                    return raiseInternal("vm: op_nth emitted without a cached Var");
+                const nv: *const env_mod.Var = @ptrCast(@alignCast(pv));
+                const three = [3]Value{ coll, i_val, default };
+                const prev = error_mod.swapArgSources(loc_stack[sp .. sp + 3]);
+                defer _ = error_mod.swapArgSources(prev);
+                break :blk try vt.callFn(rt, env, nv.deref(), &three, instr_loc);
+            };
+            if (sp >= stack.len)
+                return raiseInternal("vm: operand stack overflow");
+            loc_stack[sp] = instr_loc;
+            stack[sp] = result;
+            sp += 1;
+        },
         .op_add_local_const, .op_sub_local_const, .op_mul_local_const, .op_lt_local_const, .op_le_local_const, .op_gt_local_const, .op_ge_local_const, .op_eq_local_const, .op_mod_local_const, .op_rem_local_const, .op_quot_local_const, .op_ne_local_const => {
             // PERF: D-386 (O-018) local-const arith superinstruction — operands come
             // from `locals[slot]` + `constants[idx]` (packed in the operand), NOT the

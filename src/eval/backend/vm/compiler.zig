@@ -390,6 +390,27 @@ const Compiler = struct {
                 return;
             }
         }
+        // PERF: collection-accessor intrinsics (ADR-0130 extended; O-043). `(get
+        // coll k)` (2-arg) → op_get; `(nth coll i default)` (3-arg) → op_nth.
+        // Same Var-pointer gate + runtime `core_coll_pristine` deopt as the arith
+        // family. Other arities (3-arg get / 2-arg nth) keep the generic op_call.
+        if (n.callee.* == .var_ref) {
+            if (intrinsic.recognizeColl(self.rt, n.callee.var_ref.var_ptr)) |cop| {
+                const ok = switch (cop) {
+                    .get => n.args.len == 2,
+                    .nth => n.args.len == 3,
+                };
+                if (ok) {
+                    for (n.args) |*a| try self.compileNode(a);
+                    if (n.loc.line != 0) {
+                        self.current_line = n.loc.line;
+                        self.current_column = n.loc.column;
+                    }
+                    try self.emit(intrinsic.collOpcode(cop), 0);
+                    return;
+                }
+            }
+        }
         try self.compileNode(n.callee);
         if (n.args.len > std.math.maxInt(u16)) return error.TooManyCallArgs;
         for (n.args) |*a| try self.compileNode(a);

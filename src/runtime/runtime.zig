@@ -170,6 +170,14 @@ pub const Runtime = struct {
     arith_vars: [12]?*anyopaque = .{ null, null, null, null, null, null, null, null, null, null, null, null },
     core_arith_pristine: bool = true,
 
+    /// Cached canonical `clojure.core/get` + `nth` Vars for the collection-accessor
+    /// intrinsics (op_get / op_nth; ADR-0130 extended, O-043). Same lifecycle as
+    /// `arith_vars`: populated at bootstrap, `core_coll_pristine` cleared on
+    /// `alter-var-root` of either so a redefed `get`/`nth` is honoured. Index 0=get,
+    /// 1=nth (= intrinsic.CollOp order; runtime/ cannot import the Layer-1 module).
+    coll_vars: [2]?*anyopaque = .{ null, null },
+    core_coll_pristine: bool = true,
+
     /// Monotonic counter for `gensym` / auto-gensym (`foo#`). Lives on
     /// the Runtime so multiple macros within one analyse pass share a
     /// single sequence; per-Runtime so parallel tests don't collide.

@@ -1478,3 +1478,28 @@ test "trace: recur loops push ONE frame, not N (ADR-0119 Stage 2, both backends)
     try testing.expectEqualStrings("rf", tw[0].fn_name.?);
     try testing.expectEqualStrings("rf", vmt[0].fn_name.?);
 }
+
+test "diff: op_get / op_nth collection intrinsics (O-043, both backends)" {
+    var f = try Fixture.init(testing.allocator);
+    defer f.deinit();
+    // op_get fires for 2-arg `(get coll k)`; fastGet handles map/nil inline,
+    // defers vector/set/string/etc. Must equal the TreeWalk builtin path.
+    try f.check("(get {:a 5 :b 6} :b)", 6); // map hit
+    try f.check("(if (get {:a 5} :z) 1 0)", 0); // map miss -> nil
+    try f.check("(if (get nil :x) 1 0)", 0); // nil coll -> nil
+    try f.check("(get [10 20 30] 1)", 20); // vector via get (deferred path)
+    try f.check("(if (get #{7 8 9} 8) 1 0)", 1); // set (deferred path)
+    // op_nth fires for 3-arg `(nth coll i default)`; fastNth3 handles vector,
+    // defers list/non-int/etc.
+    try f.check("(nth [10 20 30] 2 -1)", 30); // in-range
+    try f.check("(nth [10 20 30] 9 -1)", -1); // OOB -> default
+    try f.check("(nth [10 20 30] -3 -1)", -1); // negative -> default
+    try f.check("(nth (cons 5 (cons 6 nil)) 1 -1)", 6); // list (deferred path; cons — fixture has no core.clj)
+    // destructuring lowers to get/nth: both backends must agree.
+    try f.check("(let [{:keys [a b c]} {:a 1 :b 2 :c 3} [x y z] [10 20 30]] (+ a b c x y z))", 66);
+    // get on a string defers to the builtin (op_get string arm = null).
+    try f.checkEqual("(get \"abc\" 1)");
+    // op_nth returning a nested collection (let-bound to avoid the no-core
+    // fixture's literal-arg quirk in TreeWalk; the value path is what matters).
+    try f.check("(let [v [[1 2] [3 4]]] (count (nth v 0 nil)))", 2);
+}
