@@ -560,21 +560,22 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
 /// extend-protocol TARGET interfaces → native value-tag NAMES. A
 /// `(extend-protocol P clojure.lang.ISeq …)` distributes the impl over each
 /// listed tag's native descriptor (via `rt/__native-type`), so a cljw seq /
-/// named / map value dispatches P. ISeq / Named / IPersistentMap DERIVE from the
-/// `interface_membership` SSOT (the same source class_name.matchInterface uses),
-/// so the tag lists live in ONE place (ADR-0116 Decision C, D-317 partial).
-/// IPersistentVector is kept EXPLICIT: its extend-target set is {vector} ONLY,
-/// NOT the instance? membership {vector, map_entry} — distributing to map_entry
-/// needs a separate decision (D-317 residual, ADR-0116). Distinct from MARKERS
-/// (which cover the deftype-supertype / protocol position).
-const IPV_EXTEND_TAGS = [_][]const u8{"vector"};
-
+/// named / map / indexed value dispatches P. ALL four (ISeq / Named /
+/// IPersistentMap / IPersistentVector) DERIVE from the `interface_membership`
+/// SSOT (the same source class_name.matchInterface uses), so the extend-target
+/// lists live in ONE place and cannot drift from instance? membership (ADR-0116
+/// Decision C; D-317 closed 2026-06-15). IPersistentVector's set = INDEXED_TAGS
+/// {vector, map_entry}: clj distributes an IPV-extended protocol to MapEntry (a
+/// MapEntry IS-A IPersistentVector — clj-verified), so the prior {vector}-only
+/// set mis-dispatched a MapEntry. Distinct from MARKERS (deftype-supertype /
+/// protocol position).
+///
 /// The native `Value.Tag` keyword names a `(extend-protocol P <iface> …)` must
 /// distribute the impl over (bare or `clojure.lang.`-qualified), or null when
 /// `name` is not an extend-target interface.
 pub fn nativeExtendTags(name: []const u8) ?[]const []const u8 {
     const simple = interface_membership.simpleOf(name);
-    if (std.mem.eql(u8, simple, "IPersistentVector")) return &IPV_EXTEND_TAGS;
+    if (std.mem.eql(u8, simple, "IPersistentVector")) return interface_membership.INDEXED_NAMES;
     if (std.mem.eql(u8, simple, "ISeq")) return interface_membership.ISEQ_NAMES;
     if (std.mem.eql(u8, simple, "Named")) return interface_membership.NAMED_NAMES;
     if (std.mem.eql(u8, simple, "IPersistentMap")) return interface_membership.MAP_NAMES;

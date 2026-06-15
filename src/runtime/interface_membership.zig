@@ -55,9 +55,10 @@ const SET_TAGS = [_]Tag{ .hash_set, .sorted_set };
 /// map_entry; sets are NOT Associative).
 const ASSOC_TAGS = [_]Tag{ .vector, .map_entry, .array_map, .hash_map, .sorted_map };
 /// Indexed / IPersistentVector — vector + map_entry (a MapEntry is a [k v]
-/// IPersistentVector). NOTE: the extend-protocol-TARGET set for IPersistentVector
-/// is {vector} ONLY (host_interface.nativeExtendTags) — distributing to map_entry
-/// is the D-317 residual, see ADR-0116 Decision C.
+/// IPersistentVector). Both the instance? membership AND the extend-protocol-TARGET
+/// set (host_interface.nativeExtendTags via INDEXED_NAMES) now derive from this one
+/// list (D-317 closed 2026-06-15): clj distributes an IPV-extended protocol to
+/// MapEntry, so the two sets are unified here. ADR-0116 Decision C.
 const INDEXED_TAGS = [_]Tag{ .vector, .map_entry };
 /// ISeq — the seq views + list (a PersistentList is a seq); NOT vector/maps/sets.
 const ISEQ_TAGS = [_]Tag{ .list, .cons, .lazy_seq, .chunked_cons, .range, .string_seq, .array_seq };
@@ -197,13 +198,17 @@ fn tagNames(comptime tags: []const Tag) []const []const u8 {
 }
 
 /// Tag-NAME slices for the interfaces host_interface.nativeExtendTags distributes
-/// (D-317 partial: ISeq / Named / IPersistentMap derive from the same SSOT
-/// class_name.matchInterface uses, so the lists live in ONE place). IPersistentVector
-/// is NOT here — its extend-target set is {vector} only, kept explicit in
-/// host_interface (ADR-0116 Decision C / D-317 residual).
+/// (D-317: ISeq / Named / IPersistentMap / IPersistentVector all derive from the
+/// same SSOT class_name.matchInterface uses, so the extend-target lists live in
+/// ONE place and cannot drift from instance? membership). IPersistentVector's
+/// extend-target now = its instance? membership {vector, map_entry} (INDEXED_TAGS):
+/// clj distributes an IPersistentVector-extended protocol to MapEntry too (a
+/// MapEntry IS-A IPersistentVector — clj-verified), so the prior {vector}-only set
+/// was a parity gap (ADR-0116 Decision C; D-317 residual closed 2026-06-15).
 pub const ISEQ_NAMES = tagNames(&ISEQ_TAGS);
 pub const NAMED_NAMES = tagNames(&NAMED_TAGS);
 pub const MAP_NAMES = tagNames(&MAP_TAGS);
+pub const INDEXED_NAMES = tagNames(&INDEXED_TAGS);
 
 // --- tests ---
 

@@ -35,3 +35,11 @@ assert_eq 'map_target_inert' \
 assert_eq 'native_interface_dispatch' \
   "$(run '(do (defprotocol R (rh [x])) (extend-protocol R IPersistentVector (rh [x] (str "V" (count x))) ISeq (rh [x] (str "S" (count x))) Named (rh [x] (str "N" (name x)))) [(rh [:a :b]) (rh (map inc [1 2 3])) (rh :kw) (rh (quote sy))])')" \
   '["V2" "S3" "Nkw" "Nsy"]'
+
+# D-317: an IPersistentVector-extended protocol reaches a MapEntry too (a MapEntry
+# IS-A IPersistentVector — clj-verified). The extend-target set now derives from the
+# instance? membership SSOT {vector, map_entry}; before the 2026-06-15 unify it was
+# {vector}-only and a (first map) MapEntry mis-dispatched to the Object fallback.
+assert_eq 'ipv_reaches_map_entry' \
+  "$(run '(do (defprotocol P (m [x])) (extend-protocol P clojure.lang.IPersistentVector (m [x] (str "V" (count x)))) [(m [1 2]) (m (first {:a 1}))])')" \
+  '["V2" "V2"]'

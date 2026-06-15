@@ -181,20 +181,6 @@ active:
       on a gate flake here, re-run (it is intermittent). No standalone-reproducible
       defect. Cross-ref D-244 / D-253 / memory gate_parallel_e2e_timeout.
     last_reviewed: "2026-06-06"
-  - id: "D-317"
-    status: "PARTIALLY RESOLVED (2026-06-08, ADR-0116) — ISeq/Named/IPersistentMap extend-target sets now DERIVE from interface_membership.zig (the same SSOT class_name.matchInterface derives from), so the 7-tag ISeq list lives in ONE place. RESIDUAL: IPersistentVector is NOT unified — instance? membership = {vector, map_entry} but extend-target distribution = {vector}; deriving would distribute IPersistentVector-extended protocols to map_entry (arguably more clj-correct) but needs verification that map_entry has an extendable native descriptor + oracle confirmation (F-003 deferral, not cycle-budget). PRIOR: now (2026-06-07, ADR-0114 hiccup) — the extend-protocol-TARGET interface→native-tag table (host_interface.NATIVE_EXTEND_TARGETS: IPersistentVector→[vector], ISeq→[7 seq tags], Named→[keyword,symbol]) is HAND-MAINTAINED. Verified complete vs the current Value.Tag seq family (rseq/iterate/repeat/cycle/sequence/interpose/lazy-cat/() all land in list|lazy_seq|vector, covered). RISK (DA finding #3): a FUTURE new seq-producing Value.Tag omitted from the ISeq list would SILENTLY mis-dispatch (fall to the Object fallback, render wrong) — an invisible F-013 coverage hole."
-    category: "polymorphism"
-    barrier: |-
-      No current omission (verified against the live tag set). The finished form
-      (DA Alt C2-finished-form-clean) derives the interface→tag set from the
-      native types' declared interface markers (extend host_interfaces.yaml's
-      closed-set SSOT to the native ISeq/IPersistentVector/Named set) so it cannot
-      drift; minimum acceptable bar is a compiler-forced exhaustive Value.Tag
-      switch (zig_tips.md idiom) so a new seq tag breaks the build until
-      classified. Resolve when a new seq tag lands OR when host_interfaces.yaml
-      becomes the SSOT for native-supertype dispatch. Cross-ref ADR-0114 Dec C,
-      host_interface.zig NATIVE_EXTEND_TARGETS.
-    last_reviewed: "2026-06-07"
   - id: "D-321"
     status: "now (2026-06-08, edge-demo file I/O) — slurp/spit now raise a CATCHABLE io_error (→ java.io.IOException) instead of an uncatchable raw Zig error (ADR-0098 follow-on; demo-driven, F-013). RESIDUAL: clj raises the more specific java.io.FileNotFoundException for a missing file; cljw reports IOException (the supertype) because there is no FileNotFound Kind. (catch Throwable …) / (catch java.io.IOException …) work; (catch java.io.FileNotFoundException …) would not match a missing-file slurp. Low priority (Throwable/IOException catch is the common form)."
     category: "clj-parity"
@@ -1930,6 +1916,11 @@ standing:
     last_reviewed: "2026-06-15"
 
 discharged:
+  - id: "D-317"
+    status: "DISCHARGED 2026-06-15 (ADR-0116 Decision C; the residual closed, not deferred). IPersistentVector's extend-protocol-TARGET set now DERIVES from the same interface_membership SSOT (INDEXED_TAGS = {vector, map_entry}) that instance? membership uses — so all four distributed interfaces (ISeq/Named/IPersistentMap/IPersistentVector) live in ONE place and the extend-target can no longer drift from instance? membership. Closes a REAL parity gap: clj distributes an IPersistentVector-extended protocol to a MapEntry (a MapEntry IS-A IPersistentVector — clj-verified: `(extend-protocol P clojure.lang.IPersistentVector (m [_] :vec))` → `(m (first {:a 1}))` = :vec), but cljw's prior {vector}-only set mis-dispatched a MapEntry to the Object fallback (NO-MATCH). Fix: added `interface_membership.INDEXED_NAMES = tagNames(&INDEXED_TAGS)`; `host_interface.nativeExtendTags(\"IPersistentVector\")` returns it (removed the explicit IPV_EXTEND_TAGS). Verified: clj parity (map_entry + vector both :vec), 1109/1109 units, e2e ipv_reaches_map_entry → [\"V2\" \"V2\"] (phase14_extend_protocol_targets). NOTE: this reverses an earlier progress-pressure defer — finished-form (parity-reducing + design-centralizing) won."
+    category: "polymorphism"
+    barrier: "none — extend-target now derives from the instance? SSOT (cannot drift). The DA finding #3 invisible-coverage-hole (a future seq tag silently mis-dispatching) remains the standing argument for a compiler-forced exhaustive Value.Tag classification, tracked under the host_interfaces.yaml-as-SSOT direction, not this row."
+    last_reviewed: "2026-06-15"
   - id: "D-248"
     status: "DISCHARGED 2026-06-15 (ADR-0027 amendment 6). Group D NaN-box slot map reordered: Clojure persistent-collection internals moved UP to D4..D8 (hamt_node=52/tail_node=53/hamt_map_node=54/hash_collision_map_node=55/tval=56), matcher/tuple/box to D9..D11 (57..59), and the four wasm surfaces to the D12..D15 TAIL (wasm_module=60..wasm_externref=63) — finished-form cleanliness (wasm was reserved early, pushing Clojure essentials to the end). NON-BREAKING + NOT an F-004 amendment (F-004 fixes 64 slots + the day-1 type set, not intra-group ORDER; ADR-0027 §2 owns the order, loop-amendable). HeapTag + Value.Tag renumbered in lockstep (value.zig sync test asserts it); per-Tag GC trace/finaliser tables register by @intFromEnum(tag) so they auto-follow; serialized bytecode uses a DECOUPLED ValueTag (untouched); all values stay in 48..63 so the group band is preserved; big_int=D0=48 unchanged; tag_ops.zig D15 boundary check updated tval→wasm_externref. Verified: zig build test -Dwasm 1109/1109 + smoke 5/5 (dual-backend + corpus 3026/3026 + build_cljw embed regen + phase4_cli e2e). Group D now fully named 16/16 (D-043's Group-D reserve concern closed; B15 remains)."
     category: "gc"
