@@ -105,6 +105,35 @@ gap areas. The `.dev/.perf_campaign_active` flag stays set; the
 - D-140 (startup bootstrap cache) rises in priority: it lifts every cold-start-floor
   target at once + is the highest dev-velocity ROI.
 
+## Measurement update (2026-06-16) — the GC-pair hypothesis is refuted; the lever is dispatch/construction
+
+First campaign cycle landed O-037..O-040 and `sample`-profiled the top targets. Two
+table hypotheses were **empirically corrected** (measure-first, F-002):
+
+- **gc_alloc_rate / gc_large_heap are NOT malloc-bound.** Both show ~0.5% of leaf
+  self-time in malloc/free (18/3729 and 14/2806) — the free_pool already recycles
+  short-lived objects. The table's "mark-sweep alloc path vs bump/generational
+  allocator" hypothesis does not hold for these benches; a nursery/bump allocator
+  would not move them. **The GC-arch (F-006 generational) work is therefore
+  de-prioritised for these two targets** (it may still matter for genuinely
+  alloc-bound future workloads, but not the campaign's GC pair). gc_large_heap's
+  residual is ~200K closure invocations (map + reduce) → call dispatch.
+- **The universal lever across ratio_sum-residual + the GC pair is dispatch /
+  construction, i.e. D-386** (sequenced "phase 2" originally). Re-sequence: D-386 is
+  the primary front once the localized construction/alloc levers are mined.
+
+Landed (all pushed, diff oracle + corpus 3157 green):
+- **O-037** ratio operand zero-copy refs · **O-038** ratio stack-arena scratch →
+  ratio_sum 108.1→85.8 ms (3.15×→2.45×).
+- **O-039** alias BigInt operands → bigint_factorial 26.4→22.8 ms (1.49×→1.29×).
+- **O-040** `op_vector_literal` `fromSlice` (was empty+N×conj; mirrors O-026 map
+  fast path) → **gc_alloc_rate 108.4→48.1 ms (2.81×→1.36×)**, the cycle's biggest win
+  — construction-bound, not malloc-bound.
+
+None of the four are CLOSED to fastest-script yet; the residuals are dispatch (D-386).
+Next: mine the conversion group (destructure / json_parse / string_ops) for localized
+O-040-style levers, then D-386 dispatch.
+
 ## Affected files
 
 - `.dev/perf_campaign_essence.md` (goal + exploration modes + experiment-revert

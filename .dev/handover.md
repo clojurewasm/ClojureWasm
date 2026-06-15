@@ -26,9 +26,10 @@
   per-target opt directions: **ADR-0148**. After the 9 (or provably cold-start-floor +
   D-140 cache landed) → resume the original front (VM-perf **D-386** dispatch→
   superinstructions→JIT; §9.0 gap areas). `.dev/.perf_campaign_active` is SET.
-  - **GC architecture** (gc_alloc_rate/gc_large_heap, F-006) is now on the critical path
-    — its design choice gets its own ADR + DA fork. **D-140 startup cache** lifts every
-    cold-start-floor target (sieve, partly nested_update) at once.
+  - **GC architecture** (F-006) is DE-PRIORITISED for gc_alloc_rate/gc_large_heap:
+    cycle-1 `sample` profiling proved both are dispatch/construction-bound, ~0.5% malloc
+    (ADR-0148 Measurement update). Bump/generational GC would not move them. **D-140
+    startup cache** still lifts the cold-start-floor targets (sieve, partly nested_update).
   - regex arc DONE (ADR-0147: S1+S2 wired+winning, S3 DFA reserved/D-449, leftmost-first
     fixed, reluctant quantifiers landed); **D-448** nested-empty-quant capture deferred.
   - **bigint** = a target now (was deferred): the BigInt-reduce-accumulator lever, likely
@@ -49,32 +50,23 @@
   fails — memory `zig_build_test_needs_dwasm`); bare `zig build` for scripted/probe
   (ADR-0133 — ReleaseSafe). Measure perf only ReleaseSafe.
 
-## Stopped — user requested
+## Last landed (git log = SSOT; all pushed)
 
-User instruction (2026-06-15): "次のクリアセッションから腰を据えて…zigライブラリを
-直接使うのではなくこのシステムにうまく馴染ませるために拝借して高速性を（…工夫を
-しっかり入れ込むのをゴールにする）、再度、情報伝達、配線、参照チェーン監査をして
-止めて". Done: the regex perf APPROACH is elevated + made durable as **ADR-0147**
-(borrow-and-adapt the prefilter + lazy-DFA into cljw's Pike-NFA, staged,
-equivalence-locked; goal = incorporate the optimizations properly). `ezi-gex` cloned
-as the Zig blueprint; **D-447** = regex parity gaps. **Resume = ADR-0147 Stage 1→3**
-(read refs directly + measure-first, no survey/DA fork). Earlier this session the
-regex fork was stopped + REVERTED (had only S1, 45→41.5ms) — tree clean, all pushed.
-Re-audit verdict (info-transfer / wiring / reference-chain): RESOLVES — the durable
-load-bearing direction now lives in TRACKED git (ADR-0147 + the 48-golden corpus +
-D-447 + reference_clones.md ezi-gex entry), not only the gitignored audit note. A
-fresh `/continue` reaches the regex approach via handover → ADR-0147 → the refs (a
-fresh clone re-clones ezi-gex per reference_clones.md).
+ADR-0148 fastest-script campaign, cycle 1 (numeric-tower + GC-pair alloc/construction):
+**O-037** ratio operand zero-copy refs · **O-038** ratio stack-arena scratch →
+ratio_sum 108.1→85.8 ms (3.15×→2.45×) · **O-039** alias BigInt operands →
+bigint_factorial 26.4→22.8 ms (1.49×→1.29×) · **O-040** `op_vector_literal` `fromSlice`
+(was empty+N×conj; mirrors O-026 map fast path) → **gc_alloc_rate 108.4→48.1 ms
+(2.81×→1.36×)**, biggest win. All diff-oracle + corpus 3157 + smoke green.
+**KEY FINDING (ADR-0148 amended):** `sample` proved gc_alloc_rate/gc_large_heap are
+**dispatch/construction-bound, NOT malloc-bound** (~0.5% leaf in malloc) — the GC-arch
+bump-allocator hypothesis is refuted for the GC pair; the universal residual lever is
+**D-386 dispatch**. None of the 4 CLOSED yet (residuals = dispatch). SAFETY: `clj` →
+`clojure -J-Xmx2g` + bounded seqs; measure ReleaseSafe only.
 
-## Last landed (git log = SSOT; HEAD `fd2c9ca1`+, all pushed)
-
-Perf: **O-030** mod/rem/quot intrinsic · **O-031** not= intrinsic + bootstrap
-re-cache + not= 0-arg clj-divergence fix → **sieve CLOSED** (0.96×) · **O-032**
-in-Zig chunk-map/filter producer → **map/filter 2.16-2.5×** (closure-floor
-touchpoint) · **O-033** in-Zig update-in → **nested_update CLOSED** (1.18×). All
-diff-oracle + clj-corpus + CLJW_GC_TORTURE=1. ADR-0146 filter-chain NO-GO (sieve is
-fn-call-bound). SAFETY: `clj` needs `-J-Xmx2g` + bounded seqs; new debt rows via Edit
-(quoted id) in the **active:** list. State: near-complete (F-015); §9 gap-area model.
+**Next (self-select):** mine the conversion group (destructure 1.72× / json_parse 1.59× /
+string_ops 1.35×) for localized O-040-style levers; then D-386 dispatch (the universal
+front). Detail: ADR-0148 Measurement update + `private/notes/9.2.S-ratio-bigint-alloc-levers.md`.
 
 ## Cold-start reading order (resume)
 
