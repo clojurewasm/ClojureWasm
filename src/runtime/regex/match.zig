@@ -114,17 +114,23 @@ pub fn matchFull(
 }
 
 /// Per-step thread list — set of PCs the VM is about to step
-/// from. The `seen` bitmap prevents re-processing the same PC
+/// from. The `seen` stamps prevent re-processing the same PC
 /// within a single input position (key Pike-VM invariant that
 /// bounds runtime at O(n·m)).
 const ThreadList = struct {
     threads: std.ArrayList(Thread) = .empty,
-    seen: []bool,
+    // PERF: generation-stamped `seen` (O-034). `clear` bumps `gen` instead of
+    // `@memset`-ing the whole array per input position — `findFrom` clears both
+    // lists at every position, so the naive memset was O(positions × insts). A
+    // pc counts as seen this position iff `seen[pc] == gen`. [refs: O-034]
+    seen: []u32,
+    gen: u32,
 
     fn init(alloc: std.mem.Allocator, n_insts: usize) MatchError!ThreadList {
-        const seen = try alloc.alloc(bool, n_insts);
-        @memset(seen, false);
-        return .{ .seen = seen };
+        const seen = try alloc.alloc(u32, n_insts);
+        @memset(seen, 0);
+        // gen starts at 1 so the 0-fill never matches a freshly-cleared list.
+        return .{ .seen = seen, .gen = 1 };
     }
 
     fn deinit(self: *ThreadList, alloc: std.mem.Allocator) void {
@@ -134,7 +140,21 @@ const ThreadList = struct {
 
     fn clear(self: *ThreadList) void {
         self.threads.clearRetainingCapacity();
-        @memset(self.seen, false);
+        // O(1) clear via generation bump. On wrap, re-zero the stamps so a
+        // stale max-gen entry cannot false-positive against the new gen.
+        if (self.gen == std.math.maxInt(u32)) {
+            @memset(self.seen, 0);
+            self.gen = 1;
+        } else {
+            self.gen += 1;
+        }
+    }
+
+    /// Mark `pc` seen this position; returns true if it was already seen.
+    fn markSeen(self: *ThreadList, pc: u32) bool {
+        if (self.seen[pc] == self.gen) return true;
+        self.seen[pc] = self.gen;
+        return false;
     }
 };
 
@@ -154,8 +174,7 @@ fn addThread(
     input: []const u8,
     caps: [MAX_SLOTS_INLINE]i32,
 ) MatchError!void {
-    if (list.seen[pc]) return;
-    list.seen[pc] = true;
+    if (list.markSeen(pc)) return;
     switch (program.insts[pc]) {
         .jmp => |target| try addThread(list, alloc, program, target, pos, input, caps),
         .split => |s| {
