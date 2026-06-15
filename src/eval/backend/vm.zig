@@ -1190,14 +1190,15 @@ inline fn stepOnce(
         },
         .op_vector_literal => {
             // Closes D-060: pop N values from top of stack, build a
-            // PersistentVector via empty + conj, push result.
+            // PersistentVector, push result.
             const n: u16 = instr.operand;
             if (sp < n) return raiseInternal("vm: op_vector_literal underflows operand stack");
-            var v = vector_mod.empty();
-            var i: u16 = sp - n;
-            while (i < sp) : (i += 1) {
-                v = try vector_mod.conj(rt, v, stack[i]);
-            }
+            // PERF: one-shot bulk build (fromSlice) instead of empty + N×conj
+            // (which allocated N throwaway intermediate vectors). The elements
+            // stay rooted on the operand stack `stack[sp-n..sp]` across the
+            // build (op_top watermark). Mirrors O-026's VM-only map fast path.
+            // [refs: O-040]
+            const v = try vector_mod.fromSlice(rt, stack[sp - n .. sp]);
             sp -= n;
             stack[sp] = v;
             sp += 1;
