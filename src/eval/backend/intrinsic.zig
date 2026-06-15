@@ -297,6 +297,20 @@ pub fn fastNth3(coll: Value, i_val: Value, default: Value) ?Value {
     return vector_mod.nth(coll, @intCast(idx));
 }
 
+/// 2-arg `(nth coll i)` fast path. Inlines an IN-RANGE vector index only —
+/// every error case (OOB / negative / non-integer / non-vector / nil, which
+/// 2-arg `nth` RAISES) returns `null` so the VM defers to the builtin for the
+/// correct error (gc_alloc_rate's `(nth v 2)`). Reads only.
+pub fn fastNth2(coll: Value, i_val: Value) ?Value {
+    if (coll.tag() != .vector) return null;
+    if (i_val.tag() != .integer) return null;
+    const idx = i_val.asInteger();
+    if (idx < 0) return null;
+    const n = vector_mod.count(coll);
+    if (idx >= n) return null;
+    return vector_mod.nth(coll, @intCast(idx));
+}
+
 /// Fixnum fast path. Returns `null` unless BOTH operands are inline fixnums, so
 /// the caller defers every other case (incl. all error cases) to the builtin.
 pub fn fastBinaryFixnum(_: *Runtime, op: ArithOp, a: Value, b: Value) !?Value {

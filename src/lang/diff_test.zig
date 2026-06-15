@@ -1497,6 +1497,10 @@ test "diff: op_get / op_nth collection intrinsics (O-043, both backends)" {
     try f.check("(nth (cons 5 (cons 6 nil)) 1 -1)", 6); // list (deferred path; cons — fixture has no core.clj)
     // destructuring lowers to get/nth: both backends must agree.
     try f.check("(let [{:keys [a b c]} {:a 1 :b 2 :c 3} [x y z] [10 20 30]] (+ a b c x y z))", 66);
+    // op_nth2 — 2-arg `(nth v i)` (no default); in-range vector inline.
+    try f.check("(let [v [10 20 30]] (nth v 0))", 10);
+    try f.check("(let [v [10 20 30]] (nth v 2))", 30);
+    try f.check("(let [v [10 20 30]] (+ (nth v 0) (nth v 1) (nth v 2)))", 60);
     // get on a string defers to the builtin (op_get string arm = null).
     try f.checkEqual("(get \"abc\" 1)");
     // op_nth returning a nested collection (let-bound to avoid the no-core

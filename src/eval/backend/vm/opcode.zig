@@ -350,6 +350,10 @@ pub const Opcode = enum(u8) {
     /// (possibly redefined) Var. No operand.
     op_get = 0x53,
     op_nth = 0x54,
+    /// 2-arg `(nth coll i)` — pop i, coll; push. `fastNth2` inlines an in-range
+    /// vector index; every error case (OOB / negative / non-vector / nil, which
+    /// 2-arg `nth` RAISES) defers to the cached `nth` Var for the correct error.
+    op_nth2 = 0x55,
 
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
@@ -442,6 +446,7 @@ pub const Opcode = enum(u8) {
             .op_ne_locals,
             .op_get,
             .op_nth,
+            .op_nth2,
             => false,
         };
     }
@@ -539,6 +544,7 @@ pub const Opcode = enum(u8) {
             .op_ne_locals,
             .op_get,
             .op_nth,
+            .op_nth2,
             => false,
         };
     }

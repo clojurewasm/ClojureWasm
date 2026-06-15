@@ -396,17 +396,21 @@ const Compiler = struct {
         // family. Other arities (3-arg get / 2-arg nth) keep the generic op_call.
         if (n.callee.* == .var_ref) {
             if (intrinsic.recognizeColl(self.rt, n.callee.var_ref.var_ptr)) |cop| {
-                const ok = switch (cop) {
-                    .get => n.args.len == 2,
-                    .nth => n.args.len == 3,
+                const emit_op: ?Opcode = switch (cop) {
+                    .get => if (n.args.len == 2) Opcode.op_get else null,
+                    .nth => switch (n.args.len) {
+                        2 => Opcode.op_nth2,
+                        3 => Opcode.op_nth,
+                        else => null,
+                    },
                 };
-                if (ok) {
+                if (emit_op) |eop| {
                     for (n.args) |*a| try self.compileNode(a);
                     if (n.loc.line != 0) {
                         self.current_line = n.loc.line;
                         self.current_column = n.loc.column;
                     }
-                    try self.emit(intrinsic.collOpcode(cop), 0);
+                    try self.emit(eop, 0);
                     return;
                 }
             }
