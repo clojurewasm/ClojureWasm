@@ -133,24 +133,40 @@ pub fn wrapManaged(rt: *Runtime, m: *const Managed) !Value {
 const big_decimal_mod = @import("big_decimal.zig");
 const ratio_mod = @import("ratio.zig");
 
-/// Numerator / denominator of a numeric operand as owned Manageds. A
-/// ratio yields its stored pair; an integer / BigInt yields `value/1`.
-/// Caller owns both and must `deinit` them.
-const RatioParts = struct { num: Managed, den: Managed };
+/// Numerator / denominator of a numeric operand as `*const Managed`. A
+/// ratio yields pointers straight into its stored pair (PERF: no clone —
+/// the arithmetic only reads the parts; O-037). A non-ratio integer /
+/// BigInt is materialised as `value/1` into caller-provided `OwnedParts`
+/// storage, which the caller must `deinit`.
+const RatioParts = struct { num: *const Managed, den: *const Managed };
 
-fn partsOf(rt: *Runtime, v: Value) !RatioParts {
+/// Owned scratch for the non-ratio operand path. `active` is false for a
+/// ratio operand (nothing to free — the parts alias the ratio's BigInts).
+const OwnedParts = struct {
+    num: Managed = undefined,
+    den: Managed = undefined,
+    active: bool = false,
+    fn deinit(self: *OwnedParts) void {
+        if (self.active) {
+            self.num.deinit();
+            self.den.deinit();
+        }
+    }
+};
+
+/// Resolve `v` into numerator/denominator refs. A ratio aliases its stored
+/// pair (zero alloc); a non-ratio materialises `value/1` into `owned` (a
+/// stable caller local, so `&owned.num` stays valid for the call scope).
+fn partsOf(rt: *Runtime, v: Value, owned: *OwnedParts) !RatioParts {
     if (v.tag() == .ratio) {
         const r = v.decodePtr(*const ratio_mod.Ratio);
-        var num = try r.numer.m.cloneWithDifferentAllocator(rt.gc.infra);
-        errdefer num.deinit();
-        const den = try r.denom.m.cloneWithDifferentAllocator(rt.gc.infra);
-        return .{ .num = num, .den = den };
+        return .{ .num = r.numer.m, .den = r.denom.m };
     }
-    var num = try coerceToManaged(rt, v);
-    errdefer num.deinit();
-    var den = try Managed.init(rt.gc.infra);
-    try den.set(1);
-    return .{ .num = num, .den = den };
+    owned.num = try coerceToManaged(rt, v);
+    errdefer owned.num.deinit();
+    owned.den = try Managed.initSet(rt.gc.infra, 1);
+    owned.active = true;
+    return .{ .num = &owned.num, .den = &owned.den };
 }
 
 const RatioOp = enum { add, sub, mul, div };
@@ -162,16 +178,12 @@ const RatioOp = enum { add, sub, mul, div };
 /// integer quotient is returned (Long if it fits i48, else BigInt) —
 /// matching JVM Clojure, where `(+ 1/2 1/2)` is `1`, not `1/1`.
 fn ratioArith(rt: *Runtime, a: Value, b: Value, op: RatioOp) !Value {
-    var ap = try partsOf(rt, a);
-    defer {
-        ap.num.deinit();
-        ap.den.deinit();
-    }
-    var bp = try partsOf(rt, b);
-    defer {
-        bp.num.deinit();
-        bp.den.deinit();
-    }
+    var owned_a: OwnedParts = .{};
+    defer owned_a.deinit();
+    const ap = try partsOf(rt, a, &owned_a);
+    var owned_b: OwnedParts = .{};
+    defer owned_b.deinit();
+    const bp = try partsOf(rt, b, &owned_b);
 
     var rn = try Managed.init(rt.gc.infra);
     defer rn.deinit();
@@ -180,13 +192,13 @@ fn ratioArith(rt: *Runtime, a: Value, b: Value, op: RatioOp) !Value {
 
     switch (op) {
         .mul => {
-            try rn.mul(&ap.num, &bp.num);
-            try rd.mul(&ap.den, &bp.den);
+            try rn.mul(ap.num, bp.num);
+            try rd.mul(ap.den, bp.den);
         },
         .div => {
             // (an/ad) / (bn/bd) = (an*bd) / (ad*bn)
-            try rn.mul(&ap.num, &bp.den);
-            try rd.mul(&ap.den, &bp.num);
+            try rn.mul(ap.num, bp.den);
+            try rd.mul(ap.den, bp.num);
         },
         .add, .sub => {
             // (an*bd ± bn*ad) / (ad*bd)
@@ -194,10 +206,10 @@ fn ratioArith(rt: *Runtime, a: Value, b: Value, op: RatioOp) !Value {
             defer lhs.deinit();
             var rhs = try Managed.init(rt.gc.infra);
             defer rhs.deinit();
-            try lhs.mul(&ap.num, &bp.den);
-            try rhs.mul(&bp.num, &ap.den);
+            try lhs.mul(ap.num, bp.den);
+            try rhs.mul(bp.num, ap.den);
             if (op == .add) try rn.add(&lhs, &rhs) else try rn.sub(&lhs, &rhs);
-            try rd.mul(&ap.den, &bp.den);
+            try rd.mul(ap.den, bp.den);
         },
     }
 
@@ -445,23 +457,19 @@ pub fn quotPromoting(rt: *Runtime, a: Value, b: Value) !Value {
 
     // Exact path (Long / BigInt / Ratio). a/b = (an*bd)/(ad*bn); the
     // truncated quotient is divTrunc of that cross-multiplied fraction.
-    var ap = try partsOf(rt, a);
-    defer {
-        ap.num.deinit();
-        ap.den.deinit();
-    }
-    var bp = try partsOf(rt, b);
-    defer {
-        bp.num.deinit();
-        bp.den.deinit();
-    }
+    var owned_a: OwnedParts = .{};
+    defer owned_a.deinit();
+    const ap = try partsOf(rt, a, &owned_a);
+    var owned_b: OwnedParts = .{};
+    defer owned_b.deinit();
+    const bp = try partsOf(rt, b, &owned_b);
 
     var numer = try Managed.init(rt.gc.infra);
     defer numer.deinit();
     var denom = try Managed.init(rt.gc.infra);
     defer denom.deinit();
-    try numer.mul(&ap.num, &bp.den);
-    try denom.mul(&ap.den, &bp.num);
+    try numer.mul(ap.num, bp.den);
+    try denom.mul(ap.den, bp.num);
     if (denom.eqlZero()) return error.DivideByZero;
 
     var q = try Managed.init(rt.gc.infra);
