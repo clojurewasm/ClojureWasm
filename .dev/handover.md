@@ -31,35 +31,61 @@
   - **debt.yaml** = `active:`(drain easiest-first) / `standing:`(NOT drained) /
     `discharged:`. Self-select drain-units from `active:` ONLY; correctness/clj-parity
     floor outranks coverage.
-  First `active:` rows (easiest-first): D-023, D-025, D-022 (all opportunistic — barriers
-  unmet), D-042, D-222, D-228, D-240, D-241 … → (medium) … → PERF cluster (D-386 et al)
-  → large. The PERF cluster is the "then perf 専念" phase. (D-046 discharged this session.)
+  **First task on resume: continue top-down from D-321** (the next un-dispositioned
+  active row). Drained/disposed this session: D-046/228/248/317 discharged; D-246
+  (a) DONE / (b)(c) explicit-defer; D-240/D-241 re-barriered (deferred/feature-gated);
+  D-023/025/022 opportunistic (barriers unmet); D-042 = audit_scaffolding's領分.
+  Next clj-parity DOs: **D-321** (FileNotFoundException Kind), **D-322** (PARTIAL),
+  **D-433** (exception str/toString vs pr/pr-str — a clear parity bug). Then → PERF
+  cluster (D-386 dispatch → ARM64 JIT, the beat-Python north-star).
+  - **GUARDRAIL (user 2026-06-15, durable)**: do NOT defer under progress pressure.
+    Re-evaluate every candidate-defer against finished-form / あるべき論. If unifying
+    REDUCES a parity gap AND does not scatter the design, DO it even if laborious
+    (D-317 was a wrongly-deferred parity gap this session — reversed + landed). Genuine
+    defers are fine, but make the **do/don't EXPLICIT** with a reason — avoid vague
+    "workload-gated" defer-residue (see the D-246/D-240 re-barriers for the shape).
   - **Reads: `.dev/project_facts.md` F-015 + ADR-0142 + ROADMAP §9.0 + debt.yaml header
     + `active:` top rows** + memory `debt-ledger-audit-decisions`. Discharging a row =
     MOVE to `discharged:` (don't inline-discharge), or let D-175 batch-relocate.
 
-- **This session landed (git log = SSOT)**: **D-046 → discharged (ADR-0143)** —
-  LazySeq.force is now thread-safe (future/agent spawn real `std.Thread`, so the
-  unsynchronized realise was a live race). Inline lock-free double-checked atomic flag
-  + CAS-claim on the existing `realized_flag` byte: lock-free acquire-load fast path
-  (clj's shape), at-most-once via the single CAS winner, loser spins with the ADR-0092
-  safepoint poll; zero struct growth / off-heap cell / finaliser. REJECTED the off-heap
-  Io.Mutex cell (per-element cost on the highest-cardinality object) + at-most-once
-  relaxation (F-011); Alt 3 (futex) unimplementable — Zig 0.16 dropped `std.Thread`
-  sync prims. Devil's-advocate fork verbatim in ADR-0143 § Alternatives. (Prior
-  session: the Track-R/D-440 gap-area reframe arc + zwasm SHA-pin release — git log.)
+- **This session landed (git log = SSOT)** — 6 commits, HEAD `4ed40f93`:
+  - **D-046** (ADR-0143): LazySeq.force thread-safe — inline lock-free CAS-claim
+    atomic flag on `realized_flag` (lock-free acquire read, at-most-once, safepoint
+    loser-spin; rejected off-heap Io.Mutex + futex-unavailable). 8-thread test.
+  - **D-228**: nested syntax-quote depth-correct (fresh-gmap inner-expand → outer
+    re-walk; clj-verified; corpus). **D-317**: IPersistentVector extend-protocol
+    reaches MapEntry (SSOT-derived extend-target; was a parity gap). **D-248**
+    (ADR-0027 am6): Group D NaN-box slot reorg (Clojure internals up, wasm to tail).
+  - **D-246(a)**: atom watches/validator/meta atomic. **D-241** re-barriered
+    (substance was already done by ADR-0096; feature-gated residual). **D-240**
+    re-barriered (fix direction confirmed = install java surfaces in diff Fixture;
+    deferred on an unexplained eval_budget/compare interaction — see the row).
+  - **GATE STATUS**: last FULL gate (356/356) was at D-248 (`3cab52fa`). Since then
+    D-317 (smoke 5/5) + D-246a (`zig build test -Dwasm` 1109/1109, full smoke NOT
+    run — fence-only). **Run a full gate (`bash scripts/run_gate.sh`) early on resume**
+    — 2 commits rode past the last full gate, and the D-246a content has no matching
+    smoke/gate fingerprint. (warm caches → ~2-3min; cold → the inner 300s timeout
+    fires before e2e, re-run warm.)
 
-  SAFETY: `clj` oracle batches need `-J-Xmx2g` + bounded seqs (memory
-  `clj_oracle_heap_cap`); register every new e2e in run_all.sh same-commit; **the
-  `--smoke` tier does NOT run unnamed e2e steps** — name the changed e2e step, or the
-  batched full gate catches the miss (it just did, for the agent options e2e).
+  SAFETY: `clj` batches need `-J-Xmx2g` + bounded seqs; `zig build test` needs
+  `-Dwasm` (memory `zig_build_test_needs_dwasm` — bare drops the bootstrap_core embed
+  → ~7 false fails); name changed e2e steps to `--smoke`; new debt rows via Edit.
+  **State**: near-complete (F-015); §9 gap-area model; zwasm SHA-pinned. Normal push.
 
-  **State**: near-complete (F-015); §9 is the **gap-area model** (§9.0). zwasm
-  SHA-pinned + interp-embedded. **Normal push mode** (Step 6 push per commit).
+- **Forbidden this session**: `git push --force*`; bare `zig build test` WITHOUT
+  `-Dwasm` (false fails); bare `zig build` for scripted/probe (ADR-0133 — ReleaseSafe).
 
-- **Forbidden this session**: `git push --force*`; bare `zig build` for any
-  scripted / probe path (ADR-0133 — use a ReleaseSafe binary). (Local-accumulation /
-  no-push is LIFTED — push per Step 6.)
+## Stopped — user requested
+
+User instruction (2026-06-15): 「ちょっとPC負荷が高まってきたので、クリアセッションから
+continueだけで継続できる、配線・参照チェーン監査をして止めてください（きりのよいところで
+OK）」. Done: the wiring / reference-chain audit is CLEAN — debt.yaml parses + no dup
+ids; `check_debt_id_refs` reports "all cited debt IDs resolve" (the D-014 / D-16 /
+D-2026 comm-recipe hits are prose substring / a `D-2026-06-13` typo, NOT real
+phantoms); ADR-0143/0027/0116/0096 resolve; this session's discharged rows present.
+HEAD `4ed40f93` is clean + pushed. This stop applies to THIS session only; the next
+`/continue` resumes the loop normally (delete this section on resume): run a full gate
+first (see GATE STATUS above), then continue top-down from D-321 under the GUARDRAIL.
 
 ## Cold-start reading order (resume)
 
