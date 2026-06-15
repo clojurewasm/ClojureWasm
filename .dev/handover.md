@@ -9,10 +9,7 @@
   local-accumulation LIFTED). After each unit's smoke-green commit, `git push origin
   main` immediately (Step 6). `build.zig.zon` `.zwasm` is **SHA-PINNED** to a pushed
   clojurewasm/zwasm commit (`#412966f7…` + content `.hash`, `lazy`) so others build
-  reproducibly — NOT the local `../zwasm_from_scratch` path. Advance the pin via
-  `zig fetch "git+https://github.com/clojurewasm/zwasm.git#<pushed-SHA>"` (prints the
-  hash) then hand-edit `.url`+`.hash`+`.lazy` (the `--save` form mangles a prior
-  `.path` entry). Procedure/rationale: zwasm `docs/consuming_prerelease_zwasm.md`.
+  reproducibly — NOT the local `../zwasm_from_scratch` path (advance-pin procedure: zwasm `docs/consuming_prerelease_zwasm.md`).
   Per-commit = smoke; `-Dwasm` now fetches zwasm from git (default build is
   zwasm-lazy, untouched). NOTE: reproducibility-for-others also needs read access to
   the (currently pre-tag) clojurewasm/zwasm repo — user's external action.
