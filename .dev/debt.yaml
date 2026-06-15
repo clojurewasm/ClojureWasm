@@ -31,16 +31,20 @@ active:
       BLOCKED on envelope-serializer Value-tag coverage. Attempted 2026-06-16
       (cache_gen: buildEnvelope over all FILES concatenated; loadCoreAot:
       runEnvelope only, drop loadCoreFiles) — hit `UnsupportedValueTag` at build
-      time: `serialize.zig` rejects `multi_fn` / `atom` / `big_int` (`else =>`),
-      and pprint/test use `defmulti` (multimethods). Reverted (experiment-and-
-      revert; main green). Unblock: extend `serialize.zig`/`deserialize` to cover
-      `multi_fn` (dispatch fn + method table + hierarchy) + `atom` + `big_int`,
-      THEN AOT all FILES + drop the eager `loadCoreFiles`. Verify: diff oracle +
-      corpus 3181 + the 23 libs' behaviour (string/set/pprint/test/json …) ==
-      eager-load. A substantial focused unit (the serializer extension is the
-      hard part). ALT: lazy-on-require the non-core files (more clj-like — require
-      needed) but corpus/tests rely on eager availability → wide breakage; AOT is
-      the finished form.
+      time. EXACT TAG (debug-print diagnosed): **`type_descriptor`** — a
+      `defprotocol`/`deftype` descriptor lands as a chunk CONSTANT in a non-core
+      file (`zip.clj` and/or `core/protocols.clj`). (NB core.clj also has
+      defmulti/atom/defprotocol yet AOT-caches fine — those create runtime values,
+      not chunk constants; the type_descriptor-as-constant is the non-core
+      differentiator.) Reverted (experiment-and-revert; main green). Unblock paths:
+      (a) extend `serialize.zig`/`deserialize` to serialize a `type_descriptor`
+      (field layout + method table + protocol/supertype refs — complex, the hard
+      part); OR (b) PARTIAL AOT — cache the serializable majority, leave the
+      type_descriptor-producing files (zip/protocols) eager (captures most of the
+      ~2.9 ms). THEN drop the eager `loadCoreFiles` for the AOT'd set. Verify:
+      diff oracle + corpus 3181 + the bundled libs' behaviour == eager-load. ALT
+      (lazy-on-require) rejected: corpus/tests rely on eager availability → wide
+      breakage; AOT is the finished form.
     last_reviewed: "2026-06-16"
   - id: "D-450"
     status: "open (2026-06-16, ADR-0148, user-directed). Make cljw the FASTEST script interpreter (among cljw/Python/Ruby/Node.js/Babashka cold-start) on the 9 top-gap benches. The active perf-campaign front; resume target in handover."
