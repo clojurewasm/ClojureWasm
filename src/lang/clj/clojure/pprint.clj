@@ -65,11 +65,13 @@
 ;; ~A aesthetic, ~S standard (pr-readable), ~D decimal, ~F fixed float, ~X/~O radix,
 ;; ~B binary, ~R numerals (~R cardinal / ~:R ordinal / ~@R Roman / ~NR radix),
 ;; ~{~^~} list iteration, ~(~) case-region (~( lower / ~:( cap-words / ~@( cap-first
-;; / ~:@( upper), ~% newline, ~~ literal ~. Number directives parse the
-;; `~mincol,'padchar` parameter grammar (+ `:` grouped) and delegate to `format`.
-;; A nil stream returns the string; any other stream prints to *out* + returns nil.
-;; The remaining long-tail directives (~P plural, ~C char, ~&, ~T, ~*, ~E/~G) raise
-;; (no silent mishandle) — see D-455. cl-* helpers are clojure.pprint internals.
+;; / ~:@( upper), ~% newline, ~C char, ~& fresh-line (~N& adds N-1 more), ~~ literal
+;; ~. Number directives parse the `~mincol,'padchar` parameter grammar (+ `:`
+;; grouped) and delegate to `format`. A nil stream returns the string; any other
+;; stream prints to *out* + returns nil. The remaining long-tail directives
+;; (~P plural, ~T column, ~* arg-jump, ~E/~G sci-float, and the ~:C/~:P/~:*
+;; arg-navigator/back-up variants) raise (no silent mishandle) — see D-455; these
+;; need the upstream arg-navigator + column-writer architecture (cl_format.clj).
 (defn cl-digit? [c] (let [i (int c)] (and (>= i (int \0)) (<= i (int \9)))))
 (defn cl-int [c] (- (int c) (int \0)))
 
@@ -201,6 +203,15 @@
                   (recur (nth cl 1) (nth r 1) (str acc (cl-case (nth r 0) colon? at?))))
                 (= d \^) (if (nil? (seq as)) [acc as] (recur ni as acc))
                 (= d \%) (recur ni as (str acc \newline))
+                ;; ~C — print a character (D-455 long-tail). Plain only; the
+                ;; ~:C (named) / ~@C (readable) variants need the arg-navigator.
+                (and (or (= d \c) (= d \C)) (not colon?) (not at?))
+                (recur ni (next as) (str acc x))
+                ;; ~& — fresh-line: a newline only if not already at line start;
+                ;; ~N& adds N-1 further newlines (D-455 long-tail).
+                (= d \&)
+                (let [fresh (if (or (= acc "") (= (last acc) \newline)) acc (str acc \newline))]
+                  (recur ni as (apply str fresh (repeat (if p0 (dec p0) 0) \newline))))
                 (= d \~) (recur ni as (str acc \~))
                 :else (throw (ex-info (str "cl-format: directive ~" d " is not supported in ClojureWasm") {}))))
             (recur (inc i) as (str acc c))))))))

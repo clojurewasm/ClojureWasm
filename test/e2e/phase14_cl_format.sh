@@ -51,7 +51,15 @@ assert_eq 'cardinal-big' "$(run '(prn (pp/cl-format nil "~r" 1234567))')"       
 assert_eq 'ordinal'      "$(run '(prn (pp/cl-format nil "~:r" 42))')"            '"forty-second"'
 assert_eq 'roman'        "$(run '(prn (pp/cl-format nil "~@r" 99))')"            '"XCIX"'
 assert_eq 'radix'        "$(run '(prn (pp/cl-format nil "~16r" 255))')"          '"ff"'
+# ~C char + ~& fresh-line (D-455 long-tail; clj-oracle byte-matched)
+assert_eq 'char_iter'   "$(run '(prn (pp/cl-format nil "~{~c~^, ~}" "hello"))')" '"h, e, l, l, o"'
+assert_eq 'char_one'    "$(run '(prn (pp/cl-format nil "~C" (char 65)))')"       '"A"'
+assert_eq 'freshline'   "$(run '(prn (pp/cl-format nil "ab~&cd"))')"             '"ab\ncd"'
+assert_eq 'fresh_collapse' "$(run '(prn (pp/cl-format nil "ab~&~&cd"))')"        '"ab\ncd"'
+assert_eq 'fresh_atstart'  "$(run '(prn (pp/cl-format nil "~&top"))')"           '"top"'
+assert_eq 'fresh_n'        "$(run '(prn (pp/cl-format nil "x~3&y"))')"           '"x\n\n\ny"'
+
 # still-unimplemented directive raises explicitly (not silent mishandle)
 assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~p" 2) (catch Throwable e :raised)))')" ':raised'
 
-echo "OK — phase14_cl_format (30 cases) green"
+echo "OK — phase14_cl_format (36 cases) green"
