@@ -431,43 +431,48 @@ fn installBaselineBindings(arena: std.mem.Allocator, env: *Env) !void {
     env_mod.pushFrame(frame);
 }
 
-/// AOT bootstrap (ADR-0056 Cycle 2b): restore `clojure.core` from the
-/// embedded bytecode envelope `core_blob` (no parse/analyze/eval of
-/// core.clj — the edge cold-start win), then load the remaining `.clj`
-/// files from source and finalize identically to `loadCore`. The caller
-/// (a runtime startup path in exe_mod) passes `@import("bootstrap_cache").data`.
-/// The build path keeps `setupCore` (source) — it can't use the blob to
-/// build the blob. `core.clj` source is still registered so AOT-core error
-/// frames keep their SourceContext.
+/// AOT bootstrap (ADR-0056 Cycle 2b + Cycle 3 / D-452 Part B): restore the WHOLE
+/// eager bootstrap (`clojure.core` + the 23 non-core bundled `.clj` libs) from
+/// the embedded bytecode envelope `bootstrap_blob` — no parse/analyze/eval of
+/// ANY bundled `.clj` (the edge cold-start win), finalizing identically to
+/// `loadCore`. The caller (a runtime startup path in exe_mod) passes
+/// `@import("bootstrap_cache").data`. The build path keeps `setupCore` (source)
+/// — it can't use the blob to build the blob. Every bundled file's source is
+/// still registered so AOT error frames keep their SourceContext.
 pub fn setupCoreAot(
     arena: std.mem.Allocator,
     rt: *Runtime,
     env: *Env,
     macro_table: *macro_dispatch.Table,
-    core_blob: []const u8,
+    bootstrap_blob: []const u8,
 ) !void {
     try setupCorePrefix(rt, env, macro_table);
-    try loadCoreAot(arena, rt, env, macro_table, core_blob);
+    try loadCoreAot(arena, rt, env, bootstrap_blob);
     try installPrintMethod(rt, env);
     try error_context.register(env);
     try installBaselineBindings(arena, env);
 }
 
 /// The AOT analog of `loadCore` (no prefix, no error_context — same scope
-/// as `loadCore`): restore clojure.core from `core_blob`, load the
-/// remaining `.clj` files from source, finalize the user ns. Callers that
-/// already ran their own prefix (the REPL / nREPL) use this directly, just
-/// as they used `loadCore`; `setupCoreAot` is prefix + this + error_context.
+/// as `loadCore`): restore the WHOLE eager bootstrap (core + the 23 non-core
+/// libs) from `bootstrap_blob`, finalize the user ns. Callers that already ran
+/// their own prefix (the REPL / nREPL) use this directly, just as they used
+/// `loadCore`; `setupCoreAot` is prefix + this + error_context.
 pub fn loadCoreAot(
     arena: std.mem.Allocator,
     rt: *Runtime,
     env: *Env,
-    macro_table: *const macro_dispatch.Table,
-    core_blob: []const u8,
+    bootstrap_blob: []const u8,
 ) !void {
-    try rt.registerSource(FILES[0].label, FILES[0].source);
-    try driver.runEnvelope(rt, env, arena, core_blob);
-    try loadCoreFiles(arena, rt, env, macro_table, FILES[1..]);
+    // D-452 Part B: `bootstrap_blob` is now the WHOLE eager bootstrap (core +
+    // the 23 non-core libs), so the non-core libs no longer re-parse from
+    // source every startup. Register every bundled file's source first so a
+    // runtime error frame in an AOT-restored lib keeps its per-file
+    // SourceContext (the bytecode carries none) — cheap (@embedFile slices into
+    // a hashmap, no parse). `macro_table` is no longer needed: the blob is
+    // post-macro bytecode, replayed by the VM without expansion.
+    for (FILES) |file| try rt.registerSource(file.label, file.source);
+    try driver.runEnvelope(rt, env, arena, bootstrap_blob);
     try finalizeUserNs(rt, env);
 }
 

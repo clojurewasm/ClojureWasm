@@ -78,9 +78,10 @@ pub fn run(
     try bootstrap.setupCorePrefix(&rt, &env, &macro_table);
 
     const bootstrap_ctx = error_print.SourceContext{ .file = bootstrap.SOURCE_LABEL, .text = bootstrap.CORE_SOURCE };
-    // ADR-0056 Cycle 2c: restore clojure.core from the embedded AOT envelope
-    // (prefix already done above); the rest of the .clj files load from source.
-    bootstrap.loadCoreAot(arena, &rt, &env, &macro_table, @import("bootstrap_cache").data) catch |err| {
+    // ADR-0056 Cycle 2c + Cycle 3 (D-452 Part B): restore the WHOLE eager
+    // bootstrap (core + the 23 non-core libs) from the embedded AOT envelope
+    // (prefix already done above) — no .clj re-parse on startup.
+    bootstrap.loadCoreAot(arena, &rt, &env, @import("bootstrap_cache").data) catch |err| {
         error_render.renderAndExitRegistry(stderr, &rt, bootstrap_ctx, err);
     };
 

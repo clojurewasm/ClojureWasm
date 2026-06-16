@@ -102,8 +102,9 @@ pub fn run(
     // test.clj loads (ADR-0083).
     try bootstrap.setupCorePrefix(&rt, &env, &macro_table);
 
-    // ADR-0056 Cycle 2c: AOT-restore clojure.core (prefix done above).
-    bootstrap.loadCoreAot(arena, &rt, &env, &macro_table, @import("bootstrap_cache").data) catch |err| {
+    // ADR-0056 Cycle 2c + Cycle 3 (D-452 Part B): AOT-restore the whole eager
+    // bootstrap (core + non-core libs; prefix done above).
+    bootstrap.loadCoreAot(arena, &rt, &env, @import("bootstrap_cache").data) catch |err| {
         try stderr.print("nrepl: bootstrap failed: {s}\n", .{@errorName(err)});
         try stderr.flush();
         return err;

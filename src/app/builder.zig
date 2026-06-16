@@ -107,6 +107,50 @@ pub fn buildEnvelope(
     return serialize.serializeEnvelope(allocator, all.items, null);
 }
 
+/// AOT-compile the WHOLE eager bootstrap (`bootstrap.FILES` — clojure.core +
+/// the 23 non-core bundled `.clj` libs) to one bytecode envelope, mirroring
+/// `bootstrap.loadCoreFiles`'s per-file read→analyze→compile→eval loop but
+/// CAPTURING each form's compiled chunk (D-452 Part B / ADR-0056 Cycle 3). The
+/// load path (`bootstrap.loadCoreAot`) runs this via `driver.runEnvelope`
+/// instead of re-parsing the non-core libs from source on every startup
+/// (~2.9 ms across all benches). Eval order is identical to `loadCoreFiles`,
+/// so intra-bootstrap requires stay idempotent (a dep file is always eval'd
+/// before its dependent) and no filesystem resolver / closure-sink is needed.
+///
+/// `rt`/`env`/`macro_table` must be in the prefix-only state
+/// (`setupCorePrefix`, no `loadCore`) — this function evals core FIRST, so a
+/// pre-`loadCore` env is required (a double-load would re-register). The
+/// compiled chunks' slices live in `arena`; `serializeEnvelope` copies the
+/// bytes, so the caller's arena owns them.
+pub fn buildBootstrapEnvelope(
+    allocator: std.mem.Allocator,
+    rt: *Runtime,
+    env: *Env,
+    macro_table: *macro_dispatch.Table,
+    arena: std.mem.Allocator,
+    files: []const bootstrap.FileEntry,
+) ![]u8 {
+    var chunks: std.ArrayList(BytecodeChunk) = .empty;
+    defer chunks.deinit(allocator);
+    var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
+    for (files) |file| {
+        // Register the file's bytes so a build-time error frame keeps its
+        // per-file SourceContext (mirror of loadCoreFiles; idempotent).
+        try rt.registerSource(file.label, file.source);
+        var reader = Reader.init(arena, file.source);
+        while (true) {
+            const form = (try reader.read()) orelse break;
+            const node = try analyzeForm(arena, rt, env, null, form, macro_table);
+            const chunk = try vm_compiler.compile(rt, arena, node);
+            try chunks.append(allocator, chunk);
+            // Eval so later forms / files see earlier defs/macros/in-ns/requires
+            // (A1-D2 Clojure-AOT — identical state evolution to loadCoreFiles).
+            _ = try driver.evalForm(rt, env, &locals, arena, node);
+        }
+    }
+    return serialize.serializeEnvelope(allocator, chunks.items, null);
+}
+
 /// `cljw build -m <ns>` (ADR-0034 amendment 4 A4-D1/D2). Build-time eval of
 /// `(require '[<ns>])` captures the require closure (via the am3 sink) +
 /// registers `<ns>`'s defns — but `-main` is DEFINED, never CALLED at build, so
@@ -405,6 +449,61 @@ test "aot: core.clj round-trips — build envelope, restore into a fresh env, ru
     var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
     const result = try driver.evalForm(&rt, &env, &locals, arena, node);
     try testing.expectEqual(@as(i64, 3), result.asInteger());
+}
+
+test "aot: full bootstrap round-trips — a NON-core lib restores from bytecode (D-452 Part B)" {
+    // buildBootstrapEnvelope compiles the WHOLE eager bootstrap (core + the 23
+    // non-core libs) to one envelope; loadCoreAot runs it instead of re-parsing
+    // the non-core .clj from source. This proves the type_descriptor AOT
+    // (ADR-0034 am5) unblocked it: clojure.zip + clojure.core.protocols (the
+    // descriptor-constant carriers) are in the bootstrap, so a clean build of
+    // the envelope is itself the regression gate; here we additionally restore
+    // it into a fresh env and run a clojure.string fn (a non-core var that does
+    // NOT exist unless the non-core AOT chunks ran).
+    const A = testing.allocator;
+    var blob: []u8 = undefined;
+    {
+        var th = std.Io.Threaded.init(A, .{});
+        defer th.deinit();
+        var rt = Runtime.init(th.io(), A);
+        defer rt.deinit();
+        var env = try Env.init(&rt);
+        defer env.deinit();
+        var arena_state = std.heap.ArenaAllocator.init(A);
+        defer arena_state.deinit();
+        const arena = arena_state.allocator();
+        driver.installVTable(&rt);
+        var table = macro_dispatch.Table.init(A);
+        defer table.deinit();
+        try bootstrap.setupCorePrefix(&rt, &env, &table);
+        blob = try buildBootstrapEnvelope(A, &rt, &env, &table, arena, bootstrap.FILES);
+    }
+    defer A.free(blob);
+
+    var th = std.Io.Threaded.init(A, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), A);
+    defer rt.deinit();
+    var env = try Env.init(&rt);
+    defer env.deinit();
+    var arena_state = std.heap.ArenaAllocator.init(A);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    driver.installVTable(&rt);
+    var table = macro_dispatch.Table.init(A);
+    defer table.deinit();
+    try bootstrap.setupCorePrefix(&rt, &env, &table);
+    // The whole eager bootstrap from bytecode (no .clj re-parse) — the loadCoreAot path.
+    try driver.runEnvelope(&rt, &env, arena, blob);
+
+    // clojure.string/upper-case is a non-core lib var: present ONLY if the
+    // non-core AOT chunks ran. Call it to prove the restored fn dispatches.
+    var reader = Reader.init(arena, "(clojure.string/upper-case \"hi\")");
+    const form = (try reader.read()).?;
+    const node = try analyzeForm(arena, &rt, &env, null, form, &table);
+    var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
+    const result = try driver.evalForm(&rt, &env, &locals, arena, node);
+    try testing.expectEqualStrings("HI", @import("../runtime/collection/string.zig").asString(result));
 }
 
 test "fn_val constant round-trips through serialize (ADR-0034 am2)" {

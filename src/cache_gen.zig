@@ -38,11 +38,13 @@ pub fn main(init: std.process.Init) !void {
     driver.installVTable(&rt);
     var macro_table = macro_dispatch.Table.init(gpa);
     defer macro_table.deinit();
-    // Prefix only (no loadCore): buildEnvelope compiles+evals core.clj into
-    // this fresh env as it produces the chunks; the chunks are the artifact.
+    // Prefix only (no loadCore): buildBootstrapEnvelope compiles+evals the WHOLE
+    // eager bootstrap (core.clj + the 23 non-core bundled `.clj` libs) into this
+    // fresh env as it produces the chunks; the chunks are the artifact (D-452
+    // Part B — the non-core libs no longer re-parse from source every startup).
     try bootstrap.setupCorePrefix(&rt, &env, &macro_table);
 
-    const payload = try builder.buildEnvelope(gpa, &rt, &env, &macro_table, arena, bootstrap.CORE_SOURCE);
+    const payload = try builder.buildBootstrapEnvelope(gpa, &rt, &env, &macro_table, arena, bootstrap.FILES);
     defer gpa.free(payload);
 
     const out = try std.Io.Dir.cwd().createFile(io, out_path, .{ .truncate = true });
