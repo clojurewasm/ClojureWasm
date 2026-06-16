@@ -39,19 +39,27 @@
 (def pprint
   (fn* [x] (*print-pprint-dispatch* x) (newline)))
 
-(def print-table
-  (fn* [rows]
-    (if (= 0 (count rows))
-      nil
-      (let* [ks (keys (first rows))
-             header (clojure.string/join " | " (map str ks))
-             sep (clojure.string/join "-+-" (map (fn* [k] (clojure.string/join "" (map (fn* [_] "-") (str k)))) ks))
-             row-strs (map (fn* [row] (clojure.string/join " | " (map (fn* [k] (str (get row k))) ks))) rows)]
-        (do
-          (println header)
-          (println sep)
-          (reduce (fn* [_ s] (println s)) nil row-strs)
-          nil)))))
+;; `print-table` — clj's exact format (F-011): a leading blank line, a padded
+;; `| col | col |` header, a `|----+----|` rule, then one padded row per map.
+;; Column width = max(key width, widest value). `ks` defaults to the first row's
+;; keys. Ported from clojure.pprint/print-table (was a simpler non-matching form).
+(defn print-table
+  ([ks rows]
+   (when (seq rows)
+     (let [widths (map (fn [k] (apply max (count (str k)) (map (fn [r] (count (str (get r k)))) rows))) ks)
+           spacers (map (fn [w] (apply str (repeat w "-"))) widths)
+           fmts (map (fn [w] (str "%" w "s")) widths)
+           fmt-row (fn [leader divider trailer row]
+                     (str leader
+                          (apply str (interpose divider
+                                                (for [pair (map vector (map (fn [k] (get row k)) ks) fmts)]
+                                                  (format (second pair) (str (first pair))))))
+                          trailer))]
+       (println)
+       (println (fmt-row "| " " | " " |" (zipmap ks ks)))
+       (println (fmt-row "|-" "-+-" "-|" (zipmap ks spacers)))
+       (doseq [row rows] (println (fmt-row "| " " | " " |" row))))))
+  ([rows] (print-table (keys (first rows)) rows)))
 
 ;; `(cl-format stream fmt & args)` — a bounded Common-Lisp-format subset (D-403):
 ;; ~A aesthetic, ~S standard (pr-readable), ~D decimal, ~% newline, ~~ literal ~.

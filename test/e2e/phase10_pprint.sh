@@ -49,4 +49,13 @@ EOF
 ) || fail "pprint_nil: non-zero exit"
 assert_eq 'pprint_nil_returns_nil' "$(last_line "$got")" 'nil'
 
-echo "phase10_pprint: 4/4 cases pass"
+# --- Case 5: print-table OUTPUT matches clj's exact markdown format (F-011) ---
+# clj renders a leading blank line + padded `| col | col |` rows with a
+# `|----+----|` rule. cljw previously emitted a simpler non-matching format.
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn (with-out-str (clojure.pprint/print-table [{:a 1 :b 2} {:a 3 :b 4}])))
+EOF
+) || fail "print_table_format: non-zero exit"
+assert_eq 'print_table_format' "$(last_line "$got")" '"\n| :a | :b |\n|----+----|\n|  1 |  2 |\n|  3 |  4 |\n"'
+
+echo "phase10_pprint: 5/5 cases pass"
