@@ -150,6 +150,35 @@ pub fn movkX(rd: u5, imm16: u16, hw: u2) u32 {
     return 0xF2800000 | (@as(u32, hw) << 21) | (@as(u32, imm16) << 5) | rd;
 }
 
+/// ARM64 condition codes (the `B.cond` / `CSET` selector). The JIT uses `.ne`
+/// for the fixnum tag-check deopt, `.vs` for the i48-overflow deopt (F-005), and
+/// the relational ones (`.ge`/`.gt`/`.lt`/`.le`/`.eq`) for the loop branch.
+pub const Cond = enum(u4) {
+    eq = 0x0, ne = 0x1, hs = 0x2, lo = 0x3, mi = 0x4, pl = 0x5,
+    vs = 0x6, vc = 0x7, hi = 0x8, ls = 0x9, ge = 0xA, lt = 0xB,
+    gt = 0xC, le = 0xD, al = 0xE,
+};
+
+/// `CMP Xn, #imm12` (64-bit) = `SUBS XZR, Xn, #imm12`. Base 0xF100001F
+/// (Rd=XZR=31). Sets NZCV for the following `B.cond`.
+pub fn cmpImmX(rn: u5, imm12: u12) u32 {
+    return 0xF100001F | (@as(u32, imm12) << 10) | (@as(u32, rn) << 5);
+}
+
+/// `CMP Xn, Xm` (64-bit) = `SUBS XZR, Xn, Xm`. Base 0xEB00001F. The loop
+/// condition (`op_branch_*_locals`) lowers to this + a `B.cond`.
+pub fn cmpRegX(rn: u5, rm: u5) u32 {
+    return 0xEB00001F | (@as(u32, rm) << 16) | (@as(u32, rn) << 5);
+}
+
+/// `B.cond <±imm19 instructions>`. Base 0x54000000 | (imm19 << 5) | cond, where
+/// `imm19` is the signed offset IN INSTRUCTIONS (×4 bytes) from THIS branch to
+/// the target. A backward loop branch passes a negative offset.
+pub fn bCond(cond: Cond, imm19: i19) u32 {
+    const off: u32 = @as(u19, @bitCast(imm19));
+    return 0x54000000 | (off << 5) | @intFromEnum(cond);
+}
+
 test "exec_mem: emit + call a trivial ARM64 leaf fn returning a constant" {
     if (builtin.cpu.arch != .aarch64) return error.SkipZigTest;
     var buf = try CodeBuffer.init(64);
@@ -219,4 +248,58 @@ test "exec_mem: fixnum unbox (SBFX) + rebox (MOVK tag) round-trip vs value.zig" 
         // JIT rebox of the in-range int == value.zig's boxed encoding.
         try std.testing.expectEqual(boxed, rebox(k));
     }
+}
+
+test "exec_mem: CMP + B.cond control flow proven by execution" {
+    if (builtin.cpu.arch != .aarch64) return error.SkipZigTest;
+    // fn(x) -> u64 { if (x != 0) return 1; else return 99; }
+    //   0: cmp x0, #0
+    //   1: b.ne +3   (-> instr 4)
+    //   2: movz x0, #99
+    //   3: ret
+    //   4: movz x0, #1
+    //   5: ret
+    var buf = try CodeBuffer.init(64);
+    defer buf.deinit();
+    buf.emit(cmpImmX(0, 0));
+    buf.emit(bCond(.ne, 3));
+    buf.emit(movzX(0, 99));
+    buf.emit(ret());
+    buf.emit(movzX(0, 1));
+    buf.emit(ret());
+    const f = try buf.finalize(*const fn (u64) callconv(.c) u64);
+    try std.testing.expectEqual(@as(u64, 99), f(0));
+    try std.testing.expectEqual(@as(u64, 1), f(5));
+    try std.testing.expectEqual(@as(u64, 1), f(123456));
+
+    // Backward branch (the loop shape): count x0 down to 0, return iterations.
+    // fn(n) -> u64 { c=0; while (n != 0) { n=n-1; c=c+1; } return c; }
+    //   0: movz x1, #0          ; c = 0
+    //   1: cmp x0, #0           ; loop:
+    //   2: b.eq +4   (-> instr 6 = done)
+    //   3: sub x0, x0, x2-no... use immediate decrement via sub reg needs a reg=1
+    // Simpler: keep #1 in x3 first.
+    //   0: movz x1, #0          ; c
+    //   1: movz x3, #1          ; one
+    //   2: cmp x0, #0           ; loop:
+    //   3: b.eq +4   (-> instr 7 done)
+    //   4: sub x0, x0, x3       ; n--
+    //   5: add x1, x1, x3       ; c++
+    //   6: b.al -4   (-> instr 2 loop)   [b.cond AL = unconditional]
+    //   7: mov x0, x1 ; ret  -> use add x0,x1,xzr then ret
+    var lp = try CodeBuffer.init(64);
+    defer lp.deinit();
+    lp.emit(movzX(1, 0)); // c=0
+    lp.emit(movzX(3, 1)); // one=1
+    lp.emit(cmpImmX(0, 0)); // loop:
+    lp.emit(bCond(.eq, 4)); // -> done (instr 3 + 4 = instr 7)
+    lp.emit(subRegX(0, 0, 3)); // n--
+    lp.emit(addRegX(1, 1, 3)); // c++
+    lp.emit(bCond(.al, -4)); // -> loop (instr 6 - 4 = instr 2)
+    lp.emit(addRegX(0, 1, 31)); // x0 = c + xzr(31)  (done:)
+    lp.emit(ret());
+    const loop = try lp.finalize(*const fn (u64) callconv(.c) u64);
+    try std.testing.expectEqual(@as(u64, 0), loop(0));
+    try std.testing.expectEqual(@as(u64, 1), loop(1));
+    try std.testing.expectEqual(@as(u64, 1000), loop(1000));
 }
