@@ -47,6 +47,25 @@ const safepoint = @import("../concurrency/safepoint.zig");
 /// unless `CLJW_GC_TORTURE_ALLOC` is armed.
 threadlocal var in_alloc_torture: bool = false;
 
+/// Fabrication no-collect region depth (D-244 #4, ADR-0150). A multi-alloc
+/// collection BUILDER (`vector.conj`/`fromSlice`, `map.assoc`, `set.conj`, the
+/// transient ops, …) holds an intermediate NODE — a `*TailNode`/`*HamtNode`,
+/// NOT a `Value` — in an unrooted Zig local across its NEXT `alloc`. A mid-alloc
+/// collect (the torture, or a future ADR-0028 alloc-driven auto-collect) would
+/// sweep it. Each builder brackets its body with `enterFabrication`/
+/// `exitFabrication`; an in-`alloc` collect is DEFERRED while `depth > 0`.
+///
+/// Correct under F-006 (non-moving mark-sweep): a collect deferred across a
+/// BOUNDED pure-Zig builder runs harmlessly just after — nothing relocates, the
+/// result is rooted on the operand stack by then. This is NOT cw v0's un-scoped
+/// `suppressCollection` hatch: the region wraps only pure-Zig builders (no user
+/// code, no eval-reentry), so it never blinds a safepoint / back-edge collect
+/// (`depth` is 0 there). The alloc-torture is the completeness guard — a builder
+/// that forgets the bracket trips it. A future RELOCATING/concurrent GC
+/// (ROADMAP §89.2) must replace this with published precise roots (D-244 #4
+/// forward row). Threadlocal: each builder runs on its own thread.
+threadlocal var fabrication_depth: u32 = 0;
+
 const HeapHeader = heap_header.HeapHeader;
 const FreePoolMap = free_pool_mod.FreePoolMap;
 const Value = value_mod.Value;
@@ -274,6 +293,20 @@ pub const GcHeap = struct {
         return false;
     }
 
+    /// Enter a fabrication no-collect region (D-244 #4). A multi-alloc
+    /// collection builder calls this before its alloc sequence and
+    /// `exitFabrication` (via `defer`) after — see `fabrication_depth`.
+    /// Nests: a builder calling a wrapped builder balances. Cheap (one
+    /// threadlocal increment, no lock).
+    pub fn enterFabrication(_: *GcHeap) void {
+        fabrication_depth += 1;
+    }
+
+    /// Leave a fabrication no-collect region (pairs with `enterFabrication`).
+    pub fn exitFabrication(_: *GcHeap) void {
+        fabrication_depth -= 1;
+    }
+
     /// Allocate a typed heap object on the GC heap: free-pool fast path
     /// → infra slow path, with a comptime HeapHeader-at-offset-0 check.
     /// Caller initialises the value (HeapHeader and payload fields).
@@ -316,6 +349,11 @@ pub const GcHeap = struct {
         torture: {
             const gc_torture = @import("gc_torture.zig");
             if (gc_torture.alloc_period == 0) break :torture;
+            // Inside a multi-alloc builder's no-collect region (D-244 #4): an
+            // intermediate node is live-but-unrooted, so defer the collect to
+            // just after the builder. The same gate guards a future ADR-0028
+            // alloc-driven auto-collect (it would land right here).
+            if (fabrication_depth > 0) break :torture;
             const root_set = @import("root_set.zig");
             if (root_set.is_registered_worker or in_alloc_torture) break :torture;
             const e = root_set.active_env orelse break :torture;

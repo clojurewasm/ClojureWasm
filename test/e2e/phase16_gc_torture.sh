@@ -150,4 +150,48 @@ assert_eq 'agent_sendoff' "$("$BIN" -e '(let [a (agent 0)] (send-off a + 5) (awa
 # safepoint.lockMutexAtSafepoint counts the blocked worker parked.
 assert_eq 'delay_concurrent' "$("$BIN" -e '(let [n (atom 0) d (delay (swap! n inc))] (future (deref d)) (deref d) @n)')" '1'
 
+# ---------------------------------------------------------------------------
+# D-244 #4 — ALLOC-driven torture (CLJW_GC_TORTURE_ALLOC=1 forces a STW collect
+# inside EVERY gc.alloc). Stricter than the back-edge torture above: it catches a
+# multi-alloc collection BUILDER that holds an intermediate NODE (*TailNode /
+# *HamtNode / *Cons — NOT a Value) in an unrooted Zig local across the next
+# alloc. The fabrication no-collect region (ADR-0150) brackets each builder so a
+# mid-builder collect is DEFERRED (correct under F-006 non-moving mark-sweep).
+#
+# SCOPE: these are pure SYNCHRONOUS builders (no eval reentry). The complementary
+# class — a collect during an eval-REENTRANT lazy-seq realization / reduce sweeping
+# the accumulator (e.g. `(into {} (map f (range N)))`) — is D-244 #4b (the
+# gc_self_guard / EvalFrame reentrant-rooting scope), tracked separately.
+#
+# Probes are SMALL/EAGER (alloc-torture = O(allocs) full collects; large or
+# lazy-seq realizations are deliberately avoided) and assert STRUCTURE, not
+# set/map print order (AD-001). A missed builder bracket trips one of these →
+# self-enforcing completeness guard.
+assert_alloc() { local n="$1"; local g; g="$(CLJW_GC_TORTURE=0 CLJW_GC_TORTURE_ALLOC=1 "$BIN" -e "$2" 2>&1)"; [[ "$g" == "$3" ]] || fail "alloc/$n: got '$g' want '$3'"; echo "PASS alloc/$n -> $3"; }
+
+# vector — literal (fromSlice), conj fast path, the `vector`/`vec` builtins.
+assert_alloc 'vec_literal'    '[1 2 3 4 5]'                                  '[1 2 3 4 5]'
+assert_alloc 'conj_vec'       '(conj [1 2 3] 4)'                             '[1 2 3 4]'
+assert_alloc 'vector_fn'      '(vector 1 2 3 4 5)'                           '[1 2 3 4 5]'
+assert_alloc 'vec_list'       '(vec (list 1 2 3))'                           '[1 2 3]'
+# list builder — `acc = consHeap(rt, x, acc)` cons-fold (the `list` builtin).
+assert_alloc 'list_fn'        '(count (list 1 2 3 4 5))'                     '5'
+# transient vector finalize (into [] -> persistent! -> fromSlice).
+assert_alloc 'into_vec'       '(into [] (range 5))'                          '[0 1 2 3 4]'
+# conj tail-full -> root push (crossing the 32-boundary in the tail path).
+assert_alloc 'conj_tailfull'  '(count (reduce conj [] (range 35)))'         '35'
+# fromSlice multi-level trie: n > 64 forces the `level_nodes` tower loop.
+assert_alloc 'fromslice_tower' '(nth (vec (range 70)) 69)'                  '69'
+# vector assoc (trie copy-path) + pop (leaf-pull multi-alloc path).
+assert_alloc 'vec_assoc'      '(nth (assoc (vec (range 33)) 10 99) 10)'     '99'
+assert_alloc 'vec_pop'        '(peek (pop (vec (range 33))))'               '31'
+# sets — assert count + membership (print order is AD-001).
+assert_alloc 'conj_set'       '(count (conj #{1 2} 3))'                      '3'
+assert_alloc 'set_member'     '(contains? (conj #{1 2} 3) 3)'               'true'
+assert_alloc 'set_promote'    '(count (into #{} (range 12)))'              '12'
+# maps — array-map fast path + HAMT promote (> 8 keys), count + lookup.
+assert_alloc 'hashmap_fn'     '(get (hash-map :a 1 :b 2) :b)'               '2'
+assert_alloc 'map_literal'    '(get {:a 1 :b 2 :c 3} :c)'                   '3'
+assert_alloc 'map_promote'    '(count (into {} [[1 1] [2 2] [3 3] [4 4] [5 5] [6 6] [7 7] [8 8] [9 9] [10 10]]))' '10'
+
 echo "ALL phase16_gc_torture PASS"

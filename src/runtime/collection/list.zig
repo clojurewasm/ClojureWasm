@@ -59,6 +59,13 @@ pub fn cons(alloc: std.mem.Allocator, head: Value, tail: Value) !Value {
 /// first / rest / meta so the GC sees the outgoing pointers and
 /// keeps reachable children alive.
 pub fn consHeap(rt: *Runtime, head: Value, tail: Value) !Value {
+    // D-244 #4: in a `acc = consHeap(rt, x, acc)` fold (the `list` builtin +
+    // many primitives) the partial-list `tail`/`acc` is held in a Zig local,
+    // unrooted, across this alloc; defer a mid-fold collect (ADR-0150 region).
+    // Pure cons-folds only — a fold whose element production ALSO allocs is the
+    // separate window-1 / gc_self_guard scope (D-244 #4b).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const cell = try rt.gc.alloc(Cons);
     cell.* = .{
         .header = HeapHeader.init(.list),

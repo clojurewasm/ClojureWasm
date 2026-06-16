@@ -147,11 +147,16 @@ pub threadlocal var eval_frame_head: ?*EvalFrame = null;
 /// no nested `eval`/fabrication inside the assembly loop — mirroring
 /// `macro_root_slot`. Walked per-thread (self + every registered worker:
 /// a parked worker mid-fabrication holds its partial here too, so it is
-/// NOT "collecting-thread only" despite the D-244 name). Refuses cw v0's
-/// `suppressCollection` escape hatch (publish a precise root, do not
-/// disable the collector). The fabrication-site set/clear wiring lands
-/// with #4 (force-VM workers + auto-collect make it live); this slot +
-/// its walk are the runtime-inert infra.
+/// NOT "collecting-thread only" despite the D-244 name). This slot
+/// publishes a precise root for a partial *Value* across an eval-reentrant
+/// trigger — it refuses cw v0's *un-scoped* `suppressCollection` hatch (the
+/// one that could wrap eval-reentry, the real F-006 hazard). It does NOT
+/// speak to builder-INTERNAL raw nodes (`*TailNode`/`*HamtNode`/`*Cons`):
+/// those are covered by ADR-0150's bounded `fabrication_depth` no-collect
+/// region around pure-Zig builders (no user code, no eval-reentry) — a
+/// different hazard class, correct under F-006. This slot's set/clear wiring
+/// lands with the worker/auto-collect trigger (#4); the slot + its walk are
+/// the runtime-inert infra until then.
 pub threadlocal var gc_self_guard: ?Value = null;
 
 /// The `Env` the current thread's outermost `vm.eval` is running under, or null

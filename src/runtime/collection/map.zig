@@ -220,6 +220,9 @@ pub fn allSimpleKeys(pairs: []const Value) bool {
 /// therefore cannot trigger GC, so the freshly-alloc'd `am` is safe WITHOUT a
 /// rooting frame (last-key-wins, matching the assoc-fold). [refs: O-026, D-386]
 pub fn fromLiteralPairs(rt: *Runtime, pairs: []const Value) !Value {
+    // D-244 #4: single ArrayMap alloc, filled from the rooted operand stack —
+    // no multi-alloc internal window, so no fabrication region needed (the
+    // alloc-torture is the completeness guard if this ever grows a 2nd alloc).
     const am = try rt.gc.alloc(ArrayMap);
     am.* = .{ .header = HeapHeader.init(.array_map) };
     var w: u32 = 0;
@@ -254,6 +257,10 @@ pub fn fromLiteralPairs(rt: *Runtime, pairs: []const Value) !Value {
 ///
 /// HamtMap path inserts into the bitmap-indexed HAMT (`assocHashMap`).
 pub fn assoc(rt: *Runtime, v: Value, k: Value, val: Value) !Value {
+    // D-244 #4: HAMT/promote paths hold fresh nodes unrooted across allocs
+    // (ADR-0150 fabrication region). The array_map fast path is single-alloc.
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     return switch (v.tag()) {
         .array_map => try assocArrayMap(rt, v.decodePtr(*const ArrayMap), k, val),
         .hash_map => try assocHashMap(rt, v.decodePtr(*const PersistentHashMap), k, val),
@@ -298,6 +305,10 @@ fn assocArrayMap(rt: *Runtime, am: *const ArrayMap, k: Value, val: Value) !Value
 /// linear-scans + copy-with-hole-removed; HamtMap path deletes from
 /// the HAMT (`dissocHashMap`).
 pub fn dissoc(rt: *Runtime, v: Value, k: Value) !Value {
+    // D-244 #4: HAMT delete holds fresh nodes unrooted across allocs
+    // (ADR-0150 fabrication region).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     return switch (v.tag()) {
         .array_map => try dissocArrayMap(rt, v.decodePtr(*const ArrayMap), v, k),
         .hash_map => try dissocHashMap(rt, v.decodePtr(*const PersistentHashMap), v, k),

@@ -117,6 +117,10 @@ pub fn toPersistent(rt: *Runtime, tm_val: Value, loc: SourceLocation) !Value {
     try ensureEditable(tm, "persistent!", loc);
     tm.consumed = 1;
 
+    // D-244 #4: `out` held unrooted across the assoc-replay + `withMeta` allocs
+    // (ADR-0150 fabrication region; map_mod.assoc also brackets internally).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     var out: Value = undefined;
     if (tm.overflow.isNil()) {
         out = map_mod.empty();

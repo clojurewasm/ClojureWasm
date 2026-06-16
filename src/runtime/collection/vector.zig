@@ -196,6 +196,10 @@ inline fn tailoff(c: u32) u32 {
 /// new tail = `[x]`). Per clojure JVM `PersistentVector.cons()`.
 pub fn conj(rt: *Runtime, v: Value, x: Value) !Value {
     std.debug.assert(v.tag() == .vector);
+    // D-244 #4: a fresh TailNode/HamtNode lives unrooted across the next alloc;
+    // defer a mid-builder collect (ADR-0150 fabrication region).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const old = v.decodePtr(*const Vector);
 
     // Fast path: tail has space (< BRANCH_FACTOR elements).
@@ -255,6 +259,10 @@ pub fn conj(rt: *Runtime, v: Value, x: Value) !Value {
 /// Clojure semantics — `(pop [])` throws `IllegalStateException`).
 pub fn pop(rt: *Runtime, v: Value) !Value {
     std.debug.assert(v.tag() == .vector);
+    // D-244 #4: trie-path copy holds fresh nodes unrooted across allocs
+    // (ADR-0150 fabrication region).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const old = v.decodePtr(*const Vector);
     if (old.count == 0) return error.PopEmpty;
 
@@ -304,6 +312,10 @@ pub fn pop(rt: *Runtime, v: Value) !Value {
 ///     Code at the analyzer level later)
 pub fn assoc(rt: *Runtime, v: Value, i: u32, x: Value) !Value {
     std.debug.assert(v.tag() == .vector);
+    // D-244 #4: trie-path copy holds fresh HamtNodes unrooted across allocs
+    // (ADR-0150 fabrication region).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const old = v.decodePtr(*const Vector);
     if (i == old.count) return try conj(rt, v, x);
     if (i > old.count) return error.AssocOutOfBounds;
@@ -378,6 +390,11 @@ pub fn subvec(rt: *Runtime, v: Value, start: u32, end: u32) !Value {
 pub fn fromSlice(rt: *Runtime, items: []const Value) !Value {
     const n: u32 = @intCast(items.len);
     if (n == 0) return empty();
+
+    // D-244 #4: the `level_nodes` tower holds HamtNodes unrooted across each
+    // node alloc; defer a mid-builder collect (ADR-0150 fabrication region).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
 
     const off = tailoff(n); // multiple of 32; in-root element count
     const tail_len = n - off; // 1..32 for n > 0

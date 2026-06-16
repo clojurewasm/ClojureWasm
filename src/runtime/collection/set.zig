@@ -99,6 +99,10 @@ pub fn contentEq(a: Value, b: Value) bool {
 /// (current implementation may copy; identity-preservation deferred).
 pub fn conj(rt: *Runtime, v: Value, e: Value) !Value {
     std.debug.assert(v.tag() == .hash_set);
+    // D-244 #4: `new_map` is held unrooted across `alloc(PersistentHashSet)`
+    // (ADR-0150 fabrication region; also covers map_mod.assoc's internal nodes).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const old = v.decodePtr(*const PersistentHashSet);
     const new_map = try map_mod.assoc(rt, old.map, e, Value.true_val);
     const new_set = try rt.gc.alloc(PersistentHashSet);
@@ -116,6 +120,10 @@ pub fn conj(rt: *Runtime, v: Value, e: Value) !Value {
 /// the underlying map's dissoc returns identity).
 pub fn disj(rt: *Runtime, v: Value, e: Value) !Value {
     std.debug.assert(v.tag() == .hash_set);
+    // D-244 #4: `new_map` held unrooted across `alloc(PersistentHashSet)`
+    // (ADR-0150 fabrication region).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const old = v.decodePtr(*const PersistentHashSet);
     const new_map = try map_mod.dissoc(rt, old.map, e);
     if (@intFromEnum(new_map) == @intFromEnum(old.map)) return v; // absent — identity

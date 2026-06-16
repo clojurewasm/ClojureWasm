@@ -123,6 +123,10 @@ pub fn toPersistent(rt: *Runtime, tv_val: Value, loc: SourceLocation) !Value {
     try ensureEditable(tv, "persistent!", loc);
     tv.consumed = 1;
 
+    // D-244 #4: `out` is held unrooted across the `withMeta` alloc below
+    // (ADR-0150 fabrication region; fromSlice also brackets internally — nests).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     // PERF: bulk O(n) trie build from the flat buffer vs N persistent conjs O(n log n) [refs: O-003, D-180]
     const out = try vector.fromSlice(rt, tv.items());
     // Carry through the source's metadata (`(transient ^{…} v)` / the

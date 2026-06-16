@@ -52,6 +52,10 @@ pub const TransientHashSet = extern struct {
 /// `nil` → empty set). The source's backing map is copied into a
 /// fresh TransientArrayMap; the new set wraps that inner transient.
 pub fn fromSet(rt: *Runtime, source: Value) !Value {
+    // D-244 #4: `inner_tm` held unrooted across `alloc(TransientHashSet)`
+    // (ADR-0150 fabrication region).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const inner_source: Value = if (source.isNil())
         Value.nil_val
     else
@@ -75,6 +79,10 @@ pub fn toPersistent(rt: *Runtime, ts_val: Value, loc: SourceLocation) !Value {
     try ensureEditable(ts, "persistent!", loc);
     ts.consumed = 1;
 
+    // D-244 #4: `persistent_map` held unrooted across `alloc(PersistentHashSet)`
+    // (ADR-0150 fabrication region).
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const persistent_map = try transient_array_map.toPersistent(rt, ts.inner_map, loc);
 
     const new_set = try rt.gc.alloc(set_mod.PersistentHashSet);
