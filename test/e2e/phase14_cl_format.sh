@@ -34,7 +34,13 @@ assert_eq 'grouped'      "$(run '(prn (pp/cl-format nil "~:d" 1000000))')"      
 assert_eq 'zero-padded'  "$(run '(prn (pp/cl-format nil "~5,'"'"'0d" 42))')"     '"00042"'
 assert_eq 'star-padded'  "$(run '(prn (pp/cl-format nil "~8,'"'"'*d" 42))')"     '"******42"'
 assert_eq 'hex-width'    "$(run '(prn (pp/cl-format nil "~6x" 255))')"           '"    ff"'
+# D-455 iteration ~{~^~} (clj-verified): apply the enclosed format per list element,
+# ~^ exits before the trailing separator on the last element.
+assert_eq 'iter-join'    "$(run '(prn (pp/cl-format nil "~{~a~^, ~}" [1 2 3]))')" '"1, 2, 3"'
+assert_eq 'iter-around'  "$(run '(prn (pp/cl-format nil "[~{~a~^ | ~}]" [:a :b :c]))')" '"[:a | :b | :c]"'
+assert_eq 'iter-empty'   "$(run '(prn (pp/cl-format nil "~{~a~^, ~}" []))')"      '""'
+assert_eq 'iter-pairs'   "$(run '(prn (pp/cl-format nil "~{~a=~a ~}" [:x 1 :y 2]))')" '":x=1 :y=2 "'
 # still-deferred directive raises explicitly (not silent mishandle)
 assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~r" 42) (catch Throwable e :raised)))')" ':raised'
 
-echo "OK — phase14_cl_format (16 cases) green"
+echo "OK — phase14_cl_format (20 cases) green"
