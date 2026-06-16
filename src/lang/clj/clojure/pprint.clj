@@ -63,12 +63,13 @@
 
 ;; `(cl-format stream fmt & args)` — Common-Lisp-format subset (D-403 + D-455).
 ;; ~A aesthetic, ~S standard (pr-readable), ~D decimal, ~F fixed float, ~X/~O radix,
-;; ~B binary, ~{~^~} list iteration, ~(~) case-region (~( lower / ~:( cap-words /
-;; ~@( cap-first / ~:@( upper), ~% newline, ~~ literal ~. Number directives parse
-;; the `~mincol,'padchar` parameter grammar (+ `:` grouped) and delegate to
-;; `format`. A nil stream returns the string; any other stream prints to *out* +
-;; returns nil. The only still-deferred directive is ~R (cardinal English words),
-;; which raises (no silent mishandle). cl-* helpers are clojure.pprint internals.
+;; ~B binary, ~R numerals (~R cardinal / ~:R ordinal / ~@R Roman / ~NR radix),
+;; ~{~^~} list iteration, ~(~) case-region (~( lower / ~:( cap-words / ~@( cap-first
+;; / ~:@( upper), ~% newline, ~~ literal ~. Number directives parse the
+;; `~mincol,'padchar` parameter grammar (+ `:` grouped) and delegate to `format`.
+;; A nil stream returns the string; any other stream prints to *out* + returns nil.
+;; The remaining long-tail directives (~P plural, ~C char, ~&, ~T, ~*, ~E/~G) raise
+;; (no silent mishandle) — see D-455. cl-* helpers are clojure.pprint internals.
 (defn cl-digit? [c] (let [i (int c)] (and (>= i (int \0)) (<= i (int \9)))))
 (defn cl-int [c] (- (int c) (int \0)))
 
@@ -119,6 +120,51 @@
     at? (clojure.string/capitalize s)
     :else (clojure.string/lower-case s)))
 
+;; ~R numeral directives. cl-cardinal n → English words ("forty-two");
+;; groups of 3 digits are joined with ", " (clj-faithful). cl-ordinal → "forty-
+;; second" (the last cardinal word gets the ordinal suffix). cl-roman → subtractive
+;; Roman ("XLII"). Radix (~NR) is `(Long/toString n base)` inline in cl-run.
+(def cl-ones ["zero" "one" "two" "three" "four" "five" "six" "seven" "eight" "nine"
+              "ten" "eleven" "twelve" "thirteen" "fourteen" "fifteen" "sixteen"
+              "seventeen" "eighteen" "nineteen"])
+(def cl-tens ["" "" "twenty" "thirty" "forty" "fifty" "sixty" "seventy" "eighty" "ninety"])
+(def cl-scales ["" " thousand" " million" " billion" " trillion" " quadrillion"])
+(defn cl-under-100 [n]
+  (cond (< n 20) (cl-ones n)
+        (zero? (rem n 10)) (cl-tens (quot n 10))
+        :else (str (cl-tens (quot n 10)) "-" (cl-ones (rem n 10)))))
+(defn cl-under-1000 [n]
+  (if (< n 100)
+    (cl-under-100 n)
+    (let [h (quot n 100) r (rem n 100)]
+      (str (cl-ones h) " hundred" (when (pos? r) (str " " (cl-under-100 r)))))))
+(defn cl-cardinal [n]
+  (cond (zero? n) "zero"
+        (neg? n) (str "minus " (cl-cardinal (- n)))
+        :else (loop [n n i 0 parts ()]
+                (if (zero? n)
+                  (clojure.string/join ", " parts)
+                  (let [grp (rem n 1000)]
+                    (recur (quot n 1000) (inc i)
+                           (if (pos? grp) (cons (str (cl-under-1000 grp) (cl-scales i)) parts) parts)))))))
+(def cl-ord-ones {"one" "first" "two" "second" "three" "third" "five" "fifth"
+                  "eight" "eighth" "nine" "ninth" "twelve" "twelfth"})
+(defn cl-ordinalize-word [w]
+  (cond (contains? cl-ord-ones w) (cl-ord-ones w)
+        (clojure.string/ends-with? w "y") (str (subs w 0 (dec (count w))) "ieth")
+        :else (str w "th")))
+(defn cl-ordinal [n]
+  (let [c (cl-cardinal n) idx (max (.lastIndexOf c " ") (.lastIndexOf c "-"))]
+    (str (subs c 0 (inc idx)) (cl-ordinalize-word (subs c (inc idx))))))
+(def cl-roman-pairs [[1000 "M"] [900 "CM"] [500 "D"] [400 "CD"] [100 "C"] [90 "XC"]
+                     [50 "L"] [40 "XL"] [10 "X"] [9 "IX"] [5 "V"] [4 "IV"] [1 "I"]])
+(defn cl-roman [n]
+  (loop [n n acc "" pairs cl-roman-pairs]
+    (if (or (zero? n) (empty? pairs))
+      acc
+      (let [pr (first pairs) v (first pr) s (second pr)]
+        (if (>= n v) (recur (- n v) (str acc s) pairs) (recur n acc (rest pairs)))))))
+
 (declare cl-iter)
 
 ;; Run `fmt` over the arg-seq `as`, returning [acc remaining-as]. `~^` (escape)
@@ -144,6 +190,11 @@
                 (or (= d \x) (= d \X)) (recur ni (next as) (str acc (cl-pad (format "%x" x) p0 (or p1 \space))))
                 (or (= d \o) (= d \O)) (recur ni (next as) (str acc (cl-pad (format "%o" x) p0 (or p1 \space))))
                 (or (= d \b) (= d \B)) (recur ni (next as) (str acc (cl-pad (Long/toBinaryString x) p0 (or p1 \space))))
+                (or (= d \r) (= d \R))
+                (recur ni (next as) (str acc (cond p0 (Long/toString x p0)
+                                                   at? (cl-roman x)
+                                                   colon? (cl-ordinal x)
+                                                   :else (cl-cardinal x))))
                 (= d \{) (let [cl (cl-close fmt ni \})] (recur (nth cl 1) (next as) (str acc (cl-iter (nth cl 0) x))))
                 (= d \()
                 (let [cl (cl-close fmt ni \)) r (cl-run (nth cl 0) as)]

@@ -45,7 +45,13 @@ assert_eq 'case-lower'   "$(run '(prn (pp/cl-format nil "~(~a~)" "Hello WORLD"))
 assert_eq 'case-words'   "$(run '(prn (pp/cl-format nil "~:(~a~)" "hello world"))')" '"Hello World"'
 assert_eq 'case-first'   "$(run '(prn (pp/cl-format nil "~@(~a~)" "hello WORLD"))')" '"Hello world"'
 assert_eq 'case-upper'   "$(run '(prn (pp/cl-format nil "~:@(~a~)" "hello world"))')" '"HELLO WORLD"'
-# still-deferred directive raises explicitly (not silent mishandle)
-assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~r" 42) (catch Throwable e :raised)))')" ':raised'
+# D-455 ~R numeral directive (clj-verified): cardinal / ordinal / Roman / radix
+assert_eq 'cardinal'     "$(run '(prn (pp/cl-format nil "~r" 42))')"             '"forty-two"'
+assert_eq 'cardinal-big' "$(run '(prn (pp/cl-format nil "~r" 1234567))')"        '"one million, two hundred thirty-four thousand, five hundred sixty-seven"'
+assert_eq 'ordinal'      "$(run '(prn (pp/cl-format nil "~:r" 42))')"            '"forty-second"'
+assert_eq 'roman'        "$(run '(prn (pp/cl-format nil "~@r" 99))')"            '"XCIX"'
+assert_eq 'radix'        "$(run '(prn (pp/cl-format nil "~16r" 255))')"          '"ff"'
+# still-unimplemented directive raises explicitly (not silent mishandle)
+assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~p" 2) (catch Throwable e :raised)))')" ':raised'
 
-echo "OK — phase14_cl_format (24 cases) green"
+echo "OK — phase14_cl_format (30 cases) green"
