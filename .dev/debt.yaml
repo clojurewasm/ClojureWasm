@@ -748,14 +748,26 @@ active:
       v0 ~0.1 (3×); fib_recursive 39 vs Python ~24 still ~1.6× behind.
       2026-06-16 audit: (a) PARTIAL — `stepOnce` is now an `inline fn` (vm.zig:416),
       but the per-op `var sp = sp_ptr.*` / `sp_ptr.* = sp` marshalling + `&ip`/`&handlers`
-      indirection remain. (b) UNSTARTED + confirmed against code: the 3 per-op polls
-      still fire EVERY instruction (vm.zig:277 safepoint.gc_requested.load / :282
-      budget.tick / :294 gc_torture.tick) — batching them every N ops (v0-style) is the
-      CHEAPEST remaining dispatch win, broad (every loop/bench). (c) the JIT path now
-      has its own ADR-0151 + a complete execution-verified ARM64 codegen substrate
-      landed this session (exec-mem/add-sub/unbox-rebox/CMP+B.cond+loop/deopt-arm,
-      commits c8b5ad1d..08501742); the call-ABI micro-lever was REFUTED (~3-4.5% ceiling,
-      ADR-0151). So (b) is the cheap quick-win; (c)=D-133 the deep lever.
+      indirection remain. (b) RE-CONFIRMED DEAD (2026-06-16 reconciliation): the
+      2026-06-16 audit briefly mislabelled (b) "UNSTARTED + cheapest win" by reading
+      ONLY the code (3 polls fire per-op at vm.zig:277/:282/:294) and overlooking the
+      2026-06-15 empirical refutation recorded in this row's barrier below — that
+      experiment (safepoint-poll-every-256) was RUN, measured flat/slightly-slower on
+      `(fib 35)`, and REVERTED. Mechanistic (re-verified against the code): in
+      production the three "polls" are one relaxed `.monotonic` atomic load (:277,
+      store-forwarded ≈ free) + a null-optional unwrap (:282 `if (rt.eval_budget)`,
+      predicted-not-taken when unmetered) + a global-load gate (:294
+      `if (gc_torture.period != 0 …)`, predicted-not-taken in production). Batching
+      near-free ops saves near-nothing; budget/torture being inert means the every-256
+      result generalises to all three. So (b) is NOT a lever — do not re-run it. (c)
+      the JIT path now has its own ADR-0151 + a complete execution-verified ARM64
+      codegen substrate landed this session (exec-mem/add-sub/unbox-rebox/CMP+B.cond+
+      loop/deopt-arm, commits c8b5ad1d..08501742); the call-ABI micro-lever was REFUTED
+      (~3-4.5% ceiling, ADR-0151). Net: the accessible dispatch axis is exhausted —
+      (a) is a risky UAF-class cycle "not to be rushed", (b) is dead, (c)=D-133 JIT is
+      user-fenced. The campaign goal (fastest-script 19/30) is already MET, so the loop
+      pivots to the user-directed gaps/bugs sweep (D-448 first); D-386 stays open for a
+      future (a) attempt or the fenced (c).
     category: "perf"
     barrier: |-
       Not blocked — the next perf-campaign unit. Scope (cheapest first, measure

@@ -10,20 +10,16 @@
   `build.zig.zon` `.zwasm` is SHA-PINNED (`#412966f7…`, `lazy`). Per-commit = smoke;
   full gate batches at ceiling / boundary / pre-tag.
 
-- **First commit on resume MUST be**: **D-386 sub-lever (b) — BATCH the per-op polls**
-  (`.dev/.perf_campaign_active` SET; ADR-0148 fastest-script campaign). The eval loop runs
-  3 polls on EVERY instruction — `safepoint.gc_requested.load` (vm.zig:277) + `eval_budget.tick`
-  (:282) + `gc_torture.tick` (:294). Batch them v0-style (every N ops, e.g. 256) instead of
-  per-op: the CHEAPEST broad dispatch win (helps every loop/bench incl. fib/tak toward v0's
-  16 ms). Then optionally (a) keep `stepOnce`'s `sp`/`ip`/`handler_count` as eval-loop locals
-  (kill the `var sp = sp_ptr.*` / `sp_ptr.* = sp` per-op marshalling, vm.zig:416/432/437).
-  Method: measure-first (ReleaseSafe only) on `bench/run_bench.sh` fib_recursive/arith_loop;
-  diff oracle + corpus 3181 + CLJW_GC_TORTURE green (the poll cadence touches GC/budget
-  responsiveness — verify torture still catches mid-loop, budget still bounds). Full D-386
-  detail: the debt.yaml D-386 row + `private/notes/9.2.S-flat-frame-survey.md § 2b`.
-- **After D-386 — SWEEP the gaps/bugs backlog** (user-directed 2026-06-16: actually drain
-  these, don't defer). Prioritized order from this session's audit (easiest/highest-value
-  first): **D-448** regex capture-in-outer-quantifier SILENTLY-WRONG (correctness) → **D-435**
+- **First commit on resume MUST be**: **D-448 — regex capture-in-outer-quantifier
+  SILENTLY-WRONG** (the gaps/bugs sweep's first correctness item). D-386 sub-lever (b)
+  was RE-CONFIRMED DEAD (debt.yaml D-386 reconciliation 2026-06-16): the per-op polls are
+  near-free in production (one relaxed atomic load + two predicted-not-taken gates), and
+  the every-256 experiment was already run + reverted 2026-06-15. (a) is risky UAF-class
+  "not to be rushed", (c) JIT is user-fenced → the dispatch axis is exhausted, campaign
+  goal already MET, so the loop pivots straight to the sweep.
+- **The gaps/bugs SWEEP** (user-directed 2026-06-16: actually drain these, don't defer).
+  Prioritized order (easiest/highest-value first): **D-448** regex
+  capture-in-outer-quantifier SILENTLY-WRONG (correctness) → **D-435**
   dual-backend diff-oracle coverage hole (bootstrap-core Fixture so full-runtime forms are
   parity-checked) → **D-374** top-level `(do (import…) …)` unroll (eval-semantics) → **D-266**
   `(repeat n x)` non-chunked realization (perf pathology) → **D-446** arity-divergence audit
