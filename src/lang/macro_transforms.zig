@@ -2229,11 +2229,18 @@ fn expandDefprotocol(
         method_defs[i] = try list(arena, def_fn_items, loc);
     }
 
-    // (do def-proto def-method-1 def-method-2 ...)
-    var do_items = try arena.alloc(Form, 2 + method_defs.len);
+    // (do def-proto def-method-1 def-method-2 ... 'Name) — clj's defprotocol
+    // RETURNS the protocol-name symbol (D-456), so the do's trailing form is
+    // `(quote Name)`. Without it the do returned the last method's `def` (a
+    // var, `#'ns/m`); the return value is rarely consumed but this is clj parity.
+    var do_items = try arena.alloc(Form, 3 + method_defs.len);
     do_items[0] = sym("do", loc);
     do_items[1] = def_proto;
-    @memcpy(do_items[2..], method_defs);
+    @memcpy(do_items[2 .. 2 + method_defs.len], method_defs);
+    var ret_quote_items = try arena.alloc(Form, 2);
+    ret_quote_items[0] = sym("quote", loc);
+    ret_quote_items[1] = name_form;
+    do_items[do_items.len - 1] = try list(arena, ret_quote_items, loc);
     return list(arena, do_items, loc);
 }
 
@@ -3696,7 +3703,12 @@ test "expandDefprotocol lowers to (do (def P ...) (def m1 ...))" {
     const out = try expandDefprotocol(arena, &fix.rt, &args, .{});
     try testing.expect(out.data == .list);
     try expectSymbolEq(out.data.list[0], "do");
-    try testing.expectEqual(@as(usize, 3), out.data.list.len); // (do def-proto def-m1)
+    try testing.expectEqual(@as(usize, 4), out.data.list.len); // (do def-proto def-m1 'P) — D-456 return symbol
+    // Trailing form is `(quote P)` — defprotocol returns the protocol name symbol.
+    const ret_form = out.data.list[3];
+    try testing.expect(ret_form.data == .list);
+    try expectSymbolEq(ret_form.data.list[0], "quote");
+    try expectSymbolEq(ret_form.data.list[1], "P");
 
     const def_proto = out.data.list[1];
     try testing.expect(def_proto.data == .list);
@@ -3730,14 +3742,17 @@ test "expandDefprotocol accepts a 0-method MARKER protocol (D-190/ADR-0068)" {
 
     const arena = fix.arena.allocator();
     // `(defprotocol P)` — name only — is a marker; expands to
-    // `(do (def P (rt/__make-protocol! 'P [])))`, no method defs.
+    // `(do (def P (rt/__make-protocol! 'P [])) 'P)`, no method defs (the
+    // trailing `'P` is the D-456 return-symbol).
     const args = [_]Form{sym("P", .{})};
     const out = try expandDefprotocol(arena, &fix.rt, &args, .{});
     try testing.expect(out.data == .list);
     try testing.expectEqualStrings("do", out.data.list[0].data.symbol.name);
-    // do has exactly the proto-def (no per-method Var defs).
-    try testing.expectEqual(@as(usize, 2), out.data.list.len);
+    // do = the proto-def + the trailing `(quote P)` return form (no method defs).
+    try testing.expectEqual(@as(usize, 3), out.data.list.len);
     try testing.expectEqualStrings("def", out.data.list[1].data.list[0].data.symbol.name);
+    try expectSymbolEq(out.data.list[2].data.list[0], "quote");
+    try expectSymbolEq(out.data.list[2].data.list[1], "P");
 }
 
 test "expandExtendType lowers to (rt/__extend-type! target proto [[\"m\" (fn* ...)]])" {
