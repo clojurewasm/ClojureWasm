@@ -917,6 +917,19 @@ fn isSeqKeyValue(v: Value) bool {
     };
 }
 
+/// A key that can never be a sequential key NOR a custom-equiv deftype/reify
+/// instance, so `eqConsult`'s ambient-env block is a no-op for it. Used to take
+/// the rt-free `keyEqValue` fast path WITHOUT reading `dispatch.current_env`
+/// (the threadlocal cost the hot map-get / `:keys`-destructure path pays per
+/// `keyEq`). Both operands must qualify (an instance on EITHER side could carry
+/// a custom equiv matching a simple value).
+fn isSimpleEqKey(v: Value) bool {
+    return switch (v.tag()) {
+        .keyword, .symbol, .string, .integer, .char, .boolean, .nil => true,
+        else => false,
+    };
+}
+
 /// Realize a sequential key to a form the rt-free `seqKeyEq` can walk: lazy /
 /// range / chunked / cons-over-lazy → a fully-realized list; a Sequential
 /// instance → its realized list; vector / map_entry / queue are returned as-is
@@ -938,6 +951,12 @@ fn realizeKeyForCompare(rt: *Runtime, env: *Env, v: Value) anyerror!Value {
 /// deftype dedups regardless of insertion order). Unarmed ⇒ the rt-free
 /// `keyEqValue`. A user `equiv` that throws propagates (no silent swallow).
 pub fn eqConsult(a: Value, b: Value) ClojureWasmError!bool {
+    // PERF: both operands simple (keyword/symbol/string/number/char/bool/nil) →
+    // neither a seq-key nor a custom-equiv instance, so the ambient-env block
+    // below would just fall through to `keyEqValue` anyway. Take it directly and
+    // skip the `dispatch.current_env` threadlocal read (~20% of destructure's
+    // leaf self-time was this per-`keyEq` TLV). [refs: O-049]
+    if (isSimpleEqKey(a) and isSimpleEqKey(b)) return keyEqValue(a, b);
     if (dispatch_mod.current_env) |env| {
         if (isSeqKeyValue(a) and isSeqKeyValue(b)) {
             if (seqKeyEqChecked(a, b)) |r| return r;
