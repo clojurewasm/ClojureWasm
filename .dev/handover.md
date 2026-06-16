@@ -11,24 +11,24 @@
   full gate batches at ceiling / boundary / pre-tag.
 
 - **First commit on resume MUST be**: **perf campaign (D-450 / ADR-0148),
-  GC-allocation-throughput front**. RE-MEASURED 2026-06-17 (fresh, ReleaseSafe,
-  10-run, canonical `compare_langs.sh` — see
-  `private/notes/9.2.S-perf-remeasure-2026-06-17.md`): the 2026-06-16 baseline is
-  STALE (pre-O-037..O-042). Current truth: **ratio_sum (was 3.15×) + nested_update
-  are now WON (0.95× / 0.84×)**; the other 7 sit at 1.10–1.29× — biggest
-  gc_alloc_rate 1.29× · json_parse 1.28× · string_ops 1.25× · bigint 1.20× ·
-  gc_large_heap 1.18×. The localized construction levers (O-040/041/042) are MINED
-  (the json `.alloc_if_needed` experiment measured INSIDE noise → reverted, NOT
-  committed). Diagnosis: the big gaps share ONE root cause — **cljw allocation
-  throughput** (malloc-per-object; the gc_heap free-pool only refills on a COLLECT,
-  auto-collect OFF → short-lived-object benches malloc every object, no reuse). So
-  the next lever is a **nursery / pre-warmed free-list over the non-moving heap**
-  (F-006), lifting gc_alloc_rate + gc_large_heap + json_parse + string_ops at once —
-  a major unit: survey JVM/GraalVM nursery + bump-alloc techniques, ADR + DA fork,
-  implement, re-measure gc_alloc_rate. Regenerate `cross-lang-latest.yaml` (stale).
-  DEFERRED: D-446 arity residual (Micro-coverage-grind smell); D-456 defprotocol
-  return (1-line, trivial). Compute-bound residuals (sieve/destructure/bigint
-  dispatch) → D-386.
+  D-386 dispatch front**. RE-MEASURED + DIAGNOSED 2026-06-17 (fresh, ReleaseSafe,
+  10-run, canonical `compare_langs.sh` — full detail in
+  `private/notes/9.2.S-perf-remeasure-2026-06-17.md`). The 2026-06-16 baseline was
+  STALE (pre-O-037..O-042). Current truth: **ratio_sum + nested_update are now WON
+  (0.95× / 0.84×)**; the other 7 sit at 1.10–1.29× — gc_alloc_rate 1.29× ·
+  json_parse 1.28× · string_ops 1.25× · bigint 1.20× · gc_large_heap 1.18× ·
+  sieve 1.15× · destructure 1.10×. Localized construction levers (O-040/041/042)
+  are MINED. **The GC/alloc-throughput hypothesis is REFUTED by measurement**: the
+  D-244 #4b fix unblocked + I built ADR-0028 alloc-driven auto-collect (env, default
+  OFF) and measured it — ZERO change on gc_alloc_rate / gc_large_heap (corroborates
+  O-040: gc_alloc_rate is construction-bound, 0.5% malloc leaf). Auto-collect
+  experiment REVERTED. So the gaps are **construction / dispatch-bound → the lever
+  is D-386** (op fusion → superinstructions; "fair game", only JIT-D-133 is fenced).
+  Next: pick the highest-ROI dispatch hot path (the 1.2–1.3× cluster shares the VM
+  op-dispatch overhead), design a fusion/superinstruction lever, ADR + DA fork,
+  measure. (A generational GC would NOT move these benches — they are not
+  GC-time-bound.) Regenerate stale `cross-lang-latest.yaml`. DEFERRED: D-446 arity
+  residual (Micro-coverage-grind smell); D-456 defprotocol return (1-line trivial).
 
 - **Forbidden this session**: JIT integration (D-133 — user-fenced 2026-06-16;
   the ARM64 codegen substrate is DONE + execution-verified, but the coupled
