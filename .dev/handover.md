@@ -19,15 +19,23 @@
   but a STRUCTURAL unit (TypedInstance extern-struct gains an extmap slot + GC trace +
   IPersistentMap routing for seq/keys/count/dissoc over extmap + a co-issued ADR amending
   the layout). The F-003 "layout owner" deferral now resolves to the loop itself (gap-area
-  model) — so it IS takeable; do it with fresh context (read the D-086 row in debt.yaml +
-  `private/notes/phase7-7.4-cycle4.md` DA analysis + collection.zig assocFn .typed_instance
-  arm). If a smaller win is wanted first: cl-format `~R`/`~:(` (D-455 niche follow-on).
+  model) — so it IS takeable. **READ FIRST: `private/notes/9.0-D086-record-extmap-plan.md`**
+  — the full Step-0 plan + the **verified 配線・参照チェーン監査** (the COMPLETE site
+  checklist: assoc/get/contains?/dissoc/keys/vals/count/seq/print/equality + struct/GC, each
+  with file:line) + the meta-precedent de-risking (ADR-0112 is the exact twin, so the
+  struct/GC half is low-risk) + the 3 resume primers. Then the D-086 debt row + ADR-0112.
+  First step = the DA-forked layout ADR (mirror ADR-0112), then walk the checklist.
 - **The gaps/bugs SWEEP is DRAINED of clean high-value items** (user-directed
   2026-06-16). DONE this session: ~~D-448~~ ~~D-374~~ ~~D-446~~ ~~D-444~~ ~~D-442~~
   (sub-step 2 = CancellationException class + Thread/sleep cooperative abort; ADR-0153)
   ~~D-224~~ (pmap/pcalls/pvalues genuinely parallel — clj's future + bounded look-ahead,
-  no work-pool) + **print-table** clj-exact format (F-011) + **D-455 PARTIAL** (cl-format
-  number + iteration directives; only ~R/~:( niche remain). NEXT = D-086 (above). Other
+  no work-pool) + **print-table** clj-exact format (F-011) + **D-455** cl-format common
+  surface COMPLETE (number/iteration/case/`~R` cardinal-ordinal-Roman-radix; only the
+  ~P/~C/~&/~T/~* long-tail remains) + a user-directed clj-parity batch: **D-457(1)** symbol
+  reader-`^meta` preserved, **(3b)** `.state_error` Kind (re-groups/stm/transient catch as
+  IllegalStateException), **D-457(3)** read-string rejects `#?` (+`:read-cond :allow`),
+  **AD-002** transient print recorded; D-457(2) `#=` confirmed accepted-by-design (AD-026).
+  NEXT = D-086 (above). Other
   REMAINING appropriately DEFERRED behind their own barriers: D-266 (native Repeat,
   perf low-pri), D-319/D-320 (perf cliffs,
   deferred-opt envelope), D-410/D-424/D-425/D-431 (niche/need-a-consumer or
@@ -76,7 +84,16 @@ ReleaseSafe only.
 
 ## Cold-start reading order (resume)
 
-handover → **`.dev/project_facts.md` F-015** → **ADR-0142** (§9 gap-area) → **ROADMAP
-§9.0** → the regex unit: **ADR-0147** + ADR-0031 + the audit note + the 48-golden
-corpus + `ezi-gex`. memory `perf-beat-python-every-bench` + `perf-campaign-roadmap-9-2-s`
-+ `direct-explore-fork-mechanical`. clj oracle = `clojure -J-Xmx2g -M -e` (timeout 60).
+handover → **`private/notes/9.0-D086-record-extmap-plan.md`** (the next unit's full
+plan + verified wiring audit) → `.dev/project_facts.md` F-015 → ADR-0142 (§9 gap-area)
+→ ROADMAP §9.0 → ADR-0112 (the meta-field twin to mirror for extmap). memory
+`direct-explore-fork-mechanical`. clj oracle = `clojure -J-Xmx2g -M -e` (timeout 60).
+
+## Stopped — user requested
+
+User instruction (2026-06-16): "クリアセッションでやるので、配線・参照チェーン監査をして
+止めて" (D-086 will be done in a fresh/clear session; do the wiring & reference-chain
+audit, then stop). Done: the COMPLETE D-086 site checklist + reference-chain verified
+and written to `private/notes/9.0-D086-record-extmap-plan.md` (with the meta-precedent
+de-risking + the 3 resume primers). Resume = D-086 per the Resume contract above. All
+other work this session is committed + pushed; tree clean.
