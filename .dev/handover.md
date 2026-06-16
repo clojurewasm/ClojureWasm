@@ -10,22 +10,24 @@
   `build.zig.zon` `.zwasm` is SHA-PINNED (`#412966f7…`, `lazy`). Per-commit = smoke;
   full gate batches at ceiling / boundary / pre-tag.
 
-- **First commit on resume MUST be**: complete **D-442 sub-step 2** (ADR-0153) —
-  finished-form of future-cancel (sub-step 1 state-machine landed @92e46cd8). Two
-  TDD commits: (1) precise `CancellationException` host-class (deref of a cancelled
-  future throws CancellationException, not IllegalArgumentException — new Kind
-  `.cancellation_error` + host_class entry under IllegalStateException); (2)
-  `Thread/sleep` cooperative abort (threadlocal worker-future + uncatchable abort
-  signal so a sleeping cancelled thunk releases thread+pin promptly). The rarer
-  deref-wait abort (needs a `future/promise.deref` signature ripple) is a recorded
-  follow-on in D-442, NOT a silent drop.
-- **The gaps/bugs SWEEP** (user-directed 2026-06-16: actually drain these, don't defer).
-  Prioritized order (easiest/highest-value first), DONE struck through: ~~D-448~~ →
-  ~~D-374~~ → ~~D-446~~ → ~~D-444~~ → **D-442** (sub-step 1 done; sub-step 2 = the
-  active unit) → D-266 `(repeat n x)` native Repeat type (perf, low-pri) → real-lib gaps
-  D-319/D-320/D-410/D-424/D-425/D-431 (mostly latent/niche or campaign-CLOSED — see each
-  row) → D-246 pmap-parallel. D-435 is epic-sized (D-436 大整理). Each is a normal TDD
-  unit (diff oracle + corpus green).
+- **First commit on resume MUST be**: a **deeper validation unit** — the common
+  surface is verified mature (3 broad clj-diff probes 2026-06-16 came back clean bar
+  one accepted error-class divergence; curated bug-debt is drained/deferred). Run a
+  LESS-common real surface through the clj oracle — `clojure.data` / `clojure.zip` /
+  `clojure.pprint` edge cases, or a small real library — find the first genuine DIFF,
+  fix it as a TDD unit + leave a corpus line (clj_diff_sweep Discipline 1). This is
+  the highest-leverage next step now that guessing-at-niche-rows has low yield.
+- **The gaps/bugs SWEEP is DRAINED of clean high-value items** (user-directed
+  2026-06-16). DONE this session: ~~D-448~~ ~~D-374~~ ~~D-446~~ ~~D-444~~ ~~D-442~~
+  (sub-step 2 = CancellationException class + Thread/sleep cooperative abort; ADR-0153)
+  ~~D-224~~ (pmap/pcalls/pvalues now genuinely parallel — clj's future + bounded
+  look-ahead, no work-pool needed). REMAINING are appropriately DEFERRED behind their
+  own barriers: D-266 (native Repeat, perf low-pri), D-319/D-320 (perf cliffs,
+  deferred-opt envelope), D-410/D-424/D-425/D-431 (niche/need-a-consumer or
+  campaign-CLOSED), D-245 (locking Option-C, recall-trigger not fired), D-246 b/c
+  (atom Var-root atomicity, tied to D-386 perf), D-433/D-437 (rare tails). D-435 is
+  epic-sized (D-436 大整理). → so the next high-value work is VALIDATION (above), not
+  forcing a gated row.
 - **JIT is the ONLY fence (user-directed 2026-06-16) — do NOT deep-dive D-133 JIT
   integration**: the ARM64 codegen substrate is DONE + execution-verified (commits
   c8b5ad1d..08501742 + ADR-0151), but the coupled recognizer+codegen+trigger+marshalling+
@@ -49,31 +51,21 @@
 
 ## Last landed (git log = SSOT; all pushed)
 
-This session: **2 perf wins, profiling-driven redundancy removal** (not micro-leaks).
-**O-048** (`fastGet`): `contains`+`get` = two map scans/lookup → one. **O-049**
-(`eqConsult`): simple-key (kw/sym/str/num/char/bool/nil) fast path skips the
-`dispatch.current_env` TLV + 2 `keyInstanceEq` probes (both operands simple only, so
-custom-equiv/seq-key unchanged). **destructure 55.0→45.9 ms (−16.5%, ~1.05× vs Bb);
-gc_large_heap 33.5→32.0 ms.** Diff oracle ×2 + corpus 3181 + custom-equiv probe green.
-Prior: **D-244 #4 fabrication no-collect region** (ADR-0150). Measured + recorded:
-micro-levers (TLV/trace-push/memset/mutex) inert; auto-collect net-negative; remaining
-GC-pair/sieve/json wins need the deep call-ABI / JIT lever (orientation note).
+This session: **two gap-area-I concurrency units + a 101G zig-cache cleanup**.
+**D-442 sub-step 2** (ADR-0153): deref of a cancelled future throws the precise
+`java.util.concurrent.CancellationException` (new catchable Kind `.cancellation_error`),
+and `Thread/sleep` cooperatively ABORTS a cancelled worker via a threadlocal
+`future.current_future` + the uncatchable `.cancellation_abort` signal (releases
+thread+pin promptly; un-swallowable past the thunk's own catch). **D-224**:
+`pmap`/`pcalls`/`pvalues` now run f genuinely in PARALLEL — clj's future-per-element +
+bounded look-ahead ported into core.clj (NO work-pool needed; cljw futures are real OS
+threads). Both: e2e + corpus + smoke green. Deleted both repos' `.zig-cache` (71G + 30G)
+at the user's request — they regenerate on first build.
 
-Prior (git log = SSOT): **D-452 cold-start AOT** (Part A = ADR-0034 am5
-`type_descriptor` wire tag 0x10, serialized-by-name + import-blind `resolveDescriptorByKey`,
-DA-fork Alt B; Part B = `buildBootstrapEnvelope` AOT-caches the whole bootstrap, cold start
-8.0→6.1 ms, **string_ops CLOSED**) + **O-047** (no-clone BigInt arith result via
-`wrapArithCell` move/collapse — **bigint_factorial CLOSED**, cljw 20.2 ms fastest-script).
-Earlier cycle 1 = O-037…O-046 (ratio_sum + nested_update CLOSED). All diff-oracle + corpus
-3181 + smoke green. **6 hypotheses refuted by measurement** (ADR-0148): GC-arch
-bump-allocator, closure-call cost, call-site-cache, fusion-always-wins, bignum-compute-bound
-(was the result CLONE — O-047), cold-start-Debug-ghost (was 6 ms not 0.48 s). D-453 (Alt C
-op_load_class) deferred. SAFETY: `clj` → `clojure -J-Xmx2g`; measure ReleaseSafe only.
-
-**Campaign state:** 4 of 9 fastest-script CLOSED (string_ops/bigint_factorial/ratio_sum/
-nested_update). This session added O-048/O-049 → destructure 1.05× / gc_large_heap 1.08×.
-Remaining open: gc_alloc_rate 1.15× / sieve 1.23× / destructure 1.05× / gc_large_heap 1.08× /
-json_parse 1.14× — all dispatch/alloc-bound; the live lever is D-386 (see Resume contract).
+**Perf campaign** (ROADMAP §9.2.S, separate from the sweep): fastest-script bar met on
+19/30; remaining open targets + the D-386 dispatch lever live in git log + ADR-0148 +
+`private/notes/9.2.S-flat-frame-survey.md`. SAFETY: `clj` → `clojure -J-Xmx2g`; measure
+ReleaseSafe only.
 
 ## Cold-start reading order (resume)
 
