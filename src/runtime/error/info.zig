@@ -58,6 +58,14 @@ pub const Kind = enum {
     /// RuntimeException via IllegalStateException), distinct from the worker's
     /// uncatchable cancel-abort signal and the stale `future_thunk_failed` trap.
     cancellation_error,
+    /// An operation called in the wrong STATE — clj's `IllegalStateException`
+    /// (e.g. `(re-groups m)`/`(.group m)` before a match → "No match found"; a
+    /// transaction op outside `dosync`). Distinct from `value_error`
+    /// (IllegalArgumentException = a bad ARGUMENT): a state error means the
+    /// arguments are fine but the call is mistimed. Catchable as IllegalStateException
+    /// (clj-parity for `(catch IllegalStateException …)`); the rendered Kind label is
+    /// cljw's `[state_error]`, not the JVM class (AD-007).
+    state_error,
     // I/O (future phases)
     io_error,
     /// A missing file/directory specifically — the leaf
@@ -177,6 +185,7 @@ pub const ClojureWasmError = error{
     ArithmeticError,
     IndexError,
     CancellationError,
+    StateError,
     IoError,
     FileNotFound,
     InternalError,
@@ -198,6 +207,7 @@ fn kindToError(kind: Kind) ClojureWasmError {
         .arithmetic_error => ClojureWasmError.ArithmeticError,
         .index_error => ClojureWasmError.IndexError,
         .cancellation_error => ClojureWasmError.CancellationError,
+        .state_error => ClojureWasmError.StateError,
         .io_error => ClojureWasmError.IoError,
         .file_not_found => ClojureWasmError.FileNotFound,
         .internal_error => ClojureWasmError.InternalError,

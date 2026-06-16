@@ -522,7 +522,7 @@ test "assoc! after persistent! raises transient_used_after_persistent" {
     _ = try toPersistent(&fix.rt, tm, loc);
     error_mod.clearLastError();
     try testing.expectError(
-        error_mod.ClojureWasmError.ValueError,
+        error_mod.ClojureWasmError.StateError,
         assoc(&fix.rt, tm, Value.initInteger(1), Value.initInteger(1), loc),
     );
 }

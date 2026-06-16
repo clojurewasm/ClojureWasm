@@ -856,7 +856,9 @@ pub fn entry(comptime code: Code) Entry {
             .template = "future cancelled at a blocking point",
         },
         .stm_no_transaction => .{
-            .kind = .value_error,
+            // clj: IllegalStateException "No transaction running" — a STATE error
+            // (a ref op outside dosync), catchable as IllegalStateException.
+            .kind = .state_error,
             .phase = .eval,
             .template = "{[name]s} must be called inside a (dosync ...) transaction",
         },
@@ -1418,7 +1420,9 @@ pub fn entry(comptime code: Code) Entry {
             .template = "'{[sym]s}' is declared but not yet supported in ClojureWasm",
         },
         .transient_used_after_persistent => .{
-            .kind = .value_error,
+            // clj: IllegalStateException "Transient used after persistent! call" —
+            // a STATE error (the transient is spent), catchable as IllegalStateException.
+            .kind = .state_error,
             .phase = .eval,
             .template = "{[fn_name]s}: Transient used after persistent! call",
         },
@@ -1496,7 +1500,9 @@ pub fn entry(comptime code: Code) Entry {
             .template = "re-pattern: the regular expression is too large to compile",
         },
         .matcher_not_matched => .{
-            .kind = .value_error,
+            // clj: IllegalStateException "No match found" — a STATE error (the
+            // matcher has no current match), catchable as IllegalStateException.
+            .kind = .state_error,
             .phase = .eval,
             .template = "No match found",
         },

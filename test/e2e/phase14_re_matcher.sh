@@ -49,4 +49,14 @@ fi
 echo "$err" | grep -q "No match found" || fail "group_without_match: message missing 'No match found': $err"
 echo "PASS group_without_match"
 
+# D-457(3b): a matcher-state error is catchable as IllegalStateException (clj-parity:
+# clj throws IllegalStateException, not IllegalArgumentException). re-groups → .group.
+got=$("$BIN" -e '(try (re-groups (re-matcher #"(\d)" "x")) (catch IllegalStateException e :ise) (catch Throwable e :other))' 2>/dev/null | tail -1)
+[[ "$got" == ":ise" ]] || fail "group_catch_illegal_state: got '$got' want ':ise'"
+echo "PASS group_catch_illegal_state"
+# NOT an IllegalArgumentException (sibling) — that catch must NOT match.
+got=$("$BIN" -e '(try (.group (re-matcher #"b" "a")) (catch IllegalArgumentException e :iae) (catch Throwable e :other))' 2>/dev/null | tail -1)
+[[ "$got" == ":other" ]] || fail "group_not_illegal_arg: got '$got' want ':other'"
+echo "PASS group_not_illegal_arg"
+
 echo "OK phase14_re_matcher"

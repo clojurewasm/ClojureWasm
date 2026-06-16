@@ -255,7 +255,7 @@ test "conj! after persistent! raises transient_used_after_persistent" {
     _ = try toPersistent(&fix.rt, ts, loc);
     error_mod.clearLastError();
     try testing.expectError(
-        error_mod.ClojureWasmError.ValueError,
+        error_mod.ClojureWasmError.StateError,
         conj(&fix.rt, ts, Value.initInteger(1), loc),
     );
 }
