@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# test/e2e/phase14_cl_format.sh — clojure.pprint/cl-format common subset (D-403).
-# A bounded, useful directive set: ~A (aesthetic) / ~S (standard, pr-readable) /
-# ~D (decimal) / ~% (newline) / ~~ (literal tilde). `(cl-format nil fmt & args)`
-# returns the string; unsupported directives raise explicitly (no silent
-# mishandling). The full cl-format DSL (~F float, ~{~} iteration, …) stays
-# deferred. Layer 2.
+# test/e2e/phase14_cl_format.sh — clojure.pprint/cl-format (D-403 + D-455).
+# Directive set: ~A (aesthetic) / ~S (standard) / ~D (decimal, +mincol,'pad +:grouped)
+# / ~F (fixed float ~w,df) / ~X ~O (radix) / ~B (binary) / ~% (newline) / ~~ (tilde).
+# Number directives parse the `~mincol,'padchar` parameter grammar + delegate to
+# `format`. `(cl-format nil fmt & args)` returns the string; still-deferred directives
+# (~{~} iteration, ~R cardinal, ~:( case) raise explicitly. Layer 2.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 BIN="zig-out/bin/cljw"
@@ -24,7 +24,17 @@ assert_eq 'decimal'    "$(run '(prn (pp/cl-format nil "~d items" 42))')"        
 assert_eq 'newline'    "$(run '(prn (pp/cl-format nil "a~%b"))')"                '"a\nb"'
 assert_eq 'tilde'      "$(run '(prn (pp/cl-format nil "100~~"))')"               '"100~"'
 assert_eq 'aesthetic-string' "$(run '(prn (pp/cl-format nil "[~a]" "x"))')"      '"[x]"'
-# unsupported directive raises explicitly (not silent mishandle)
-assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~f" 1.5) (catch Throwable e :raised)))')" ':raised'
+# D-455 number directives (clj-verified): float / radix / grouping / padding
+assert_eq 'fixed-float'  "$(run '(prn (pp/cl-format nil "~,2f" 3.14159))')"      '"3.14"'
+assert_eq 'fixed-float-w' "$(run '(prn (pp/cl-format nil "~,3f" 1.5))')"         '"1.500"'
+assert_eq 'hex'          "$(run '(prn (pp/cl-format nil "~x" 255))')"            '"ff"'
+assert_eq 'octal'        "$(run '(prn (pp/cl-format nil "~o" 64))')"            '"100"'
+assert_eq 'binary'       "$(run '(prn (pp/cl-format nil "~b" 10))')"            '"1010"'
+assert_eq 'grouped'      "$(run '(prn (pp/cl-format nil "~:d" 1000000))')"       '"1,000,000"'
+assert_eq 'zero-padded'  "$(run '(prn (pp/cl-format nil "~5,'"'"'0d" 42))')"     '"00042"'
+assert_eq 'star-padded'  "$(run '(prn (pp/cl-format nil "~8,'"'"'*d" 42))')"     '"******42"'
+assert_eq 'hex-width'    "$(run '(prn (pp/cl-format nil "~6x" 255))')"           '"    ff"'
+# still-deferred directive raises explicitly (not silent mishandle)
+assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~r" 42) (catch Throwable e :raised)))')" ':raised'
 
-echo "OK — phase14_cl_format (7 cases) green"
+echo "OK — phase14_cl_format (16 cases) green"
