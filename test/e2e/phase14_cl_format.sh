@@ -40,7 +40,12 @@ assert_eq 'iter-join'    "$(run '(prn (pp/cl-format nil "~{~a~^, ~}" [1 2 3]))')
 assert_eq 'iter-around'  "$(run '(prn (pp/cl-format nil "[~{~a~^ | ~}]" [:a :b :c]))')" '"[:a | :b | :c]"'
 assert_eq 'iter-empty'   "$(run '(prn (pp/cl-format nil "~{~a~^, ~}" []))')"      '""'
 assert_eq 'iter-pairs'   "$(run '(prn (pp/cl-format nil "~{~a=~a ~}" [:x 1 :y 2]))')" '":x=1 :y=2 "'
+# D-455 case directives (clj-verified): ~( lower / ~:( cap-each-word / ~@( cap-first / ~:@( upper
+assert_eq 'case-lower'   "$(run '(prn (pp/cl-format nil "~(~a~)" "Hello WORLD"))')" '"hello world"'
+assert_eq 'case-words'   "$(run '(prn (pp/cl-format nil "~:(~a~)" "hello world"))')" '"Hello World"'
+assert_eq 'case-first'   "$(run '(prn (pp/cl-format nil "~@(~a~)" "hello WORLD"))')" '"Hello world"'
+assert_eq 'case-upper'   "$(run '(prn (pp/cl-format nil "~:@(~a~)" "hello world"))')" '"HELLO WORLD"'
 # still-deferred directive raises explicitly (not silent mishandle)
 assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~r" 42) (catch Throwable e :raised)))')" ':raised'
 
-echo "OK — phase14_cl_format (20 cases) green"
+echo "OK — phase14_cl_format (24 cases) green"

@@ -63,11 +63,12 @@
 
 ;; `(cl-format stream fmt & args)` — Common-Lisp-format subset (D-403 + D-455).
 ;; ~A aesthetic, ~S standard (pr-readable), ~D decimal, ~F fixed float, ~X/~O radix,
-;; ~B binary, ~{~^~} list iteration, ~% newline, ~~ literal ~. Number directives
-;; parse the `~mincol,'padchar` parameter grammar (+ `:` grouped) and delegate to
+;; ~B binary, ~{~^~} list iteration, ~(~) case-region (~( lower / ~:( cap-words /
+;; ~@( cap-first / ~:@( upper), ~% newline, ~~ literal ~. Number directives parse
+;; the `~mincol,'padchar` parameter grammar (+ `:` grouped) and delegate to
 ;; `format`. A nil stream returns the string; any other stream prints to *out* +
-;; returns nil. Still-deferred directives (~R cardinal, ~:( case) raise (no silent
-;; mishandle). cl-* helpers are clojure.pprint internals.
+;; returns nil. The only still-deferred directive is ~R (cardinal English words),
+;; which raises (no silent mishandle). cl-* helpers are clojure.pprint internals.
 (defn cl-digit? [c] (let [i (int c)] (and (>= i (int \0)) (<= i (int \9)))))
 (defn cl-int [c] (- (int c) (int \0)))
 
@@ -90,11 +91,33 @@
   (let [len (count s) w (or width 0)]
     (if (< len w) (str (apply str (repeat (- w len) padchar)) s) s)))
 
-;; Find the sub-format between `~{` (at index `i`) and its matching `~}`.
-;; Returns [subfmt next-i]. (Non-nested — the common list-iteration case.)
-(defn cl-close [fmt i]
+;; Find the sub-format between an opener (at index `i`) and its matching `~<close>`
+;; (`~}` for iteration, `~)` for case). Returns [subfmt next-i]. (Non-nested.)
+(defn cl-close [fmt i close]
   (loop [j i]
-    (if (and (= (nth fmt j) \~) (= (nth fmt (inc j)) \})) [(subs fmt i j) (+ j 2)] (recur (inc j)))))
+    (if (and (= (nth fmt j) \~) (= (nth fmt (inc j)) close)) [(subs fmt i j) (+ j 2)] (recur (inc j)))))
+
+;; Capitalize the first letter of each space-separated word, lowercasing the rest
+;; (the `~:(` transform). Manual char walk — a regex literal cannot live in a
+;; bundled `.clj` (cycle-1 reader limitation).
+(defn cl-cap-words [s]
+  (loop [cs (seq s) prev-space? true acc ""]
+    (if (nil? cs)
+      acc
+      (let [c (first cs) sp? (= c \space)]
+        (recur (next cs) sp?
+               (str acc (if (and prev-space? (not sp?))
+                          (clojure.string/upper-case (str c))
+                          (clojure.string/lower-case (str c)))))))))
+
+;; `~(`-region case transform per the `:`/`@` flags: ~( lower / ~:( cap-each-word
+;; / ~@( cap-first / ~:@( upper.
+(defn cl-case [s colon? at?]
+  (cond
+    (and colon? at?) (clojure.string/upper-case s)
+    colon? (cl-cap-words s)
+    at? (clojure.string/capitalize s)
+    :else (clojure.string/lower-case s)))
 
 (declare cl-iter)
 
@@ -109,7 +132,7 @@
         (let [c (nth fmt i)]
           (if (and (= c \~) (< (inc i) n))
             (let [pd (cl-dir fmt (inc i))
-                  params (nth pd 0) colon? (nth pd 1) d (nth pd 3) ni (nth pd 4)
+                  params (nth pd 0) colon? (nth pd 1) at? (nth pd 2) d (nth pd 3) ni (nth pd 4)
                   p0 (first params) p1 (second params) x (first as)]
               (cond
                 (or (= d \a) (= d \A)) (recur ni (next as) (str acc (if (string? x) x (pr-str x))))
@@ -121,7 +144,10 @@
                 (or (= d \x) (= d \X)) (recur ni (next as) (str acc (cl-pad (format "%x" x) p0 (or p1 \space))))
                 (or (= d \o) (= d \O)) (recur ni (next as) (str acc (cl-pad (format "%o" x) p0 (or p1 \space))))
                 (or (= d \b) (= d \B)) (recur ni (next as) (str acc (cl-pad (Long/toBinaryString x) p0 (or p1 \space))))
-                (= d \{) (let [cl (cl-close fmt ni)] (recur (nth cl 1) (next as) (str acc (cl-iter (nth cl 0) x))))
+                (= d \{) (let [cl (cl-close fmt ni \})] (recur (nth cl 1) (next as) (str acc (cl-iter (nth cl 0) x))))
+                (= d \()
+                (let [cl (cl-close fmt ni \)) r (cl-run (nth cl 0) as)]
+                  (recur (nth cl 1) (nth r 1) (str acc (cl-case (nth r 0) colon? at?))))
                 (= d \^) (if (nil? (seq as)) [acc as] (recur ni as acc))
                 (= d \%) (recur ni as (str acc \newline))
                 (= d \~) (recur ni as (str acc \~))
