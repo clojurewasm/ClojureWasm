@@ -21,8 +21,12 @@ assert_eq 'identity'  "$("$BIN" -e '(= *ns* (the-ns (quote user)))' 2>&1 | tail 
 # find-ns / create-ns / the-ns
 assert_eq 'find-miss' "$("$BIN" -e '(find-ns (quote nope))' 2>&1 | tail -1)" 'nil'
 assert_eq 'create'    "$("$BIN" -e '(ns-name (create-ns (quote my.app)))' 2>&1 | tail -1)" 'my.app'
-# in-ns switches *ns* (the .ns Value tracks current_ns via setCurrentNs)
-assert_eq 'in-ns'     "$("$BIN" -e '(do (in-ns (quote foo.bar)) *ns*)' 2>&1 | tail -1)" '#object[Namespace "foo.bar"]'
+# in-ns switches *ns* (the .ns Value tracks current_ns via setCurrentNs).
+# Must use FULLY-QUALIFIED clojure.core/*ns*: in-ns creates a BARE ns with no
+# clojure.core refer, so bare `*ns*` is unresolvable there — clj throws too
+# (verified), and cljw matches since D-374 unrolled top-level `do` (each child
+# analyzed in the post-in-ns ns). The fully-qualified var resolves regardless.
+assert_eq 'in-ns'     "$("$BIN" -e '(do (in-ns (quote foo.bar)) clojure.core/*ns*)' 2>&1 | tail -1)" '#object[Namespace "foo.bar"]'
 # ns-resolve -> var-value
 assert_eq 'resolve'   "$("$BIN" -e '(ns-resolve (quote clojure.core) (quote map))' 2>&1 | tail -1)" "#'clojure.core/map"
 # ns-interns sees a fresh def (user-ns exactness)
