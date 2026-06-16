@@ -30,11 +30,19 @@ Implement cooperative cancellation reusing the existing worker substrate (the
    (`.realised_*`/`.cancelled`) return **false**. (`.pending` covers "running"
    since cljw stays `.pending` until the worker stores — so a running future
    correctly returns true, matching clj.)
-2. **Cooperative check at the worker's EXISTING GC safepoint + blocking
-   primitives** (`Thread/sleep`, a nested future `deref`, promise wait) — NOT at
-   every VM eval back-edge. This matches the JVM's best-effort semantics: a
-   blocking thunk aborts; a tight CPU loop runs on (as on the JVM). A check at
-   every back-edge would OVER-diverge (stop a loop the JVM lets run).
+2. **Cooperative check at BLOCKING PRIMITIVES ONLY** (`Thread/sleep`, a nested
+   future `deref`, promise wait) — **NOT** the per-op GC safepoint (vm.zig:277).
+   *(Amended 2026-06-16, pre-implementation: the original draft said "at the GC
+   safepoint + blocking primitives, not every back-edge" — but the GC safepoint
+   IS the per-op back-edge poll, so checking the cancel flag there WOULD be every
+   back-edge and would over-interrupt a tight CPU loop. To match the JVM's
+   best-effort semantics — a blocking thunk aborts; a tight CPU loop runs on, as
+   on the JVM where interrupt only fires at blocking points — the check lives at
+   the blocking primitives, leaving the per-op eval loop untouched. This also
+   keeps the change OFF the load-bearing eval loop.)* A worker in a tight CPU loop
+   is marked `.cancelled` (future-cancel returns true, future-cancelled? true) but
+   runs to completion — exactly as a JVM `cancel(true)` on a non-interruptible loop
+   (interrupt flag set, loop runs on).
 3. The cooperative check raises a **distinct cancellation signal** up the
    worker's eval stack; the worker's existing catch (future.zig:131-141) marshals
    it via `worker_error.capture`. deref re-raises it through the existing
@@ -99,9 +107,10 @@ project constraint (F-002). Alt 1 is the fallback only on a real F-NNN block
 ## Affected files (implementation plan)
 
 - `src/runtime/future.zig` — `cancel_requested` flag + `.cancelled` state +
-  guarded worker store + the safepoint cooperative check + cancel fn.
-- `src/runtime/concurrency/safepoint.zig` + blocking primitives — read the flag,
-  raise the cancellation signal.
+  guarded worker store (`if state == .pending`) + `cancel` fn.
+- the BLOCKING primitives (`Thread/sleep`'s sleep loop; nested-future `deref` /
+  promise wait cond loops) — read the worker's `cancel_requested` + raise the
+  cancellation signal. (NOT the per-op GC safepoint — see Decision point 2 amend.)
 - `src/lang/primitive/stm.zig` — `future-cancel`/`future-cancelled?` primitives +
   deref's cancellation re-raise.
 - `src/runtime/error/host_class.zig` + `error/catalog.zig` — `CancellationException`
