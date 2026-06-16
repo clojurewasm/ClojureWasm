@@ -33,8 +33,8 @@ accepted:
     derives_from: "Clojure unordered-collection semantics (value equality is order-independent); ADR-0045 (HAMT representation)"
     pin: "test/diff/clj_corpus/print_repr.txt (cljw-side order asserted)"
   - id: "AD-002"
-    summary: "Opaque reference values (atom / volatile / fn / etc.) print as `#<tag>` not clj's `#object[Class 0xADDR {...}]`"
-    example: '(pr-str (atom 1)) => cljw "#<atom>" / clj "#object[clojure.lang.Atom 0x.. {:status :ready, :val 1}]"'
+    summary: "Opaque reference values (atom / volatile / fn / transient collections / etc.) print as `#<tag>` not clj's `#object[Class 0xADDR {...}]`"
+    example: '(pr-str (atom 1)) => cljw "#<atom>" / clj "#object[clojure.lang.Atom 0x.. {:status :ready, :val 1}]". Verified 2026-06-16 (code reality): (pr-str (transient [1 2])) => cljw "#<transient_vector>" / clj "#object[clojure.lang.PersistentVector$TransientVector 0x.. \"..@..\"]"; (transient {..}) => "#<transient_map>"; (transient #{..}) => "#<transient_set>" — same opaque #<tag> mechanism as atom/fn.'
     why: |-
       clj embeds a non-reproducible identity hash (0xADDR) and a JVM class
       FQCN; neither is reproducible nor meaningful in cljw (no JVM class,
