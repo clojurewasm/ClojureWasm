@@ -1,6 +1,7 @@
 # ADR-0153 — `future-cancel` via cooperative cancellation at the worker safepoint
 
-- **Status**: Proposed → Accepted (2026-06-16)
+- **Status**: Proposed → Accepted (2026-06-16); sub-steps 1 + 2 landed
+  (2026-06-16) — see Revision history. Deref-wait abort residual tracked in D-442.
 - **Context drivers**: D-442 (gap area I — Concurrency, F-015) — `future-cancel` /
   `future-cancelled?` are NOT-YET-IMPLEMENTED.
 
@@ -103,6 +104,32 @@ project constraint (F-002). Alt 1 is the fallback only on a real F-NNN block
   deterministic cancel window (spawn slow future → future-cancel → assert
   future-cancelled? + deref throws + the thread/pin released). No tight-race
   (no-sleep) test in the gate.
+
+## Revision history
+
+- **2026-06-16 — sub-step 2 landed (Thread/sleep + precise class).**
+  - **2b (class)**: a new catchable `Kind .cancellation_error` maps to
+    `java.util.concurrent.CancellationException` (a RuntimeException via
+    IllegalStateException; `host_class.zig` ENTRIES + FQCN map). `.future_cancelled`
+    remapped off `.value_error` → `.cancellation_error`, so `(deref <cancelled>)`
+    now throws the precise CancellationException, catchable by its name + supertypes
+    and NOT by a sibling IllegalArgumentException.
+  - **2a (cooperative abort, `Thread/sleep`)**: a threadlocal `future.current_future`
+    (set by the worker) lets `Thread/sleep` poll `future.cancelRequested` in 20 ms
+    slices and raise the UNCATCHABLE `future_cancel_abort` (new `Kind
+    .cancellation_abort` → null in `kindToHostClass`), which unwinds the thunk past
+    its own `(catch Throwable …)` so a cancelled sleeping worker releases its thread
+    + GC pin promptly. Off a worker (`current_future == null`) sleep is unchanged
+    (one syscall). Deterministic e2e: cancel a `(Thread/sleep 500)` future, wait
+    900 ms — `@a` stays `:init` (neither `:slept` nor `:caught`).
+  - **Residual (tracked in D-442, NOT an AD)**: the cooperative abort covers
+    `Thread/sleep` only. A worker blocked on a *nested* `(deref future/promise)` is
+    NOT yet aborted promptly (needs a `future/promise.deref` `?Value`→`anyerror!?Value`
+    signature ripple + degrading the condWait park to a poll). Low value
+    (resource-release only; un-observable via state, currently inert with
+    auto-collect off) → deferred as a D-442 follow-on with a concrete barrier, not a
+    blanket Alt-1 AD (this is Alt 2 for the primary blocking primitive, not a
+    wholesale mark-only fallback).
 
 ## Affected files (implementation plan)
 
