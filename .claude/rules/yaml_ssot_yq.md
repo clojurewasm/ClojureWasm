@@ -110,9 +110,22 @@ Golden rule below). This is the single most common yq footgun in this repo.
 
 ## debt.yaml cookbook (the recurring queries)
 
-Structure: two top-level lists `active:` / `discharged:`. Active entries:
-`id` / `status` / `category` / `barrier` (+ optional `quality_floor` /
-`last_reviewed`). Discharged: `id` / `discharged_at` / `resolution`.
+Structure: **three** top-level lists `active:` / `standing:` / `discharged:`
+(NOT two — `standing:` holds epics/campaigns the loop does not auto-drain).
+Active + standing entries: `id` / `status` / `category` / `barrier` (+ optional
+`quality_floor` / `last_reviewed`). **Discharged is MIXED-schema** (verified
+2026-06-17): ~199 rows reuse the active shape (`status` starting `DISCHARGED …`
++ `category`/`barrier`/`last_reviewed`), ~155 use the lighter `discharged_at` /
+`resolution`. So a moved-from-active row keeps its `status` block (no reformat
+needed); only hand-author `discharged_at`/`resolution` when writing a fresh
+discharge. Query both shapes with `(.status // .resolution)`.
+
+> **Precedence footgun (cost a re-derivation 2026-06-17).** `|` binds TIGHTER
+> than `,`, so `.active[],.standing[] | select(…)` means `.active[]` (RAW) AND
+> `(.standing[] | select(…))` — the select silently applies to only the LAST
+> stream and every active row dumps unfiltered (looks like "select matched
+> everything"). **Always parenthesize the union**: `(.active[],.standing[]) |
+> select(…)`. Same for any `(.a[],.b[],.c[]) | …` across the three sections.
 
 ```sh
 # counts
@@ -124,6 +137,12 @@ yq -r '.active[].id' .dev/debt.yaml
 
 # one entry's field (escaping-free var)
 DROW="D-203" yq -r '.active[] | select(.id == strenv(DROW)) | .barrier' .dev/debt.yaml
+
+# find a row by id ACROSS all 3 sections (note the PARENS — see precedence footgun)
+DROW="D-386" yq -r '(.active[],.standing[],.discharged[]) | select(.id == strenv(DROW)) | .id + " | " + (.status // .resolution)' .dev/debt.yaml
+
+# active rows whose status is actually DISCHARGED (misfiled — belong in discharged:)
+yq -r '.active[] | select(.status | test("^DISCHARGED|^Discharged")) | .id' .dev/debt.yaml
 
 # filter by category / status substring
 yq -r '.active[] | select(.category == "polymorphism") | .id' .dev/debt.yaml

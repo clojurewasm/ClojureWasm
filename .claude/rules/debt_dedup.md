@@ -11,8 +11,12 @@ paths:
 > deferred future bucket — the loop does NOT auto-drain these), and
 > `discharged:` (resolved/history). Each entry a mapping
 > (`id` / `status` / `category` / `barrier` / optional `quality_floor` /
-> `last_reviewed`; discharged entries carry `discharged_at` / `resolution`).
-> Recipes (next-id/dup/phantom) span all 3 sections.
+> `last_reviewed`; discharged is MIXED-schema — ~199 reuse the `status:
+> DISCHARGED …` active shape, ~155 use the lighter `discharged_at` /
+> `resolution`, so a row moved from active keeps its `status` block as-is).
+> Recipes (next-id/dup/phantom) span all 3 sections — parenthesize any
+> `(.active[],.standing[],.discharged[]) | select(…)` union (the `|`-binds-
+> tighter-than-`,` footgun; see [`yaml_ssot_yq.md`](yaml_ssot_yq.md)).
 > Edit it as YAML — there is no Markdown table to align any more.
 >
 > **Querying it from a shell** (counts, filters, is-discharged, next-id, the
