@@ -50,5 +50,11 @@ case "$diag" in
     *"Invalid token"*) fail "anon_nested: still 'Invalid token' — #( not recognised ($diag)" ;;
 esac
 
+# AD-039 pin: the #() expansion uses DETERMINISTIC params (%1/%2/%&), where clj
+# uses non-reproducible gensyms (p1__N#). Behaviour matches; only the printed
+# param names differ.
+assert_eq 'anon_readform_pct1' "$("$BIN" -e '(read-string "#(+ % 1)")')"     '(fn* [%1] (+ %1 1))'
+assert_eq 'anon_readform_rest' "$("$BIN" -e '(read-string "#(apply + % %&)")')" '(fn* [%1 & %&] (apply + %1 %&))'
+
 echo
 echo "Phase 14 D-146 #() anonymous-fn reader macro e2e: all green."

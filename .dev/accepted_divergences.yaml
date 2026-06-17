@@ -630,3 +630,20 @@ accepted:
       only place a user observes it.
     derives_from: "AD-011 / ADR-0033 (rt-vs-clojure.core primitive placement: core fns live in `rt`, referred into clojure.core) + reader-hygiene parity (the qualification itself matches clj; only the ns name differs). `rt` is the only core ns resolvable without core.clj (the diff-test fixture)."
     pin: "test/e2e/phase14_var_special.sh — `deref_reader_qualified` locks (read-string \"@deref\") => (rt/deref deref) and `deref_no_local_capture` locks the hygiene ((let [deref f] @(atom 5)) => 5, NOT the captured local)"
+  - id: "AD-039"
+    summary: "The `#(…)` anonymous-fn reader expands with DETERMINISTIC params `%1`/`%2`/`%&`; clj uses non-reproducible gensyms (`p1__N#` / `rest__N#`)."
+    example: '(read-string "#(+ % 1)") => cljw "(fn* [%1] (+ %1 1))" / clj "(fn* [p1__3#] (+ p1__3# 1))" ; (read-string "#(apply + % %&)") => cljw "(fn* [%1 & %&] (apply + %1 %&))" / clj "(fn* [p1__10# & rest__11#] …)". The CALL behaviour matches: (#(+ % 1) 10) => 11 both.'
+    why: |-
+      clj gensyms the `#()` params (`p1__N#`, counter-suffixed) so a literal `%`
+      in the body cannot collide with an outer binding; the `N` is a process-wide
+      counter, so the printed form is non-reproducible (like AD-002's identity
+      hash). cljw canonicalises `%`→`%1`, `%N` positional, `%&` rest — a fixed,
+      deterministic naming with no counter. Functionally identical (arity + body
+      reference the same params); the only observable difference is the printed
+      param NAMES, and only via `(read-string "#(…)")` + printing the expansion
+      (a macro-author edge). cljw's deterministic form is the right choice: a
+      counter would be non-reproducible for no behavioural gain, and `%N` reads
+      naturally as "the Nth arg". Nested `#()` is a read error in BOTH (so `%`
+      can't span levels — the only real capture hazard the gensym guards).
+    derives_from: "AD-002 (non-reproducible JVM-side token — here a gensym counter — is not mirrored; cljw uses a deterministic name). The fixed `%N`/`%&` naming is sound because nested `#()` is rejected (no `%`-across-levels capture to guard)."
+    pin: "test/e2e/phase14_anon_fn_reader.sh — `anon_readform_pct1` locks (read-string \"#(+ % 1)\") => (fn* [%1] (+ %1 1)) and `anon_readform_rest` locks the `%&` rest form (cljw's deterministic params vs clj's gensyms)"
