@@ -68,10 +68,12 @@
 ;; / ~:@( upper), ~% newline, ~C char, ~& fresh-line (~N& adds N-1 more), ~P plural
 ;; (~:P back-up / ~@P y-ies), ~* arg-jump (~N* / ~N:* / ~N@*), ~T tabulate, ~$ monetary,
 ;; ~E/~G exponential/general float (CLtL Steele; full ~w,d,e,k,oc,pc,exp param surface),
-;; ~~ literal ~. The `~param,'padchar` grammar also parses negative params (~9,3,2,-2E)
-;; and char params. A nil stream returns the string; any other stream prints to *out*
-;; + returns nil. Still raising (no silent mishandle): ~[~]/~<~> (conditional/justify,
-;; D-455 chunk4) and the `V`/`#` runtime-valued params (a cl-dir gap, D-458).
+;; ~[~;~] conditional (~:[bool / ~@[if-non-nil / ~:; default; nests), ~<~;~> justification
+;; (~mincol,colinc,minpad,padchar< + : before / @ after / ~^ drop), ~~ literal ~. The
+;; `~param,'padchar` grammar also parses negative params (~9,3,2,-2E) and char params.
+;; A nil stream returns the string; any other stream prints to *out* + returns nil. Still
+;; raising (no silent mishandle): the `V`/`#` runtime-valued params (a cl-dir gap, D-458)
+;; and the ~<…~:;…~> pretty-print column mode (needs a column-tracking writer cljw lacks).
 (defn cl-digit? [c] (let [i (int c)] (and (>= i (int \0)) (<= i (int \9)))))
 (defn cl-int [c] (- (int c) (int \0)))
 
@@ -138,6 +140,39 @@
                      (if colon? (inc (count clauses)) didx))
               :else (recur ni start depth clauses didx)))
           (recur (inc j) start depth clauses didx))))))
+
+;; A ~< justification segment is dropped (with all following) when it leads with
+;; ~^ and no operands remain — CL's ~^ escape. (Only a LEADING ~^ is modelled;
+;; the upstream oracle uses exactly that.)
+(defn cl-seg-escapes? [seg pos na]
+  (and (>= pos na) (>= (count seg) 2) (= (nth seg 0) \~) (= (nth seg 1) \^)))
+
+;; Distribute padding to justify `segs` to `mincol` (grown by `colinc` until the
+;; text + `minpad`-per-gap fits). `:` adds a gap before the first segment, `@` a
+;; gap after the last; earlier gaps absorb the remainder. The ~mincol,colinc,
+;; minpad,padchar< column grammar.
+(defn cl-justify [segs mincol colinc minpad padc colon? at?]
+  (let [n (count segs)
+        textlen (apply + (map count segs))
+        gaps (+ (max 0 (dec n)) (if colon? 1 0) (if at? 1 0))]
+    (if (zero? gaps)
+      (apply str segs)
+      (let [ci (max 1 colinc)
+            base (+ textlen (* gaps minpad))
+            width (if (<= base mincol) mincol (+ mincol (* ci (quot (+ (- base mincol) (dec ci)) ci))))
+            pad (max 0 (- width textlen))
+            per (quot pad gaps) rem (mod pad gaps)
+            gwv (mapv (fn [i] (apply str (repeat (+ per (if (< i rem) 1 0)) padc))) (range gaps))
+            tokens (concat (if colon? [:g] []) [0]
+                           (apply concat (map (fn [i] [:g i]) (range 1 n)))
+                           (if at? [:g] []))]
+        (loop [ts tokens gi 0 acc ""]
+          (if (empty? ts)
+            acc
+            (let [tk (first ts)]
+              (if (= tk :g)
+                (recur (rest ts) (inc gi) (str acc (nth gwv gi)))
+                (recur (rest ts) gi (str acc (nth segs tk)))))))))))
 
 ;; Capitalize the first letter of each space-separated word, lowercasing the rest
 ;; (the `~:(` transform). Manual char walk — a regex literal cannot live in a
@@ -455,6 +490,28 @@
                               (let [r (cl-run (nth clauses chosen) argv (inc pos))]
                                 (recur after (nth r 1) (str acc (nth r 0))))
                               (recur after (inc pos) acc)))))
+                ;; ~<...~;...~> — justification. Render each ~;-segment, then spread
+                ;; padding to fill the column (~mincol,colinc,minpad,padchar< grammar;
+                ;; : pads before first, @ after last). ~^ in a segment drops it + the
+                ;; rest when args run out. The ~:; per-line pretty-print mode needs a
+                ;; column-tracking writer cljw lacks — raises (documented divergence).
+                (= d \<)
+                (let [clc (cl-close-nested fmt ni \< \>) body (nth clc 0) after (nth clc 1)
+                      cls (cl-clauses body \< \>) segfmts (nth cls 0) didx (nth cls 1)]
+                  (if didx
+                    (throw (ex-info "cl-format: ~<...~:;...~> pretty-print column mode is not supported in ClojureWasm" {}))
+                    (let [sp (loop [k 0 p pos rendered []]
+                               (if (>= k (count segfmts))
+                                 [rendered p]
+                                 (let [seg (nth segfmts k)]
+                                   (if (cl-seg-escapes? seg p na)
+                                     [rendered p]
+                                     (let [r (cl-run seg argv p)]
+                                       (recur (inc k) (nth r 1) (conj rendered (nth r 0))))))))]
+                      (recur after (nth sp 1)
+                             (str acc (cl-justify (nth sp 0) (or p0 0) (or p1 1)
+                                                  (or (nth params 2 nil) 0) (or (nth params 3 nil) \space)
+                                                  colon? at?))))))
                 (= d \^) (if (>= pos na) [acc pos] (recur ni pos acc))
                 (= d \%) (recur ni pos (str acc \newline))
                 ;; ~T — tabulate: pad with spaces to reach column p0 (default 1),

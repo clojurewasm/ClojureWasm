@@ -106,7 +106,18 @@ assert_eq 'cond_at_nil' "$(run '(prn (pp/cl-format nil "x~@[ (~D)~]" nil))')"   
 assert_eq 'cond_at_val' "$(run '(prn (pp/cl-format nil "x~@[ (~D)~]" 7))')"              '"x (7)"'
 assert_eq 'cond_nest'  "$(run '(prn (pp/cl-format nil "~[B ~D~:[~; ok~]~;R~]." 0 7 true))')" '"B 7 ok."'
 
-# still-unimplemented directive raises explicitly (not silent mishandle)
-assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~<x~>" 2) (catch Throwable e :raised)))')" ':raised'
+# ~< justification (D-455 chunk4b; clj-oracle angle-bracket-tests; ~mincol,colinc,minpad,padchar<)
+assert_eq 'just_none'  "$(run '(prn (pp/cl-format nil "~<foo~;bar~;baz~>"))')"           '"foobarbaz"'
+assert_eq 'just_w'     "$(run '(prn (pp/cl-format nil "~20<foo~;bar~;baz~>"))')"         '"foo      bar     baz"'
+assert_eq 'just_minpad' "$(run '(prn (pp/cl-format nil "~,,2<foo~;bar~;baz~>"))')"       '"foo  bar  baz"'
+assert_eq 'just_colon' "$(run '(prn (pp/cl-format nil "~20:<~A~;~A~;~A~>" "foo" "bar" "baz"))')" '"    foo    bar   baz"'
+assert_eq 'just_at'    "$(run '(prn (pp/cl-format nil "~20@<~A~;~A~;~A~>" "foo" "bar" "baz"))')" '"foo    bar    baz   "'
+assert_eq 'just_atcol' "$(run '(prn (pp/cl-format nil "~20@:<~A~;~A~;~A~>" "foo" "bar" "baz"))')" '"   foo   bar   baz  "'
+assert_eq 'just_colinc' "$(run '(prn (pp/cl-format nil "~10,10<~A~;~A~;~A~>" "foo" "bar" "baz"))')" '"foo barbaz"'
+assert_eq 'just_caret' "$(run '(prn (pp/cl-format nil "~20<~A~;~^~A~;~^~A~>" "foo" "bar"))')" '"foo              bar"'
 
-echo "OK — phase14_cl_format (73 cases) green"
+# still-unimplemented directive raises explicitly (not silent mishandle): the V/#
+# runtime-valued params (D-458) + the ~<…~:;…~> pretty-print column mode (no writer).
+assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~VD" 5 42) (catch Throwable e :raised)))')" ':raised'
+
+echo "OK — phase14_cl_format (82 cases) green"
