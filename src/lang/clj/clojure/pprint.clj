@@ -65,13 +65,13 @@
 ;; ~A aesthetic, ~S standard (pr-readable), ~D decimal, ~F fixed float, ~X/~O radix,
 ;; ~B binary, ~R numerals (~R cardinal / ~:R ordinal / ~@R Roman / ~NR radix),
 ;; ~{~^~} list iteration, ~(~) case-region (~( lower / ~:( cap-words / ~@( cap-first
-;; / ~:@( upper), ~% newline, ~C char, ~& fresh-line (~N& adds N-1 more), ~~ literal
-;; ~. Number directives parse the `~mincol,'padchar` parameter grammar (+ `:`
-;; grouped) and delegate to `format`. A nil stream returns the string; any other
-;; stream prints to *out* + returns nil. The remaining long-tail directives
-;; (~P plural, ~T column, ~* arg-jump, ~E/~G sci-float, and the ~:C/~:P/~:*
-;; arg-navigator/back-up variants) raise (no silent mishandle) — see D-455; these
-;; need the upstream arg-navigator + column-writer architecture (cl_format.clj).
+;; / ~:@( upper), ~% newline, ~C char, ~& fresh-line (~N& adds N-1 more), ~P plural
+;; (~:P back-up / ~@P y-ies), ~* arg-jump (~N* / ~N:* / ~N@*), ~T tabulate, ~$ monetary,
+;; ~E/~G exponential/general float (CLtL Steele; full ~w,d,e,k,oc,pc,exp param surface),
+;; ~~ literal ~. The `~param,'padchar` grammar also parses negative params (~9,3,2,-2E)
+;; and char params. A nil stream returns the string; any other stream prints to *out*
+;; + returns nil. Still raising (no silent mishandle): ~[~]/~<~> (conditional/justify,
+;; D-455 chunk4) and the `V`/`#` runtime-valued params (a cl-dir gap, D-458).
 (defn cl-digit? [c] (let [i (int c)] (and (>= i (int \0)) (<= i (int \9)))))
 (defn cl-int [c] (- (int c) (int \0)))
 
@@ -79,15 +79,17 @@
 ;; char just after `~`). Returns [params colon? at? directive-char next-i], where
 ;; params is a vector of (long | char | nil) — `~5,'0d` → [5 \0], `~,2f` → [nil 2].
 (defn cl-dir [fmt i]
-  (loop [j i params [] cur nil cur? false colon? false at? false]
-    (let [c (nth fmt j)]
+  (loop [j i params [] cur nil cur? false neg? false colon? false at? false]
+    (let [c (nth fmt j)
+          signed (fn [v] (if neg? (- v) v))]
       (cond
-        (cl-digit? c) (recur (inc j) params (+ (* (or cur 0) 10) (cl-int c)) true colon? at?)
-        (= c \') (recur (+ j 2) (conj params (nth fmt (inc j))) nil false colon? at?)
-        (= c \,) (recur (inc j) (conj params (if cur? cur nil)) nil false colon? at?)
-        (= c \:) (recur (inc j) params cur cur? true at?)
-        (= c \@) (recur (inc j) params cur cur? colon? true)
-        :else [(if cur? (conj params cur) params) colon? at? c (inc j)]))))
+        (and (= c \-) (not cur?) (not neg?)) (recur (inc j) params cur cur? true colon? at?)
+        (cl-digit? c) (recur (inc j) params (+ (* (or cur 0) 10) (cl-int c)) true neg? colon? at?)
+        (= c \') (recur (+ j 2) params (nth fmt (inc j)) true false colon? at?)
+        (= c \,) (recur (inc j) (conj params (if cur? (signed cur) nil)) nil false false colon? at?)
+        (= c \:) (recur (inc j) params cur cur? neg? true at?)
+        (= c \@) (recur (inc j) params cur cur? neg? colon? true)
+        :else [(if cur? (conj params (signed cur)) params) colon? at? c (inc j)]))))
 
 ;; Left-pad `s` to `width` with `padchar` (CL-format right-justification default).
 (defn cl-pad [s width padchar]
@@ -200,6 +202,162 @@
       (str sign (cl-pad body (when w (- w (count sign))) padc))
       (cl-pad (str sign body) w padc))))
 
+;; ── Float printing for ~E / ~G (CLtL Steele algorithm) ──────────────────────
+;; Re-derived (variant ②) as string-returning fns. The key trick: derive the
+;; shortest decimal digit string + exponent from the host's `(str f)` (which is
+;; already shortest-round-trip), then reformat — no Ratio/BigDecimal machinery.
+
+(defn cl-rtrim [s c]
+  (loop [n (count s)] (if (and (pos? n) (= (nth s (dec n)) c)) (recur (dec n)) (subs s 0 n))))
+(defn cl-ltrim [s c]
+  (loop [n 0] (if (and (< n (count s)) (= (nth s n) c)) (recur (inc n)) (subs s n))))
+
+;; Decompose (str f) into [digit-string exp]: value's first digit sits at 10^exp.
+(defn cl-float-parts-base [f]
+  (let [s (clojure.string/lower-case (str f))
+        eloc (clojure.string/index-of s "e")
+        dloc (clojure.string/index-of s ".")]
+    (if (nil? eloc)
+      (if (nil? dloc)
+        [s (str (dec (count s)))]
+        [(str (subs s 0 dloc) (subs s (inc dloc))) (str (dec dloc))])
+      (if (nil? dloc)
+        [(subs s 0 eloc) (subs s (inc eloc))]
+        [(str (subs s 0 1) (subs s 2 eloc)) (subs s (inc eloc))]))))
+
+(defn cl-float-parts [f]
+  (let [pb (cl-float-parts-base f) m (nth pb 0) e (nth pb 1)
+        m1 (cl-rtrim m \0) m2 (cl-ltrim m1 \0)
+        delta (- (count m1) (count m2))
+        e (if (and (pos? (count e)) (= (nth e 0) \+)) (subs e 1) e)]
+    (if (= (count m2) 0) ["0" 0] [m2 (- (parse-long e) delta)])))
+
+;; Increment a decimal digit-string by 1 (carries; may grow by a digit).
+(defn cl-inc-s [s]
+  (let [len-1 (dec (count s))]
+    (loop [i len-1]
+      (cond
+        (neg? i) (apply str "1" (repeat (inc len-1) "0"))
+        (= \9 (nth s i)) (recur (dec i))
+        :else (apply str (subs s 0 i) (char (inc (int (nth s i)))) (repeat (- len-1 i) "0"))))))
+
+;; Round digit-string `m` (first digit at 10^e) to `d` fraction digits / `w` width.
+;; Returns [rounded-digits exp expanded?] (expanded? = carry grew the exponent).
+(defn cl-round-str [m e d w]
+  (if (or d w)
+    (let [len (count m)
+          w (if w (max 2 w) nil)
+          round-pos (cond d (+ e d 1) (>= e 0) (max (inc e) (dec w)) :else (+ w e))
+          rp0 (= round-pos 0)
+          m1 (if rp0 (str "0" m) m)
+          e1 (if rp0 (inc e) e)
+          round-pos (if rp0 1 round-pos)
+          len (if rp0 (inc len) len)]
+      (if (neg? round-pos)
+        ["0" 0 false]
+        (if (> len round-pos)
+          (let [round-char (nth m1 round-pos) result (subs m1 0 round-pos)]
+            (if (>= (int round-char) (int \5))
+              (let [rur (cl-inc-s result) expanded (> (count rur) (count result))]
+                [(if expanded (subs rur 0 (dec (count rur))) rur) e1 expanded])
+              [result e1 false]))
+          [m e false])))
+    [m e false]))
+
+(defn cl-expand-fixed [m e d]
+  (let [m1 (if (neg? e) (str (apply str (repeat (dec (- e)) \0)) m) m)
+        e1 (if (neg? e) -1 e)
+        len (count m1)
+        target-len (if d (+ e1 d 1) (inc e1))]
+    (if (< len target-len) (str m1 (apply str (repeat (- target-len len) \0))) m1)))
+
+(defn cl-insert-decimal [m e]
+  (if (neg? e) (str "." m) (str (subs m 0 (inc e)) "." (subs m (inc e)))))
+(defn cl-get-fixed [m e d] (cl-insert-decimal (cl-expand-fixed m e d) e))
+(defn cl-insert-scaled-decimal [m k]
+  (if (neg? k) (str "." m) (str (subs m 0 k) "." (subs m k))))
+
+;; Fixed-format float (the ~F engine, also ~G's fixed branch). String form of v0's
+;; fixed-float. w width, d fraction digits, k scale, oc overflow char, pc pad char.
+(defn cl-ffixed [x w d k oc pc at?]
+  (let [neg? (neg? x)
+        sign (if neg? "-" "+")
+        fp (cl-float-parts (if neg? (- (double x)) (double x)))
+        mantissa (nth fp 0) exp (nth fp 1)
+        scaled-exp (+ exp k)
+        add-sign (or at? neg?)
+        append-zero (and (not d) (<= (dec (count mantissa)) scaled-exp))
+        rs (cl-round-str mantissa scaled-exp d (if w (- w (if add-sign 1 0)) nil))
+        rm (nth rs 0) se2 (nth rs 1) expanded (nth rs 2)
+        fr (cl-get-fixed rm (if expanded (inc se2) se2) d)
+        fr (if (and w d (>= d 1) (= (nth fr 0) \0) (= (nth fr 1) \.)
+                    (> (count fr) (- w (if add-sign 1 0))))
+             (subs fr 1) fr)
+        prepend-zero (= (first fr) \.)]
+    (if w
+      (let [len (count fr)
+            signed-len (if add-sign (inc len) len)
+            prepend-zero (and prepend-zero (not (>= signed-len w)))
+            append-zero (and append-zero (not (>= signed-len w)))
+            full-len (if (or prepend-zero append-zero) (inc signed-len) signed-len)]
+        (if (and (> full-len w) oc)
+          (apply str (repeat w oc))
+          (str (apply str (repeat (- w full-len) pc))
+               (if add-sign sign "") (if prepend-zero "0" "") fr (if append-zero "0" ""))))
+      (str (if add-sign sign "") (if prepend-zero "0" "") fr (if append-zero "0" "")))))
+
+;; Exponential-format float (~E). Params w,d,e(exp digits),k(scale),expchar,oc,pc.
+(defn cl-efloat [x w d e k expchar oc pc at?]
+  (let [negx? (neg? x)
+        fp (cl-float-parts (if negx? (- (double x)) (double x)))]
+    (loop [mantissa (nth fp 0) exp (nth fp 1)]
+      (let [add-sign (or at? negx?)
+            prepend-zero (<= k 0)
+            scaled-exp (- exp (dec k))
+            sea (if (neg? scaled-exp) (- scaled-exp) scaled-exp)
+            ses (str sea)
+            ses (str expchar (if (neg? scaled-exp) \- \+)
+                     (if e (apply str (repeat (- e (count ses)) \0)) "") ses)
+            exp-width (count ses)
+            base-mw (count mantissa)
+            sm (str (apply str (repeat (- k) \0)) mantissa
+                    (if d (apply str (repeat (- d (dec base-mw) (if (neg? k) (- k) 0)) \0)) ""))
+            wm (if w (- w exp-width) nil)
+            rs (cl-round-str sm 0 (cond (= k 0) (dec d) (pos? k) d :else (dec d))
+                             (if wm (- wm (if add-sign 1 0)) nil))
+            rm (nth rs 0) incr-exp (nth rs 2)
+            fm (cl-insert-scaled-decimal rm k)
+            append-zero (and (= k (count rm)) (nil? d))]
+        (if (not incr-exp)
+          (if w
+            (let [len (+ (count fm) exp-width)
+                  signed-len (if add-sign (inc len) len)
+                  prepend-zero (and prepend-zero (not (= signed-len w)))
+                  full-len (if prepend-zero (inc signed-len) signed-len)
+                  append-zero (and append-zero (< full-len w))]
+              (if (and (or (> full-len w) (and e (> (- exp-width 2) e))) oc)
+                (apply str (repeat w oc))
+                (str (apply str (repeat (- w full-len (if append-zero 1 0)) pc))
+                     (if add-sign (if negx? "-" "+") "") (if prepend-zero "0" "")
+                     fm (if append-zero "0" "") ses)))
+            (str (if add-sign (if negx? "-" "+") "") (if prepend-zero "0" "")
+                 fm (if append-zero "0" "") ses))
+          (recur rm (inc exp)))))))
+
+;; General float (~G): pick fixed or exponential by magnitude, per CLtL.
+(defn cl-gfloat [x w d e k expchar oc pc at?]
+  (let [neg? (neg? x)
+        fp (cl-float-parts (if neg? (- (double x)) (double x)))
+        mantissa (nth fp 0) exp (nth fp 1)
+        n (if (== (double x) 0.0) 0 (inc exp))
+        ee (if e (+ e 2) 4)
+        ww (if w (- w ee) nil)
+        dd (if d d (max (count mantissa) (min n 7)))
+        ddd (- dd n)]
+    (if (and (<= 0 ddd) (<= ddd dd))
+      (str (cl-ffixed x ww ddd 0 oc pc at?) (apply str (repeat ee \space)))
+      (cl-efloat x w d e k expchar oc pc at?))))
+
 ;; Run `fmt` over the operand vector `argv` from index `pos0`, returning
 ;; [acc next-pos]. The index navigator lets ~* jump and ~:P / ~:* back up. `~^`
 ;; (escape) returns early, which `~{~}` iteration uses to stop before the
@@ -264,10 +422,22 @@
                 (= d \&)
                 (let [fresh (if (or (= acc "") (= (last acc) \newline)) acc (str acc \newline))]
                   (recur ni pos (apply str fresh (repeat (if p0 (dec p0) 0) \newline))))
+                ;; ~E — exponential float (params ~w,d,e,k,overflowchar,padchar,exponentchar).
+                (or (= d \e) (= d \E))
+                (recur ni (inc pos)
+                       (str acc (cl-efloat x p0 p1 (nth params 2 nil) (or (nth params 3 nil) 1)
+                                           (or (nth params 6 nil) \E) (nth params 4 nil)
+                                           (or (nth params 5 nil) \space) at?)))
+                ;; ~G — general float (chooses fixed vs exponential by magnitude).
+                (or (= d \g) (= d \G))
+                (recur ni (inc pos)
+                       (str acc (cl-gfloat x p0 p1 (nth params 2 nil) (or (nth params 3 nil) 1)
+                                           (or (nth params 6 nil) \E) (nth params 4 nil)
+                                           (or (nth params 5 nil) \space) at?)))
                 ;; ~$ — monetary fixed-format (params ~d,n,w,padchar$).
                 (= d \$)
                 (recur ni (inc pos)
-                       (str acc (cl-money x (or p0 2) (or p1 1) (nth params 2 nil) (nth params 3 \space) at? colon?)))
+                       (str acc (cl-money x (or p0 2) (or p1 1) (nth params 2 nil) (or (nth params 3 nil) \space) at? colon?)))
                 (= d \~) (recur ni pos (str acc \~))
                 :else (throw (ex-info (str "cl-format: directive ~" d " is not supported in ClojureWasm") {}))))
             (recur (inc i) pos (str acc c))))))))

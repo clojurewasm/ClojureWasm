@@ -81,7 +81,21 @@ assert_eq 'money_at_w'  "$(run '(prn (pp/cl-format nil "~3,5,14@$" 22.375))')"  
 assert_eq 'money_atcol' "$(run '(prn (pp/cl-format nil "~3,5,14@:$" 22.375))')"  '"+    00022.375"'
 assert_eq 'money_round' "$(run '(prn (pp/cl-format nil "~1$" 0.99))')"           '"1.0"'
 
+# ~E exponential / ~G general float (D-455 chunk3b; CLtL Steele; clj-oracle).
+# The 'X overflow/exponent-char param variants break shell single-quoting; their
+# full surface is oracle-verified in the foo-e/foo-g torture probes (see note).
+assert_eq 'exp_basic'  "$(run '(prn (pp/cl-format nil "~E" 3.14159))')"          '"3.14159E+0"'
+assert_eq 'exp_big'    "$(run '(prn (pp/cl-format nil "~E" 1234.5))')"           '"1.2345E+3"'
+assert_eq 'exp_wd'     "$(run '(prn (pp/cl-format nil "~10,3E" 0.8))')"          '"  8.000E-1"'
+assert_eq 'exp_round'  "$(run '(prn (pp/cl-format nil "~10,2E" 9.99999))')"      '"   1.00E+1"'
+assert_eq 'exp_e100'   "$(run '(prn (pp/cl-format nil "~10,2E" 9.99999E99))')"   '" 1.00E+100"'
+assert_eq 'exp_neg'    "$(run '(prn (pp/cl-format nil "~E" -3.14159))')"         '"-3.14159E+0"'
+assert_eq 'gen_fixed'  "$(run '(prn (pp/cl-format nil "~9,2G" 3.14159))')"       '"  3.1    "'
+assert_eq 'gen_exp'    "$(run '(prn (pp/cl-format nil "~9,2G" 314.159))')"       '"  3.14E+2"'
+assert_eq 'gen_wd'     "$(run '(prn (pp/cl-format nil "~10,3G" 0.8))')"          '" 0.800    "'
+assert_eq 'gen_ratio'  "$(run '(prn (pp/cl-format nil "~10,3g" 4/5))')"          '" 0.800    "'
+
 # still-unimplemented directive raises explicitly (not silent mishandle)
 assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~<x~>" 2) (catch Throwable e :raised)))')" ':raised'
 
-echo "OK — phase14_cl_format (54 cases) green"
+echo "OK — phase14_cl_format (64 cases) green"
