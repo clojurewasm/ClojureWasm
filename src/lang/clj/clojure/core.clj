@@ -669,9 +669,11 @@
         ;; IndexOutOfBounds — it does NOT clamp like take/drop would
         ;; (`(subvec [1 2 3] 1 10)` throws, not `[2 3]`).
         (let [c (count v)]
+          ;; clj throws IndexOutOfBoundsException here (NOT an ex-info) — so a
+          ;; `(catch IndexOutOfBoundsException …)` around a subvec works.
           (when (or (< start 0) (< end start) (< c end))
-            (throw (ex-info "subvec index out of bounds"
-                            {:start start :end end :count c})))
+            (throw (IndexOutOfBoundsException.
+                     (str "subvec index out of bounds: start=" start ", end=" end ", count=" c))))
           (into [] (take (- end start) (drop start v)))))))
 
 ;; `(bounded-count n coll)` — for a `counted?` coll return its FULL count (clj:

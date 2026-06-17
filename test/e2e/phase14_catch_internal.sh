@@ -144,4 +144,12 @@ EOF
 ) || fail "case12d: non-zero exit ($got)"
 assert_eq 'the_ns_split' "$(ll "$got")" '[:ccast :nofound]'
 
-echo "OK — phase14_catch_internal (18 cases) green"
+# --- Case 13: subvec out-of-bounds throws a catchable IndexOutOfBoundsException
+#     (was an ex-info → ExceptionInfo, the wrong class). clj parity. ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn (try (subvec [1 2] 0 9) :no (catch IndexOutOfBoundsException e :caught)))
+EOF
+) || fail "case13: non-zero exit ($got)"
+assert_eq 'subvec_oob_indexbounds' "$(ll "$got")" ':caught'
+
+echo "OK — phase14_catch_internal (19 cases) green"
