@@ -591,3 +591,23 @@ accepted:
       for every type) are clj-byte-identical and corpus-pinned.
     derives_from: "AD-019 (type-erased arrays — no distinct byte/short/char element type) + F-011 (uniform shared mechanism over per-JVM-type overload accidents). DA fork 2026-06-18 (private/notes/D446-array2arg-da-fork.md)."
     pin: "test/e2e/phase14_arity_parity.sh — `AD-036 (byte-array n num)` locks (vec (byte-array 3 65)) => [65 65 65] and `AD-036 (char-array n int)` locks (int (aget (char-array 3 65) 0)) => 65 (cljw fills where clj throws)"
+  - id: "AD-037"
+    summary: "`(str <lazy_seq>)` renders the realized ELEMENTS `(…)`; clj renders the LazySeq's identity-hash `toString` (`clojure.lang.LazySeq@<hash>`)."
+    example: '(str (map inc [1 2 3])) => cljw "(2 3 4)" / clj "clojure.lang.LazySeq@7c42" ; (str (interpose :x (range 3))) => cljw "(0 :x 1 :x 2)" / clj "clojure.lang.LazySeq@14428d92". pr-str MATCHES in both ("(2 3 4)"); a seq''d/list/vector/chunked_cons also matches in both ((str (seq (map inc [1 2 3]))) => "(2 3 4)" both).'
+    why: |-
+      clj's `str` calls `.toString`, and `clojure.lang.LazySeq` does NOT override
+      `toString` (it inherits `Object.toString` → `clojure.lang.LazySeq@<idhash>`),
+      so `(str <unrealized-or-realized LazySeq>)` embeds a non-reproducible
+      identity hash — even after `doall` (the object stays a LazySeq). Every OTHER
+      seq type (PersistentList / Cons / ChunkedCons / vector) DOES element-print
+      via its `toString`, and `pr`/`prn` element-print every seq via
+      `RT.printString`. cljw has no JVM identity hash to mirror (AD-002), and its
+      print path uniformly realizes a seq before rendering (ADR-0054 deepRealize),
+      so `(str <lazy_seq>)` yields the deterministic element form. That is the only
+      sensible choice: mirroring clj would require fabricating a fake `@hash`, and
+      the element form is strictly more useful + matches what `pr`/`prn` already
+      produce in BOTH runtimes. Narrow scope: ONLY `(str …)` on a value whose tag
+      is `lazy_seq` diverges; `pr-str`/`prn`/`print` and `str` of any realized seq
+      match clj.
+    derives_from: "AD-002 (non-reproducible JVM identity hash is not mirrored) + ADR-0054 (the print path realizes a lazy seq to its elements). clj's LazySeq.toString is the un-overridden Object.toString; no cljw analogue exists."
+    pin: "test/e2e/phase14_lazy_map.sh — `str_lazyseq_elements` locks (str (map inc [1 2 3])) => \"(2 3 4)\" and `str_interpose_lazy` locks (str (interpose :x (range 3))) => \"(0 :x 1 :x 2)\" (cljw's deterministic element form, vs clj's identity-hash toString)"

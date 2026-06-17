@@ -33,4 +33,11 @@ assert_eq 'map_lazy_first' "$("$BIN" -e '(first (map inc (iterate inc 0)))')"   
 assert_eq 'map_lazy_take'  "$("$BIN" -e '(into [] (take 3 (map inc (iterate inc 0))))')" '[1 2 3]'
 assert_eq 'map_empty'      "$("$BIN" -e '(into [] (map inc []))')"                 '[]'
 
+# AD-037 pin: (str <lazy_seq>) renders the realized ELEMENTS deterministically;
+# clj renders the LazySeq's non-reproducible identity-hash toString
+# ("clojure.lang.LazySeq@<hash>"). cljw's element form is the deterministic
+# choice (AD-002 class). pr-str already matches clj for both.
+assert_eq 'str_lazyseq_elements' "$("$BIN" -e '(str (map inc [1 2 3]))')"   '"(2 3 4)"'
+assert_eq 'str_interpose_lazy'   "$("$BIN" -e '(str (interpose :x (range 3)))')" '"(0 :x 1 :x 2)"'
+
 echo "ALL phase14_lazy_map PASS"
