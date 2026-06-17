@@ -610,7 +610,12 @@ pub const Reader = struct {
         return Form{ .data = .{ .list = items }, .location = loc };
     }
 
-    /// `@x` reader macro → `(deref x)` (mirrors `readQuote`).
+    /// `@x` reader macro → `(rt/deref x)` (mirrors `readQuote`). The `deref`
+    /// symbol is NS-QUALIFIED so a local `deref` binding cannot capture it:
+    /// `(let [deref f] @a)` derefs `a`, not calls `f` (clj hygiene, which uses
+    /// `clojure.core/deref`). cljw qualifies to the `rt` primitive ns — the
+    /// canonical home of core fns (`#'rt/inc`) and the only one resolvable in a
+    /// core.clj-less env (the dual-backend diff fixture), unlike `clojure.core`.
     fn readDeref(self: *Reader, tok: Token) ReadError!Form {
         const loc = self.locOf(tok);
         self.depth += 1;
@@ -622,7 +627,7 @@ pub const Reader = struct {
             return error_catalog.raise(.eof_unexpected, loc, .{});
 
         const items = self.allocator.alloc(Form, 2) catch return error.OutOfMemory;
-        items[0] = Form{ .data = .{ .symbol = .{ .name = "deref" } }, .location = loc };
+        items[0] = Form{ .data = .{ .symbol = .{ .ns = "rt", .name = "deref" } }, .location = loc };
         items[1] = inner;
         return Form{ .data = .{ .list = items }, .location = loc };
     }

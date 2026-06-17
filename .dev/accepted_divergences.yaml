@@ -611,3 +611,22 @@ accepted:
       match clj.
     derives_from: "AD-002 (non-reproducible JVM identity hash is not mirrored) + ADR-0054 (the print path realizes a lazy seq to its elements). clj's LazySeq.toString is the un-overridden Object.toString; no cljw analogue exists."
     pin: "test/e2e/phase14_lazy_map.sh — `str_lazyseq_elements` locks (str (map inc [1 2 3])) => \"(2 3 4)\" and `str_interpose_lazy` locks (str (interpose :x (range 3))) => \"(0 :x 1 :x 2)\" (cljw's deterministic element form, vs clj's identity-hash toString)"
+  - id: "AD-038"
+    summary: "The `@x` deref reader macro expands to `(rt/deref x)`; clj expands to `(clojure.core/deref x)`. Both are NS-qualified (so a local `deref` cannot capture it — same reader hygiene); only the qualifying namespace differs."
+    example: '(read-string "@foo") => cljw "(rt/deref foo)" / clj "(clojure.core/deref foo)". The HYGIENE matches: (let [deref (fn [_] :shadowed)] @(atom 5)) => 5 in BOTH (the qualified deref is not captured by the local).'
+    why: |-
+      clj qualifies the `@` reader expansion to `clojure.core/deref` so a local
+      `deref` binding cannot shadow it. cljw needs the same hygiene but qualifies
+      to the `rt` primitive namespace — `rt` is cljw's canonical home for core
+      fns (`(resolve 'inc)` => `#'rt/inc`; ADR-0033 / AD-011 placement split), and
+      crucially it is the ONLY core ns resolvable in a core.clj-less environment
+      (the dual-backend differential fixture is primitive-only, so
+      `clojure.core/deref` would not resolve there — verified: it broke the
+      `@(atom 7)` diff case, `rt/deref` does not). The reader runs in every
+      context, so it must emit a symbol resolvable in every context. The
+      behavioural contract (hygiene + the deref value) is identical to clj; only
+      the printed expansion's namespace differs — the same `rt`-vs-`clojure.core`
+      surface AD-011 records. `(read-string "@x")` + printing the expansion is the
+      only place a user observes it.
+    derives_from: "AD-011 / ADR-0033 (rt-vs-clojure.core primitive placement: core fns live in `rt`, referred into clojure.core) + reader-hygiene parity (the qualification itself matches clj; only the ns name differs). `rt` is the only core ns resolvable without core.clj (the diff-test fixture)."
+    pin: "test/e2e/phase14_var_special.sh — `deref_reader_qualified` locks (read-string \"@deref\") => (rt/deref deref) and `deref_no_local_capture` locks the hygiene ((let [deref f] @(atom 5)) => 5, NOT the captured local)"

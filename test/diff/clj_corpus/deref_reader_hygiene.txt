@@ -1,0 +1,6 @@
+(let [deref (fn [_] :shadowed)] @(atom 5))
+;;=> 5
+(let [deref vector] [@(atom 1) @(atom 2)])
+;;=> [1 2]
+@(atom 42)
+;;=> 42

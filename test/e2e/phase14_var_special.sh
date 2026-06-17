@@ -44,4 +44,10 @@ assert_last 'var_ifn_resolve'  '((resolve (quote inc)) 5)'           '6'
 assert_last 'var_ifn_apply'    '(apply (var +) [1 2 3])'             '6'
 assert_last 'var_ifn_hof'      '((resolve (quote map)) inc [1 2 3])' '(2 3 4)'
 
+# `@x` reader is NS-qualified so a local `deref` binding cannot capture it
+# (reader hygiene). cljw qualifies to the `rt` primitive ns (AD-038; clj uses
+# clojure.core/deref — same hygiene, cljw's canonical core ns is `rt`).
+assert_last 'deref_reader_qualified' '(read-string "@deref")'      '(rt/deref deref)'
+assert_last 'deref_no_local_capture' '(let [deref (fn [_] :shadowed)] @(atom 5))' '5'
+
 echo "ALL phase14_var_special PASS"
