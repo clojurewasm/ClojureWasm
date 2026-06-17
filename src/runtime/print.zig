@@ -195,7 +195,11 @@ fn deepRealize(rt: *Runtime, env: *env_mod.Env, v: Value) anyerror!Value {
         // walk would drop the lazy tail. `lazy_seq_mod.seq/first/rest`
         // force lazy layers and route `.list` cells to the list ops, so
         // one loop realizes both (F-011 commonisation).
-        .lazy_seq, .list => return realizeSeqWalk(rt, env, v),
+        // `.chunked_cons` is the bare seq view of a range (`(seq (range 3))`,
+        // `(rest (range 5))`) — without this it fell through to the generic
+        // `#<chunked_cons>` render instead of its elements (it already realizes
+        // correctly in a `.list` tail, e.g. `(cons 0 (seq (range 3)))`).
+        .lazy_seq, .list, .chunked_cons => return realizeSeqWalk(rt, env, v),
         // A `Sequential` deftype (e.g. `Eduction`) prints as its realized
         // seq, not the deftype default `#Name[..]` (D-190 / ADR-0068). The
         // marker — NOT `Seqable` — is the discriminator: a record is Seqable

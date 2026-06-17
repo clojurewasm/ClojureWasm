@@ -54,4 +54,10 @@ assert_eq 'lazy_filt_take' "$("$BIN" -e '(into [] (take 5 (filter odd? (range)))
 # into a vector through a chunked chain crossing a boundary
 assert_eq 'into_map_33' "$("$BIN" -e '(count (into [] (map inc (range 33))))')" '33'
 
+# a BARE chunked_cons (the seq view of a range) PRINTS its elements, not the
+# old `#<chunked_cons>` placeholder (clj parity; the printer's deepRealize arm).
+assert_eq 'print_chunked_cons'  "$("$BIN" -e '(str (seq (range 3)))')"        '"(0 1 2)"'
+assert_eq 'print_cc_rest'       "$("$BIN" -e '(str (rest (range 5)))')"       '"(1 2 3 4)"'
+assert_eq 'print_cc_nested'     "$("$BIN" -e '(pr-str [(seq (range 3))])')"   '"[(0 1 2)]"'
+
 echo "ALL phase14_chunked_seq PASS"
