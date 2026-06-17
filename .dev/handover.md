@@ -5,10 +5,14 @@
 
 ## Stopped — user requested
 
-User instruction (2026-06-17): 「いまどういう状況か表示して停止してください。」
-(show current status + stop). cl-format COMPLETE + pushed (HEAD f118555d); full gate
-GREEN (fingerprint match); working tree clean. Resume at the quality-loop floor drain
-(D-446) per the Resume contract. (Next `/continue` deletes this section.)
+User instruction (2026-06-17): 「クリアセッションから継続できる状態か、配線・参照
+チェーンを監査して停止して」(audit clean-session resumability + the wiring/reference
+chain, then stop). AUDIT RESULT = CLEAN-RESUME-READY: every handover-cited file/ADR/
+debt-row resolves; handover 88 lines (≤100); `.dev/.gate_pass` MATCHES the current
+src/test hash (a fresh resume sees a verified-green gate — this session's edits were
+debt.yaml/rules-only, not in the fingerprint); working tree clean; all pushed
+(HEAD 7378db07). Resume at the quality-loop floor drain (D-446) per the Resume
+contract. (Next `/continue` deletes this section.)
 
 ## Resume contract
 
@@ -24,7 +28,7 @@ GREEN (fingerprint match); working tree clean. Resume at the quality-loop floor 
   to be rushed / fresh focus", (b) batch-polls DEAD (don't re-run), (c) JIT fenced
   (D-133); perf goal (fastest-script 19/30) already MET → pivot to quality sweep.
   Candidates after D-446: D-449 (regex dfa.zig dead-code decision), D-239
-  (alter-meta! on ns/ref/agent). D-386(a) stays open for a FRESH-FOCUS session with
+  (alter-meta! on ns/ref — agent landed via D-441 per the 2026-06-17 audit). D-386(a) stays open for a FRESH-FOCUS session with
   the CLJW_GC_TORTURE_ALLOC safety net (do not rush at the tail of a long context).
   Below = the prior perf-campaign detail (kept for when D-386(a) is taken fresh):
   RE-MEASURED + DIAGNOSED 2026-06-17 (fresh, ReleaseSafe,
@@ -76,6 +80,12 @@ chunk4 ~[~;~] conditional (nesting-aware) + ~<~;~> justification. e2e 82 cases +
 divergences that RAISE cleanly: the `V`/`#` runtime-valued directive params (D-458,
 a cl-dir gap) + the ~<…~:;…~> pretty-print column mode (needs a column-tracking
 writer). Also fixed a stale phase7 case3 (D-456 defprotocol→symbol parity follow-up).
+
+Then (user-directed) **reconciled the debt ledger to code** (6 verify-forks): 8 misfiled
+DISCHARGED rows moved active→discharged (74→66), 3 stale-partials corrected (D-042/033/239),
+1 dangling-ref typo fixed — so Step 0.5 statuses are now code-trustworthy. Fixed the yq
+SSOT tips too (3-section structure, mixed discharged schema, the `comma | select` precedence
+footgun). Ledger: active=66/standing=31/discharged=362, all gates green.
 
 ## Cold-start reading order (resume)
 
