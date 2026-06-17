@@ -69,9 +69,12 @@ pub fn derefFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             .typed_instance, .reified_instance => {
                 var cs: dispatch.CallSite = .{};
                 if (try dispatch.dispatchOrNull(rt, env, &cs, ref, "IBlockingDeref", "-blocking-deref", &.{ ref, args[1], timeout_val }, loc)) |r| return r;
-                return error_catalog.raise(.feature_not_supported, loc, .{ .name = "timed deref of a non-IBlockingDeref value" });
+                return timedDerefTypeError(ref, loc);
             },
-            else => return error_catalog.raise(.feature_not_supported, loc, .{ .name = "timed deref of a non-blocking reference" }),
+            // clj throws a catchable ClassCastException for a timed deref of a
+            // non-blocking reference (`(deref (atom 1) 100 :to)`), so this is a
+            // `.type_error`, not the uncatchable `.not_implemented`.
+            else => return timedDerefTypeError(ref, loc),
         }
     }
     const v = args[0];
@@ -106,10 +109,36 @@ pub fn derefFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         .typed_instance, .reified_instance => blk: {
             var cs: dispatch.CallSite = .{};
             if (try dispatch.dispatchOrNull(rt, env, &cs, v, "IDeref", "-deref", &.{v}, loc)) |r| break :blk r;
-            break :blk error_catalog.raise(.feature_not_supported, loc, .{ .name = "deref of non-IDeref value" });
+            break :blk derefTypeError(v, loc);
         },
-        else => error_catalog.raise(.feature_not_supported, loc, .{ .name = "deref of non-IDeref value" }),
+        // A type error on the implemented `deref`, NOT a missing feature: clj
+        // throws a catchable ClassCastException (`(deref 5)`) / NullPointerException
+        // (`(deref nil)`), so this must be `.type_error` (catchable), not the
+        // uncatchable `.not_implemented` the old `feature_not_supported` carried.
+        else => derefTypeError(v, loc),
     };
+}
+
+/// A non-IDeref value reached `deref`/`@` — a CATCHABLE type error (clj:
+/// ClassCastException / NullPointerException), not a missing feature. Shared
+/// by the typed-instance-without-IDeref arm and the generic else arm so both
+/// raise one consistent `.type_error`-Kind message (F-011, D-446 follow-up).
+fn derefTypeError(v: Value, loc: SourceLocation) anyerror!Value {
+    return error_catalog.raise(.type_arg_invalid, loc, .{
+        .fn_name = "deref",
+        .expected = "a reference type (atom, ref, agent, var, delay, future, promise) or a clojure.lang.IDeref",
+        .actual = @tagName(v.tag()),
+    });
+}
+
+/// A non-blocking reference reached the 3-arg timed `deref` — a CATCHABLE type
+/// error (clj: ClassCastException), not a missing feature.
+fn timedDerefTypeError(ref: Value, loc: SourceLocation) anyerror!Value {
+    return error_catalog.raise(.type_arg_invalid, loc, .{
+        .fn_name = "deref",
+        .expected = "a blocking reference (future, promise) or a clojure.lang.IBlockingDeref",
+        .actual = @tagName(ref.tag()),
+    });
 }
 
 /// `__delay-create` — internal primitive called by the `delay` Zig

@@ -98,4 +98,24 @@ EOF
 ) || fail "case10b: non-zero exit ($got)"
 assert_eq 'ex_cause_nil' "$(ll "$got")" 'nil'
 
-echo "OK — phase14_catch_internal (11 cases) green"
+# --- Case 11: deref of a non-IDeref value is a CATCHABLE type error, NOT an
+#     uncatchable not-implemented signal (clj: (deref 5) → ClassCastException,
+#     catchable). Was `feature_not_supported` (uncatchable). D-446 follow-up. ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn (try (deref 5) :no (catch ClassCastException e :caught)))
+EOF
+) || fail "case11: non-zero exit ($got)"
+assert_eq 'deref_nonref_classcast' "$(ll "$got")" ':caught'
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn (try (deref nil) :no (catch Throwable e :caught)))
+EOF
+) || fail "case11b: non-zero exit ($got)"
+assert_eq 'deref_nil_throwable' "$(ll "$got")" ':caught'
+# 3-arg timed deref of a non-blocking ref → also catchable CCE (clj parity).
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn (try (deref (atom 1) 100 :to) :no (catch ClassCastException e :caught)))
+EOF
+) || fail "case11c: non-zero exit ($got)"
+assert_eq 'timed_deref_nonblocking_classcast' "$(ll "$got")" ':caught'
+
+echo "OK — phase14_catch_internal (14 cases) green"
