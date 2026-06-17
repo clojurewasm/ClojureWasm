@@ -2328,20 +2328,38 @@
       (dotimes [i n] (aset a i (coerce (nth s i))))
       a)))
 
+(defn- -array-from2
+  "size + init-val-or-seq → array (the 2-arg ctor form). A `sequential?` init is
+  copied (`size` slots, the rest left at `default`); any other init fills every
+  slot with `(coerce init)`. Uniform across element types — cljw arrays are
+  type-erased (AD-019), so unlike clj there is no per-type Number/Character
+  overload accident: `(byte-array 3 65)` / `(char-array 3 65)` fill here but
+  throw on the JVM (AD-036)."
+  [size init default coerce]
+  (let [a (rt/__array-make size default)]
+    (if (sequential? init)
+      (let [s (vec init)
+            n (min size (count s))]
+        (dotimes [i n] (aset a i (coerce (nth s i)))))
+      (dotimes [i size] (aset a i (coerce init))))
+    a))
+
 (defn- -to-byte [v]
   (let [b (bit-and v 255)] (if (>= b 128) (- b 256) b)))
 (defn- -to-short [v]
   (let [s (bit-and v 65535)] (if (>= s 32768) (- s 65536) s)))
 
+;; object-array has NO clj 2-arg form (clj throws an arity error) — stays 1-arg.
 (defn object-array  [x] (-array-from x nil    identity))
-(defn int-array     [x] (-array-from x 0      identity))
-(defn long-array    [x] (-array-from x 0      identity))
-(defn double-array  [x] (-array-from x 0.0    identity))
-(defn float-array   [x] (-array-from x 0.0    identity))
-(defn short-array   [x] (-array-from x 0      -to-short))
-(defn byte-array    [x] (-array-from x 0      -to-byte))
-(defn char-array    [x] (-array-from x \space char))
-(defn boolean-array [x] (-array-from x false  boolean))
+;; The typed ctors take `([size-or-seq] [size init-val-or-seq])` (clj parity).
+(defn int-array     ([x] (-array-from x 0 identity))     ([n init] (-array-from2 n init 0 identity)))
+(defn long-array    ([x] (-array-from x 0 identity))     ([n init] (-array-from2 n init 0 identity)))
+(defn double-array  ([x] (-array-from x 0.0 identity))   ([n init] (-array-from2 n init 0.0 identity)))
+(defn float-array   ([x] (-array-from x 0.0 identity))   ([n init] (-array-from2 n init 0.0 identity)))
+(defn short-array   ([x] (-array-from x 0 -to-short))    ([n init] (-array-from2 n init 0 -to-short)))
+(defn byte-array    ([x] (-array-from x 0 -to-byte))     ([n init] (-array-from2 n init 0 -to-byte)))
+(defn char-array    ([x] (-array-from x \space char))    ([n init] (-array-from2 n init \space char)))
+(defn boolean-array ([x] (-array-from x false boolean))  ([n init] (-array-from2 n init false boolean)))
 
 (defn make-array
   "Allocate an array. The `type` arg is accepted but ignored (cljw arrays are

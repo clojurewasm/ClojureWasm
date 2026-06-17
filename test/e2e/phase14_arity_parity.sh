@@ -71,5 +71,17 @@ check "(bit-and-not 3 args)" '(bit-and-not 15 9 2)'                       '4'
 # resolve 2-arg env form: a local named in env resolves to nil.
 check "(resolve env local)"  "(resolve '{x nil} 'x)"                      'nil'
 
+# --- array ctor 2-arg `(X-array size init-val-or-seq)` (D-446): a value init
+#     fills, a sequential init copies (rest default). ---
+check "(int-array n val)" '(vec (int-array 5 7))'                         '[7 7 7 7 7]'
+check "(int-array n seq)" '(vec (int-array 5 [1 2 3]))'                   '[1 2 3 0 0]'
+check "(double-array n)"  '(vec (double-array 3 1.5))'                    '[1.5 1.5 1.5]'
+check "(byte-array n seq)" '(vec (byte-array 3 [1 2]))'                   '[1 2 0]'
+check "(char-array n ch)" '(int (aget (char-array 3 (char 120)) 1))'     '120'
+# AD-036 pin: byte/short/char-array fill a NUMBER init (clj throws on the JVM
+# Numbers overload; cljw arrays are type-erased so they fill uniformly).
+check "AD-036 (byte-array n num)" '(vec (byte-array 3 65))'              '[65 65 65]'
+check "AD-036 (char-array n int)" '(int (aget (char-array 3 65) 0))'    '65'
+
 echo "pass=$pass fail=$fail"
 if [[ $fail -gt 0 ]]; then exit 1; fi

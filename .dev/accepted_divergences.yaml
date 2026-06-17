@@ -568,3 +568,26 @@ accepted:
       name policy for no behavioural gain.
     derives_from: "ADR-0059 (no-JVM Class hierarchy) + AD-003 (simple class name, not FQCN); no_jvm_specific_assumption.md. Records carry only a simple `fqcn`, so the printer emits `#<simple>{…}`."
     pin: "test/e2e/phase9_record_extmap.sh — record_extmap_print locks cljw's `#R{:x 1, :y 2, :z 9}` (simple name, no `user.` prefix)"
+  - id: "AD-036"
+    summary: "The 2-arg array ctors `(byte-array size n)` / `(short-array size n)` / `(char-array size n)` FILL with a number init; clj throws (`IllegalArgumentException`, 'Don't know how to create ISeq from: java.lang.Long') because the JVM `Numbers` overload for those element types has no number-fill branch."
+    example: "(vec (byte-array 3 65)) => cljw [65 65 65] / clj THROWS ; (int (aget (char-array 3 65) 0)) => cljw 65 / clj THROWS ; matching cases agree: (vec (int-array 5 7)) => [7 7 7 7 7], (vec (byte-array 3 [1 2])) => [1 2 0]"
+    why: |-
+      cljw's typed array ctors compose over ONE uniform helper (`-array-from2`):
+      a `sequential?` init is copied, any other init fills every slot with
+      `(coerce init)` — applied identically to int/long/double/float/short/byte/
+      char/boolean (F-011 single mechanism). clj's 2-arg behaviour is instead
+      per-element-type: int/long/double/float/boolean accept a number-fill, but
+      byte/short/char route an unrecognised init through `RT.seq` and THROW on a
+      number (a `Numbers.java` method-overload accident keyed on the distinct JVM
+      element types). cljw arrays are TYPE-ERASED (AD-019): there is no distinct
+      byte/short/char element type, so there is no per-type overload to key the
+      throw on. Reproducing clj's throw would require re-introducing the very
+      element-type distinction AD-019 denies — so the uniform fill is the FORCED
+      consequence of AD-019, not a convenience. (Devil's-advocate fork 2026-06-18
+      confirmed: the per-type-throw mirror is the option that would contradict
+      AD-019; uniform + this AD is the finished-form-clean choice per F-002/F-011.
+      `object-array` keeps NO 2-arg form — cljw matches clj's arity error there.)
+      The matching cases (number-fill for int/long/double/float/boolean, seq-copy
+      for every type) are clj-byte-identical and corpus-pinned.
+    derives_from: "AD-019 (type-erased arrays — no distinct byte/short/char element type) + F-011 (uniform shared mechanism over per-JVM-type overload accidents). DA fork 2026-06-18 (private/notes/D446-array2arg-da-fork.md)."
+    pin: "test/e2e/phase14_arity_parity.sh — `AD-036 (byte-array n num)` locks (vec (byte-array 3 65)) => [65 65 65] and `AD-036 (char-array n int)` locks (int (aget (char-array 3 65) 0)) => 65 (cljw fills where clj throws)"
