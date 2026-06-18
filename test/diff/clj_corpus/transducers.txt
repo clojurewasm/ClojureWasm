@@ -1,0 +1,66 @@
+(into [] (comp (map inc) (filter even?)) (range 10))
+;;=> [2 4 6 8 10]
+(transduce (comp (map inc) (take 3)) + 0 (range 100))
+;;=> 6
+(sequence (comp (map inc) (mapcat (fn [x] [x x]))) [1 2 3])
+;;=> (2 2 3 3 4 4)
+(into [] (partition-by odd?) [1 1 2 2 3])
+;;=> [[1 1] [2 2] [3]]
+(into [] (dedupe) [1 1 2 2 3 3 1])
+;;=> [1 2 3 1]
+(into [] (map-indexed vector) [:a :b :c])
+;;=> [[0 :a] [1 :b] [2 :c]]
+(into [] (keep-indexed (fn [i x] (when (odd? i) x))) [:a :b :c :d])
+;;=> [:b :d]
+(into [] (take-nth 2) (range 10))
+;;=> [0 2 4 6 8]
+(into [] (interpose :x) [1 2 3])
+;;=> [1 :x 2 :x 3]
+(into [] cat [[1 2] [3 4]])
+;;=> [1 2 3 4]
+(into [] (partition-all 2) (range 5))
+;;=> [[0 1] [2 3] [4]]
+(into [] (drop-while neg?) [-1 -2 3 -4])
+;;=> [3 -4]
+(into [] (take-while neg?) [-1 -2 3 -4])
+;;=> [-1 -2]
+(into [] (replace {1 :a 2 :b}) [1 2 3])
+;;=> [:a :b 3]
+(into [] (distinct) [1 2 1 3 2])
+;;=> [1 2 3]
+(transduce (halt-when neg?) conj [1 2 -3 4])
+;;=> -3
+(into [] (comp (filter odd?) (map #(* % %)) (take 2)) (range 20))
+;;=> [1 9]
+(into {} (map (fn [[k v]] [k (inc v)])) {:a 1 :b 2})
+;;=> {:a 2, :b 3}
+(eduction (map inc) (filter even?) (range 6))
+;;=> (2 4 6)
+(into [] (keep (fn [x] (when (odd? x) (* x x)))) (range 6))
+;;=> [1 9 25]
+(into [] (remove even?) (range 8))
+;;=> [1 3 5 7]
+(into [] (mapcat reverse) [[1 2] [3 4]])
+;;=> [2 1 4 3]
+(into [] (comp (map inc) (filter even?) (take 2) (map str)) (range 100))
+;;=> ["2" "4"]
+(transduce (map inc) + (range 5))
+;;=> 15
+(transduce (filter odd?) conj [] (range 10))
+;;=> [1 3 5 7 9]
+(into [] (comp (partition-all 2) (map vec)) (range 6))
+;;=> [[0 1] [2 3] [4 5]]
+(into [] (comp (take 5) (drop 2)) (range 100))
+;;=> [2 3 4]
+(sequence (map vector) [1 2 3] [:a :b :c])
+;;=> ([1 :a] [2 :b] [3 :c])
+(into [] (take 0) (range 10))
+;;=> []
+(into [] (drop 100) (range 5))
+;;=> []
+(into [] (mapcat identity) [[1] [2 3] []])
+;;=> [1 2 3]
+(into [] (comp (map inc) (dedupe)) [1 1 2 3 3])
+;;=> [2 3 4]
+(reduce + (eduction (map inc) (range 5)))
+;;=> 15
