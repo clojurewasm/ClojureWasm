@@ -5,7 +5,7 @@
 //! cljw-native `.typed_instance` (F-004 layout UNCHANGED, no NaN-box tag)
 //! carrying TWO fields — second-aligned epoch-millis + the full
 //! fractional-second in nanoseconds (0..999_999_999) — plus a per-Runtime
-//! `.native` descriptor whose `iso_instant = true` makes the printer emit the
+//! `.native` descriptor whose `temporal_print = .iso_instant` makes the printer emit the
 //! bare `ISO_INSTANT` string (variable fraction + `Z`, NO `#tag`, no quotes —
 //! clj's `(str instant)` form). The parse/format lives in the sibling
 //! `instant.zig` (F-009 neutral home); the Java `java.time.Instant` static
@@ -57,7 +57,7 @@ fn toEpochMilliFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 
 /// The per-Runtime canonical Instant descriptor (lazily allocated on
 /// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "Instant"` so `(class …)`
-/// prints the simple name (AD-003 / no-JVM); `iso_instant = true` drives the
+/// prints the simple name (AD-003 / no-JVM); `temporal_print = .iso_instant` drives the
 /// bare ISO_INSTANT print form. Carries the instance methods (the Instant
 /// VALUE carries this descriptor, so instance dispatch resolves here).
 pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
@@ -71,7 +71,7 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .method_table = &.{},
         .parent = null,
         .meta = .nil_val,
-        .iso_instant = true,
+        .temporal_print = .iso_instant,
     };
     const specs = .{
         .{ "getEpochSecond", &getEpochSecondFn },
@@ -142,6 +142,6 @@ test "Instant value: make / isInstant / accessors + iso_instant set" {
     try testing.expect(isInstant(&rt, i));
     try testing.expectEqual(@as(i64, 1_704_067_200_000), epochMsOf(i));
     try testing.expectEqual(@as(i32, 500_000_000), nanosOf(i));
-    try testing.expect(i.decodePtr(*const TypedInstance).descriptor.iso_instant);
+    try testing.expect(i.decodePtr(*const TypedInstance).descriptor.temporal_print == .iso_instant);
     try testing.expect(!isInstant(&rt, Value.initInteger(5)));
 }

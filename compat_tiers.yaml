@@ -369,14 +369,15 @@ tiers:
         status: "reservation - TypeDescriptor only; backing runtime/time/local_date_time.zig deferred (D-105)"
       - fqn: java.time.Duration
         cljw_ns: cljw.java.time.Duration
-        keyword: time
+        keyword: duration
         tier: A
-        phase: 14
+        phase: 6
         files:
           surface: runtime/java/time/Duration.zig
-        methods: [between, ofMillis, ofSeconds, plus, minus, toMillis, toNanos]
+          impl_extras: [runtime/time/duration_value.zig]
+        methods: [ofSeconds, ofMillis, ofNanos, ofMinutes, ofHours, ofDays, getSeconds, getNano, toMillis, toMinutes]
         clojure_peer_vars: []
-        status: "reservation - TypeDescriptor only; backing deferred (D-105)"
+        status: "WIRED (D-462) - statics ofSeconds([secs] | [secs nanoAdj])/ofMillis/ofNanos/ofMinutes/ofHours/ofDays mint a NORMALIZED (nanos∈[0,1e9), seconds carries sign) `.typed_instance` Duration VALUE (duration_value.zig, per-Runtime descriptor); instance methods getSeconds/getNano/toMillis/toMinutes + value `=` + `(str d)` = ISO-8601 `PT…` (the exact JDK Duration.toString) all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/e2e/phase15_java_time_duration.sh. Arithmetic methods (between/plus/minus/toNanos/…) are NOT implemented (would be a follow-up unit, not listed above per anti-D-177)."
       - fqn: java.time.ZonedDateTime
         cljw_ns: cljw.java.time.ZonedDateTime
         keyword: time

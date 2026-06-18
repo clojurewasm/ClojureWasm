@@ -557,6 +557,7 @@ run_step "e2e_phase15_dynamic_var"          "bash test/e2e/phase15_dynamic_var.s
 run_step "e2e_phase15_clojure_test"         "bash test/e2e/phase15_clojure_test.sh"
 run_step "e2e_phase15_clojure_test_output"  "bash test/e2e/phase15_clojure_test_output.sh"
 run_step "e2e_phase15_java_time_instant"    "bash test/e2e/phase15_java_time_instant.sh"
+run_step "e2e_phase15_java_time_duration"   "bash test/e2e/phase15_java_time_duration.sh"
 run_step "e2e_phase15_require_fs"           "bash test/e2e/phase15_require_fs.sh"
 run_step "e2e_phase15_use_refer_all"        "bash test/e2e/phase15_use_refer_all.sh"
 run_step "e2e_phase15_use_libspec_filter"   "bash test/e2e/phase15_use_libspec_filter.sh"

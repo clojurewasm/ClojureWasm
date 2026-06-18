@@ -37,6 +37,19 @@ pub const TypeKind = enum {
     reify_anon,
 };
 
+/// Bare-toString print form for a host temporal value (D-462). A descriptor
+/// with a non-`.none` value drives `printTypedInstance` to emit the value's
+/// ISO toString (NO `#tag`, no quotes — clj's `(str …)` form), branched by
+/// kind. `.none` = the default `#Name[..]` / `print_tag` path.
+pub const TemporalPrint = enum {
+    none,
+    /// `java.time.Instant` — variable-fraction ISO_INSTANT + `Z` (2 fields:
+    /// second-aligned epoch-ms + nanos).
+    iso_instant,
+    /// `java.time.Duration` — ISO-8601 duration `PT…` (2 fields: seconds + nanos).
+    iso_duration,
+};
+
 /// Descriptor for one type. Process-lifetime — allocated on
 /// `rt.gpa` by the deftype / defrecord analyzer.
 pub const TypeDescriptor = struct {
@@ -85,13 +98,13 @@ pub const TypeDescriptor = struct {
     /// "inst"`, body = the epoch-ms field formatted as the canonical
     /// `#inst` ISO string). `null` for every other type.
     print_tag: ?[]const u8 = null,
-    /// Bare ISO_INSTANT print form (D-462, `java.time.Instant`): when true, the
-    /// printer emits the variable-fraction ISO string + `Z` (e.g.
-    /// `1970-01-01T00:00:00Z`) with NO `#tag` wrapper and NO quotes — distinct
-    /// from `print_tag` (which wraps `#inst "…"` with a fixed-fraction offset
-    /// form). Set on the per-Runtime Instant value descriptor only; checked
-    /// BEFORE `print_tag` in `printTypedInstance`. `false` for every other type.
-    iso_instant: bool = false,
+    /// Temporal print form for a host time value (D-462): when not `.none`, the
+    /// printer emits the value's bare toString (NO `#tag` wrapper, NO quotes —
+    /// clj's `(str …)` form) instead of the default `#Name[..]`. Distinct from
+    /// `print_tag` (which wraps `#inst "…"`). Set on the per-Runtime Instant /
+    /// Duration value descriptors only; checked BEFORE `print_tag` in
+    /// `printTypedInstance`. `.none` for every other type.
+    temporal_print: TemporalPrint = .none,
     /// `.host_instance` finaliser hook (ADR-0106): when this descriptor backs a
     /// host instance that owns heap state (a gpa-duped string pointer in
     /// `state[0..1]`, e.g. java.net.URI), the shared `.host_instance` tag

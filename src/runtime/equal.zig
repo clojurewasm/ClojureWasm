@@ -49,6 +49,7 @@ const td_mod = @import("type_descriptor.zig");
 const date_mod = @import("time/date.zig");
 const timestamp_mod = @import("time/timestamp.zig");
 const instant_value_mod = @import("time/instant_value.zig");
+const duration_value_mod = @import("time/duration_value.zig");
 const dispatch_mod = @import("dispatch.zig");
 const root_set = @import("gc/root_set.zig");
 const ClojureWasmError = @import("error/info.zig").ClojureWasmError;
@@ -1084,6 +1085,13 @@ fn typedInstanceEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool
     if (instant_value_mod.isInstant(rt, a) and instant_value_mod.isInstant(rt, b)) {
         return instant_value_mod.epochMsOf(a) == instant_value_mod.epochMsOf(b) and
             instant_value_mod.nanosOf(a) == instant_value_mod.nanosOf(b);
+    }
+    // Duration values (D-462) compare by NORMALIZED seconds + nanos, else two
+    // equal-span allocations would default to identity `=`. A distinct
+    // descriptor keeps a Duration from being `=` an Instant/Date/Timestamp.
+    if (duration_value_mod.isDuration(rt, a) and duration_value_mod.isDuration(rt, b)) {
+        return duration_value_mod.secondsOf(a) == duration_value_mod.secondsOf(b) and
+            duration_value_mod.nanosOf(a) == duration_value_mod.nanosOf(b);
     }
     // D-280d1: a deftype/reify implementing Object `equals` overrides identity.
     // Consulted for the same-type case (both operands reached here past

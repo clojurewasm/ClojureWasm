@@ -681,16 +681,17 @@ accepted:
     derives_from: "ADR-0059 (no-JVM: no JVM stack / class-file source positions) + F-011 (behavioural equivalence — pass/fail/error outcomes + counts match; only the unreproducible location/trace text differs)."
     pin: "test/e2e/phase15_clojure_test_output.sh — asserts the clj-matching lines (`FAIL in (eqfail)`, `  actual: (not (= 1 2))`, context, `Testing demo`, summary) are present and that `*test-out*` is re-enabled; the absent ` (file:line)` suffix is the locked divergence."
   - id: "AD-042"
-    summary: "`(pr-str instant)` / `(str instant)` print the bare ISO_INSTANT string for a `java.time.Instant`, where clj's `pr` emits the opaque `#object[java.time.Instant 0x.. \"ISO\"]` identity form. cljw makes both str and pr the toString (ISO_INSTANT); the value's `(str …)`, method results, and `=` all match clj."
-    example: "(pr-str (java.time.Instant/ofEpochSecond 0)) => cljw \"1970-01-01T00:00:00Z\" / clj \"#object[java.time.Instant 0x5d3411d \\\"1970-01-01T00:00:00Z\\\"]\". (str (java.time.Instant/ofEpochSecond 0)) => both \"1970-01-01T00:00:00Z\"."
+    summary: "`(pr-str v)` / `(str v)` print the bare ISO toString for a `java.time.*` value (Instant, Duration, …), where clj's `pr` emits the opaque `#object[java.time.X 0x.. \"ISO\"]` identity form. cljw makes both str and pr the toString; the value's `(str …)`, method results, and `=` all match clj."
+    example: "(pr-str (java.time.Instant/ofEpochSecond 0)) => cljw \"1970-01-01T00:00:00Z\" / clj \"#object[java.time.Instant 0x5d3411d \\\"1970-01-01T00:00:00Z\\\"]\". (str (java.time.Duration/ofSeconds 90)) => both \"PT1M30S\"."
     why: |-
-      clj's default `print-method` for a `java.time.Instant` falls through to the
+      clj's default `print-method` for a `java.time.*` value falls through to the
       generic Object printer, which embeds the JVM identity hash
       (`0x5d3411d`) — a per-run, non-reproducible address cljw has no faithful
       analogue for (ADR-0059 no-JVM, no identity-hash object form). cljw prints
-      the value's toString (the ISO_INSTANT string) for both `str` and `pr`,
-      which is the reproducible, value-bearing form. Everything that does NOT
-      depend on the identity-hash wrapper — `(str instant)`, `.getEpochSecond` /
-      `.getNano` / `.toEpochMilli`, and value `=` — matches clj exactly.
+      the value's toString (the ISO string — ISO_INSTANT for Instant, the
+      `PT…` duration form for Duration) for both `str` and `pr`, which is the
+      reproducible, value-bearing form. Everything that does NOT depend on the
+      identity-hash wrapper — `(str v)`, the instance method results, and value
+      `=` — matches clj exactly.
     derives_from: "ADR-0059 (no-JVM: no identity-hash `#object[…]` object form) + F-011 (behavioural equivalence — toString / method results / `=` match; only the unreproducible identity-wrapped pr form differs)."
-    pin: "test/e2e/phase15_java_time_instant.sh — locks `(str instant)` = the bare ISO_INSTANT (variable fraction + `Z`) and the getEpochSecond/getNano/toEpochMilli + value-`=` results; the absent `#object[…]` pr wrapper is the locked divergence."
+    pin: "test/e2e/phase15_java_time_instant.sh + test/e2e/phase15_java_time_duration.sh — lock `(str v)` = the bare ISO toString (Instant ISO_INSTANT variable fraction + `Z`; Duration `PT…`) and the instance-method + value-`=` results; the absent `#object[…]` pr wrapper is the locked divergence."

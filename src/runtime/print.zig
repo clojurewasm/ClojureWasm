@@ -56,6 +56,7 @@ const uuid_mod = @import("uuid.zig");
 const tagged_literal_mod = @import("tagged_literal.zig");
 const td_mod = @import("type_descriptor.zig");
 const instant_mod = @import("time/instant.zig");
+const duration_value_mod = @import("time/duration_value.zig");
 const lazy_seq_mod = @import("lazy_seq.zig");
 const range_collection = @import("collection/range.zig");
 const env_mod = @import("env.zig");
@@ -1103,19 +1104,33 @@ fn printTypedInstance(w: *Writer, v: Value) anyerror!void {
             if (try printMapLikeTypedInstance(ctx.rt, ctx.env, w, v)) return;
         }
     }
-    // Bare ISO_INSTANT host value (D-462, java.time.Instant): emit the
-    // variable-fraction ISO string + `Z` with NO `#tag` wrapper and no quotes
-    // — clj's `(str instant)` form. Both str and pr take this path (cljw does
-    // not mirror clj's opaque `#object[…]` identity pr form — AD-042).
-    // Descriptor-driven (no rt, no surface import); checked BEFORE print_tag.
-    if (inst.descriptor.iso_instant) {
-        if (inst.field_count >= 2 and inst.fields()[0].tag() == .integer and inst.fields()[1].tag() == .integer) {
-            var buf: [48]u8 = undefined;
-            const epoch_ms = inst.fields()[0].asInteger();
-            const nanos: i32 = @intCast(inst.fields()[1].asInteger());
-            try w.writeAll(instant_mod.formatIsoInstant(&buf, epoch_ms, nanos));
-            return;
-        }
+    // Bare-toString host time value (D-462): emit the value's ISO toString
+    // with NO `#tag` wrapper and no quotes — clj's `(str …)` form. Both str and
+    // pr take this path (cljw does not mirror clj's opaque `#object[…]` identity
+    // pr form — AD-042). Descriptor-driven (no rt); checked BEFORE print_tag.
+    switch (inst.descriptor.temporal_print) {
+        .none => {},
+        .iso_instant => {
+            // java.time.Instant: 2 fields = second-aligned epoch-ms + nanos →
+            // variable-fraction ISO_INSTANT + `Z`.
+            if (inst.field_count >= 2 and inst.fields()[0].tag() == .integer and inst.fields()[1].tag() == .integer) {
+                var buf: [48]u8 = undefined;
+                const epoch_ms = inst.fields()[0].asInteger();
+                const nanos: i32 = @intCast(inst.fields()[1].asInteger());
+                try w.writeAll(instant_mod.formatIsoInstant(&buf, epoch_ms, nanos));
+                return;
+            }
+        },
+        .iso_duration => {
+            // java.time.Duration: 2 fields = seconds + nanos → ISO-8601 `PT…`.
+            if (inst.field_count >= 2 and inst.fields()[0].tag() == .integer and inst.fields()[1].tag() == .integer) {
+                var buf: [40]u8 = undefined;
+                const seconds = inst.fields()[0].asInteger();
+                const nanos: i32 = @intCast(inst.fields()[1].asInteger());
+                try w.writeAll(duration_value_mod.formatDuration(&buf, seconds, nanos));
+                return;
+            }
+        },
     }
     // Reader-tag host value (ADR-0079): emit `#<tag> "<iso>"`. Today only
     // `#inst` (java.util.Date) — body = the epoch-ms field 0 as the

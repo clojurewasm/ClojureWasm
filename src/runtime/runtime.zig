@@ -346,6 +346,13 @@ pub const Runtime = struct {
     /// `deinit`. `null` until the first Instant value is built.
     instant_descriptor: ?*TypeDescriptor = null,
 
+    /// Per-Runtime `java.time.Duration` value descriptor (D-462) — a signed
+    /// time span, a 2-field no-slot `.typed_instance` with `temporal_print =
+    /// .iso_duration` (bare `PT…` print form). Lazily allocated on `gc.infra`
+    /// by `runtime/time/duration_value.zig::descriptorOf`, freed in `deinit`.
+    /// `null` until the first Duration value is built.
+    duration_descriptor: ?*TypeDescriptor = null,
+
     /// Lazy-init access to the per-Tag default descriptor. On first
     /// call for a given tag, allocates a TypeDescriptor on
     /// `rt.gc.infra` with `fqcn = nativeFqcnFor(tag)` and empty
@@ -540,6 +547,7 @@ pub const Runtime = struct {
         @import("time/date.zig").deinitDescriptor(self);
         @import("time/timestamp.zig").deinitDescriptor(self);
         @import("time/instant_value.zig").deinitDescriptor(self);
+        @import("time/duration_value.zig").deinitDescriptor(self);
 
         // User-set system properties (gpa-owned key+value dupes).
         {
