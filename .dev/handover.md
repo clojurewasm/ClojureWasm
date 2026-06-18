@@ -10,18 +10,19 @@
   `build.zig.zon` `.zwasm` is SHA-PINNED (`#412966f7…`, `lazy`). Per-commit = smoke;
   full gate batches at ceiling / boundary / pre-tag.
 
-- **First commit on resume MUST be**: **continue the java.time wiring arc (D-462)** —
-  next type **java.time.LocalDateTime** (date-based: reuse instant.zig
-  `daysFromCivil`/`civilFromDays`; candidate payload `[epoch-day, nano-of-day]`;
-  needs a proper Step 0 on the representation + a clj oracle). Pattern is
-  established: temporal types are `.typed_instance` (timestamp.zig/instant_value.zig
-  model), printed via the `temporal_print` enum (type_descriptor.zig), value-`=` via
-  an equal.zig arm, value-wrap file in the compat_tiers `wrap:` slot (G3-exempt).
-  After LocalDateTime: ZonedDateTime, then LocalDate (no .zig yet). Each: clj-grounded
-  e2e → impl (fork the mechanical part once spec'd) → verify vs clj → smoke → commit.
-  When java.time is exhausted, self-select the next clj-parity unit (the single-expr
-  differential sweep has SATURATED; remaining structural debt: D-460 sorted-coll map
-  key, D-461 require-semantics F-003 owner call, D-446 multidim arrays).
+- **First commit on resume MUST be**: **close the java.time temporal-arithmetic area
+  (D-462)** — Instant + Duration + LocalTime `plus*`/`minus*` by time units (the
+  remaining types; LocalDate + LocalDateTime arithmetic are DONE). Discipline 2
+  (close, don't half-sweep): the typed_instance pattern is fully established, so
+  each is a clj-grounded e2e → fork the mechanical impl (the value file's descriptor
+  gains the methods) → verify vs clj → smoke → commit. Notes: LocalTime arithmetic
+  WRAPS mod 24h (`@mod` nano_of_day, no day field); Instant uses [epoch_ms, nanos]
+  carry; Duration adds+renormalizes. THEN the remaining java.time bits are on-demand
+  (D-462): `getDayOfWeek`/`DayOfWeek` enum type, LDT/LocalDate `plusMonths`/`plusYears`
+  (civil clamp, reuse local_date_value addMonths), Instant `plus(Duration)`,
+  `compareTo`-as-method (AD-043 magnitude). After java.time, self-select the next
+  high-value clj-parity unit (single-expr sweep SATURATED; structural debt
+  D-460/D-461/D-446 blocked/deferred — weigh a fresh surface).
 
 - **Forbidden this session**: JIT integration (D-133 — user-fenced 2026-06-16; plan
   in `private/notes/9.2.S-d133-jit-survey.md § INTEGRATION`). `git push --force*`.
@@ -32,23 +33,27 @@
 
 ## Last landed (git log = SSOT; all pushed)
 
-**clj-parity + java.time arc** (this session): D-463 clojure.test report-format
-fidelity (`*test-out*` re-enabled, `FAIL in (test-name)` via testing-vars-str,
-`(not (= 1 2))` actual, context line, `Testing <ns>`; AD-041 for the unreproducible
-source-line/JVM-stacktrace; per-var lifecycle events = residual). Then D-462
-java.time wiring — **Instant** + **Duration** as `.typed_instance` values
-(timestamp.zig model; statics + instance methods + `(str)` = ISO_INSTANT / ISO-8601
-`PT…`; value-`=`; verified vs clj incl. gnarly negatives). Folded the print flag into
-a `temporal_print` enum. AD-042 generalized (java.time.* bare-toString vs clj
-`#object[…]` pr). compat_tiers honesty-corrected (anti-D-177); the `*_value.zig`
-files live in the `wrap:` slot (F-009 value-wrap, G3-exempt). Stale-test fix:
-phase14_format `%d` message (D-459 had changed it to "expected an integer (Long)…").
+**clj-parity + java.time campaign** (this session): D-463 clojure.test report-format
+fidelity (`*test-out*`, `FAIL in (test-name)`, `(not (= 1 2))` actual, context line,
+`Testing <ns>`; AD-041 source-line/stacktrace). Then a comprehensive **D-462 java.time
+campaign** — all five local types wired as `.typed_instance` values (timestamp.zig
+model; NO new NaN-box tag): **Instant, Duration, LocalDateTime, LocalDate, LocalTime**
+— statics (of/now/parse/ofEpoch*) + readers + `(str)` ISO-grounded + value-`=`, all
+verified vs clj (negatives / pre-1970 / 1900-non-leap / ns-precision edges). Plus:
+print via a `temporal_print` enum; shared civil + ISO format/parse helpers in
+instant.zig; `(compare …)`/`(sort …)` work (compare.zig temporal arm, AD-043 sign-vs-
+magnitude); comparison predicates (isBefore/isAfter/isEqual + Duration isZero/
+isNegative/negated/abs); LocalDate full date-math (plus/minus days/weeks/months/years
+with civil clamp + isLeapYear/lengthOfMonth); LocalDateTime time-unit arithmetic
+(plus/minus days/weeks/hours/minutes/seconds/nanos with midnight carry). AD-042
+(bare-toString vs `#object[…]`). `*_value.zig` in the `wrap:` slot (G3). Gate-hygiene
+fix (impl_extras→wrap; stale phase14_format `%d`). ZonedDateTime DEFERRED (tz-DB).
 
-**Open residuals** (`.dev/debt.yaml`): D-462 remaining java.time types
-(LocalDateTime / ZonedDateTime / LocalDate) + arithmetic methods (plus*/minus*/
-between) NOT implemented; D-463 per-var lifecycle events; D-460 (sorted coll as map
-key — rt-free keyEqValue); D-461 (require semantics — F-003 owner); D-446 (multidim
-arrays).
+**Open residuals** (`.dev/debt.yaml`): D-462 remaining = Instant/Duration/LocalTime
+arithmetic + getDayOfWeek/DayOfWeek + LDT/LD plusMonths/plusYears + Instant.plus(Dur)
++ compareTo-as-method (all on-demand) + ZonedDateTime (tz-DB); D-463 per-var lifecycle
+events; D-460 (sorted coll as map key); D-461 (require semantics — F-003 owner);
+D-446 (multidim arrays).
 
 ## Perf campaign (PAUSED behind the active flag; not the current task)
 

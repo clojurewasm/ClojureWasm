@@ -563,6 +563,7 @@ run_step "e2e_phase15_java_time_local_date"  "bash test/e2e/phase15_java_time_lo
 run_step "e2e_phase15_java_time_compare"     "bash test/e2e/phase15_java_time_compare.sh"
 run_step "e2e_phase15_java_time_sort"       "bash test/e2e/phase15_java_time_sort.sh"
 run_step "e2e_phase15_java_time_local_date_arith"  "bash test/e2e/phase15_java_time_local_date_arith.sh"
+run_step "e2e_phase15_java_time_ldt_arith"  "bash test/e2e/phase15_java_time_ldt_arith.sh"
 run_step "e2e_phase15_require_fs"           "bash test/e2e/phase15_require_fs.sh"
 run_step "e2e_phase15_use_refer_all"        "bash test/e2e/phase15_use_refer_all.sh"
 run_step "e2e_phase15_use_libspec_filter"   "bash test/e2e/phase15_use_libspec_filter.sh"

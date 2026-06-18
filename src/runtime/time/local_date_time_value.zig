@@ -137,6 +137,136 @@ fn isEqualFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     return Value.initBoolean(epochDayOf(args[0]) == epochDayOf(args[1]) and nanoOfDayOf(args[0]) == nanoOfDayOf(args[1]));
 }
 
+const DAY_NS: i64 = 86_400_000_000_000;
+const HOUR_NS: i64 = 3_600_000_000_000;
+const MIN_NS: i64 = 60_000_000_000;
+const SEC_NS: i64 = 1_000_000_000;
+
+/// Shift the date-time by whole days (epoch-day field only; time-of-day kept).
+/// Shared by plus/minusDays + plus/minusWeeks.
+fn addDays(rt: *Runtime, self: Value, days: i64) !Value {
+    return make(rt, epochDayOf(self) + days, nanoOfDayOf(self));
+}
+
+/// Shift the date-time by `delta_ns` nanoseconds, carrying/borrowing whole
+/// days into the epoch-day field. `@mod` keeps nano_of_day in [0, DAY_NS) and
+/// `@divFloor` carries the borrow correctly for a negative total. Shared by
+/// plus/minus Hours/Minutes/Seconds/Nanos.
+fn addNanos(rt: *Runtime, self: Value, delta_ns: i64) !Value {
+    const total = nanoOfDayOf(self) + delta_ns;
+    const new_epoch_day = epochDayOf(self) + @divFloor(total, DAY_NS);
+    const new_nano_of_day = @mod(total, DAY_NS);
+    return make(rt, new_epoch_day, new_nano_of_day);
+}
+
+/// `(.plusDays d n)` — `n` days later (JVM `LocalDateTime.plusDays`).
+fn plusDaysFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("plusDays", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "plusDays", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addDays(rt, args[0], args[1].asInteger());
+}
+
+/// `(.minusDays d n)` — `n` days earlier (JVM `LocalDateTime.minusDays`).
+fn minusDaysFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("minusDays", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "minusDays", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addDays(rt, args[0], -args[1].asInteger());
+}
+
+/// `(.plusWeeks d n)` — `7*n` days later (JVM `LocalDateTime.plusWeeks`).
+fn plusWeeksFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("plusWeeks", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "plusWeeks", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addDays(rt, args[0], 7 * args[1].asInteger());
+}
+
+/// `(.minusWeeks d n)` — `7*n` days earlier (JVM `LocalDateTime.minusWeeks`).
+fn minusWeeksFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("minusWeeks", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "minusWeeks", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addDays(rt, args[0], -7 * args[1].asInteger());
+}
+
+/// `(.plusHours d n)` — `n` hours later, crossing midnight (JVM `LocalDateTime.plusHours`).
+fn plusHoursFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("plusHours", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "plusHours", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addNanos(rt, args[0], args[1].asInteger() * HOUR_NS);
+}
+
+/// `(.minusHours d n)` — `n` hours earlier, crossing midnight (JVM `LocalDateTime.minusHours`).
+fn minusHoursFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("minusHours", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "minusHours", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addNanos(rt, args[0], -args[1].asInteger() * HOUR_NS);
+}
+
+/// `(.plusMinutes d n)` — `n` minutes later, crossing midnight (JVM `LocalDateTime.plusMinutes`).
+fn plusMinutesFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("plusMinutes", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "plusMinutes", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addNanos(rt, args[0], args[1].asInteger() * MIN_NS);
+}
+
+/// `(.minusMinutes d n)` — `n` minutes earlier, crossing midnight (JVM `LocalDateTime.minusMinutes`).
+fn minusMinutesFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("minusMinutes", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "minusMinutes", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addNanos(rt, args[0], -args[1].asInteger() * MIN_NS);
+}
+
+/// `(.plusSeconds d n)` — `n` seconds later, crossing midnight (JVM `LocalDateTime.plusSeconds`).
+fn plusSecondsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("plusSeconds", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "plusSeconds", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addNanos(rt, args[0], args[1].asInteger() * SEC_NS);
+}
+
+/// `(.minusSeconds d n)` — `n` seconds earlier, crossing midnight (JVM `LocalDateTime.minusSeconds`).
+fn minusSecondsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("minusSeconds", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "minusSeconds", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addNanos(rt, args[0], -args[1].asInteger() * SEC_NS);
+}
+
+/// `(.plusNanos d n)` — `n` nanoseconds later, crossing midnight (JVM `LocalDateTime.plusNanos`).
+fn plusNanosFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("plusNanos", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "plusNanos", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addNanos(rt, args[0], args[1].asInteger());
+}
+
+/// `(.minusNanos d n)` — `n` nanoseconds earlier, crossing midnight (JVM `LocalDateTime.minusNanos`).
+fn minusNanosFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("minusNanos", args, 2, loc);
+    if (args[1].tag() != .integer)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "minusNanos", .expected = "integer", .actual = @tagName(args[1].tag()) });
+    return addNanos(rt, args[0], -args[1].asInteger());
+}
+
 /// The per-Runtime canonical LocalDateTime descriptor (lazily allocated on
 /// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "LocalDateTime"` so
 /// `(class …)` prints the simple name (AD-003 / no-JVM);
@@ -165,6 +295,18 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .{ "getNano", &getNanoFn },
         .{ "toLocalDate", &toLocalDateFn },
         .{ "toLocalTime", &toLocalTimeFn },
+        .{ "plusDays", &plusDaysFn },
+        .{ "minusDays", &minusDaysFn },
+        .{ "plusWeeks", &plusWeeksFn },
+        .{ "minusWeeks", &minusWeeksFn },
+        .{ "plusHours", &plusHoursFn },
+        .{ "minusHours", &minusHoursFn },
+        .{ "plusMinutes", &plusMinutesFn },
+        .{ "minusMinutes", &minusMinutesFn },
+        .{ "plusSeconds", &plusSecondsFn },
+        .{ "minusSeconds", &minusSecondsFn },
+        .{ "plusNanos", &plusNanosFn },
+        .{ "minusNanos", &minusNanosFn },
         .{ "isBefore", &isBeforeFn },
         .{ "isAfter", &isAfterFn },
         .{ "isEqual", &isEqualFn },
