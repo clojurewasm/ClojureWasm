@@ -32,4 +32,12 @@ assert_eq 'comment_nil'  "$("$BIN" -e '(comment this is ignored)')" 'nil'
 assert_eq 'comment_undef' "$("$BIN" -e '(comment (totally-undefined 99))')" 'nil'
 assert_eq 'comment_indo' "$("$BIN" -e '(do (comment x) (+ 40 2))')" '42'
 
-echo "OK — phase14_when_if_not smoke (9 cases) green"
+# `when` macroexpands byte-identically to clj: `(if test (do body...))` — always
+# a (do ...) wrap (even single-body) and a 2-arg if (no explicit nil else).
+assert_eq 'when_expand_multi'  "$("$BIN" -e "(macroexpand-1 '(when c a b))")" '(if c (do a b))'
+assert_eq 'when_expand_single' "$("$BIN" -e "(macroexpand-1 '(when c x))")"   '(if c (do x))'
+# AD-040 pin: cljw `cond` macroexpand-1 yields the FULL nested-if (clj expands
+# one clause, leaving a recursive `(clojure.core/cond …)`) — functionally equal.
+assert_eq 'cond_expand_full'   "$("$BIN" -e "(macroexpand-1 '(cond a 1 :else 2))")" '(if a 1 (if :else 2 nil))'
+
+echo "OK — phase14_when_if_not smoke (12 cases) green"

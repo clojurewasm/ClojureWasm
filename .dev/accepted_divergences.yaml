@@ -647,3 +647,21 @@ accepted:
       can't span levels — the only real capture hazard the gensym guards).
     derives_from: "AD-002 (non-reproducible JVM-side token — here a gensym counter — is not mirrored; cljw uses a deterministic name). The fixed `%N`/`%&` naming is sound because nested `#()` is rejected (no `%`-across-levels capture to guard)."
     pin: "test/e2e/phase14_anon_fn_reader.sh — `anon_readform_pct1` locks (read-string \"#(+ % 1)\") => (fn* [%1] (+ %1 1)) and `anon_readform_rest` locks the `%&` rest form (cljw's deterministic params vs clj's gensyms)"
+  - id: "AD-040"
+    summary: "A cascading macro (`cond`, and similar) macroexpand-1's to the FULL nested form in cljw, where clj expands ONE clause and leaves a recursive `(clojure.core/cond …)` call. Functionally identical; the expanded form (and the nested macro's namespace) differ."
+    example: "(macroexpand-1 '(cond a 1 :else 2)) => cljw \"(if a 1 (if :else 2 nil))\" / clj \"(if a 1 (clojure.core/cond :else 2))\". Running the macro is identical: (cond false 1 :else 2) => 2 both. NOTE: `when` DOES byte-match clj (`(if c (do body))`, fixed) — only the recursive-cascade macros (cond/condp/…) differ."
+    why: |-
+      cljw's macro transforms are eager Zig functions that build the entire
+      lowered form in one `macroexpand-1` step (`expandCond` → `buildCondTail`
+      recurses fully), whereas clj's `cond` is a self-referential Clojure macro
+      that rewrites one clause to `(if test then (cond rest…))` and re-expands on
+      the next step. Both reach the SAME nested-if after full expansion — only
+      the per-step shape an inspecting tool sees differs. Matching clj's per-step
+      form would require (a) re-emitting a `cond` call (an artificial partial
+      expansion) AND (b) qualifying it `clojure.core/cond`, which cljw cannot do
+      faithfully (cljw's macros emit bare syms; the core ns is `rt`, AD-011) — so
+      exact per-step parity is impractical for zero behavioural gain. The common
+      `when`/`if-not`/`when-not` forms ARE made to byte-match clj; only the
+      recursive-cascade cases keep cljw's full-expand shape.
+    derives_from: "F-011 (behavioural equivalence is the contract; the macros run identically — only the intermediate macroexpand-1 FORM differs) + AD-011/ADR-0033 (cljw emits bare/`rt`-ns syms, not clojure.core-qualified, so a faithful recursive re-emit is impossible). Functionally-equivalent expansion form, like ClojureScript's macroexpansions vs JVM clj."
+    pin: "test/e2e/phase14_when_if_not.sh — `cond_expand_full` locks (macroexpand-1 '(cond a 1 :else 2)) => (if a 1 (if :else 2 nil)) (cljw's full form), and `when_expand_multi`/`when_expand_single` lock when's byte-match with clj"

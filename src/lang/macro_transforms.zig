@@ -620,26 +620,19 @@ fn expandWhen(
     const cond_form = args[0];
     const body = args[1..];
 
-    // (do body...) -- but if there's a single body form, fold to it
-    // directly so the expanded shape is simpler to read in error
-    // messages. An EMPTY body (`(when test)`) is nil (clj parity:
-    // `(when test)` → `(if test (do))` → nil).
-    const then_form = if (body.len == 0)
-        nilForm(loc)
-    else if (body.len == 1)
-        body[0]
-    else blk: {
-        var do_items = try arena.alloc(Form, body.len + 1);
-        do_items[0] = sym("do", loc);
-        @memcpy(do_items[1..], body);
-        break :blk try list(arena, do_items, loc);
-    };
+    // clj: `(when test body...)` → `(if test (do body...))` — ALWAYS a `(do …)`
+    // wrap (even single-body) and a 2-arg `if` (no explicit `nil` else), so
+    // `(macroexpand-1 '(when c x))` byte-matches clj. (2-arg `if` yields nil on
+    // a false test, identical to a 3-arg `(if c then nil)`.)
+    var do_items = try arena.alloc(Form, body.len + 1);
+    do_items[0] = sym("do", loc);
+    @memcpy(do_items[1..], body);
+    const then_form = try list(arena, do_items, loc);
 
-    const if_items = try arena.alloc(Form, 4);
+    const if_items = try arena.alloc(Form, 3);
     if_items[0] = sym("if", loc);
     if_items[1] = cond_form;
     if_items[2] = then_form;
-    if_items[3] = nilForm(loc);
     return list(arena, if_items, loc);
 }
 
@@ -3561,7 +3554,7 @@ test "expandLet renames head to let*" {
     try testing.expectEqualStrings("let*", out.data.list[0].data.symbol.name);
 }
 
-test "expandWhen builds (if c (do body...) nil)" {
+test "expandWhen builds (if c (do body...)) — clj parity (always-do, 2-arg if)" {
     var fix: TestFixture = undefined;
     try fix.init(testing.allocator);
     defer fix.deinit();
@@ -3573,9 +3566,14 @@ test "expandWhen builds (if c (do body...) nil)" {
 
     const out = try expandWhen(arena, &fix.rt, &args, .{});
     try testing.expect(out.data == .list);
+    // (if c (do 42)) — 3-element 2-arg if (no explicit nil else), matching clj.
     try testing.expectEqualStrings("if", out.data.list[0].data.symbol.name);
-    try testing.expectEqual(@as(usize, 4), out.data.list.len);
-    try testing.expect(out.data.list[3].data == .nil);
+    try testing.expectEqual(@as(usize, 3), out.data.list.len);
+    // Then-branch is ALWAYS a (do ...), even for a single body form.
+    const then_f = out.data.list[2];
+    try testing.expect(then_f.data == .list);
+    try testing.expectEqualStrings("do", then_f.data.list[0].data.symbol.name);
+    try testing.expectEqual(@as(i64, 42), then_f.data.list[1].data.integer);
 }
 
 test "expandThreadFirst produces (* (+ 1 2) 3) for (-> 1 (+ 2) (* 3))" {
