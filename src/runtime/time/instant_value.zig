@@ -25,6 +25,7 @@ const TypeDescriptor = td_mod.TypeDescriptor;
 const TypedInstance = td_mod.TypedInstance;
 const error_catalog = @import("../error/catalog.zig");
 const SourceLocation = @import("../error/info.zig").SourceLocation;
+const duration_value = @import("duration_value.zig");
 
 /// `(.getEpochSecond i)` — the whole seconds since the epoch (JVM
 /// `Instant.getEpochSecond`). `epoch_ms` is second-aligned, but `@divFloor`
@@ -144,6 +145,33 @@ fn minusNanosFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return addFracNanos(rt, args[0], -@as(i128, args[1].asInteger()));
 }
 
+/// `(.plus i d)` — the instant shifted forward by a Duration (JVM
+/// `Instant.plus(TemporalAmount)`). Distinct from `plusSeconds` (long arg):
+/// here the arg is a Duration value.
+fn plusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("plus", args, 2, loc);
+    if (!duration_value.isDuration(rt, args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".plus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
+    var new_epoch_ms = epochMsOf(args[0]) + duration_value.secondsOf(args[1]) * 1000;
+    const total_ns = @as(i128, nanosOf(args[0])) + duration_value.nanosOf(args[1]);
+    new_epoch_ms += @as(i64, @intCast(@divFloor(total_ns, NS_PER_SEC))) * 1000;
+    return make(rt, new_epoch_ms, @intCast(@mod(total_ns, NS_PER_SEC)));
+}
+
+/// `(.minus i d)` — the instant shifted backward by a Duration (JVM
+/// `Instant.minus(TemporalAmount)`).
+fn minusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("minus", args, 2, loc);
+    if (!duration_value.isDuration(rt, args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".minus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
+    var new_epoch_ms = epochMsOf(args[0]) - duration_value.secondsOf(args[1]) * 1000;
+    const total_ns = @as(i128, nanosOf(args[0])) - duration_value.nanosOf(args[1]);
+    new_epoch_ms += @as(i64, @intCast(@divFloor(total_ns, NS_PER_SEC))) * 1000;
+    return make(rt, new_epoch_ms, @intCast(@mod(total_ns, NS_PER_SEC)));
+}
+
 /// The per-Runtime canonical Instant descriptor (lazily allocated on
 /// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "Instant"` so `(class …)`
 /// prints the simple name (AD-003 / no-JVM); `temporal_print = .iso_instant` drives the
@@ -174,6 +202,8 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .{ "minusMillis", &minusMillisFn },
         .{ "plusNanos", &plusNanosFn },
         .{ "minusNanos", &minusNanosFn },
+        .{ "plus", &plusFn },
+        .{ "minus", &minusFn },
     };
     const entries = try rt.gc.infra.alloc(TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

@@ -31,6 +31,7 @@ const SourceLocation = @import("../error/info.zig").SourceLocation;
 const instant = @import("instant.zig");
 const local_date_value = @import("local_date_value.zig");
 const local_time_value = @import("local_time_value.zig");
+const duration_value = @import("duration_value.zig");
 
 /// `(.getYear d)` — the proleptic year (JVM `LocalDateTime.getYear`).
 fn getYearFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -267,6 +268,35 @@ fn minusNanosFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return addNanos(rt, args[0], -args[1].asInteger());
 }
 
+const NS_PER_SEC: i128 = 1_000_000_000;
+
+/// `(.plus d dur)` — the date-time shifted forward by a Duration (JVM
+/// `LocalDateTime.plus(TemporalAmount)`), carrying whole days into epoch-day.
+/// Distinct from `plusSeconds` (long arg): here the arg is a Duration value.
+fn plusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("plus", args, 2, loc);
+    if (!duration_value.isDuration(rt, args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".plus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
+    const dur_ns = @as(i128, duration_value.secondsOf(args[1])) * NS_PER_SEC + duration_value.nanosOf(args[1]);
+    const total = @as(i128, nanoOfDayOf(args[0])) + dur_ns;
+    const new_epoch_day = epochDayOf(args[0]) + @as(i64, @intCast(@divFloor(total, @as(i128, DAY_NS))));
+    return make(rt, new_epoch_day, @intCast(@mod(total, @as(i128, DAY_NS))));
+}
+
+/// `(.minus d dur)` — the date-time shifted backward by a Duration (JVM
+/// `LocalDateTime.minus(TemporalAmount)`).
+fn minusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("minus", args, 2, loc);
+    if (!duration_value.isDuration(rt, args[1]))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".minus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
+    const dur_ns = @as(i128, duration_value.secondsOf(args[1])) * NS_PER_SEC + duration_value.nanosOf(args[1]);
+    const total = @as(i128, nanoOfDayOf(args[0])) - dur_ns;
+    const new_epoch_day = epochDayOf(args[0]) + @as(i64, @intCast(@divFloor(total, @as(i128, DAY_NS))));
+    return make(rt, new_epoch_day, @intCast(@mod(total, @as(i128, DAY_NS))));
+}
+
 /// The per-Runtime canonical LocalDateTime descriptor (lazily allocated on
 /// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "LocalDateTime"` so
 /// `(class …)` prints the simple name (AD-003 / no-JVM);
@@ -310,6 +340,8 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .{ "isBefore", &isBeforeFn },
         .{ "isAfter", &isAfterFn },
         .{ "isEqual", &isEqualFn },
+        .{ "plus", &plusFn },
+        .{ "minus", &minusFn },
     };
     const entries = try rt.gc.infra.alloc(TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

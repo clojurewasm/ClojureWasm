@@ -106,6 +106,7 @@ fn initDuration(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) any
         .{ "ofMinutes", &ofMinutes },
         .{ "ofHours", &ofHours },
         .{ "ofDays", &ofDays },
+        .{ "between", &duration_value.betweenFn },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

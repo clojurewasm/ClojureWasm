@@ -26,6 +26,9 @@ const TypeDescriptor = td_mod.TypeDescriptor;
 const TypedInstance = td_mod.TypedInstance;
 const error_catalog = @import("../error/catalog.zig");
 const SourceLocation = @import("../error/info.zig").SourceLocation;
+const instant_value = @import("instant_value.zig");
+const local_date_time_value = @import("local_date_time_value.zig");
+const local_time_value = @import("local_time_value.zig");
 
 /// `(.getSeconds d)` — the whole seconds (signed) of the normalized span
 /// (JVM `Duration.getSeconds`).
@@ -267,6 +270,33 @@ fn dividedByFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return make(rt, @intCast(@divFloor(q, NS_PER_SEC)), @intCast(@mod(q, NS_PER_SEC)));
 }
 
+const DAY_NS: i128 = 86_400_000_000_000;
+
+/// `(java.time.Duration/between a b)` — the elapsed time `b - a` as a Duration
+/// (JVM `Duration.between`). Both args must be the SAME temporal type
+/// (Instant / LocalDateTime / LocalTime); a cross-type or non-temporal pair
+/// raises `type_arg_invalid`, mirroring clj's throw on unsupported temporals.
+pub fn betweenFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("between", args, 2, loc);
+    const a = args[0];
+    const b = args[1];
+    if (instant_value.isInstant(rt, a) and instant_value.isInstant(rt, b)) {
+        const a_ns = @as(i128, instant_value.epochMsOf(a)) * 1_000_000 + instant_value.nanosOf(a);
+        const b_ns = @as(i128, instant_value.epochMsOf(b)) * 1_000_000 + instant_value.nanosOf(b);
+        return makeFromNanos(rt, b_ns - a_ns);
+    }
+    if (local_date_time_value.isLocalDateTime(rt, a) and local_date_time_value.isLocalDateTime(rt, b)) {
+        const a_ns = @as(i128, local_date_time_value.epochDayOf(a)) * DAY_NS + local_date_time_value.nanoOfDayOf(a);
+        const b_ns = @as(i128, local_date_time_value.epochDayOf(b)) * DAY_NS + local_date_time_value.nanoOfDayOf(b);
+        return makeFromNanos(rt, b_ns - a_ns);
+    }
+    if (local_time_value.isLocalTime(rt, a) and local_time_value.isLocalTime(rt, b)) {
+        return makeFromNanos(rt, @as(i128, local_time_value.nanoOfDayOf(b)) - local_time_value.nanoOfDayOf(a));
+    }
+    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "between", .expected = "two temporals of the same type", .actual = @tagName(b.tag()) });
+}
+
 /// The per-Runtime canonical Duration descriptor (lazily allocated on
 /// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "Duration"` so `(class …)`
 /// prints the simple name (AD-003 / no-JVM); `temporal_print = .iso_duration`
@@ -329,6 +359,12 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
 pub fn make(rt: *Runtime, seconds: i64, nanos: i32) !Value {
     const td = try descriptorOf(rt);
     return td_mod.allocInstance(rt, td, &.{ Value.initInteger(seconds), Value.initInteger(nanos) });
+}
+
+/// Mint a normalized Duration from a total nanosecond span. `@divFloor`/`@mod`
+/// give the canonical {seconds, nanos∈[0,1e9)} pair (negative-safe).
+pub fn makeFromNanos(rt: *Runtime, total_ns: i128) !Value {
+    return make(rt, @intCast(@divFloor(total_ns, NS_PER_SEC)), @intCast(@mod(total_ns, NS_PER_SEC)));
 }
 
 /// True when `v` is a Duration (carries the per-Runtime Duration descriptor).
