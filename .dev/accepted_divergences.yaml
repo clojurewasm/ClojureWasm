@@ -695,3 +695,20 @@ accepted:
       `=` — matches clj exactly.
     derives_from: "ADR-0059 (no-JVM: no identity-hash `#object[…]` object form) + F-011 (behavioural equivalence — toString / method results / `=` match; only the unreproducible identity-wrapped pr form differs)."
     pin: "test/e2e/phase15_java_time_instant.sh + test/e2e/phase15_java_time_duration.sh + test/e2e/phase15_java_time_local_date_time.sh + test/e2e/phase15_java_time_local_date.sh — lock `(str v)` = the bare ISO toString (Instant ISO_INSTANT variable fraction + `Z`; Duration `PT…`; LocalDateTime ISO-local conditional seconds + variable fraction; LocalDate `yyyy-MM-dd`; LocalTime ISO-local time) and the instance-method + value-`=` results; the absent `#object[…]` pr wrapper is the locked divergence."
+  - id: "AD-043"
+    summary: "`(compare a b)` (and the `.compareTo` it backs) returns the SIGN (-1/0/1, an Order) where clj returns a difference MAGNITUDE for some Comparable types — a char-difference for strings, a field-difference (year/month/day) for java.time.LocalDate/LocalDateTime. The SIGN is identical, so sort order / branch behaviour match; only the non-zero magnitude differs."
+    example: "(compare \"a\" \"c\") => cljw -1 / clj -2. (compare (java.time.LocalDate/of 2024 6 1) (java.time.LocalDate/of 2024 1 1)) => cljw 1 / clj 5. (compare (java.time.Instant/ofEpochSecond 5) (java.time.Instant/ofEpochSecond 9)) => -1 BOTH (Instant/Duration/LocalTime already match — they use a sign-returning Long/Integer.compare). (sort …) is identical either way."
+    why: |-
+      cljw's `compare` (runtime/compare.zig, ADR-0053) is uniformly Order-based:
+      every arm returns `std.math.Order` → -1/0/1 when surfaced to Clojure. The
+      JVM's `Comparable.compareTo` is only contracted to return a value whose
+      SIGN indicates the ordering — the magnitude is unspecified — and several
+      JVM types (String, LocalDate, LocalDateTime) happen to return a field
+      difference. Mirroring those magnitudes would mean re-deriving each type's
+      JVM-internal subtraction chain (ADR-0059: cljw is not a JVM reimpl) for
+      zero behavioural gain: `sort`, `compare`-keyed maps, and every
+      sign-test see identical results. This is a PRE-EXISTING cljw property
+      (strings already diverged); the D-462 temporal `compare` arms follow the
+      same sign-based design and this AD records the whole class.
+    derives_from: "java.lang.Comparable / java.util.Comparator contract (only the SIGN of compareTo/compare is specified; magnitude is implementation-defined) + ADR-0053 (cljw compare is Order-based) + ADR-0059 (no JVM-internal magnitude reproduction)."
+    pin: "test/e2e/phase15_java_time_sort.sh — locks cljw's sign-based results: `(compare \"a\" \"c\")` => -1, `(compare LocalDate-jun LocalDate-jan)` => 1 (clj 5), and `(sort [LocalDate …])` ordering."

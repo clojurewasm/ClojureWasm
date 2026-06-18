@@ -31,6 +31,11 @@ const big_int = @import("numeric/big_int.zig");
 const ratio = @import("numeric/ratio.zig");
 const big_decimal = @import("numeric/big_decimal.zig");
 const promote = @import("numeric/promote.zig");
+const instant_value = @import("time/instant_value.zig");
+const duration_value = @import("time/duration_value.zig");
+const local_date_value = @import("time/local_date_value.zig");
+const local_time_value = @import("time/local_time_value.zig");
+const local_date_time_value = @import("time/local_date_time_value.zig");
 
 const NumCat = enum { integer, floating, ratio, decimal, none };
 
@@ -127,6 +132,34 @@ fn vecOrder(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!Orde
     return .eq;
 }
 
+/// 3-way order for a same-type java.time temporal pair (D-462), so `(compare …)`
+/// + `(sort …)` work on temporal values. Sign-based (returns Order → -1/0/1 when
+/// surfaced) like every other cljw `compare` arm — clj's field-difference
+/// MAGNITUDE for LocalDate/LocalDateTime is AD-043. A cross-temporal-type or
+/// non-temporal typed_instance (deftype/record) pair raises (clj: ClassCast).
+/// Mirrors the equal.zig per-type arms.
+fn temporalOrder(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!Order {
+    if (instant_value.isInstant(rt, a) and instant_value.isInstant(rt, b)) {
+        const o = std.math.order(instant_value.epochMsOf(a), instant_value.epochMsOf(b));
+        return if (o != .eq) o else std.math.order(instant_value.nanosOf(a), instant_value.nanosOf(b));
+    }
+    if (duration_value.isDuration(rt, a) and duration_value.isDuration(rt, b)) {
+        const o = std.math.order(duration_value.secondsOf(a), duration_value.secondsOf(b));
+        return if (o != .eq) o else std.math.order(duration_value.nanosOf(a), duration_value.nanosOf(b));
+    }
+    if (local_date_value.isLocalDate(rt, a) and local_date_value.isLocalDate(rt, b)) {
+        return std.math.order(local_date_value.epochDayOf(a), local_date_value.epochDayOf(b));
+    }
+    if (local_time_value.isLocalTime(rt, a) and local_time_value.isLocalTime(rt, b)) {
+        return std.math.order(local_time_value.nanoOfDayOf(a), local_time_value.nanoOfDayOf(b));
+    }
+    if (local_date_time_value.isLocalDateTime(rt, a) and local_date_time_value.isLocalDateTime(rt, b)) {
+        const o = std.math.order(local_date_time_value.epochDayOf(a), local_date_time_value.epochDayOf(b));
+        return if (o != .eq) o else std.math.order(local_date_time_value.nanoOfDayOf(a), local_date_time_value.nanoOfDayOf(b));
+    }
+    return raiseUncomparable(loc, a);
+}
+
 /// `(compare a b)` semantics. See module docstring + ADR-0053.
 pub fn valueCompare(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!Order {
     if (@intFromEnum(a) == @intFromEnum(b)) return .eq;
@@ -166,6 +199,8 @@ pub fn valueCompare(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyer
             break :blk nsNameOrder(sa.ns, sa.name, sb.ns, sb.name);
         },
         // `.vector` (+ `.map_entry`) handled by the vector-like branch above.
+        // java.time temporal values (D-462) compare by their fields.
+        .typed_instance => try temporalOrder(rt, a, b, loc),
         // lists / maps / sets / fns etc. are not Comparable (JVM throws).
         else => raiseUncomparable(loc, a),
     };
