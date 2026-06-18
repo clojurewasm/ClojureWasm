@@ -419,8 +419,11 @@ test "dispatch raises protocol_no_satisfies when method missing from descriptor"
     const inst = try td_mod.allocInstance(&fix.rt, td, &.{});
 
     var cs: CallSite = .{};
+    // protocol_no_satisfies is Kind `.value_error` (→ IllegalArgumentException,
+    // matching clj's protocol-no-impl AND `(seq <non-seqable>)`) since D-459, so
+    // the Zig error is ValueError, not TypeError.
     try testing.expectError(
-        error.TypeError,
+        error.ValueError,
         dispatch(&fix.rt, &env, &cs, inst, "P", "missing", &.{}, .{}),
     );
 }
@@ -438,7 +441,7 @@ test "dispatch raises protocol_no_satisfies on non-typed_instance receiver" {
     // default descriptor table is a Phase 7+ extension; for now this
     // path raises immediately.
     try testing.expectError(
-        error.TypeError,
+        error.ValueError,
         dispatch(&fix.rt, &env, &cs, Value.initInteger(42), "P", "m", &.{}, .{}),
     );
 }

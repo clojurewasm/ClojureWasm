@@ -21,6 +21,7 @@ const dispatch = @import("../../runtime/dispatch.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
 const symbol_mod = @import("../../runtime/symbol.zig");
 const string_mod = @import("../../runtime/collection/string.zig");
+const big_decimal_mod = @import("../../runtime/numeric/big_decimal.zig");
 const equal_mod = @import("../../runtime/equal.zig");
 const hash_mod = @import("../../runtime/hash.zig");
 const sequence = @import("sequence.zig");
@@ -887,6 +888,28 @@ fn writeFloatPrec(w: *std.Io.Writer, f: f64, prec: usize) !void {
 /// (only for `%f`, default 6). Args are consumed left-to-right. Matches
 /// clojure.core/format for the supported subset (the JVM delegates to
 /// java.util.Formatter).
+/// `%d`/`%x`/`%X`/`%o` integer-conversion arg: reuses `expectI64`'s acceptance
+/// (a Long — inline i48 or long-origin BigInt; clj `%d` rejects true BigInt /
+/// Double / Ratio too) but raises `IllegalArgumentException`, since clj's
+/// `IllegalFormatConversionException ⊂ IllegalArgumentException`, not the
+/// `ClassCastException` of `expectI64`'s `.type_arg_not_integer`. D-459.
+fn formatIntArg(val: Value, loc: SourceLocation) error_mod.ClojureWasmError!i64 {
+    return error_catalog.expectI64(val, "format", loc) catch
+        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "format", .expected = "an integer (Long) for %d/%x/%o", .actual = @tagName(val.tag()) });
+}
+
+/// `%f`/`%e`/`%g` float-conversion arg. clj accepts ONLY Double + BigDecimal
+/// (Long / BigInt / Ratio throw `IllegalFormatConversionException`), so this is
+/// stricter than `expectNumber` (which coerces a Long → f64, the `(format "%f"
+/// 3)` over-acceptance). Rejects with `IllegalArgumentException`. D-459.
+fn formatFloatArg(val: Value, loc: SourceLocation) error_mod.ClojureWasmError!f64 {
+    return switch (val.tag()) {
+        .float => val.asFloat(),
+        .big_decimal => big_decimal_mod.toFloat(val),
+        else => error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "format", .expected = "a float (Double or BigDecimal) for %f/%e/%g", .actual = @tagName(val.tag()) }),
+    };
+}
+
 pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (args.len == 0 or args[0].tag() != .string)
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "format", .actual = if (args.len == 0) "nil" else @tagName(args[0].tag()) });
@@ -1010,11 +1033,11 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
                     for (s) |ch| try tw.writeByte(std.ascii.toUpper(ch));
                 } else try tw.writeAll(s);
             },
-            'd' => try writeDecimal(tw, try error_catalog.expectI64(args[src], "format", loc), group, plus, space, paren),
+            'd' => try writeDecimal(tw, try formatIntArg(args[src], loc), group, plus, space, paren),
             // `%x`/`%X`/`%o`: Java renders the UNSIGNED 64-bit two's-complement
             // value (`%x -1` → "ffffffffffffffff"); `#` adds a 0x/0X/0 prefix.
             'x', 'X', 'o' => {
-                const uv: u64 = @bitCast(try error_catalog.expectI64(args[src], "format", loc));
+                const uv: u64 = @bitCast(try formatIntArg(args[src], loc));
                 if (alt) try tw.writeAll(switch (conv) {
                     'x' => "0x",
                     'X' => "0X",
@@ -1029,19 +1052,19 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             'f' => {
                 var ftmp: std.Io.Writer.Allocating = .init(rt.gpa);
                 defer ftmp.deinit();
-                try writeFloatPrec(&ftmp.writer, try error_catalog.expectNumber(args[src], "format", loc), prec orelse 6);
+                try writeFloatPrec(&ftmp.writer, try formatFloatArg(args[src], loc), prec orelse 6);
                 try writeFloatFlagged(tw, ftmp.writer.buffered(), plus, space, paren, group);
             },
             'e', 'E' => {
                 var ftmp: std.Io.Writer.Allocating = .init(rt.gpa);
                 defer ftmp.deinit();
-                try writeScientific(&ftmp.writer, try error_catalog.expectNumber(args[src], "format", loc), prec orelse 6, conv == 'E');
+                try writeScientific(&ftmp.writer, try formatFloatArg(args[src], loc), prec orelse 6, conv == 'E');
                 try writeFloatFlagged(tw, ftmp.writer.buffered(), plus, space, paren, group);
             },
             'g', 'G' => {
                 var ftmp: std.Io.Writer.Allocating = .init(rt.gpa);
                 defer ftmp.deinit();
-                try writeGeneral(&ftmp.writer, try error_catalog.expectNumber(args[src], "format", loc), prec orelse 6, conv == 'G');
+                try writeGeneral(&ftmp.writer, try formatFloatArg(args[src], loc), prec orelse 6, conv == 'G');
                 try writeFloatFlagged(tw, ftmp.writer.buffered(), plus, space, paren, group);
             },
             // `%h`/`%H`: hex of the value's hashCode, nil → "null". cljw's hash
@@ -1061,12 +1084,13 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
                 const truthy = args[src].isTruthy();
                 try tw.writeAll(if (conv == 'B') (if (truthy) "TRUE" else "FALSE") else (if (truthy) "true" else "false"));
             },
-            // `%c` character conversion: arg must be a char (clj rejects a Long
-            // with IllegalFormatConversionException — cljw raises
-            // type_arg_invalid, both error). Emits the codepoint as UTF-8.
+            // `%c` character conversion: arg must be a char. clj rejects a Long
+            // (65) with IllegalFormatConversionException ⊂ IllegalArgumentException,
+            // so cljw raises `arg_value_invalid` (→ IllegalArgumentException), not
+            // the ClassCastException of a plain type slot (D-459). UTF-8 codepoint.
             'c' => {
                 if (args[src].tag() != .char)
-                    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "format", .expected = "character for %c", .actual = @tagName(args[src].tag()) });
+                    return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "format", .expected = "character for %c", .actual = @tagName(args[src].tag()) });
                 var cbuf: [4]u8 = undefined;
                 const cn = std.unicode.utf8Encode(args[src].asChar(), &cbuf) catch 0;
                 try tw.writeAll(cbuf[0..cn]);

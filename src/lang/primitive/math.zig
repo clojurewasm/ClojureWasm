@@ -49,11 +49,7 @@ fn toF64(v: Value) f64 {
             .small => |s| @as(f64, @floatFromInt(s.n)) / @as(f64, @floatFromInt(s.d)),
             .big => |b| b.n.m.toFloat(f64, .nearest_even)[0] / b.d.m.toFloat(f64, .nearest_even)[0],
         },
-        .big_decimal => blk: {
-            const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
-            const unscaled = bd.unscaled.m.toFloat(f64, .nearest_even)[0];
-            break :blk unscaled * std.math.pow(f64, 10.0, -@as(f64, @floatFromInt(bd.scale)));
-        },
+        .big_decimal => big_decimal_mod.toFloat(v),
         else => 0.0, // caller has already type-checked
     };
 }

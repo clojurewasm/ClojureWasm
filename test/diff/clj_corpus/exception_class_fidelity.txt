@@ -1,0 +1,32 @@
+(try (seq 5) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (first 5) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (apply + 5) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (assoc [1 2] 5 :x) (catch Throwable e (instance? IndexOutOfBoundsException e)))
+;;=> true
+(try (assoc [1 2] -1 :x) (catch Throwable e (instance? IndexOutOfBoundsException e)))
+;;=> true
+(try (assoc [1 2] "k" :x) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (conj {} 1) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (into {} [1]) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (conj {} [1 2 3]) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (format "%d" "x") (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (format "%c" 65) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (format "%f" 3) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(try (format "%e" 3) (catch Throwable e (instance? IllegalArgumentException e)))
+;;=> true
+(format "%f" 0.5)
+;;=> "0.500000"
+(format "%f" 3M)
+;;=> "3.000000"
+(format "%c" \A)
+;;=> "A"

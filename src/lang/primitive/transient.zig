@@ -150,8 +150,10 @@ pub fn assocBangFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
             var i: usize = 1;
             while (i < args.len) : (i += 2) {
                 const k = args[i];
+                // Non-integer key on a transient vector → IllegalArgumentException
+                // (clj parity, mirrors persistent `(assoc [1 2] "k" v)`). D-459.
                 if (k.tag() != .integer)
-                    return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = "assoc!", .actual = @tagName(k.tag()) });
+                    return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "assoc!", .expected = "an integer key for a vector", .actual = @tagName(k.tag()) });
                 tcoll = try transient_vector.assoc(rt, tcoll, k.asInteger(), args[i + 1], loc);
             }
         },

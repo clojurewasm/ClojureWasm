@@ -21,8 +21,8 @@
   clj-identical modulo accepted ADs), core libs (zip/data/walk/edn/set), numeric
   tower, macros (`when` now byte-matches clj). Highest-value remaining options, in
   order: (1) the deferred structural debt — D-460 (sorted coll as map key, rt-free
-  keyEqValue), D-459 (exception-class precision for seq-non-seqable), D-461 (eager-
-  load require semantics — F-003 owner call), D-446 (multidim arrays); (2) a few
+  keyEqValue), D-461 (eager-load require semantics — F-003 owner call), D-446
+  (multidim arrays); (2) a few
   not-yet-swept surfaces likely thin: date/time (interop-heavy), spec, deeper
   transducers; (3) the `clj_diff_sweep` harness gap — it CANNOT sweep top-level
   forms (defrecord/defprotocol/deftype error inside its `(prn …)` wrapper), so use
@@ -54,9 +54,9 @@ byte-matches clj; a whole-program integration e2e (`phase14_realworld_program`).
 Value-parity verified clean (many sweeps + 5 mini-programs, 0 non-AD/non-F-005 diffs).
 
 **Open residuals** (`.dev/debt.yaml`): D-446 (multidim aget/aset/aset-* variadic,
-perf-vs-F-009); D-459 (exception-CLASS precision for seq-of-non-seqable etc., `seq`
-blast radius); D-460 (sorted coll as map key / set element — rt-free keyEqValue);
-D-461 (eager-load require semantics — F-003 owner decision).
+perf-vs-F-009); D-460 (sorted coll as map key / set element — rt-free keyEqValue);
+D-461 (eager-load require semantics — F-003 owner decision). (D-459 exception-CLASS
+fidelity DISCHARGED 2026-06-18 — see below.)
 
 ## Perf campaign (PAUSED behind the active flag; not the current task)
 
@@ -71,4 +71,14 @@ ADR-0148 + `private/notes/9.2.S-perf-remeasure-2026-06-17.md`.
 handover → `.dev/project_facts.md` (F-002 / F-010 / F-011) →
 `.claude/rules/clj_diff_sweep.md` + `accepted_divergences.md` (the sweep + AD
 discipline) → `.dev/accepted_divergences.yaml` (AD-001…039) → `.dev/debt.yaml`
-D-446 / D-459. memory `clj_diff_sweep_methodology` + `direct-explore-fork-mechanical`.
+D-446 / D-460. memory `clj_diff_sweep_methodology` + `direct-explore-fork-mechanical`.
+
+## Stopped — user requested
+
+User instruction (2026-06-18): "きりの良い所で参照チェーン監査して停止してください。"
+(Finish at a clean point, run the reference-chain audit, then stop.) Done: D-459
+exception-class fidelity batch landed + pushed; reference-chain audit CLEAN
+(`arg_value_invalid` defined+used no orphan, no dangling `format_conversion_invalid`,
+`big_decimal.toFloat` 2 callers, AD-gate 39 + `check_debt_id_refs` pass, corpus +
+e2e wired). Resume: continue the clj-parity quality loop, self-selecting the next
+unit (D-460 / D-461 / D-446 or a fresh surface) per the Resume contract above.

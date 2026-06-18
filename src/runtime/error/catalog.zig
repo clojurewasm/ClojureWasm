@@ -266,6 +266,14 @@ pub const Code = enum {
     /// primitives where the expected category is "seqable" /
     /// "counted" / "collection" rather than a single concrete type.
     type_arg_invalid,
+    /// args: `.{ .fn_name = "...", .expected = "...", .actual = "..." }`
+    /// VALUE-level argument rejection — same template shape as `type_arg_invalid`
+    /// but Kind `.value_error` (→ catchable IllegalArgumentException), for sites
+    /// where clj throws IllegalArgumentException, NOT ClassCastException: a
+    /// non-`[k v]` entry conj-ed into a map, a non-integer key on a vector
+    /// `assoc`, a wrong-typed `format` conversion arg (Java
+    /// IllegalFormatConversionException ⊂ IllegalArgumentException). D-459.
+    arg_value_invalid,
     /// `(symbol x)` on a value that is not a symbol/string/keyword. clj throws
     /// `IllegalArgumentException` here (NOT the `ClassCastException` of a plain
     /// type slot) — so this is `.value_error`, distinct from `type_arg_invalid`.
@@ -647,7 +655,11 @@ pub fn entry(comptime code: Code) Entry {
             .template = "{[fn_name]s}: path '{[path]s}' escapes the configured filesystem root",
         },
         .protocol_no_satisfies => .{
-            .kind = .type_error,
+            // clj's protocol-no-impl AND its `(seq <non-seqable>)` /
+            // `RT.seqFrom` failure are both IllegalArgumentException, not
+            // ClassCastException — `(seq 5)`/`(first 5)`/`(apply f 5)` reach
+            // here via the Seqable dispatch in `sequence.seqFn`'s else arm. D-459.
+            .kind = .value_error,
             .phase = .eval,
             .template = "No implementation of method '{[method]s}' on protocol '{[protocol]s}' for type '{[type_name]s}'",
         },
@@ -1335,6 +1347,11 @@ pub fn entry(comptime code: Code) Entry {
         },
         .type_arg_invalid => .{
             .kind = .type_error,
+            .phase = .eval,
+            .template = "{[fn_name]s}: expected {[expected]s}, got {[actual]s}",
+        },
+        .arg_value_invalid => .{
+            .kind = .value_error,
             .phase = .eval,
             .template = "{[fn_name]s}: expected {[expected]s}, got {[actual]s}",
         },

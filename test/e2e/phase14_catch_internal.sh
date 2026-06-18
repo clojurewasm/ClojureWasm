@@ -175,4 +175,53 @@ EOF
 ) || fail "case15: non-zero exit ($got)"
 assert_eq 'io_coerce_illegalarg' "$(ll "$got")" '[:iae :iae :iae]'
 
-echo "OK — phase14_catch_internal (21 cases) green"
+# --- Case 16: D-459 exception-class fidelity batch. clj classes:
+#     (seq/first/apply non-seqable) + generic protocol no-impl →
+#     IllegalArgumentException; (assoc vec oob/neg-idx) → IndexOutOfBoundsException;
+#     (assoc vec non-int-key) + (conj/into {} non-entry) + format type-mismatch
+#     → IllegalArgumentException (Java IllegalFormatConversionException ⊂ IAE). ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn [(try (seq 5) :no (catch IllegalArgumentException e :iae))
+      (try (first 5) :no (catch IllegalArgumentException e :iae))
+      (try (apply + 5) :no (catch IllegalArgumentException e :iae))
+      (try (assoc [1 2] 5 :x) :no (catch IndexOutOfBoundsException e :ioob))
+      (try (assoc [1 2] -1 :x) :no (catch IndexOutOfBoundsException e :ioob))
+      (try (assoc [1 2] "k" :x) :no (catch IllegalArgumentException e :iae))
+      (try (conj {} 1) :no (catch IllegalArgumentException e :iae))
+      (try (into {} [1]) :no (catch IllegalArgumentException e :iae))
+      (try (conj {} [1 2 3]) :no (catch IllegalArgumentException e :iae))
+      (try (format "%d" "x") :no (catch IllegalArgumentException e :iae))
+      (try (format "%c" 65) :no (catch IllegalArgumentException e :iae))
+      (try (format "%f" 3) :no (catch IllegalArgumentException e :iae))
+      (try (format "%e" 3) :no (catch IllegalArgumentException e :iae))])
+EOF
+) || fail "case16: non-zero exit ($got)"
+assert_eq 'd459_exception_class_batch' "$(ll "$got")" '[:iae :iae :iae :ioob :ioob :iae :iae :iae :iae :iae :iae :iae :iae]'
+
+# --- Case 16b: D-459 acceptance parity — valid float/char conversions still
+#     work, incl. BigDecimal for %f (clj accepts Double/BigDecimal). ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(prn [(format "%f" 0.5) (format "%f" 3M) (format "%c" \A) (format "%d" 42)])
+EOF
+) || fail "case16b: non-zero exit ($got)"
+assert_eq 'd459_format_valid' "$(ll "$got")" '["0.500000" "3.000000" "A" "42"]'
+
+# --- Case 16c: generic protocol no-impl is IllegalArgumentException (clj parity);
+#     the seq fix derives from this shared protocol_no_satisfies reclassification. ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol P (m [_]))
+(prn (try (m 5) :no (catch IllegalArgumentException e :iae)))
+EOF
+) || fail "case16c: non-zero exit ($got)"
+assert_eq 'd459_protocol_noimpl_iae' "$(ll "$got")" ':iae'
+
+# --- Case 16d: (conj defrecord non-pair) is IllegalArgumentException (clj
+#     parity), like the plain-map conj path. D-459. ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defrecord R [a])
+(prn (try (conj (->R 1) 5) :no (catch IllegalArgumentException e :iae)))
+EOF
+) || fail "case16d: non-zero exit ($got)"
+assert_eq 'd459_record_conj_iae' "$(ll "$got")" ':iae'
+
+echo "OK — phase14_catch_internal (25 cases) green"

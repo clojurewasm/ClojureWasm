@@ -155,7 +155,7 @@ fn recordConj(rt: *Runtime, rec: Value, x: Value, loc: SourceLocation) anyerror!
         .map_entry => return recordAssoc1(rt, rec, map_entry.keyOf(x), map_entry.valOf(x)),
         .vector => {
             if (vector.count(x) != 2)
-                return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "conj", .expected = "[k v] pair when conj-ing onto a record", .actual = "vector of different arity" });
+                return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "conj", .expected = "[k v] pair when conj-ing onto a record", .actual = "vector of different arity" });
             return recordAssoc1(rt, rec, vector.nth(x, 0), vector.nth(x, 1));
         },
         .array_map, .hash_map => {
@@ -164,7 +164,7 @@ fn recordConj(rt: *Runtime, rec: Value, x: Value, loc: SourceLocation) anyerror!
             try map.forEachEntry(x, &ctx, RecordConjCtx.cb);
             return acc;
         },
-        else => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "conj", .expected = "[k v] pair, map-entry, or map when conj-ing onto a record", .actual = @tagName(x.tag()) }),
+        else => return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "conj", .expected = "[k v] pair, map-entry, or map when conj-ing onto a record", .actual = @tagName(x.tag()) }),
     }
 }
 
@@ -173,16 +173,18 @@ fn mapConj(rt: *Runtime, m: Value, entry: Value, loc: SourceLocation) anyerror!V
     if (entry.tag() == .map_entry) {
         return try map.assoc(rt, m, map_entry.keyOf(entry), map_entry.valOf(entry));
     }
-    // (conj m [k v]) — vector pair gets destructured into assoc.
+    // (conj m [k v]) — vector pair gets destructured into assoc. A non-pair
+    // entry → IllegalArgumentException in clj (PersistentArrayMap.cons), NOT
+    // ClassCastException. D-459.
     if (entry.tag() != .vector) {
-        return error_catalog.raise(.type_arg_invalid, loc, .{
+        return error_catalog.raise(.arg_value_invalid, loc, .{
             .fn_name = "conj",
             .expected = "[k v] vector when conj-ing into a map",
             .actual = @tagName(entry.tag()),
         });
     }
     if (vector.count(entry) != 2) {
-        return error_catalog.raise(.type_arg_invalid, loc, .{
+        return error_catalog.raise(.arg_value_invalid, loc, .{
             .fn_name = "conj",
             .expected = "2-element [k v] vector for map conj",
             .actual = "vector of different arity",
@@ -198,7 +200,7 @@ fn sortedMapConj(rt: *Runtime, env: *Env, m: Value, entry: Value, loc: SourceLoc
     }
     // (conj sorted-map [k v]) — same [k v]-pair contract as hash/array map.
     if (entry.tag() != .vector or vector.count(entry) != 2) {
-        return error_catalog.raise(.type_arg_invalid, loc, .{
+        return error_catalog.raise(.arg_value_invalid, loc, .{
             .fn_name = "conj",
             .expected = "2-element [k v] vector when conj-ing into a map",
             .actual = @tagName(entry.tag()),
@@ -640,27 +642,23 @@ pub fn assocFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             var i: usize = 1;
             while (i + 1 < args.len) : (i += 2) {
                 const k = args[i];
+                // clj: a non-integer key on a vector assoc → IllegalArgumentException;
+                // an out-of-range (incl. negative) index → IndexOutOfBoundsException
+                // (NOT the ClassCastException of a plain type slot). D-459.
                 if (k.tag() != .integer) {
-                    break :blk error_catalog.raise(.type_arg_not_integer, loc, .{
+                    break :blk error_catalog.raise(.arg_value_invalid, loc, .{
                         .fn_name = "assoc",
+                        .expected = "an integer key for a vector",
                         .actual = @tagName(k.tag()),
                     });
                 }
                 const idx = k.asInteger();
                 if (idx < 0) {
-                    break :blk error_catalog.raise(.type_arg_invalid, loc, .{
-                        .fn_name = "assoc",
-                        .expected = "non-negative integer index for vector",
-                        .actual = "negative",
-                    });
+                    break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "assoc" });
                 }
                 const n = vector.count(acc);
                 if (idx > n) {
-                    break :blk error_catalog.raise(.type_arg_invalid, loc, .{
-                        .fn_name = "assoc",
-                        .expected = "index in bounds or at tail",
-                        .actual = "out of range",
-                    });
+                    break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "assoc" });
                 }
                 acc = try vector.assoc(rt, acc, @intCast(idx), args[i + 1]);
             }

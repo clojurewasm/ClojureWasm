@@ -250,7 +250,11 @@ pub fn conjEntry(rt: *Runtime, tm_val: Value, entry: Value, loc: SourceLocation)
         return try assoc(rt, tm_val, map_entry_mod.keyOf(entry), map_entry_mod.valOf(entry), loc);
     }
     if (entry.tag() != .vector or vector_mod.count(entry) != 2) {
-        return error_catalog.raise(.transient_kind_mismatch, loc, .{
+        // A non-[k v] entry conj!-ed into a transient map → IllegalArgumentException
+        // in clj (mirrors the persistent `(conj {} 1)` path), NOT the
+        // ClassCastException of a wrong-transient-KIND mismatch. D-459 (this is the
+        // path `(into {} [1])` takes — into builds via a transient).
+        return error_catalog.raise(.arg_value_invalid, loc, .{
             .fn_name = "conj!",
             .expected = "2-element [k v] vector",
             .actual = @tagName(entry.tag()),

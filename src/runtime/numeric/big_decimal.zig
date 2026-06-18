@@ -287,6 +287,15 @@ pub fn asScale(v: Value) i32 {
     return v.decodePtr(*const BigDecimal).scale;
 }
 
+/// Convert to the nearest f64 (`unscaled * 10^-scale`). Shared by the numeric
+/// `double`/`float` coercion (math.zig) and `format`'s %f/%e/%g conversions
+/// (F-011 DRY). Lossy beyond f64 range/precision, matching JVM
+/// `BigDecimal.doubleValue`.
+pub fn toFloat(v: Value) f64 {
+    const unscaled = asUnscaled(v).m.toFloat(f64, .nearest_even)[0];
+    return unscaled * std.math.pow(f64, 10.0, -@as(f64, @floatFromInt(asScale(v))));
+}
+
 /// The stripped-trailing-zeros unscaled significand (ADR-0077): the
 /// scale-independent key/hash projection. NOT the print/arithmetic value.
 pub fn asNormUnscaled(v: Value) *const BigInt {
