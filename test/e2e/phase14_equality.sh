@@ -52,4 +52,13 @@ assert_eq 'eq_int_float'  "$("$BIN" -e '(= 1 1.0)')"          'false'
 assert_eq 'equiv_int_float' "$("$BIN" -e '(== 1 1.0)')"       'true'
 assert_eq 'equiv_int_int'   "$("$BIN" -e '(== 2 2)')"         'true'
 
+# --- sets/maps are `=` by ELEMENTS across impls (clj): sorted = hash with the
+#     same contents (D-460 fix; the dispatch had no sorted_set/sorted_map arm) ---
+assert_eq 'eq_sortedset_hashset' "$("$BIN" -e '(= (sorted-set 1 2 3) #{3 2 1})')" 'true'
+assert_eq 'eq_hashset_sortedset' "$("$BIN" -e '(= #{1 2} (sorted-set 2 1))')"     'true'
+assert_eq 'eq_sortedset_self'    "$("$BIN" -e '(= (sorted-set 1 2) (sorted-set 2 1))')" 'true'
+assert_eq 'eq_sortedmap_hashmap' "$("$BIN" -e '(= (sorted-map :a 1 :b 2) {:b 2 :a 1})')" 'true'
+assert_eq 'eq_sortedset_neq'     "$("$BIN" -e '(= (sorted-set 1 2) #{1 3})')"     'false'
+assert_eq 'eq_sortedmap_valneq'  "$("$BIN" -e '(= (sorted-map :a 1) {:a 2})')"    'false'
+
 echo "ALL phase14_equality PASS"

@@ -41,6 +41,7 @@ const persistent_queue = @import("collection/persistent_queue.zig");
 const map = @import("collection/map.zig");
 const map_entry_mod = @import("collection/map_entry.zig");
 const set = @import("collection/set.zig");
+const sorted = @import("collection/sorted.zig");
 const big_int = @import("numeric/big_int.zig");
 const ratio = @import("numeric/ratio.zig");
 const big_decimal = @import("numeric/big_decimal.zig");
@@ -383,23 +384,50 @@ pub fn seqIndexOf(rt: *Runtime, env: *Env, coll: Value, item: Value, find_last: 
     return found;
 }
 
+// Count / key-seq / membership / value-get over any map impl. `.sorted_map`
+// routes to the `sorted` module (its rb-tree); array/hash route to `map`
+// (which deliberately does NOT handle sorted, map.zig:134). A null loc is fine
+// — `compareKeys` only uses it for an error render that equal keys never hit.
+const noloc_eq: SourceLocation = .{ .line = 0, .column = 0 };
+inline fn mCount(v: Value) u32 {
+    return if (v.tag() == .sorted_map) sorted.count(v) else map.count(v);
+}
+inline fn mKeys(rt: *Runtime, v: Value) anyerror!Value {
+    return if (v.tag() == .sorted_map) sorted.keys(rt, v) else map.keys(rt, v);
+}
+inline fn mContains(rt: *Runtime, env: *Env, v: Value, k: Value) anyerror!bool {
+    return if (v.tag() == .sorted_map) sorted.contains(rt, env, v, k, noloc_eq) else map.contains(v, k);
+}
+inline fn mGet(rt: *Runtime, env: *Env, v: Value, k: Value) anyerror!Value {
+    return if (v.tag() == .sorted_map) sorted.get(rt, env, v, k, noloc_eq) else map.get(v, k);
+}
+inline fn sCount(v: Value) u32 {
+    return if (v.tag() == .sorted_set) sorted.count(v) else set.count(v);
+}
+inline fn sSeq(rt: *Runtime, v: Value) anyerror!Value {
+    return if (v.tag() == .sorted_set) sorted.seq(rt, v) else set.seq(rt, v);
+}
+inline fn sContains(rt: *Runtime, env: *Env, v: Value, x: Value) anyerror!bool {
+    return if (v.tag() == .sorted_set) sorted.setContains(rt, env, v, x, noloc_eq) else set.contains(v, x);
+}
+
 fn mapEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
-    if (map.count(a) != map.count(b)) return false;
-    var ks = try map.keys(rt, a);
+    if (mCount(a) != mCount(b)) return false;
+    var ks = try mKeys(rt, a);
     while (ks.tag() == .list and list.countOf(ks) > 0) {
         const k = list.first(ks);
-        if (!try map.contains(b, k)) return false;
-        if (!try valueEqual(rt, env, try map.get(a, k), try map.get(b, k))) return false;
+        if (!try mContains(rt, env, b, k)) return false;
+        if (!try valueEqual(rt, env, try mGet(rt, env, a, k), try mGet(rt, env, b, k))) return false;
         ks = list.rest(ks);
     }
     return true;
 }
 
-fn setEqual(rt: *Runtime, a: Value, b: Value) anyerror!bool {
-    if (set.count(a) != set.count(b)) return false;
-    var es = try set.seq(rt, a);
+fn setEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
+    if (sCount(a) != sCount(b)) return false;
+    var es = try sSeq(rt, a);
     while (es.tag() == .list and list.countOf(es) > 0) {
-        if (!try set.contains(b, list.first(es))) return false;
+        if (!try sContains(rt, env, b, list.first(es))) return false;
         es = list.rest(es);
     }
     return true;
@@ -512,6 +540,17 @@ fn symbolStructEq(a: Value, b: Value) bool {
 
 inline fn isMapTag(t: Value.Tag) bool {
     return t == .array_map or t == .hash_map;
+}
+
+/// Any persistent-set / persistent-map representation, for value `=`: clj
+/// compares sets (and maps) by their ELEMENTS regardless of impl, so a
+/// sorted-set `=` a hash-set, and a sorted-map `=` an array-map `=` a hash-map,
+/// with the same contents.
+inline fn isAnySetTag(t: Value.Tag) bool {
+    return t == .hash_set or t == .sorted_set;
+}
+inline fn isAnyMapTag(t: Value.Tag) bool {
+    return t == .array_map or t == .hash_map or t == .sorted_map;
 }
 
 fn typedInstanceKeyEq(a: Value, b: Value) bool {
@@ -799,9 +838,15 @@ pub fn valueEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     // keeps its type-sensitive `=` by exclusion; an impl-less deftype falls through.
     if (try instanceEquiv(rt, env, a, b)) |r| return r;
 
-    // 4. Same-tag content arms; any other tag pairing → false.
+    // 4. Sets and maps are `=` by ELEMENTS across all impl tags (clj: a
+    // sorted-set = a hash-set, a sorted-map = an array-/hash-map with the same
+    // contents), so route any set-pair / map-pair BEFORE the same-tag gate.
     const ta = a.tag();
-    if (ta != b.tag()) return false;
+    const tb = b.tag();
+    if (isAnySetTag(ta) and isAnySetTag(tb)) return setEqual(rt, env, a, b);
+    if (isAnyMapTag(ta) and isAnyMapTag(tb)) return mapEqual(rt, env, a, b);
+    // Other tags: same-tag content arms; any other tag pairing → false.
+    if (ta != tb) return false;
     // keyword is interned, so equal ones already hit the identity fast path
     // above; a non-bit-identical keyword pair is unequal. symbol is the
     // exception (ADR-0110): a with-meta'd symbol is non-interned, so an
@@ -809,8 +854,7 @@ pub fn valueEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     return switch (ta) {
         .symbol => symbolStructEq(a, b),
         .string => std.mem.eql(u8, string_mod.asString(a), string_mod.asString(b)),
-        .array_map, .hash_map => mapEqual(rt, env, a, b),
-        .hash_set => setEqual(rt, a, b),
+        // (set / map tags are routed above, across impls — not reachable here.)
         .typed_instance => typedInstanceEqual(rt, env, a, b),
         // UUID equality is by the 128 bits (ADR-0074): two distinct
         // allocations with the same bytes are `=` (clj UUID value equality).
