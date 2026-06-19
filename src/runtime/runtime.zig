@@ -425,7 +425,12 @@ pub const Runtime = struct {
     /// anything else with no canonical name falls back to `@tagName`.
     fn nativeFqcnFor(tag: @import("value/value.zig").Value.Tag) []const u8 {
         if (tag == .nil) return "nil";
-        return class_name_mod.fqcnForTag(tag) orelse @tagName(tag);
+        if (class_name_mod.fqcnForTag(tag)) |name| return name;
+        // Callables / seq views / refs / transients get a stable clj-faithful
+        // simple name instead of the leaked internal heap-tag name (D-337 /
+        // AD-044). @tagName remains only for genuinely-internal tags as a canary.
+        if (class_name_mod.displayClassName(tag)) |name| return name;
+        return @tagName(tag);
     }
 
     /// A name-keyed class-VALUE descriptor (ADR-0128 — was `exceptionDescriptor`,

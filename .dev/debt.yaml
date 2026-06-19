@@ -484,17 +484,6 @@ active:
       methods should appear in traces (clj shows them; v0 did not). Cross-ref
       ADR-0119 area D, dual_backend_parity.md (4 sites, both backends).
     last_reviewed: "2026-06-08"
-  - id: "D-337"
-    status: "deferred from ADR-0121 (2026-06-08). `(class fn)` / `(type fn)` return the raw heap-tag name `fn_val` (likewise `multi_fn` / `protocol_fn`) instead of a clj-reduced simple class name. clj returns a munged generated class (`user$boom__7`); cljw has no JVM class (ADR-0059 / AD-003 simple-name). A callable's class is a TYPE-SYSTEM concern (what TypeDescriptor a closure carries), distinct from the ADR-0121 PRINT form — co-designing it would drag TypeDescriptor design into a print cycle, so it was split out. The ADR-0121 print form (`#<ns/name>`) implies NO class decision."
-    category: "error-system"
-    barrier: |-
-      Needs a TypeDescriptor decision for callables (what simple class name a
-      fn/multifn/protocol-fn reports) + an AD for the clj divergence (clj's munged
-      generated class vs a cljw simple name). Resolve when `(class fn)` returning a
-      raw tag is worth the type-system design (rare; `class_name.zig` already
-      treats `fn_val` as a callable class for `ifn?`). Cross-ref ADR-0121 §3,
-      AD-003, class_name.zig isCallableClassName.
-    last_reviewed: "2026-06-08"
   - id: "D-341"
     status: "open — security (SE-8, eval-free deploy build). `eval` (+ read-string) is public with no confinement story. read-string is ALREADY eval-free by design (ADR-0122 / AD-026 — `#=` not evaluated; the read-eval RCE footgun is closed). The residual is the `eval`/nREPL surface itself: a deployed serverless edge binary should be able to ship eval-free, author opts IN."
     category: "security"
@@ -2074,6 +2063,10 @@ standing:
     barrier: "open after the D-440 arc completes (R4 + R5 must first rewrite the bulk of 'Phase N' citations to gap-area terms). Premature adoption = ~70 dangling citations with no 1:1 redirect. Trigger: D-440 R4/R5 done + a user nod to re-architect the planning axis (it is depth-4, the project's organizing metaphor)."
     last_reviewed: "2026-06-15"
 discharged:
+  - id: "D-337"
+    status: "DISCHARGED 2026-06-19 — `(class x)`/`(type x)` no longer leaks the internal heap-tag name. The deferred TypeDescriptor decision turned out NOT to need a print-cycle co-design: a `class_name.displayClassName(tag)` SSOT maps every user-reachable non-NATIVE_ENTRIES tag (callables fn_val/builtin_fn/multi_fn/protocol_fn → Fn/MultiFn; seq views lazy_seq/range/chunked_cons → LazySeq/LongRange/ChunkedSeq; refs atom/agent/ref/volatile/future/promise/delay/reduced → clj simple names; transients; Namespace; tagged_literal) to a stable clj-faithful simple class name, consulted by `runtime.nativeFqcnFor` AFTER `fqcnForTag` (so the names are NOT instance? targets). `isCallableClassName`'s raw-tag set {fn_val,builtin_fn,multi_fn,protocol_fn} → {Fn,MultiFn} so `(isa? (class +) IFn)` still holds. The clj divergence (clj returns a generated/reify class for fns/future/promise) is recorded as AD-044 (derives_from ADR-0059/AD-003). Broader-than-named scope (the row named only callables; the same fallback leaked seq/ref tags, swept together for the 'no raw tag ever leaks' invariant). e2e phase14_class_type +15 cases (the AD-044 pin). NOTE: cljw `(cons …)`/`(seq \"str\")` realize to PersistentList (a pre-existing seq-view divergence, NOT this row); `.cons`/`.string_seq`/`.array_seq` mappings are defensive."
+    category: "error-system"
+    last_reviewed: "2026-06-19"
   - id: "D-459"
     status: "DISCHARGED 2026-06-18 — exception-class fidelity batch (clj catchable-class parity). All 4 findings + adjacent siblings fixed: (1) `(seq/first/rest/apply <non-seqable>)` + generic protocol-no-impl → IllegalArgumentException, by flipping the SHARED `protocol_no_satisfies` Kind type_error→value_error (clj is IAE for both; verified, and the 2 dispatch unit tests asserting the old `error.TypeError` updated to `error.ValueError`); (2) `(assoc <vec> <oob/neg-idx>)` → IndexOutOfBoundsException via `index_out_of_range`; (3) `(into/conj {} <non-entry>)` incl. the transient `conj!`/`assoc!` path that `into` actually takes + the defrecord-conj sibling → IllegalArgumentException; (4) `format` type-mismatch (`%d`/`%x`/`%o`/`%f`/`%e`/`%g`/`%c`) → IAE, the `(format \"%f\" 3)` Long over-acceptance now throws, and `%f`/`%e`/`%g` accept BigDecimal (clj parity) via a new DRY `big_decimal.toFloat` (also de-dups math.zig). New value_error catalog code `arg_value_invalid` (mirror of `type_arg_invalid` → IllegalArgumentException) + format-local `formatIntArg`/`formatFloatArg`. Mechanised: e2e phase14_catch_internal cases 16/16b/16c/16d + class-fidelity corpus `exception_class_fidelity.txt` (16/16 cljw-vs-clj, 0 diff). Smoke green (dual-backend diff oracle + 3290 corpus); value-parity unchanged."
     category: "clj-parity"

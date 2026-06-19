@@ -198,6 +198,43 @@ pub fn fqcnForTag(tag: Tag) ?[]const u8 {
     return null;
 }
 
+/// `(class x)` / `(type x)` name for tags that are NOT `NATIVE_ENTRIES` exact
+/// classes but ARE reachable as ordinary user values — callables, seq views,
+/// reference types, transients. clj returns a generated/reify class for fns,
+/// future, and promise that cljw has no analog for (AD-044); for the rest clj's
+/// own simple class name is reproduced. Returns null for genuinely-internal
+/// tags (HAMT nodes, chunk buffers, …) so `nativeFqcnFor`'s `@tagName` fallback
+/// surfaces as a canary if such a value ever reaches `(class)`. This is the
+/// SSOT consumed by `runtime.nativeFqcnFor` AFTER `fqcnForTag` (the divergent
+/// names here are NOT in `NATIVE_ENTRIES`, so they never become `instance?`
+/// targets — see `isInstance`).
+pub fn displayClassName(tag: Tag) ?[]const u8 {
+    return switch (tag) {
+        .fn_val, .builtin_fn, .protocol_fn => "Fn",
+        .multi_fn => "MultiFn",
+        .lazy_seq => "LazySeq",
+        .cons => "Cons",
+        .chunked_cons => "ChunkedSeq",
+        .range => "LongRange",
+        .string_seq => "StringSeq",
+        .array_seq => "ArraySeq",
+        .atom => "Atom",
+        .agent => "Agent",
+        .ref => "Ref",
+        .@"volatile" => "Volatile",
+        .future => "Future",
+        .promise => "Promise",
+        .delay => "Delay",
+        .reduced => "Reduced",
+        .ns => "Namespace",
+        .transient_vector => "TransientVector",
+        .transient_map => "TransientArrayMap",
+        .transient_set => "TransientHashSet",
+        .tagged_literal => "TaggedLiteral",
+        else => null,
+    };
+}
+
 /// Return true iff `class_name` (simple or FQCN) is recognised by
 /// either the native table, the interface table, or the Throwable
 /// hierarchy. Drives the `__instance?` primitive's analyzer-time
@@ -289,14 +326,18 @@ fn matchNativeExact(v: Value, simple: []const u8) bool {
 
 /// True iff `name` is a callable class — a member of `clojure.lang.IFn` for
 /// class-level `(isa? <class> IFn)` (ADR-0109). The cljw class names whose
-/// instances are `ifn?`: fns (raw tag names), Keyword/Symbol/Var, and the
-/// persistent collections (all invocable as lookups). Mirrors `core.ifnQ`.
+/// instances are `ifn?`: `Fn` / `MultiFn` (the `displayClassName` names for the
+/// callable tags), Keyword/Symbol/Var, and the persistent collections (all
+/// invocable as lookups). Mirrors `core.ifnQ`.
 pub fn isCallableClassName(name: []const u8) bool {
     const CALLABLE = [_][]const u8{
-        "fn_val",             "builtin_fn",        "multi_fn",          "protocol_fn",
-        "Keyword",            "Symbol",            "Var",               "PersistentVector",
-        "PersistentArrayMap", "PersistentHashMap", "PersistentHashSet", "PersistentTreeMap",
-        "PersistentTreeSet",
+        // `Fn` / `MultiFn` are the `(class x)` names for the callable tags
+        // (fn_val / builtin_fn / protocol_fn / multi_fn) per `displayClassName`
+        // (D-337); `(isa? (class +) IFn)` resolves through these names, not the
+        // retired raw heap-tag names.
+        "Fn",                 "MultiFn",           "Keyword",           "Symbol",
+        "Var",                "PersistentVector",  "PersistentArrayMap", "PersistentHashMap",
+        "PersistentHashSet",  "PersistentTreeMap", "PersistentTreeSet",
     };
     const simple = normalizeClassName(name);
     inline for (CALLABLE) |c| {

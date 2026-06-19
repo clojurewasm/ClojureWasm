@@ -139,4 +139,29 @@ assert_eq 'classp_int'   "$("$BIN" -e '(class? 5)' 2>/dev/null | tail -1)" 'fals
 assert_eq 'classp_nil'   "$("$BIN" -e '(class? nil)' 2>/dev/null | tail -1)" 'false'
 assert_eq 'classp_str'   "$("$BIN" -e '(class? "x")' 2>/dev/null | tail -1)" 'false'
 
-echo "OK — phase14_class_type (55 cases) green"
+# --- D-337 / AD-044: (class x) of a callable / seq / ref returns a stable
+# clj-faithful simple class name, never the internal heap-tag name (was
+# `fn_val` / `lazy_seq` / `atom`). clj returns a generated/reify class for
+# fns / future / promise that cljw cannot mirror (AD-044); cljw is stable.
+assert_eq 'class_fn_anon'  "$("$BIN" -e '(class (fn [x] x))' 2>/dev/null | tail -1)" 'Fn'
+assert_eq 'class_fn_builtin' "$("$BIN" -e '(class +)' 2>/dev/null | tail -1)" 'Fn'
+assert_eq 'class_multifn'  "$("$BIN" - <<'EOF' 2>/dev/null | tail -1
+(defmulti mm identity)
+(prn (.getName (class mm)))
+EOF
+)" '"MultiFn"'
+assert_eq 'class_lazyseq'  "$("$BIN" -e '(class (map inc [1]))' 2>/dev/null | tail -1)" 'LazySeq'
+assert_eq 'class_range'    "$("$BIN" -e '(class (range 3))' 2>/dev/null | tail -1)" 'LongRange'
+assert_eq 'class_chunkseq' "$("$BIN" -e '(class (rest (cons 1 (range 3))))' 2>/dev/null | tail -1)" 'ChunkedSeq'
+assert_eq 'class_future'   "$("$BIN" -e '(class (future 1))' 2>/dev/null | tail -1)" 'Future'
+assert_eq 'class_agent'    "$("$BIN" -e '(class (agent 0))' 2>/dev/null | tail -1)" 'Agent'
+assert_eq 'class_atom'     "$("$BIN" -e '(class (atom 0))' 2>/dev/null | tail -1)" 'Atom'
+assert_eq 'class_ref'      "$("$BIN" -e '(class (ref 0))' 2>/dev/null | tail -1)" 'Ref'
+assert_eq 'class_volatile' "$("$BIN" -e '(class (volatile! 0))' 2>/dev/null | tail -1)" 'Volatile'
+assert_eq 'class_delay'    "$("$BIN" -e '(class (delay 1))' 2>/dev/null | tail -1)" 'Delay'
+assert_eq 'class_reduced'  "$("$BIN" -e '(class (reduced 1))' 2>/dev/null | tail -1)" 'Reduced'
+assert_eq 'class_tvec'     "$("$BIN" -e '(class (transient []))' 2>/dev/null | tail -1)" 'TransientVector'
+# class-level (isa? (class +) IFn) still holds after the rename (isCallableClassName).
+assert_eq 'class_fn_isa_ifn' "$("$BIN" -e '(isa? (class +) clojure.lang.IFn)' 2>/dev/null | tail -1)" 'true'
+
+echo "OK — phase14_class_type (70 cases) green"

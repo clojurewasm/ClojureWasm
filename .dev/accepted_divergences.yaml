@@ -712,3 +712,22 @@ accepted:
       same sign-based design and this AD records the whole class.
     derives_from: "java.lang.Comparable / java.util.Comparator contract (only the SIGN of compareTo/compare is specified; magnitude is implementation-defined) + ADR-0053 (cljw compare is Order-based) + ADR-0059 (no JVM-internal magnitude reproduction)."
     pin: "test/e2e/phase15_java_time_sort.sh — locks cljw's sign-based results: `(compare \"a\" \"c\")` => -1, `(compare LocalDate-jun LocalDate-jan)` => 1 (clj 5), and `(sort [LocalDate …])` ordering."
+  - id: "AD-044"
+    summary: "`(class x)` / `(type x)` of a callable / seq-view / reference / transient returns a STABLE clj-faithful simple class name (`Fn` / `MultiFn` / `LazySeq` / `LongRange` / `Atom` / `Ref` / `Future` / `Promise` / …); clj returns a per-fn GENERATED class (`user$eval$fn__135`, `clojure.core$_PLUS_`) for closures/builtins and a per-call REIFY class for future/promise that cljw has no analog for."
+    example: '(class (fn [x] x)) => cljw "Fn" / clj "user$eval$fn__135". (class +) => cljw "Fn" / clj "clojure.core$_PLUS_". (class (future 1)) => cljw "Future" / clj "core$future_call$reify__8578". (class (map inc [1])) => cljw "LazySeq" / clj "clojure.lang.LazySeq" (this one matches).'
+    why: |-
+      cljw has no JVM Class system (ADR-0059 / AD-003): closures and builtins are
+      NaN-boxed fn-pointers with no generated per-fn class, and future/promise are
+      runtime values, not reified anonymous classes. Reproducing clj's
+      generated/reify class names would be a JVM-specific fiction (AD-003's
+      rationale, extended to callables). The chosen names are the clj SIMPLE class
+      name where cljw has a 1:1 analog (LazySeq/LongRange/Atom/Ref/Volatile/Delay/
+      Reduced/Namespace/TransientVector/MultiFn all match clj exactly) and a stable
+      cljw name where clj's is generated (`Fn` for every fn/builtin/protocol-fn,
+      `Future`/`Promise` for the reify types). The prior behaviour LEAKED the raw
+      internal heap-tag name (`fn_val` / `lazy_seq` / `atom`) — a genuine defect this
+      AD's fix (D-337) closed; the residual clj-vs-cljw name difference is the
+      accepted divergence. `displayClassName` (runtime/class_name.zig) is the SSOT;
+      the names are NOT `instance?` targets (no `clojure.lang.*` FQCN to resolve).
+    derives_from: "ADR-0059 (no JVM Class) + AD-003 (simple class name, no JVM FQCN) — extended to callables/seq-views/refs which clj backs with generated/reify classes."
+    pin: "test/e2e/phase14_class_type.sh — class_fn_anon/class_fn_builtin => Fn, class_multifn => MultiFn, class_lazyseq/range/chunkseq/future/agent/atom/ref/volatile/delay/reduced/tvec, and class_fn_isa_ifn (the IFn isa? still resolves through the renamed callable classes)."
