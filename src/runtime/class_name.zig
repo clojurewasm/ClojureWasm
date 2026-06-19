@@ -346,6 +346,34 @@ pub fn isCallableClassName(name: []const u8) bool {
     return false;
 }
 
+/// Class-level interface membership (D-293): true iff instances of the NATIVE
+/// class `child` (resolved to its tag) are members of the `interface` marker —
+/// the class-level analog of `isInstance`/`matchInterface`, sharing the
+/// `interface_membership` SSOT so `(isa? <class> Seqable)` and
+/// `(instance? Seqable x)` cannot drift. Returns false for a non-native child
+/// (user deftype/reify resolves via the descriptor walk, not the native table)
+/// or a non-interface `interface` name (so callers can probe unconditionally and
+/// fall through). Both args may be simple or FQCN.
+pub fn isClassInterfaceMember(child: []const u8, interface: []const u8) bool {
+    const tag = nativeTagFor(child) orelse seqDisplayTag(child) orelse return false;
+    return interface_membership.isMember(tag, normalizeClassName(interface));
+}
+
+/// Inverse of `displayClassName` for the SEQ-view class names — the names
+/// `(class x)` reports for lazy/range/cons/string-seq/array-seq/chunked values
+/// that are NOT `NATIVE_ENTRIES` exact-tag classes. Lets `isClassInterfaceMember`
+/// resolve e.g. `(isa? (class (range 3)) Seqable)` (a range IS seqable). Refs
+/// (Atom/Ref/…) are omitted — they implement no collection interface — and the
+/// ambiguous `Fn` is omitted (IFn membership is `isCallableClassName`).
+fn seqDisplayTag(name: []const u8) ?Tag {
+    const M = std.StaticStringMap(Tag).initComptime(.{
+        .{ "LazySeq", .lazy_seq },     .{ "LongRange", .range },
+        .{ "ChunkedSeq", .chunked_cons }, .{ "Cons", .cons },
+        .{ "StringSeq", .string_seq }, .{ "ArraySeq", .array_seq },
+    });
+    return M.get(name);
+}
+
 fn matchInterface(v: Value, simple: []const u8) bool {
     // Membership derives from the interface_membership SSOT (ADR-0116) so
     // instance? and extend-protocol-target distribution share one source

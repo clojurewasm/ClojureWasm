@@ -91,6 +91,12 @@ pub fn classIsaPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
     if (host_class.isNumberClass(parent)) return if (host_class.isNumericClass(child)) .true_val else .false_val;
     // ADR-0109: a callable class isa? clojure.lang.IFn (narrow callable membership).
     if (host_class.isIFnClass(parent)) return if (class_name.isCallableClassName(child)) .true_val else .false_val;
+    // D-293: a native class isa? a clojure.lang.* interface marker (Sequential /
+    // Seqable / IPersistentMap / …) iff its tag is a member of that interface —
+    // the class-level analog of instance?/matchInterface, sharing the
+    // interface_membership SSOT. Only short-circuits on a true match; a non-member
+    // or non-interface parent falls through to the exception-hierarchy walk below.
+    if (class_name.isClassInterfaceMember(child, parent)) return .true_val;
     return if (host_class.isSubclassOf(host_class.normalizeClassName(child), host_class.normalizeClassName(parent)))
         .true_val
     else

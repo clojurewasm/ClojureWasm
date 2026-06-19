@@ -1,0 +1,20 @@
+(isa? (class [1]) clojure.lang.Sequential)
+;;=> true
+(isa? (class [1]) clojure.lang.Seqable)
+;;=> true
+(isa? (class {:a 1}) clojure.lang.IPersistentMap)
+;;=> true
+(isa? (class #{1}) clojure.lang.IPersistentSet)
+;;=> true
+(isa? (class (list 1)) clojure.lang.ISeq)
+;;=> true
+(isa? (class {:a 1}) clojure.lang.Associative)
+;;=> true
+(isa? (class (range 3)) clojure.lang.Seqable)
+;;=> true
+(isa? (class (map inc [1])) clojure.lang.ISeq)
+;;=> true
+(isa? (class [1]) clojure.lang.IPersistentMap)
+;;=> false
+(isa? (class 5) clojure.lang.Sequential)
+;;=> false
