@@ -24,21 +24,6 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
-  - id: "D-464"
-    status: "open (2026-06-20, B/C sweep — surfaced correcting D-293's false `(ga/+)` characterization). cljw multimethod dispatch under-applies `isa?` for method selection in TWO ways clj handles: (1) CLASS-HIERARCHY — a method registered on a class supertype is not found for a subtype dispatch value: `(defmulti h class) (defmethod h java.lang.Number [x] (* x 2)) (h 5)` → cljw `No method` / clj 10. `multimethod.isaCheck` (runtime/multimethod.zig:145) handles exact-eq + typed/reified-instance→symbol/keyword descriptor-walk + the derive ancestors map, but NOT a `.type_descriptor` (class VALUE) child vs `.type_descriptor` parent via the class hierarchy (Long isa? Number, vector isa? Sequential) — the very class-level isa? that `core.classIsaPrim` now does (D-293, isClassInterfaceMember + host_class.isNumberClass/isIFnClass/isUniversalClass/isSubclassOf). (2) VECTOR dispatch values are not decomposed ELEMENT-WISE: `(defmulti pr2 (fn [a b] [a b])) (defmethod pr2 [::animal ::animal] …) (pr2 ::dog ::dog)` → cljw `No method` / clj :two — even with a pure derive (keyword) hierarchy, so this is independent of (1). Together they make `[Number Number]` dispatch on `[Long Long]` (the algo.generic pattern) fail. 3 repros confirmed vs clj (all cljw-error / clj-value)."
-    category: "clj-parity"
-    barrier: |-
-      none structural — the fix is in `multimethod.isaCheck`: (a) add a
-      `.type_descriptor`×`.type_descriptor` arm that delegates to the SHARED
-      class-level isa? (extract `core.classIsaPrim`'s body — Object/Number/IFn/
-      interface-marker/exception-hierarchy — into a reusable helper so dispatch
-      and `(isa? c1 c2)` cannot drift); (b) make the dispatch isa? (or its caller
-      at multimethod.zig:271) decompose two equal-length VECTOR values element-
-      wise (clj `isa?` recurses `(every? isa? cs ps)`). Verify the derive-vector
-      case + the class-marker case + negatives (no over-match) + the existing
-      keyword/derive + typed-instance dispatch stay green. Distinct from D-293
-      (that was the class-VALUE resolution; this is the multimethod MACHINERY).
-    last_reviewed: "2026-06-20"
   - id: "D-458"
     status: "open (2026-06-17, surfaced completing cl-format ~E/~G, D-455 chunk3). `cl-dir` (pprint.clj directive-param parser) handles numeric, negative, and `'X` char params but NOT the CL runtime-valued params `V` (take the next arg as the param value) and `#` (param = count of remaining args). A format like `~13,6,2,VE` (upstream cltl-E-scale-tests) currently treats `V` as the directive char → raises `directive ~V not supported` (honest, no silent mishandle). Cross-cutting: V/# apply to every parameterised directive, not just ~E/~G."
     category: "clj-parity"
@@ -2059,6 +2044,10 @@ standing:
     barrier: "open after the D-440 arc completes (R4 + R5 must first rewrite the bulk of 'Phase N' citations to gap-area terms). Premature adoption = ~70 dangling citations with no 1:1 redirect. Trigger: D-440 R4/R5 done + a user nod to re-architect the planning axis (it is depth-4, the project's organizing metaphor)."
     last_reviewed: "2026-06-15"
 discharged:
+  - id: "D-464"
+    status: "DISCHARGED 2026-06-20 (opened + fixed same session — the real `(ga/+)` blocker D-293 had mis-recorded). cljw multimethod `isaCheck` now applies isa? the two ways it missed: (1) a `.type_descriptor`×`.type_descriptor` arm delegates to the SHARED `class_name.classIsa` (extracted from `core.classIsaPrim` — Object/Number/IFn/interface-marker/exception-hierarchy — so dispatch and `(isa? c1 c2)` cannot drift), so `(defmethod h java.lang.Number)` is found for a Long dispatch value; (2) an equal-length VECTOR pair is matched ELEMENT-WISE (clj `(every? isa? cs ps)`), so `(defmethod g [Number Number])` dispatches on `[Long Long]` and the pure-derive `[::animal ::animal]`/`(pr2 ::dog ::dog)` case works too. Both arms fall through to the existing derive-ancestors lookup on no-match (a class can also be `derive`d). Corpus multimethod_isa_dispatch.txt (6 pairs); no-match still raises (AD-007 message-format diff only). Regression-checked: derive/keyword/typed-instance/default/protocol dispatch + phase7/phase15 multimethod e2e all green; full gate green."
+    category: "clj-parity"
+    last_reviewed: "2026-06-20"
   - id: "D-326"
     status: "DISCHARGED 2026-06-20 — an interop method call `(.m inst)` that dispatches to a USER deftype/reify/extend method now frames its `<protocol>/<method>` in the trace, giving it parity with the protocol-fn call form `(m inst)` (same `P/calc` + body-fn frames; verified identical). The 'blocked-by ADR-0119 Stage 2' was stale (Stage 2 landed 2026-06-08). Root cause: the interop dispatch calls `me.method_val` directly via `vt.callFn`, which frames the body fn (calleeFrame) but NOT the protocol-dispatch frame the `.protocol_fn` callee path pushes. Fix: a shared `error_mod.pushUserMethodFrame(protocol_name, method_name, loc)` + the `isUserTraceNs` trace-visibility SSOT (info.zig), called at BOTH backends' interop sites — TreeWalk `evalInstanceMember` + VM `op_method_call` (the production path; the default backend is VM per build.zig, so the TreeWalk-only first cut was a no-op until the VM site landed — dual-backend parity per dual_backend_parity.md). `tree_walk.isUserNs` now delegates to the SSOT (one definition for calleeFrame + interop). Host java.* interop has no user MethodEntry (handled by the `orelse` fallback) and host-interface methods (clojure.*/cljw.* protocol) elide — both correctly absent per the D-332/AD-024 user-frames-only discipline. `op_static_method_call` NOT touched: user types have no static methods (all static interop is host → elided), so a push there would be dead. VM callFn loc upgraded `.{}` → instr_loc (parity + better interop error locations). e2e phase14_error_format +2 cases (13b interop user-method framed, 13c host interop elided)."
     category: "error-system"

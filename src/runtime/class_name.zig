@@ -374,6 +374,23 @@ fn seqDisplayTag(name: []const u8) ?Tag {
     return M.get(name);
 }
 
+/// Class-vs-class `isa?` (the `(isa? <class> <class>)` hierarchy step), by fqcn
+/// name. SHARED by `core.classIsaPrim` (the `isa?` primitive) and
+/// `multimethod.isaCheck` (method dispatch) so the two cannot drift (D-464 — a
+/// `(defmethod f java.lang.Number)` must be found for a `Long` dispatch value
+/// exactly as `(isa? Long Number)` is true). Order mirrors clj's isa? class
+/// step: identity, universal Object, narrow Number, narrow IFn, interface-marker
+/// membership, then the host exception/parent hierarchy. The ad-hoc `derive`
+/// hierarchy and non-class isa? stay with the callers.
+pub fn classIsa(child: []const u8, parent: []const u8) bool {
+    if (std.mem.eql(u8, child, parent)) return true;
+    if (host_class.isUniversalClass(parent)) return true;
+    if (host_class.isNumberClass(parent)) return host_class.isNumericClass(child);
+    if (host_class.isIFnClass(parent)) return isCallableClassName(child);
+    if (isClassInterfaceMember(child, parent)) return true;
+    return host_class.isSubclassOf(normalizeClassName(child), normalizeClassName(parent));
+}
+
 fn matchInterface(v: Value, simple: []const u8) bool {
     // Membership derives from the interface_membership SSOT (ADR-0116) so
     // instance? and extend-protocol-target distribution share one source

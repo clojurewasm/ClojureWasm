@@ -39,6 +39,8 @@ const symbol = @import("symbol.zig");
 const keyword = @import("keyword.zig");
 const dispatch_mod = @import("dispatch.zig");
 const td_mod = @import("type_descriptor.zig");
+const class_name_mod = @import("class_name.zig");
+const vector_mod = @import("collection/vector.zig");
 const gc_heap_mod = @import("gc/gc_heap.zig");
 const mark_sweep = @import("gc/mark_sweep.zig");
 const tag_ops = @import("gc/tag_ops.zig");
@@ -144,6 +146,32 @@ pub fn isPreferred(prefer_table: Value, x: Value, y: Value) !bool {
 /// `:ancestors` sub-map before calling here.
 pub fn isaCheck(hierarchy_ancestors: Value, child: Value, parent: Value) !bool {
     if (@intFromEnum(child) == @intFromEnum(parent)) return true;
+
+    // D-464: a VECTOR dispatch value matches a VECTOR method key ELEMENT-WISE
+    // (clj `isa?` recurses `(every? isa? cs ps)` for equal-length vectors) — this
+    // is what `(defmethod g [::a ::b] …)` / `[Number Number]` dispatch needs.
+    // Terminal: equal-length vectors yield the element-wise verdict, mismatched
+    // lengths are not `isa?` (clj parity). A non-vector pair falls through.
+    if (child.tag() == .vector and parent.tag() == .vector) {
+        const n = vector_mod.count(child);
+        if (n != vector_mod.count(parent)) return false;
+        var i: u32 = 0;
+        while (i < n) : (i += 1) {
+            if (!(try isaCheck(hierarchy_ancestors, vector_mod.nth(child, i), vector_mod.nth(parent, i)))) return false;
+        }
+        return true;
+    }
+
+    // D-464: a class VALUE child isa? a class VALUE parent via the class hierarchy
+    // (Long isa? Number, vector-class isa? Sequential), through the SAME shared
+    // `class_name.classIsa` the `isa?` primitive uses. Only short-circuits on a
+    // true match; a class can ALSO sit in an ad-hoc `derive` hierarchy, so a
+    // non-match falls through to the ancestors lookup below.
+    if (child.tag() == .type_descriptor and parent.tag() == .type_descriptor) {
+        const child_fqcn = td_mod.asTypeDescriptorRef(child).fqcn orelse "";
+        const parent_fqcn = td_mod.asTypeDescriptorRef(parent).fqcn orelse "";
+        if (class_name_mod.classIsa(child_fqcn, parent_fqcn)) return true;
+    }
 
     // Row 7.5 cycle 6 — D-082 discharge: typed_instance + reified_instance
     // children walk their descriptor chain. JVM `clojure.core/isa?` step 2

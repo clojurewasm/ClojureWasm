@@ -34,7 +34,6 @@ const text_io = @import("../../runtime/io/text_io.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
 const protocol_mod = @import("../../runtime/protocol.zig");
 const class_name = @import("../../runtime/class_name.zig");
-const host_class = @import("../../runtime/error/host_class.zig");
 const driver = @import("../../eval/driver.zig");
 const analyzer = @import("../../eval/analyzer/analyzer.zig");
 
@@ -72,10 +71,12 @@ pub fn instanceOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 }
 
 /// `(-class-isa? child parent)` — true iff both args are class values
-/// (TypeDescriptor) and `child`'s class is `parent` or a subclass of it (the
-/// host exception hierarchy via `host_class.isSubclassOf`). The class-hierarchy
-/// arm of `isa?` (clj's `Class.isAssignableFrom` step); equality + the ad-hoc
-/// `derive` hierarchy stay in the `.clj` `isa?`. Non-class args → false.
+/// (TypeDescriptor) and `child`'s class is `parent` or a subclass of it, via the
+/// shared `class_name.classIsa` (Object/Number/IFn + interface markers + the host
+/// exception/parent hierarchy — shared with multimethod dispatch so the two
+/// cannot drift, D-464). The class-hierarchy arm of `isa?` (clj's
+/// `Class.isAssignableFrom` step); equality + the ad-hoc `derive` hierarchy stay
+/// in the `.clj` `isa?`. Non-class args → false.
 pub fn classIsaPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
@@ -84,23 +85,11 @@ pub fn classIsaPrim(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
         return .false_val;
     const child = td_mod.asTypeDescriptorRef(args[0]).fqcn orelse return .false_val;
     const parent = td_mod.asTypeDescriptorRef(args[1]).fqcn orelse return .false_val;
-    if (std.mem.eql(u8, child, parent)) return .true_val;
-    // ADR-0109: Object is the universal supertype — every class isa? Object.
-    if (host_class.isUniversalClass(parent)) return .true_val;
-    // ADR-0109: a numeric-tower class isa? java.lang.Number (narrow membership).
-    if (host_class.isNumberClass(parent)) return if (host_class.isNumericClass(child)) .true_val else .false_val;
-    // ADR-0109: a callable class isa? clojure.lang.IFn (narrow callable membership).
-    if (host_class.isIFnClass(parent)) return if (class_name.isCallableClassName(child)) .true_val else .false_val;
-    // D-293: a native class isa? a clojure.lang.* interface marker (Sequential /
-    // Seqable / IPersistentMap / …) iff its tag is a member of that interface —
-    // the class-level analog of instance?/matchInterface, sharing the
-    // interface_membership SSOT. Only short-circuits on a true match; a non-member
-    // or non-interface parent falls through to the exception-hierarchy walk below.
-    if (class_name.isClassInterfaceMember(child, parent)) return .true_val;
-    return if (host_class.isSubclassOf(host_class.normalizeClassName(child), host_class.normalizeClassName(parent)))
-        .true_val
-    else
-        .false_val;
+    // The class-vs-class hierarchy step (ADR-0109 Object/Number/IFn + D-293
+    // interface markers + the exception/parent hierarchy) lives in the shared
+    // `class_name.classIsa` so `isa?` and multimethod dispatch cannot drift
+    // (D-464). The ad-hoc `derive` hierarchy + equality stay in the `.clj` isa?.
+    return if (class_name.classIsa(child, parent)) .true_val else .false_val;
 }
 
 /// `(ifn? x)` — true iff `x` is callable (implements IFn): a fn / builtin /

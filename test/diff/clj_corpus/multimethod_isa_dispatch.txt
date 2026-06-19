@@ -1,0 +1,12 @@
+(do (defmulti h class) (defmethod h java.lang.Number [x] (* x 2)) (h 5))
+;;=> 10
+(do (defmulti g (fn [a b] [(class a) (class b)])) (defmethod g [java.lang.Number java.lang.Number] [a b] (+ a b)) (g 3 4))
+;;=> 7
+(do (defmulti g2 (fn [a b] [(class a) (class b)])) (defmethod g2 [java.lang.Number java.lang.String] [a b] :ns) (g2 3 "x"))
+;;=> :ns
+(do (defmulti hk class) (defmethod hk clojure.lang.Sequential [x] :seq) (hk [1 2]))
+;;=> :seq
+(do (derive ::dog ::animal) (defmulti pr2 (fn [a b] [a b])) (defmethod pr2 [::animal ::animal] [a b] :two) (pr2 ::dog ::dog))
+;;=> :two
+(do (defmulti hm class) (defmethod hm java.lang.Number [x] :num) (hm 5))
+;;=> :num
