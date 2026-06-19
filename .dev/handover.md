@@ -10,14 +10,20 @@
   `build.zig.zon` `.zwasm` is SHA-PINNED (`#412966f7…`, `lazy`). Per-commit = smoke;
   full gate batches at ceiling / boundary / pre-tag.
 
-- **First commit on resume MUST be**: **reassess + self-select the next high-value
-  direction** — "reassess" means *choose among the real remaining clusters*, NOT
-  "work is nearly done". SATURATED, do not re-grind: clj-parity single-expr +
-  transducer sweeps (0 real bugs) and the java.time LOCAL family (Instant/Duration/
-  LocalDateTime/LocalDate/LocalTime, all clj-verified); high-use libs
-  (clojure.string/set/walk/zip, transducers) are corpus-locked. What REMAINS is
-  **70 active debt rows** in real clusters (the campaign that closed was narrow) —
-  weigh per F-002/F-015:
+- **First commit on resume MUST be**: **D-442 part 2** — the 3 concurrency-sensitive
+  agent fns (`release-pending-sends` flush+count with the mid-action re-arm; `*agent*`
+  drainer binding; `shutdown-agents` via a process-global `agents_shut_down` flag the
+  `enqueueDirect` send path checks). The DESIGN is already decided + DA-validated
+  (ADR-0155); these were deliberately deferred from the B/C sweep as not-to-rush-at-
+  session-tail concurrency code (drainer/send-path). Do them fresh, TDD, full gate.
+  After that, self-select among the clusters below (per F-002/F-015).
+
+- **B/C sweep done (2026-06-20)**: the user's "sweep the ADR-sequenced (B) +
+  ADR-deferred-follow-on (C) rows" — landed D-337/327/326 (B + class-name),
+  D-293 + D-464 (class-level isa? + the multimethod isa?-dispatch gap D-293 had
+  MIS-recorded), D-437 narrowed+corpus, D-442 part 1 (executor raises + sugars);
+  D-241 verified principled-deferred; D-453/D-381 correctly perf/big-cleanup-scoped.
+  Broader remaining clusters (still the real work) —
   - **Security (gap area II — the largest near-untouched actionable block, ~10
     rows)**: D-338/339/341/342/343/346/347/348/349/353 — wasm host-import allowlist,
     FS-jail code-loading scope, slowloris, eval-free deploy build, capability gating,
