@@ -819,3 +819,22 @@ accepted:
       "cljw does not reproduce JVM Object/Abstract* toString surface details".
     derives_from: "ADR-0059 (no JVM — no class FQN, no Object.toString identity form) + AD-002 (non-reproducible identity hash) + AD-003 (cljw renders the record with its simple name, not the JVM FQCN) + F-011 (pr-str already matches modulo the AD-003 simple name; only the JVM-Object.toString str-form diverges)."
     pin: "test/e2e/phase7_defrecord.sh — defrecord_str_content_form (str of a record = its #Name{...} content form, not Class@hash) + defrecord_print_map_style (the pr-form it mirrors)."
+  - id: "AD-049"
+    summary: "A spec's RAW captured pred form (`s/form`, and the `:pred` in `s/explain-data`) shows core predicates qualified to the `rt` namespace (`rt/int?`) where clj shows `clojure.core/int?`. Both are the same predicate; only the qualifying namespace differs. `s/explain-str` / `s/describe` go through spec's `abbrev` (which strips ANY namespace) so they match clj EXACTLY — only the un-abbreviated `s/form` / explain-data `:pred` exposes the rt/ qualification."
+    example: '(clojure.spec.alpha/form (clojure.spec.alpha/cat :a int?)) => cljw "(clojure.spec.alpha/cat :a rt/int?)" / clj "(clojure.spec.alpha/cat :a clojure.core/int?)". But (clojure.spec.alpha/explain-str int? "x") => "\"x\" - failed: int?\n" in BOTH (abbrev strips the ns).'
+    why: |-
+      spec captures a predicate's form via syntax-quote (the `cat`/`and`/... macros),
+      which qualifies a bare core symbol to its home namespace. cljw's core fns live
+      in the `rt` primitive namespace (`(resolve 'int?)` => `#'rt/int?`; ADR-0033 /
+      AD-011 placement split — `rt` is interned, referred into clojure.core), so the
+      captured form reads `rt/int?` where clj reads `clojure.core/int?`. This is the
+      SAME rt-vs-clojure.core surface as AD-038 (the `@` reader expands to `rt/deref`)
+      and AD-011 — `rt` is cljw's canonical home for core fns, and the only core ns
+      resolvable in a core.clj-less environment. The behavioural contract is identical
+      (the predicate validates the same way; conform/valid?/explain-str/describe all
+      match clj — describe/explain go through `abbrev` which strips the ns). Only the
+      raw `s/form` / explain-data `:pred`, where a user inspects the unabbreviated
+      captured form, exposes the difference. cljw cannot show `clojure.core/int?`
+      without making `clojure.core` int?'s home ns, which ADR-0033 forbids.
+    derives_from: "AD-011 / ADR-0033 (rt-vs-clojure.core primitive placement: core fns live in `rt`, referred into clojure.core) + AD-038 (the sibling reader-macro rt/-qualification) + F-011 (conform/valid?/explain-str/describe all match clj; only the raw captured form's ns differs). The fn-name half is clj-IDENTICAL: cljw's `fn-sym` recovers a predicate's name from its `#<ns/name>` print form, so explain/describe abbreviate to the same `int?` clj shows."
+    pin: "test/e2e/phase15_spec.sh — `ad049_form` locks (s/form (s/cat :a int?)) => (clojure.spec.alpha/cat :a rt/int?) (the rt/-qualified captured form), while `explain_named`/`describe` lock the clj-IDENTICAL abbreviated surface."
