@@ -502,6 +502,7 @@ run_step "e2e_phase14_thread_runtime"        "bash test/e2e/phase14_thread_runti
 run_step "e2e_phase14_arraylist"             "bash test/e2e/phase14_arraylist.sh"
 run_step "e2e_phase14_hashmap"               "bash test/e2e/phase14_hashmap.sh"
 run_step "e2e_phase14_hashset"               "bash test/e2e/phase14_hashset.sh"
+run_step "e2e_phase14_treeset"               "bash test/e2e/phase14_treeset.sh"
 run_step "e2e_phase14_date_ctor"             "bash test/e2e/phase14_date_ctor.sh"
 run_step "e2e_phase14_self_seq_print"        "bash test/e2e/phase14_self_seq_print.sh"
 run_step "e2e_phase14_count_walk"            "bash test/e2e/phase14_count_walk.sh"

@@ -1,0 +1,26 @@
+; java.util.TreeSet — mutable SORTED set over a cljw persistent sorted-set RB-tree
+; (D-431 interop). add/remove return the JVM "changed?" bool; dedup + ordering via
+; cljw comparator semantics. Iteration is SORTED = clj parity, so seq is pinned
+; DIRECTLY (no sort wrap). clj-oracle pinned.
+(let [t (java.util.TreeSet.)] [(.add t 3) (.add t 1) (.add t 2) (.add t 1)])
+;;=> [true true true false]
+(let [t (java.util.TreeSet.)] (.add t 3) (.add t 1) (.add t 2) (seq t))
+;;=> (1 2 3)
+(seq (java.util.TreeSet. [5 3 1 4 2 2]))
+;;=> (1 2 3 4 5)
+(into [] (java.util.TreeSet. [3 1 2]))
+;;=> [1 2 3]
+(let [t (java.util.TreeSet. [3 1 2])] [(.first t) (.last t) (.size t)])
+;;=> [1 3 3]
+(let [t (java.util.TreeSet. [1 2 3])] [(.contains t 2) (.contains t 9)])
+;;=> [true false]
+(let [t (java.util.TreeSet. [1 2 3])] [(.remove t 2) (.remove t 2) (seq t)])
+;;=> [true false (1 3)]
+(let [u (java.util.TreeSet. [10 20])] [(.addAll u [15 5 25]) (seq u)])
+;;=> [true (5 10 15 20 25)]
+(let [t (java.util.TreeSet. [1 2 3])] (.clear t) [(.isEmpty t) (.size t)])
+;;=> [true 0]
+(let [src (java.util.TreeSet. [1 2 3]) cp (java.util.TreeSet. src)] (.add cp 4) [(.size src) (.size cp)])
+;;=> [3 4]
+(seq (java.util.TreeSet. ["c" "a" "b" "a"]))
+;;=> ("a" "b" "c")

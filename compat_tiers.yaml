@@ -286,6 +286,19 @@ tiers:
           surface: runtime/java/util/HashSet.zig
         methods: [add, remove, contains, size, isEmpty, clear, addAll]
         clojure_peer_vars: []
+      # java.util.TreeSet — mutable SORTED set (D-431, host_instance backing a cljw
+      # persistent sorted-set RB-tree; one set Value GC-traced via host_trace).
+      # Iteration is SORTED = clj parity (not an AD-001 order divergence). The wider
+      # NavigableSet surface (floor/ceiling/headSet/…) is a follow-up.
+      - fqn: java.util.TreeSet
+        cljw_ns: cljw.java.util.TreeSet
+        keyword: tree_set_java
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/util/TreeSet.zig
+        methods: [add, remove, contains, size, isEmpty, clear, addAll, first, last]
+        clojure_peer_vars: []
       - fqn: java.util.Date
         cljw_ns: cljw.java.util.Date
         keyword: instant
