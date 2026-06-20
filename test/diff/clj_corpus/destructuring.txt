@@ -72,3 +72,11 @@
 ;;=> [1 2 3]
 (apply (fn [a b & r] [a b r]) [1 2 3 4])
 ;;=> [1 2 (3 4)]
+(let [[a & r] [1 2 3]] [a r])
+;;=> [1 (2 3)]
+(let [[a b & r] {:x 1 :y 2}] [a b r])
+;;=> [[:x 1] [:y 2] nil]
+(let [[[k v] & ks] {:x 1 :y 2}] [k v ks])
+;;=> [:x 1 ([:y 2])]
+(loop [acc [] [[k v] & ks] {:x 1 :y 2}] (if k (recur (conj acc [k v]) ks) acc))
+;;=> [[:x 1] [:y 2]]

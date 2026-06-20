@@ -338,9 +338,17 @@ fn destructureInto(
     }
 }
 
-/// `[a b & rest :as all]` lowering: bind `value_form` once to a gensym,
-/// then each positional element to `(nth g i nil)`, `& rest` to
-/// `(nthnext g i)`, `:as all` to the gensym. Recurses for nested elems.
+/// `[a b & rest :as all]` lowering (clj `destructure`/`pvec` parity): bind
+/// `value_form` once to a gensym `g`, then `:as all` to `g`. The positional
+/// lowering depends on whether a `& rest` is present:
+///   - WITHOUT `&`: each positional binds to `(nth g i nil)` — which
+///     clj-correctly errors on a non-`Indexed` operand (e.g. a map).
+///   - WITH `&`: clj switches the WHOLE vector to a seq walk — bind
+///     `gseq (seq g)`, then each positional to a fresh `(first gseq)` while
+///     advancing `gseq (next gseq)`, and `& rest` to the current `gseq`.
+///     This is what lets `[[k v] & ks]` destructure a map (over its
+///     `(seq m)` of entries), the shape `clojure.spec.alpha` relies on.
+/// Recurses for nested elems.
 fn sequentialDestructure(
     out: *std.ArrayList(Form),
     arena: std.mem.Allocator,
@@ -353,6 +361,19 @@ fn sequentialDestructure(
     try out.append(arena, g);
     try out.append(arena, value_form);
 
+    const has_rest = for (elems) |e| {
+        if (e.data == .symbol and e.data.symbol.ns == null and std.mem.eql(u8, e.data.symbol.name, "&")) break true;
+    } else false;
+
+    // In has_rest mode, `cur_seq` threads `(next …)` of `(seq g)` across the
+    // positionals; each positional reads `(first cur_seq)`. Unused otherwise.
+    var cur_seq: Form = g;
+    if (has_rest) {
+        cur_seq = sym(try rt.gensym(arena, "seq"), loc);
+        try out.append(arena, cur_seq);
+        try out.append(arena, try makeCall(arena, "seq", &.{g}, loc));
+    }
+
     var idx: i64 = 0;
     var i: usize = 0;
     while (i < elems.len) : (i += 1) {
@@ -360,8 +381,8 @@ fn sequentialDestructure(
         if (e.data == .symbol and e.data.symbol.ns == null and std.mem.eql(u8, e.data.symbol.name, "&")) {
             if (i + 1 >= elems.len)
                 return error_catalog.raise(.feature_not_supported, loc, .{ .name = "destructuring `&` with no rest binding" });
-            const rest_val = try makeCall(arena, "nthnext", &.{ g, intForm(idx, loc) }, loc);
-            try destructureInto(out, arena, rt, elems[i + 1], rest_val, loc);
+            // Rest binds to the current seq tail (clj binds `rest` to gseq).
+            try destructureInto(out, arena, rt, elems[i + 1], cur_seq, loc);
             i += 1;
             continue;
         }
@@ -373,8 +394,19 @@ fn sequentialDestructure(
             i += 1;
             continue;
         }
-        const nth_val = try makeCall(arena, "nth", &.{ g, intForm(idx, loc), nilForm(loc) }, loc);
-        try destructureInto(out, arena, rt, e, nth_val, loc);
+        if (has_rest) {
+            const gfirst = sym(try rt.gensym(arena, "first"), loc);
+            try out.append(arena, gfirst);
+            try out.append(arena, try makeCall(arena, "first", &.{cur_seq}, loc));
+            const next_seq = sym(try rt.gensym(arena, "seq"), loc);
+            try out.append(arena, next_seq);
+            try out.append(arena, try makeCall(arena, "next", &.{cur_seq}, loc));
+            cur_seq = next_seq;
+            try destructureInto(out, arena, rt, e, gfirst, loc);
+        } else {
+            const nth_val = try makeCall(arena, "nth", &.{ g, intForm(idx, loc), nilForm(loc) }, loc);
+            try destructureInto(out, arena, rt, e, nth_val, loc);
+        }
         idx += 1;
     }
 }
