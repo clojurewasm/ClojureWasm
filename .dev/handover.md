@@ -10,13 +10,10 @@
   `build.zig.zon` `.zwasm` is SHA-PINNED (`#412966f7…`, `lazy`). Per-commit = smoke;
   full gate batches at ceiling / boundary / pre-tag.
 
-- **First commit on resume MUST be**: **D-442 part 2** — the 3 concurrency-sensitive
-  agent fns (`release-pending-sends` flush+count with the mid-action re-arm; `*agent*`
-  drainer binding; `shutdown-agents` via a process-global `agents_shut_down` flag the
-  `enqueueDirect` send path checks). The DESIGN is already decided + DA-validated
-  (ADR-0155); these were deliberately deferred from the B/C sweep as not-to-rush-at-
-  session-tail concurrency code (drainer/send-path). Do them fresh, TDD, full gate.
-  After that, self-select among the clusters below (per F-002/F-015).
+- **First commit on resume**: self-select highest-value UNBLOCKED unit. Current
+  pick = **D-458** (cl-format `V`/`#` runtime-valued directive params in `cl-dir`,
+  barrier none, finished-form spec in the debt row). NOTE the Step-0.5 finding
+  below: the security gap-area-II cluster is uniformly BARRIERED, not actionable.
 
 - **B/C sweep done (2026-06-20)**: the user's "sweep the ADR-sequenced (B) +
   ADR-deferred-follow-on (C) rows" — landed D-337/327/326 (B + class-name),
@@ -24,10 +21,12 @@
   MIS-recorded), D-437 narrowed+corpus, D-442 part 1 (executor raises + sugars);
   D-241 verified principled-deferred; D-453/D-381 correctly perf/big-cleanup-scoped.
   Broader remaining clusters (still the real work) —
-  - **Security (gap area II — the largest near-untouched actionable block, ~10
-    rows)**: D-338/339/341/342/343/346/347/348/349/353 — wasm host-import allowlist,
-    FS-jail code-loading scope, slowloris, eval-free deploy build, capability gating,
-    `wasm/run` stdout buffering.
+  - **Security (gap area II — ~10 rows, but ALL BARRIERED as of the 2026-06-20
+    sweep, NOT free coverage)**: D-339 slowloris = blocked-by Phase-15 cancellable
+    Io (F-003); D-347/349 wasm/run fuel+capture = zwasm-side (F-001); D-338
+    host-import allowlist = reservation until a host import is wired; D-346/353 =
+    no live threat / no use case yet. Don't force these (F-001/F-003). Revisit when
+    Phase-15 Io lands or a real threat/use-case surfaces.
   - **Perf (D-450 fastest-script target, ADR-0148 — UNMET; `.perf_campaign_active`
     is SET)**: only risky/fenced levers left — D-386(a) inline stepOnce (UAF-class),
     JIT D-133 user-fenced.
@@ -48,23 +47,15 @@
 
 ## Last landed (git log = SSOT; all pushed)
 
-**clj-parity + java.time campaign** (this session): D-463 clojure.test report-format
-fidelity (`*test-out*`, `FAIL in (...)`, actual form, `Testing <ns>`; AD-041). Then
-the **D-462 java.time campaign** — all five LOCAL types (Instant/Duration/
-LocalDateTime/LocalDate/LocalTime) wired as `.typed_instance` values (NO new NaN-box
-tag): statics + readers + ISO `(str)` + value-`=`, `(compare)`/`(sort)`, comparison
-predicates, full date/time arithmetic (civil clamp + midnight carry), DayOfWeek/Month
-enums, cross-type `Duration/between` + `.plus/.minus(Duration)`. All clj-verified
-(negatives / pre-1970 / 1900-non-leap / ns-precision edges). Transducer differential
-corpus added (0 bugs). ZonedDateTime DEFERRED (tz-DB). AD-042/043.
-
-**This campaign's OWN residuals** (niche/blocked; the global remaining-work picture
-is the cluster list in the Resume contract above, NOT this paragraph): D-462
-remaining are all NICHE on-demand —
-`DayOfWeek/MONDAY` static-field access, ZonedDateTime (tz-DB-blocked), `compareTo`-as-
-method (AD-043 magnitude); D-463 per-var lifecycle events (custom-reporter-only);
-D-258/D-244#4 dormant GC-torture agent race (load-flaky, gap area I); D-460 (sorted
-coll as map key); D-461 (require semantics — F-003 owner); D-446 (multidim arrays).
+**D-442 part 2 / ADR-0155** (this session): the agent legacy/executor surface is now
+8/8. `*agent*` (interned Zig-side + cached `rt.agent_var`, drainer-bound around each
+action body), `release-pending-sends` (flush `nested_pending` + re-arm to `.empty`,
+return count), `shutdown-agents` (process-global flag). PREMISE CORRECTION: ADR-0155
+part-1 assumed post-shutdown send THROWS; the clj oracle proved clj DROPS it (send
+returns the agent, no throw). 2nd DA fork → Alt A (clj-faithful drop) on F-011
+priority; new **AD-046** scopes the residual (clj routes the swallowed rejection to a
+set `:error-handler`; cljw drops without synthesizing one — no-handler case is
+identical). All 8 e2e clj-oracle-verified; smoke green.
 
 ## Perf campaign (PAUSED behind the active flag; not the current task)
 
@@ -77,22 +68,8 @@ ADR-0148 + `private/notes/9.2.S-perf-remeasure-2026-06-17.md`.
 ## Cold-start reading order (resume)
 
 handover → `.dev/project_facts.md` (F-002 / F-010 / F-011) → ROADMAP §9.0 (gap
-areas I/II/III) → `.dev/accepted_divergences.yaml` (AD-001…043) → `.dev/debt.yaml`
-(D-462 java.time residuals niche; D-460/D-461/D-446 blocked/deferred). memory
+areas I/II/III) → `.dev/accepted_divergences.yaml` (AD-001…046) → `.dev/debt.yaml`
+(clj-parity residuals: D-458 cl-format V/#, D-446 multidim aget, D-463 per-var
+events, D-431 Java per-class completeness — all barrier-none). memory
 `direct-explore-fork-mechanical` + `clj_diff_sweep_methodology`.
-
-## Stopped — user requested
-
-User instruction (2026-06-20): 「クリアセッションから続行するための配線・参照チェーン
-を監査して止めてください」 (Audit the clean-session `/continue` wiring + reference
-chain, then stop.) Done: the B/C sweep landed this session (D-337/327/326/293/464/437/
-442-part1; see Resume contract). Reference-chain audit CLEAN — handover cited IDs all
-resolve (ADR-0155 file, AD-045 in ledger, D-442 active, D-464 discharged), AD ledger
-44 all-pinned+in-sync, check_debt_id_refs ok, handover framing clean, zone_check +
-feature_keyword OK, debt.yaml valid YAML. Full gate is CODE-GREEN; the sole gate
-failure was the known load-flaky `D-258` GC-torture agent_conj race
-(`[#<fn> [#<promise>]]`), confirmed by 3× standalone re-run all PASS — NOT a
-regression from the agent-surface work. Resume: **D-442 part 2** per the Resume
-contract (3 concurrency-sensitive agent fns, design decided by ADR-0155; resume note
-+ 3-item extended-challenge in `private/notes/D442-part2-resume.md`).
 
