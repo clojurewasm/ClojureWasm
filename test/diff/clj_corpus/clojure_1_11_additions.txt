@@ -100,3 +100,11 @@
 ;;=> true
 (simple-symbol? 'foo)
 ;;=> true
+(take 5 (iteration #(when (< % 5) (inc %)) :initk 0))
+;;=> (1 2 3 4 5)
+(vec (iteration (fn [k] (when (< k 3) k)) :initk 0 :kf inc))
+;;=> [0 1 2]
+(vec (iteration (constantly nil)))
+;;=> []
+(take 3 (iteration (fn [k] {:v k :n (inc k)}) :somef :n :vf :v :kf :n :initk 0))
+;;=> (0 1 2)

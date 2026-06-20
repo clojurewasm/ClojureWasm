@@ -1068,6 +1068,19 @@
   (fn* [m f]
     (reduce (fn* [acc k] (assoc acc k (f (get m k)))) {} (keys m))))
 
+;; `(iteration step & {:keys [somef vf kf initk]})` — clojure 1.11. Seed `step`
+;; with `initk` (then `(kf ret)`), producing `(vf ret)` while `(somef ret)`; a
+;; lazy seq. Built for consuming chunked / paginated sources (call until exhausted).
+(def iteration
+  (fn [step & {:keys [somef vf kf initk]
+               :or {vf identity kf identity somef some? initk nil}}]
+    (letfn [(it [k]
+              (lazy-seq
+                (let [ret (step k)]
+                  (when (somef ret)
+                    (cons (vf ret) (it (kf ret)))))))]
+      (it initk))))
+
 ;; `(not-any? pred coll)` — true when `pred` is falsey for every item.
 (def not-any?
   (fn* [pred coll] (not (some pred coll))))
