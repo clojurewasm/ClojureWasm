@@ -217,6 +217,9 @@ const METHODS = [_]MethodSpec{
     .{ .name = "last", .proto = "", .f = &last },
     .{ .name = "-seq", .proto = "Seqable", .f = &seqImpl },
     .{ .name = "-count", .proto = "IPersistentCollection", .f = &countImpl },
+    // Associative -contains-key? so `(contains? ts k)` works like clj. `(get ts k)`
+    // stays nil (clj's get on a java.util.Set returns nil) — no -lookup added.
+    .{ .name = "-contains-key?", .proto = "Associative", .f = &contains },
 };
 
 fn initDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {

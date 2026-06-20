@@ -203,6 +203,10 @@ const METHODS = [_]MethodSpec{
     .{ .name = "addAll", .proto = "", .f = &addAll },
     .{ .name = "-seq", .proto = "Seqable", .f = &seqImpl },
     .{ .name = "-count", .proto = "IPersistentCollection", .f = &countImpl },
+    // Associative -contains-key? so `(contains? hs k)` works like clj (membership
+    // test). `(get hs k)` stays nil — clj's get on a java.util.Set returns nil too
+    // (it is a Collection, not an IPersistentSet), so NO -lookup is added.
+    .{ .name = "-contains-key?", .proto = "Associative", .f = &contains },
 };
 
 fn initDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {

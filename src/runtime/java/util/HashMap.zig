@@ -86,6 +86,18 @@ fn get(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerr
     return map.get(mapOf(args[0]), args[1]);
 }
 
+/// `ILookup -lookup` — makes `(get hm k)` / `(get hm k default)` / `(:k hm)` work
+/// (clj allows lookup on a java.util.Map). Uses contains so a present nil value
+/// returns nil, not the default. 2-arity → value-or-nil; 3-arity → value-or-default.
+fn lookupImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    _ = loc;
+    const m = mapOf(args[0]);
+    if (try map.contains(m, args[1])) return map.get(m, args[1]);
+    return if (args.len == 3) args[2] else .nil_val;
+}
+
 fn containsKey(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
@@ -238,6 +250,10 @@ const METHODS = [_]MethodSpec{
     // (clj allows keys/vals on a java.util.Map). Reuse keySet/values (same result).
     .{ .name = "-keys", .proto = "IPersistentMap", .f = &keySet },
     .{ .name = "-vals", .proto = "IPersistentMap", .f = &values },
+    // ILookup -lookup + Associative -contains-key? so `(get hm k)` / `(:k hm)` /
+    // `(contains? hm k)` work like clj (were silent-nil / error before).
+    .{ .name = "-lookup", .proto = "ILookup", .f = &lookupImpl },
+    .{ .name = "-contains-key?", .proto = "Associative", .f = &containsKey },
 };
 
 fn initDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {

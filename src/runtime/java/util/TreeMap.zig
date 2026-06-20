@@ -112,6 +112,14 @@ fn get(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerr
     return sorted.get(rt, env, mapOf(args[0]), args[1], loc);
 }
 
+/// `ILookup -lookup` — `(get tm k)` / `(get tm k default)` / `(:k tm)` (clj allows
+/// lookup on a java.util.Map). Uses contains so a present nil value returns nil.
+fn lookupImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    const m = mapOf(args[0]);
+    if (try sorted.contains(rt, env, m, args[1], loc)) return sorted.get(rt, env, m, args[1], loc);
+    return if (args.len == 3) args[2] else .nil_val;
+}
+
 fn containsKey(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity(".containsKey", args, 2, loc);
     return Value.initBoolean(try sorted.contains(rt, env, mapOf(args[0]), args[1], loc));
@@ -262,6 +270,10 @@ const METHODS = [_]MethodSpec{
     // (sorted, matching clj's keys/vals over a java.util.SortedMap). Reuse keySet/values.
     .{ .name = "-keys", .proto = "IPersistentMap", .f = &keySet },
     .{ .name = "-vals", .proto = "IPersistentMap", .f = &values },
+    // ILookup -lookup + Associative -contains-key? so `(get tm k)` / `(:k tm)` /
+    // `(contains? tm k)` work like clj.
+    .{ .name = "-lookup", .proto = "ILookup", .f = &lookupImpl },
+    .{ .name = "-contains-key?", .proto = "Associative", .f = &containsKey },
 };
 
 fn initDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {

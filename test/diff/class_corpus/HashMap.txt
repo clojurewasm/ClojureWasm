@@ -42,3 +42,15 @@
 ;;=> (1 2)
 (keys (java.util.HashMap.))
 ;;=> nil
+; (get hm k) / (contains? hm k) / (:k hm) — clj allows lookup on a java.util.Map
+; (D-431: ILookup -lookup + Associative -contains-key?). Were silent-nil / error.
+(get (java.util.HashMap. {:a 1 :b 2}) :a)
+;;=> 1
+(get (java.util.HashMap. {:a 1}) :z :dflt)
+;;=> :dflt
+(:a (java.util.HashMap. {:a 1 :b 2}))
+;;=> 1
+(contains? (java.util.HashMap. {:a 1}) :a)
+;;=> true
+(contains? (java.util.HashMap. {:a 1}) :z)
+;;=> false

@@ -33,3 +33,10 @@
 ;;=> (1 2 3)
 (vals (java.util.TreeMap. {3 :c 1 :a 2 :b}))
 ;;=> (:a :b :c)
+; (get tm k) / (contains? tm k) — ILookup -lookup + Associative -contains-key? (D-431).
+(get (java.util.TreeMap. {1 :a 2 :b}) 1)
+;;=> :a
+(get (java.util.TreeMap. {1 :a}) 9 :d)
+;;=> :d
+(contains? (java.util.TreeMap. {1 :a 2 :b}) 2)
+;;=> true

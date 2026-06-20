@@ -24,3 +24,11 @@
 ;;=> [3 4]
 (sort (into [] (java.util.HashSet. [3 1 2 1])))
 ;;=> (1 2 3)
+; (contains? hs k) — Associative -contains-key? (D-431). (get hs k) stays nil (clj
+; parity: java.util.Set is a Collection, not an IPersistentSet).
+(contains? (java.util.HashSet. [1 2 3]) 2)
+;;=> true
+(contains? (java.util.HashSet. [1 2 3]) 9)
+;;=> false
+(get (java.util.HashSet. [1 2 3]) 2)
+;;=> nil

@@ -24,3 +24,8 @@
 ;;=> [3 4]
 (seq (java.util.TreeSet. ["c" "a" "b" "a"]))
 ;;=> ("a" "b" "c")
+; (contains? ts k) — Associative -contains-key? (D-431). (get ts k) stays nil (clj parity).
+(contains? (java.util.TreeSet. [1 2 3]) 2)
+;;=> true
+(get (java.util.TreeSet. [1 2 3]) 9)
+;;=> nil

@@ -151,6 +151,11 @@ pub fn invoke(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: 
             // `(:tag t)` / `(:form t)` on a TaggedLiteral ≡ `(get t :tag)`.
             if (args[0].tag() == .tagged_literal)
                 return tagged_literal_mod.valAt(args[0], callee, default);
+            // A host_instance with an ILookup `-lookup` (java.util.HashMap/TreeMap)
+            // routes through the dispatch so `(:k hm)` ≡ `(get hm :k)` — lookupWithDefault
+            // is a native-map fast-path with no rt/env, so it cannot dispatch -lookup.
+            if (args[0].tag() == .host_instance)
+                return lookupDispatch(rt, env, args[0], callee, args.len == 2, default, loc);
             return lookupWithDefault(args[0], callee, args.len == 2, default);
         },
         .array_map, .hash_map => {
