@@ -1,0 +1,26 @@
+; java.util.HashSet — mutable set over a cljw persistent-set HAMT (D-431 interop).
+; add/remove return the JVM "changed?" bool; dedup via cljw value semantics.
+; Iteration ORDER is cljw HAMT order, not clj hash order (AD-001 class), so every
+; seq-bearing case is sort/set-wrapped for order-independence. clj-oracle pinned.
+(let [s (java.util.HashSet.)] [(.add s 1) (.add s 1) (.add s 2)])
+;;=> [true false true]
+(let [s (java.util.HashSet.)] (.add s 1) (.add s 1) (.add s 2) (.size s))
+;;=> 2
+(let [s (java.util.HashSet.)] (.add s 1) (.add s 2) [(.contains s 1) (.contains s 9)])
+;;=> [true false]
+(.size (java.util.HashSet. [1 1 2 3 3 3]))
+;;=> 3
+(sort (seq (java.util.HashSet. [3 1 2])))
+;;=> (1 2 3)
+(sort (set (java.util.HashSet. [:a :b :a])))
+;;=> (:a :b)
+(let [s (java.util.HashSet. [1 2])] [(.remove s 1) (.remove s 1) (sort (seq s))])
+;;=> [true false (2)]
+(let [t (java.util.HashSet. [10 20])] [(.addAll t [20 30 40]) (.addAll t [10]) (count t)])
+;;=> [true false 4]
+(let [s (java.util.HashSet. [1 2 3])] (.clear s) [(.isEmpty s) (.size s)])
+;;=> [true 0]
+(let [src (java.util.HashSet. [1 2 3]) cp (java.util.HashSet. src)] (.add cp 4) [(.size src) (.size cp)])
+;;=> [3 4]
+(sort (into [] (java.util.HashSet. [3 1 2 1])))
+;;=> (1 2 3)

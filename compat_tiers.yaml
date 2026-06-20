@@ -273,6 +273,19 @@ tiers:
           surface: runtime/java/util/HashMap.zig
         methods: [put, get, containsKey, size, isEmpty, remove, clear, keySet, values]
         clojure_peer_vars: []
+      # java.util.HashSet — mutable set (D-431, host_instance backing a cljw
+      # persistent-set HAMT; one set Value GC-traced via host_trace, reuses cljw
+      # hashing/equality for dedup). seq is cljw HAMT order, not clj hash order
+      # (AD-001 class). add/remove return the JVM changed? boolean.
+      - fqn: java.util.HashSet
+        cljw_ns: cljw.java.util.HashSet
+        keyword: hash_set_java
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/util/HashSet.zig
+        methods: [add, remove, contains, size, isEmpty, clear, addAll]
+        clojure_peer_vars: []
       - fqn: java.util.Date
         cljw_ns: cljw.java.util.Date
         keyword: instant
