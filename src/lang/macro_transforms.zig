@@ -467,9 +467,14 @@ fn associativeDestructure(
                     // An entry is a symbol OR (for :keys) a keyword — clj allows
                     // `{:keys [:a :b]}` / `{:keys [:a/b]}` (keyword entries) as
                     // well as `{:keys [a b]}`. Extract (ns, name) from either.
-                    const sym_ns: ?[]const u8, const nm: []const u8 = switch (s.data) {
-                        .symbol => |sy| .{ sy.ns, sy.name },
-                        .keyword => |kw| .{ kw.ns, kw.name },
+                    // An auto-resolved keyword entry (`::foo` / `::alias/foo`) carries
+                    // `auto_resolve` — the reader is ns-unaware, so the analyzer resolves
+                    // it. Propagate the flag to the :keys key below, else the key looks up
+                    // the bare `:foo` instead of `:current-ns/foo` (clojure.spec's
+                    // `{:keys [::cpred]}` opts pattern needs this).
+                    const sym_ns: ?[]const u8, const nm: []const u8, const auto_res: bool = switch (s.data) {
+                        .symbol => |sy| .{ sy.ns, sy.name, false },
+                        .keyword => |kw| .{ kw.ns, kw.name, kw.auto_resolve },
                         else => return error_catalog.raise(.feature_not_supported, loc, .{ .name = "destructuring `:keys`/`:strs`/`:syms` entries must be symbols or keywords" }),
                     };
                     // A namespaced entry `a/b` binds the LOCAL `b` (the name
@@ -478,7 +483,7 @@ fn associativeDestructure(
                     // keeps the un-namespaced key.
                     const local: Form = .{ .data = .{ .symbol = .{ .ns = null, .name = nm } }, .location = loc };
                     const key_form: Form = if (std.mem.eql(u8, kn, "keys"))
-                        .{ .data = .{ .keyword = .{ .ns = sym_ns, .name = nm } }, .location = loc }
+                        .{ .data = .{ .keyword = .{ .ns = sym_ns, .name = nm, .auto_resolve = auto_res } }, .location = loc }
                     else if (std.mem.eql(u8, kn, "strs"))
                         .{ .data = .{ .string = if (sym_ns) |ns_| try std.fmt.allocPrint(arena, "{s}/{s}", .{ ns_, nm }) else nm }, .location = loc }
                     else

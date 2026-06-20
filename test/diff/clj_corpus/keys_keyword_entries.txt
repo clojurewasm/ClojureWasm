@@ -8,3 +8,7 @@
 ;;=> [1 2 9]
 (let [{:syms [a b]} {(quote a) 1 (quote b) 2}] [a b])
 ;;=> [1 2]
+(let [{:keys [::foo]} {::foo 5}] foo)
+;;=> 5
+(let [{:keys [::a :x/b c]} {::a 1 :x/b 2 :c 3}] [a b c])
+;;=> [1 2 3]
