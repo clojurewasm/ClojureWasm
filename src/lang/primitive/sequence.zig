@@ -586,6 +586,13 @@ pub fn emptyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
         else => blk: {
             // D-089 row 8.6 cycle 1: IPC -empty slow-path.
             var cs: dispatch.CallSite = .{};
+            // clj's RT.empty returns nil for a non-emptyable value (e.g. a
+            // java.util.HashMap/HashSet — it is not a Clojure collection). cljw
+            // matches by falling back to nil when -empty is unimplemented on a
+            // host_instance, rather than raising (D-431). deftype/reify keep the
+            // raising dispatch (a collection deftype is expected to wire -empty).
+            if (coll.tag() == .host_instance)
+                break :blk (try dispatch.dispatchOrNull(rt, env, &cs, coll, IPC_FQCN, "-empty", args, loc)) orelse .nil_val;
             break :blk try dispatch.dispatch(rt, env, &cs, coll, IPC_FQCN, "-empty", args, loc);
         },
     };

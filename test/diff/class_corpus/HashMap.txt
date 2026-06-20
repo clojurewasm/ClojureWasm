@@ -54,3 +54,6 @@
 ;;=> true
 (contains? (java.util.HashMap. {:a 1}) :z)
 ;;=> false
+; (empty java-map) → nil — clj's non-emptyable fallback (D-431), was an error.
+(empty (java.util.HashMap. {:a 1}))
+;;=> nil

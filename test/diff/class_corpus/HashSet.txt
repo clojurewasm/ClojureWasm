@@ -32,3 +32,6 @@
 ;;=> false
 (get (java.util.HashSet. [1 2 3]) 2)
 ;;=> nil
+; (empty java-set) → nil (clj non-emptyable fallback, D-431).
+(empty (java.util.HashSet. [1 2]))
+;;=> nil
