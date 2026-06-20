@@ -180,6 +180,27 @@ fn last(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyer
     }
 }
 
+/// `(.floor ts e)` — greatest element ≤ e, nil if none (JVM `NavigableSet.floor`).
+fn floorFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(".floor", args, 2, loc);
+    return sorted.navKey(rt, env, setOf(args[0]), args[1], .floor, loc);
+}
+/// `(.ceiling ts e)` — least element ≥ e, nil if none (JVM `NavigableSet.ceiling`).
+fn ceilingFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(".ceiling", args, 2, loc);
+    return sorted.navKey(rt, env, setOf(args[0]), args[1], .ceiling, loc);
+}
+/// `(.lower ts e)` — greatest element < e, nil if none (JVM `NavigableSet.lower`).
+fn lowerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(".lower", args, 2, loc);
+    return sorted.navKey(rt, env, setOf(args[0]), args[1], .lower, loc);
+}
+/// `(.higher ts e)` — least element > e, nil if none (JVM `NavigableSet.higher`).
+fn higherFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(".higher", args, 2, loc);
+    return sorted.navKey(rt, env, setOf(args[0]), args[1], .higher, loc);
+}
+
 /// `(Seqable -seq)` — a seq of the elements in SORTED order (clj `TreeSet` parity).
 fn seqImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
@@ -221,6 +242,10 @@ const METHODS = [_]MethodSpec{
     .{ .name = "addAll", .proto = "", .f = &addAll },
     .{ .name = "first", .proto = "", .f = &first },
     .{ .name = "last", .proto = "", .f = &last },
+    .{ .name = "floor", .proto = "", .f = &floorFn },
+    .{ .name = "ceiling", .proto = "", .f = &ceilingFn },
+    .{ .name = "lower", .proto = "", .f = &lowerFn },
+    .{ .name = "higher", .proto = "", .f = &higherFn },
     .{ .name = "-seq", .proto = "Seqable", .f = &seqImpl },
     .{ .name = "-count", .proto = "IPersistentCollection", .f = &countImpl },
     // Associative -contains-key? so `(contains? ts k)` works like clj. `(get ts k)`

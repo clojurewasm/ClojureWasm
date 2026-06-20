@@ -58,3 +58,15 @@
 ; D-468: prints by content, key-sorted ({...}).
 (doto (java.util.TreeMap.) (.put :b 2) (.put :a 1))
 ;;=> {:a 1, :b 2}
+(.floorKey (java.util.TreeMap. {1 :a 3 :c 5 :e}) 4)
+;;=> 3
+(.ceilingKey (java.util.TreeMap. {1 :a 3 :c 5 :e}) 4)
+;;=> 5
+(.lowerKey (java.util.TreeMap. {1 :a 3 :c 5 :e}) 3)
+;;=> 1
+(.higherKey (java.util.TreeMap. {1 :a 3 :c 5 :e}) 3)
+;;=> 5
+(.floorKey (java.util.TreeMap. {2 :a 4 :b}) 1)
+;;=> nil
+(.ceilingKey (java.util.TreeMap. {2 :a 4 :b}) 5)
+;;=> nil

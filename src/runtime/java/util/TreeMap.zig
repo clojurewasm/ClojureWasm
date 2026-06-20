@@ -240,6 +240,27 @@ fn lastKey(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     }
 }
 
+/// `(.floorKey tm k)` — greatest key ≤ k, nil if none (JVM `NavigableMap.floorKey`).
+fn floorKeyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(".floorKey", args, 2, loc);
+    return sorted.navKey(rt, env, mapOf(args[0]), args[1], .floor, loc);
+}
+/// `(.ceilingKey tm k)` — least key ≥ k, nil if none (JVM `NavigableMap.ceilingKey`).
+fn ceilingKeyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(".ceilingKey", args, 2, loc);
+    return sorted.navKey(rt, env, mapOf(args[0]), args[1], .ceiling, loc);
+}
+/// `(.lowerKey tm k)` — greatest key < k, nil if none (JVM `NavigableMap.lowerKey`).
+fn lowerKeyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(".lowerKey", args, 2, loc);
+    return sorted.navKey(rt, env, mapOf(args[0]), args[1], .lower, loc);
+}
+/// `(.higherKey tm k)` — least key > k, nil if none (JVM `NavigableMap.higherKey`).
+fn higherKeyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    try error_catalog.checkArity(".higherKey", args, 2, loc);
+    return sorted.navKey(rt, env, mapOf(args[0]), args[1], .higher, loc);
+}
+
 /// `(Seqable -seq)` — the entry seq in SORTED key order (cljw `TreeMap` parity).
 fn seqImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
@@ -287,6 +308,10 @@ const METHODS = [_]MethodSpec{
     .{ .name = "values", .proto = "", .f = &values },
     .{ .name = "firstKey", .proto = "", .f = &firstKey },
     .{ .name = "lastKey", .proto = "", .f = &lastKey },
+    .{ .name = "floorKey", .proto = "", .f = &floorKeyFn },
+    .{ .name = "ceilingKey", .proto = "", .f = &ceilingKeyFn },
+    .{ .name = "lowerKey", .proto = "", .f = &lowerKeyFn },
+    .{ .name = "higherKey", .proto = "", .f = &higherKeyFn },
     .{ .name = "-seq", .proto = "Seqable", .f = &seqImpl },
     .{ .name = "-count", .proto = "IPersistentCollection", .f = &countImpl },
     // IPersistentMap -keys / -vals so `(keys tm)` / `(vals tm)` work like clj

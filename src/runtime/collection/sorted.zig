@@ -534,6 +534,37 @@ pub fn subseqRange(rt: *Runtime, env: *Env, coll: Value, ascending: bool, b: Bou
     return subseqWalk(rt, env, is_map, m.comparator, m.root, b, ascending, Value.nil_val, loc);
 }
 
+/// Closest key to `target`: `.floor` = greatest ≤, `.ceiling` = least ≥,
+/// `.lower` = greatest <, `.higher` = least > (nil if none). O(log n) RB-tree
+/// descent using only the collection's comparator. For a `.sorted_set` the keys
+/// ARE the elements. Backs java.util.TreeMap/TreeSet NavigableMap/Set navigation.
+pub const NavKind = enum { floor, ceiling, lower, higher };
+pub fn navKey(rt: *Runtime, env: *Env, coll: Value, target: Value, kind: NavKind, loc: SourceLocation) !Value {
+    const is_set = coll.tag() == .sorted_set;
+    const inner = if (is_set) mapOf(coll) else coll;
+    const m = inner.decodePtr(*const SortedMap);
+    const want_le = (kind == .floor or kind == .lower); // descend right toward the greatest satisfying key
+    var best: Value = Value.nil_val;
+    var node = m.root;
+    while (node.tag() == .rb_node) {
+        const hn = node.decodePtr(*const RbNode);
+        const ord = try compareKeys(rt, env, m.comparator, hn.key, target, loc); // key vs target
+        const satisfies = switch (kind) {
+            .floor => ord != .gt, // key <= target
+            .lower => ord == .lt, // key <  target
+            .ceiling => ord != .lt, // key >= target
+            .higher => ord == .gt, // key >  target
+        };
+        if (satisfies) {
+            best = hn.key;
+            node = if (want_le) hn.right else hn.left;
+        } else {
+            node = if (want_le) hn.left else hn.right;
+        }
+    }
+    return best;
+}
+
 // --- SortedSet public API (wraps a SortedMap, element → element) ---
 
 inline fn mapOf(set_val: Value) Value {
