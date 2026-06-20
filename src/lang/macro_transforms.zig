@@ -2438,6 +2438,48 @@ fn sectionNeedsRemap(hi: host_interface.HostInterface, impls: []const Form) bool
     return any_translate;
 }
 
+/// True iff `impl` is a GROUPED multi-arity method form `(name ([p] b) ([p] b) …)`:
+/// a list whose 2nd element is itself a list starting with a params VECTOR. The
+/// single-arity form `(name [p] b)` has a params vector DIRECTLY as the 2nd
+/// element, so the two are distinguishable by the 2nd element's tag.
+fn isGroupedArity(impl: Form) bool {
+    return impl.data == .list and impl.data.list.len >= 2 and
+        impl.data.list[0].data == .symbol and impl.data.list[1].data == .list and
+        impl.data.list[1].data.list.len >= 1 and impl.data.list[1].data.list[0].data == .vector;
+}
+
+/// clj's `extend-type`/`extend-protocol` accept a GROUPED multi-arity method
+/// spelling — `(g ([x] b1) ([x y] b2))` — in addition to the repeated single-arity
+/// `(g [x] b1) (g [x y] b2)`. Expand each grouped impl into one repeated impl per
+/// arity-clause so `expandExtendType`'s multi-arity-`fn*` grouping (D-279) folds
+/// both spellings identically (D-469). Non-grouped impls pass through untouched.
+fn expandGroupedArities(arena: std.mem.Allocator, impls: []const Form) macro_dispatch.ExpandError![]const Form {
+    var any = false;
+    for (impls) |impl| {
+        if (isGroupedArity(impl)) {
+            any = true;
+            break;
+        }
+    }
+    if (!any) return impls;
+    var out: std.ArrayList(Form) = .empty;
+    for (impls) |impl| {
+        if (!isGroupedArity(impl)) {
+            try out.append(arena, impl);
+            continue;
+        }
+        const name_sym = impl.data.list[0];
+        for (impl.data.list[1..]) |clause| {
+            // clause = ([params] body...) → (name [params] body...)
+            var items = try arena.alloc(Form, 1 + clause.data.list.len);
+            items[0] = name_sym;
+            @memcpy(items[1..], clause.data.list);
+            try out.append(arena, try list(arena, items, impl.location));
+        }
+    }
+    return try out.toOwnedSlice(arena);
+}
+
 fn expandExtendType(
     arena: std.mem.Allocator,
     rt: *Runtime,
@@ -2558,7 +2600,10 @@ fn expandExtendType(
         try quoteWrap(arena, args[1])
     else
         args[1];
-    const method_impls = args[2..];
+    // D-469: normalise the grouped multi-arity spelling `(g ([x] b1) ([x y] b2))`
+    // into repeated single-arity impls before validation, so the multi-arity-fn*
+    // grouping below folds both spellings identically.
+    const method_impls = try expandGroupedArities(arena, args[2..]);
 
     // Validate every impl + collect distinct method names in first-seen order.
     // A clj interface section may declare ONE method at multiple arities

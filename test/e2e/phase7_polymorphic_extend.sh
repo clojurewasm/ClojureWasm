@@ -161,3 +161,36 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
 EOF
 ) || fail "case11: non-zero exit ($got)"
 assert_eq 'defrecord_reduce_fallback_to_seq_walk' "$(last_line "$got")" '60'
+
+# --- Case 12 (D-469): GROUPED multi-arity method in extend-protocol ---
+# clj accepts `(hi ([x] ...) ([x y] ...))` (one impl, tail = arity-clauses) as
+# well as the repeated `(hi [x] ...) (hi [x y] ...)`. cljw rejected the grouped
+# spelling; now it normalises it into the repeated form (same multi-arity fn*).
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol Greet (hi [x] [x y]))
+(defrecord G [n])
+(extend-protocol Greet G (hi ([_] :one) ([_ _] :two)))
+(prn [(hi (->G 1)) (hi (->G 1) 9)])
+EOF
+) || fail "case12: non-zero exit ($got)"
+assert_eq 'extend_protocol_grouped_multi_arity' "$(last_line "$got")" '[:one :two]'
+
+# --- Case 13 (D-469): GROUPED multi-arity method in extend-type ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol Greet2 (ho [x] [x y]))
+(defrecord G2 [n])
+(extend-type G2 Greet2 (ho ([_] :p) ([_ _] :q)))
+(prn [(ho (->G2 1)) (ho (->G2 1) 9)])
+EOF
+) || fail "case13: non-zero exit ($got)"
+assert_eq 'extend_type_grouped_multi_arity' "$(last_line "$got")" '[:p :q]'
+
+# --- Case 14 (D-469): the REPEATED form still works (regression) ---
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defprotocol Greet3 (hey [x] [x y]))
+(defrecord G3 [n])
+(extend-protocol Greet3 G3 (hey [_] :r) (hey [_ _] :s))
+(prn [(hey (->G3 1)) (hey (->G3 1) 9)])
+EOF
+) || fail "case14: non-zero exit ($got)"
+assert_eq 'extend_protocol_repeated_multi_arity' "$(last_line "$got")" '[:r :s]'
