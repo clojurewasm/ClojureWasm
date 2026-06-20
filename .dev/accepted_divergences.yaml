@@ -801,3 +801,21 @@ accepted:
       str is an interop edge.
     derives_from: "ADR-0059 (no JVM — cljw does not reproduce JVM AbstractMap/AbstractCollection toString form) + AD-001 (non-reproducible collection iteration order) + AD-003 (cljw renders host surface in cljw form, not JVM form) + F-011 (the pr/pr-str form matches clj exactly; only the JVM-toString str-form diverges) + D-468 (the content-print mechanism)."
     pin: "test/diff/class_corpus/ArrayList.txt + test/diff/class_corpus/HashMap.txt — the D-468 print cases lock cljw's pr content-form; the str Clojure-form divergence is asserted in test/e2e/phase14_hashmap.sh (str_clojure_form + print_pr_content)."
+  - id: "AD-048"
+    summary: "`(str record)` / `(.toString record)` renders the cljw CONTENT form (`#Pt{:x 1, :y 2}`), same as pr-str — NOT clj's `Object.toString` identity form (`user.Pt@3c6f0c2c` = FQCN + identity hash). A defrecord/deftype does not override toString, so clj's str is the JVM default."
+    example: '(str (->Pt 1 2)) => cljw "#Pt{:x 1, :y 2}" / clj "user.Pt@<hash>" (where (defrecord Pt [x y]))'
+    why: |-
+      clj's `(str some-record)` calls `java.lang.Object.toString` (a defrecord does
+      NOT override toString), which is `<FQCN>@<Integer.toHexString(identityHashCode)>`
+      — both halves are unreproducible in cljw: the JVM class FQN (cljw is no-JVM,
+      ADR-0059; cljw uses the simple record name per AD-003) and the per-object
+      identity hash (a JVM address-derived value cljw has no analogue for, same class
+      as AD-002). cljw therefore renders a record's str AS its readable content form
+      (the pr-form), identical to `(pr-str record)` (`#Pt{:x 1, :y 2}`, simple name
+      per AD-003). This is strictly more useful than the JVM `Class@hash` (which leaks
+      nothing about the value) and is the only internally-consistent choice given cljw
+      has neither a JVM FQN nor an identity hash to print. Sibling to AD-047 (host
+      java.util collection str renders cljw-content, not JVM toString); both stem from
+      "cljw does not reproduce JVM Object/Abstract* toString surface details".
+    derives_from: "ADR-0059 (no JVM — no class FQN, no Object.toString identity form) + AD-002 (non-reproducible identity hash) + AD-003 (cljw renders the record with its simple name, not the JVM FQCN) + F-011 (pr-str already matches modulo the AD-003 simple name; only the JVM-Object.toString str-form diverges)."
+    pin: "test/e2e/phase7_defrecord.sh — defrecord_str_content_form (str of a record = its #Name{...} content form, not Class@hash) + defrecord_print_map_style (the pr-form it mirrors)."

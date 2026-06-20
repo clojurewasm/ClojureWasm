@@ -297,4 +297,16 @@ EOF
 ) || fail "case30: non-zero exit ($got)"
 assert_eq 'defrecord_print_map_style' "$(last_line "$got")" '#Pt{:x 1, :y 2}'
 
-echo "OK — phase7_defrecord smoke (30 cases) green"
+# --- Case 31 (AD-048): (str record) renders the CONTENT form, not clj's
+# Object.toString identity form (`user.Pt@<hash>`). clj's str of a record is the
+# default Object.toString (FQCN@identity-hash) — non-reproducible (AD-002 class)
+# and JVM-specific (ADR-0059); cljw gives the readable content form for both str
+# and pr. Locks cljw's content-str behaviour.
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(defrecord Pt [x y])
+(prn (str (->Pt 1 2)))
+EOF
+) || fail "case31: non-zero exit ($got)"
+assert_eq 'defrecord_str_content_form' "$(last_line "$got")" '"#Pt{:x 1, :y 2}"'
+
+echo "OK — phase7_defrecord smoke (31 cases) green"
