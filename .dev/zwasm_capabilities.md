@@ -28,12 +28,12 @@ is its lightweight, always-on, git-tracked face on the cljw side. When cljw actu
 
 ## zwasm live status sources (read these to refresh the table)
 
-| Source                                                                         | What it tells you                                       |
-|--------------------------------------------------------------------------------|---------------------------------------------------------|
-| `~/Documents/MyProducts/zwasm_from_scratch/private/CODEV_STATUS.md`            | live co-dev state + mailbox + verification snapshot     |
-| `~/Documents/MyProducts/zwasm_from_scratch/.dev/ROADMAP.md`                    | zwasm phase plan (p17 = JIT)                             |
-| `~/Documents/MyProducts/zwasm_from_scratch/.dev/decisions/0200_*.md`           | ADR-0200 — JIT-DEFAULT engine + research-driven API     |
-| `git -C ~/Documents/MyProducts/zwasm_from_scratch log --oneline -15`           | recent JIT work (zwasm#477 multi-arg invoke arm64/x86_64)   |
+| Source                                                               | What it tells you                                         |
+|----------------------------------------------------------------------|-----------------------------------------------------------|
+| `~/Documents/MyProducts/zwasm_from_scratch/private/CODEV_STATUS.md`  | live co-dev state + mailbox + verification snapshot       |
+| `~/Documents/MyProducts/zwasm_from_scratch/.dev/ROADMAP.md`          | zwasm phase plan (p17 = JIT)                              |
+| `~/Documents/MyProducts/zwasm_from_scratch/.dev/decisions/0200_*.md` | ADR-0200 — JIT-DEFAULT engine + research-driven API      |
+| `git -C ~/Documents/MyProducts/zwasm_from_scratch log --oneline -15` | recent JIT work (zwasm#477 multi-arg invoke arm64/x86_64) |
 
 ## Pin
 
@@ -48,14 +48,14 @@ is its lightweight, always-on, git-tracked face on the cljw side. When cljw actu
 
 ## Capability table (refresh at each boundary)
 
-| Capability                          | zwasm status (as of 2026-06-20)                     | in cljw's pin? | cljw adoption                          | ref            |
-|-------------------------------------|------------------------------------------------------|----------------|-----------------------------------------|----------------|
-| Interp embedding (load/instantiate) | ready                                                | YES            | integrated behind `cljw.wasm/*` (-Dwasm) | F-001, D-036   |
-| `invoke` (call exported fn)         | ready (interp)                                       | YES            | integrated                              | D-036          |
-| Embedder hardening / WASI sandbox   | landed (security pass `…→6b08fe70`, 3-host green)    | mostly         | consumed `to_cljw_01`                   | CODEV          |
-| **Multi-arg JIT invoke (≤5/7 GPR)** | **BUILDING** (zwasm#477, arm64 + x86_64 SysV thunks)     | NO (pre-JIT)   | NOT adopted                             | zwasm zwasm#477    |
-| **JIT-backed engine (JIT-DEFAULT)** | **BUILDING / DESIGN** (ADR-0200 reverses interp-only) | NO             | NOT adopted — **the north-star adopt**  | zwasm ADR-0200 |
-| WIT component marshalling           | future                                               | NO             | NOT adopted                             | D-404          |
+| Capability                           | zwasm status (as of 2026-06-20)                       | in cljw's pin? | cljw adoption                            | ref             |
+|--------------------------------------|-------------------------------------------------------|----------------|------------------------------------------|-----------------|
+| Interp embedding (load/instantiate)  | ready                                                 | YES            | integrated behind `cljw.wasm/*` (-Dwasm) | F-001, D-036    |
+| `invoke` (call exported fn)          | ready (interp)                                        | YES            | integrated                               | D-036           |
+| Embedder hardening / WASI sandbox    | landed (security pass `…→6b08fe70`, 3-host green)   | mostly         | consumed `to_cljw_01`                    | CODEV           |
+| **Multi-arg JIT invoke (≤5/7 GPR)** | **BUILDING** (zwasm#477, arm64 + x86_64 SysV thunks)  | NO (pre-JIT)   | NOT adopted                              | zwasm zwasm#477 |
+| **JIT-backed engine (JIT-DEFAULT)**  | **BUILDING / DESIGN** (ADR-0200 reverses interp-only) | NO             | NOT adopted — **the north-star adopt**  | zwasm ADR-0200  |
+| WIT component marshalling            | future                                                | NO             | NOT adopted                              | D-404           |
 
 ## Forward plan — the JIT adoption unit (gap area II × III)
 
