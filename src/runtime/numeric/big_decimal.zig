@@ -475,6 +475,28 @@ pub fn allocSub(rt: *Runtime, a: Value, b: Value) !Value {
     return try alignedCombine(rt, a, b, .sub);
 }
 
+/// Move the decimal point: `delta` = +n for `movePointLeft(n)` (÷10ⁿ, scale +n),
+/// −n for `movePointRight(n)` (·10ⁿ, scale −n). The unscaled digits are unchanged
+/// while the resulting scale stays ≥ 0; a negative resulting scale is normalised to
+/// 0 by scaling the unscaled value up by 10^|new_scale| (JVM BigDecimal semantics).
+pub fn allocMovePoint(rt: *Runtime, v: Value, delta: i64) !Value {
+    const infra = rt.gc.infra;
+    const new_scale: i64 = @as(i64, asScale(v)) + delta;
+    var m = try std.math.big.int.Managed.init(infra);
+    defer m.deinit();
+    try m.copy(asUnscaled(v).m.toConst());
+    if (new_scale >= 0) return allocFromManagedScale(rt, &m, @intCast(new_scale));
+    var ten = try std.math.big.int.Managed.initSet(infra, 10);
+    defer ten.deinit();
+    var p = try std.math.big.int.Managed.init(infra);
+    defer p.deinit();
+    try p.pow(&ten, @intCast(-new_scale));
+    var prod = try std.math.big.int.Managed.init(infra);
+    defer prod.deinit();
+    try prod.mul(&m, &p);
+    return allocFromManagedScale(rt, &prod, 0);
+}
+
 /// `a * b` — unscaled values multiply, scales add.
 pub fn allocMul(rt: *Runtime, a: Value, b: Value) !Value {
     std.debug.assert(a.tag() == .big_decimal and b.tag() == .big_decimal);

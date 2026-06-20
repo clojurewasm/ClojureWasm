@@ -69,4 +69,14 @@ assert_eq 'tobigint_neg' "$("$BIN" -e '(str (.toBigInteger (bigdec "-1.99")))' 2
 assert_eq 'strip'       "$("$BIN" -e '(str (.stripTrailingZeros (bigdec "1.500")))' 2>&1 | awk 'END{print}')" '"1.5"'
 assert_eq 'strip_e'     "$("$BIN" -e '(str (.stripTrailingZeros (bigdec "100")))' 2>&1 | awk 'END{print}')"   '"1E+2"'
 
-echo "OK — phase14_bigdecimal_setscale (35 cases) green"
+# BigDecimal instance arithmetic + point shift (D-322 completion). clj-grounded.
+assert_eq 'bd_add'      "$("$BIN" -e '(str (.add (bigdec "1.1") (bigdec "2.2")))' 2>&1 | awk 'END{print}')"        '"3.3"'
+assert_eq 'bd_subtract' "$("$BIN" -e '(str (.subtract (bigdec "5.5") (bigdec "1.1")))' 2>&1 | awk 'END{print}')"   '"4.4"'
+assert_eq 'bd_multiply' "$("$BIN" -e '(str (.multiply (bigdec "2.0") (bigdec "3.0")))' 2>&1 | awk 'END{print}')"   '"6.00"'
+assert_eq 'bd_divide'   "$("$BIN" -e '(str (.divide (bigdec "10") (bigdec "4")))' 2>&1 | awk 'END{print}')"        '"2.5"'
+assert_eq 'bd_mpl'      "$("$BIN" -e '(str (.movePointLeft (bigdec "150") 2))' 2>&1 | awk 'END{print}')"           '"1.50"'
+assert_eq 'bd_mpr'      "$("$BIN" -e '(str (.movePointRight (bigdec "1.5") 2))' 2>&1 | awk 'END{print}')"          '"150"'
+assert_eq 'bd_mpr_big'  "$("$BIN" -e '(str (.movePointRight (bigdec "12.34") 3))' 2>&1 | awk 'END{print}')"        '"12340"'
+assert_eq 'bd_div_nonterm' "$("$BIN" -e '(try (.divide (bigdec "1") (bigdec "3")) (catch Throwable e :caught))' 2>&1 | awk 'END{print}')" ':caught'
+
+echo "OK — phase14_bigdecimal_setscale (43 cases) green"

@@ -110,6 +110,70 @@ fn stripTrailingZerosFn(rt: *Runtime, env: *Env, args: []const Value, loc: Sourc
     return big_decimal.allocFromManagedScale(rt, big_decimal.asNormUnscaled(args[0]).m, big_decimal.asNormScale(args[0]));
 }
 
+/// `(.add a b)` — exact BigDecimal sum (JVM `BigDecimal.add`), the same aligned
+/// arithmetic the `+` operator uses. Both args must be BigDecimals.
+fn addFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("add", args, 2, loc);
+    try requireBd(args[0], "add", loc);
+    try requireBd(args[1], "add", loc);
+    return big_decimal.allocAdd(rt, args[0], args[1]);
+}
+
+/// `(.subtract a b)` — exact BigDecimal difference (JVM `BigDecimal.subtract`).
+fn subtractFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("subtract", args, 2, loc);
+    try requireBd(args[0], "subtract", loc);
+    try requireBd(args[1], "subtract", loc);
+    return big_decimal.allocSub(rt, args[0], args[1]);
+}
+
+/// `(.multiply a b)` — exact BigDecimal product, scale = sum of scales (JVM
+/// `BigDecimal.multiply`).
+fn multiplyFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("multiply", args, 2, loc);
+    try requireBd(args[0], "multiply", loc);
+    try requireBd(args[1], "multiply", loc);
+    return big_decimal.allocMul(rt, args[0], args[1]);
+}
+
+/// `(.divide a b)` — exact BigDecimal quotient (JVM `BigDecimal.divide(BigDecimal)`,
+/// the no-MathContext form): throws on a non-terminating expansion or zero divisor,
+/// matching clj `(/ aM bM)` (the shared `allocDiv`).
+fn divideFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("divide", args, 2, loc);
+    try requireBd(args[0], "divide", loc);
+    try requireBd(args[1], "divide", loc);
+    return big_decimal.allocDiv(rt, args[0], args[1]) catch |e| switch (e) {
+        error.DivideByZero => error_catalog.raise(.divide_by_zero, loc, .{}),
+        error.NonTerminatingDecimal => error_catalog.raise(.non_terminating_decimal, loc, .{}),
+        else => e,
+    };
+}
+
+/// `(.movePointLeft bd n)` — `bd ÷ 10ⁿ` (scale +n; JVM `BigDecimal.movePointLeft`).
+fn movePointLeftFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("movePointLeft", args, 2, loc);
+    try requireBd(args[0], "movePointLeft", loc);
+    if (!args[1].isInt())
+        return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "movePointLeft", .actual = @tagName(args[1].tag()) });
+    return big_decimal.allocMovePoint(rt, args[0], args[1].asInteger());
+}
+
+/// `(.movePointRight bd n)` — `bd · 10ⁿ` (scale −n; JVM `BigDecimal.movePointRight`).
+fn movePointRightFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("movePointRight", args, 2, loc);
+    try requireBd(args[0], "movePointRight", loc);
+    if (!args[1].isInt())
+        return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "movePointRight", .actual = @tagName(args[1].tag()) });
+    return big_decimal.allocMovePoint(rt, args[0], -args[1].asInteger());
+}
+
 /// `(.precision bd)` — the number of significant digits in the unscaled value
 /// (a zero value has precision 1). JVM `BigDecimal.precision()`.
 fn precisionFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -168,6 +232,12 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "abs", &absFn },
         .{ "toBigInteger", &toBigIntegerFn },
         .{ "stripTrailingZeros", &stripTrailingZerosFn },
+        .{ "add", &addFn },
+        .{ "subtract", &subtractFn },
+        .{ "multiply", &multiplyFn },
+        .{ "divide", &divideFn },
+        .{ "movePointLeft", &movePointLeftFn },
+        .{ "movePointRight", &movePointRightFn },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {
