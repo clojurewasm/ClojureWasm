@@ -72,5 +72,27 @@ cat > "$FIX" <<EOF
 EOF
 assert_eq 'alias_via_require' "$("$BIN" "$FIX" 2>&1 | tail -n 1)" '/a/b'
 
+# --- spit `& options`: :append (truthy → append; false → truncate) + :encoding
+# (UTF-8 no-op). clj signature (spit f content & options). Sequential top-level
+# forms via a fixture (a single -e analyses the whole form before eval).
+APP="$TMP/append_smoke.clj"
+cat > "$APP" <<EOF
+(spit "$TMP/ap.txt" "1")
+(spit "$TMP/ap.txt" "2" :append true)
+(spit "$TMP/ap.txt" "3" :append true)
+(println (slurp "$TMP/ap.txt"))            ; 123 — appended
+(spit "$TMP/ap2.txt" "X" :append true)     ; append to a MISSING file == create
+(println (slurp "$TMP/ap2.txt"))           ; X
+(spit "$TMP/ap.txt" "reset" :append false) ; :append false truncates
+(println (slurp "$TMP/ap.txt"))            ; reset
+(spit "$TMP/ap.txt" "enc" :encoding "UTF-8") ; :encoding accepted (UTF-8)
+(println (slurp "$TMP/ap.txt"))            ; enc
+(spit "$TMP/cc.txt" 42)                     ; content (str)-coerced: non-string
+(println (slurp "$TMP/cc.txt"))            ; 42
+(spit "$TMP/cc.txt" {:a 1})
+(println (slurp "$TMP/cc.txt"))            ; {:a 1}
+EOF
+assert_eq 'spit_append_options' "$("$BIN" "$APP" 2>&1)" $'123\nX\nreset\nenc\n42\n{:a 1}'
+
 rm -rf "$TMP"
 echo "ALL PASS phase16_clojure_java_io"

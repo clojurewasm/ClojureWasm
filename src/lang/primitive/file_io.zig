@@ -16,6 +16,9 @@ const SourceLocation = error_mod.SourceLocation;
 const dispatch = @import("../../runtime/dispatch.zig");
 const file_io = @import("../../runtime/file_io.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
+const std = @import("std");
+const keyword_mod = @import("../../runtime/keyword.zig");
+const print_mod = @import("../../runtime/print.zig");
 
 /// Map a host I/O error from `slurp`/`spit` to a catchable cljw exception.
 /// A missing path (or missing parent directory) routes to the leaf
@@ -56,16 +59,31 @@ pub fn slurp(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 /// `(spit path content)` — write `content` String to `path`,
 /// replacing any existing file. Returns nil on success.
 pub fn spit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
-    try error_catalog.checkArity("spit", args, 2, loc);
+    // `(spit f content & options)` — clj's signature. clj coerces content via
+    // `(str content)` (a non-string is rendered, a string passes through) and the
+    // options are keyword/value pairs; cljw honours `:append` (truthy → append)
+    // and accepts `:encoding` (UTF-8 always, a no-op) plus any further keys.
+    try error_catalog.checkArityMin("spit", args, 2, loc);
     if (args[0].tag() != .string) {
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "spit", .actual = @tagName(args[0].tag()) });
     }
-    if (args[1].tag() != .string) {
-        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "spit", .actual = @tagName(args[1].tag()) });
+    var append_mode = false;
+    var i: usize = 2;
+    while (i + 1 < args.len) : (i += 2) {
+        if (args[i].tag() != .keyword) continue;
+        if (std.mem.eql(u8, keyword_mod.asKeyword(args[i]).name, "append"))
+            append_mode = args[i + 1].isTruthy();
     }
     const path = string_collection.asString(args[0]);
-    const content = string_collection.asString(args[1]);
+    // Coerce content via `(str content)`; a string is used directly (fast path).
+    const content_owned: ?[]u8 = if (args[1].tag() == .string) null else blk: {
+        var aw: std.Io.Writer.Allocating = .init(rt.gpa);
+        defer aw.deinit();
+        try print_mod.writeStrValue(rt, env, &aw.writer, args[1]);
+        break :blk try rt.gpa.dupe(u8, aw.writer.buffered());
+    };
+    defer if (content_owned) |c| rt.gpa.free(c);
+    const content = content_owned orelse string_collection.asString(args[1]);
     // SE-6: confine to the deploy FS jail (CLJW_FS_ROOT) and write the RESOLVED path.
     const jailed = file_io.jailResolve(rt.gpa, rt.fs_jail_root, path) catch |e| switch (e) {
         error.OutOfMemory => return e,
@@ -73,8 +91,12 @@ pub fn spit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     };
     defer if (jailed) |j| rt.gpa.free(j);
     const open_path = jailed orelse path;
-    file_io.writeAll(rt.io, open_path, content) catch |e|
-        return raiseFileIoError("spit", path, e, loc);
+    if (append_mode)
+        file_io.appendAll(rt.io, rt.gpa, open_path, content) catch |e|
+            return raiseFileIoError("spit", path, e, loc)
+    else
+        file_io.writeAll(rt.io, open_path, content) catch |e|
+            return raiseFileIoError("spit", path, e, loc);
     return .nil_val;
 }
 

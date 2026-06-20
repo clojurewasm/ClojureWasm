@@ -36,6 +36,20 @@ pub fn writeAll(io: std.Io, path: []const u8, content: []const u8) !void {
     try file_writer.interface.flush();
 }
 
+/// Append `content` to `path` (creating it if absent) — backs `spit`'s
+/// `:append true` option. Whole-file read-then-write (spit's own whole-file
+/// semantics); NOT a streaming append. A missing file degrades to a plain write.
+pub fn appendAll(io: std.Io, allocator: std.mem.Allocator, path: []const u8, content: []const u8) !void {
+    const existing = readAll(io, allocator, path) catch |e| switch (e) {
+        error.FileNotFound => return writeAll(io, path, content),
+        else => return e,
+    };
+    defer allocator.free(existing);
+    const combined = try std.mem.concat(allocator, u8, &.{ existing, content });
+    defer allocator.free(combined);
+    try writeAll(io, path, combined);
+}
+
 /// Predicate: does `path` exist (file or directory)?
 pub fn exists(io: std.Io, path: []const u8) bool {
     const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch return false;
