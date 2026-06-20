@@ -35,3 +35,8 @@
 ; (empty java-set) → nil (clj non-emptyable fallback, D-431).
 (empty (java.util.HashSet. [1 2]))
 ;;=> nil
+; (instance? java.util.Set/Collection hs) → true via host_supertypes (D-466).
+(instance? java.util.Set (java.util.HashSet.))
+;;=> true
+(instance? java.util.Collection (java.util.HashSet.))
+;;=> true

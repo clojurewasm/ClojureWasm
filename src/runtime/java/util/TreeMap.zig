@@ -321,6 +321,9 @@ var descriptor: type_descriptor.TypeDescriptor = .{
     .protocol_impls = &.{},
     .method_table = &.{},
     .static_fields = &.{},
+    // SortedMap/NavigableMap omitted: those interface symbols don't yet resolve as
+    // instance? class args (D-466 sub-follow-up = register them).
+    .host_supertypes = &.{"java.util.Map"},
     .parent = null,
     .meta = .nil_val,
 };

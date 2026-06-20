@@ -29,3 +29,6 @@
 ;;=> true
 (get (java.util.TreeSet. [1 2 3]) 9)
 ;;=> nil
+; (instance? java.util.Set ts) → true via host_supertypes (D-466).
+(instance? java.util.Set (java.util.TreeSet.))
+;;=> true

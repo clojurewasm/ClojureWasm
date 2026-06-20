@@ -429,6 +429,12 @@ fn matchUserType(v: Value, simple: []const u8) bool {
             // (`clojure.lang.IPersistentMap`); match its simple form too.
             if (std.mem.eql(u8, normalizeClassName(pn), simple)) return true;
         }
+        // Host supertype markers (D-466): `(instance? java.util.Map hm)` for a
+        // java.util.HashMap host_instance. Comptime-const list, instance?-only.
+        for (t.host_supertypes) |sup| {
+            if (std.mem.eql(u8, sup, simple)) return true;
+            if (std.mem.eql(u8, normalizeClassName(sup), simple)) return true;
+        }
         cursor = t.parent;
     }
     return false;

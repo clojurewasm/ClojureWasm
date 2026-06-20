@@ -92,6 +92,16 @@ pub const TypeDescriptor = struct {
     /// pointer to the process-lifetime comptime array. Do NOT move it
     /// into `init` or free it in `deinit`.
     static_fields: []const StaticField = &.{},
+    /// Host SUPERTYPE class names (fully-qualified) this descriptor is an
+    /// `instance?` of, beyond its own fqcn — e.g. `java.util.HashMap` lists
+    /// `java.util.Map` so `(instance? java.util.Map hm)` is true (D-466).
+    /// Consulted ONLY by `class_name.zig::matchUserType` (the instance? membership
+    /// walk); distinct from `protocol_impls`, which ALSO drives the isa? /
+    /// extend-protocol distribution. **Comptime-const** like `static_fields` (set
+    /// directly in the descriptor literal as `&array`) — so, unlike
+    /// `protocol_impls`, `deinit` must NOT free it (a comptime array is not
+    /// gc.infra-owned; freeing it crashed cache_gen — D-466's reverted first attempt).
+    host_supertypes: []const []const u8 = &.{},
     /// Parent descriptor, when `kind == .defrecord` extends another
     /// record (rare but valid in Clojure). `null` otherwise.
     parent: ?*const TypeDescriptor,

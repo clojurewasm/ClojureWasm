@@ -32,3 +32,8 @@
 ;;=> [1 2]
 (let [a (java.util.ArrayList. [1 2 3])] (count a))
 ;;=> 3
+; (instance? java.util.List/Collection al) → true via host_supertypes (D-466).
+(instance? java.util.List (java.util.ArrayList.))
+;;=> true
+(instance? java.util.Collection (java.util.ArrayList.))
+;;=> true

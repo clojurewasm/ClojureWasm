@@ -45,3 +45,6 @@
 ;;=> true
 (.containsValue (java.util.TreeMap. {1 :a}) :z)
 ;;=> false
+; (instance? java.util.Map tm) → true via host_supertypes (D-466).
+(instance? java.util.Map (java.util.TreeMap.))
+;;=> true

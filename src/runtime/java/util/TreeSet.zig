@@ -250,6 +250,8 @@ var descriptor: type_descriptor.TypeDescriptor = .{
     .protocol_impls = &.{},
     .method_table = &.{},
     .static_fields = &.{},
+    // SortedSet/NavigableSet omitted: those symbols don't yet resolve (D-466 sub-follow-up).
+    .host_supertypes = &.{ "java.util.Set", "java.util.Collection" },
     .parent = null,
     .meta = .nil_val,
 };
