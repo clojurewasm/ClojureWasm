@@ -118,6 +118,45 @@
   (let [len (count s) w (or width 0)]
     (if (< len w) (str (apply str (repeat (- w len) padchar)) s) s)))
 
+;; Parse a base-10 integer string (optional leading +/-). Self-contained so the
+;; ~F natural-precision path does not depend on read-string in the bundled .clj.
+(defn cl-parse-int [s]
+  (let [neg? (= (nth s 0) \-)
+        ds (if (or neg? (= (nth s 0) \+)) (subs s 1) s)]
+    (* (if neg? -1 1)
+       (reduce (fn [a c] (+ (* a 10) (- (int c) (int \0)))) 0 ds))))
+
+;; Expand a scientific-notation float string ("[-]d.dddE[-]nn") to PLAIN fixed
+;; notation. clj's ~F (no d-param) never uses scientific (`~F` of 1.0e10 →
+;; "10000000000.0"), but cljw's `(str (double x))` switches to E past ~1e7 /
+;; below ~1e-3. The shortest-round-trip digits are preserved; trailing zeros of
+;; the significand are dropped, then the decimal point is placed per the exponent.
+(defn cl-expand-exp [s]
+  (let [neg? (= (nth s 0) \-)
+        body (if neg? (subs s 1) s)
+        epos (loop [k 0] (if (or (= (nth body k) \E) (= (nth body k) \e)) k (recur (inc k))))
+        mant (subs body 0 epos)
+        exp (cl-parse-int (subs body (inc epos) (count body)))
+        dot (loop [k 0] (if (= (nth mant k) \.) k (recur (inc k))))
+        int-part (subs mant 0 dot)
+        digits (str int-part (subs mant (inc dot) (count mant)))
+        trimmed (loop [e (count digits)] (if (and (> e 1) (= (nth digits (dec e)) \0)) (recur (dec e)) e))
+        big-d (subs digits 0 trimmed)
+        nd (count big-d)
+        p (+ (count int-part) exp)
+        plain (cond
+                (<= p 0) (str "0." (apply str (repeat (- p) \0)) big-d)
+                (>= p nd) (str big-d (apply str (repeat (- p nd) \0)) ".0")
+                :else (str (subs big-d 0 p) "." (subs big-d p nd)))]
+    (str (if neg? "-" "") plain)))
+
+;; clj's ~F without a d-param: the float's natural (shortest round-trip) value in
+;; PLAIN fixed notation, always with a decimal point (D-465). `(str (double x))`
+;; gives the shortest round-trip; expand any exponent the printer emitted.
+(defn cl-float-natural [x]
+  (let [s (str (double x))]
+    (if (some (fn [c] (or (= c \E) (= c \e))) s) (cl-expand-exp s) s)))
+
 ;; Find the sub-format between an opener (at index `i`) and its matching `~<close>`
 ;; (`~}` for iteration, `~)` for case). Returns [subfmt next-i]. (Non-nested.)
 (defn cl-close [fmt i close]
@@ -474,8 +513,14 @@
                 (or (= d \s) (= d \S)) (recur ni (inc pos) (str acc (pr-str x)))
                 (or (= d \d) (= d \D))
                 (recur ni (inc pos) (str acc (cl-pad (if colon? (format "%,d" x) (str x)) p0 (or p1 \space))))
+                ;; ~w,dF — fixed float. With d given, `%[w].[d]f`. With d OMITTED,
+                ;; clj prints the natural (shortest round-trip) value in plain fixed
+                ;; notation, left-padded to w (D-465), NOT 0-decimals.
                 (or (= d \f) (= d \F))
-                (recur ni (inc pos) (str acc (format (str "%" (if p0 p0 "") "." (or p1 0) "f") (double x))))
+                (recur ni (inc pos)
+                       (str acc (if p1
+                                  (format (str "%" (if p0 p0 "") "." p1 "f") (double x))
+                                  (cl-pad (cl-float-natural x) p0 \space))))
                 (or (= d \x) (= d \X)) (recur ni (inc pos) (str acc (cl-pad (format "%x" x) p0 (or p1 \space))))
                 (or (= d \o) (= d \O)) (recur ni (inc pos) (str acc (cl-pad (format "%o" x) p0 (or p1 \space))))
                 (or (= d \b) (= d \B)) (recur ni (inc pos) (str acc (cl-pad (Long/toBinaryString x) p0 (or p1 \space))))

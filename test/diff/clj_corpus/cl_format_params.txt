@@ -24,3 +24,21 @@
 ;;=> "b"
 (clojure.pprint/cl-format nil "~1[a~;b~;c~]")
 ;;=> "b"
+; D-465: ~F without a d-param — natural (shortest round-trip) value, plain fixed
+; notation (never scientific), always with a decimal point. clj-oracle pinned.
+(clojure.pprint/cl-format nil "~F" 3.14159)
+;;=> "3.14159"
+(clojure.pprint/cl-format nil "~F" 3.0)
+;;=> "3.0"
+(clojure.pprint/cl-format nil "~F" 42)
+;;=> "42.0"
+(clojure.pprint/cl-format nil "~8F" 3.14159)
+;;=> " 3.14159"
+(clojure.pprint/cl-format nil "~F" 1.0e10)
+;;=> "10000000000.0"
+(clojure.pprint/cl-format nil "~F" 0.0001)
+;;=> "0.0001"
+(clojure.pprint/cl-format nil "~F" 1.5e-7)
+;;=> "0.00000015"
+(clojure.pprint/cl-format nil "~F" -1.0e10)
+;;=> "-10000000000.0"

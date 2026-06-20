@@ -36,7 +36,7 @@ active:
       or after D-455 chunk4. Repro: `(cl-format nil "~VD" 5 42)` → cljw raises (clj → "   42").
     last_reviewed: "2026-06-20"
   - id: "D-465"
-    status: "open (2026-06-20, found discharging D-458). `cl-format` ~F (fixed float) WITHOUT a d-param forces 0 decimals instead of CL's 'no constraint on digits after the decimal' (full precision). `(cl-format nil \"~8F\" 3.14159)` → cljw \"       3\" (= `%8.0f`) vs clj \" 3.14159\" (natural precision, right-justified to width 8). Pre-existing (D-455 ~F), orthogonal to D-458's V/# work — `~VF` correctly resolves the V param, then hits this ~F default. Likely also affects ~E/~G/~$ d-defaults; check the whole float-d-default surface when fixing."
+    status: "DISCHARGED (2026-06-20, same session as the D-458 find). ~F without a d-param now prints the natural (shortest round-trip) value in PLAIN fixed notation, always with a decimal point, left-padded to w — never scientific. New helpers in pprint.clj: `cl-float-natural` (= `(str (double x))`, then `cl-expand-exp` rewrites any E-notation the printer emitted to plain) + `cl-parse-int` (self-contained, no read-string). Surface check done: ~E/~G already handled no-d correctly (cl-efloat/cl-gfloat) and ~$ defaults d=2 — so ONLY ~F needed the fix. e2e phase14_cl_format: float-natural/-0/-int/-w/-big/-small/-neg + param-V-float (re-added now ~VF works); corpus cl_format_params.txt (+8 ~F cases). All clj-oracle-verified incl. extreme magnitudes (1e10→\"10000000000.0\", 1.5e-7→\"0.00000015\")."
     category: "clj-parity"
     barrier: |-
       none — localized to cl-run's ~F arm (pprint.clj). Finished form: when the

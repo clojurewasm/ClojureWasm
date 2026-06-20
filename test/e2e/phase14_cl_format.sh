@@ -27,6 +27,15 @@ assert_eq 'aesthetic-string' "$(run '(prn (pp/cl-format nil "[~a]" "x"))')"     
 # D-455 number directives (clj-verified): float / radix / grouping / padding
 assert_eq 'fixed-float'  "$(run '(prn (pp/cl-format nil "~,2f" 3.14159))')"      '"3.14"'
 assert_eq 'fixed-float-w' "$(run '(prn (pp/cl-format nil "~,3f" 1.5))')"         '"1.500"'
+# ~F without a d-param: natural (shortest round-trip) value, plain fixed notation,
+# always with a decimal point — never scientific (D-465; clj-verified).
+assert_eq 'float-natural'   "$(run '(prn (pp/cl-format nil "~F" 3.14159))')"      '"3.14159"'
+assert_eq 'float-natural-0' "$(run '(prn (pp/cl-format nil "~F" 3.0))')"          '"3.0"'
+assert_eq 'float-natural-int' "$(run '(prn (pp/cl-format nil "~F" 42))')"         '"42.0"'
+assert_eq 'float-natural-w' "$(run '(prn (pp/cl-format nil "~8F" 3.14159))')"     '" 3.14159"'
+assert_eq 'float-natural-big' "$(run '(prn (pp/cl-format nil "~F" 1.0e10))')"     '"10000000000.0"'
+assert_eq 'float-natural-small' "$(run '(prn (pp/cl-format nil "~F" 0.0001))')"   '"0.0001"'
+assert_eq 'float-natural-neg' "$(run '(prn (pp/cl-format nil "~F" -1.0e10))')"    '"-10000000000.0"'
 assert_eq 'hex'          "$(run '(prn (pp/cl-format nil "~x" 255))')"            '"ff"'
 assert_eq 'octal'        "$(run '(prn (pp/cl-format nil "~o" 64))')"            '"100"'
 assert_eq 'binary'       "$(run '(prn (pp/cl-format nil "~b" 10))')"            '"1010"'
@@ -123,8 +132,9 @@ assert_eq 'param-V-padchar'   "$(run '(prn (pp/cl-format nil "~V,'"'"'*D" 5 42))
 assert_eq 'param-hash-mincol' "$(run '(prn (pp/cl-format nil "~#D" 42 0 0))')"       '" 42"'
 assert_eq 'param-V-radix'     "$(run '(prn (pp/cl-format nil "~VR" 16 255))')"       '"ff"'
 assert_eq 'param-V-money'     "$(run '(prn (pp/cl-format nil "~,V$" 3 12.5))')"      '"012.50"'
-# V resolves to the w/d params for floats too (explicit d — the no-d ~F full-
-# precision default is the separate pre-existing D-465 gap, not exercised here).
+# V resolves to the w/d params for floats too (no-d natural precision now lands —
+# D-465 — so ~VF with a single w-param prints the natural value padded to w).
+assert_eq 'param-V-float'     "$(run '(prn (pp/cl-format nil "~VF" 8 3.14159))')"    '" 3.14159"'
 assert_eq 'param-V-float-w'   "$(run '(prn (pp/cl-format nil "~8,VF" 2 3.14159))')"  '"    3.14"'
 assert_eq 'param-V-float-d'   "$(run '(prn (pp/cl-format nil "~V,2F" 8 3.14159))')"  '"    3.14"'
 # ~#[ count-select: the remaining-arg count picks the clause, consuming no arg.
@@ -136,4 +146,4 @@ assert_eq 'param-n-select'    "$(run '(prn (pp/cl-format nil "~1[a~;b~;c~]"))')"
 # Still raising (no silent mishandle): the ~<…~:;…~> pretty-print column mode (no writer).
 assert_eq 'unsupported-raises' "$(run '(prn (try (pp/cl-format nil "~<a~:;b~>") (catch Throwable e :raised)))')" ':raised'
 
-echo "OK — phase14_cl_format (92 cases) green"
+echo "OK — phase14_cl_format (100 cases) green"
