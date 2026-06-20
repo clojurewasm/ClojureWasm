@@ -62,3 +62,8 @@
 ;;=> true
 (instance? java.util.Collection (java.util.HashMap.))
 ;;=> false
+; A Map is neither Iterable nor a SortedMap (D-466 follow-up negatives).
+(instance? java.lang.Iterable (java.util.HashMap.))
+;;=> false
+(instance? java.util.SortedMap (java.util.HashMap.))
+;;=> false

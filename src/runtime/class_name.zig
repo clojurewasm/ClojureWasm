@@ -152,6 +152,14 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "java.util.List", "List" },
     .{ "java.util.Set", "Set" },
     .{ "java.util.Collection", "Collection" },
+    // Sorted/Navigable interfaces — host TreeMap/TreeSet only (D-466 follow-up).
+    // No native cljw collection is a java.util.SortedMap/-Set (clj's native
+    // sorted colls are clojure.lang.Sorted), so these match solely via the host
+    // descriptors' host_supertypes.
+    .{ "java.util.SortedMap", "SortedMap" },
+    .{ "java.util.NavigableMap", "NavigableMap" },
+    .{ "java.util.SortedSet", "SortedSet" },
+    .{ "java.util.NavigableSet", "NavigableSet" },
     // deref / pending / ref family (ADR-0116, D-308).
     .{ "clojure.lang.IDeref", "IDeref" },
     .{ "clojure.lang.IRef", "IRef" },

@@ -250,8 +250,9 @@ var descriptor: type_descriptor.TypeDescriptor = .{
     .protocol_impls = &.{},
     .method_table = &.{},
     .static_fields = &.{},
-    // SortedSet/NavigableSet omitted: those symbols don't yet resolve (D-466 sub-follow-up).
-    .host_supertypes = &.{ "java.util.Set", "java.util.Collection" },
+    // A java.util.TreeSet is a Set + SortedSet + NavigableSet + Collection +
+    // Iterable (Collection extends Iterable). D-466 follow-up.
+    .host_supertypes = &.{ "java.util.Set", "java.util.SortedSet", "java.util.NavigableSet", "java.util.Collection", "java.lang.Iterable" },
     .parent = null,
     .meta = .nil_val,
 };

@@ -32,3 +32,10 @@
 ; (instance? java.util.Set ts) → true via host_supertypes (D-466).
 (instance? java.util.Set (java.util.TreeSet.))
 ;;=> true
+; SortedSet/NavigableSet/Iterable via host_supertypes (D-466 follow-up).
+(instance? java.util.SortedSet (java.util.TreeSet.))
+;;=> true
+(instance? java.util.NavigableSet (java.util.TreeSet.))
+;;=> true
+(instance? java.lang.Iterable (java.util.TreeSet. [1 2]))
+;;=> true

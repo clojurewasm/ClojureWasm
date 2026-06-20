@@ -113,6 +113,10 @@ const IOBJ_TAGS = [_]Tag{ .vector, .list, .lazy_seq, .hash_set, .array_map, .has
 /// IMeta — meta-READABLE: the metable IObj set ∪ the reference family.
 const IMETA_TAGS = [_]Tag{ .vector, .list, .lazy_seq, .hash_set, .array_map, .hash_map, .symbol, .atom, .agent, .ref, .var_ref, .ns };
 
+/// Empty native-tag set: a recognised interface with no native cljw
+/// implementor — it matches only host descriptors via host_supertypes.
+const NO_NATIVE_TAGS = [_]Tag{};
+
 /// One interface → its native implementor tag set.
 pub const Entry = struct { name: []const u8, tags: []const Tag };
 
@@ -145,6 +149,15 @@ pub const TABLE = [_]Entry{
     .{ .name = "IMeta", .tags = &IMETA_TAGS },
     .{ .name = "List", .tags = &JLIST_TAGS },
     .{ .name = "Collection", .tags = &JCOLLECTION_TAGS },
+    // java.util.SortedMap/NavigableMap/SortedSet/NavigableSet — recognised so
+    // the symbols resolve as instance? class args, but NO native cljw collection
+    // implements them (clj-verified: a native sorted-map/-set is clojure.lang.
+    // Sorted, not java.util.SortedMap). They match only the host
+    // java.util.TreeMap/TreeSet descriptors via host_supertypes (D-466 follow-up).
+    .{ .name = "SortedMap", .tags = &NO_NATIVE_TAGS },
+    .{ .name = "NavigableMap", .tags = &NO_NATIVE_TAGS },
+    .{ .name = "SortedSet", .tags = &NO_NATIVE_TAGS },
+    .{ .name = "NavigableSet", .tags = &NO_NATIVE_TAGS },
     // deref / pending / ref family (D-308)
     .{ .name = "IDeref", .tags = &IDEREF_TAGS },
     .{ .name = "IRef", .tags = &IREF_TAGS },

@@ -37,3 +37,8 @@
 ;;=> true
 (instance? java.util.Collection (java.util.ArrayList.))
 ;;=> true
+; Collection extends Iterable, so an ArrayList is Iterable (D-466 follow-up).
+(instance? java.lang.Iterable (java.util.ArrayList. [1 2]))
+;;=> true
+(instance? java.util.SortedSet (java.util.ArrayList.))
+;;=> false

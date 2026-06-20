@@ -48,3 +48,10 @@
 ; (instance? java.util.Map tm) → true via host_supertypes (D-466).
 (instance? java.util.Map (java.util.TreeMap.))
 ;;=> true
+; SortedMap/NavigableMap via host_supertypes; Map is NOT Iterable (D-466 follow-up).
+(instance? java.util.SortedMap (java.util.TreeMap.))
+;;=> true
+(instance? java.util.NavigableMap (java.util.TreeMap.))
+;;=> true
+(instance? java.lang.Iterable (java.util.TreeMap.))
+;;=> false

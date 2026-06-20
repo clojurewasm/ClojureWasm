@@ -237,7 +237,8 @@ var descriptor: type_descriptor.TypeDescriptor = .{
     .protocol_impls = &.{},
     .method_table = &.{},
     .static_fields = &.{},
-    .host_supertypes = &.{ "java.util.Set", "java.util.Collection" },
+    // Set + Collection + Iterable (Collection extends Iterable). D-466 follow-up.
+    .host_supertypes = &.{ "java.util.Set", "java.util.Collection", "java.lang.Iterable" },
     .parent = null,
     .meta = .nil_val,
 };

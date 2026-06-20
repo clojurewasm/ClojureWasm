@@ -321,9 +321,9 @@ var descriptor: type_descriptor.TypeDescriptor = .{
     .protocol_impls = &.{},
     .method_table = &.{},
     .static_fields = &.{},
-    // SortedMap/NavigableMap omitted: those interface symbols don't yet resolve as
-    // instance? class args (D-466 sub-follow-up = register them).
-    .host_supertypes = &.{"java.util.Map"},
+    // A java.util.TreeMap is a Map + SortedMap + NavigableMap (NOT Iterable — a
+    // Map does not extend Collection/Iterable in the JVM). D-466 follow-up.
+    .host_supertypes = &.{ "java.util.Map", "java.util.SortedMap", "java.util.NavigableMap" },
     .parent = null,
     .meta = .nil_val,
 };
