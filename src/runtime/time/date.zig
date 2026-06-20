@@ -24,6 +24,7 @@ const td_mod = @import("../type_descriptor.zig");
 const TypeDescriptor = td_mod.TypeDescriptor;
 const error_catalog = @import("../error/catalog.zig");
 const SourceLocation = @import("../error/info.zig").SourceLocation;
+const instant_value = @import("instant_value.zig");
 
 /// `(.getTime date)` — the epoch-millis the Date wraps (JVM `Date.getTime`).
 /// Registered on the per-Runtime Date descriptor, so dispatch only reaches it
@@ -54,6 +55,17 @@ fn afterFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return Value.initBoolean(epochMsOf(args[0]) > epochMsOf(args[1]));
 }
 
+/// `(.toInstant date)` — the equivalent `java.time.Instant` (JVM `Date.toInstant`).
+/// Same epoch-ms → second + sub-second-nanos split as `Instant/ofEpochMilli`.
+fn toInstantFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity(".toInstant", args, 1, loc);
+    const ms = epochMsOf(args[0]);
+    const secs = @divFloor(ms, 1000);
+    const nanos: i32 = @intCast(@rem(@rem(ms, 1000) + 1000, 1000) * 1_000_000);
+    return instant_value.make(rt, secs * 1000, nanos);
+}
+
 /// The per-Runtime canonical Date descriptor (lazily allocated on
 /// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "Date"` so `(class …)`
 /// prints the simple name (AD-003 / no-JVM); `print_tag = "inst"` drives
@@ -77,6 +89,7 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .{ "getTime", &getTimeFn },
         .{ "before", &beforeFn },
         .{ "after", &afterFn },
+        .{ "toInstant", &toInstantFn },
     };
     const entries = try rt.gc.infra.alloc(td_mod.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {
