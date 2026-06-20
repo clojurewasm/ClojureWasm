@@ -47,4 +47,16 @@ EOF
 )
 eq 'leap-length' "$C" $'true false false true\n29 28 30'
 
+# --- atStartOfDay / atTime → LocalDateTime (D-462 residual 2; clj-grounded)
+D=$(out <<'EOF' 2>&1
+(let [d (java.time.LocalDate/of 2026 6 20)]
+  (println (str (.atStartOfDay d)))           ; -> 2026-06-20T00:00
+  (println (str (.atTime d 13 30)))           ; -> 2026-06-20T13:30
+  (println (str (.atTime d 13 30 45)))        ; -> 2026-06-20T13:30:45
+  (println (str (.atTime d 0 0 0 500000000))) ; -> 2026-06-20T00:00:00.500
+  (println (str (.toLocalDate (.atTime d 13 30)))))  ; round-trip -> 2026-06-20
+EOF
+)
+eq 'at-time' "$D" $'2026-06-20T00:00\n2026-06-20T13:30\n2026-06-20T13:30:45\n2026-06-20T00:00:00.500\n2026-06-20'
+
 echo "OK — phase15_java_time_local_date_arith (D-462) green"

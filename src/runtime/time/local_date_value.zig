@@ -29,6 +29,7 @@ const SourceLocation = @import("../error/info.zig").SourceLocation;
 const instant = @import("instant.zig");
 const day_of_week_value = @import("day_of_week_value.zig");
 const month_value = @import("month_value.zig");
+const local_date_time_value = @import("local_date_time_value.zig");
 
 /// `(.getYear d)` — the proleptic year (JVM `LocalDate.getYear`).
 fn getYearFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -208,6 +209,36 @@ fn isEqualFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     return Value.initBoolean(epochDayOf(args[0]) == epochDayOf(args[1]));
 }
 
+/// `(.atStartOfDay d)` — the `LocalDateTime` at the start of this day (midnight),
+/// the no-zone JVM `LocalDate.atStartOfDay()` overload. `nano_of_day = 0`.
+fn atStartOfDayFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("atStartOfDay", args, 1, loc);
+    return local_date_time_value.make(rt, epochDayOf(args[0]), 0);
+}
+
+/// `(.atTime d h m)` / `(.atTime d h m s)` / `(.atTime d h m s ns)` — the
+/// `LocalDateTime` of this date at the given wall-clock time (JVM
+/// `LocalDate.atTime` int overloads). h 0-23, m/s 0-59, ns 0-999999999; out of
+/// range raises like the JVM `DateTimeException`.
+fn atTimeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArityRange("atTime", args, 3, 5, loc);
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        if (args[i].tag() != .integer)
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "atTime", .expected = "integer", .actual = @tagName(args[i].tag()) });
+    }
+    const h = args[1].asInteger();
+    const m = args[2].asInteger();
+    const s = if (args.len > 3) args[3].asInteger() else 0;
+    const ns = if (args.len > 4) args[4].asInteger() else 0;
+    if (h < 0 or h > 23 or m < 0 or m > 59 or s < 0 or s > 59 or ns < 0 or ns > 999_999_999)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "atTime", .expected = "valid time fields (h 0-23, m/s 0-59, ns 0-999999999)", .actual = "out of range" });
+    const nano_of_day: i64 = h * 3_600_000_000_000 + m * 60_000_000_000 + s * 1_000_000_000 + ns;
+    return local_date_time_value.make(rt, epochDayOf(args[0]), nano_of_day);
+}
+
 /// The per-Runtime canonical LocalDate descriptor (lazily allocated on
 /// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "LocalDate"` so
 /// `(class …)` prints the simple name (AD-003 / no-JVM);
@@ -246,6 +277,8 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .{ "isBefore", &isBeforeFn },
         .{ "isAfter", &isAfterFn },
         .{ "isEqual", &isEqualFn },
+        .{ "atStartOfDay", &atStartOfDayFn },
+        .{ "atTime", &atTimeFn },
     };
     const entries = try rt.gc.infra.alloc(TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {
