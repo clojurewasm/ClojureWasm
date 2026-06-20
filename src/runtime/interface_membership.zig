@@ -88,6 +88,19 @@ const JLIST_TAGS = [_]Tag{ .list, .cons, .lazy_seq, .chunked_cons, .vector, .ran
 /// java.util.Collection — maps excluded (JVM: Map does not extend Collection).
 const JCOLLECTION_TAGS = [_]Tag{ .list, .cons, .lazy_seq, .chunked_cons, .vector, .hash_set, .sorted_set, .persistent_queue, .range, .string_seq, .array_seq, .map_entry };
 
+/// Counted — `(instance? Counted x)` MUST equal `counted?` (the core fn). Kept in
+/// exact sync with `core.countedQ`'s tag set (core.zig): the persistent colls +
+/// range + map_entry + queue + the seq views (cons/chunked_cons/string_seq/
+/// array_seq — cljw's cons IS counted, a pre-existing `counted?` divergence from
+/// clj where a Cons is not Counted). lazy_seq is NOT counted.
+const COUNTED_TAGS = [_]Tag{ .list, .cons, .chunked_cons, .vector, .array_map, .hash_map, .sorted_map, .hash_set, .sorted_set, .persistent_queue, .range, .string_seq, .array_seq, .map_entry };
+/// MapEquivalence — the map marker used by `=`-on-maps (clj: only the maps).
+const MAPEQUIV_TAGS = [_]Tag{ .array_map, .hash_map, .sorted_map };
+/// IKVReduce — `reduce-kv`-able: maps + vector (clj-oracle 2026-06-21).
+const IKVREDUCE_TAGS = [_]Tag{ .array_map, .hash_map, .sorted_map, .vector };
+/// CharSequence — strings only (cljw has no StringBuilder/CharBuffer native tag).
+const CHARSEQ_TAGS = [_]Tag{.string};
+
 // --- deref / pending / ref family (ADR-0116; clj-oracle 2026-06-08) ---
 
 /// IDeref — every deref-able value.
@@ -167,6 +180,16 @@ pub const TABLE = [_]Entry{
     .{ .name = "IReference", .tags = &IREFERENCE_TAGS },
     .{ .name = "IPending", .tags = &IPENDING_TAGS },
     .{ .name = "IBlockingDeref", .tags = &IBLOCKING_TAGS },
+    // Recognised-as-deftype-target markers that were missing from the instance?
+    // table (D-480): `(instance? clojure.lang.Counted x)` etc. raised "Unable to
+    // resolve symbol" though host_interfaces.yaml recognised them. clj-oracle 2026-06-21.
+    .{ .name = "Counted", .tags = &COUNTED_TAGS },
+    .{ .name = "MapEquivalence", .tags = &MAPEQUIV_TAGS },
+    .{ .name = "IKVReduce", .tags = &IKVREDUCE_TAGS },
+    .{ .name = "CharSequence", .tags = &CHARSEQ_TAGS },
+    // Closeable — no native cljw implementor (host resources only), like SortedMap;
+    // resolves as an instance? class arg, matches only host descriptors.
+    .{ .name = "Closeable", .tags = &NO_NATIVE_TAGS },
 };
 
 /// Strip a recognised host package prefix so both `ISeq` and `clojure.lang.ISeq`

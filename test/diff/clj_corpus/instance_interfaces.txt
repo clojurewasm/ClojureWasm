@@ -98,3 +98,27 @@
 ;;=> true
 (instance? clojure.lang.IBlockingDeref (delay 1))
 ;;=> false
+(instance? clojure.lang.Counted {})
+;;=> true
+(instance? clojure.lang.Counted [1 2])
+;;=> true
+(instance? clojure.lang.Counted (range 5))
+;;=> true
+(instance? clojure.lang.Counted (lazy-seq [1]))
+;;=> false
+(instance? clojure.lang.Counted "ab")
+;;=> false
+(instance? clojure.lang.MapEquivalence {:a 1})
+;;=> true
+(instance? clojure.lang.MapEquivalence #{1})
+;;=> false
+(instance? clojure.lang.IKVReduce {})
+;;=> true
+(instance? clojure.lang.IKVReduce [1 2])
+;;=> true
+(instance? clojure.lang.IKVReduce #{1})
+;;=> false
+(instance? java.lang.CharSequence "x")
+;;=> true
+(instance? java.lang.CharSequence :k)
+;;=> false
