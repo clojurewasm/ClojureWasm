@@ -29,6 +29,8 @@ echo "$out" | grep -q "PASS wasm-run-basic" || fail "argv/stdin/stdout/stderr ca
 $out"
 echo "$out" | grep -q "PASS wasm-run-exit-code" || fail "non-zero exit not returned as data:
 $out"
+echo "$out" | grep -q "PASS wasm-run-env" || fail "the :env option (D-348) failed to parse/run:
+$out"
 echo "$out" | grep -q "NOT-CAUGHT" && fail "a wasm/run error escaped (catch …):
 $out"
 echo "$out" | grep -q "^DONE$" || fail "fixture did not run to completion:

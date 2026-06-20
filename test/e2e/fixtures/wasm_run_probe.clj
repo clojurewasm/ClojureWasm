@@ -23,4 +23,19 @@
   (try (wasm/run 42) "NOT-CAUGHT"
     (catch Throwable _ "CAUGHT")))
 
+;; :env (D-348) — a string/keyword-keyed map of env vars threads to the guest's
+;; WASI environ (zwasm's runner already consumes env_keys/env_vals). The probe
+;; module does not echo env, so this asserts the parse + run succeed (exit 0) and
+;; that a non-map / non-string-value :env raises a catchable error.
+(let [r (wasm/run "test/e2e/fixtures/wasm_run_probe.wasm"
+                  {:args ["prog"] :env {"FOO" "bar" :BAZ "qux"}})]
+  (assert (= 0 (:exit r)) (str "env run exit was " (:exit r)))
+  (println "PASS wasm-run-env"))
+(println "env-bad-shape:"
+  (try (wasm/run "test/e2e/fixtures/wasm_run_probe.wasm" {:args ["p"] :env [1 2]}) "NOT-CAUGHT"
+    (catch Throwable _ "CAUGHT")))
+(println "env-bad-val:"
+  (try (wasm/run "test/e2e/fixtures/wasm_run_probe.wasm" {:args ["p"] :env {"K" 5}}) "NOT-CAUGHT"
+    (catch Throwable _ "CAUGHT")))
+
 (println "DONE")

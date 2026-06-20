@@ -144,7 +144,35 @@ fn resolveDir(rt: *Runtime, scratch: std.mem.Allocator, dir_path: []const u8, lo
     return resolved orelse dir_path;
 }
 
-/// `(wasm/run "path.wasm")` / `(wasm/run "path.wasm" {:args [...] :stdin "..." :dir "..." :dirs [[h g]...]})`
+/// Accumulator for the `:env` map walk (`map_mod.forEachEntry`, D-348): collects
+/// each entry into the parallel name/value slices zwasm's runner expects. A key
+/// may be a string or a keyword (its name is used — `:PATH` → "PATH"); the value
+/// must be a string. A non-conforming entry sets `bad`. Slices are scratch-arena
+/// allocated; the string views point into GC strings (valid through engine.run).
+const EnvCollect = struct {
+    keys: *std.ArrayList([]const u8),
+    vals: *std.ArrayList([]const u8),
+    scratch: std.mem.Allocator,
+    bad: bool = false,
+};
+fn collectEnvEntry(c: *EnvCollect, k: Value, v: Value) anyerror!void {
+    if (!v.isString()) {
+        c.bad = true;
+        return;
+    }
+    const name = if (k.isString())
+        string_mod.asString(k)
+    else if (k.tag() == .keyword)
+        keyword_mod.asKeyword(k).name
+    else {
+        c.bad = true;
+        return;
+    };
+    try c.keys.append(c.scratch, name);
+    try c.vals.append(c.scratch, string_mod.asString(v));
+}
+
+/// `(wasm/run "path.wasm")` / `(wasm/run "path.wasm" {:args [...] :stdin "..." :dir "..." :dirs [[h g]...] :env {k v}})`
 /// — run a WASI command module (Rust/Go/… compiled to wasm32-wasip1): compile,
 /// instantiate with a WASI host, run the command entry (`_start`/`main`), and
 /// return `{:out <stdout> :err <stderr> :exit <code>}`. A non-zero exit (incl. a
@@ -209,9 +237,26 @@ pub fn wasmRunFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
             run_opts.stdin = string_mod.asString(stdin_v);
         }
 
+        // :env — a map of env-var name → value (D-348). Names may be strings or
+        // keywords (`:PATH` → "PATH"); values must be strings. Walked into the
+        // parallel slices zwasm's runner already threads.
+        const env_v = map_mod.get(m, try keyword_mod.intern(rt, null, "env")) catch Value.nil_val;
+        if (!env_v.isNil()) {
+            const et = env_v.tag();
+            if (et != .array_map and et != .hash_map)
+                return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "the :env option must be a map of name to string value" });
+            var env_keys: std.ArrayList([]const u8) = .empty;
+            var env_vals: std.ArrayList([]const u8) = .empty;
+            var ec = EnvCollect{ .keys = &env_keys, .vals = &env_vals, .scratch = scratch };
+            try map_mod.forEachEntry(env_v, &ec, collectEnvEntry);
+            if (ec.bad)
+                return error_catalog.raise(.wasm_run_arg_invalid, loc, .{ .detail = "every :env key must be a string/keyword and every value a string" });
+            run_opts.env_keys = env_keys.items;
+            run_opts.env_vals = env_vals.items;
+        }
+
         // Preopens: :dir (one host dir → guest "/") is sugar; :dirs is a vector of
-        // [host guest] pairs. Both host paths are FS-jail resolved. (:env is a
-        // tracked follow-up, D-348 — the demos here need argv/stdin/dirs only.)
+        // [host guest] pairs. Both host paths are FS-jail resolved.
         var preopens: std.ArrayList(engine.PreopenDir) = .empty;
         const dir_v = map_mod.get(m, try keyword_mod.intern(rt, null, "dir")) catch Value.nil_val;
         if (!dir_v.isNil()) {
