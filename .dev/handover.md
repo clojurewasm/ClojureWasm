@@ -10,18 +10,23 @@
   `build.zig.zon` `.zwasm` is SHA-PINNED (`#412966f7…`, `lazy`). Per-commit = smoke;
   full gate batches at ceiling / boundary / pre-tag.
 
-- **First commit on resume**: self-select. The high/moderate-value UNBLOCKED work
-  was largely drained this session (see Last landed). Remaining is either
-  marginal-completionism or barriered. Best least-marginal candidates, in rough
-  value order: (1) a genuine gap found mid-session — `(keys java-map)` / `(vals
-  java-map)` ERROR on cljw (HashMap/TreeMap host_instances don't implement the
-  IPersistentMap protocol; clj allows it) — a real interop-parity fix, but needs a
-  protocol impl on the host_instance, deeper than a method add; (2) NavigableSet/
-  NavigableMap methods (floor/ceiling/headSet/tailSet/subSet/descendingSet/
-  floorKey/…) to round out TreeSet/TreeMap + `.containsValue` for TreeMap — rare
-  in interop; (3) other low-freq interop classes (ArrayDeque, LinkedHashMap). All
-  barriered clusters (security/perf/concurrency/niche clj-parity) are unchanged —
-  do NOT force them (F-001/F-003). The loop self-selects; the user may redirect.
+- **First commit on resume**: self-select. The BOUNDED high/moderate-value
+  unblocked work is drained (see Last landed — java.util container family + its full
+  Clojure-protocol surface are complete; a clj-diff sweep fixed bigint-of-float +
+  String char-array ctor). The two genuinely-valuable remaining units are
+  SUBSTANTIAL FEATURES, deferred this session with COMPLETE implementation plans in
+  their debt rows (start there): **D-467 `with-precision`** (a standard clojure.core
+  macro — needs `*math-context*` dynamic var + a sig-fig-rounded BigDecimal division
+  algorithm in big_decimal.zig + the macro; the rounded-division is the crux; a
+  fresh focused unit, NOT a context-tail add — that's why it's deferred not done);
+  **D-466 `(instance? java.util.Map hm)`** (host-supertype hierarchy — needs a
+  DEDICATED TypeDescriptor supertype field consulted only by matchUserType, NOT
+  protocol_impls, which CRASHES the AOT bootstrap; plus registering the Sorted/
+  Navigable interface class symbols). Both have full plans + clj-verified target
+  hierarchies in `.dev/debt.yaml`. Everything else is barriered (below) or near-zero
+  completionism (NavigableSet nav methods confirmed absent from the frequent-interop
+  corpus). The loop self-selects; the user may redirect to a barriered area by
+  relaxing the relevant F-NNN/pause.
 
 - **Remaining clusters (all BARRIERED or niche — the high-value unblocked work is
   drained)**:
@@ -46,21 +51,25 @@
 
 ## Last landed (git log = SSOT; all pushed)
 
-**This session (7 units, all clj-oracle-verified, full gate green):**
-- **D-442 part 2 / ADR-0155**: agent legacy/executor surface 8/8 (`*agent*` /
-  `release-pending-sends` / `shutdown-agents`). PREMISE CORRECTION (2nd DA fork):
-  post-shutdown send DROPS, not throws (clj-faithful) → new **AD-046**.
-- **D-458**: cl-format `V`/`#` runtime-valued directive params (cl-dir sentinels +
-  cl-resolve-params; `~n[`/`~#[` clause-select).
-- **D-465**: cl-format `~F` natural precision when d omitted (plain fixed, never
-  scientific; new cl-float-natural / cl-expand-exp helpers).
-- **D-431 java.util container family — NOW COMPLETE**: File path-normalize fix +
-  File.txt corpus; then IMPLEMENTED **HashSet / TreeSet / TreeMap** (were absent) —
-  host_instances over cljw persistent set / sorted-set / sorted-map. HashMap/
-  ArrayList/HashSet/TreeSet/TreeMap all done. AD-032 extended to TreeMap (entry-seq
-  / keySet / values are cljw collections, not Java views). Side-fix: phase15_ns_import
-  used HashSet as its "unsupported class" example → swapped to ArrayDeque (full-gate
-  miss-window caught it).
+**This session (~14 units, all clj-oracle-verified, full gate green throughout):**
+- **D-442 part 2 / ADR-0155**: agent surface 8/8 (`*agent*`/`release-pending-sends`/
+  `shutdown-agents`); 2nd DA fork corrected the premise → post-shutdown send DROPS,
+  not throws → new **AD-046**.
+- **D-458 / D-465**: cl-format `V`/`#` runtime params + `~F` natural precision.
+- **D-431 java.util container family — COMPLETE**: File path-normalize fix +
+  implemented **HashSet / TreeSet / TreeMap** (host_instances over cljw set/sorted-
+  set/sorted-map). Then the full **Clojure-protocol surface** on all java.util maps/
+  sets: `get`/`contains?`/`keys`/`vals`/`:kw`/`seq`/`count`/`empty` now match clj —
+  closing a `(get hm k)`→silent-nil CORRECTNESS bug + several errors (added ILookup
+  `-lookup` / Associative `-contains-key?` / IPersistentMap `-keys`/`-vals`
+  MethodEntries + a lookup.invoke keyword-arm generalization + an emptyFn host-
+  fallback). AD-032 extended to TreeMap. Side-fix: phase15_ns_import unsupported-
+  example → ArrayDeque.
+- **clj-diff sweep** (~150 exprs, F-011 quality-loop after named work drained):
+  fixed **bigint-of-float** (route through bigdec, not exact trunc) + **(String.
+  char[])** (chars' codepoints). Deferred 2 substantial features with plans (D-466
+  instance?-hierarchy, D-467 with-precision). ~15 DIFFs classified as accepted
+  divergences (AD-001/003/007/044, F-005). Note in private/notes/clj-diff-sweep-*.md.
 
 ## Perf campaign (PAUSED behind the active flag; not the current task)
 
