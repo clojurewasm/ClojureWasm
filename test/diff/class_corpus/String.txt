@@ -86,3 +86,8 @@
 ;;=> [\a \b \c]
 (seq (.getBytes "AB"))
 ;;=> (65 66)
+; (String. char[]) → the chars' codepoints, UTF-8 (D-431 sweep; was byte-only).
+(String. (char-array [\a \b \c]))
+;;=> "abc"
+(String. (char-array [\λ \x]))
+;;=> "λx"

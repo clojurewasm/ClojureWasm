@@ -606,7 +606,8 @@ fn valueOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
 /// [charset])` → the UTF-8 string of a cljw byte array (the `.getBytes` inverse;
 /// each element's low 8 bits form a byte, so a signed -61 and unsigned 195 both
 /// give 0xC3). cljw is UTF-8-only (charset arg accepted, UTF-8 used). `(String.
-/// char-array)` is a follow-up (cljw `.toCharArray` returns a vector, not `.array`).
+/// char-array)` → the chars' codepoints UTF-8-encoded (the first element's tag
+/// selects the char vs byte path).
 fn stringCtor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     if (args.len == 0) return string_collection.alloc(rt, "");
@@ -616,6 +617,22 @@ fn stringCtor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     if (a.tag() == .string) return string_collection.alloc(rt, string_collection.asString(a)); // copy
     if (java_array.isArray(a)) {
         const arr = java_array.asArray(a);
+        // A CHAR array → the chars' codepoints, UTF-8 encoded (clj `(String.
+        // char[])`); a BYTE/INT array → each element's low 8 bits as a byte (the
+        // `.getBytes` inverse). The first element selects the path.
+        if (arr.len > 0 and arr.items()[0].tag() == .char) {
+            var buf: std.ArrayList(u8) = .empty;
+            defer buf.deinit(rt.gpa);
+            for (arr.items()) |v| {
+                if (v.tag() != .char)
+                    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "char array", .actual = @tagName(v.tag()) });
+                var cbuf: [4]u8 = undefined;
+                const n = std.unicode.utf8Encode(v.asChar(), &cbuf) catch
+                    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "valid char", .actual = "unencodable codepoint" });
+                try buf.appendSlice(rt.gpa, cbuf[0..n]);
+            }
+            return string_collection.alloc(rt, buf.items);
+        }
         const buf = try rt.gpa.alloc(u8, arr.len);
         defer rt.gpa.free(buf);
         for (arr.items(), 0..) |v, i| {
