@@ -896,14 +896,14 @@ pub fn bigintCoerce(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
         defer m.deinit();
         return big_int_mod.allocFromManaged(rt, &m, .bigint);
     }
+    // A FLOAT always routes through clj's `(.toBigInteger (bigdec d))` — the
+    // bigdec / shortest-round-trip-string path — NOT an exact double→long trunc.
+    // The exact-trunc fast-path diverges for a double whose exact value differs
+    // from its round-trip decimal, e.g. `(bigint (Math/pow 2 60))`: exact
+    // 1152921504606846976 vs clj's bigdec-based 1152921504606847000 (D-431 sweep).
+    if (v.tag() == .float) return bigintFromFloat(rt, v.asFloat(), loc);
     const i = promote.truncToI64(rt, v) catch |err| switch (err) {
-        error.OutOfRange => {
-            // A float beyond Long range → clj's `bigdec(d).toBigInteger()`
-            // (truncate toward zero). The mantissa is ≤17 digits so the
-            // BigDecimal path is D-047-safe (no ≥2^64 setString).
-            if (v.tag() == .float) return bigintFromFloat(rt, v.asFloat(), loc);
-            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a finite number", .actual = "out-of-range number" });
-        },
+        error.OutOfRange => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "bigint", .expected = "a finite number", .actual = "out-of-range number" }),
         error.NotANumber => return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "bigint", .actual = @tagName(v.tag()) }),
         else => return err,
     };

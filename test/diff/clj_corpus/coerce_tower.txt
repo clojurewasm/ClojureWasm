@@ -52,3 +52,10 @@
 ;;=> 100.0
 (int \A)
 ;;=> 65
+; (bigint <float>) routes through (.toBigInteger (bigdec d)) — the shortest
+; round-trip decimal, NOT an exact double→long trunc (D-431 sweep). (Math/pow 2
+; 60)'s exact double is 1152921504606846976 but bigdec rounds to ...847000.
+(bigint (Math/pow 2 60))
+;;=> 1152921504606847000N
+(bigint 123456789012345.0)
+;;=> 123456789012345N
