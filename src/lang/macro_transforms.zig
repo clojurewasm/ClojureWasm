@@ -120,6 +120,7 @@ const BOOTSTRAP = [_]Entry{
     .{ .name = "defmulti", .expand = expandDefmulti },
     .{ .name = "defmethod", .expand = expandDefmethod },
     .{ .name = "defprotocol", .expand = expandDefprotocol },
+    .{ .name = "definterface", .expand = expandDefinterface },
     .{ .name = "extend-type", .expand = expandExtendType },
     .{ .name = "extend-protocol", .expand = expandExtendProtocol },
     .{ .name = "defrecord", .expand = expandDefrecord },
@@ -2288,6 +2289,30 @@ fn expandDefprotocol(
     ret_quote_items[1] = name_form;
     do_items[do_items.len - 1] = try list(arena, ret_quote_items, loc);
     return list(arena, do_items, loc);
+}
+
+/// `(definterface Name (m1 [args]) …)` — clj defines a JVM interface; cljw has
+/// no JVM, so it lowers to a `defprotocol` (the same mechanism deftype/reify use
+/// to implement + `.m` interop-dispatch, and `satisfies?`/`instance?` for a
+/// marker). `expandDefprotocol` reads only method NAMES (the param vectors — and
+/// the implicit-`this` difference between an interface sig `(m [x])` and a
+/// protocol sig `(m [this x])` — are ignored), so a verbatim delegate is faithful:
+/// a 0-method `(definterface Marker)` → a marker protocol (ADR-0068), a method
+/// interface → a protocol whose methods reach a deftype impl. The lone divergence
+/// is that the method names also become protocol-fn vars (clj's are interop-only);
+/// harmless absent a name clash. One leniency: `(satisfies? <definterface> x)`
+/// returns true in cljw (it IS a protocol) where clj THROWS an NPE (a definterface
+/// is a bare interface, not a protocol) — cljw is strictly more permissive; the
+/// clj-faithful membership test is `(instance? <definterface> x)`, identical in
+/// both. Retires the last analyzer wedge form (the defrecord/reify row-7.4/7.5
+/// retirement precedent). Surfaced by core.match's `(definterface IExistentialPattern)`.
+fn expandDefinterface(
+    arena: std.mem.Allocator,
+    rt: *Runtime,
+    args: []const Form,
+    loc: SourceLocation,
+) macro_dispatch.ExpandError!Form {
+    return expandDefprotocol(arena, rt, args, loc);
 }
 
 // --- extend-type — install one or more method impls on a TypeDescriptor ---

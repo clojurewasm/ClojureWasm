@@ -270,19 +270,6 @@ const SPECIAL_FORMS = std.StaticStringMap(SpecialFormKind).initComptime(.{
     .{ "__mut-fields*", .mut_fields },
 });
 
-/// Forms the analyser recognises but the runtime does not yet
-/// support — landed at Phase 4 task 4.21 per ADR-0007 + ADR-0018
-/// amendment 2. Each entry raises `unsupported_feature` with the
-/// form name in the `.name` slot. Task 4.26.b later promotes these
-/// to named per-form Codes (`deftype_not_supported`, etc.).
-///
-/// Row 7.4 cycle 1 retired `"defrecord"` — it now lowers via
-/// `expandDefrecord` in `src/lang/macro_transforms.zig`. Row 7.5
-/// cycle 1 retired `"reify"` — it now lowers via `expandReify`.
-const STAGED_UNSUPPORTED_FORMS = std.StaticStringMap(void).initComptime(.{
-    .{ "definterface", {} },
-});
-
 // --- Top-level entry ---
 
 /// Resolve a `::name` / `::alias/name` auto-resolved keyword (D-195). `::name`
@@ -786,9 +773,6 @@ fn analyzeList(
             // former arity-1-field / arity-≥2-method split into one kind.
             if (head.name.len >= 2 and head.name[0] == '.' and items.len >= 2 and !std.mem.eql(u8, head.name, "..")) {
                 return try special_forms.analyzeInstanceMember(arena, rt, env, scope, head.name[1..], items[1], items[2..], form, macro_table, false);
-            }
-            if (STAGED_UNSUPPORTED_FORMS.has(head.name)) {
-                return error_catalog.raise(.feature_not_supported, form.location, .{ .name = head.name });
             }
         }
         // D-121 + ADR-0050: qualified head `(Class/method args...)` —
@@ -1860,23 +1844,12 @@ test "field-only access (.-x inst) sets field_only" {
     try testing.expectEqualStrings("x", n.interop_call_node.name);
 }
 
-test "definterface still raises unsupported_feature" {
-    // Row 7.4 cycle 1: `defrecord` retired (expandDefrecord macro).
-    // Row 7.5 cycle 1: `reify` retired (expandReify macro). Only
-    // `definterface` remains in the staged wedge.
-    inline for ([_][]const u8{"definterface"}) |form_name| {
-        var fix: TestFixture = undefined;
-        try fix.init(testing.allocator);
-        defer fix.deinit();
-
-        const src = "(" ++ form_name ++ " Foo [x])";
-        try testing.expectError(AnalyzeError.NotImplemented, fix.analyzeStr(src));
-        const info = error_mod.peekLastError() orelse return error.TestUnexpectedResult;
-        try testing.expectEqual(error_mod.Kind.not_implemented, info.kind);
-        try testing.expect(std.mem.find(u8, info.message, form_name) != null);
-        try testing.expect(std.mem.find(u8, info.message, "not supported in ClojureWasm") != null);
-    }
-}
+// Row 7.4/7.5 + 2026-06-21: `defrecord`/`reify`/`definterface` all retired from
+// the staged-unsupported wedge — each now lowers via a Layer-2 macro
+// (expandDefrecord / expandReify / expandDefinterface→defprotocol). The wedge is
+// empty and removed. definterface lowering is covered by `test/e2e/phase7_definterface.sh`
+// (the analyzer TestFixture cannot register Layer-2 macros without an upward
+// zone import — see `.claude/rules/zone_deps.md`).
 
 // Row 7.4 cycle 1: `defrecord` parses cleanly via `expandDefrecord`
 // (covered by `test/e2e/phase7_defrecord.sh` since the analyzer
