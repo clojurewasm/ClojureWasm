@@ -46,6 +46,22 @@ active:
       zero / exponent behaviour); verify vs the clj oracle across ~F/~E/~G/~$
       d-omitted cases (big-bang the float-d-default surface, don't drip). Small.
     last_reviewed: "2026-06-20"
+  - id: "D-466"
+    status: "open (2026-06-20, clj-diff sweep). `(instance? java.util.Map (java.util.HashMap.))` → cljw FALSE, clj TRUE. The java.util host_instance surfaces (HashMap/TreeMap/ArrayList/HashSet/TreeSet) are not recognised as instances of their java.util supertypes (Map/List/Set/Collection/SortedMap/NavigableMap/SortedSet/NavigableSet/Iterable). NATIVE cljw collections ARE (class_name.zig NATIVE_ENTRIES Map/List/Set/Collection → tag), but host_instances dispatch through `matchUserType` (descriptor walk), which finds none of these. ATTEMPTED FIX REVERTED: setting the descriptors' `protocol_impls` to the interface FQCNs made `matchUserType` match BUT deterministically CRASHED cache_gen (the AOT bootstrap) with SIGABRT — protocol_impls is also the extend-protocol-target distribution source (ADR-0116/D-317), so a native-surface descriptor claiming `java.util.Map` breaks a bootstrap distribution path. Also the tree-specific interfaces (SortedMap/NavigableMap/SortedSet/NavigableSet) don't even RESOLVE as instance? class args ('Unable to resolve symbol') — they're not registered classes. Needs a PROPER host-supertype mechanism (a per-descriptor supertype list consulted ONLY by matchUserType, distinct from protocol_impls' distribution role) + registering the Sorted/Navigable interface class symbols. Moderate value (instance? on host java.util collections is rare-ish); deferred — not a quick protocol_impls add."
+    category: "interop"
+    barrier: |-
+      none external — but the obvious fix (protocol_impls) crashes the AOT
+      bootstrap, so this needs a dedicated host-supertype field on
+      TypeDescriptor that matchUserType (class_name.zig) consults WITHOUT
+      feeding the ADR-0116 extend-protocol distribution, plus registering the
+      java.util.SortedMap/NavigableMap/SortedSet/NavigableSet (+ java.lang.Iterable)
+      class symbols so they resolve as instance? args. Then declare the supertype
+      lists per the clj-verified hierarchy (HashMap→Map; ArrayList→List/Collection/
+      Iterable; HashSet→Set/Collection/Iterable; TreeMap→Map/SortedMap/NavigableMap;
+      TreeSet→Set/SortedSet/NavigableSet/Collection/Iterable). Take up when a real
+      workload type-checks java.util host collections, or alongside a host-supertype
+      refactor. Cross-ref class_name.zig matchUserType, ADR-0116, ADR-0102.
+    last_reviewed: "2026-06-20"
   - id: "D-453"
     status: "open (2026-06-16, ADR-0034 am5 Alt C — forward debt, deferred). Deepest conceptual finished form for class-value AOT: do NOT bake `.type_descriptor` constants at all — lower a class symbol in value position to an `op_load_class` (name as an already-serializable string/symbol constant) resolved at EXECUTION time, like `var_ref`. Removes the 0x10 wire tag from the decoder-permanence ledger entirely + unifies class-value with var-value under one 'named runtime entity, resolved at execution' model."
     category: "structure"
