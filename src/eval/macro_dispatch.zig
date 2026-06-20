@@ -104,19 +104,19 @@ pub fn expandIfMacro(
     loc: SourceLocation,
 ) ExpandError!?Form {
     if (!head_var.flags.macro_) return null;
-    if (table.lookup(head_name)) |f| {
-        return try f(arena, rt, args, loc);
-    }
-    // D-099: user-defined `defmacro` fallback. The macro
-    // Var's root must be a callable (`fn_val` / `builtin_fn`); we run
-    // the args through `formToValue` → callFn → `valueToForm` to round-
-    // trip the call through the runtime's evaluator. The implicit
-    // `&form` / `&env` Values are prepended (ADR-0086): the lowered
-    // macro fn's params are `[&form &env & user-params]`.
-    const analyzer_mod = @import("analyzer/analyzer.zig");
+    // D-476 nil-root gate: a builtin macro is a nil-root marker (table); a user/
+    // lib macro has a callable root and must run its own body even if it shadows
+    // a builtin name. Consult the table only for marker Vars.
     const macro_fn = head_var.deref();
-    if (!isCallable(macro_fn))
+    if (!isCallable(macro_fn)) {
+        if (table.lookup(head_name)) |f| return try f(arena, rt, args, loc);
         return error_catalog.raise(.macro_var_not_callable, loc, .{ .name = head_name });
+    }
+    // D-099: user-defined `defmacro` fallback. We run the args through
+    // `formToValue` → callFn → `valueToForm` to round-trip the call through the
+    // runtime's evaluator. The implicit `&form` / `&env` Values are prepended
+    // (ADR-0086): the lowered macro fn's params are `[&form &env & user-params]`.
+    const analyzer_mod = @import("analyzer/analyzer.zig");
     // `&form` = the call form as a Value, with `{:line :column}` meta
     // synthesized from the call site (cljw Forms are metadata-less per
     // ADR-0037, so the meta is attached to the list Value here).

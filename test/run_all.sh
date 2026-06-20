@@ -671,6 +671,7 @@ run_step "e2e_phase14_deftype_inherited_method" "bash test/e2e/phase14_deftype_i
 run_step "e2e_phase14_reify_remap" "bash test/e2e/phase14_reify_remap.sh"
 run_step "e2e_phase14_reify_destructure_param" "bash test/e2e/phase14_reify_destructure_param.sh"
 run_step "e2e_phase14_reify_metadata" "bash test/e2e/phase14_reify_metadata.sh"
+run_step "e2e_phase14_macro_shadow_builtin" "bash test/e2e/phase14_macro_shadow_builtin.sh"
 run_step "e2e_phase14_deftype_sorted" "bash test/e2e/phase14_deftype_sorted.sh"
 run_step "e2e_phase14_deftype_kvreduce_blocking" "bash test/e2e/phase14_deftype_kvreduce_blocking.sh"
 run_step "e2e_phase14_unicode_case" "bash test/e2e/phase14_unicode_case.sh"

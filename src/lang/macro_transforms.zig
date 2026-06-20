@@ -1282,12 +1282,17 @@ fn caseConstEq(arena: std.mem.Allocator, g: Form, const_form: Form, loc: SourceL
 }
 
 /// Test for one clause's test-constant: a list `(c1 c2 …)` →
-/// `(or (= g 'c1) (= g 'c2) …)`; a single constant → `(= g 'const)`.
+/// `(rt/or (= g 'c1) (= g 'c2) …)`; a single constant → `(= g 'const)`.
+/// The emitted `or` is the QUALIFIED builtin (`rt/or`), not a bare `or` —
+/// otherwise, in a namespace that shadows `or` (clojure.spec.alpha excludes +
+/// redefines it), the generated test would resolve to the user's `or` macro
+/// (macro hygiene: a macro-expansion must not capture a user redefinition of a
+/// core name it emits). D-476.
 fn caseTest(arena: std.mem.Allocator, g: Form, test_const: Form, loc: SourceLocation) macro_dispatch.ExpandError!Form {
     if (test_const.data == .list) {
         const elems = test_const.data.list;
         const or_items = try arena.alloc(Form, 1 + elems.len);
-        or_items[0] = sym("or", loc);
+        or_items[0] = .{ .data = .{ .symbol = .{ .ns = "rt", .name = "or" } }, .location = loc };
         for (elems, 0..) |el, i| or_items[1 + i] = try caseConstEq(arena, g, el, loc);
         return list(arena, or_items, loc);
     }
