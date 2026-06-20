@@ -100,6 +100,23 @@ const MAPEQUIV_TAGS = [_]Tag{ .array_map, .hash_map, .sorted_map };
 const IKVREDUCE_TAGS = [_]Tag{ .array_map, .hash_map, .sorted_map, .vector };
 /// CharSequence — strings only (cljw has no StringBuilder/CharBuffer native tag).
 const CHARSEQ_TAGS = [_]Tag{.string};
+/// Comparable (clj-oracle 2026-06-21): ordered scalars + vector/map_entry. NOTE
+/// clj's `BigInt` is NOT Comparable (only Integer/Ratio/BigDecimal/Double are) —
+/// `.big_int` is deliberately absent; `.char`/`.boolean` ARE Comparable.
+const COMPARABLE_TAGS = [_]Tag{ .integer, .float, .ratio, .big_decimal, .string, .keyword, .symbol, .char, .boolean, .vector, .map_entry };
+/// IHashEq — `hasheq`-able: every persistent coll + seq (incl. lazy_seq, unlike
+/// Counted) + keyword/symbol + BigInt (clj: BigInt IS IHashEq though NOT
+/// Comparable — the inverse of the other numbers; plain Long/Double are neither).
+const IHASHEQ_TAGS = [_]Tag{ .list, .cons, .lazy_seq, .chunked_cons, .vector, .array_map, .hash_map, .sorted_map, .hash_set, .sorted_set, .persistent_queue, .range, .string_seq, .array_seq, .map_entry, .keyword, .symbol, .big_int };
+/// IReduceInit — directly reducible (NOT via seq): vector / list / range. A bare
+/// Cons / LazySeq is an ASeq and is NOT IReduceInit (clj-oracle 2026-06-21).
+const IREDUCEINIT_TAGS = [_]Tag{ .vector, .list, .range };
+/// ITransientCollection / its sub-interfaces — the transient value tags.
+const TRANSIENT_COLL_TAGS = [_]Tag{ .transient_vector, .transient_map, .transient_set };
+const TRANSIENT_ASSOC_TAGS = [_]Tag{ .transient_vector, .transient_map };
+const TVEC_TAGS = [_]Tag{.transient_vector};
+const TMAP_TAGS = [_]Tag{.transient_map};
+const TSET_TAGS = [_]Tag{.transient_set};
 
 // --- deref / pending / ref family (ADR-0116; clj-oracle 2026-06-08) ---
 
@@ -190,6 +207,17 @@ pub const TABLE = [_]Entry{
     // Closeable — no native cljw implementor (host resources only), like SortedMap;
     // resolves as an instance? class arg, matches only host descriptors.
     .{ .name = "Closeable", .tags = &NO_NATIVE_TAGS },
+    // D-480 completion (clj-oracle 2026-06-21): the remaining recognized markers.
+    // Serializable (near-everything but fns-yes / refs-no / transients-no) is
+    // deferred — broad + low-value.
+    .{ .name = "Comparable", .tags = &COMPARABLE_TAGS },
+    .{ .name = "IHashEq", .tags = &IHASHEQ_TAGS },
+    .{ .name = "IReduceInit", .tags = &IREDUCEINIT_TAGS },
+    .{ .name = "ITransientCollection", .tags = &TRANSIENT_COLL_TAGS },
+    .{ .name = "ITransientAssociative", .tags = &TRANSIENT_ASSOC_TAGS },
+    .{ .name = "ITransientVector", .tags = &TVEC_TAGS },
+    .{ .name = "ITransientMap", .tags = &TMAP_TAGS },
+    .{ .name = "ITransientSet", .tags = &TSET_TAGS },
 };
 
 /// Strip a recognised host package prefix so both `ISeq` and `clojure.lang.ISeq`

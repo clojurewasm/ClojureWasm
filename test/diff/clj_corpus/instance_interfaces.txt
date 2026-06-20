@@ -122,3 +122,33 @@
 ;;=> true
 (instance? java.lang.CharSequence :k)
 ;;=> false
+(instance? java.lang.Comparable 5)
+;;=> true
+(instance? java.lang.Comparable :k)
+;;=> true
+(instance? java.lang.Comparable [1 2])
+;;=> true
+(instance? java.lang.Comparable {})
+;;=> false
+(instance? java.lang.Comparable 1N)
+;;=> false
+(instance? clojure.lang.IHashEq {})
+;;=> true
+(instance? clojure.lang.IHashEq 1N)
+;;=> true
+(instance? clojure.lang.IHashEq 5)
+;;=> false
+(instance? clojure.lang.IHashEq "s")
+;;=> false
+(instance? clojure.lang.IReduceInit [1])
+;;=> true
+(instance? clojure.lang.IReduceInit (range 3))
+;;=> true
+(instance? clojure.lang.IReduceInit {})
+;;=> false
+(instance? clojure.lang.ITransientVector (transient [1]))
+;;=> true
+(instance? clojure.lang.ITransientCollection (transient {}))
+;;=> true
+(instance? clojure.lang.ITransientMap (transient [1]))
+;;=> false
