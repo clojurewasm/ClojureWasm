@@ -24,6 +24,7 @@ const map = @import("map.zig");
 const set = @import("set.zig");
 const vector = @import("vector.zig");
 const sorted = @import("sorted.zig");
+const map_entry = @import("map_entry.zig");
 const Runtime = @import("../runtime.zig").Runtime;
 const Env = @import("../env.zig").Env;
 const tagged_literal_mod = @import("../tagged_literal.zig");
@@ -68,6 +69,21 @@ fn vectorIndex(v: Value, i_val: Value, loc: SourceLocation) !Value {
         return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
     }
     return vector.nth(v, @intCast(idx));
+}
+
+/// MapEntry index access as IFn — `(entry i)` with `nth` semantics (0→key,
+/// 1→val, throws on out-of-range). clj's `AMapEntry` is a 2-element vector, so
+/// a map entry is callable just like a vector; this mirrors `vectorIndex`'s
+/// error surface with a fixed length of 2.
+fn mapEntryIndex(e: Value, i_val: Value, loc: SourceLocation) !Value {
+    if (i_val.tag() != .integer) {
+        return error_catalog.raise(.type_arg_not_integer, loc, .{ .fn_name = "nth", .actual = @tagName(i_val.tag()) });
+    }
+    const idx = i_val.asInteger();
+    if (idx < 0 or idx >= 2) {
+        return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
+    }
+    return map_entry.nth(e, @intCast(idx));
 }
 
 /// Declared-field read for a `defrecord` TypedInstance (pure): walks
@@ -182,6 +198,11 @@ pub fn invoke(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: 
             if (args.len != 1) return arityError("vector", args.len, 1, 1, loc);
             return vectorIndex(callee, args[0], loc);
         },
+        .map_entry => {
+            // clj's MapEntry is a 2-vector, callable as `(entry i)` → nth.
+            if (args.len != 1) return arityError("vector", args.len, 1, 1, loc);
+            return mapEntryIndex(callee, args[0], loc);
+        },
         else => unreachable, // treeWalkCall routes only the tags above here
     }
 }
@@ -241,6 +262,25 @@ test "map-as-fn: (m k) gets; vector-as-fn: ([..] i) nth; OOB throws" {
     // (→ IndexOutOfBoundsException), not type_error.
     try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env,vec, &.{Value.initInteger(5)}, noloc)); // OOB
     try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env,vec, &.{Value.initInteger(-1)}, noloc)); // negative
+}
+
+test "map-entry-as-fn: (entry i) nth (0→key, 1→val); OOB throws" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+    var env = try Env.init(&fix.rt);
+    defer env.deinit();
+
+    const kw = try keyword_mod.intern(&fix.rt, null, "a");
+    const e = try map_entry.make(&fix.rt, kw, Value.initInteger(7));
+    // (entry 0) → key, (entry 1) → val — clj's AMapEntry IFn (the spec
+    // Tuple conform path `(x i)` over each map-of entry rides this).
+    const got_key = try invoke(&fix.rt, &env, e, &.{Value.initInteger(0)}, noloc);
+    try std_testing.expect(got_key.tag() == .keyword);
+    try std_testing.expectEqualStrings("a", keyword_mod.asKeyword(got_key).name);
+    try std_testing.expectEqual(@as(i48, 7), (try invoke(&fix.rt, &env, e, &.{Value.initInteger(1)}, noloc)).asInteger());
+    // OOB / negative are index_error, like a vector.
+    try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env, e, &.{Value.initInteger(2)}, noloc));
+    try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env, e, &.{Value.initInteger(-1)}, noloc));
 }
 
 test "set-as-fn: (#{..} x) returns x or nil; arity errors" {

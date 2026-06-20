@@ -102,3 +102,13 @@
 ;;=> false
 (apply hash-map (first {:a 1}))
 ;;=> {:a 1}
+((first {:a 1}) 0)
+;;=> :a
+((first {:a 1}) 1)
+;;=> 1
+(map (fn [e] (e 0)) {:a 1 :b 2})
+;;=> (:a :b)
+(mapv #(% 1) (seq {:a 1 :b 2}))
+;;=> [1 2]
+(into {} (map (fn [e] [(e 0) (inc (e 1))]) {:a 1 :b 2}))
+;;=> {:a 2, :b 3}
