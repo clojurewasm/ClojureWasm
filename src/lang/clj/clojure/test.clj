@@ -113,6 +113,15 @@
 
 (defn do-report [m] (report m))
 
+(defn file-position
+  "Returns a vector [filename line-number] for the nth call up the stack.
+  Deprecated in clj 1.2 (its info now lives on the result map's :file/:line).
+  cljw carries no source location on Vars (AD-041) and no JVM stack-frame
+  file/line, so this honestly returns [\"NO_SOURCE_FILE\" 0] — kept so code that
+  calls it (clojure.test.junit) loads + runs."
+  [_n]
+  ["NO_SOURCE_FILE" 0])
+
 ;; ---------------------------------------------------------------------------
 ;; assert-expr multimethod — keyed on (first form), called at macroexpand time
 ;; by `is`. Returns the code that evaluates the assertion + reports.
@@ -221,7 +230,11 @@
 (defn test-var [v]
   (when v
     (binding [*testing-vars* (conj *testing-vars* v)]
-      ((deref v)))))
+      ;; Emit the per-var report events (clj parity) so a reporter that wraps
+      ;; each test — clojure.test.junit's <testcase>, custom reporters — fires.
+      (do-report {:type :begin-test-var :var v})
+      ((deref v))
+      (do-report {:type :end-test-var :var v}))))
 
 (defn run-tests [& ns-syms]
   (let [targets (if (seq ns-syms) ns-syms (list (ns-name *ns*)))]
@@ -230,7 +243,10 @@
         (do-report {:type :begin-test-ns :ns ns-sym})
         (doseq [v (get (deref *test-registry*) ns-sym)]
           (swap! *report-counters* update :test inc)
-          (test-var v)))
+          (test-var v))
+        ;; clj parity: emit :end-test-ns so a reporter that brackets a namespace
+        ;; (junit's </testsuite>, custom reporters) fires.
+        (do-report {:type :end-test-ns :ns ns-sym}))
       (let [summary (assoc (deref *report-counters*) :type :summary)]
         (do-report summary)
         summary))))

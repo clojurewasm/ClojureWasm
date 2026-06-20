@@ -122,6 +122,10 @@ pub const FILES: []const FileEntry = &.{
     // warn-on-reflection set! dropped); its Datafiable extend over IRef/Namespace/
     // Throwable/Class rides D-478. Re-landed once D-481 (gc.deinit ordering) fixed.
     .{ .label = "<clojure.datafy>", .source = @embedFile("clj/clojure/datafy.clj") },
+    // clojure.test.junit — official stdlib (JUnit-XML reporter extending
+    // clojure.test's `report` multimethod, like clojure.test.tap). Loads after
+    // clojure.test (FILES[10]). Verbatim upstream. Appended last.
+    .{ .label = "<clojure.test.junit>", .source = @embedFile("clj/clojure/test/junit.clj") },
 };
 
 /// First file's source — exposed so `main.zig`'s renderer can fall
@@ -173,6 +177,7 @@ fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
     if (std.mem.eql(u8, ns_name, "clojure.spec.alpha")) return FILES[25];
     if (std.mem.eql(u8, ns_name, "clojure.core.specs.alpha")) return FILES[26];
     if (std.mem.eql(u8, ns_name, "clojure.datafy")) return FILES[27];
+    if (std.mem.eql(u8, ns_name, "clojure.test.junit")) return FILES[28];
     return null;
 }
 
