@@ -10,18 +10,22 @@
   `build.zig.zon` `.zwasm` is SHA-PINNED (`#412966f7…`, `lazy`). Per-commit = smoke;
   full gate batches at ceiling / boundary / pre-tag.
 
-- **First commit on resume MUST be**: resume the **F-011 clj-diff probe sweep** on
-  the next un-probed common surface (the session's value engine — IO/file ops
-  (slurp/spit/with-open/line-seq) is the next untested area; then exception
-  data-shapes, var/binding deep). Probe top-level for def-forms (the harness
-  `(prn …)`-wraps → false cascades on defrecord/defprotocol; verify each DIFF
-  INDIVIDUALLY — memory `clj_diff_sweep_methodology`). Fix any real gap at the
-  finished form; classify every DIFF (bug→fix / accepted→AD / defer→debt). **clj-parity
-  is now comprehensively saturated**: 8 probe areas this session, the last 5 found
-  ZERO new fixable bugs (only documented AD-001/002/007/009/019/021 + ADR-0122/0033
-  divergences). So expect mostly accepted/low-value finds; if a surface is clean, the
-  remaining substantive work is the deep residuals (below) — all deep/low-value/
-  barriered. Don't surrender-frame the thinning; keep probing + draining residuals.
+- **First commit on resume MUST be**: drain a **deferred residual** (the clj-diff
+  probe sweep is now ~16 surfaces deep and COMPREHENSIVELY SATURATED — the last ~8
+  areas found only documented ADs: AD-001 set order / AD-003 class name / AD-016
+  biginteger-N / AD-007 / AD-009). Pick highest-value-first: **D-472 uri?** (a small
+  Zig primitive comparing a host_instance descriptor to the URI descriptor — NOTE the
+  R4 zone rule: a primitive must NOT import runtime/java/**, so route via
+  `rt.types.get(<URI fqcn>)` not a URI.zig import) + **bytes?** (AD-019 array
+  type-erasure — decide AD vs over-broad); **D-470 format %t** (~40 date sub-convs);
+  **D-471 spit/slurp File-arg Coercions**; the deep ones (D-446 multidim aget, D-410
+  java.text grapheme) need data/infra. OR one more fresh probe (clojure.zip / pprint
+  / reducers still untested) — fresh surfaces still occasionally yield real COMMON
+  gaps (this session: iteration, spit-options, partitionv-all, the whole java.util
+  family). Probe top-level for def-forms (harness `(prn …)`-wraps → false cascades;
+  verify each DIFF INDIVIDUALLY — memory `clj_diff_sweep_methodology`). Classify every
+  DIFF (bug→fix / accepted→AD / defer→debt); always grep F-NNN before "fixing" a
+  numeric/semantic DIFF. Don't surrender-frame the thinning; drain residuals + probe.
 
 - **Remaining clusters (all BARRIERED or niche — the high-value unblocked work is
   drained)**:
@@ -49,7 +53,14 @@
 
 ## Last landed (git log = SSOT; all pushed)
 
-**This session (~10 units, all clj-oracle-verified, full gate 377/0 green throughout):**
+**This session (~13 units, all clj-oracle-verified, full gate 377/0 green throughout):**
+- **D-348** (Wasm-edge differentiator): `(wasm/run … {:env {…}})` — barrier dissolved
+  (forEachEntry now exists); string/keyword-keyed :env parsed into env_keys/env_vals.
+  wasm/run option surface (args/stdin/dir/dirs/env) COMPLETE. (Step 0.5 barrier re-eval.)
+- **spit `& options`**: `:append` (new file_io.appendAll) + content `(str)`-coercion;
+  **iteration** (clojure 1.11, the one missing 1.11 fn); **partitionv-all** (1.12) +
+  **splitv-at** fix ([vec, drop-SEQ] not [vec, vec]). D-471/D-472 filed (spit File-arg;
+  uri?/bytes?).
 - **D-466 + sub**: `(instance? java.util.Map/List/Set/Collection/SortedMap/Sorted/
   Navigable/Iterable host)` — NEW comptime-const `host_supertypes` TypeDescriptor
   field (mirrors `static_fields`, NOT freed by deinit — the protocol_impls overload
@@ -66,16 +77,17 @@
 - **D-462**: LocalDate.atStartOfDay/atTime (→ LocalDateTime) — a verify-sweep proved
   the rest of java.time arithmetic was already done (stale claim). **AD-048**: record
   str = content form. **D-470 filed**: format `%t` family (low-value, deferred).
-- **6 clj-diff probe areas** (numeric/seq/string, reader/namespace, transducers,
-  math/bit/array, edn/walk/sorted, format) — all clj-faithful modulo documented ADs.
+- **~16 clj-diff probe areas** (numeric/seq/string, java.util, protocols/multimethods,
+  reader/ns, transducers, math/bit/array, edn/walk/sorted, format, IO, var/binding,
+  1.11/1.12, exception, string/destructuring, set/comprehension, bigint/bigdec) — real
+  gaps clustered in java.util/extend/java.time/IO/1.11-1.12 (all fixed); rest clj-faithful.
 
-## Perf campaign (PAUSED behind the active flag; not the current task)
+## Perf campaign (PAUSED; not the current task)
 
-`.dev/.perf_campaign_active` is SET but the loop is in the quality sweep, not perf.
-If the user re-opens perf: the only remaining accessible lever is D-386(a) (inline
-`stepOnce` SP-marshalling, a risky UAF-class cycle — fresh focus + the
-`CLJW_GC_TORTURE_ALLOC` safety net); JIT D-133 is user-fenced. Full perf state:
-ADR-0148 + `private/notes/9.2.S-perf-remeasure-2026-06-17.md`.
+`.dev/.perf_campaign_active` is SET but the loop is in the quality sweep. If the user
+re-opens perf: only D-386(a) (inline `stepOnce` SP-marshalling, UAF-class — needs the
+`CLJW_GC_TORTURE_ALLOC` net) is accessible; JIT D-133 is user-fenced. State: ADR-0148
++ `private/notes/9.2.S-perf-remeasure-2026-06-17.md`.
 
 ## Cold-start reading order (resume)
 
