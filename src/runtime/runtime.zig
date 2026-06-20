@@ -157,6 +157,15 @@ pub const Runtime = struct {
     data_readers_var: ?*anyopaque = null,
     default_data_reader_fn_var: ?*anyopaque = null,
 
+    /// Cached `*Var` for `clojure.core/*agent*` (root `nil`), interned
+    /// `^:dynamic` at bootstrap (ADR-0155 / D-442). Type-erased to `?*anyopaque`
+    /// (mirroring the data-reader vars) so this Layer-0 struct need not name
+    /// `env.Var`; the agent drainer (`runtime/agent.zig`) casts it back and binds
+    /// it to the running agent for the duration of each action body, so
+    /// `*agent*` derefs to the agent inside its own action (clj `binding [*agent*
+    /// a]`). `null` until bootstrap runs (the drainer then binds nothing).
+    agent_var: ?*anyopaque = null,
+
     /// ADR-0130: cached canonical `clojure.core` arith/comparison Vars
     /// (+ - * < <= > >= =), indexed by `intrinsic.ArithOp` (type-erased like the
     /// data-reader vars; cast back to `*const env.Var` at the compiler gate + VM

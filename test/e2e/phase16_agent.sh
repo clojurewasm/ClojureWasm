@@ -154,5 +154,63 @@ EOF
 )
 assert_eq 'clear_agent_errors_failed' "$got" '[nil 0]'
 
+# --- ADR-0155 / D-442 part 2: *agent* / release-pending-sends / shutdown-agents ---
+
+# *agent* derefs to the running agent INSIDE its own action (clj `binding
+# [*agent* a]` conveyed to the worker). The action stores `(= *agent* a)`.
+got=$("$BIN" -e '(let [a (agent nil)] (send a (fn [_] *agent*)) (await a) (= @a a))' 2>/dev/null | last_line)
+assert_eq 'agent_star_in_action' "$got" 'true'
+
+# *agent* is nil OUTSIDE any action (the root binding).
+got=$("$BIN" -e '(prn *agent*)' 2>/dev/null | last_line)
+assert_eq 'agent_star_outside_nil' "$got" 'nil'
+
+# *agent* is also visible to a watch fn (the binding spans the whole action).
+got=$("$BIN" -e '(let [seen (atom nil) a (agent 0)] (add-watch a :k (fn [k r o n] (reset! seen (= r *agent*)))) (send a inc) (await a) @seen)' 2>/dev/null | last_line)
+assert_eq 'agent_star_in_watch' "$got" 'true'
+
+# release-pending-sends flushes the sends held during the action NOW and returns
+# the count dispatched; the released send actually runs (b gets incremented).
+got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
+(def cnt (atom nil))
+(def b (agent 0))
+(def a (agent 0))
+(send a (fn [s] (send b inc) (reset! cnt (release-pending-sends)) s))
+(await a) (await b)
+(prn [@cnt @b])
+EOF
+)
+assert_eq 'release_pending_sends_in_action' "$got" '[1 1]'
+
+# release-pending-sends OUTSIDE an action does nothing and returns 0.
+got=$("$BIN" -e '(release-pending-sends)' 2>/dev/null | last_line)
+assert_eq 'release_pending_sends_outside' "$got" '0'
+
+# shutdown-agents returns nil and is process-global (each -e is a fresh process).
+got=$("$BIN" -e '(shutdown-agents)' 2>/dev/null | last_line)
+assert_eq 'shutdown_agents_returns_nil' "$got" 'nil'
+
+# After shutdown-agents a send is DROPPED (clj-faithful): send still RETURNS the
+# agent (no throw), and the action never runs (state unchanged). clj swallows the
+# executor RejectedExecutionException, so `send` does not throw to the caller.
+got=$("$BIN" -e '(do (shutdown-agents) (let [a (agent 0)] (identical? a (send a inc))))' 2>/dev/null | last_line)
+assert_eq 'shutdown_agents_send_returns_agent' "$got" 'true'
+got=$("$BIN" -e '(do (shutdown-agents) (let [a (agent 0)] (send a inc) (Thread/sleep 100) @a))' 2>/dev/null | last_line)
+assert_eq 'shutdown_agents_action_dropped' "$got" '0'
+
+# AD-046 divergence pin: clj routes the swallowed rejection to an agent's
+# :error-handler; cljw has no RejectedExecutionException to synthesize, so the
+# dropped send does NOT fire the handler (log stays empty). State still unchanged.
+got=$("$BIN" - <<'EOF' 2>/dev/null | last_line
+(def log (atom []))
+(def a (agent 0 :error-handler (fn [ag ex] (swap! log conj :fired))))
+(shutdown-agents)
+(send a inc)
+(Thread/sleep 100)
+(prn [@log @a])
+EOF
+)
+assert_eq 'shutdown_agents_no_handler_fire' "$got" '[[] 0]'
+
 echo
 echo "Phase B #6 agent (first slice + error modes) e2e: all green."

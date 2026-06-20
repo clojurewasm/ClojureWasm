@@ -257,9 +257,50 @@ fn releasePendingSends(rt: *Runtime) void {
     list.deinit(rt.gpa);
 }
 
+/// `(release-pending-sends)` — flush the sends held during the CURRENT action
+/// NOW (clj `Agent.releasePendingSends`), returning the count dispatched. The
+/// capture is re-armed to empty so subsequent in-action sends stay held (clj
+/// resets `nested` to an empty vector — NOT null, which would end the action's
+/// hold). Returns 0 when not inside an action (`nested_pending == null`). Runs on
+/// the drainer thread (the only thread where `nested_pending` is non-null).
+pub fn releasePending(rt: *Runtime) usize {
+    var list = nested_pending orelse return 0;
+    const n = list.items.len;
+    for (list.items) |ps| {
+        enqueueDirect(rt, ps.agent, ps.action) catch {};
+        unpinAction(rt, ps.action);
+        _ = rt.gc.unpin(ps.agent);
+    }
+    list.deinit(rt.gpa);
+    nested_pending = .empty; // re-arm: still inside the action, keep holding.
+    return n;
+}
+
+/// Process-global agent-system shutdown flag (clj `Agent.shutdown` shuts the
+/// static executor pools). Once set, `enqueueDirect` DROPS new dispatches.
+/// Irreversible + process-wide, matching clj. Detached drainers already don't
+/// block process exit, so the "running actions complete, no new ones accepted"
+/// semantic holds without touching the in-flight drainers (ADR-0155 / D-442).
+var agents_shut_down = std.atomic.Value(bool).init(false);
+
+/// `(shutdown-agents)` — flip the process-global shutdown flag so subsequent
+/// dispatches are dropped (clj `Agent.shutdown`). See `enqueueDirect`'s drop.
+pub fn shutdownAgents() void {
+    agents_shut_down.store(true, .release);
+}
+
 /// Enqueue an action under `cell.mutex` (leaf lock — gpa push only) and, if no
 /// drainer is live, spawn one. The mutex is never held across `callFn` / a park.
 fn enqueueDirect(rt: *Runtime, agent_val: Value, action: Action) !void {
+    // After `shutdown-agents`, a new dispatch is DROPPED — `send` still returns
+    // the agent, no throw, state unchanged (clj-faithful: clj's executor rejects
+    // the submit and `Action.execute` swallows the RejectedExecutionException).
+    // This is the documented terminal no-op ("no new actions accepted"), NOT a
+    // forbidden silent semantic drop — an audited exception to
+    // permanent_no_op_forbidden (ADR-0155 / AD-046). The narrow divergence: clj
+    // routes the swallowed rejection to an agent's :error-handler; cljw has no
+    // RejectedExecutionException to synthesize, so it just drops (AD-046).
+    if (agents_shut_down.load(.acquire)) return;
     const a = agent_val.decodePtr(*Agent);
     io_default.lockMutex(&a.cell.mutex);
     if (!a.error_val.isNil()) {
@@ -428,6 +469,25 @@ fn validateState(a: *Agent, newstate: Value) !void {
 fn runAction(a: *Agent, action: Action) !void {
     const oldstate = @atomicLoad(Value, &a.state, .acquire);
     var newstate = oldstate;
+    // Bind `*agent*` to this agent for the whole action (body fn + its watches),
+    // mirroring clj's `binding [*agent* a]` conveyed to the worker (ADR-0155 /
+    // D-442). The frame's bound value is GC-rooted via the drainer's
+    // `current_frame` slot in its ThreadGcContext, so a collect mid-action cannot
+    // sweep it. No-op before bootstrap interns the Var (`agent_var == null`).
+    var agent_frame: env_mod.BindingFrame = .{};
+    defer agent_frame.bindings.deinit(a.rt.gpa);
+    var agent_pushed = false;
+    // popFrame keys on `agent_pushed`, not on `agent_var != null`: if the `put`
+    // below OOMs BEFORE `pushFrame`, the frame was never pushed, so we must not
+    // pop (that would corrupt the chain). deinit (declared first → runs last)
+    // safely frees a partial/empty map.
+    defer if (agent_pushed) env_mod.popFrame();
+    if (a.rt.agent_var) |p| {
+        const agent_val = Value.encodeHeapPtr(.agent, a);
+        try agent_frame.bindings.put(a.rt.gpa, @as(*const env_mod.Var, @ptrCast(@alignCast(p))), agent_val);
+        env_mod.pushFrame(&agent_frame);
+        agent_pushed = true;
+    }
     // clj-style nested-send capture (Agent.java `nested` + `releasePendingSends`):
     // sends made DURING this action (incl. from watch fns) are held + dispatched
     // AFTER it completes, so a concurrently-enqueued `(await)` barrier orders

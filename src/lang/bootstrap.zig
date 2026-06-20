@@ -315,6 +315,18 @@ fn registerNsVar(env: *Env) !void {
     env.ns_var = nv;
 }
 
+/// Intern `clojure.core/*agent*` as a `^:dynamic` Var (root nil) and cache it on
+/// `rt.agent_var` so the agent drainer can bind it to the running agent around
+/// each action body (clj `binding [*agent* a]`; ADR-0155 / D-442). Called from
+/// `setupCorePrefix` BEFORE `loadCore`'s `finalizeUserNs` `referAll`, so
+/// unqualified `*agent*` resolves in user code.
+fn registerAgentVar(rt: *Runtime, env: *Env) !void {
+    const core = try env.findOrCreateNs("clojure.core");
+    const av = try env.intern(core, "*agent*", Value.nil_val, null);
+    av.flags.dynamic = true;
+    rt.agent_var = av;
+}
+
 /// The bootstrap prefix WITHOUT `loadCore`: install the embedded require
 /// resolver + register the kernel primitives + bootstrap macros. Splitting
 /// this out lets the AOT-bootstrap path (ADR-0056) build a fresh env to
@@ -336,6 +348,9 @@ pub fn setupCorePrefix(rt: *Runtime, env: *Env, macro_table: *macro_dispatch.Tab
     try registerDataReaders(rt, env);
     // ADR-0083: intern *ns* + cache on env.ns_var before the user-ns refer.
     try registerNsVar(env);
+    // ADR-0155 / D-442: intern *agent* + cache on rt.agent_var before the
+    // user-ns refer so the drainer can bind it inside each action body.
+    try registerAgentVar(rt, env);
     // ADR-0088: intern *print-length* / *print-level* (root nil = unlimited)
     // + cache pointers so the renderer honours a user `binding`.
     try registerPrintLimitVars(rt, env);

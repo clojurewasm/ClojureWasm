@@ -204,6 +204,26 @@ pub fn executorUnsupportedFn(rt: *Runtime, env: *Env, args: []const Value, loc: 
     return error_catalog.raise(.agent_executor_unsupported, loc, .{});
 }
 
+/// `(release-pending-sends)` — dispatch the sends held during the current action
+/// now; returns the count dispatched (0 outside an action). Subsequent in-action
+/// sends stay held (clj `Agent.releasePendingSends`; ADR-0155 / D-442).
+pub fn releasePendingSendsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("release-pending-sends", args, 0, loc);
+    return Value.initInteger(@intCast(agent_mod.releasePending(rt)));
+}
+
+/// `(shutdown-agents)` — initiate agent-system shutdown: running actions finish,
+/// no new actions are accepted (subsequent sends reject). Process-wide and
+/// irreversible, matching clj `shutdown-agents`. Returns nil (ADR-0155 / D-442).
+pub fn shutdownAgentsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("shutdown-agents", args, 0, loc);
+    agent_mod.shutdownAgents();
+    return Value.nil_val;
+}
+
 const Entry = struct {
     name: []const u8,
     f: dispatch.BuiltinFn,
@@ -220,6 +240,8 @@ const ENTRIES = [_]Entry{
     .{ .name = "set-error-handler!", .f = &setErrorHandlerFn },
     .{ .name = "error-handler", .f = &errorHandlerFn },
     .{ .name = "__agent-await", .f = &awaitFn },
+    .{ .name = "release-pending-sends", .f = &releasePendingSendsFn },
+    .{ .name = "shutdown-agents", .f = &shutdownAgentsFn },
     // ADR-0155 / AD-045 — no configurable executor in cljw; these raise.
     .{ .name = "send-via", .f = &executorUnsupportedFn },
     .{ .name = "set-agent-send-executor!", .f = &executorUnsupportedFn },
