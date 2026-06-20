@@ -258,6 +258,10 @@ const METHODS = [_]MethodSpec{
     .{ .name = "lastKey", .proto = "", .f = &lastKey },
     .{ .name = "-seq", .proto = "Seqable", .f = &seqImpl },
     .{ .name = "-count", .proto = "IPersistentCollection", .f = &countImpl },
+    // IPersistentMap -keys / -vals so `(keys tm)` / `(vals tm)` work like clj
+    // (sorted, matching clj's keys/vals over a java.util.SortedMap). Reuse keySet/values.
+    .{ .name = "-keys", .proto = "IPersistentMap", .f = &keySet },
+    .{ .name = "-vals", .proto = "IPersistentMap", .f = &values },
 };
 
 fn initDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {

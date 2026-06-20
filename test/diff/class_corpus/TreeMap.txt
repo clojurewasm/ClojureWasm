@@ -27,3 +27,9 @@
 ;;=> [:a nil (1 2)]
 (let [m (java.util.TreeMap. {2 :b 1 :a})] (.clear m) [(.isEmpty m) (.size m)])
 ;;=> [true 0]
+; (keys tm) / (vals tm) — clj allows keys/vals on a java.util.Map; cljw implements
+; IPersistentMap -keys/-vals. TreeMap is sorted → pinned directly.
+(keys (java.util.TreeMap. {3 :c 1 :a 2 :b}))
+;;=> (1 2 3)
+(vals (java.util.TreeMap. {3 :c 1 :a 2 :b}))
+;;=> (:a :b :c)

@@ -34,3 +34,11 @@
 ;;=> 2
 (let [m (java.util.HashMap.)] (.put m "a" 1) (into {} m))
 ;;=> {"a" 1}
+; (keys hm) / (vals hm) — clj allows keys/vals on a java.util.Map (D-431); cljw now
+; implements IPersistentMap -keys/-vals. HashMap is unordered → sort-wrapped.
+(sort (keys (java.util.HashMap. {:a 1 :b 2})))
+;;=> (:a :b)
+(sort (vals (java.util.HashMap. {:a 1 :b 2})))
+;;=> (1 2)
+(keys (java.util.HashMap.))
+;;=> nil
