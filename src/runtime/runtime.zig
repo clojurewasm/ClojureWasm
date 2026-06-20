@@ -166,6 +166,13 @@ pub const Runtime = struct {
     /// a]`). `null` until bootstrap runs (the drainer then binds nothing).
     agent_var: ?*anyopaque = null,
 
+    /// Cached `*Var` for `clojure.core/*math-context*` (root nil), interned
+    /// `^:dynamic` at bootstrap (D-467). `with-precision` binds it to an integer
+    /// precision; BigDecimal division (`promote.divPromoting`) reads it and, when
+    /// set, rounds the quotient to that many significant figures (HALF_UP) instead
+    /// of raising on a non-terminating expansion. Type-erased (mirrors `agent_var`).
+    math_context_var: ?*anyopaque = null,
+
     /// ADR-0130: cached canonical `clojure.core` arith/comparison Vars
     /// (+ - * < <= > >= =), indexed by `intrinsic.ArithOp` (type-erased like the
     /// data-reader vars; cast back to `*const env.Var` at the compiler gate + VM

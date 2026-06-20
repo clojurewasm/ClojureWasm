@@ -1,0 +1,24 @@
+; with-precision (D-467): binds *math-context* so BigDecimal division rounds to N
+; significant figures (HALF_UP) instead of raising on a non-terminating expansion.
+; precision is a MAXIMUM — an exact quotient terminating within it keeps its natural
+; (un-padded) form. clj-oracle pinned.
+(with-precision 5 (/ 1M 3))
+;;=> 0.33333M
+(with-precision 3 (/ 2M 3))
+;;=> 0.667M
+(with-precision 5 (/ 22M 7))
+;;=> 3.1429M
+(with-precision 4 (/ 1M 8))
+;;=> 0.125M
+(with-precision 4 (/ -1M 3))
+;;=> -0.3333M
+(with-precision 4 (/ 1000000M 3))
+;;=> 3.333E+5M
+(with-precision 1 (/ 5M 4))
+;;=> 1M
+(with-precision 3 :rounding HALF_UP (/ 2M 3))
+;;=> 0.667M
+(with-precision 5 (with-precision 2 (/ 1M 3)))
+;;=> 0.33M
+(with-precision 10 (/ 1M 1024))
+;;=> 0.0009765625M

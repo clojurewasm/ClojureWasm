@@ -327,6 +327,16 @@ fn registerAgentVar(rt: *Runtime, env: *Env) !void {
     rt.agent_var = av;
 }
 
+/// Intern `clojure.core/*math-context*` `^:dynamic` (root nil) + cache it on
+/// `rt.math_context_var` so BigDecimal division can read the `with-precision`
+/// binding (D-467). Called from `setupCorePrefix` before the user-ns refer.
+fn registerMathContextVar(rt: *Runtime, env: *Env) !void {
+    const core = try env.findOrCreateNs("clojure.core");
+    const mc = try env.intern(core, "*math-context*", Value.nil_val, null);
+    mc.flags.dynamic = true;
+    rt.math_context_var = mc;
+}
+
 /// The bootstrap prefix WITHOUT `loadCore`: install the embedded require
 /// resolver + register the kernel primitives + bootstrap macros. Splitting
 /// this out lets the AOT-bootstrap path (ADR-0056) build a fresh env to
@@ -351,6 +361,9 @@ pub fn setupCorePrefix(rt: *Runtime, env: *Env, macro_table: *macro_dispatch.Tab
     // ADR-0155 / D-442: intern *agent* + cache on rt.agent_var before the
     // user-ns refer so the drainer can bind it inside each action body.
     try registerAgentVar(rt, env);
+    // D-467: intern *math-context* + cache on rt.math_context_var so BigDecimal
+    // division can honour a `with-precision` binding.
+    try registerMathContextVar(rt, env);
     // ADR-0088: intern *print-length* / *print-level* (root nil = unlimited)
     // + cache pointers so the renderer honours a user `binding`.
     try registerPrintLimitVars(rt, env);

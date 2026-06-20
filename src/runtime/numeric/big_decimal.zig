@@ -275,6 +275,125 @@ pub fn allocQuotient(rt: *Runtime, a: Value, b: Value) !Value {
     return allocFromManagedScale(rt, &q, scale);
 }
 
+/// Decimal-digit count of a non-negative Managed (`0` counts as 1 digit).
+fn digitCount(infra: std.mem.Allocator, m: *const std.math.big.int.Managed) !usize {
+    if (m.eqlZero()) return 1;
+    const s = try m.toConst().toStringAlloc(infra, 10, .lower);
+    defer infra.free(s);
+    return if (s.len > 0 and s[0] == '-') s.len - 1 else s.len;
+}
+
+/// q = trunc(n·10^s / d), r = remainder, for n,d > 0. `s` may be negative (then
+/// the divisor is scaled instead of the dividend). `ten`/`scratch` are caller-owned.
+fn shiftedDivTrunc(infra: std.mem.Allocator, q: *std.math.big.int.Managed, r: *std.math.big.int.Managed, n: *const std.math.big.int.Managed, d: *const std.math.big.int.Managed, ten: *const std.math.big.int.Managed, s: i64) !void {
+    var pow10 = try std.math.big.int.Managed.init(infra);
+    defer pow10.deinit();
+    try pow10.pow(ten, @intCast(@abs(s)));
+    if (s >= 0) {
+        var num = try std.math.big.int.Managed.init(infra);
+        defer num.deinit();
+        try num.mul(n, &pow10);
+        try q.divTrunc(r, &num, d);
+    } else {
+        var den = try std.math.big.int.Managed.init(infra);
+        defer den.deinit();
+        try den.mul(d, &pow10);
+        try q.divTrunc(r, n, &den);
+    }
+}
+
+/// `a ÷ b` rounded to `precision` significant figures, HALF_UP — clj's
+/// `with-precision` default (BigDecimal.divide with a MathContext). D-467.
+pub fn allocDivPrecision(rt: *Runtime, a: Value, b: Value, precision: u32) !Value {
+    const infra = rt.gc.infra;
+    // clj's MathContext divide treats `precision` as a MAXIMUM: an exact quotient
+    // that terminates within `precision` significant figures keeps its natural
+    // (un-padded) form — `(with-precision 4 (/ 1M 8))` → 0.125M, not 0.1250M. So try
+    // the exact divide first; round only when it does not terminate OR exceeds the
+    // precision.
+    if (allocDiv(rt, a, b)) |exact| {
+        if ((try digitCount(infra, asUnscaled(exact).m)) <= precision) return exact;
+    } else |err| switch (err) {
+        error.NonTerminatingDecimal => {},
+        else => return err,
+    }
+    var ar = try alignedRational(rt, a, b);
+    defer {
+        ar.n.deinit();
+        ar.d.deinit();
+    }
+    if (ar.d.eqlZero()) return error.DivideByZero;
+    if (ar.n.eqlZero()) {
+        var z = try std.math.big.int.Managed.initSet(infra, 0);
+        defer z.deinit();
+        return allocFromManagedScale(rt, &z, 0);
+    }
+    const result_neg = ar.n.isPositive() != ar.d.isPositive();
+    // Work with |n|, |d|.
+    var n = try std.math.big.int.Managed.init(infra);
+    defer n.deinit();
+    try n.copy(ar.n.toConst().abs());
+    var d = try std.math.big.int.Managed.init(infra);
+    defer d.deinit();
+    try d.copy(ar.d.toConst().abs());
+    var ten = try std.math.big.int.Managed.initSet(infra, 10);
+    defer ten.deinit();
+
+    // Guess the shift s so q = trunc(n·10^s/d) has `precision` digits, then adjust.
+    const dn = try digitCount(infra, &n);
+    const dd = try digitCount(infra, &d);
+    var s: i64 = @as(i64, @intCast(precision)) - @as(i64, @intCast(dn)) + @as(i64, @intCast(dd));
+    var q = try std.math.big.int.Managed.init(infra);
+    defer q.deinit();
+    var r = try std.math.big.int.Managed.init(infra);
+    defer r.deinit();
+    while (true) {
+        try shiftedDivTrunc(infra, &q, &r, &n, &d, &ten, s);
+        const dq = try digitCount(infra, &q);
+        if (!q.eqlZero() and dq > precision) {
+            s -= 1;
+        } else if (q.eqlZero() or dq < precision) {
+            s += 1;
+        } else break;
+    }
+    // HALF_UP: round away from zero iff 2·r ≥ the EFFECTIVE divisor. For s ≥ 0 the
+    // divisor was `d`; for s < 0 the dividend was left alone and the divisor scaled
+    // to `d·10^|s|`, so `r` is a remainder w.r.t. that scaled divisor — comparing
+    // against the bare `d` over-rounds large-magnitude quotients (D-467).
+    var eff_d = try std.math.big.int.Managed.init(infra);
+    defer eff_d.deinit();
+    if (s >= 0) {
+        try eff_d.copy(d.toConst());
+    } else {
+        var p10 = try std.math.big.int.Managed.init(infra);
+        defer p10.deinit();
+        try p10.pow(&ten, @intCast(@abs(s)));
+        try eff_d.mul(&d, &p10);
+    }
+    var r2 = try std.math.big.int.Managed.init(infra);
+    defer r2.deinit();
+    var two = try std.math.big.int.Managed.initSet(infra, 2);
+    defer two.deinit();
+    try r2.mul(&r, &two);
+    if (r2.toConst().order(eff_d.toConst()) != .lt) {
+        var one = try std.math.big.int.Managed.initSet(infra, 1);
+        defer one.deinit();
+        try q.add(&q, &one);
+        // A carry can grow q by a digit (999→1000): drop the trailing 0, s -= 1.
+        if ((try digitCount(infra, &q)) > precision) {
+            var qd = try std.math.big.int.Managed.init(infra);
+            defer qd.deinit();
+            var rem = try std.math.big.int.Managed.init(infra);
+            defer rem.deinit();
+            try qd.divTrunc(&rem, &q, &ten);
+            q.swap(&qd);
+            s -= 1;
+        }
+    }
+    if (result_neg) q.negate();
+    return allocFromManagedScale(rt, &q, @intCast(s));
+}
+
 /// Decode a BigDecimal Value into its unscaled significand.
 pub fn asUnscaled(v: Value) *const BigInt {
     std.debug.assert(v.tag() == .big_decimal);

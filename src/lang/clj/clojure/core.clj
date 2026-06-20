@@ -2267,6 +2267,15 @@
 (defmacro bound-fn [& fntail]
   `(bound-fn* (fn* ~@fntail)))
 
+;; `(with-precision precision & body)` — bind `*math-context*` so BigDecimal
+;; division in body rounds the quotient to `precision` significant figures
+;; (HALF_UP) instead of raising on a non-terminating expansion (D-467). clj also
+;; accepts a leading `:rounding mode`; cljw implements HALF_UP only for now, so the
+;; `:rounding mode` pair is accepted-and-ignored (other modes are a follow-up).
+(defmacro with-precision [precision & body]
+  (let [body (if (= :rounding (first body)) (nnext body) body)]
+    `(binding [*math-context* ~precision] ~@body)))
+
 (defmacro with-open
   "bindings => [name init ...]. Evaluates body in a try expression with
   names bound to the values of the inits, and a finally clause that calls

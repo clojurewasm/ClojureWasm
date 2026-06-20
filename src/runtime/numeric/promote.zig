@@ -24,6 +24,7 @@
 const std = @import("std");
 const value_mod = @import("../value/value.zig");
 const Value = value_mod.Value;
+const env_mod = @import("../env.zig");
 const Runtime = @import("../runtime.zig").Runtime;
 const big_int = @import("big_int.zig");
 const nb = @import("../value/nan_box.zig");
@@ -511,6 +512,20 @@ pub fn mulPromoting(rt: *Runtime, a: Value, b: Value) !Value {
 /// `a / b` with auto-promotion. Integer/Integer evenly-divisible
 /// returns the quotient; not-evenly-divisible returns a Ratio.
 /// Mirrors `Numbers.divide(Number, Number)` in JVM Clojure.
+/// The active `*math-context*` precision (from `with-precision`), or null when
+/// unbound / not a positive integer. Read lock-free from the dynamic-binding
+/// stack on this thread (D-467).
+fn mathContextPrecision(rt: *Runtime) ?u32 {
+    const vp = rt.math_context_var orelse return null;
+    const v: *const env_mod.Var = @ptrCast(@alignCast(vp));
+    const val = v.deref();
+    if (val.tag() == .integer) {
+        const p = val.asInteger();
+        if (p > 0) return @intCast(p);
+    }
+    return null;
+}
+
 pub fn divPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     if (a.isFloat() or b.isFloat()) {
         // IEEE-754 float division: x/0.0 → ±Inf, 0.0/0.0 → NaN (Zig float
@@ -522,6 +537,10 @@ pub fn divPromoting(rt: *Runtime, a: Value, b: Value) !Value {
     if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
         const ba = try coerceToBigDecimal(rt, a);
         const bb = try coerceToBigDecimal(rt, b);
+        // A `with-precision` binding rounds the quotient to that many significant
+        // figures (HALF_UP); else exact (raises on a non-terminating expansion). D-467.
+        if (mathContextPrecision(rt)) |p|
+            return try big_decimal_mod.allocDivPrecision(rt, ba, bb, p);
         return try big_decimal_mod.allocDiv(rt, ba, bb);
     }
 
