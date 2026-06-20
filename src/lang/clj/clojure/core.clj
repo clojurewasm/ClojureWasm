@@ -2232,6 +2232,35 @@
 (defmacro doc [sym]
   (list (quote print-doc) (list (quote var) sym)))
 
+;; `dir-fn` / `dir` / `apropos` — clojure.repl's REPL-discovery helpers. cljw
+;; carries them in core (alongside `doc`); upstream clojure.repl is host-coupled
+;; (source/pst/demunge → JVM stack/Compiler), so only this no-JVM-feasible subset
+;; is provided. `find-doc` is omitted: cljw vars carry no `:doc` metadata (AD-041).
+(defn dir-fn
+  "Returns a sorted seq of symbols naming the public vars in a namespace (or ns alias)."
+  [ns]
+  (sort (map first (ns-publics (the-ns ns)))))
+
+(defmacro dir
+  "Prints a sorted directory of the public vars in a namespace."
+  [nsname]
+  `(doseq [v# (dir-fn '~nsname)] (println v#)))
+
+(defn apropos
+  "Given a string or regex, returns a sorted seq of the fully-qualified symbols of
+  all public definitions in all currently-loaded namespaces whose name matches."
+  [str-or-pattern]
+  ;; `.contains` (String host method), not clojure.string/includes? — the latter's
+  ;; ns loads AFTER core.clj, so it is unresolvable at this bootstrap position.
+  (let [matches? (if (string? str-or-pattern)
+                   (fn [s] (.contains (str s) str-or-pattern))
+                   (fn [s] (re-find str-or-pattern (str s))))]
+    (sort (mapcat (fn [ns]
+                    (let [nm (str (ns-name ns))]
+                      (map (fn [s] (symbol nm (str s)))
+                           (filter matches? (keys (ns-publics ns))))))
+                  (all-ns)))))
+
 ;; `(pmap f coll & colls)` / `(pcalls & fns)` — PARALLEL map / parallel calls
 ;; (D-224), clj's exact impl: each element's `(f x)` runs on its own
 ;; `future` (a real OS thread); a `step`/`drop n` bounded look-ahead (n =
