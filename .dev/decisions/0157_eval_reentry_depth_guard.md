@@ -2,7 +2,11 @@
 
 - **Status**: Accepted (2026-06-21) — Devil's-advocate reflected; decision revised from
   the proposed eval-entry COUNTER to a catchable Kind (2b) + self-calibrating
-  stack-pointer guard (2a). Implementation staged: 2b first, 2a next (D-485).
+  stack-pointer guard (2a). **2b LANDED** (commit aaf391e3: `stack_overflow` own
+  catchable Kind → StackOverflowError; re-entry + nested-eval overflows now catch).
+  **2a PENDING** (the self-calibrating native-stack guard that converts the
+  validator/reducer SIGSEGV to a graceful error; also fixes the same-eval
+  direct-recursion-at-FRAMES_MAX catch edge) — the remaining D-485 work.
 - **Deciders**: autonomous loop (differential bug-sweep finding)
 - **Supersedes / relates**: D-485 (the tracking row + full mechanism trace),
   the watch-nesting partial fix (commit b69d97a9, `iref.enterWatchNotify` cap 256
