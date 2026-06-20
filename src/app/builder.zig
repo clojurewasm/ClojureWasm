@@ -138,14 +138,26 @@ pub fn buildBootstrapEnvelope(
         // per-file SourceContext (mirror of loadCoreFiles; idempotent).
         try rt.registerSource(file.label, file.source);
         var reader = Reader.init(arena, file.source);
+        var form_idx: usize = 0;
         while (true) {
             const form = (try reader.read()) orelse break;
-            const node = try analyzeForm(arena, rt, env, null, form, macro_table);
+            form_idx += 1;
+            // Build-time AOT eval has no renderer; a bare `error.ValueError` from
+            // a bundled lib gives no location. Report file label + form index +
+            // phase on the error path so a bootstrap trap is locatable (the
+            // stdlib/contrib sweep campaign relies on this).
+            const node = analyzeForm(arena, rt, env, null, form, macro_table) catch |err| {
+                std.debug.print("\n[AOT-FAIL] analyze: {s} form #{d}: {s}\n", .{ file.label, form_idx, @errorName(err) });
+                return err;
+            };
             const chunk = try vm_compiler.compile(rt, arena, node);
             try chunks.append(allocator, chunk);
             // Eval so later forms / files see earlier defs/macros/in-ns/requires
             // (A1-D2 Clojure-AOT — identical state evolution to loadCoreFiles).
-            _ = try driver.evalForm(rt, env, &locals, arena, node);
+            _ = driver.evalForm(rt, env, &locals, arena, node) catch |err| {
+                std.debug.print("\n[AOT-FAIL] eval: {s} form #{d}: {s}\n", .{ file.label, form_idx, @errorName(err) });
+                return err;
+            };
         }
     }
     return serialize.serializeEnvelope(allocator, chunks.items, null);

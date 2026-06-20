@@ -1,0 +1,32 @@
+(clojure.spec.alpha/valid? (clojure.spec.alpha/and int? pos?) 5)
+;;=> true
+(clojure.spec.alpha/conform (clojure.spec.alpha/cat :a int? :b string?) [1 "x"])
+;;=> {:a 1, :b "x"}
+(clojure.spec.alpha/conform (clojure.spec.alpha/* int?) [1 2 3])
+;;=> [1 2 3]
+(clojure.spec.alpha/conform (clojure.spec.alpha/+ int?) [1 2])
+;;=> [1 2]
+(clojure.spec.alpha/conform (clojure.spec.alpha/? int?) [])
+;;=> nil
+(clojure.spec.alpha/conform (clojure.spec.alpha/alt :i int? :s string?) ["x"])
+;;=> [:s "x"]
+(clojure.spec.alpha/conform (clojure.spec.alpha/coll-of int?) [1 2 3])
+;;=> [1 2 3]
+(clojure.spec.alpha/conform (clojure.spec.alpha/map-of keyword? int?) {:a 1 :b 2})
+;;=> {:a 1, :b 2}
+(clojure.spec.alpha/conform (clojure.spec.alpha/tuple int? string?) [1 "x"])
+;;=> [1 "x"]
+(clojure.spec.alpha/conform (clojure.spec.alpha/nilable int?) nil)
+;;=> nil
+(clojure.spec.alpha/conform (clojure.spec.alpha/cat :first int? :more (clojure.spec.alpha/* string?)) [1 "a" "b"])
+;;=> {:first 1, :more ["a" "b"]}
+(clojure.spec.alpha/conform (clojure.spec.alpha/conformer #(* 2 %)) 5)
+;;=> 10
+(clojure.spec.alpha/conform (clojure.spec.alpha/cat :a (clojure.spec.alpha/alt :x int? :y (clojure.spec.alpha/cat :p int? :q int?))) [1])
+;;=> {:a [:x 1]}
+(clojure.spec.alpha/valid? (clojure.spec.alpha/int-in 0 10) 5)
+;;=> true
+(clojure.spec.alpha/conform (clojure.spec.alpha/& (clojure.spec.alpha/* int?) #(even? (count %))) [1 2])
+;;=> [1 2]
+(clojure.spec.alpha/valid? (clojure.spec.alpha/coll-of int? :kind vector?) [1 2 3])
+;;=> true

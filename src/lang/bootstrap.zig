@@ -105,6 +105,14 @@ pub const FILES: []const FileEntry = &.{
     // Require-on-demand AND wasm-gated (the lookup below only serves it under
     // `-Dwasm`, since the wasm/ ns it rides is absent otherwise). Appended last.
     .{ .label = "<cljw.wasm>", .source = @embedFile("clj/cljw/wasm.clj") },
+    // clojure.spec.gen.alpha + clojure.spec.alpha — official stdlib (ships in
+    // clojure.jar), so eager-bundled (the stdlib-eager / contrib-completeness
+    // policy, 2026-06-20). gen loads FIRST (alpha `(:require clojure.spec.gen.alpha)`).
+    // Reproduced from spec.alpha with 4 no-JVM adaptations (see each file's header).
+    // Appended last so earlier FILES[N] indices stay stable. The list stays
+    // data-driven so a future eager→lazy switch (lazy-AOT, deferred) is local.
+    .{ .label = "<clojure.spec.gen.alpha>", .source = @embedFile("clj/clojure/spec/gen/alpha.clj") },
+    .{ .label = "<clojure.spec.alpha>", .source = @embedFile("clj/clojure/spec/alpha.clj") },
 };
 
 /// First file's source — exposed so `main.zig`'s renderer can fall
@@ -152,6 +160,8 @@ fn lookupEmbeddedFile(ns_name: []const u8) ?FileEntry {
     // build — so it is resolvable only there (a non-wasm build reports the ns as
     // not found, honest, rather than failing on an unresolvable `wasm/…` later).
     if (build_options.wasm and std.mem.eql(u8, ns_name, "cljw.wasm")) return FILES[23];
+    if (std.mem.eql(u8, ns_name, "clojure.spec.gen.alpha")) return FILES[24];
+    if (std.mem.eql(u8, ns_name, "clojure.spec.alpha")) return FILES[25];
     return null;
 }
 
