@@ -51,8 +51,10 @@ pub fn metaOf(rt: *Runtime, env: *Env, v: Value, loc: SourceLocation) anyerror!V
             break :blk td_mod.instMetaOf(v);
         },
         .reified_instance => blk: {
+            // A user IObj `-meta` impl wins; else the native meta slot (ADR-0134).
             var cs: dispatch.CallSite = .{};
-            break :blk (try dispatch.dispatchOrNull(rt, env, &cs, v, "IObj", "-meta", &.{v}, loc)) orelse Value.nil_val;
+            if (try dispatch.dispatchOrNull(rt, env, &cs, v, "IObj", "-meta", &.{v}, loc)) |r| break :blk r;
+            break :blk td_mod.reifiedInstMetaOf(v);
         },
         else => Value.nil_val,
     };

@@ -32,3 +32,7 @@
 ;;=> 3
 (meta (with-meta (seq [1 2]) {:a 1}))
 ;;=> {:a 1}
+(meta (with-meta (reify Object (toString [_] "x")) {:a 1}))
+;;=> {:a 1}
+(meta (with-meta (with-meta (reify Object (toString [_] "x")) {:a 1}) {:b 2}))
+;;=> {:b 2}

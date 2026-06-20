@@ -90,11 +90,13 @@ pub fn withMetaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
                 break :blk try td_mod.instWithMeta(rt, v, m);
             break :blk error_catalog.raise(.with_meta_target_not_iobj, loc, .{ .actual = @tagName(v.tag()) });
         },
-        // A reify has no native field — IObj `-with-meta` dispatch only.
+        // clj reify ALWAYS implements IObj: a user `-with-meta` impl wins, else
+        // the native meta slot mints a fresh instance (ADR-0134; plain deftype,
+        // which is NOT auto-IObj, stays `.typed_instance` and keeps its error).
         .reified_instance => blk: {
             var cs: dispatch.CallSite = .{};
             if (try dispatch.dispatchOrNull(rt, env, &cs, v, "IObj", "-with-meta", &.{ v, m }, loc)) |r| break :blk r;
-            break :blk error_catalog.raise(.with_meta_target_not_iobj, loc, .{ .actual = @tagName(v.tag()) });
+            break :blk try td_mod.reifiedInstWithMeta(rt, v, m);
         },
         else => error_catalog.raise(.with_meta_target_not_iobj, loc, .{ .actual = @tagName(v.tag()) }),
     };

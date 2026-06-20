@@ -469,11 +469,18 @@ pub fn asTypeDescriptorRef(val: Value) *const TypeDescriptor {
 pub const ReifiedInstance = extern struct {
     header: HeapHeader,
     descriptor: *const TypeDescriptor,
+    /// Instance metadata (ADR-0134 IObj value-driven slice, reify pulled by
+    /// clojure.spec.alpha — its `with-name` attaches `::name` to every spec
+    /// object). clj's reify ALWAYS implements IObj (a plain deftype does not —
+    /// that stays `.typed_instance` without this slot). `nil` for a fresh
+    /// instance; `with-meta` mints a fresh instance with this set. Ignored by
+    /// equality/hash (those walk descriptor + closure state).
+    meta: Value = .nil_val,
 
     comptime {
         std.debug.assert(@alignOf(ReifiedInstance) >= 8);
         std.debug.assert(@offsetOf(ReifiedInstance, "header") == 0);
-        std.debug.assert(@sizeOf(ReifiedInstance) == 16);
+        std.debug.assert(@sizeOf(ReifiedInstance) == 24);
     }
 };
 
@@ -498,15 +505,38 @@ pub fn allocReifiedInstance(rt: *Runtime, descriptor: *const TypeDescriptor) !Va
     inst.* = .{
         .header = HeapHeader.init(.reified_instance),
         .descriptor = descriptor,
+        .meta = .nil_val,
     };
     return Value.encodeHeapPtr(.reified_instance, inst);
 }
 
-/// Trace fn for `.reified_instance`. No-op — the struct carries no
-/// Value fields; the descriptor lives on `rt.gpa` and is not GC-reachable.
+/// `(meta <reify>)` — the instance metadata slot (`nil` when none). ADR-0134.
+pub fn reifiedInstMetaOf(v: Value) Value {
+    return v.decodePtr(*const ReifiedInstance).meta;
+}
+
+/// `(with-meta <reify> m)` — mint a FRESH reified instance sharing the
+/// descriptor (and thus the closure-captured method bindings, which live on
+/// the descriptor's method Functions, not on the instance) with metadata = m.
+/// `(identical? r (with-meta r m))` is false (distinct pointer), matching clj.
+pub fn reifiedInstWithMeta(rt: *Runtime, v: Value, meta: Value) !Value {
+    const base = v.decodePtr(*const ReifiedInstance);
+    const inst = try rt.gc.alloc(ReifiedInstance);
+    inst.* = .{
+        .header = HeapHeader.init(.reified_instance),
+        .descriptor = base.descriptor,
+        .meta = meta,
+    };
+    return Value.encodeHeapPtr(.reified_instance, inst);
+}
+
+/// Trace fn for `.reified_instance`. Marks the metadata slot (ADR-0134) —
+/// the descriptor lives on `rt.gpa` (never traced). A missed mark here is a
+/// use-after-free of the meta map (the GC hazard ADR-0134 step 2 flags).
 pub fn traceReifiedInstance(gc_ptr: *anyopaque, header: *HeapHeader) void {
-    _ = gc_ptr;
-    _ = header;
+    const gc: *gc_heap_mod.GcHeap = @ptrCast(@alignCast(gc_ptr));
+    const inst: *ReifiedInstance = @ptrCast(@alignCast(header));
+    if (inst.meta.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
 }
 
 /// Finaliser for `.reified_instance`. No-op — no `gc.infra`-owned
@@ -793,8 +823,8 @@ test "allocReifiedInstance allocates ReifiedInstance with descriptor + tag .reif
     try testing.expect(v.tag() == .reified_instance);
     const inst = v.decodePtr(*const ReifiedInstance);
     try testing.expect(inst.descriptor == td);
-    // ADR-0039: 16-byte two-cache-word struct.
-    try testing.expectEqual(@as(usize, 16), @sizeOf(ReifiedInstance));
+    // ADR-0039 header+descriptor + ADR-0134 meta slot = 24 bytes.
+    try testing.expectEqual(@as(usize, 24), @sizeOf(ReifiedInstance));
 }
 
 test "allocInstance allocates TypedInstance with field copy + tag .typed_instance" {

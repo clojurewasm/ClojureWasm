@@ -109,9 +109,12 @@ const IBLOCKING_TAGS = [_]Tag{ .future, .promise };
 /// queue, string_seq/array_seq, promise/future, fns) answer false until
 /// their meta slots land (the remaining ADR-0134 substrates). A deftype
 /// DECLARING clojure.lang.IObj answers true via matchUserType regardless.
-const IOBJ_TAGS = [_]Tag{ .vector, .list, .lazy_seq, .hash_set, .array_map, .hash_map, .symbol };
+/// `.reified_instance` joined 2026-06-20 (ADR-0134 reify slice, puller
+/// clojure.spec.alpha): clj reify ALWAYS implements IObj + carries a meta slot,
+/// so EVERY reify is metable (plain deftype = `.typed_instance`, NOT here).
+const IOBJ_TAGS = [_]Tag{ .vector, .list, .lazy_seq, .hash_set, .array_map, .hash_map, .symbol, .reified_instance };
 /// IMeta — meta-READABLE: the metable IObj set ∪ the reference family.
-const IMETA_TAGS = [_]Tag{ .vector, .list, .lazy_seq, .hash_set, .array_map, .hash_map, .symbol, .atom, .agent, .ref, .var_ref, .ns };
+const IMETA_TAGS = [_]Tag{ .vector, .list, .lazy_seq, .hash_set, .array_map, .hash_map, .symbol, .reified_instance, .atom, .agent, .ref, .var_ref, .ns };
 
 /// Empty native-tag set: a recognised interface with no native cljw
 /// implementor — it matches only host descriptors via host_supertypes.

@@ -182,3 +182,25 @@ INTERIM but not a finished form.
 
 DA recommendation: **Alt 2 (Full)**, with the per-tag torture corpus mandate +
 exact-clj-set matching. The main loop adopts this unchanged.
+
+## Revision history
+
+- **2026-06-20 — `.reified_instance` value-driven slice (puller: clojure.spec.alpha).**
+  spec's `with-name` attaches `::name` metadata to every spec object, and a spec
+  object is a `reify` instance — so spec's registry silently stored `nil` (with-name
+  fell through cljw's not-IObj reify arm) until reify became metable. This slice
+  executes the per-substrate template (steps 1-5) for the `reified_instance` tag:
+  a `meta: Value` slot on `ReifiedInstance` (16→24B), marked in
+  `traceReifiedInstance`; `reifiedInstWithMeta`/`reifiedInstMetaOf`; the
+  `metadata.zig` / `meta.zig` reify arms mint-fresh / read-slot instead of raising;
+  and `.reified_instance` added to `IOBJ_TAGS` + `IMETA_TAGS`. GC-trace verified
+  under `CLJW_GC_TORTURE=1` (round-trip corpus line in `metadata.txt` + a 50-instance
+  survival stress). **Correction to this ADR's own text:** the "first value-driven
+  slice" list (and the "already-metable … reify" note) named `reify` among
+  currently-metable tags — that was wrong for the auto path: a plain `reify` (no
+  explicit `clojure.lang.IObj` impl) was NOT metable; only a reify DECLARING IObj
+  answered true via `matchUserType`. clj's reify ALWAYS implements IObj, so the slot
+  is unconditional now. A plain `deftype` (`.typed_instance`) stays NOT-auto-IObj —
+  that clj asymmetry is preserved (e2e `deftype-not-iobj`). This is execution of the
+  already-accepted Alt-2 template for one more tag, not a new decision (no fresh
+  accept-gate / DA fork). e2e: `phase14_reify_metadata.sh`.
