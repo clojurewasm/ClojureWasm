@@ -310,8 +310,17 @@ resume_done() { (( RESUME )) && grep -qxF "$GATE_FP $1" "$GATE_LEDGER" 2>/dev/nu
 # Unit tests on BOTH backends. `zig build test` now defaults to vm (the
 # production default, ADR-0070 flip); tree_walk (the differential oracle) is
 # kept explicit so both backends retain unit coverage after the flip.
-run_step "zig_build_test_vm"        "zig build test -Dwasm"
-run_step "zig_build_test_tree_walk" "zig build test -Dwasm -Dbackend=tree_walk"
+# D-487 (2026-06-21, user-flagged): run the gate's unit tests in ReleaseSafe, NOT
+# Debug. The F-012 diff oracle EVALUATES many programs on the interpreter, so the
+# RUN dominates — and a Debug interpreter hits the perf cliff (measured: a Debug
+# test build is ~200s; ReleaseSafe is ~59s cold / ~1s warm — 3.4× cold, ~200× warm,
+# all tests still PASS). ReleaseSafe KEEPS every safety check (bounds/overflow/UB
+# panics) — only Debug's 0xAA undefined-poisoning is dropped, which the diff oracle
+# does not depend on (validated: all pass). A dev who wants Debug diagnostics runs
+# bare `zig build test -Dwasm` (no -Doptimize) — that path is unchanged. SSOT for the
+# build-mode policy: .claude/rules/perf_measure_release.md (amended).
+run_step "zig_build_test_vm"        "zig build test -Dwasm -Doptimize=ReleaseSafe"
+run_step "zig_build_test_tree_walk" "zig build test -Dwasm -Dbackend=tree_walk -Doptimize=ReleaseSafe"
 run_step "zone_check"           "bash scripts/zone_check.sh --gate"
 run_step "surface_marker"       "bash scripts/check_surface_marker.sh --gate"
 run_step "feature_keyword"      "bash scripts/check_feature_keyword.sh --gate"

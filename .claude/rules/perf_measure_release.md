@@ -48,17 +48,36 @@ Any future perf claim MUST cite a `scripts/perf.sh` (Release) number.
 
 ## Build-mode policy (structural unification)
 
-| Path                               | Build mode  | Why                                                    |
-|------------------------------------|-------------|--------------------------------------------------------|
-| Shipped binary / `cljw build`      | ReleaseSafe | optimised + all safety checks                          |
-| Gate e2e (`build_cljw`)            | ReleaseSafe | `run_all.sh` exports `CLJW_OPT=ReleaseSafe`            |
-| `phase4_*` backend e2e             | ReleaseSafe | unified 2026-05-31 (was `:-Debug` standalone default)  |
-| Gate unit tests (`zig build test`) | Debug       | correctness, max diagnostics, fast compile — NOT perf |
-| Dev `zig build`                    | Debug       | fast TDD iteration; NEVER time this binary             |
-| Perf measurement                   | ReleaseFast | `scripts/perf.sh` only                                 |
+| Path                                    | Build mode  | Why                                                       |
+|-----------------------------------------|-------------|-----------------------------------------------------------|
+| Shipped binary / `cljw build`           | ReleaseSafe | optimised + all safety checks                             |
+| Gate e2e (`build_cljw`)                 | ReleaseSafe | `run_all.sh` exports `CLJW_OPT=ReleaseSafe`               |
+| `phase4_*` backend e2e                  | ReleaseSafe | unified 2026-05-31 (was `:-Debug` standalone default)     |
+| **Gate unit tests (`zig build test`)** | **ReleaseSafe** | **D-487 flip (2026-06-21): the F-012 diff oracle RUNs many programs on the interpreter → RUN dominates; Debug hits the perf cliff. ReleaseSafe keeps ALL safety checks, only drops 0xAA poisoning (oracle doesn't depend on it). Gate steps pass `-Doptimize=ReleaseSafe`.** |
+| Dev `zig build test` (bare, no -Doptimize) | Debug    | max diagnostics (0xAA undefined-poisoning) for deep debugging — dev opt-in, NOT the gate |
+| Dev `zig build`                         | Debug       | fast TDD iteration; NEVER time this binary                |
+| Perf measurement                        | ReleaseFast | `scripts/perf.sh` only                                    |
 
-So: everything **perf-relevant** is optimised; only unit-test correctness
-runs Debug (it never measures speed). Debug stays the dev default purely
+### D-487 — why the gate's unit tests flipped Debug → ReleaseSafe (2026-06-21, user-flagged)
+
+The user flagged the smoke being slow. Root cause: `zig build test` ran **Debug**, and
+because `src/lang/diff_test.zig` (the F-012 dual-backend diff oracle) is `@import`ed into
+the test set, the test **RUN** evaluates many programs on the Debug interpreter — the
+Debug perf cliff (e.g. `(count (vec (range 1e6)))` = Debug 121s vs Release 0.02s). **Measured
+2026-06-21**: a test build = Debug ~200s vs **ReleaseSafe ~59s cold / ~1.0s warm** — 3.4×
+cold, ~200× warm — with **all tests still PASS** (ReleaseSafe keeps bounds/overflow/UB
+panics; only Debug's `undefined`-poisoning is gone, which the value-equality oracle does
+not rely on). Alternatives considered: **(a) keep Debug** (status quo — rejected: 3.4–200×
+slower for zero gate benefit, the urgency the user raised); **(b) ReleaseSafe** (chosen —
+strictly faster, safety preserved); **(c) a build-flag toggle** (rejected as over-built —
+bare `zig build test -Dwasm` ALREADY stays Debug for a dev who wants undefined-poisoning, so
+no new knob is needed; the gate just hard-codes ReleaseSafe). The earlier Debug-for-unit-tests
+rationale ("fast compile") was BACKWARDS for this codebase — the diff oracle makes the RUN,
+not the compile, the cost.
+
+So: everything **perf-relevant** is optimised, AND the gate's unit-test RUN (the diff
+oracle) now runs ReleaseSafe so the gate is fast. Debug stays available via the bare
+`zig build test -Dwasm` dev invocation for undefined-poisoning diagnostics. Debug stays the dev default purely
 for build-iteration speed.
 
 ## Related
