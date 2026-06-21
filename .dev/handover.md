@@ -3,6 +3,16 @@
 > ≤ 100 lines. Driving doc; framing per
 > [`.claude/rules/handover_framing.md`](../.claude/rules/handover_framing.md).
 
+## Stopped — user requested
+
+User instruction (2026-06-21): "ではこっちは一旦停止でOK" — after the JIT adoption
+experiment reached consolidation (7 local un-pushed commits `18c71c22`…`f82d8dd5`).
+The look-ahead full gate was stopped + reaped mid-run (the committed units are each
+smoke-green; the full-gate stamp is a nicety, not a blocker). The next session resumes
+the loop normally per the Resume contract below (delete this section on resume).
+3-item resume bridge (alt / next experiment / blocker) in
+`private/notes/9.0-jit-adoption-unit.md` § Stopped.
+
 ## Resume contract
 
 - **HEAD**: `main` (`git log` = SSOT). **NO-PUSH EXPERIMENT MODE** (user-directed
