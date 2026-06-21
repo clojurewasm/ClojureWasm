@@ -147,3 +147,173 @@ second half, a later ADR).
   + component-require path), `deps/parse.zig` (`:cljw/wasm-deps` schema).
 - Tracked by debt rows D-404 (impl, blocked-by zwasm CM API freeze) and the
   conformance/proof rows.
+
+---
+
+## Amendment 1 (2026-06-21, user-directed) — the finished-form surface is settled; blocker dissolved; implementation begins
+
+**Status of the blocker**: zwasm's Component-Model embedding API is now **functional
+and default-ON** (`-Dwasi=p2`, wasmtime-equivalent: real `wasm32-wasip2` components run
+e2e, typed embedder introspection + `invokeTyped`, official corpus 158/0/0). cljw already
+ships the lower layers: `wasm/load-component` / `wasm/component-exports` (surfaces the
+typed WIT signature) / `wasm/component-call`, plus a `require-component` macro, and
+`component.zig` already lifts/lowers record/tuple/variant/enum/option/result/flags/string/
+list per the §"contract" table. **D-404's "blocked-by zwasm CM API freeze" is DISSOLVED.**
+This amendment fixes the remaining finished-form decisions and starts the build-out.
+
+### A1. `:require` is overloaded with a STRING libspec (CLJS/CLJD lineage)
+
+The finished `ns` surface follows the **modern Clojure-family convention**, NOT JVM
+`:import`. JVM Clojure binds Java *classes* via `:import` (a flat, sub-functionless
+namespace); **ClojureScript** (`["react" :as React]`) and **ClojureDart**
+(`["package:flutter/material.dart" :as m]`) bind host *modules* via **`:require` with a
+STRING lib name**. A Wasm component is a module (a namespace of typed functions +
+resources), so it takes `:require`, not `:import`:
+
+```clojure
+(ns my.app
+  (:require [clojure.string :as str]            ; Clojure ns (unchanged)
+            ["greet.wasm" :as greeter]          ; Wasm component → aliased ns
+            ["img.wasm" :refer [resize crop]])) ; refer specific exports
+(greeter/greet "world")
+(resize photo 800 600)
+```
+
+A **string-headed libspec is unambiguously a Wasm component** in cljw (cljw has no
+JavaScript, so the CLJS "string = JS module" meaning cannot collide). `:as` aliases the
+component's exports under a namespace; `:refer` interns named exports into the current ns
+— identical mechanics to the existing `require-component` macro, which becomes the
+**dynamic/REPL escape hatch** (the `:require` directive is the static form; same
+`require` fn vs `:require` directive duality as Clojure). **`:import` stays Java-only**
+(running existing JVM-Clojure assets); `:require`-string is the *new-code worldview*.
+
+### A2. Resolution order (CLI-handy first; deps.edn; registry later)
+
+cljw is lightweight + CLI-handy, so a component must resolve **without** a `deps.edn`.
+The resolution kinds are distinguished by the **shape of the string** so precedence is
+explicit, not an implicit shadowing chain (the DA-fork's risk #1 — a bare `greet.wasm`
+next to the source must NOT silently shadow a classpath one):
+
+1. **Explicit relative** — a string starting `./` or `../` (`["./greet.wasm"]`) resolves
+   relative to the **executing source file** (the `.clj` doing the `:require`). Opt-in
+   only; a bare name never resolves source-relative.
+2. **Absolute path** — a string starting `/` (`["/opt/libs/greet.wasm"]`).
+3. **A bare logical name / classpath** (`["greet.wasm"]` or `["greet"]`) — resolves on
+   the existing `rt.load_paths` classpath + a `:cljw/wasm-deps` `deps.edn` alias
+   (`{:cljw/wasm-deps {greet {:component "libs/greet.wasm"}}}`, cw v0's seed). A bare name
+   is classpath-first (NOT source-relative-first) — this is the safe default that avoids
+   dependency-confusion.
+4. **Registry coordinate (deferred — debt row)** — a WIT package coordinate
+   (`["wasi:http/proxy@0.2.0"]`, `namespace:package@version`) resolves through a registry:
+   **OCI artifacts** (`application/vnd.wasm.config.v0+json`) + the **`wkg` / wasm-pkg-tools**
+   resolver (`registry.json` at `/.well-known/wasm-pkg/registry.json`; Warg is being
+   superseded by OCI). **Scoped IN but deferred**: land explicit-relative + absolute +
+   classpath first, registry as a follow-on.
+
+The reuse target: `lang/require_resolver.zig` (already maps ns→.clj on `load_paths`) +
+`app/deps/{parse,resolve}.zig` (already parse deps.edn + git deps). The component path is
+a sibling resolution arm, not a new subsystem.
+
+### A3. Always-latest Wasm/WASI — a consumer-side invariant (→ F-016)
+
+zwasm serves Wasm-1.0-only runtime users (`-Dwasi=p1` / lean opt-outs). **ClojureWasm,
+as a zwasm *consumer*, forces the full modern surface**: it always embeds zwasm with the
+**Component Model + WASI ≥ p2 (the latest zwasm ships; p3/async as it lands)** — there is
+no cljw build axis that downgrades to Wasm-1.0-only or drops the component model. Rationale:
+cljw is a *language for new code*; its users want the modern, self-describing component
+world, and removing the version-negotiation axis is a pit-of-success default ("reach for
+cljw's wasm interop → you get Wasm 3.0 + WASI latest, period"). Recorded as **F-016**
+(`project_facts.md`) — a user-declared invariant.
+
+### A4. Type information is RETAINED and LEVERAGED
+
+A component binary is self-describing, and `component-exports` already decodes the typed
+WIT signature (`{:name :params [[name type]…] :result type}`). The finished form attaches
+that to each interned Var and uses it:
+
+- **`:arglists` + `:doc` metadata** on each generated Var, derived from the WIT signature
+  (param names + types, result type) — so `(doc greeter/greet)` and editor arglist hints
+  work, identical hand-feel to a normal Clojure fn.
+- **Compile-time arity checking — gated to statically-resolved components only** (the
+  DA-fork's risk #2). When the `.wasm` resolves at analysis time (explicit-relative /
+  absolute / classpath / embedded), the analyzer decodes its exports and can reject a
+  wrong-arity call before runtime — richer than Java reflection. But a genuinely-dynamic
+  `(wasm/load runtime-path)` has **no** signature at analysis time, so the check would
+  silently degrade to none — two reliability tiers under one syntax. So: the compile-time
+  check fires ONLY for the static `:require` form (where the component is present + will
+  be embedded); the dynamic `wasm/load` path is runtime-checked, and that tiering is
+  **documented + explicit**, never a silent "sometimes-checked". Build-time note: a static
+  check means the `.wasm` must be present + byte-identical at every analysis (CI included);
+  the build embeds it (ADR-0158), so "present at build" and "present at analysis" coincide.
+- The WIT↔Clojure mapping table (§"contract") is the lift/lower SSOT; types are never
+  erased to "just call it".
+
+### A5. Resource ergonomics (prior-art-informed)
+
+WIT `resource` (a stateful, owned/borrowed handle) maps to an opaque GC-finalised handle
+(finaliser calls `resource.drop`; own/borrow tracked). The *call ergonomics* follow the
+CLJD precedent for host objects (`obj.method` → `(.method obj)` / `alias/Method`): a
+component exporting `resource counter { constructor; increment: func; }` surfaces as
+`counter/new` (constructor) + `(counter/increment c)` (method on the handle). Final
+method-access shape (a `counter/increment` Var taking the handle as arg 1, vs a
+`.increment` interop form) is settled in the implementing cycle; the handle + GC-drop
+contract is fixed here.
+
+### A6. Single-binary embedding → ADR-0158
+
+`cljw build` (the bytecode-envelope single-binary builder) must produce a **self-contained**
+binary for a module that `:require`s a component: the component's `.wasm` bytes are embedded
+into the envelope (cljw already `@embedFile`s the bundled `.clj` core), and the embedded-run
+startup resolves component `:require`s from the embedded bytes, not the filesystem. The
+mechanism is its own decision — see **ADR-0158**.
+
+### Alternatives considered (Amendment 1 — Devil's-advocate fork, 2026-06-21)
+
+A fresh-context DA fork challenged the design within the F-NNN envelope; its output:
+
+- **Alt A (smallest-diff) — keep `wasm/require-component` as the ONLY surface, no `ns`
+  integration.** Better: zero risk to the load-bearing `:require` analyzer path; never
+  mints a new string-libspec special case. Breaks: components aren't declared in `ns`, so
+  the single-binary static resolver (ADR-0158) must walk top-level forms — a *worse*
+  static-resolution story. **Rejected (F-002)**: a smaller-diff convenience; the finished
+  form wants deps in `ns`.
+- **Alt B (finished-form-clean) — a dedicated `(:components ["greet.wasm" :as g])`
+  directive, NOT an overloaded `:require`.** Better: zero string-libspec ambiguity; one
+  meaning per directive; the DA's sharpest point — *CLJS overloaded strings because it had
+  JS modules; cljw has no JS, so inheriting the overload is cargo-culting the lineage, not
+  its rationale*; one well-known key for the static resolver. Breaks: diverges from
+  CLJS/CLJD muscle memory; a Clojure dev won't reach for `:components` reflexively. No
+  F-NNN violation. **The DA recommended this.**
+- **Alt C (wildcard) — WIT-coordinate / logical-name only (`[greet :as g]` via
+  `:cljw/wasm-deps`), no path strings in committed `ns`.** Better: kills source-relative
+  resolution for committed code (relocatable sources); registry future drops in with no
+  surface change. Breaks: defeats the "CLI-handy WITHOUT deps.edn" goal (a logical name
+  needs a resolution map). No F-NNN violation but fights the stated goal.
+
+**Decision: keep the `:require`-string overload (Alt B *not* adopted).** This is the one
+point the user decided explicitly ("`:require` 上書きでいいです"). The DA's Alt-B argument
+is genuinely strong and recorded here, but the choice is a close, defensible-both-ways
+call (purity vs. CLJS/CLJD family-consistency + single-directive cognitive load + genuine
+zero-ambiguity in a no-JS runtime), which the user resolved by explicit preference; the
+permission-flip covers *open* points + *clearly-better* finished-form choices, not the
+override of a deliberate explicit decision on a toss-up. **The DA's three cross-cutting
+risk fixes ARE adopted** (they are not about Alt-B): resolution-order safety (A2 reordered
+— relative is `./`-opt-in, bare names are classpath-first), compile-time-check tiering (A4
+— static-only, explicit degraded tier), and F-016 kept as a *capability* invariant, not a
+consumer-side *rejection* policy (an older component the embedded runtime can satisfy still
+loads).
+
+### Implementation phasing (debt-tracked)
+
+A (ns `:require`-string wiring) → B (resolution order) → C (type leverage) → D (single-
+binary embed, ADR-0158) → E (resource ergonomics + registry). D-404 reframed from
+"blocked-by zwasm" to "the impl epic"; sub-rows per phase.
+
+### Sources (research, 2026-06-21)
+
+- Component distribution via OCI + `wkg`/wasm-pkg-tools; Warg → OCI transition:
+  [bytecodealliance/wasm-pkg-tools](https://github.com/bytecodealliance/wasm-pkg-tools),
+  [component-model: distributing](https://component-model.bytecodealliance.org/composing-and-distributing/distributing.html),
+  [MS OSS blog: components over OCI](https://opensource.microsoft.com/blog/2024/09/25/distributing-webassembly-components-using-oci-registries/).
+- Single-binary embedding precedent (precompile + link): Wasmtime pre-compiling
+  (`.cwasm`), Wasmer `create-exe` (wasm→object→link).

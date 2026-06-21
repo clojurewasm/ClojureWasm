@@ -13,18 +13,24 @@
   pinnable SHA (then revert `.zwasm` to the SHA-pin form preserved in build.zig.zon's
   comment + git history). Per-commit = smoke; commit, never push.
 
-- **First commit on resume MUST be**: continue the **JIT adoption experiment** (ROADMAP
-  §9.0 gap II×III; `.dev/zwasm_capabilities.md` = the live ledger). At the unit boundary
-  check the dogfooding mailbox (`zwasm_from_scratch/private/dogfooding_handover/to_cljw_*.md`
-  with `Status: SENT`) + zwasm HEAD. The cljw side has CONVERGED: the 1/2-arg JIT invoke
-  matrix is complete (all scalar combos incl. mixed; verified + e2e-locked) and `:engine
-  :jit` is solid on arm64. The only remaining JIT work is **D-488's default flip**
-  (`.interp`→`.auto`), now blocked by **zwasm D-489** (an x86_64-only JIT realworld
-  miscompile) + the x86_64 `.auto` 3-host verdict — both zwasm-internal. When zwasm
-  signals D-489 fixed + `.auto` 3-host green, flip the default (remove the PROVISIONAL
-  triad: marker + `feature_deps#engine_default` + D-488) and assert the no-opts default
-  rides the JIT. If zwasm has no new signal, self-select the next-highest-value quality
-  unit (per § The only stop).
+- **First commit on resume MUST be**: the **wasm-component-as-namespace epic (D-404)** —
+  the new active work (ROADMAP §9.0 gap area II axis 2; design in **ADR-0135 Amendment 1**
+  + **ADR-0158** + **F-016**, all landed 2026-06-21 user-directed, DA-fork incorporated).
+  Blocker DISSOLVED (zwasm CM is functional + default-ON; cljw already has
+  `require-component` + `component.zig` marshalling). Phases: **A** ns `:require`-string
+  libspec (`(:require ["x.wasm" :as x])`) → component wiring [START HERE] → **B**
+  resolution order (explicit-relative `./` / absolute / classpath+`:cljw/wasm-deps`;
+  registry deferred) → **C** type leverage (`:arglists`/`:doc`/meta + static-only
+  compile-time arity) → **D** `cljw build` single-binary component embed (ADR-0158) → **E**
+  resource ergonomics + registry. Impl A: wire the analyzer ns `:require` arm
+  (`eval/analyzer/special_forms.zig`) to route a string libspec to the existing
+  `require-component*` worker (`lang/clj/cljw/wasm.clj`); the dynamic `wasm/require-component`
+  macro becomes the REPL hatch.
+- **Background watch (NOT the active task)**: the JIT adoption experiment is CONVERGED
+  (1/2-arg invoke matrix complete, e2e-locked); its only open item is **D-488's `.auto`
+  default flip**, blocked by **zwasm D-489** (x86_64-only JIT miscompile, non-urgent,
+  zwasm-internal). Check the dogfooding mailbox (`to_cljw_*.md` SENT) at unit boundaries;
+  flip the default when zwasm signals D-489 fixed + `.auto` 3-host green.
 
 - **Forbidden this session**: `git push` (no-push experiment — relative-path dep).
   Flipping the cljw default to `.auto` before D-488 clears (x86_64 JIT miscompile, D-489).

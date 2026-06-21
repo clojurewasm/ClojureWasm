@@ -1070,16 +1070,24 @@ active:
     status: "PARTIAL (W1 first slice landed 2026-06-14): require-a-component WORKS — cljw.wasm/require-component (src/lang/clj/cljw/wasm.clj, wasm-gated bundled ns) interns one Var per component export into an :as namespace via clojure.core/intern + load-component + component-exports + component-call; export-name cleanup (#[constructor]/#[method] markers, pkg:iface/ prefix, resource type prefix stripped). (greeter/greet \"world\") -> \"Hello, world!\"; resource counter ctor/increment/get -> 6. e2e phase16_wasm_require_component.sh (-Dwasm). REMAINING W1 (:refer form DONE 2026-06-14): full WIT<->EDN marshalling table (record/variant/enum/option/result/flags/tuple — today only string/int/float/bool/char + resource handle via component-call); doc/arglists from WIT. W2: deps.edn {:wasm/component …} coords. === PARTIAL (2026-06-13): one-shot CM-API adoption WORKS, instance-caching BLOCKED on zwasm REQ-7. The zwasm-watch fired — all 6 cw CM-API requests landed (zwasm pin 5795c3d0). The experiment (push-suppressed, git stash@{0} 'wasm-component-experiment'; relative-path build.zig.zon) adopted comp.open/Opened + resolveFuncSig/WitType + REQ-2 labels: `(wasm/component-invoke …)` does greet (string→string), typed_payload (record/list/result roundtrip), resource constructor — hand-rolled TypeCtx/Opened deleted, full ADR-0135 value mapping. NEXT (instance caching → require-a-component) is BLOCKED: storing comp.open's Opened in a host heap box breaks resolveFuncSig (Opened not relocatable) → zwasm REQ-7 relayed (private/20260613_handover_from_zwasm/cw_finding_REQ7_opened_heap_stability.md; openBoxed→*Opened or relocatable Opened). Resume: watch that channel for a REQ-7 response → pop stash, re-land instance-caching (code written, in this session's history + note). Full state: private/notes/p14-wasm-component-experiment.md (§ instance caching + Extended challenge). Was: zwasm-WATCH → UNBLOCKING → open. NOTE 2026-06-14: the full marshalling-table verification is BLOCKED on a typed component FIXTURE — only greet (string) + resource_counter exist; record/variant/result need a new .wasm exercising those WIT types (or descope). doc/arglists need WIT introspection on the handle. Until a fixture lands, W1 self-selects to Track S."
     category: "wasm"
     barrier: |-
-      **blocked-by: zwasm's Component-Model embedding-API FREEZE** (zwasm ADR-0170,
-      `-Dcomponent` — functional but API not yet frozen). zwasm must expose: (a)
-      decode a component → list exports + their WIT types; (b) invoke an export with
-      Canonical-ABI lift/lower of host values. THEN cljw builds: the `require [comp
-      :as c]` / `(cljw.wasm/import-component …)` introspection that interns one Var
-      per export, the `deps.edn :cljw/wasm-deps` resolution layer (cw v0 seed), and
-      the ADR-0135 WIT↔clj mapping (record→map, result→throw, list→vector, resource→
-      GC handle, …). NO `.wit` sidecar (component is self-describing). Files (on
-      implement): runtime/cljw/wasm/component.zig (new), require_resolver.zig,
-      deps/parse.zig. Keep ADR-0099 core-module FFI as the layer below (not
+      **BLOCKER DISSOLVED (2026-06-21).** zwasm's Component-Model embedding API is now
+      functional + default-ON (`-Dwasi=p2`, corpus 158/0/0, typed introspection +
+      invokeTyped); cljw already ships `wasm/{load-component,component-exports,
+      component-call}` + the `require-component` macro + `component.zig` lifting/lowering
+      record/tuple/variant/enum/option/result/flags/string/list. D-404 is REFRAMED from
+      "blocked-by zwasm" to **the implementation epic for ADR-0135 Amendment 1**
+      (user-directed wasm-FFI end-user-experience design, 2026-06-21; DA-fork incorporated;
+      F-016 always-latest invariant). Phases (each its own sub-cycle, finished-form per
+      F-002): **A** ns `:require`-string libspec (`["x.wasm" :as x]`) → component wiring
+      (the dynamic `require-component` macro becomes the REPL hatch); **B** resolution
+      order (explicit-relative `./` / absolute / classpath+`:cljw/wasm-deps`; registry
+      OCI/wkg deferred); **C** type leverage (`:arglists`/`:doc`/meta from the WIT sig +
+      compile-time arity check, gated to static components); **D** `cljw build` single-
+      binary component embedding (ADR-0158); **E** resource ergonomics + registry. Files:
+      runtime/cljw/wasm/component.zig (exists), eval/analyzer/special_forms.zig (the ns
+      `:require` arm), lang/require_resolver.zig + app/deps/{parse,resolve}.zig (the
+      component resolution arm), app/builder.zig (D embed). Keep ADR-0099 core-module FFI
+      as the layer below (not
       deprecated). Cross-ref ADR-0135 (design SSOT), ADR-0099 (core spike), F-001,
       ROADMAP §1.2 axis 2 + §8.2. Re-check the zwasm freeze each Phase boundary.
     last_reviewed: "2026-06-14"

@@ -1170,3 +1170,47 @@ work items) · `.dev/sweep_plan.md` (the reorganization wired as the imminent ar
   completion grade now, and schedule a reorganization arc (roadmap rewrite + debt
   整理 + AI-instruction 大整理). Grounded by the 2026-06-15 concurrency assessment.
   Recorded as law; operationalised by ADR-0141 + D-440.
+
+## F-016 — ClojureWasm-as-zwasm-consumer forces the latest Wasm/WASI surface (Component Model always on)
+
+**Status**: `confirmed` — user-declared invariant. Amendable only by user
+direction + a Revision history entry.
+
+**Declared**: 2026-06-21 (user chat, wasm-FFI end-user-experience design).
+**Verbatim** (paraphrased): 「componentモデルはClojureWasmは消費者としては常に
+有効にして（zwasmは、wasm 1.0だけ使いたいユーザーとかのニーズがあるが、
+ClojureWasmを使うなら、Wasm3.0だし、WASI0.3まで使う（常に最新）を強制していいと
+思う。zwasmの消費者としての決め）」。
+
+**The invariant**: cljw always embeds zwasm with the **Component Model + WASI ≥ p2
+(the latest the pinned zwasm ships; p3/async as it lands)**. There is NO cljw build
+axis that downgrades to Wasm-1.0-only or drops the component model. zwasm itself
+keeps `-Dwasi=p1` / lean opt-outs for its OWN runtime users (who may want only Wasm
+1.0); **cljw-as-consumer does not expose that downgrade** — `cljw`'s `-Dwasm` build
+always selects zwasm's full modern surface.
+
+**Why** (the rationale, not just the rule): cljw is a *language for writing new
+code*. Its users reach for wasm interop to consume the modern, self-describing
+**component** world (ADR-0135 — `(:require ["x.wasm" :as x])`). Removing the
+version-negotiation axis is a pit-of-success default: "reach for cljw's wasm interop
+→ you get Wasm 3.0 + WASI latest, period." A user needing an *older* component is
+not blocked — an old component still loads (the runtime is a superset); they simply
+do not get a knob to make cljw itself older. Existing JVM-Clojure assets keep using
+`:import` (Java interop, ADR-0029); the wasm-component path is the new-code worldview.
+
+**Operational consequences**:
+- `cljw`'s `-Dwasm` build selects zwasm's component-model + WASI-≥p2 (never `p1`/none).
+- The `:require`-string component surface (ADR-0135 Amendment 1) is always available
+  in a `-Dwasm` build; there is no "components disabled" configuration to handle.
+- When zwasm advances WASI (p3/async), cljw tracks it as the new floor (no opt-back).
+
+**Cross-references**: F-001 (zwasm embedding unavoidable), ADR-0135 (component as
+namespace — the surface this invariant guarantees is always present), ADR-0158
+(single-binary embedding), ADR-0029 (`:import` = Java-compat, the legacy worldview).
+
+### Revision history
+
+- 2026-06-21 added: user declared, during the wasm-FFI end-user-experience design,
+  that ClojureWasm as a zwasm consumer forces the latest Wasm/WASI (Component Model
+  always on); no Wasm-1.0-only downgrade axis. Recorded as law; operationalised by
+  ADR-0135 Amendment 1 + ADR-0158.
