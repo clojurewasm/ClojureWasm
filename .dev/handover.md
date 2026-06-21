@@ -42,6 +42,21 @@ being cut. Current marker: see `private/.overnight_phase` (started `WAIT`). The 
 stop is **chain complete (`DONE`)** or a genuine user-only blocker (`BLOCKED`). Full state +
 the exact per-phase commands: `private/notes/overnight_runbook.md`.
 
+  **⟵ MORNING DECISION NEEDED (2026-06-22 overnight result).** The chain is parked at `WAIT`
+  on **your tag decision** — it is NOT a cljw or zwasm bug. zwasm `to_cljw_08`: the `.auto`→JIT
+  **flip is DEFERRED** (it needs a multi-cycle JIT-C-API campaign — a JIT instance doesn't yet
+  expose memory/table/global/get_func; 69 unit failures), so zwasm **reverted to the green
+  baseline `8a4a01905`** and **STOPPED, NOT cutting `v2.0.0-alpha.3`**, because in your plan the
+  tag was gated on the flip. **cljw is fully READY** — re-verified the green baseline: the entire
+  wasm e2e is GREEN (FFI, WASI `wasm/run`, resource lifecycle, require-component embed/classpath).
+  (My `from_cljw_06` "interp regression" was a FALSE ALARM — I `wasm/load`ed a WASI-command fixture
+  that needs `wasm/run`; retracted.) **Your call**: (A) tell zwasm to **tag `v2.0.0-alpha.3` now on
+  the green baseline** + defer the flip → the cron auto-runs the cljw pin→gate→`v1.0.0-alpha.N`
+  tag→playground→fly chain; or (B/C) have zwasm do a scoped/full JIT-C-API flip first (longer).
+  cljw will NOT unilaterally pin the bare `dbda9f873`/`8a4a01905` hash (your plan is tag-gated).
+  The cron keeps polling for the tag, so if you pick (A) and zwasm tags, it resumes with no further
+  input. **D-488 `.interp` default stays** (the flip that would've freed it is deferred).
+
 - **Forbidden this session**: `git push` (no-push experiment — relative-path dep).
   Flipping the cljw default to `.auto` before D-488 clears (x86_64 JIT miscompile, D-489).
   Bare `zig build test` WITHOUT `-Dwasm` (false fails — memory `zig_build_test_needs_dwasm`).
