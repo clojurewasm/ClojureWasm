@@ -1,12 +1,14 @@
 # zwasm capability ledger — cljw's view of the embedded Wasm runtime (F-001)
 
 > **SSOT for "what does the zwasm we embed offer, and what has cljw adopted".**
-> cljw embeds **zwasm v2** (F-001, unavoidable) as a SHA-pinned dependency. zwasm
-> is itself under active co-development (`~/Documents/MyProducts/zwasm_from_scratch`,
-> branch `zwasm-from-scratch`) and its embedding API is *growing* — notably toward
-> a **JIT-backed engine** (the cljw north star, ROADMAP §9.0 gap area II × III).
-> This file is the durable record so the loop never re-derives "is zwasm's JIT
-> ready yet?" from scratch.
+> cljw embeds **zwasm v2** (F-001, unavoidable). The dep is normally a SHA pin, but
+> is currently a **relative-path experiment** (`.path = "../zwasm_from_scratch"`,
+> user-directed 2026-06-21, no-push — see § Pin). zwasm is itself under active
+> co-development (`~/Documents/MyProducts/zwasm_from_scratch`, branch
+> `zwasm-from-scratch`) and its embedding API is *growing* — notably a **JIT-backed
+> engine** (the cljw north star, ROADMAP §9.0 gap area II × III), whose adoption is
+> now IN PROGRESS. This file is the durable record so the loop never re-derives
+> "is zwasm's JIT ready yet?" from scratch.
 
 ## The read-at-boundaries convention (why this file exists)
 
@@ -58,35 +60,34 @@ a cljw-side shim.
 
 ## Capability table (refresh at each boundary)
 
-| Capability                           | zwasm status (as of 2026-06-21)                          | in cljw's tree? | cljw adoption                                  | ref            |
-|--------------------------------------|----------------------------------------------------------|-----------------|------------------------------------------------|----------------|
-| Interp embedding (load/instantiate)  | ready                                                    | YES             | integrated behind `cljw.wasm/*` (-Dwasm)       | F-001, D-036   |
-| `invoke` (call exported fn)          | ready (interp + JIT)                                     | YES (rel-path)  | integrated; JIT `invoke` verified via unit test | D-036, D-488   |
-| Embedder hardening / WASI sandbox    | landed (security pass `…→6b08fe70`, 3-host green)      | mostly          | consumed (old security mailbox)                | CODEV          |
-| **Multi-arg JIT invoke (≤5/7 GPR)** | **ready** (embedder-stable, to_cljw_02 matrix)           | YES (rel-path)  | exercised by the dual-engine unit test         | to_cljw_02     |
-| **SIMD (v128) body on JIT**          | **ready** (JIT-only by design; interp has no v128 dispatch) | YES (rel-path) | verified (lane0→42 on .jit); interp traps catchably | D-488      |
-| `exportFuncSig` on JIT instance      | **ready** (JIT arm shipped @5b6449779, to_cljw_03)       | YES (rel-path)  | adopted — explicit `:jit` `wasm/call` works end-to-end (e2e) | D-488 |
-| **JIT-backed engine (`.auto`)**      | **REVERTED to interp** (@1e01e6797; C-surface incomplete, zwasm D-478) | YES (rel-path) | default pinned `.interp` (zwasm-endorsed); `:jit` explicit works | D-488 |
-| WIT component marshalling            | future                                                   | NO              | NOT adopted                                    | D-404          |
+| Capability                           | zwasm status (as of 2026-06-21)                                        | in cljw's tree? | cljw adoption                                                    | ref          |
+|--------------------------------------|------------------------------------------------------------------------|-----------------|------------------------------------------------------------------|--------------|
+| Interp embedding (load/instantiate)  | ready                                                                  | YES             | integrated behind `cljw.wasm/*` (-Dwasm)                         | F-001, D-036 |
+| `invoke` (call exported fn)          | ready (interp + JIT)                                                   | YES (rel-path)  | integrated; JIT `invoke` verified via unit test                  | D-036, D-488 |
+| Embedder hardening / WASI sandbox    | landed (security pass `…→6b08fe70`, 3-host green)                    | mostly          | consumed (old security mailbox)                                  | CODEV        |
+| **Multi-arg JIT invoke (≤5/7 GPR)** | **ready** (embedder-stable, to_cljw_02 matrix)                         | YES (rel-path)  | exercised by the dual-engine unit test                           | to_cljw_02   |
+| **SIMD (v128) body on JIT**          | **ready** (JIT-only by design; interp has no v128 dispatch)            | YES (rel-path)  | verified (lane0→42 on .jit); interp traps catchably             | D-488        |
+| `exportFuncSig` on JIT instance      | **ready** (JIT arm shipped @5b6449779, to_cljw_03)                     | YES (rel-path)  | adopted — explicit `:jit` `wasm/call` works end-to-end (e2e)    | D-488        |
+| **JIT-backed engine (`.auto`)**      | **REVERTED to interp** (@1e01e6797; C-surface incomplete, zwasm D-478) | YES (rel-path)  | default pinned `.interp` (zwasm-endorsed); `:jit` explicit works | D-488        |
+| WIT component marshalling            | future                                                                 | NO              | NOT adopted                                                      | D-404        |
 
-## Forward plan — the JIT adoption unit (gap area II × III)
+## Forward plan — the JIT adoption unit (gap area II × III) — ACTIVE
 
 The north-star capability is **running Wasm components through zwasm's JIT engine**
-from cljw. The trigger + shape:
+from cljw. The trigger has FIRED (to_cljw_02, 2026-06-21) and adoption is in progress:
 
-1. **Trigger**: zwasm cuts a commit/tag where ADR-0200's JIT engine + zwasm#477 invoke
-   are *embedder-stable* (a `to_cljw_NN.md` with the pin SHA announces it; from_cljw_01 sent 2026-06-20).
-2. **cljw action**: bump the `build.zig.zon` pin (user-confirmed) → open a gap-area-II
-   adoption unit: thread an `:engine :jit` (or auto) option through the finished-form
-   `(wasm/load path opts)` surface (D-350), keep interp as the fallback/default until
-   JIT is proven, add a diff-oracle/e2e that runs the SAME module both engines and
-   asserts equal results (the F-012 discipline applied to engine choice).
-3. **Do NOT** speculatively build a JIT facade in cljw before zwasm's API stabilises
-   (the CODEV stance: request-don't-workaround; F-002 finished-form, not a shim).
+1. **Trigger (DONE)**: zwasm shipped the embedder-stable JIT engine (`to_cljw_02`);
+   cljw switched the dep to relative-path (user-directed experiment, no-push).
+2. **cljw action (DONE this cycle)**: threaded `:engine :jit/:interp/:auto` through the
+   finished-form `(wasm/load path opts)` surface; interp kept as the default; landed a
+   dual-engine diff oracle (unit + e2e) per the F-012 discipline. Explicit `:jit`
+   `wasm/call` works end-to-end (zwasm shipped the exportFuncSig JIT arm @5b6449779).
+3. **Remaining (D-488)**: flip the default to `.auto` when zwasm re-lands its
+   `.auto`→JIT C-surface (their D-478). **Did NOT** build a cljw-side shim for the
+   exportFuncSig gap — requested it upstream instead (from_cljw_02, CODEV / F-002).
 
-D-036 is the master integration row; D-350 the embedding-API shape; this ledger is
-the capability tracker that tells the loop *when* the JIT row flips from BUILDING to
-adoptable.
+D-036 is the master integration row; D-350 the embedding-API shape; D-488 the
+remaining `.auto`-default flip; this ledger tracks adoption status per capability.
 
 ## Revision log
 
