@@ -48,15 +48,15 @@ Any future perf claim MUST cite a `scripts/perf.sh` (Release) number.
 
 ## Build-mode policy (structural unification)
 
-| Path                                    | Build mode  | Why                                                       |
-|-----------------------------------------|-------------|-----------------------------------------------------------|
-| Shipped binary / `cljw build`           | ReleaseSafe | optimised + all safety checks                             |
-| Gate e2e (`build_cljw`)                 | ReleaseSafe | `run_all.sh` exports `CLJW_OPT=ReleaseSafe`               |
-| `phase4_*` backend e2e                  | ReleaseSafe | unified 2026-05-31 (was `:-Debug` standalone default)     |
-| **Gate unit tests (`zig build test`)** | **ReleaseSafe** | **D-487 flip (2026-06-21): the F-012 diff oracle RUNs many programs on the interpreter → RUN dominates; Debug hits the perf cliff. ReleaseSafe keeps ALL safety checks, only drops 0xAA poisoning (oracle doesn't depend on it). Gate steps pass `-Doptimize=ReleaseSafe`.** |
-| Dev `zig build test` (bare, no -Doptimize) | Debug    | max diagnostics (0xAA undefined-poisoning) for deep debugging — dev opt-in, NOT the gate |
-| Dev `zig build`                         | Debug       | fast TDD iteration; NEVER time this binary                |
-| Perf measurement                        | ReleaseFast | `scripts/perf.sh` only                                    |
+| Path                                       | Build mode      | Why                                                                                                                                                                                                                                                                           |
+|--------------------------------------------|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Shipped binary / `cljw build`              | ReleaseSafe     | optimised + all safety checks                                                                                                                                                                                                                                                 |
+| Gate e2e (`build_cljw`)                    | ReleaseSafe     | `run_all.sh` exports `CLJW_OPT=ReleaseSafe`                                                                                                                                                                                                                                   |
+| `phase4_*` backend e2e                     | ReleaseSafe     | unified 2026-05-31 (was `:-Debug` standalone default)                                                                                                                                                                                                                         |
+| **Gate unit tests (`zig build test`)**     | **ReleaseSafe** | **D-487 flip (2026-06-21): the F-012 diff oracle RUNs many programs on the interpreter → RUN dominates; Debug hits the perf cliff. ReleaseSafe keeps ALL safety checks, only drops 0xAA poisoning (oracle doesn't depend on it). Gate steps pass `-Doptimize=ReleaseSafe`.** |
+| Dev `zig build test` (bare, no -Doptimize) | Debug           | max diagnostics (0xAA undefined-poisoning) for deep debugging — dev opt-in, NOT the gate                                                                                                                                                                                     |
+| Dev `zig build`                            | Debug           | fast TDD iteration; NEVER time this binary                                                                                                                                                                                                                                    |
+| Perf measurement                           | ReleaseFast     | `scripts/perf.sh` only                                                                                                                                                                                                                                                        |
 
 ### D-487 — why the gate's unit tests flipped Debug → ReleaseSafe (2026-06-21, user-flagged)
 
