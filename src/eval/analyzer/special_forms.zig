@@ -813,7 +813,9 @@ pub fn analyzeRequire(
     // dynamic escape hatch `(cljw.wasm/require-component "path" :as alias)`.
     var components: std.ArrayList(ComponentRequire) = .empty;
     defer components.deinit(arena);
-    try appendLibspecs(arena, &libspecs, &components, inner_form, false);
+    // rt = null: the dynamic `(require …)` path rejects components below before the
+    // resolved path is used, so the classpath search is intentionally skipped here.
+    try appendLibspecs(null, arena, &libspecs, &components, inner_form, false);
     if (components.items.len > 0)
         return error_catalog.raise(.feature_not_supported, form.location, .{ .name = "dynamic (require …) of a Wasm component — use (cljw.wasm/require-component \"path\" :as alias) or the ns :require directive" });
 
@@ -890,6 +892,7 @@ fn isComponentLibspec(f: Form) bool {
 }
 
 fn appendLibspecs(
+    rt: ?*Runtime,
     arena: std.mem.Allocator,
     out: *std.ArrayList(node_mod.RequireNode),
     components: *std.ArrayList(ComponentRequire),
@@ -897,7 +900,7 @@ fn appendLibspecs(
     default_refer_all: bool,
 ) AnalyzeError!void {
     if (isComponentLibspec(libspec_form)) {
-        try components.append(arena, try parseComponentLibspec(arena, libspec_form));
+        try components.append(arena, try parseComponentLibspec(rt, arena, libspec_form));
         return;
     }
     if (isPrefixList(libspec_form)) {
@@ -911,7 +914,7 @@ fn appendLibspecs(
         const prefix = vec[0].data.symbol.name;
         for (vec[1..]) |sub| {
             const expanded = try prependPrefix(arena, prefix, sub);
-            try appendLibspecs(arena, out, components, expanded, default_refer_all);
+            try appendLibspecs(rt, arena, out, components, expanded, default_refer_all);
         }
         return;
     }
@@ -922,35 +925,56 @@ fn appendLibspecs(
 /// Resolve a component libspec path (ADR-0135 Amendment 1 / A2 resolution order).
 /// An EXPLICIT-relative path (`./x.wasm` / `../x.wasm`) resolves against the
 /// directory of the executing source file (`loc.file`) — so a script's component
-/// sits next to it, deps.edn-free (the CLI-handy case). Absolute (`/…`) and bare
-/// names pass through unchanged: absolute is used as-is, and a bare name stays
-/// cwd-relative via the load-component FS jail today (the bare→classpath /
-/// `:cljw/wasm-deps` arm is a later phase). The `./`-resolution is a no-op when
-/// the source is a bundled label (`<…>`) or unknown — falls back to the raw path.
-fn resolveComponentPath(arena: std.mem.Allocator, raw: []const u8, loc: @import("../../runtime/error/info.zig").SourceLocation) AnalyzeError![]const u8 {
+/// sits next to it, deps.edn-free (the CLI-handy case). Absolute (`/…`) is used
+/// as-is. A BARE name (`x.wasm`) searches the classpath (`rt.load_paths`) for
+/// `<dir>/x.wasm`, mirroring the `.clj` filesystem resolver — so `(:require
+/// ["mylib.wasm" :as m])` finds a component on `-cp`/`CLJW_PATH`/deps.edn `:paths`,
+/// not only cwd. First classpath hit wins; no hit → the raw cwd-relative path
+/// (unchanged fallback, no regression). The `:cljw/wasm-deps` coordinate + a
+/// registry remain a later arm. The `./`-resolution is a no-op when the source
+/// is a bundled label (`<…>`) or unknown — falls back to the raw path. `rt` is
+/// null only on the dynamic `(require …)` path, which rejects components before
+/// the resolved value is used, so the classpath search is skipped harmlessly.
+fn resolveComponentPath(rt: ?*Runtime, arena: std.mem.Allocator, raw: []const u8, loc: @import("../../runtime/error/info.zig").SourceLocation) AnalyzeError![]const u8 {
     if (std.mem.startsWith(u8, raw, "./") or std.mem.startsWith(u8, raw, "../")) {
         const src = loc.file;
         if (src.len > 0 and src[0] != '<' and !std.mem.eql(u8, src, "unknown")) {
             const dir = std.Io.Dir.path.dirnamePosix(src) orelse ".";
             return std.Io.Dir.path.join(arena, &.{ dir, raw });
         }
+        return arena.dupe(u8, raw);
+    }
+    if (raw.len > 0 and raw[0] == '/') return arena.dupe(u8, raw); // absolute: as-is.
+    if (rt) |r| {
+        for (r.load_paths) |dir| {
+            const cand = try std.fmt.allocPrint(arena, "{s}/{s}", .{ dir, raw });
+            if (componentFileExists(r, cand)) return cand;
+        }
     }
     return arena.dupe(u8, raw);
+}
+
+/// Probe whether a classpath candidate file exists (open+close, no read) so a
+/// bare component name resolves against `rt.load_paths` at analyze time.
+fn componentFileExists(rt: *Runtime, path: []const u8) bool {
+    const f = std.Io.Dir.cwd().openFile(rt.io, path, .{}) catch return false;
+    f.close(rt.io);
+    return true;
 }
 
 /// Parse a STRING libspec into a `ComponentRequire` (ADR-0135 Amendment 1):
 /// `"x.wasm"` (bare) or `["x.wasm" :as g :refer [a b]]` (string head + the same
 /// `:as` / `:refer` options as a Clojure libspec). The head string is the path.
-fn parseComponentLibspec(arena: std.mem.Allocator, f: Form) AnalyzeError!ComponentRequire {
+fn parseComponentLibspec(rt: ?*Runtime, arena: std.mem.Allocator, f: Form) AnalyzeError!ComponentRequire {
     if (f.data == .string) {
-        return .{ .path = try resolveComponentPath(arena, f.data.string, f.location), .loc = f.location };
+        return .{ .path = try resolveComponentPath(rt, arena, f.data.string, f.location), .loc = f.location };
     }
     const elems: []const Form = switch (f.data) {
         .vector => |v| v,
         .list => |l| l,
         else => unreachable, // isComponentLibspec gated this
     };
-    const path = try resolveComponentPath(arena, elems[0].data.string, f.location);
+    const path = try resolveComponentPath(rt, arena, elems[0].data.string, f.location);
     var alias: ?[]const u8 = null;
     var refers: []const []const u8 = &.{};
     var i: usize = 1;
@@ -1169,14 +1193,14 @@ pub fn analyzeNs(
             try parseReferClojureFilters(arena, inner[1..], &refer_clojure_exclude, &refer_clojure_only, directive.location);
         } else if (std.mem.eql(u8, kw.name, "require")) {
             for (inner[1..]) |libspec_form| {
-                try appendLibspecs(arena, &libspecs, &components, libspec_form, false);
+                try appendLibspecs(rt, arena, &libspecs, &components, libspec_form, false);
             }
         } else if (std.mem.eql(u8, kw.name, "use")) {
             // `(:use foo)` = require foo + refer ALL its publics; `[foo :only
             // (a)]` narrows to a whitelist, `[foo :exclude (a)]` to a blacklist
             // (default_refer_all=true is the bare-`:use` shape).
             for (inner[1..]) |libspec_form| {
-                try appendLibspecs(arena, &libspecs, &components, libspec_form, true);
+                try appendLibspecs(rt, arena, &libspecs, &components, libspec_form, true);
             }
         } else if (std.mem.eql(u8, kw.name, "import")) {
             try parseImportForms(arena, inner[1..], &imports);

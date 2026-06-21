@@ -59,6 +59,18 @@ $srcrel_out"
 echo "$srcrel_out" | grep -q "src-rel: Hello, rel!" || fail "source-relative './' did not resolve against the source dir:
 $srcrel_out"
 
+# --- ADR-0135 A2 (D-404 Impl E): a BARE component name resolves via the CLASSPATH ---
+# `(:require ["greet_component.wasm" :as g])` with `-cp test/e2e/fixtures/wasm` — the
+# bare name (no `./` or `/`) is searched on the classpath, like a `.clj` lib. The
+# component is NOT in cwd, only on `-cp`, so a cwd-relative resolve would miss.
+cp_out="$("$BIN" test/e2e/fixtures/wasm/ns_classpath_require.clj -cp test/e2e/fixtures/wasm 2>&1)" \
+  || fail "classpath bare-name component :require failed:
+$cp_out"
+echo "$cp_out" | grep -q "classpath: Hello, cp!" \
+  || fail "bare component name did not resolve via the classpath (-cp):
+$cp_out"
+echo "PASS ns-require-classpath -> bare name resolved on -cp"
+
 # --- ADR-0158 (D-404 Impl D): `cljw build` embeds the :require'd component bytes ---
 # Build the source-relative script FROM THE REPO ROOT so the baked component path
 # is RELATIVE (`test/e2e/fixtures/wasm/./greet_component.wasm`). Then run the

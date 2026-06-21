@@ -1099,8 +1099,17 @@ active:
       Impl-B gap: `buildEnvelope` did NOT thread the source label into the reader, so
       source-relative `./x.wasm` resolved against cwd not the source dir at BUILD (only
       runner did) → IoError; now `buildEnvelope` takes `source_label` + sets
-      `reader.file_name` (mirror of runner.zig). REMAINING: E (resource ergonomics + the
-      bare→classpath/`:cljw/wasm-deps` + registry resolution arm). Original approach (as
+      `reader.file_name` (mirror of runner.zig).
+      **Impl-E partial (2026-06-21)**: the **bare→classpath** resolution arm LANDED —
+      a bare component name (`["mylib.wasm" :as m]`, no `./`|`/`) searches `rt.load_paths`
+      (`-cp`/`CLJW_PATH`/deps.edn `:paths`), mirroring the `.clj` filesystem resolver
+      (`special_forms.resolveComponentPath` now takes `rt`; first classpath hit wins, no hit
+      → raw cwd-relative fallback = no regression); e2e `ns_classpath_require.clj` + `-cp`.
+      The resolved path is baked/embedded so Impl-D embedding still keys correctly. REMAINING
+      in E: **resource ergonomics** (WIT resource → own-handle as a GC-finalised Clojure value
+      calling zwasm `Opened.dropResource` REQ-5 at GC; borrow stays non-owning — see
+      from_cljw_05 mailbox, semantics-confirm pending) + the `:cljw/wasm-deps` deps.edn
+      coordinate + registry (OCI/wkg) resolution arm (deferred). Original approach (as
       implemented): RED confirmed —
       `(ns a (:require ["x.wasm" :as g]))` errors "require libspec must begin with a symbol"
       (special_forms.zig:914). KEY INSIGHT: in the `ns` special form, DESUGAR a string
