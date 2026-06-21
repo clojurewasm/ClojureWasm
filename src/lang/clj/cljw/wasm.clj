@@ -33,18 +33,26 @@
   (let [handle (wasm/load-component path)
         exports (wasm/component-exports path)
         var-fn (fn [raw] (fn [& args] (apply wasm/component-call handle raw args)))
+        ;; ADR-0135 A4 — leverage the component's self-describing WIT signature:
+        ;; attach `:arglists` (one arity, param names from `(:params e)`) to each
+        ;; interned Var, so `(doc …)` + editor arglist hints work like a normal fn.
+        ;; (`:doc` is intentionally NOT attached — cljw Vars carry no :doc per AD-041.)
+        intern! (fn [ns-obj sym e]
+                  (let [v (intern ns-obj sym (var-fn (:name e)))]
+                    (alter-meta! v assoc :arglists (list (mapv (comp symbol first) (:params e))))
+                    v))
         as-sym (:as opts)
         refer-syms (:refer opts)]
     (when as-sym
       (let [target (create-ns as-sym)]
         (doseq [e exports]
-          (intern target (symbol (strip-export-name (:name e))) (var-fn (:name e))))))
+          (intern! target (symbol (strip-export-name (:name e))) e))))
     (when (seq refer-syms)
       (let [cur (the-ns *ns*)
-            by-clean (reduce (fn [m e] (assoc m (strip-export-name (:name e)) (:name e))) {} exports)]
+            by-clean (reduce (fn [m e] (assoc m (strip-export-name (:name e)) e)) {} exports)]
         (doseq [s refer-syms]
-          (when-let [raw (get by-clean (name s))]
-            (intern cur (symbol (name s)) (var-fn raw))))))
+          (when-let [e (get by-clean (name s))]
+            (intern! cur (symbol (name s)) e)))))
     (if as-sym (the-ns as-sym) (the-ns *ns*))))
 
 (defmacro require-component

@@ -12,6 +12,12 @@
 (assert (= "Hello, world!" (greeter/greet "world")) (pr-str (greeter/greet "world")))
 (println "PASS ns-require-greet")
 
+;; ADR-0135 A4 — the component's WIT signature surfaces as `:arglists` metadata
+;; (param names), so the generated Var reads like a normal Clojure fn.
+(assert (= '([name]) (:arglists (meta (var greeter/greet))))
+        (pr-str (:arglists (meta (var greeter/greet)))))
+(println "PASS ns-require-arglists")
+
 ;; resource component — ctor + methods as Vars in the `ctr` ns.
 (let [h (ctr/counter 5)]
   (ctr/increment h)

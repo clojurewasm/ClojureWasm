@@ -1080,10 +1080,17 @@ active:
       F-016 always-latest invariant). Phases (each its own sub-cycle, finished-form per
       F-002): **A** ns `:require`-string libspec (`["x.wasm" :as x]`) → component wiring
       (the dynamic `require-component` macro becomes the REPL hatch).
-      **Impl-A LANDED (2026-06-21)**: `(ns app (:require ["x.wasm" :as g] ["y.wasm" :refer
-      [f]]))` works — greet/resource/:refer e2e green (phase16_wasm_require_component.sh +
-      wasm_ns_require_component_probe.clj). Both backends pass (generic do/call eval). Next
-      = Impl B (resolution order). Original approach (as implemented): RED confirmed —
+      **Impl-A/B/C LANDED (2026-06-21)**: A — `(ns app (:require ["x.wasm" :as g] ["y.wasm"
+      :refer [f]]))` works (desugar→DoNode, both backends, greet/resource/:refer e2e green).
+      B — source-relative `./`/`../` resolves against the executing source dir, NOT cwd
+      (verified from /tmp w/ abs path; runner.zig stamps reader.file_name=source_label +
+      special_forms.resolveComponentPath). C — the WIT signature surfaces as `:arglists`
+      metadata on each component Var (param names; `(:arglists (meta #'greeter/greet))` =
+      `([name])`; `:doc` skipped per AD-041). REMAINING: D (single-binary embed, ADR-0158 —
+      buildEnvelope collects resolved component paths during compile → embeds .wasm bytes →
+      run-side resolver serves embedded; the biggest phase) → E (resource ergonomics + the
+      bare→classpath/`:cljw/wasm-deps` + registry resolution arm). Original approach (as
+      implemented): RED confirmed —
       `(ns a (:require ["x.wasm" :as g]))` errors "require libspec must begin with a symbol"
       (special_forms.zig:914). KEY INSIGHT: in the `ns` special form, DESUGAR a string
       libspec into a synthesized call `(cljw.wasm/require-component-libspec "path" "alias"

@@ -39,6 +39,7 @@ ns_out="$("$BIN" test/e2e/fixtures/wasm_ns_require_component_probe.clj 2>&1)" ||
 $ns_out"
 for marker in \
   "PASS ns-require-greet" \
+  "PASS ns-require-arglists" \
   "PASS ns-require-resource" \
   "PASS ns-require-refer"; do
   echo "$ns_out" | grep -q "$marker" || fail "missing: $marker
