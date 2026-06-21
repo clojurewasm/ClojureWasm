@@ -1079,7 +1079,24 @@ active:
       (user-directed wasm-FFI end-user-experience design, 2026-06-21; DA-fork incorporated;
       F-016 always-latest invariant). Phases (each its own sub-cycle, finished-form per
       F-002): **A** ns `:require`-string libspec (`["x.wasm" :as x]`) → component wiring
-      (the dynamic `require-component` macro becomes the REPL hatch); **B** resolution
+      (the dynamic `require-component` macro becomes the REPL hatch).
+      **Impl-A concrete approach (verified 2026-06-21, next-cycle ready)**: RED confirmed —
+      `(ns a (:require ["x.wasm" :as g]))` errors "require libspec must begin with a symbol"
+      (special_forms.zig:914). KEY INSIGHT: in the `ns` special form, DESUGAR a string
+      libspec into a synthesized call `(cljw.wasm/require-component-libspec "path" "alias"
+      ["refer"…])` and return `DoNode{[ns_node, …calls]}` — both backends (tree_walk
+      evalRequire AND the vm's separate op_require_with_libspec) then handle it via GENERIC
+      do/call eval, so NO require-dispatch surgery in either backend. Two files only:
+      (1) `lang/clj/cljw/wasm.clj` add `(defn require-component-libspec [path alias-str
+      refer-strs] (require-component* path {:as (when alias-str (symbol alias-str)) :refer
+      (mapv symbol refer-strs)}))`; (2) `eval/analyzer/special_forms.zig` — parseLibspecForm
+      accepts a `.string` head (collect path+alias+refers), parseNsForm synthesizes the call
+      Forms (`Form{.data=.{.list=…}}` per the defn-desugar pattern at special_forms.zig:497-563)
+      + `analyzer_mod.analyze` + wrap in DoNode. FormData variants confirmed (form.zig:26):
+      `nil/string/symbol{ns,name}/vector/list`. e2e: extend phase16_wasm_require_component.sh
+      with ns-`:require` cases (greet + resource + :refer) using the existing greet_component.wasm
+      + resource_counter.wasm fixtures. Full investigation: private/notes/D404-require-wasm-component.md.
+      **B** resolution
       order (explicit-relative `./` / absolute / classpath+`:cljw/wasm-deps`; registry
       OCI/wkg deferred); **C** type leverage (`:arglists`/`:doc`/meta from the WIT sig +
       compile-time arity check, gated to static components); **D** `cljw build` single-

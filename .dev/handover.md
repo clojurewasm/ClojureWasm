@@ -3,6 +3,23 @@
 > ≤ 100 lines. Driving doc; framing per
 > [`.claude/rules/handover_framing.md`](../.claude/rules/handover_framing.md).
 
+## Stopped — user requested
+
+User instruction (2026-06-21): "では、きりがよくなったときで、参照チェーンと配線を監査して
+止め、せっかくの調査がなくならないようにした上で、次のクリアセッションからcontinueできる
+状態にして止めて。" Stopped cleanly at the design-landed point (HEAD `e6a987f2`, working tree
+CLEAN — Impl A was investigated + approach-fixed but NOT yet coded, so no broken source).
+Wiring/reference audit PASSED: debt IDs resolve, all e2e registered, smoke fingerprint
+matches HEAD (green). The research is PRESERVED in git: ADR-0135 Amendment 1 + ADR-0158 +
+F-016 (the design + DA-fork alternatives + web-search sources) + the **Impl-A concrete
+approach promoted into the D-404 barrier** (git-tracked, was gitignored-only). Resume bridge:
+- **Next experiment**: implement Impl A per the D-404 barrier's "Impl-A concrete approach"
+  (desugar a string libspec into a synthesized `(cljw.wasm/require-component-libspec …)` call
+  wrapped in a `DoNode` — 2 files, NO backend require-surgery). RED is confirmed.
+- **Alt not taken**: the DA-fork's `:components`-directive alternative (recorded in ADR-0135
+  Alternatives — user chose `:require`-string overload).
+- **Blocker**: none — zwasm CM is functional + default-ON; impl is unblocked and ready.
+
 ## Resume contract
 
 - **HEAD**: `main` (`git log` = SSOT). **NO-PUSH EXPERIMENT MODE** (user-directed
