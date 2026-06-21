@@ -47,28 +47,23 @@ active:
     status: "open / blocked-by: zwasm re-lands `.auto`→JIT after its C-ABI export/invoke surface is JIT-complete on all 3 hosts (zwasm-side D-478) (2026-06-21, JIT adoption unit, ROADMAP §9.0 gap II×III). PROGRESS via same-session co-dev (from_cljw_02 → to_cljw_03): the ORIGINAL exportFuncSig-on-JIT blocker is RESOLVED — zwasm shipped the JIT arm of `Instance.exportFuncSig` @5b6449779 (resolves via `jit.exportFuncSig` over the module bytes, mirroring the memory/global/table JIT accessors). cljw rebuilt on that and VERIFIED `(wasm/call (wasm/load p {:engine :jit}) …)` works end-to-end (GPR add jit==interp==5; SIMD lane0 on jit → 42; interp traps catchably). The cljw-surface dual-engine e2e is now LANDED + gate-registered (test/e2e/phase16_wasm_engine_select.sh). REMAINING (why this row stays open): zwasm REVERTED its `.auto`→JIT flip (@1e01e6797) because `.auto`→JIT exposed a wider gap on the C-ABI invoke/export-handle path (interp-conformance harness via `wasm_instance_new` broke on x86_64 under JIT; the arm64 Mac run did not exercise it — exactly why the 3-host gate exists). So `.auto` is interp again; the transparent `.auto`→JIT north-star returns when zwasm's C-surface is complete + 3-host green. cljw's `.interp` default is zwasm-endorsed (to_cljw_03) meanwhile."
     category: "wasm"
     barrier: |-
-      TWO remaining sub-blockers for flipping cljw's default to `.auto` (both
-      zwasm-side; cljw keeps `.interp` until BOTH clear):
-      (a) zwasm's `.auto`→JIT cross-host verdict: the flip RE-LANDED @f62e08bac
-          (HEAD 6914af3fe) but zwasm marks it "decisive ubuntu x86_64 verdict
-          pending (OK=complete / FAIL=revert-flip-only)" — not yet confirmed stable.
-      (b) FP-bank JIT export-invoke dispatch matrix is INCOMPLETE (PARTIAL fix):
-          from_cljw_03's arity×FP repro pinpointed missing `dispatchScalar2` keys; zwasm
-          added 7 FP keys @d7da97e04 → SAME-type 2-arg pairs now work on `.jit` (verified
-          @474922779: `(f64,f64)→f64` addf=3.75, `(i32,i32)→f64`=7.0, `(f64,f64)→i32`=4).
-          STILL trapping (from_cljw_04): MIXED 2-arg `(i32,f64)`/`(f64,i32)→f64`; plus
-          zwasm's own gap list — multi-result-with-FP, 3+-arg FP shapes, v128-at-boundary.
-          So `.jit` covers i32/i64 GPR + multi-value + same-type-2-arg f32/f64; the rest
-          trap. cljw test/e2e flipped to assert the FIXED `addf` jit==interp (3.75).
-          Flipping cljw's DEFAULT to `.auto` needs the FULL shape matrix green (a mixed-
-          arg module must not silently trap).
-      On close (both clear): flip `engine.LoadOpts.engine` default `.interp`→`.auto`
-      (remove the PROVISIONAL marker + feature_deps#engine_default), assert the
-      no-opts default rides the JIT, and assert f64 jit==interp.
-      DONE this cycle (no longer blocking): exportFuncSig JIT arm consumed (@5b6449779);
-      explicit `:jit` wasm/call verified end-to-end (GPR + multi-value + f64-on-interp)
-      + e2e landed; `.auto`→JIT + GPR + multi-value confirmed working on arm64 macOS;
-      SIMD is JIT-only by zwasm design (to_cljw_03), f64 is interp-only pending the fix.
+      Blocker for flipping cljw's default to `.auto` (zwasm-side; cljw keeps `.interp`):
+      **zwasm D-489 — an x86_64-only JIT realworld MISCOMPILE** (tinygo_json mangles fmt
+      output under x86_64 JIT; correct on interp + arm64 JIT; to_cljw_05). zwasm keeps the
+      `.auto`→JIT flip OFF until x86_64 JIT realworld correctness is hardened. This is a
+      deeper correctness issue than dispatch coverage, and firmly validates cljw's `.interp`
+      default. Deferred zwasm gaps (NOT blocking, no real cljw need — D-477): wide arity
+      (SysV >5 / Win64 >3 params), >2 results (the `many-results` 17-value extreme),
+      v128-at-boundary; use `.interp` for these.
+      DONE (the dispatch-matrix sub-blocker is RESOLVED): the 1/2-arg JIT invoke matrix is
+      COMPLETE @3cf40a573 (the per-combo veneer now falls through to the generic buffer
+      thunk for any uncovered 1/2-arg scalar shape). cljw verified on @f4848e680: GPR,
+      multi-value, same-type-2-arg f32/f64 (addf=3.75), MIXED 2-arg `(i32,f64)→f64`=5.5,
+      3-arg via buffer — all jit==interp. SIMD body is JIT-only by design (to_cljw_03).
+      test/e2e lock GPR + multi-value + SIMD + same-type-2-arg + mixed-2-arg f64.
+      On close (D-489 + x86_64 `.auto` 3-host verdict): flip `engine.LoadOpts.engine`
+      default `.interp`→`.auto` (remove the PROVISIONAL marker +
+      feature_deps#engine_default), assert the no-opts default rides the JIT.
     last_reviewed: "2026-06-21"
   - id: "D-486"
     status: "DISCHARGED (2026-06-21, commit completes ADR-0157). The flatten dispatch in vm.eval now unifies flattenPush's error into the SAME `else |err|` arm (via a `result` expression) instead of bare-`try`-propagating it out of eval — so a deep DIRECT recursion overflow inside a `try` is caught (catch StackOverflowError/Throwable; not Exception — clj parity), uncaught still renders gracefully, bounded recursion no false-trip. Validated by the dual-backend diff oracle + e2e phase15_watch_recursion (direct_recursion_caught/_thr/legit_direct_recursion). The full stack-overflow catchability story (re-entry AND direct recursion) is now clj-faithful. ORIGINAL: open (2026-06-21, split from D-485 2a). A stack overflow raised by FLATTENED direct recursion at FRAMES_MAX=2048 (`((fn f [n] (f (inc n))) 0)` inside a `try`) is NOT caught by an enclosing `(catch StackOverflowError/Throwable …)` — it propagates uncaught + prints a trace, where clj recovers. Re-entry overflows (validator/reducer/watch, via nested vm.eval) ARE caught (ADR-0157 2a/2b). The flattened recursion stays in ONE vm.eval (op_call flattens in-VM), so the vm.eval-entry stack guard never re-fires, and the existing handler-synthesis (vm.zig:372 — convert a catalog error to a thrown value when handler_count>0) does NOT fire for the flattenPush(:149)/eval-entry(:227) FRAMES_MAX raise in the handler's OWN eval (the synthesis path is reached for nested-eval raises but apparently not this same-eval-exhausted case). LOW severity: graceful (no crash) + the common runaway-recursion case; only the catchability diverges from clj. Repro: `(try ((fn f [n] (f (inc n))) 0) (catch Throwable e :ok))` → cljw prints trace / clj → :ok."

@@ -36,6 +36,14 @@
 (println "addf-interp:"   (wasm/call si "addf" 1.5 2.25))
 (println "addf-jit:"      (wasm/call sj "addf" 1.5 2.25))
 
+;; Mixed-bank 2-arg: (i32,f64)→f64. zwasm @3cf40a573 made the 1/2-arg JIT invoke matrix
+;; complete (the per-combo veneer falls through to the generic buffer thunk), so a mixed
+;; i32+f64 param shape now runs JIT-compiled — byte-identical jit==interp.
+(def mj (wasm/load "test/e2e/fixtures/wasm/mix.wasm" {:engine :jit}))
+(def mi (wasm/load "test/e2e/fixtures/wasm/mix.wasm" {:engine :interp}))
+(println "mix-jit:"    (wasm/call mj "mix" 3 2.5))
+(println "mix-interp:" (wasm/call mi "mix" 3 2.5))
+
 ;; Real SIMD arithmetic on the JIT: i32x4.mul (1,2,3,4)*(5,6,7,8) = (5,12,21,32),
 ;; horizontal sum = 70 (not just a const lane extract). JIT-only (interp traps).
 (println "simd-dot-jit:" (wasm/call (wasm/load "test/e2e/fixtures/wasm/simd_dot.wasm" {:engine :jit}) "simd_dot"))

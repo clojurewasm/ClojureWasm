@@ -56,6 +56,13 @@ $out"
 echo "$out" | grep -q "addf-jit: 3.75"    || fail "f64 addf on :jit != 3.75 (regressed? zwasm 2-arg×FP dispatch was fixed @d7da97e04):
 $out"
 
+# (6b) Mixed-bank 2-arg (i32,f64)→f64 byte-identical jit==interp (1/2-arg matrix
+# completed @3cf40a573 — veneer falls through to the generic buffer thunk).
+echo "$out" | grep -q "mix-jit: 5.5"    || fail "mixed (i32,f64)->f64 on :jit != 5.5 (zwasm 1/2-arg matrix @3cf40a573):
+$out"
+echo "$out" | grep -q "mix-interp: 5.5" || fail "mixed (i32,f64)->f64 on :interp != 5.5:
+$out"
+
 # (7) Real SIMD arithmetic on the JIT: i32x4.mul → horizontal sum = 70.
 echo "$out" | grep -q "simd-dot-jit: 70" || fail "SIMD i32x4.mul kernel on :jit != 70:
 $out"

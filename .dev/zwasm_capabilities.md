@@ -60,17 +60,17 @@ a cljw-side shim.
 
 ## Capability table (refresh at each boundary)
 
-| Capability                           | zwasm status (as of 2026-06-21)                                                                      | in cljw's tree? | cljw adoption                                                     | ref          |
-|--------------------------------------|------------------------------------------------------------------------------------------------------|-----------------|-------------------------------------------------------------------|--------------|
-| Interp embedding (load/instantiate)  | ready                                                                                                | YES             | integrated behind `cljw.wasm/*` (-Dwasm)                          | F-001, D-036 |
-| `invoke` (call exported fn)          | ready (interp + JIT)                                                                                 | YES (rel-path)  | integrated; JIT `invoke` verified via unit test                   | D-036, D-488 |
-| Embedder hardening / WASI sandbox    | landed (security pass `…→6b08fe70`, 3-host green)                                                  | mostly          | consumed (old security mailbox)                                   | CODEV        |
-| **Multi-arg JIT invoke (≤5/7 GPR)** | **ready** (embedder-stable, to_cljw_02 matrix)                                                       | YES (rel-path)  | exercised by the dual-engine unit test                            | to_cljw_02   |
-| **SIMD (v128) body on JIT**          | **ready** (JIT-only by design; interp has no v128 dispatch)                                          | YES (rel-path)  | verified (lane0→42 on .jit); interp traps catchably              | D-488        |
-| `exportFuncSig` on JIT instance      | **ready** (JIT arm shipped @5b6449779, to_cljw_03)                                                   | YES (rel-path)  | adopted — explicit `:jit` `wasm/call` works end-to-end (e2e)     | D-488        |
-| FP-bank scalar JIT invoke (f32/f64)  | **PARTIAL** (@d7da97e04: same-type 2-arg fixed; MIXED 2-arg + multi-result-FP + 3+arg-FP still trap) | YES (rel-path)  | `:jit` covers same-type-2-arg f64/f32; mixed traps (from_cljw_04) | D-488        |
-| **JIT-backed engine (`.auto`)**      | **REVERTED to interp** (re-reverted @474922779; dispatch matrix incomplete, zwasm D-478/D-477)       | YES (rel-path)  | default pinned `.interp` (zwasm-endorsed); `:jit` explicit works  | D-488        |
-| WIT component marshalling            | future                                                                                               | NO              | NOT adopted                                                       | D-404        |
+| Capability                           | zwasm status (as of 2026-06-21)                                                                         | in cljw's tree? | cljw adoption                                                                 | ref          |
+|--------------------------------------|---------------------------------------------------------------------------------------------------------|-----------------|-------------------------------------------------------------------------------|--------------|
+| Interp embedding (load/instantiate)  | ready                                                                                                   | YES             | integrated behind `cljw.wasm/*` (-Dwasm)                                      | F-001, D-036 |
+| `invoke` (call exported fn)          | ready (interp + JIT)                                                                                    | YES (rel-path)  | integrated; JIT `invoke` verified via unit test                               | D-036, D-488 |
+| Embedder hardening / WASI sandbox    | landed (security pass `…→6b08fe70`, 3-host green)                                                     | mostly          | consumed (old security mailbox)                                               | CODEV        |
+| **Multi-arg JIT invoke (≤5/7 GPR)** | **ready** (embedder-stable, to_cljw_02 matrix)                                                          | YES (rel-path)  | exercised by the dual-engine unit test                                        | to_cljw_02   |
+| **SIMD (v128) body on JIT**          | **ready** (JIT-only by design; interp has no v128 dispatch)                                             | YES (rel-path)  | verified (lane0→42 on .jit); interp traps catchably                          | D-488        |
+| `exportFuncSig` on JIT instance      | **ready** (JIT arm shipped @5b6449779, to_cljw_03)                                                      | YES (rel-path)  | adopted — explicit `:jit` `wasm/call` works end-to-end (e2e)                 | D-488        |
+| FP-bank scalar JIT invoke (f32/f64)  | **ready** (1/2-arg matrix COMPLETE @3cf40a573 — veneer→generic-buffer fall-through; 3-arg via buffer) | YES (rel-path)  | adopted — `:jit` covers all 1/2-arg scalar (incl. mixed) + 3-arg; e2e-locked | D-488        |
+| **JIT-backed engine (`.auto`)**      | **OFF (interp)** — blocked by zwasm D-489 (x86_64-only JIT realworld MISCOMPILE, tinygo_json)          | YES (rel-path)  | default pinned `.interp` (zwasm-endorsed); `:jit` explicit solid on arm64     | D-488        |
+| WIT component marshalling            | future                                                                                                  | NO              | NOT adopted                                                                   | D-404        |
 
 ## Forward plan — the JIT adoption unit (gap area II × III) — ACTIVE
 
@@ -118,3 +118,11 @@ remaining `.auto`-default flip; this ledger tracks adoption status per capabilit
   (MIXED `(i32,f64)`/`(f64,i32)→f64` still trap). zwasm re-reverted `.auto`→JIT again
   (more x86_64 dispatch gaps); cljw default stays `.interp` until the full shape matrix +
   `.auto` 3-host verdict land. Added bench `wasm_jit_vs_interp.sh` (~44× JIT speedup, 1e8 loop).
+- **2026-06-21 (cont.)** — round-trips 5→6. `from_cljw_04` reported the residual MIXED
+  2-arg trap; zwasm fixed it GENERALLY @`3cf40a573` (the per-combo veneer falls through to
+  the generic buffer thunk for any uncovered 1/2-arg scalar shape) → the **1/2-arg JIT
+  invoke matrix is COMPLETE**. cljw verified on `@f4848e680` (mixed `(i32,f64)→f64`=5.5
+  jit==interp) + added a mixed-2-arg e2e assertion. NEW top `.auto` blocker = zwasm
+  **D-489** (x86_64-only JIT realworld miscompile, tinygo_json) — `.auto` stays OFF, cljw
+  default `.interp` firmly validated. Deferred (no cljw need): wide-arity / >2-result /
+  v128-boundary (zwasm D-477). `to_cljw_05` consumed; no new finding (zwasm's fix is general).
