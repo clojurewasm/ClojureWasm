@@ -13,24 +13,37 @@
   pinnable SHA (then revert `.zwasm` to the SHA-pin form preserved in build.zig.zon's
   comment + git history). Per-commit = smoke; commit, never push.
 
-- **First commit on resume MUST be**: the **wasm-component-as-namespace epic (D-404)**
-  **Impl E** — resource ergonomics (WIT resource → `counter/new` / `(counter/increment h)`,
-  GC drop) + the bare→classpath / `:cljw/wasm-deps` resolution arm (reuse `app/deps/{parse,
-  resolve}.zig`); registry (OCI/wkg) deferred. (ROADMAP §9.0 gap area II axis 2; design in
-  **ADR-0135 Amendment 1** + **ADR-0158** + **F-016**.) **Impl A/B/C/D ALL LANDED
-  (2026-06-21)**: A — `(ns app (:require ["x.wasm" :as g]))` desugars in `analyzeNs` to
-  `(do <ns_node> (require 'cljw.wasm) (cljw.wasm/require-component-libspec …)…)`, both
-  backends via generic do/call eval (NO require-dispatch surgery). B — source-relative
-  `./`/`../` resolves against the source dir (runner + build both stamp `reader.file_name`).
-  C — WIT sig → `:arglists` meta on each component Var. D — `cljw build` embeds the
-  `:require`d `.wasm` bytes into the envelope (ADR-0158: outermost component table;
-  `rt.component_sink` collect → builder harvest → `rt.embedded_components` serves before FS)
-  → self-contained single binary, e2e green (built from repo root, run from /tmp, no sidecar).
+- **First commit on resume MUST be**: a self-selected **medium clj-parity/interop row** (the
+  quick-win seam is drained — see § Stopped). Highest-value live candidates: **D-466**
+  (host java.util collections not recognised as `instance?` of their supertypes Map/List/Set
+  — `(instance? java.util.Map (java.util.HashMap.))` → false vs clj true; sync
+  interface_membership/host_interfaces) and **D-468** (java.util collections print opaquely
+  `#<cljw.java.util.ArrayList>` vs clj by-content `[1 2]`). The spec arc (**D-475** + its last
+  blocker **D-476** macro-shadow precedence) is the big-value-but-multi-cycle target.
+  **D-404 (wasm-component epic) is COMPLETE** (A–E landed 2026-06-21/22): require-string→
+  component, source-relative `./`, WIT→`:arglists`, `cljw build` single-binary embed
+  (ADR-0158), classpath resolution, resource ownership (own-handle wrapper + `wasm/resource-
+  drop` + `with-resource`, ADR-0159). Only the `:cljw/wasm-deps` deps.edn coordinate + OCI/wkg
+  registry arm remains — **user-deferred to the future (2026-06-22)**, not self-selected.
 - **Background watch (NOT the active task)**: the JIT adoption experiment is CONVERGED
   (1/2-arg invoke matrix complete, e2e-locked); its only open item is **D-488's `.auto`
   default flip**, blocked by **zwasm D-489** (x86_64-only JIT miscompile, non-urgent,
   zwasm-internal). Check the dogfooding mailbox (`to_cljw_*.md` SENT) at unit boundaries;
   flip the default when zwasm signals D-489 fixed + `.auto` 3-host green.
+
+## Stopped — user requested
+
+User instruction (2026-06-22): defer the wasm-deps mechanism (`:cljw/wasm-deps`/registry)
+to the future; do a sweep of **only quick wins toward a tag cut**, and "if there are none,
+stopping is OK". The sweep found the quick-win seam **drained** (recent sessions cleared it):
+the easiest-first active rows are all DISCHARGED-misfiled (10: D-487/486/485/458/465/467/469/
+481/478/348), big (D-475 spec / D-476 / D-473 reducers / D-470 `%t`), medium (D-466/468/482/
+471), blocked (D-474 immutable-Date / D-488 zwasm-gated), or impossible (D-472 bytes? per
+AD-019). No clean small functional quick win remained → stopped per the authorization.
+Resume: self-select D-466 or D-468 (named above). Pre-tag housekeeping the user may want
+first: (a) move the 10 misfiled DISCHARGED rows active→discharged; (b) restore the zwasm
+SHA-pin (the relative-path dep cannot be tagged). The next `/continue` resumes the loop
+normally.
 
 - **Forbidden this session**: `git push` (no-push experiment — relative-path dep).
   Flipping the cljw default to `.auto` before D-488 clears (x86_64 JIT miscompile, D-489).
