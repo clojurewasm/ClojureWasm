@@ -1086,9 +1086,20 @@ active:
       (verified from /tmp w/ abs path; runner.zig stamps reader.file_name=source_label +
       special_forms.resolveComponentPath). C — the WIT signature surfaces as `:arglists`
       metadata on each component Var (param names; `(:arglists (meta #'greeter/greet))` =
-      `([name])`; `:doc` skipped per AD-041). REMAINING: D (single-binary embed, ADR-0158 —
-      buildEnvelope collects resolved component paths during compile → embeds .wasm bytes →
-      run-side resolver serves embedded; the biggest phase) → E (resource ergonomics + the
+      `([name])`; `:doc` skipped per AD-041).
+      **Impl-D LANDED (2026-06-21, ADR-0158)**: `cljw build` embeds every statically-
+      `:require`d component's raw `.wasm` bytes into the envelope (an OUTERMOST component
+      table `[u32 n][path][bytes]…` ahead of the manifest+chunks); the embedded-run startup
+      installs `rt.embedded_components` and `readComponentBytes` serves from memory before
+      any FS read → fully self-contained single binary (e2e: built from repo root so the
+      baked path is RELATIVE, run from /tmp with NO `.wasm` sidecar → still greets). Collect
+      point: `analyzeNs` appends each resolved component path to `rt.component_sink` (set
+      only during build); harvest+dedupe+log in builder.zig; serialize via
+      `serialize.{writeComponentTable,readComponentTable}`. Build also surfaced + fixed an
+      Impl-B gap: `buildEnvelope` did NOT thread the source label into the reader, so
+      source-relative `./x.wasm` resolved against cwd not the source dir at BUILD (only
+      runner did) → IoError; now `buildEnvelope` takes `source_label` + sets
+      `reader.file_name` (mirror of runner.zig). REMAINING: E (resource ergonomics + the
       bare→classpath/`:cljw/wasm-deps` + registry resolution arm). Original approach (as
       implemented): RED confirmed —
       `(ns a (:require ["x.wasm" :as g]))` errors "require libspec must begin with a symbol"

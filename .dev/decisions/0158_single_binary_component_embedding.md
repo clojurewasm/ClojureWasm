@@ -1,6 +1,6 @@
 # ADR-0158 — `cljw build`: embed `:require`d Wasm components into the single binary
 
-- **Status**: Proposed → Accepted (2026-06-21, user-directed)
+- **Status**: Proposed → Accepted → Implemented (2026-06-21, user-directed; D-404 Impl D)
 - **Driven by**: the user directive that a module which `(:require ["x.wasm" :as x])`s a
   Wasm component must, after `cljw build`, produce a **self-contained single binary** (no
   external `.wasm` at runtime). Single-binary deployability is a cljw selling point
@@ -77,6 +77,27 @@ resolver), so it is *addition, not new subsystem*.
   from ADR-0135 A2 (a load-from-embedded-bytes path beside load-from-file), the envelope
   serialize/deserialize (`eval/bytecode/serialize.zig`) for the component table.
 - Tracked as ADR-0135's implementation phase **D** (sub-row of the D-404 epic).
+
+### As implemented (2026-06-21, D-404 Impl D)
+
+- **Envelope format**: the component table is the OUTERMOST envelope section
+  (`[u32 n_components]` then per component `[u32 path_len][path][u32 byte_len][wasm bytes]`),
+  written ahead of the entry manifest + chunk list by `serialize.serializeEnvelope` (now
+  takes a `components: []const EmbeddedComponent` arg). `readEnvelopeEntry` /
+  `deserializeEnvelope` / `EnvelopeIterator.init` each `skipComponentTable` first;
+  `readComponentTable` materialises it (slices into the payload) for the startup install.
+  No version bump — the envelope is internal to one binary (build + run share serialize.zig);
+  an empty table (`n=0`) is written for every component-free build.
+- **Type**: `Runtime.EmbeddedComponent { path, bytes }` lives in Layer 0 so the Layer-1
+  serializer and the Layer-0 component surface share one type (zone-clean downward import).
+- **Collect**: `analyzeNs` appends each resolved component path to `rt.component_sink`
+  (set ONLY during a build; null on REPL/run) — the key matches what the desugar bakes as
+  the run-side `wasm/load-component` arg, so the embedded-table lookup hits.
+- **Impl-B build-side gap fixed in the same cycle**: `buildEnvelope` did not thread the
+  source label into the reader, so source-relative `./x.wasm` resolved against cwd (not the
+  source dir) at BUILD — the build-time component load raised IoError. `buildEnvelope` now
+  takes `source_label` and sets `reader.file_name` (mirror of `runner.zig`), so build and
+  run resolve identically.
 
 ### Sources (research, 2026-06-21)
 

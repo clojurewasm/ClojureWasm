@@ -59,8 +59,31 @@ $srcrel_out"
 echo "$srcrel_out" | grep -q "src-rel: Hello, rel!" || fail "source-relative './' did not resolve against the source dir:
 $srcrel_out"
 
+# --- ADR-0158 (D-404 Impl D): `cljw build` embeds the :require'd component bytes ---
+# Build the source-relative script FROM THE REPO ROOT so the baked component path
+# is RELATIVE (`test/e2e/fixtures/wasm/./greet_component.wasm`). Then run the
+# produced binary FROM /tmp, where that relative path does NOT resolve on disk —
+# a self-contained binary must still greet from the EMBEDDED bytes (no sidecar).
+# (Were the bytes NOT embedded, the FS fallback would miss and the run would fail,
+# so this proves the single-binary contract, not just "it happens to work".)
+embed_bin="$(mktemp -u /tmp/cljw_embed_XXXXXX)"
+build_log="$("$BIN" build test/e2e/fixtures/wasm/ns_source_relative.clj -o "$embed_bin" 2>&1)" \
+  || fail "cljw build (component embed) failed:
+$build_log"
+echo "$build_log" | grep -q "embedded 1 Wasm component" \
+  || fail "build did not log the embedded component (harvest broken):
+$build_log"
+embed_out="$(cd /tmp && "$embed_bin" 2>&1)" \
+  || fail "embedded-component binary exited non-zero (cwd=/tmp, no .wasm sidecar):
+$embed_out"
+echo "$embed_out" | grep -q "src-rel: Hello, rel!" \
+  || fail "embedded component did not load from memory (single-binary broken):
+$embed_out"
+rm -f "$embed_bin"
+echo "PASS build-embed-component -> self-contained single binary"
+
 # A non-wasm build must NOT resolve cljw.wasm (the wasm/ ns is absent) — the
 # gating is verified implicitly by the default gate (this step is -Dwasm-only).
 
 echo
-echo "Phase 16 / wasm require-a-component (W1) + ns :require (ADR-0135 Am.1): all green."
+echo "Phase 16 / wasm require-a-component (W1) + ns :require (ADR-0135 Am.1) + build embed (ADR-0158): all green."

@@ -62,6 +62,7 @@ const NsFilterEntry = opcode_mod.NsFilterEntry;
 const value_mod = @import("../../runtime/value/value.zig");
 const Value = value_mod.Value;
 const Runtime = @import("../../runtime/runtime.zig").Runtime;
+const EmbeddedComponent = @import("../../runtime/runtime.zig").EmbeddedComponent;
 const string_collection = @import("../../runtime/collection/string.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
 const symbol_mod = @import("../../runtime/symbol.zig");
@@ -856,6 +857,56 @@ pub const EnvelopeEntry = struct {
     args: []const []const u8 = &.{},
 };
 
+// === Embedded Wasm component table (D-100(b) + ADR-0158, D-404 Impl D) ===
+//
+// A `cljw build` binary that `:require`s Wasm components embeds their raw
+// `.wasm` bytes so the binary is self-contained (no `.wasm` sidecar at run).
+// The table is the OUTERMOST envelope section — it precedes the entry manifest
+// and the chunk list: `[u32 n_components]` then, per component,
+// `[u32 path_len][path bytes][u32 byte_len][wasm bytes]`. `path` is the
+// resolved logical id the run-side `:require` desugar passes to
+// `wasm/load-component` (ADR-0135 A2 resolution); the run-side table lookup is
+// keyed by that exact string. Empty (`n=0`) for any build with no components.
+
+/// Write the component table at the front of the envelope (mirror of
+/// `readComponentTable` / `skipComponentTable`).
+fn writeComponentTable(w: *std.Io.Writer, components: []const EmbeddedComponent) !void {
+    try writeU32(w, @intCast(components.len));
+    for (components) |c| {
+        try writeLenPrefixed(w, c.path);
+        try writeLenPrefixed(w, c.bytes);
+    }
+}
+
+/// Advance `r` past the component table (without materialising it) so the
+/// manifest / chunk readers reach the next section. Mirror of
+/// `writeComponentTable`.
+fn skipComponentTable(r: *ByteReader) DeserializeError!void {
+    const n = try r.readU32();
+    var i: u32 = 0;
+    while (i < n) : (i += 1) {
+        _ = try r.readLenPrefixed(); // path
+        _ = try r.readLenPrefixed(); // wasm bytes
+    }
+}
+
+/// Read the embedded component table (slices INTO `bytes`; the outer array is
+/// `arena`-allocated). Used by `cljw build`'s embedded-run startup to install
+/// `rt.embedded_components` before the user payload's `:require` desugar runs.
+/// Returns an empty slice for a script/main build with no components.
+pub fn readComponentTable(arena: std.mem.Allocator, bytes: []const u8) ![]const EmbeddedComponent {
+    var r: ByteReader = .{ .bytes = bytes, .pos = 0 };
+    const n = try r.readU32();
+    const out = try arena.alloc(EmbeddedComponent, n);
+    var i: u32 = 0;
+    while (i < n) : (i += 1) {
+        const path = try r.readLenPrefixed();
+        const wbytes = try r.readLenPrefixed();
+        out[i] = .{ .path = path, .bytes = wbytes };
+    }
+    return out;
+}
+
 /// Write the entry manifest: `[has_entry:u8]` then, if 1, the entry ns
 /// (len-prefixed) + `[args_count:u32]` + each arg (len-prefixed).
 fn writeManifest(w: *std.Io.Writer, entry: ?EnvelopeEntry) !void {
@@ -886,6 +937,7 @@ fn skipManifest(r: *ByteReader) DeserializeError!void {
 /// startup to dispatch `(<ns>/-main …)`.
 pub fn readEnvelopeEntry(arena: std.mem.Allocator, bytes: []const u8) !?EnvelopeEntry {
     var r: ByteReader = .{ .bytes = bytes, .pos = 0 };
+    try skipComponentTable(&r);
     const has_entry = try r.readU8();
     if (has_entry == 0) return null;
     const ns = try r.readLenPrefixed();
@@ -896,10 +948,16 @@ pub fn readEnvelopeEntry(arena: std.mem.Allocator, bytes: []const u8) !?Envelope
     return .{ .ns = ns, .args = args };
 }
 
-pub fn serializeEnvelope(allocator: std.mem.Allocator, chunks: []const BytecodeChunk, entry: ?EnvelopeEntry) ![]u8 {
+pub fn serializeEnvelope(
+    allocator: std.mem.Allocator,
+    chunks: []const BytecodeChunk,
+    entry: ?EnvelopeEntry,
+    components: []const EmbeddedComponent,
+) ![]u8 {
     var aw: std.Io.Writer.Allocating = .init(allocator);
     errdefer aw.deinit();
     const w = &aw.writer;
+    try writeComponentTable(w, components);
     try writeManifest(w, entry);
     try writeU32(w, @intCast(chunks.len));
     for (chunks) |chunk| {
@@ -920,6 +978,7 @@ pub fn deserializeEnvelope(
     bytes: []const u8,
 ) ![]BytecodeChunk {
     var r: ByteReader = .{ .bytes = bytes, .pos = 0 };
+    try skipComponentTable(&r);
     try skipManifest(&r);
     const n = try r.readU32();
     var chunks: std.ArrayList(BytecodeChunk) = .empty;
@@ -961,6 +1020,7 @@ pub const EnvelopeIterator = struct {
 
     pub fn init(bytes: []const u8) DeserializeError!EnvelopeIterator {
         var r: ByteReader = .{ .bytes = bytes, .pos = 0 };
+        try skipComponentTable(&r);
         try skipManifest(&r);
         const n = try r.readU32();
         return .{ .r = r, .remaining = n };
@@ -1034,7 +1094,7 @@ test "payload envelope round-trips two chunks in order" {
     const consts_b = [_]Value{Value.initInteger(99)};
     const chunk_b: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts_b };
 
-    const bytes = try serializeEnvelope(testing.allocator, &.{ chunk_a, chunk_b }, null);
+    const bytes = try serializeEnvelope(testing.allocator, &.{ chunk_a, chunk_b }, null, &.{});
     defer testing.allocator.free(bytes);
 
     const out = try deserializeEnvelope(testing.allocator, &rt, &env, bytes);
@@ -1067,7 +1127,7 @@ test "envelope entry manifest round-trips; chunk readers skip it (ADR-0034 am4)"
 
     // With an entry manifest: readEnvelopeEntry recovers it; the chunk readers
     // skip the manifest and still see the one chunk.
-    const bytes = try serializeEnvelope(testing.allocator, &.{chunk}, .{ .ns = "my.app", .args = &args });
+    const bytes = try serializeEnvelope(testing.allocator, &.{chunk}, .{ .ns = "my.app", .args = &args }, &.{});
     defer testing.allocator.free(bytes);
 
     const entry = (try readEnvelopeEntry(arena, bytes)) orelse return error.NoEntry;
@@ -1082,9 +1142,65 @@ test "envelope entry manifest round-trips; chunk readers skip it (ADR-0034 am4)"
     try testing.expectEqual(@as(i48, 5), out[0].constants[0].asInteger());
 
     // No-entry (script mode) envelope: readEnvelopeEntry returns null.
-    const bytes2 = try serializeEnvelope(testing.allocator, &.{chunk}, null);
+    const bytes2 = try serializeEnvelope(testing.allocator, &.{chunk}, null, &.{});
     defer testing.allocator.free(bytes2);
     try testing.expect((try readEnvelopeEntry(arena, bytes2)) == null);
+}
+
+test "embedded component table round-trips; chunk + entry readers skip it (ADR-0158)" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+    var env = try @import("../../runtime/env.zig").Env.init(&rt);
+    defer env.deinit();
+
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var consts = [_]Value{Value.initInteger(42)};
+    const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts };
+    const args = [_][]const u8{"9090"};
+    const components = [_]EmbeddedComponent{
+        .{ .path = "./greet.wasm", .bytes = "\x00asm\x01\x00\x00\x00" },
+        .{ .path = "/abs/calc.wasm", .bytes = "RAWBYTES" },
+    };
+
+    // A full envelope: component table + an entry manifest + one chunk. The
+    // component table is the OUTERMOST section, so the entry/chunk readers must
+    // skip past it and still recover the manifest + chunk unchanged.
+    const bytes = try serializeEnvelope(testing.allocator, &.{chunk}, .{ .ns = "my.app", .args = &args }, &components);
+    defer testing.allocator.free(bytes);
+
+    const table = try readComponentTable(arena, bytes);
+    try testing.expectEqual(@as(usize, 2), table.len);
+    try testing.expectEqualStrings("./greet.wasm", table[0].path);
+    try testing.expectEqualStrings("\x00asm\x01\x00\x00\x00", table[0].bytes);
+    try testing.expectEqualStrings("/abs/calc.wasm", table[1].path);
+    try testing.expectEqualStrings("RAWBYTES", table[1].bytes);
+
+    // The entry manifest survives behind the table.
+    const entry = (try readEnvelopeEntry(arena, bytes)) orelse return error.NoEntry;
+    try testing.expectEqualStrings("my.app", entry.ns);
+    try testing.expectEqualStrings("9090", entry.args[0]);
+
+    // The chunk readers (deserializeEnvelope / EnvelopeIterator) skip both the
+    // table and the manifest and still see the one chunk.
+    const out = try deserializeEnvelope(testing.allocator, &rt, &env, bytes);
+    defer freeEnvelope(testing.allocator, out);
+    try testing.expectEqual(@as(usize, 1), out.len);
+    try testing.expectEqual(@as(i64, 42), out[0].constants[0].asInteger());
+
+    var it = try EnvelopeIterator.init(bytes);
+    var seen: usize = 0;
+    while (try it.next()) |_| seen += 1;
+    try testing.expectEqual(@as(usize, 1), seen);
+
+    // An empty table (n=0) still round-trips with no components.
+    const bytes_empty = try serializeEnvelope(testing.allocator, &.{chunk}, null, &.{});
+    defer testing.allocator.free(bytes_empty);
+    try testing.expectEqual(@as(usize, 0), (try readComponentTable(arena, bytes_empty)).len);
 }
 
 test "every wire ValueTag has BOTH a write and a read arm (symmetry gate)" {

@@ -43,6 +43,14 @@ fn readComponentBytes(rt: *Runtime, path_val: Value, loc: SourceLocation) anyerr
     if (!path_val.isString())
         return error_catalog.raise(.wasm_path_invalid, loc, .{});
     const path = string_mod.asString(path_val);
+    // ADR-0158 (D-404 Impl D): a `cljw build` binary bakes every static
+    // `:require`d component's bytes into an embedded table keyed by the
+    // resolved path. Serve from memory before any FS read so the binary is
+    // self-contained. A genuinely dynamic `(wasm/load runtime-path)` whose path
+    // was not embedded misses here and falls through to the FS jail load.
+    for (rt.embedded_components) |c| {
+        if (std.mem.eql(u8, c.path, path)) return rt.gpa.dupe(u8, c.bytes);
+    }
     const jailed = file_io.jailResolve(rt.gpa, rt.fs_jail_root, path) catch |e| switch (e) {
         error.OutOfMemory => return e,
         error.FsJailEscape => return error_catalog.raise(.fs_jail_escape, loc, .{ .fn_name = "wasm/component", .path = path }),

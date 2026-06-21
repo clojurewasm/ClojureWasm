@@ -19,6 +19,7 @@
 
 const std = @import("std");
 const Runtime = @import("../runtime/runtime.zig").Runtime;
+const EmbeddedComponent = @import("../runtime/runtime.zig").EmbeddedComponent;
 const Env = @import("../runtime/env.zig").Env;
 const Reader = @import("../eval/reader.zig").Reader;
 const analyzeForm = @import("../eval/analyzer/analyzer.zig").analyze;
@@ -51,6 +52,48 @@ const ClosureAccum = struct {
     }
 };
 
+/// Read + dedupe the `.wasm` bytes of every component path the build-time
+/// `analyzeNs` collected into `rt.component_sink` (ADR-0158, D-404 Impl D).
+/// Each entry's `path` + `bytes` are gpa-owned (freed by `freeComponents`).
+/// Reads relative to the build cwd (the path was resolved by
+/// `resolveComponentPath` at analyze time); no FS jail at build.
+fn harvestComponents(io: std.Io, gpa: std.mem.Allocator, paths: []const []const u8, out: *std.ArrayList(EmbeddedComponent)) !void {
+    for (paths) |path| {
+        var seen = false;
+        for (out.items) |c| {
+            if (std.mem.eql(u8, c.path, path)) {
+                seen = true;
+                break;
+            }
+        }
+        if (seen) continue;
+        const bytes = try readFileAll(io, gpa, path);
+        errdefer gpa.free(bytes);
+        const path_dup = try gpa.dupe(u8, path);
+        errdefer gpa.free(path_dup);
+        try out.append(gpa, .{ .path = path_dup, .bytes = bytes });
+    }
+}
+
+/// Free a `harvestComponents` result + the list backing.
+fn freeComponents(gpa: std.mem.Allocator, out: *std.ArrayList(EmbeddedComponent)) void {
+    for (out.items) |c| {
+        gpa.free(c.path);
+        gpa.free(@constCast(c.bytes));
+    }
+    out.deinit(gpa);
+}
+
+/// Make the build's component embedding visible (ADR-0158 Consequences: binary
+/// size grows by the embedded bytes — log the count + total so it is not
+/// silent). Writes to stderr (a build diagnostic, like the AOT-FAIL prints).
+fn logComponentEmbed(components: []const EmbeddedComponent) void {
+    if (components.len == 0) return;
+    var total: usize = 0;
+    for (components) |c| total += c.bytes.len;
+    std.debug.print("[cljw build] embedded {d} Wasm component(s), {d} bytes\n", .{ components.len, total });
+}
+
 /// Compile every top-level form in `source_text` to a `BytecodeChunk`
 /// and return the serialized payload envelope (caller frees the bytes
 /// via `allocator.free`). The runtime / env / macro_table must already
@@ -67,6 +110,7 @@ pub fn buildEnvelope(
     macro_table: *macro_dispatch.Table,
     arena: std.mem.Allocator,
     source_text: []const u8,
+    source_label: []const u8,
 ) ![]u8 {
     // ADR-0034 am3 A3-D2: capture the require-closure's chunks during the
     // entry forms' eval. `loader.loadNamespace` pushes each filesystem lib
@@ -75,6 +119,16 @@ pub fn buildEnvelope(
     defer closure.chunks.deinit(allocator);
     rt.build_chunk_sink = .{ .ctx = &closure, .push = ClosureAccum.push };
     defer rt.build_chunk_sink = null;
+
+    // ADR-0158 (D-404 Impl D): collect the resolved paths of every `:require`d
+    // Wasm component during the compile+eval loop, so the bytes can be embedded.
+    var comp_paths: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (comp_paths.items) |p| rt.gpa.free(p);
+        comp_paths.deinit(rt.gpa);
+    }
+    rt.component_sink = &comp_paths;
+    defer rt.component_sink = null;
 
     var entry_chunks: std.ArrayList(BytecodeChunk) = .empty;
     defer entry_chunks.deinit(allocator);
@@ -87,7 +141,15 @@ pub fn buildEnvelope(
     // eval (tree_walk via the installed vtable) only mutates env — and, for a
     // `(require …)`, triggers the closure capture via the sink above.
     var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
+    // Thread the source label into the reader so `loc.file` is the entry path,
+    // not the default "unknown" — `analyzeNs`'s source-relative `./component.wasm`
+    // resolution (ADR-0135 A2) keys off it. Without this, a `cljw build` of a
+    // component-`:require`ing script resolved `./x.wasm` against cwd, not the
+    // source dir, and the build-time component load failed (D-404 Impl D). Mirror
+    // of runner.zig's `reader.file_name = source_label`.
+    try rt.registerSource(source_label, source_text);
     var reader = Reader.init(arena, source_text);
+    reader.file_name = source_label;
     while (true) {
         const form = (try reader.read()) orelse break;
         const node = try analyzeForm(arena, rt, env, null, form, macro_table);
@@ -105,7 +167,12 @@ pub fn buildEnvelope(
     defer all.deinit(allocator);
     try all.appendSlice(allocator, closure.chunks.items);
     try all.appendSlice(allocator, entry_chunks.items);
-    return serialize.serializeEnvelope(allocator, all.items, null);
+
+    var components: std.ArrayList(EmbeddedComponent) = .empty;
+    defer freeComponents(rt.gpa, &components);
+    try harvestComponents(rt.io, rt.gpa, comp_paths.items, &components);
+    logComponentEmbed(components.items);
+    return serialize.serializeEnvelope(allocator, all.items, null, components.items);
 }
 
 /// AOT-compile the WHOLE eager bootstrap (`bootstrap.FILES` — clojure.core +
@@ -162,7 +229,9 @@ pub fn buildBootstrapEnvelope(
             };
         }
     }
-    return serialize.serializeEnvelope(allocator, chunks.items, null);
+    // The eager bootstrap (clojure.core + bundled libs) `:require`s no Wasm
+    // components, so the embedded table is always empty here.
+    return serialize.serializeEnvelope(allocator, chunks.items, null, &.{});
 }
 
 /// `cljw build -m <ns>` (ADR-0034 amendment 4 A4-D1/D2). Build-time eval of
@@ -186,6 +255,16 @@ pub fn buildMainEnvelope(
     rt.build_chunk_sink = .{ .ctx = &closure, .push = ClosureAccum.push };
     defer rt.build_chunk_sink = null;
 
+    // ADR-0158 (D-404 Impl D): collect `:require`d component paths during the
+    // closure's build-time eval so `<ns>`'s component requires get embedded too.
+    var comp_paths: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (comp_paths.items) |p| rt.gpa.free(p);
+        comp_paths.deinit(rt.gpa);
+    }
+    rt.component_sink = &comp_paths;
+    defer rt.component_sink = null;
+
     // Eval `(require '[<ns>])` → the am3 sink captures the closure (incl. <ns>
     // itself) in post-order; the require itself is build-only (its chunk is not
     // embedded — the closure chunks define <ns>, and the run-side synthMainNs
@@ -197,7 +276,11 @@ pub fn buildMainEnvelope(
     const node = try analyzeForm(arena, rt, env, null, form, macro_table);
     _ = try driver.evalForm(rt, env, &locals, arena, node);
 
-    return serialize.serializeEnvelope(allocator, closure.chunks.items, .{ .ns = ns, .args = args });
+    var components: std.ArrayList(EmbeddedComponent) = .empty;
+    defer freeComponents(rt.gpa, &components);
+    try harvestComponents(rt.io, rt.gpa, comp_paths.items, &components);
+    logComponentEmbed(components.items);
+    return serialize.serializeEnvelope(allocator, closure.chunks.items, .{ .ns = ns, .args = args }, components.items);
 }
 
 // === cljw build CLI core + embedded-run startup ===
@@ -223,7 +306,7 @@ fn readSelfExe(io: std.Io, gpa: std.mem.Allocator) ![]u8 {
 /// What to build: a script (the entry file's top-level forms ARE the program)
 /// or a `-m` main entry (require the closure, invoke `(<ns>/-main …)` at run).
 const BuildSpec = union(enum) {
-    script: []const u8, // entry source text
+    script: struct { src: []const u8, label: []const u8 }, // entry source text + its path (loc.file)
     main: struct { ns: []const u8, args: []const []const u8 },
 };
 
@@ -248,7 +331,7 @@ fn buildArtifact(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, o
     require_resolver.installChained(&rt);
 
     const payload = switch (spec) {
-        .script => |src| try buildEnvelope(gpa, &rt, &env, &macro_table, arena, src),
+        .script => |s| try buildEnvelope(gpa, &rt, &env, &macro_table, arena, s.src, s.label),
         .main => |m| try buildMainEnvelope(gpa, &rt, &env, &macro_table, arena, m.ns, m.args),
     };
     defer gpa.free(payload);
@@ -274,7 +357,7 @@ fn buildArtifact(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, o
 pub fn buildFile(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, in_path: []const u8, out_path: []const u8, load_paths: []const []const u8) !void {
     const source = try readFileAll(io, gpa, in_path);
     defer gpa.free(source);
-    return buildArtifact(io, gpa, arena, out_path, load_paths, .{ .script = source });
+    return buildArtifact(io, gpa, arena, out_path, load_paths, .{ .script = .{ .src = source, .label = in_path } });
 }
 
 /// `cljw build -m <ns> [args…] -o <out>` (main mode, ADR-0034 am4): embed the
@@ -302,6 +385,11 @@ pub fn tryRunEmbedded(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocat
 
     var rt = Runtime.init(io, gpa);
     defer rt.deinit();
+    // ADR-0158 (D-404 Impl D): install the embedded component table before the
+    // user payload runs, so a `:require`d component resolves from memory (the
+    // table slices into `self_bytes`, which outlives this run; the outer array
+    // is arena-owned). A no-component build yields an empty table.
+    rt.embedded_components = try serialize.readComponentTable(arena, payload);
     // Route every println/print/prn through the ONE process-shared, offset-
     // tracking stdout writer (D-096). Without this, rt.stdout stays null and the
     // print primitive falls back to a fresh per-call writer whose file offset
@@ -363,7 +451,7 @@ test "buildEnvelope compiles two forms into a two-chunk envelope" {
     defer macro_table.deinit();
     try bootstrap.setupCore(arena, &rt, &env, &macro_table);
 
-    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "(+ 1 2) (* 3 4)");
+    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "(+ 1 2) (* 3 4)", "<test>");
     defer testing.allocator.free(bytes);
 
     const chunks = try serialize.deserializeEnvelope(testing.allocator, &rt, &env, bytes);
@@ -400,7 +488,7 @@ test "buildEnvelope evaluates each form so later forms see earlier env (ADR-0034
     // This proves the A1-D2 eval step while keeping both chunks
     // serializable (libspec table + var_ref + array-set constants; no
     // fn_val). Clojure AOT shape.
-    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "(require '[clojure.set :as s]) (s/union #{1} #{2})");
+    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "(require '[clojure.set :as s]) (s/union #{1} #{2})", "<test>");
     defer testing.allocator.free(bytes);
 
     const chunks = try serialize.deserializeEnvelope(testing.allocator, &rt, &env, bytes);
@@ -432,7 +520,7 @@ test "aot: core.clj round-trips — build envelope, restore into a fresh env, ru
         var table = macro_dispatch.Table.init(A);
         defer table.deinit();
         try bootstrap.setupCorePrefix(&rt, &env, &table);
-        core_bytes = try buildEnvelope(A, &rt, &env, &table, arena, bootstrap.CORE_SOURCE);
+        core_bytes = try buildEnvelope(A, &rt, &env, &table, arena, bootstrap.CORE_SOURCE, "<core>");
     }
     defer A.free(core_bytes);
 
@@ -541,7 +629,7 @@ test "fn_val constant round-trips through serialize (ADR-0034 am2)" {
     // (op_make_fn's operand). The serializer must round-trip it (ADR-0034
     // amendment 2) — before A2-D1 this raised UnsupportedValueTag, making
     // `cljw build` reject every program with a user function.
-    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "(def add2 (fn* [x] (+ x 2)))");
+    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "(def add2 (fn* [x] (+ x 2)))", "<test>");
     defer testing.allocator.free(bytes);
 
     const chunks = try serialize.deserializeEnvelope(testing.allocator, &rt, &env, bytes);
@@ -580,7 +668,7 @@ test "deserialized fn_val executes through the VM (ADR-0034 am2)" {
     // fn_val execution AND the interleaved startup model — chunk 2's
     // `var_ref` to `add2` only resolves because chunk 1 has already RUN
     // (op_def interned add2). Eager deserialize-all would fail here.
-    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "(def add2 (fn* [x] (+ x 2))) (add2 40)");
+    const bytes = try buildEnvelope(testing.allocator, &rt, &env, &macro_table, arena, "(def add2 (fn* [x] (+ x 2))) (add2 40)", "<test>");
     defer testing.allocator.free(bytes);
 
     // --- Run side: a FRESH runtime simulating the built binary's startup

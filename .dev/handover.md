@@ -13,20 +13,19 @@
   pinnable SHA (then revert `.zwasm` to the SHA-pin form preserved in build.zig.zon's
   comment + git history). Per-commit = smoke; commit, never push.
 
-- **First commit on resume MUST be**: the **wasm-component-as-namespace epic (D-404)** —
-  the new active work (ROADMAP §9.0 gap area II axis 2; design in **ADR-0135 Amendment 1**
-  + **ADR-0158** + **F-016**, all landed 2026-06-21 user-directed, DA-fork incorporated).
-  Blocker DISSOLVED (zwasm CM is functional + default-ON). Phases: **A** ns `:require`-string
-  libspec → component wiring **[DONE — `(ns app (:require ["x.wasm" :as g]))` works; greet/
-  resource/:refer e2e green]** → **B** resolution order [START HERE] (explicit-relative `./` /
-  absolute / classpath+`:cljw/wasm-deps`; registry deferred) → **C** type leverage
-  (`:arglists`/`:doc`/meta + static-only compile-time arity) → **D** `cljw build` single-
-  binary component embed (ADR-0158) → **E** resource ergonomics + registry. Impl A landed
-  via a desugar-in-`analyzeNs` approach: a string libspec → `(do <ns_node> (require
-  'cljw.wasm) (cljw.wasm/require-component-libspec …)…)` (`special_forms.zig`), so both
-  backends run it via generic do/call eval — NO require-dispatch surgery. Impl B: thread
-  the resolution order through `lang/require_resolver.zig` + `app/deps/*` (currently the
-  path is cwd-relative; B makes `./` source-relative + classpath/`:cljw/wasm-deps`).
+- **First commit on resume MUST be**: the **wasm-component-as-namespace epic (D-404)**
+  **Impl E** — resource ergonomics (WIT resource → `counter/new` / `(counter/increment h)`,
+  GC drop) + the bare→classpath / `:cljw/wasm-deps` resolution arm (reuse `app/deps/{parse,
+  resolve}.zig`); registry (OCI/wkg) deferred. (ROADMAP §9.0 gap area II axis 2; design in
+  **ADR-0135 Amendment 1** + **ADR-0158** + **F-016**.) **Impl A/B/C/D ALL LANDED
+  (2026-06-21)**: A — `(ns app (:require ["x.wasm" :as g]))` desugars in `analyzeNs` to
+  `(do <ns_node> (require 'cljw.wasm) (cljw.wasm/require-component-libspec …)…)`, both
+  backends via generic do/call eval (NO require-dispatch surgery). B — source-relative
+  `./`/`../` resolves against the source dir (runner + build both stamp `reader.file_name`).
+  C — WIT sig → `:arglists` meta on each component Var. D — `cljw build` embeds the
+  `:require`d `.wasm` bytes into the envelope (ADR-0158: outermost component table;
+  `rt.component_sink` collect → builder harvest → `rt.embedded_components` serves before FS)
+  → self-contained single binary, e2e green (built from repo root, run from /tmp, no sidecar).
 - **Background watch (NOT the active task)**: the JIT adoption experiment is CONVERGED
   (1/2-arg invoke matrix complete, e2e-locked); its only open item is **D-488's `.auto`
   default flip**, blocked by **zwasm D-489** (x86_64-only JIT miscompile, non-urgent,

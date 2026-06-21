@@ -72,6 +72,17 @@ pub const BuildChunkSink = struct {
 
 pub const RequireResolverFn = *const fn (rt: *Runtime, ns_name: []const u8) anyerror!?ResolvedSource;
 
+/// One Wasm component embedded into a `cljw build` single binary (ADR-0158):
+/// the resolved logical path (the key the `:require` desugar passes to
+/// `wasm/load-component` at run) + the raw `.wasm` bytes. Defined here in
+/// Layer 0 so the Layer-1 envelope serializer and the Layer-0 component
+/// surface (`runtime/cljw/wasm/component.zig`) share ONE type — a downward
+/// import from each, zone-clean.
+pub const EmbeddedComponent = struct {
+    path: []const u8,
+    bytes: []const u8,
+};
+
 /// Process-wide execution context.
 ///
 /// Carries `io` / `gpa` / `keywords` / `vtable` / `heap_objects`,
@@ -295,6 +306,23 @@ pub const Runtime = struct {
     /// Build-time require-closure capture sink (ADR-0034 amendment 3). Set by
     /// `cljw build`; null on every other path (production load, REPL, tests).
     build_chunk_sink: ?BuildChunkSink = null,
+
+    /// Build-time collection sink for the resolved paths of `:require`d Wasm
+    /// components (ADR-0158, D-404 Impl D). `analyzeNs` appends each component
+    /// libspec's resolved path here (gpa-duped) so the builder can harvest +
+    /// embed the `.wasm` bytes into the binary. Set by `cljw build`; null on
+    /// every other path (REPL / production run never collect). Distinct from
+    /// `embedded_components` (the run-side lookup table below).
+    component_sink: ?*std.ArrayList([]const u8) = null,
+
+    /// Run-side embedded Wasm component table (ADR-0158, D-404 Impl D). In a
+    /// `cljw build` binary the `:require`d components' bytes are baked into the
+    /// envelope; `tryRunEmbedded` installs them here so `readComponentBytes`
+    /// serves them from memory before any filesystem read — the binary is
+    /// self-contained. Empty (default) on every non-embedded path; a genuinely
+    /// dynamic `(wasm/load runtime-path)` whose path is not in the table falls
+    /// through to the FS jail load.
+    embedded_components: []const EmbeddedComponent = &.{},
 
     /// Filesystem classpath roots searched by the filesystem require resolver
     /// (ADR-0084). Colon-separated `--classpath`/`CLJW_PATH`, default `["."]`,

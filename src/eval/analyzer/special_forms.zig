@@ -1214,6 +1214,13 @@ pub fn analyzeNs(
     forms[0] = n.*;
     forms[1] = (try analyzer_mod.analyze(arena, rt, env, scope, try synthRequireCljwWasmForm(arena, form.location), macro_table)).*;
     for (components.items, 0..) |cr, idx| {
+        // ADR-0158 (D-404 Impl D): record the resolved component path so
+        // `cljw build` can harvest + embed the `.wasm` bytes into the binary.
+        // The sink is set ONLY during a build; null on REPL / production run.
+        // The resolved path is what the desugar bakes as the run-side
+        // `wasm/load-component` arg, so the embedded-table key matches it.
+        if (rt.component_sink) |sink|
+            try sink.append(rt.gpa, try rt.gpa.dupe(u8, cr.path));
         const call_form = try synthComponentRequireForm(arena, cr);
         const call_node = try analyzer_mod.analyze(arena, rt, env, scope, call_form, macro_table);
         forms[2 + idx] = call_node.*;
