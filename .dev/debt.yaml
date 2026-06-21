@@ -52,12 +52,15 @@ active:
       (a) zwasm's `.auto`→JIT cross-host verdict: the flip RE-LANDED @f62e08bac
           (HEAD 6914af3fe) but zwasm marks it "decisive ubuntu x86_64 verdict
           pending (OK=complete / FAIL=revert-flip-only)" — not yet confirmed stable.
-      (b) f64 (FP-bank) JIT invoke TRAPS (verified @6914af3fe): an f64 param/result
-          export runs on `.interp` (3.75) but traps on `.jit`/`.auto`, despite the
-          to_cljw_02 matrix listing f32/f64 as supported. Flipping the default to
-          `.auto` now would silently regress any f64-using module. Reported via
-          from_cljw_03. Locked cljw-side (engine.zig test + surface e2e assert
-          f64 interp=3.75 / jit=TRAP) so it flips + flags when zwasm fixes it.
+      (b) FP-bank JIT invoke TRAPS at a PRECISE trigger (verified @6914af3fe, narrowed
+          by an arity×FP-position sweep in from_cljw_03): a function with EXACTLY 2
+          params that touches the FP bank (any f32/f64 param OR an f32/f64 result)
+          traps on `.jit`/`.auto`. 0/1/3/4-param FP fns work; all-i32 works at any
+          arity (incl. 2-param add/divmod). So it is the JIT's 2-arg×FP-bank calling-
+          convention path, NOT f64-specific. Runs fine on `.interp`. Flipping the
+          default to `.auto` now would silently regress such modules. Reported via
+          from_cljw_03 (with the full repro table). Locked cljw-side (engine.zig test +
+          surface e2e assert the 2-arg f64 `addf` interp=3.75 / jit=TRAP).
       On close (both clear): flip `engine.LoadOpts.engine` default `.interp`→`.auto`
       (remove the PROVISIONAL marker + feature_deps#engine_default), assert the
       no-opts default rides the JIT, and assert f64 jit==interp.
