@@ -281,7 +281,7 @@ fn invokeDivmod(loaded: *Loaded, a: i32, b: i32) ![2]i32 {
     return .{ out[0].i32, out[1].i32 };
 }
 
-test "dual-engine: multi-value agrees jit==interp; f64 is interp-only (JIT traps)" {
+test "dual-engine: multi-value + 2-arg f64 FP-bank agree jit==interp" {
     const alloc = std.testing.allocator;
 
     const interp = try load(alloc, &f64_multivalue_wasm, .{ .engine = .interp });
@@ -300,14 +300,11 @@ test "dual-engine: multi-value agrees jit==interp; f64 is interp-only (JIT traps
     try std.testing.expectEqual([2]i32{ 3, 2 }, try invokeDivmod(interp, 17, 5));
     try std.testing.expectEqual([2]i32{ 3, 2 }, try invokeDivmod(jit, 17, 5));
 
-    // f64 FP-bank param/result: works on interp (3.75). On the JIT it TRAPS in the
-    // pinned zwasm (@6914af3fe) despite the to_cljw_02 matrix listing f32/f64 as
-    // supported — reported upstream via from_cljw_03. Lock the gap: when zwasm fixes
-    // f64-on-JIT this flips and forces a conscious update (then assert jit==interp).
+    // 2-arg f64 FP-bank param/result: byte-identical across engines. zwasm @d7da97e04
+    // fixed the 2-arg×FP-bank JIT dispatch — the 7 FP entry keys were absent in
+    // `dispatchScalar2`, narrowed via the from_cljw_03 arity×FP repro table. (Wider :jit
+    // gaps remain — multi-result-with-FP, 3+-arg FP shapes, v128 boundary — per
+    // to_cljw_04; not exercised here.)
     try std.testing.expectEqual(@as(f64, 3.75), try invokeAddF(interp, 1.5, 2.25));
-    if (invokeAddF(jit, 1.5, 2.25)) |_| {
-        return error.TestExpectedF64TrapOnJit;
-    } else |_| {
-        // Expected: f64 invoke traps on the JIT in the pinned zwasm (from_cljw_03).
-    }
+    try std.testing.expectEqual(@as(f64, 3.75), try invokeAddF(jit, 1.5, 2.25));
 }

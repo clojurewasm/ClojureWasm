@@ -49,11 +49,11 @@ $out"
 echo "$out" | grep -q "divmod-interp: \[3 2\]" || fail "multi-value divmod on :interp != [3 2]:
 $out"
 
-# (6) f64 FP-bank works on :interp; the f64 JIT invoke TRAPS in the pinned zwasm
-# (matrix lists f32/f64 supported, but it traps — from_cljw_03). Locked until fixed.
+# (6) 2-arg f64 FP-bank is byte-identical jit==interp (zwasm @d7da97e04 fixed the
+# 2-arg×FP-bank JIT dispatch — from_cljw_03 repro → to_cljw_04).
 echo "$out" | grep -q "addf-interp: 3.75" || fail "f64 addf on :interp != 3.75:
 $out"
-echo "$out" | grep -q "addf-jit: TRAPPED"  || fail "f64 addf on :jit did not trap as expected (zwasm fixed f64-on-JIT? update from_cljw_03 + flip the assertion):
+echo "$out" | grep -q "addf-jit: 3.75"    || fail "f64 addf on :jit != 3.75 (regressed? zwasm 2-arg×FP dispatch was fixed @d7da97e04):
 $out"
 
 # (7) Real SIMD arithmetic on the JIT: i32x4.mul → horizontal sum = 70.

@@ -52,15 +52,16 @@ active:
       (a) zwasm's `.auto`→JIT cross-host verdict: the flip RE-LANDED @f62e08bac
           (HEAD 6914af3fe) but zwasm marks it "decisive ubuntu x86_64 verdict
           pending (OK=complete / FAIL=revert-flip-only)" — not yet confirmed stable.
-      (b) FP-bank JIT invoke TRAPS at a PRECISE trigger (verified @6914af3fe, narrowed
-          by an arity×FP-position sweep in from_cljw_03): a function with EXACTLY 2
-          params that touches the FP bank (any f32/f64 param OR an f32/f64 result)
-          traps on `.jit`/`.auto`. 0/1/3/4-param FP fns work; all-i32 works at any
-          arity (incl. 2-param add/divmod). So it is the JIT's 2-arg×FP-bank calling-
-          convention path, NOT f64-specific. Runs fine on `.interp`. Flipping the
-          default to `.auto` now would silently regress such modules. Reported via
-          from_cljw_03 (with the full repro table). Locked cljw-side (engine.zig test +
-          surface e2e assert the 2-arg f64 `addf` interp=3.75 / jit=TRAP).
+      (b) FP-bank JIT export-invoke dispatch matrix is INCOMPLETE (PARTIAL fix):
+          from_cljw_03's arity×FP repro pinpointed missing `dispatchScalar2` keys; zwasm
+          added 7 FP keys @d7da97e04 → SAME-type 2-arg pairs now work on `.jit` (verified
+          @474922779: `(f64,f64)→f64` addf=3.75, `(i32,i32)→f64`=7.0, `(f64,f64)→i32`=4).
+          STILL trapping (from_cljw_04): MIXED 2-arg `(i32,f64)`/`(f64,i32)→f64`; plus
+          zwasm's own gap list — multi-result-with-FP, 3+-arg FP shapes, v128-at-boundary.
+          So `.jit` covers i32/i64 GPR + multi-value + same-type-2-arg f32/f64; the rest
+          trap. cljw test/e2e flipped to assert the FIXED `addf` jit==interp (3.75).
+          Flipping cljw's DEFAULT to `.auto` needs the FULL shape matrix green (a mixed-
+          arg module must not silently trap).
       On close (both clear): flip `engine.LoadOpts.engine` default `.interp`→`.auto`
       (remove the PROVISIONAL marker + feature_deps#engine_default), assert the
       no-opts default rides the JIT, and assert f64 jit==interp.
