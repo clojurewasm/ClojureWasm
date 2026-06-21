@@ -1113,10 +1113,15 @@ active:
       (double-drop idempotent); use-after-drop raises `wasm_resource_dropped`; component teardown
       drains the table (backstop). **DA-fork ADR-0159 DIVERGENCE**: NO resource finaliser
       (same-cycle mark-sweep has no finaliser ordering → a resource-finaliser drop could touch a
-      freed Opened). e2e `wasm_resource_drop_probe.clj`. REMAINING in E: resource cycle 2
-      (`with-resource`/`with-open` macro sugar) + the `:cljw/wasm-deps` deps.edn coordinate +
-      registry (OCI/wkg) resolution arm (deferred; from_cljw_05 asks zwasm to confirm the 4
-      read-from-code resource semantics, design proceeded on them). Original approach (as
+      freed Opened). e2e `wasm_resource_drop_probe.clj`.
+      **Impl-E resource cycle 2 LANDED (2026-06-21)**: `(cljw.wasm/with-resource [c (ctr/new …)]
+      …)` macro — the `with-open` analogue, drops each binding via `wasm/resource-drop` in a
+      `finally` (reverse order); deterministic scope-exit release even on throw (the ADR-0159
+      finished-form release contract). e2e: body-sees-live-resource + escaped-handle-drops-at-
+      scope-exit. REMAINING in E: ONLY the `:cljw/wasm-deps` deps.edn coordinate + registry
+      (OCI/wkg) resolution arm (deferred). The resource-ergonomics arc of E is complete.
+      (from_cljw_05 asks zwasm to confirm the 4 read-from-code resource semantics; design
+      proceeded on them.) Original approach (as
       implemented): RED confirmed —
       `(ns a (:require ["x.wasm" :as g]))` errors "require libspec must begin with a symbol"
       (special_forms.zig:914). KEY INSIGHT: in the `ns` special form, DESUGAR a string

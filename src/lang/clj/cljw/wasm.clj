@@ -64,6 +64,22 @@
   (let [o (apply hash-map opts)]
     `(require-component* ~path {:as '~(:as o) :refer '~(:refer o)})))
 
+(defmacro with-resource
+  "bindings => [name init ...]. Evaluates body in a try with names bound to the
+   inits, and a finally that `(wasm/resource-drop)`s each name in reverse order —
+   deterministic release of a component `own` resource (ADR-0159), the wasm
+   analogue of `clojure.core/with-open`. Prefer this over a bare `resource-drop`
+   so a resource is released even if the body throws."
+  [bindings & body]
+  (cond
+    (= (count bindings) 0) `(do ~@body)
+    (symbol? (bindings 0)) `(let ~(subvec bindings 0 2)
+                              (try
+                                (with-resource ~(subvec bindings 2) ~@body)
+                                (finally
+                                  (wasm/resource-drop ~(bindings 0)))))
+    :else (throw (ex-info "with-resource only allows Symbols in bindings" {}))))
+
 (defn require-component-libspec
   "Static `ns`-directive worker (ADR-0135 Amendment 1). The `ns` special form
    desugars a string libspec `(:require [\"x.wasm\" :as g :refer [a b]])` into a

@@ -67,13 +67,15 @@ for marker in \
   "PASS resource-roundtrip" \
   "PASS resource-drop" \
   "PASS resource-use-after-drop-traps" \
-  "PASS resource-double-drop-idempotent"; do
+  "PASS resource-double-drop-idempotent" \
+  "PASS with-resource-body-live" \
+  "PASS with-resource-drops-at-scope-exit"; do
   echo "$rd_out" | grep -q "$marker" || fail "missing: $marker
 $rd_out"
 done
 echo "$rd_out" | grep -q "^DONE$" || fail "resource drop fixture did not complete:
 $rd_out"
-echo "PASS resource-lifecycle -> own-handle wrapper + drop + use-after-drop trap"
+echo "PASS resource-lifecycle -> own-handle wrapper + drop + use-after-drop trap + with-resource"
 
 # --- ADR-0135 A2 (D-404 Impl E): a BARE component name resolves via the CLASSPATH ---
 # `(:require ["greet_component.wasm" :as g])` with `-cp test/e2e/fixtures/wasm` — the
