@@ -24,6 +24,22 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-501"
+    status: "open (2026-06-22, found while building cw-playground JIT examples). `clojure.core/time` is UNRESOLVED: `(time expr)` → Name error 'Unable to resolve symbol: time'; `(resolve 'time)` → nil. Other timing/control macros are fine (when/cond/dotimes resolve). `time` is a trivial clj-parity macro — `(defmacro time [expr] ...)` that captures a start instant, evals expr, prints \"Elapsed time: N msecs\" to *err* (clj prints to *out* via (. System (nanoTime)))-style and returns the value. cljw HAS the building blocks (System/nanoTime exists? — verify; else use an instant primitive). LOW severity (rarely load-bearing) but high-visibility (every Clojure tutorial uses `(time …)`; its absence reads as a hole). The cw-playground 'jit-speed' example wanted `(time …)` and had to fall back to the UI's :ms display."
+    category: "clj-parity"
+    barrier: |-
+      Quick clj-parity win. Implement `clojure.core/time` as a macro in the bootstrap
+      core (src/lang/clj/clojure/core.clj or the Zig special-form table — survey where
+      defmacro-level core macros live). clj's form:
+        (defmacro time [expr]
+          `(let [start# (. System (nanoTime)) ret# ~expr]
+             (prn (str "Elapsed time: " (/ (double (- (. System (nanoTime)) start#)) 1000000.0) " msecs"))
+             ret#))
+      cljw needs a nanosecond clock primitive reachable from bootstrap .clj (D-053 noted
+      std.time.nanoTimestamp was removed in Zig 0.16 — check the current clock surface,
+      runtime/clock.zig / instant.zig). Output goes to *out* (clj) — match it. Add an e2e
+      asserting `(time 42)` returns 42 and prints an \"Elapsed time:\" line. One small TDD cycle.
+    last_reviewed: "2026-06-22"
   - id: "D-487"
     status: "DISCHARGED (2026-06-21, user re-flagged the Debug slowness). VALIDATED the hypothesis decisively: `zig build test -Dwasm -Doptimize=ReleaseSafe` = ~59s cold / ~1.0s warm vs Debug ~200s (3.4× cold, ~200× warm), ALL TESTS PASS (ReleaseSafe keeps bounds/overflow/UB panics; the F-012 diff oracle does not depend on Debug's 0xAA undefined-poisoning). APPLIED: run_all.sh L313-314 now pass `-Doptimize=ReleaseSafe` for both backends; the build-mode policy table (.claude/rules/perf_measure_release.md) amended (gate unit tests = ReleaseSafe; bare `zig build test -Dwasm` stays Debug for dev undefined-poisoning diagnostics). The smoke's dominant cost (zig build test ×2, ~400s) drops to ~120s cold / ~2s warm. ORIGINAL: open (2026-06-21, audited on user prompt re: smoke slowness). The per-commit smoke's dominant cost is `zig build test` ×2 (run_all.sh L313/314: `zig build test -Dwasm` [+ `-Dbackend=tree_walk`]), which default to **Debug** (no `-Doptimize`, per the build-mode policy 'unit tests = Debug for fast-compile + max diagnostics'). MEASURED 2026-06-21: a WARM `zig build test -Dwasm` (compile cached → pure RUN) = **real 114.67s / user 112.96s**; cold (after a vm.zig edit) ≈ 168s = ~114s RUN + ~54s compile. So the RUN dominates — the F-012 diff oracle + all unit tests evaluate MANY programs on the DEBUG-compiled interpreter, hitting the Debug-perf-cliff (perf_measure_release: e.g. (count (vec (range 1e6))) = Debug 121s vs ReleaseFast 0.02s). The shipped/e2e binary is correctly ReleaseSafe (verified `cljw --version`); only the unit-test build is Debug. The build-mode policy assumed COMPILE dominates for unit tests — the diff oracle makes that BACKWARDS (RUN dominates)."
     category: "perf"
