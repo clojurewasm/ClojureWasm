@@ -92,3 +92,21 @@
 ;;=> "+ff"
 (clojure.pprint/cl-format nil "~o" -8)
 ;;=> "-10"
+; ~C variants: ~:c spells specials/control chars, ~@c reader-readable form
+; (2026-06-23 sweep — both previously THREW).
+(clojure.pprint/cl-format nil "~:c" \a)
+;;=> "a"
+(clojure.pprint/cl-format nil "~:c" \space)
+;;=> "Space"
+(clojure.pprint/cl-format nil "~:c" \newline)
+;;=> "Newline"
+(clojure.pprint/cl-format nil "~:c" \tab)
+;;=> "Tab"
+(clojure.pprint/cl-format nil "~:c" \formfeed)
+;;=> "Control-L"
+(clojure.pprint/cl-format nil "~@c" \a)
+;;=> "\\a"
+(clojure.pprint/cl-format nil "~@c" \newline)
+;;=> "\\newline"
+(clojure.pprint/cl-format nil "~c" \a)
+;;=> "a"

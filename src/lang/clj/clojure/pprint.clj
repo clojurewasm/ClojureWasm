@@ -152,6 +152,19 @@
         body (if colon? (cl-group mag (or commachar \,) (or interval 3)) mag)]
     (str (cond neg? "-" at? "+" :else "") body)))
 
+;; ~:C — spell a character: the named specials, else Control-<c+64> for a control
+;; char (Control-? for 127), else the char itself. Mirrors clj's pretty-character.
+(defn cl-char-pretty [c]
+  (let [as-int (int c)
+        base (bit-and as-int 127)
+        special {8 "Backspace" 9 "Tab" 10 "Newline" 13 "Return" 32 "Space"}]
+    (str (when (> (bit-and as-int 128) 0) "Meta-")
+         (cond
+           (special base) (special base)
+           (< base 32) (str "Control-" (char (+ base 64)))
+           (= base 127) "Control-?"
+           :else (char base)))))
+
 ;; Parse a base-10 integer string (optional leading +/-). Self-contained so the
 ;; ~F natural-precision path does not depend on read-string in the bundled .clj.
 (defn cl-parse-int [s]
@@ -646,9 +659,13 @@
                                colon? (- pos (or p0 1))
                                :else (+ pos (or p0 1)))]
                   (recur ni np acc))
-                ;; ~C — print a character (plain; ~:C/~@C named/readable variants
-                ;; are not modelled).
-                (and (or (= d \c) (= d \C)) (not colon?) (not at?)) (recur ni (inc pos) (str acc x))
+                ;; ~C — character: plain prints it, ~:C spells a special/control
+                ;; char by name (Space/Newline/Tab/Return/Backspace, else Control-X),
+                ;; ~@C the reader-readable form (\a / \newline).
+                (or (= d \c) (= d \C))
+                (recur ni (inc pos) (str acc (cond colon? (cl-char-pretty x)
+                                                   at? (pr-str x)
+                                                   :else (str x))))
                 ;; ~& — fresh-line: a newline only if not already at line start;
                 ;; ~N& adds N-1 further newlines.
                 (= d \&)
