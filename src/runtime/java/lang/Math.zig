@@ -71,6 +71,14 @@ fn floor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anye
     return Value.initFloat(@floor(try error_catalog.expectNumber(args[0], "Math/floor", loc)));
 }
 
+/// `Math/random` — a PRNG double in [0,1). Shares the process PRNG with core
+/// `rand` (runtime/random.zig); non-deterministic by design, no args.
+fn random(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("Math/random", args, 0, loc);
+    return Value.initFloat(@import("../../random.zig").nextDouble(rt.io));
+}
+
 /// Implements `(Math/ceil n)`.
 /// Spec: smallest double ≥ n with integral value; always returns a double.
 /// JVM reference: java.lang.Math#ceil.
@@ -475,6 +483,8 @@ fn initMath(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerro
         .{ "addExact", &ExactBin(.add, "addExact").call }, .{ "subtractExact", &ExactBin(.sub, "subtractExact").call }, .{ "multiplyExact", &ExactBin(.mul, "multiplyExact").call },
         .{ "negateExact", &negateExact },                  .{ "incrementExact", &incrementExact },                      .{ "decrementExact", &decrementExact },
         .{ "toIntExact", &toIntExact },
+        // no-arg PRNG double in [0,1) — shares the process PRNG with core `rand`.
+        .{ "random", &random },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

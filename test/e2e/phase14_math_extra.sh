@@ -34,4 +34,8 @@ check '(Math/floorDiv -7 2)'  '-4'  math_floorDiv_neg
 check '(Math/floorMod -7 3)'  '2'   math_floorMod_neg
 check '(Math/floorMod 7 3)'   '1'   math_floorMod_pos
 
+# Math/random (D-509 follow-up): no-arg PRNG double in [0,1).
+check '(and (<= 0.0 (Math/random)) (< (Math/random) 1.0))' 'true' math_random_range
+check '(double? (Math/random))' 'true' math_random_double
+
 echo "ALL PASS phase14_math_extra"
