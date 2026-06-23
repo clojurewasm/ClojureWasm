@@ -2294,6 +2294,25 @@
               nil))
   true)
 
+;; `(flush)` — flush the current `*out*` writer VALUE (ADR-0138). clj flushes
+;; the bound output stream; cljw's `*out*` is a first-class writer value whose
+;; `.flush` is a no-op for the stdout sink but real for a buffered/string sink.
+(defn flush
+  "Flushes the output stream that is the current value of *out*."
+  []
+  (.flush *out*)
+  nil)
+
+;; `(future-call f)` — the fn behind the `future` macro (clj 1.1). cljw's
+;; `future` macro expands to `(__future-call (fn* [] body))`; future-call is the
+;; same primitive exposed for a pre-built no-arg thunk. (clj adds binding
+;; conveyance here; cljw's `future` macro does not, so future-call matches it.)
+(defn future-call
+  "Takes a function of no args and yields a future object that will invoke the
+  function in another thread, caching the result for deref/@."
+  [f]
+  (__future-call f))
+
 ;; `(pmap f coll & colls)` / `(pcalls & fns)` — PARALLEL map / parallel calls
 ;; (D-224), clj's exact impl: each element's `(f x)` runs on its own
 ;; `future` (a real OS thread); a `step`/`drop n` bounded look-ahead (n =

@@ -66,4 +66,12 @@ assert_eq 'time_value'   "$("$BIN" -e '(let [v (atom nil)] (with-out-str (reset!
 assert_eq 'time_prefix'  "$("$BIN" -e '(clojure.string/starts-with? (with-out-str (time 1)) "\"Elapsed time:")')" 'true'
 assert_eq 'time_msecs'   "$("$BIN" -e '(clojure.string/includes? (with-out-str (time 1)) "msecs")')" 'true'
 
+# --- flush (D-502 sibling): flushes *out*, returns nil; real on a string sink ---
+assert_eq 'flush_nil'    "$("$BIN" -e '(nil? (flush))')" 'true'
+assert_eq 'flush_out'    "$("$BIN" -e '(= "ab" (with-out-str (print "ab") (flush)))')" 'true'
+
+# --- future-call (D-502 sibling): the fn behind the future macro; runs a no-arg
+# thunk off-thread, deref caches the result ---
+assert_eq 'future_call'  "$("$BIN" -e '(deref (future-call (fn [] (+ 40 2))))')" '42'
+
 echo "ALL phase14_core_cluster PASS"
