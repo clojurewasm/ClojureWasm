@@ -72,3 +72,23 @@
 ;;=> "1+2"
 (clojure.pprint/cl-format nil "~@?" "~a+~a" 1 2)
 ;;=> "1+2"
+; radix directives ~D/~B/~O/~X/~nR: ~@ forces sign, ~: groups digits,
+; negatives are sign-magnitude not two's-complement (2026-06-23 sweep).
+(clojure.pprint/cl-format nil "~@d" 42)
+;;=> "+42"
+(clojure.pprint/cl-format nil "~@:d" 1234567)
+;;=> "+1,234,567"
+(clojure.pprint/cl-format nil "~:x" 1234567)
+;;=> "12d,687"
+(clojure.pprint/cl-format nil "~b" -10)
+;;=> "-1010"
+(clojure.pprint/cl-format nil "~,,'_,4:b" 255)
+;;=> "1111_1111"
+(clojure.pprint/cl-format nil "~16r" 255)
+;;=> "ff"
+(clojure.pprint/cl-format nil "~2:r" 255)
+;;=> "11,111,111"
+(clojure.pprint/cl-format nil "~@x" 255)
+;;=> "+ff"
+(clojure.pprint/cl-format nil "~o" -8)
+;;=> "-10"

@@ -142,6 +142,16 @@
       (if (>= idx n) out
         (recur (+ idx iv) (str out cc (subs digits idx (+ idx iv))))))))
 
+;; Signed + optionally grouped magnitude string for the radix directives
+;; ~D/~B/~O/~X and ~nR: magnitude in `base`, ~: groups it (commachar/interval),
+;; then the sign — "-" for negative, "+" for ~@ on a non-negative (clj uses
+;; sign-magnitude, NOT two's complement, for a negative ~B/~O/~X/~R).
+(defn cl-radix [x base colon? at? commachar interval]
+  (let [neg? (neg? x)
+        mag (Long/toString (if neg? (- x) x) base)
+        body (if colon? (cl-group mag (or commachar \,) (or interval 3)) mag)]
+    (str (cond neg? "-" at? "+" :else "") body)))
+
 ;; Parse a base-10 integer string (optional leading +/-). Self-contained so the
 ;; ~F natural-precision path does not depend on read-string in the bundled .clj.
 (defn cl-parse-int [s]
@@ -531,19 +541,13 @@
                   rp (cl-resolve-params raw argv pos na)
                   params (nth rp 0) pos (nth rp 1)
                   p0 (first params) p1 (second params)
-                  p2 (nth params 2 nil) p3 (nth params 3 nil)
+                  p2 (nth params 2 nil) p3 (nth params 3 nil) p4 (nth params 4 nil)
                   x (when (< pos na) (nth argv pos))]
               (cond
                 (or (= d \a) (= d \A)) (recur ni (inc pos) (str acc (cl-pad-col (print-str x) p0 p1 p2 p3 at?)))
                 (or (= d \s) (= d \S)) (recur ni (inc pos) (str acc (cl-pad-col (pr-str x) p0 p1 p2 p3 at?)))
                 (or (= d \d) (= d \D))
-                (recur ni (inc pos)
-                       (str acc (cl-pad (if colon?
-                                          (let [neg? (neg? x)
-                                                grouped (cl-group (str (if neg? (- x) x)) (or p2 \,) (or p3 3))]
-                                            (if neg? (str "-" grouped) grouped))
-                                          (str x))
-                                        p0 (or p1 \space))))
+                (recur ni (inc pos) (str acc (cl-pad (cl-radix x 10 colon? at? p2 p3) p0 (or p1 \space))))
                 ;; ~w,dF — fixed float. With d given, `%[w].[d]f`. With d OMITTED,
                 ;; clj prints the natural (shortest round-trip) value in plain fixed
                 ;; notation, left-padded to w (D-465), NOT 0-decimals.
@@ -552,14 +556,15 @@
                        (str acc (if p1
                                   (format (str "%" (if p0 p0 "") "." p1 "f") (double x))
                                   (cl-pad (cl-float-natural x) p0 \space))))
-                (or (= d \x) (= d \X)) (recur ni (inc pos) (str acc (cl-pad (format "%x" x) p0 (or p1 \space))))
-                (or (= d \o) (= d \O)) (recur ni (inc pos) (str acc (cl-pad (format "%o" x) p0 (or p1 \space))))
-                (or (= d \b) (= d \B)) (recur ni (inc pos) (str acc (cl-pad (Long/toBinaryString x) p0 (or p1 \space))))
+                (or (= d \x) (= d \X)) (recur ni (inc pos) (str acc (cl-pad (cl-radix x 16 colon? at? p2 p3) p0 (or p1 \space))))
+                (or (= d \o) (= d \O)) (recur ni (inc pos) (str acc (cl-pad (cl-radix x 8 colon? at? p2 p3) p0 (or p1 \space))))
+                (or (= d \b) (= d \B)) (recur ni (inc pos) (str acc (cl-pad (cl-radix x 2 colon? at? p2 p3) p0 (or p1 \space))))
                 (or (= d \r) (= d \R))
-                (recur ni (inc pos) (str acc (cond p0 (Long/toString x p0)
-                                                   at? (cl-roman x)
-                                                   colon? (cl-ordinal x)
-                                                   :else (cl-cardinal x))))
+                (recur ni (inc pos) (str acc (if p0
+                                               (cl-pad (cl-radix x p0 colon? at? p3 p4) p1 (or p2 \space))
+                                               (cond at? (cl-roman x)
+                                                     colon? (cl-ordinal x)
+                                                     :else (cl-cardinal x)))))
                 ;; ~{...~} — iterate over a list arg (~@{ over the remaining args).
                 (= d \{)
                 (let [cl (cl-close fmt ni \}) sub (nth cl 0) nxt (nth cl 1)]
