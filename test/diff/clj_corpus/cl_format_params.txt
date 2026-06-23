@@ -56,3 +56,19 @@
 ;;=> "1.234.567"
 (clojure.pprint/cl-format nil "~,,'.:d" 1234567)
 ;;=> "1.234.567"
+; ~A aesthetic (print, not pr) — collections/chars unquoted; ~:{ sublist
+; iteration; ~? / ~@? recursive format (2026-06-23 sweep).
+(clojure.pprint/cl-format nil "~a" ["x" "y"])
+;;=> "[x y]"
+(clojure.pprint/cl-format nil "~a" \c)
+;;=> "c"
+(clojure.pprint/cl-format nil "~a" {:a "b"})
+;;=> "{:a b}"
+(clojure.pprint/cl-format nil "~:{~a-~a ~}" [[1 2] [3 4]])
+;;=> "1-2 3-4 "
+(clojure.pprint/cl-format nil "~:{(~a,~a)~}" [[1 2] [3 4] [5 6]])
+;;=> "(1,2)(3,4)(5,6)"
+(clojure.pprint/cl-format nil "~?" "~a+~a" [1 2])
+;;=> "1+2"
+(clojure.pprint/cl-format nil "~@?" "~a+~a" 1 2)
+;;=> "1+2"

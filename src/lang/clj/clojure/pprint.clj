@@ -324,7 +324,7 @@
       (let [pr (first pairs) v (first pr) s (second pr)]
         (if (>= n v) (recur (- n v) (str acc s) pairs) (recur n acc (rest pairs)))))))
 
-(declare cl-iter)
+(declare cl-iter cl-iter-sub)
 
 ;; Current output column = chars since the last newline in `s` (~T uses it).
 (defn cl-col [s]
@@ -534,7 +534,7 @@
                   p2 (nth params 2 nil) p3 (nth params 3 nil)
                   x (when (< pos na) (nth argv pos))]
               (cond
-                (or (= d \a) (= d \A)) (recur ni (inc pos) (str acc (cl-pad-col (if (string? x) x (pr-str x)) p0 p1 p2 p3 at?)))
+                (or (= d \a) (= d \A)) (recur ni (inc pos) (str acc (cl-pad-col (print-str x) p0 p1 p2 p3 at?)))
                 (or (= d \s) (= d \S)) (recur ni (inc pos) (str acc (cl-pad-col (pr-str x) p0 p1 p2 p3 at?)))
                 (or (= d \d) (= d \D))
                 (recur ni (inc pos)
@@ -562,10 +562,16 @@
                                                    :else (cl-cardinal x))))
                 ;; ~{...~} — iterate over a list arg (~@{ over the remaining args).
                 (= d \{)
-                (let [cl (cl-close fmt ni \})]
-                  (if at?
-                    (recur (nth cl 1) na (str acc (cl-iter (nth cl 0) (subvec argv (min pos na)))))
-                    (recur (nth cl 1) (inc pos) (str acc (cl-iter (nth cl 0) x)))))
+                (let [cl (cl-close fmt ni \}) sub (nth cl 0) nxt (nth cl 1)]
+                  (cond
+                    ;; ~:@{ — each REMAINING arg is itself a sublist of body-args.
+                    (and at? colon?) (recur nxt na (str acc (cl-iter-sub sub (subvec argv (min pos na)))))
+                    ;; ~:{ — the next arg is a list of sublists, one per iteration.
+                    colon? (recur nxt (inc pos) (str acc (cl-iter-sub sub x)))
+                    ;; ~@{ — iterate the body over the remaining args directly.
+                    at? (recur nxt na (str acc (cl-iter sub (subvec argv (min pos na)))))
+                    ;; ~{ — the next arg is the list iterated over.
+                    :else (recur nxt (inc pos) (str acc (cl-iter sub x)))))
                 (= d \()
                 (let [cl (cl-close fmt ni \)) r (cl-run (nth cl 0) argv pos)]
                   (recur (nth cl 1) (nth r 1) (str acc (cl-case (nth r 0) colon? at?))))
@@ -660,6 +666,14 @@
                 (recur ni (inc pos)
                        (str acc (cl-money x (or p0 2) (or p1 1) (nth params 2 nil) (or (nth params 3 nil) \space) at? colon?)))
                 (= d \~) (recur ni pos (str acc \~))
+                ;; ~? — recursive format: the next arg is a format string. Plain ~?
+                ;; takes the FOLLOWING arg as a list of its args; ~@? draws them from
+                ;; the remaining args inline (advancing this format's arg pointer).
+                (= d \?)
+                (if at?
+                  (let [r (cl-run x argv (inc pos))]
+                    (recur ni (nth r 1) (str acc (nth r 0))))
+                  (recur ni (+ pos 2) (str acc (nth (cl-run x (vec (nth argv (inc pos))) 0) 0))))
                 :else (throw (ex-info (str "cl-format: directive ~" d " is not supported in ClojureWasm") {}))))
             (recur (inc i) pos (str acc c))))))))
 
@@ -674,6 +688,11 @@
         acc
         (let [r (cl-run subfmt v pos)]
           (if (= (nth r 1) pos) acc (recur (nth r 1) (str acc (nth r 0)))))))))
+
+;; ~:{ / ~:@{ — each element of `lst` is itself a sublist of body-args; run
+;; `subfmt` over each sublist from its own pos 0 and concatenate.
+(defn cl-iter-sub [subfmt lst]
+  (apply str (map (fn [sub] (nth (cl-run subfmt (vec sub) 0) 0)) lst)))
 
 (defn cl-format [stream fmt & args]
   (let [result (nth (cl-run fmt (vec args) 0) 0)]
