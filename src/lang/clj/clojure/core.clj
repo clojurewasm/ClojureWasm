@@ -2261,6 +2261,39 @@
                            (filter matches? (keys (ns-publics ns))))))
                   (all-ns)))))
 
+;; `tap>` / `add-tap` / `remove-tap` — clj 1.10 debugging fan-out (D-502).
+;; clj uses a daemon thread + a bounded ArrayBlockingQueue; cljw has no
+;; java.util.concurrent, so an agent (send-off → a real worker thread) carries
+;; the async, non-blocking delivery — tap> returns true and never blocks the
+;; caller. A per-tap try/catch plus the agent's :error-handler keep one faulty
+;; tap from dropping the others (clj catches Throwable per tap too).
+(defonce ^:private tapset (atom #{}))
+(defonce ^:private tap-agent (agent nil :error-handler (fn [_ _] nil)))
+
+(defn add-tap
+  "Adds f, a fn of one argument, to the tap set. f will be called with anything
+  sent via tap>. f may block briefly but will never impede tap>. Remember f to
+  remove-tap."
+  [f]
+  (swap! tapset conj f)
+  nil)
+
+(defn remove-tap
+  "Remove f from the tap set."
+  [f]
+  (swap! tapset disj f)
+  nil)
+
+(defn tap>
+  "Sends x to any taps. Will not block. Returns true."
+  [x]
+  (send-off tap-agent
+            (fn [_]
+              (doseq [t @tapset]
+                (try (t x) (catch Throwable _ nil)))
+              nil))
+  true)
+
 ;; `(pmap f coll & colls)` / `(pcalls & fns)` — PARALLEL map / parallel calls
 ;; (D-224), clj's exact impl: each element's `(f x)` runs on its own
 ;; `future` (a real OS thread); a `step`/`drop n` bounded look-ahead (n =

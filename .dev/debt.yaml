@@ -2342,6 +2342,11 @@ standing:
     barrier: "open after the D-440 arc completes (R4 + R5 must first rewrite the bulk of 'Phase N' citations to gap-area terms). Premature adoption = ~70 dangling citations with no 1:1 redirect. Trigger: D-440 R4/R5 done + a user nod to re-architect the planning axis (it is depth-4, the project's organizing metaphor)."
     last_reviewed: "2026-06-15"
 discharged:
+  - id: "D-502"
+    status: "DISCHARGED 2026-06-23. Implemented clojure.core/tap> + add-tap + remove-tap (clj 1.10 debugging fan-out) in core.clj — found via the core-coverage-gap probe during the stdlib/contrib sweep. cljw has no java.util.concurrent ArrayBlockingQueue/daemon-thread, so delivery rides an AGENT (send-off → real worker thread): tap> is non-blocking, returns true, and a per-tap try/catch + the agent :error-handler isolate a faulty tap (clj catches Throwable per tap too). tapset/tap-agent are ^:private (clj-matched: NOT in clojure.core publics). clj-verified: return values [nil nil true], publics [false false true true true], async delivery + remove + fault-isolation all identical. e2e phase15_tap.sh (registered in run_all.sh)."
+    category: "clj-parity"
+    barrier: "none — DISCHARGED."
+    last_reviewed: "2026-06-23"
   - id: "D-464"
     status: "DISCHARGED 2026-06-20 (opened + fixed same session — the real `(ga/+)` blocker D-293 had mis-recorded). cljw multimethod `isaCheck` now applies isa? the two ways it missed: (1) a `.type_descriptor`×`.type_descriptor` arm delegates to the SHARED `class_name.classIsa` (extracted from `core.classIsaPrim` — Object/Number/IFn/interface-marker/exception-hierarchy — so dispatch and `(isa? c1 c2)` cannot drift), so `(defmethod h java.lang.Number)` is found for a Long dispatch value; (2) an equal-length VECTOR pair is matched ELEMENT-WISE (clj `(every? isa? cs ps)`), so `(defmethod g [Number Number])` dispatches on `[Long Long]` and the pure-derive `[::animal ::animal]`/`(pr2 ::dog ::dog)` case works too. Both arms fall through to the existing derive-ancestors lookup on no-match (a class can also be `derive`d). Corpus multimethod_isa_dispatch.txt (6 pairs); no-match still raises (AD-007 message-format diff only). Regression-checked: derive/keyword/typed-instance/default/protocol dispatch + phase7/phase15 multimethod e2e all green; full gate green."
     category: "clj-parity"
