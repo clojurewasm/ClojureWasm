@@ -145,4 +145,11 @@ assert_eq 'mc_unlimited'  "$(sm '(str java.math.MathContext/UNLIMITED)')"       
 # DECIMAL64 used in a real round (16 sig figs, HALF_EVEN)
 assert_eq 'mc_dec_round'  "$(sm '(str (.divide (bigdec "1") (bigdec "3") java.math.MathContext/DECIMAL32))')"                 '"0.3333333"'
 
-echo "OK — phase14_bigdecimal_setscale (87 cases) green"
+# BigDecimal string/int constructor (D-511) — JVM (BigDecimal. x). clj-grounded.
+assert_eq 'ctor_str'  "$(sm '(str (java.math.BigDecimal. "1.5"))')"   '"1.5"'
+assert_eq 'ctor_str2' "$(sm '(str (java.math.BigDecimal. "3.14159"))')" '"3.14159"'
+assert_eq 'ctor_int'  "$(sm '(str (java.math.BigDecimal. 5))')"        '"5"'
+# the ctor result is a real BigDecimal (scale-bearing, usable in .setScale)
+assert_eq 'ctor_use'  "$(sm '(str (.setScale (java.math.BigDecimal. "2.5") 0 java.math.RoundingMode/HALF_UP))')" '"3"'
+
+echo "OK — phase14_bigdecimal_setscale (91 cases) green"

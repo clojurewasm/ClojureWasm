@@ -31,11 +31,15 @@ active:
       DISCHARGED — `.until` complete for LocalDate / LocalDateTime / Instant.
     last_reviewed: "2026-06-24"
   - id: "D-511"
-    status: "OPEN (2026-06-24). MathContext surface essentially complete. Part (a) remainder/divideToIntegralValue LANDED. Part (b) MathContext CORE LANDED ((MathContext. p [mode]) + getPrecision/getRoundingMode/toString + .round(mc) + .divide(d,mc) + generalised allocDivPrecision/allocRoundPrecision). DECIMAL32/64/128/UNLIMITED static constants LANDED 2026-06-24 (math_context.zig singleton, `.math_context` StaticFieldValue arm; e2e mc_decimal*). Only the BigDecimal(…,mc) constructor remains."
+    status: "OPEN (2026-06-24). BigDecimal/MathContext surface near-complete: remainder/divideToIntegralValue, MathContext core + DECIMAL* constants, and the 1-arg `(BigDecimal. str|int)` constructor all LANDED. Only the 2-arg `(BigDecimal. x mc)` round-on-construct + the exact-binary `(BigDecimal. double)` ctor remain — both low priority."
     category: "clj-parity"
     barrier: |-
-      Only `(BigDecimal. <num> mc)` (round-on-construct) remains — low priority, the
-      explicit `.round(mc)` covers the functionality. Verify vs clj + e2e when landed.
+      Two ctor remnants, low priority: (1) `(BigDecimal. x mc)` round-on-construct —
+      equals `(.round (bigdec x) mc)`; the 2-arg form needs a combined parse-then-
+      round at the Managed level to avoid holding an intermediate Value across the
+      round alloc (GC-rooting). (2) `(BigDecimal. double)` — JVM's exact-binary
+      expansion (a footgun; differs from bigdec's shortest-round-trip). Verify vs
+      clj + e2e if landed.
     last_reviewed: "2026-06-24"
   - id: "D-510"
     status: "OPEN (2026-06-24). General host-enum mechanism (ADR-0160 DA Alt 3). NOW JUSTIFIED: there are TWO parallel one-off host-enum singletons — RoundingMode (`.rounding_mode: u8` arm + rounding_mode.zig) AND ChronoUnit (`.chrono_unit: u8` arm + chrono_unit.zig, 2026-06-24). The barrier (2nd enum appears) has dissolved — unify into one StaticFieldValue arm + registry, folding both + the ad-hoc DayOfWeek/Month TemporalPrint arms. Note per-enum toString differs (RoundingMode str=enum-name 'HALF_UP'; ChronoUnit str=display-name 'Days'), so the mechanism needs a per-enum name fn. SCOPE FINDING (2026-06-24): the four host enums use TWO different value representations — RoundingMode/ChronoUnit are `.host_instance` (state[0]=ordinal) + a toString METHOD; DayOfWeek/Month are `.typed_instance` + the `TemporalPrint` enum-name print arm + getValue. A true unification must reconcile both representations (pick one home + one print path), so it is a larger structural refactor than a pure StaticFieldValue-arm merge — schedule as a focused unit, not a tail-of-session add."

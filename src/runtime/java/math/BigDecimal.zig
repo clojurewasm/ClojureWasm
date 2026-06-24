@@ -29,6 +29,7 @@ const print_mod = @import("../../print.zig");
 const host_instance = @import("../../host_instance.zig");
 const rounding_mode = @import("../../rounding_mode.zig");
 const nb = @import("../../value/nan_box.zig");
+const string_collection = @import("../../collection/string.zig");
 
 fn requireBd(v: Value, name: []const u8, loc: SourceLocation) !void {
     if (v.tag() != .big_decimal)
@@ -487,10 +488,28 @@ pub fn installNativeMethods(rt: *Runtime) !void {
 /// with the class static methods (`BigDecimal/valueOf`). Mirrors `Long.initLong`;
 /// runs once at module install (the static-field constants are comptime, but a
 /// `Value.initBuiltinFn` method entry cannot be built at module-scope comptime).
+/// `(BigDecimal. x)` — construct from a decimal STRING (parsed, like `bigdec`) or
+/// an integer (scale 0). JVM `BigDecimal(String)` / `BigDecimal(long)`. The
+/// `(BigDecimal. x mc)` round-on-construct + the exact-binary `double` ctor are
+/// D-511 (the 2-arg form needs a combined parse-then-round to stay GC-safe).
+fn initBigDecimal(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("BigDecimal", args, 1, loc);
+    switch (args[0].tag()) {
+        .string => return (try big_decimal.allocFromDecimalString(rt, string_collection.asString(args[0]))) orelse
+            error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "BigDecimal", .actual = "an unparseable decimal string" }),
+        else => {
+            if (args[0].isInt()) return big_decimal.allocFromI64Scale(rt, args[0].asInteger(), 0);
+            return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "BigDecimal", .actual = @tagName(args[0].tag()) });
+        },
+    }
+}
+
 fn initStatic(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent re-run
     const specs = .{
         .{ "valueOf", &valueOf },
+        .{ "<init>", &initBigDecimal },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {
