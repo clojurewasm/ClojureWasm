@@ -94,6 +94,16 @@ nses="$(printf '%s\n' "${exprs[@]}" \
 for ns in $nses; do
     printf "(try (require '%s) (catch Throwable _ nil))\n" "$ns" >> "$batch"
 done
+# cljw mirror: cljw does NOT auto-load a qualified ns either, so a non-preloaded
+# ns (clojure.set / clojure.data.* / clojure.zip / …) would Name-error on the
+# cljw side and false-DIFF against the auto-required clj side. Build the same
+# requires, wrapped per-expr in a `(do …)` so they run BEFORE the prn yet do not
+# each echo their own `nil` line (a top-level `(require …)` would, breaking the
+# `head -1` extraction). A Java FQCN require is swallowed by the try/catch.
+cljw_reqs=""
+for ns in $nses; do
+    cljw_reqs+="(try (require '$ns) (catch Throwable _ nil)) "
+done
 # Each form is try/catch-wrapped so an expr that THROWS (an error-case probe,
 # e.g. a multimethod no-match) prints one `<clj-error> <Class>` line instead
 # of aborting the rest of the single-process batch (which would map every
@@ -121,7 +131,11 @@ ok_outs=()
 for i in $(seq 0 $((n - 1))); do
     e="${exprs[$i]}"
     cj="${clj_lines[$i]:-<clj-missing>}"
-    cw="$(timeout 20 "$BIN" -e "(prn $e)" 2>&1 | head -1)"
+    if [ -n "$cljw_reqs" ]; then
+        cw="$(timeout 20 "$BIN" -e "(do $cljw_reqs (prn $e))" 2>&1 | head -1)"
+    else
+        cw="$(timeout 20 "$BIN" -e "(prn $e)" 2>&1 | head -1)"
+    fi
     if [ "$cw" = "$cj" ]; then
         printf 'OK   %s\n' "$e"
         ok_exprs+=("$e")
