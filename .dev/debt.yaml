@@ -302,6 +302,19 @@ active:
       validity: 110 markers (PROVISIONAL 4 / PERF 65 / GC-ROOT 41 / VM-DEFER 0).
       Walk each; validate it is still accurate + earning its keep; retire stale;
       keep the meaningful.
+      AUDIT 1 (2026-06-25): current counts PERF 61 / GC-ROOT 38 / PROVISIONAL 3 /
+      VM-DEFER 0. HEALTHY: VM-DEFER 0 (no dual-backend-parity debt); the 3
+      PROVISIONAL markers all carry a well-formed `[refs: D-NNN,
+      feature_deps.yaml#key]` triad (D-048 host_instance catch arm ×2,
+      D-259 wasm handle) per provisional_marker.md; no genuine BARE pointer comments
+      exist (D-522 target empty — a `^\s*//\s*(ADR|D)-NNN\s*$` scan returns 0, so the
+      in-code refs all anchor explanatory prose, which the rule says to KEEP). The
+      PERF markers lacking an explicit `O-NNN` ref (~10) are genuine speed-for-
+      simplicity trades that cite an ADR or describe the naive↔fast pair inline
+      (fromSlice-vs-N×conj, chunk fast path, i64 small-ratio per ADR-0149) — per
+      perf_marker.md enforcement is "lightweight, no hard gate" + descriptive PERF
+      is acceptable, so these are not violations. No stale/lying markers found;
+      the inventory is healthy. Re-run at the next marker-churn point.
     category: "docs"
     quality_floor: "public-ization: marker-comment inventory (ADR-0166)"
     barrier: |-
