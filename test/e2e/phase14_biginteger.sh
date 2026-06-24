@@ -48,5 +48,14 @@ assert_eq 'bi_sqrt'   "$(bm '(.sqrt (biginteger 17))')"                '4N'
 # a negative sqrt raises (JVM ArithmeticException)
 if "$BIN" -e '(.sqrt (biginteger -1))' >/dev/null 2>&1; then fail "bi_sqrt_neg: expected raise"; fi
 echo "PASS bi_sqrt_neg -> raised"
+# modPow (square-and-multiply) + bitLength
+assert_eq 'bi_modpow'   "$(bm '(.modPow (biginteger 3) (biginteger 4) (biginteger 5))')"   '1N'
+assert_eq 'bi_modpow2'  "$(bm '(.modPow (biginteger 2) (biginteger 10) (biginteger 1000))')" '24N'
+assert_eq 'bi_modpow_neg' "$(bm '(.modPow (biginteger -3) (biginteger 3) (biginteger 7))')"  '1N'
+assert_eq 'bi_modpow_big' "$(bm '(.modPow (biginteger 123456789) (biginteger 987654321) (biginteger 1000000007))')" '652541198N'
+assert_eq 'bi_bitlen'   "$(bm '(.bitLength (biginteger 255))')"   '8'
+assert_eq 'bi_bitlen2'  "$(bm '(.bitLength (biginteger 256))')"   '9'
+assert_eq 'bi_bitlen0'  "$(bm '(.bitLength (biginteger 0))')"     '0'
+assert_eq 'bi_bitlen_neg' "$(bm '(.bitLength (biginteger -256))')" '8'
 
-echo "OK — phase14_biginteger (13 cases) green"
+echo "OK — phase14_biginteger (21 cases) green"

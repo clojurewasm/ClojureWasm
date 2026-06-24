@@ -116,6 +116,69 @@ fn sqrtFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
     return big_int.allocFromManaged(rt, &r, .bigint);
 }
 
+/// `(.modPow n exp m)` — `n^exp mod m`, exp ≥ 0, m > 0 (JVM `BigInteger.modPow`),
+/// via square-and-multiply. (Negative exp = modular inverse — D-514.)
+fn modPowFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("modPow", args, 3, loc);
+    try requireBigInt(args[1], "modPow", loc);
+    try requireBigInt(args[2], "modPow", loc);
+    const infra = rt.gc.infra;
+    const m = big_int.asManaged(args[2]);
+    if (m.toConst().orderAgainstScalar(0) != .gt)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "modPow", .expected = "a positive modulus", .actual = "a non-positive modulus" });
+    if (!big_int.asManaged(args[1]).toConst().positive)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "modPow", .expected = "a non-negative exponent", .actual = "a negative exponent" });
+
+    var result = try Managed.initSet(infra, 1);
+    defer result.deinit();
+    var base = try Managed.init(infra);
+    defer base.deinit();
+    var e = try big_int.asManaged(args[1]).clone();
+    defer e.deinit();
+    var two = try Managed.initSet(infra, 2);
+    defer two.deinit();
+    var prod = try Managed.init(infra);
+    defer prod.deinit();
+    var ehalf = try Managed.init(infra);
+    defer ehalf.deinit();
+    var ebit = try Managed.init(infra);
+    defer ebit.deinit();
+    var sq = try Managed.init(infra);
+    defer sq.deinit();
+
+    try sq.divFloor(&base, big_int.asManaged(args[0]), m); // base = n mod m ∈ [0,m)
+    while (e.toConst().orderAgainstScalar(0) == .gt) {
+        try ehalf.divFloor(&ebit, &e, &two); // ehalf = e/2, ebit = e%2
+        if (!ebit.eqlZero()) {
+            try prod.mul(&result, &base);
+            try sq.divFloor(&result, &prod, m); // result = result·base mod m
+        }
+        try prod.mul(&base, &base);
+        try sq.divFloor(&base, &prod, m); // base = base² mod m
+        e.swap(&ehalf);
+    }
+    try sq.divFloor(&prod, &result, m); // final reduce (handles m = 1 → 0)
+    return big_int.allocFromManaged(rt, &prod, .bigint);
+}
+
+/// `(.bitLength n)` — minimal two's-complement bit count excl. sign (JVM
+/// `BigInteger.bitLength`): `bits(|n|)` for n ≥ 0, `bits(|n|-1)` for n < 0.
+fn bitLengthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("bitLength", args, 1, loc);
+    const m = big_int.asManaged(args[0]);
+    if (m.toConst().positive) // n ≥ 0 (std treats 0 as positive; bitCountAbs(0)=0)
+        return Value.initInteger(@intCast(m.toConst().bitCountAbs()));
+    var absm = try m.clone();
+    defer absm.deinit();
+    absm.abs();
+    var one = try Managed.initSet(rt.gc.infra, 1);
+    defer one.deinit();
+    try absm.sub(&absm, &one); // |n| - 1
+    return Value.initInteger(@intCast(absm.toConst().bitCountAbs()));
+}
+
 /// Populate the per-Runtime `.big_int` native descriptor's method table.
 /// Idempotent. Called at runtime init alongside the other native installers.
 pub fn installNativeMethods(rt: *Runtime) !void {
@@ -130,6 +193,8 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "pow", &powFn },
         .{ "mod", &modFn },
         .{ "sqrt", &sqrtFn },
+        .{ "modPow", &modPowFn },
+        .{ "bitLength", &bitLengthFn },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

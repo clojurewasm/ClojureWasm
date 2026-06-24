@@ -25,16 +25,13 @@
 
 active:
   - id: "D-514"
-    status: "OPEN (2026-06-24). BigInteger instance methods abs/negate/signum/gcd/pow/mod/sqrt LANDED (bigint_methods.zig on the .big_int native descriptor). modPow / isProbablePrime / bitLength remain — they need from-scratch algorithms (not in std.math.big.int)."
+    status: "OPEN (2026-06-24). BigInteger instance methods abs/negate/signum/gcd/pow/mod/sqrt + modPow (square-and-multiply) + bitLength LANDED (bigint_methods.zig). Only `.isProbablePrime` (+ negative-exponent modPow = modular inverse) remain."
     category: "clj-parity"
     barrier: |-
-      Three BigInteger methods left, each a from-scratch algorithm (std.math.big.int
-      has no direct primitive): `.modPow(exp, m)` = square-and-multiply with mod
-      (~20 lines, the crypto workhorse); `.isProbablePrime(certainty)` = Miller-Rabin
-      (~50 lines + a deterministic witness set or an RNG); `.bitLength` = the minimal
-      two's-complement bit count (bitCountAbs for positive; negatives need the JVM
-      `-1` adjustment). modPow is the highest-value of the three. Verify vs clj
-      (modPow(3,4,5)=1; isProbablePrime(97,10)=true; bitLength(255)=8) + e2e.
+      `.isProbablePrime(certainty)` = Miller-Rabin (~50 lines + a deterministic
+      witness set or an RNG) — the last BigInteger method; niche (primality testing).
+      Also `.modPow` with a NEGATIVE exponent (modular inverse via extended Euclid) —
+      currently raises; rare. Verify vs clj (isProbablePrime(97,10)=true) + e2e.
     last_reviewed: "2026-06-24"
   - id: "D-513"
     status: "OPEN (2026-06-24). Missing stdlib/contrib namespaces + the var-docstring gap, found in the 2026-06-24 deeper-namespace sweep. Lower priority — each needs foundation/scope work, not a clean drop-in."
