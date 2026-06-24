@@ -39,7 +39,7 @@ assert_eq 'walk_vector_inc' "$got" '[2 3 4]'
 
 got="$("$BIN" -e '(clojure.walk/walk inc identity (hash-set 1 2))')"
 # Order is hash-determined; check via difference (= empty).
-got2="$("$BIN" -e '(clojure.set/difference (clojure.walk/walk inc identity (hash-set 1 2)) (hash-set 2 3))')"
+got2="$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/difference (clojure.walk/walk inc identity (hash-set 1 2)) (hash-set 2 3)))')"
 assert_eq 'walk_set_inc' "$got2" '#{}'
 
 # scalar pass-through (outer applied to scalar form).

@@ -55,19 +55,19 @@ assert_eq 'set_dedup'     "$("$BIN" -e '(set [1 2 2 3 3])')" '#{1 2 3}'
 assert_eq 'set_of_keys'   "$("$BIN" -e '(set (keys {:a 1 :b 2}))')" '#{:a :b}'
 
 # --- select ---
-assert_eq 'select_pos'    "$("$BIN" -e '(clojure.set/select pos? #{-1 2 -3 4})')" '#{2 4}'
-assert_eq 'select_all'    "$("$BIN" -e '(clojure.set/select pos? #{1 2 3})')"      '#{1 2 3}'
-assert_eq 'select_none'   "$("$BIN" -e '(clojure.set/select pos? #{-1 -2})')"      '#{}'
+assert_eq 'select_pos'    "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/select pos? #{-1 2 -3 4}))')" '#{2 4}'
+assert_eq 'select_all'    "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/select pos? #{1 2 3}))')"      '#{1 2 3}'
+assert_eq 'select_none'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/select pos? #{-1 -2}))')"      '#{}'
 
 # --- project ---
-assert_eq 'project_basic' "$("$BIN" -e '(clojure.set/project #{{:a 1 :b 2} {:a 3 :b 4}} [:a])')" '#{{:a 1} {:a 3}}'
+assert_eq 'project_basic' "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/project #{{:a 1 :b 2} {:a 3 :b 4}} [:a]))')" '#{{:a 1} {:a 3}}'
 # Map-equality-based set dedup is NOT implemented in cw v1 (Phase 5+
 # PersistentHashMap + structural-equality work). project_dedup will
 # pass for vector dedup but not for map dedup until then.
-assert_eq 'project_dedup_vec' "$("$BIN" -e '(count (clojure.set/project #{{:a 1 :b 2} {:a 3 :b 9}} [:a]))')" '2'
+assert_eq 'project_dedup_vec' "$("$BIN" -e '(do (require (quote [clojure.set])) (count (clojure.set/project #{{:a 1 :b 2} {:a 3 :b 9}} [:a])))')" '2'
 
 # --- rename ---
-assert_eq 'rename_basic'  "$("$BIN" -e '(clojure.set/rename #{{:a 1} {:a 2}} {:a :A})')" '#{{:A 1} {:A 2}}'
+assert_eq 'rename_basic'  "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/rename #{{:a 1} {:a 2}} {:a :A}))')" '#{{:A 1} {:A 2}}'
 
 # --- index ---
 # Map-key equality (= {:a 1} {:a 1}) is not implemented in cw v1 yet
@@ -75,10 +75,10 @@ assert_eq 'rename_basic'  "$("$BIN" -e '(clojure.set/rename #{{:a 1} {:a 2}} {:a
 # select-keys map, so two maps with identical projected keys are
 # currently kept as distinct buckets. We test with distinct projection
 # values where the count matches independent of dedup.
-assert_eq 'index_basic'   "$("$BIN" -e '(count (clojure.set/index #{{:a 1 :b 10} {:a 2 :b 20} {:a 3 :b 30}} [:a]))')" '3'
+assert_eq 'index_basic'   "$("$BIN" -e '(do (require (quote [clojure.set])) (count (clojure.set/index #{{:a 1 :b 10} {:a 2 :b 20} {:a 3 :b 30}} [:a])))')" '3'
 
 # --- join (2-arity natural join) ---
-assert_eq 'join_empty'    "$("$BIN" -e '(clojure.set/join #{} #{{:a 1}})')" '#{}'
+assert_eq 'join_empty'    "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/join #{} #{{:a 1}}))')" '#{}'
 
 echo ""
 echo "=== phase6_clojure_set_group_c: all assertions passed (Group C .clj defns; join 3-arity D-070 deferred) ==="

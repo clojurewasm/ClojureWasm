@@ -19,11 +19,14 @@ EOF
 
 # Capture a var's root, require its eager ns, re-resolve: a no-op require leaves the
 # SAME function object (identical?); a re-load would rebind it to a fresh one.
-assert_eq 'string-noreload' \
+# An EAGER ns (clojure.string, in EAGER_NS): usable without require; a re-require is a no-op.
+assert_eq 'eager-noreload' \
   "$(run '(def v clojure.string/upper-case) (require (quote [clojure.string])) (prn (identical? v clojure.string/upper-case))')" \
   'true'
-assert_eq 'set-noreload' \
-  "$(run '(def v clojure.set/union) (require (quote [clojure.set])) (prn (identical? v clojure.set/union))')" \
+# A LAZY ns (clojure.set): the FIRST require loads it; a SECOND require is a no-op (no re-load,
+# so the var identity is stable). require-first because the var is unresolvable before loading.
+assert_eq 'lazy-noreload' \
+  "$(run '(require (quote [clojure.set])) (def v clojure.set/union) (require (quote [clojure.set])) (prn (identical? v clojure.set/union))')" \
   'true'
 # A bundled lib that gained a :require in commit 1 (clojure.test -> string/walk) loads
 # clean under the new guard (a missing/re-loading dep would error before :loaded prints).

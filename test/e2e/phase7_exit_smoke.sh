@@ -80,6 +80,7 @@ assert_eq 'reify_multi_arity_apply' "$got" '"107 | 0 | 42 | 15"'
 # --- (4) Phase 7 composed: defrecord + protocol + instance? +
 #     catch-class hierarchy + clojure.zip walk-and-edit ---
 got=$("$BIN" - <<'EOF' 2>/dev/null | tail -1
+(require '[clojure.zip])
 (defprotocol IScale (scale [this k]))
 (defrecord Wrap [v] IScale (scale [self k] (* (.v self) k)))
 (def w (->Wrap 21))

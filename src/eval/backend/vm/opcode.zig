@@ -102,12 +102,11 @@ pub const Opcode = enum(u8) {
     op_set_literal = 0x15,
     /// `(require 'foo.bar)` — operand indexes a String constant in
     /// the chunk's constant pool carrying the namespace name. VM
-    /// dispatch mirrors `tree_walk::evalRequire`: if the namespace
-    /// is already loaded (= `env.findNs(name).mappings.count() > 0`)
-    /// push nil; otherwise call `rt.require_resolver`, raise
-    /// `lib_not_found` on null, and on a non-null resolve load the
-    /// namespace source via `loader.loadNamespace`. Pushes nil.
-    /// ADR-0035 D2/D5/D8.
+    /// dispatch mirrors `tree_walk::evalRequire`: both route through
+    /// `loader.loadOrFindNs`, which skips when the ns is in
+    /// `rt.loaded_libs`, else replays its embedded bytecode region
+    /// (lazy bootstrap ns, ADR-0163) or loads source via the
+    /// resolver. Pushes nil. ADR-0035 D2/D5/D8, ADR-0163 D-516.
     op_require = 0x16,
     /// `(ns foo (:refer-clojure))` — operand = constants index of
     /// the heap String holding the target namespace name. VM

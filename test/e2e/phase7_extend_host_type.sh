@@ -36,8 +36,8 @@ assert_eq 'throw' "$("$BIN" -e "(do $P (descr (ex-info \"boom\" {})))")"     '[:
 assert_eq 'miss'  "$("$BIN" -e "(do $P (try (descr 5) (catch Throwable e :no-impl)))")" ':no-impl'
 
 # clojure.datafy (the bundled consumer, re-landed after D-481): Object default + host-type arms.
-assert_eq 'datafy_scalar' "$("$BIN" -e '(clojure.datafy/datafy 5)')" '5'
-assert_eq 'datafy_atom'   "$("$BIN" -e '(clojure.datafy/datafy (atom 42))')" '[42]'
-assert_eq 'datafy_ns'     "$("$BIN" -e '(:name (clojure.datafy/datafy (create-ns (quote zz.top))))')" 'zz.top'
+assert_eq 'datafy_scalar' "$("$BIN" -e '(do (require (quote [clojure.datafy])) (clojure.datafy/datafy 5))')" '5'
+assert_eq 'datafy_atom'   "$("$BIN" -e '(do (require (quote [clojure.datafy])) (clojure.datafy/datafy (atom 42)))')" '[42]'
+assert_eq 'datafy_ns'     "$("$BIN" -e '(do (require (quote [clojure.datafy])) (:name (clojure.datafy/datafy (create-ns (quote zz.top)))))')" 'zz.top'
 
 echo "ALL phase7_extend_host_type PASS"

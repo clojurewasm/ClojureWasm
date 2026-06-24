@@ -1241,17 +1241,9 @@ inline fn stepOnce(
             if (!name_val.isString())
                 return raiseInternal("vm: op_require constant is not a String");
             const ns_name = string_mod.asString(name_val);
-            const already_loaded = blk: {
-                const existing = env.findNs(ns_name) orelse break :blk false;
-                break :blk existing.mappings.count() > 0;
-            };
-            if (!already_loaded) {
-                const resolver = rt.require_resolver orelse
-                    return error_catalog.raise(.lib_not_found, .{}, .{ .ns = ns_name });
-                const resolved = (try resolver(rt, ns_name)) orelse
-                    return error_catalog.raise(.lib_not_found, .{}, .{ .ns = ns_name });
-                try loader.loadNamespace(rt, env, ns_name, resolved, .{});
-            }
+            // ADR-0163 D-516: one load path (loaded_libs-keyed + bytecode-region
+            // lazy load), not the mappings.count proxy + source-only inline copy.
+            _ = try loader.loadOrFindNs(rt, env, ns_name, .{});
             if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
             stack[sp] = Value.nil_val;
@@ -1266,18 +1258,9 @@ inline fn stepOnce(
             if (instr.operand >= chunk.libspecs.len)
                 return raiseInternal("vm: op_require_with_libspec libspec index out of range");
             const spec = chunk.libspecs[instr.operand];
-            const target_ns = blk: {
-                if (env.findNs(spec.ns_name)) |existing| {
-                    if (existing.mappings.count() > 0) break :blk existing;
-                }
-                const resolver = rt.require_resolver orelse
-                    return error_catalog.raise(.lib_not_found, .{}, .{ .ns = spec.ns_name });
-                const resolved = (try resolver(rt, spec.ns_name)) orelse
-                    return error_catalog.raise(.lib_not_found, .{}, .{ .ns = spec.ns_name });
-                try loader.loadNamespace(rt, env, spec.ns_name, resolved, .{});
-                break :blk env.findNs(spec.ns_name) orelse
-                    return error_catalog.raise(.lib_not_found, .{}, .{ .ns = spec.ns_name });
-            };
+            // ADR-0163 D-516: one load path (loaded_libs-keyed + bytecode-region
+            // lazy load), not the mappings.count proxy + source-only inline copy.
+            const target_ns = try loader.loadOrFindNs(rt, env, spec.ns_name, .{});
             const here = env.current_ns orelse
                 return error_catalog.raise(.current_namespace_missing, .{}, .{ .sym = spec.ns_name });
             if (spec.alias) |alias_name| {

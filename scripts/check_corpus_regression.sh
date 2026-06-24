@@ -53,7 +53,23 @@ for f in "${files[@]}"; do
             ''|';;'*'=> '*)
                 if [ -n "$expr" ] && [ "${line#';;=> '}" != "$line" ]; then
                     want="${line#';;=> '}"
-                    got="$(timeout 20 "$BIN" -e "(prn $expr)" 2>&1 | head -1)"
+                    # ADR-0163 D-516: corpus exprs are bare value-forms; a qualified
+                    # clojure.*/cljw.* var of a now-LAZY ns needs a require first (clj-parity,
+                    # like clj). Auto-require each such ns ahead of the prn (an EAGER ns →
+                    # idempotent no-op; Java FQCNs like java.util.UUID/ are excluded — they
+                    # need no require). Mirrors clj_diff_sweep.sh's batch-prelude.
+                    reqs=""
+                    for ns in $(printf '%s' "$expr" | grep -oE '(clojure|cljw)\.[a-zA-Z0-9._-]+/' | sed 's:/$::' | sort -u); do
+                        # try/catch so a NON-requireable prefix (a JVM-class static like
+                        # clojure.lang.PersistentQueue/EMPTY, which cljw resolves natively
+                        # and must NOT `require`) is swallowed instead of aborting the expr.
+                        reqs="$reqs(try (require '$ns) (catch Throwable _ nil))"
+                    done
+                    # Run via stdin (`cljw -`), NOT `-e`: `-e` echoes EVERY top-level form's
+                    # value, so a prepended `(require …)` would print `nil` as the first line
+                    # and `head -1` would grab it instead of the prn output. Stdin prints only
+                    # explicit output (the prn). (memory: cljw_e_prints_each_form.)
+                    got="$(printf '%s(prn %s)' "$reqs" "$expr" | timeout 20 "$BIN" - 2>&1 | head -1)"
                     total=$((total + 1))
                     if [ "$got" != "$want" ]; then
                         printf 'DRIFT [%s] %s\n   want=[%s]\n    got=[%s]\n' "$(basename "$f" .txt)" "$expr" "$want" "$got"

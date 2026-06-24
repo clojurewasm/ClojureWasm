@@ -48,7 +48,7 @@ assert_eq 'baseline_add' "$got" '3'
 got="$("$BIN" -e '(clojure.string/upper-case "hi")')"
 assert_eq 'baseline_string_upper' "$got" '"HI"'
 
-got="$("$BIN" -e '(clojure.set/union (hash-set 1) (hash-set 2))')"
+got="$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/union (hash-set 1) (hash-set 2)))')"
 assert_eq 'baseline_set_union' "$got" '#{1 2}'
 
 got="$("$BIN" -e '(clojure.walk/walk inc identity [1 2 3])')"

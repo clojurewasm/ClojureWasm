@@ -19,6 +19,7 @@ last_line() { awk 'END { print }' <<< "$1"; }
 
 # --- Case 1: basic boolean + value options ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.tools.cli])
 (prn (get (clojure.tools.cli/parse-opts
   ["--port" "8080" "--verbose" "foo.clj"]
   [["-p" "--port PORT" "Port number"]
@@ -33,6 +34,7 @@ esac
 
 # --- Case 2: positional arguments captured ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.tools.cli])
 (prn (get (clojure.tools.cli/parse-opts
   ["--port" "8080" "file.clj" "other.clj"]
   [["-p" "--port PORT" "Port"]])
@@ -43,6 +45,7 @@ assert_eq 'arguments_captured' "$(last_line "$got")" '["file.clj" "other.clj"]'
 
 # --- Case 3: unknown option lands in :errors ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.tools.cli])
 (prn (get (clojure.tools.cli/parse-opts
   ["--unknown"]
   [["-p" "--port PORT" "Port"]])
@@ -54,6 +57,7 @@ assert_eq 'unknown_option_error' "$(last_line "$got")" '["Unknown option: \"--un
 
 # --- Case 4: --name=value form ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.tools.cli])
 (prn (get (clojure.tools.cli/parse-opts
   ["--port=9090"]
   [["-p" "--port PORT" "Port"]])
@@ -64,6 +68,7 @@ assert_eq 'eq_form' "$(last_line "$got")" '{:port "9090"}'
 
 # --- Case 5: short flag boolean ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.tools.cli])
 (prn (get (clojure.tools.cli/parse-opts
   ["-v"]
   [["-v" "--verbose" "Verbose"]])
@@ -74,6 +79,7 @@ assert_eq 'short_bool' "$(last_line "$got")" '{:verbose true}'
 
 # --- Case 6: missing value raises error ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.tools.cli])
 (prn (get (clojure.tools.cli/parse-opts
   ["--port"]
   [["-p" "--port PORT" "Port"]])
@@ -85,6 +91,7 @@ assert_eq 'missing_value_error' "$(last_line "$got")" '["Missing required argume
 
 # --- Case 7: summary string includes both opts ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.tools.cli])
 (prn (get (clojure.tools.cli/parse-opts
   []
   [["-p" "--port PORT" "Port"]

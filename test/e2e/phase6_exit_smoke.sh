@@ -45,7 +45,7 @@ assert_eq 'string_join'  "$("$BIN" -e '(clojure.string/join "," ["a" "b" "c"])')
 assert_eq 'string_blank' "$("$BIN" -e '(clojure.string/blank? "  ")')" 'true'
 
 # --- clojure.set ---
-got="$("$BIN" -e '(clojure.set/union #{1 2} #{2 3})')"
+got="$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/union #{1 2} #{2 3}))')"
 case "$got" in
     "#{1 2 3}"|"#{1 3 2}"|"#{2 1 3}"|"#{2 3 1}"|"#{3 1 2}"|"#{3 2 1}")
         echo "PASS set_union -> $got" ;;

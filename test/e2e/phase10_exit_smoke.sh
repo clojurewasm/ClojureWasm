@@ -29,6 +29,7 @@ last_line() { awk 'END { print }' <<< "$1"; }
 
 # --- (1) pprint smoke ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.pprint])
 (prn (clojure.pprint/pprint {:a 1 :b 2}))
 EOF
 ) || fail "(1): non-zero exit"
@@ -36,6 +37,7 @@ assert_eq 'pprint_returns_nil' "$(last_line "$got")" 'nil'
 
 # --- (2) print-table smoke ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.pprint])
 (prn (clojure.pprint/print-table [{:name "x" :v 1} {:name "y" :v 2}]))
 EOF
 ) || fail "(2): non-zero exit"
@@ -43,6 +45,7 @@ assert_eq 'print_table_returns_nil' "$(last_line "$got")" 'nil'
 
 # --- (3) Phase 9 modules still compose (edn → json round-trip) ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.data.json])
 (prn (clojure.data.json/read-str
   (clojure.data.json/write-str
     (clojure.edn/read-string "[1 2 3]"))))
@@ -52,6 +55,7 @@ assert_eq 'edn_to_json_round_trip' "$(last_line "$got")" '[1 2 3]'
 
 # --- (4) Phase 9 csv + cli still work in tandem ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.tools.cli])
 (prn (get (clojure.tools.cli/parse-opts
   ["--port" "9090"]
   [["-p" "--port PORT" "Port"]])
@@ -64,6 +68,7 @@ assert_eq 'cli_still_works' "$(last_line "$got")" '{:port "9090"}'
 # Triple cross-ns expression touching core/set/edn/pprint — D-007
 # property holds across Phase 10's surface additions.
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.pprint] '[clojure.set])
 (prn (clojure.pprint/pprint
   (clojure.set/intersection
     (clojure.edn/read-string "#{:a :b :c}")

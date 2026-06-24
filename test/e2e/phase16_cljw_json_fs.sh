@@ -12,7 +12,7 @@ cd "$(dirname "$0")/../.."
 BIN="zig-out/bin/cljw"
 [ -n "${CLJW_SKIP_BUILD:-}" ] || zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null
 
-run() { "$BIN" -e "$1" 2>&1 | tail -n 1; }
+run() { "$BIN" -e "(do (require (quote [cljw.json]) (quote [cljw.fs])) $1)" 2>&1 | tail -n 1; }
 fail() { echo "FAIL $1" >&2; exit 1; }
 assert_eq() {
     local name="$1" got="$2" want="$3"

@@ -1,4 +1,8 @@
-# ADR-0163 — Lazy-namespace bytecode loading: `loaded_libs`-keyed loader, eager set = clojure.core only, one position-independent blob
+# ADR-0163 — Lazy-namespace bytecode loading: `loaded_libs`-keyed loader, eager set = JVM Clojure's no-`require` set (SSOT `bootstrap.EAGER_NS`), one position-independent blob
+
+> The Decision below first set "eager = clojure.core only"; **Amendment 1 (bottom)
+> revised it to the measured clj no-`require` set** after an F-011 regression. The
+> live SSOT is `bootstrap.EAGER_NS` + `bootstrap.isEagerNs`. Read Amendment 1 first.
 
 - **Status**: Proposed → Accepted (2026-06-24; D-516; ADR-0162 step 2 realization; DA-fork folded verbatim below)
 - **Driven by**: ADR-0162 step 2 (lazy-namespace bytecode) + a Step-0 survey + Step-0.6
@@ -211,3 +215,42 @@ Main-loop choice WITHIN the F-NNN envelope (the subagent's recommendation is not
 adopted in full — the DA's reasoning is F-002/F-011-aligned and the larger diff (guard
 rewrite + new format) is the finished form, so the Cycle-budget-defer smell forbids picking
 the smaller Option C.
+
+## Amendment 1 (2026-06-24) — the eager set = JVM Clojure's no-`require` set (F-011)
+
+The Decision above said "eager set = clojure.core ONLY". Implementation surfaced
+an F-011 regression (user-flagged): JVM Clojure makes several non-core namespaces
+usable WITHOUT an explicit `require`, and core-only-eager broke them
+(`(clojure.string/upper-case "hi")` → Name error in cljw, "HI" in clj). The user
+directive: *match clj — what clj bundles without require is by usage frequency, not
+logic; align cljw to it*, and keep the eager/lazy split a **single SSOT**.
+
+**Measured (2026-06-24, fresh `clj`, `(some? (find-ns 'X))` with no require):**
+
+| auto-loaded in clj (TRUE) → cljw EAGER | NOT auto-loaded (FALSE) → cljw LAZY (require needed) |
+|----------------------------------------|------------------------------------------------------|
+| clojure.core, clojure.string, clojure.walk, clojure.edn, clojure.java.io, clojure.core.protocols, clojure.uuid, clojure.instant, clojure.spec.alpha | clojure.set, clojure.zip, clojure.data.json, clojure.data.csv, clojure.tools.cli, clojure.pprint, clojure.test, clojure.data, clojure.math, clojure.template, clojure.stacktrace, clojure.datafy, clojure.repl (+ cljw.* originals) |
+
+**SSOT** = `bootstrap.EAGER_NS` (a `StaticStringMap`) + the single predicate
+`bootstrap.isEagerNs`. `loadCoreAot` runs ONLY `isEagerNs` regions (in FILES order);
+every other ns is a lazy region replayed on first `require`. spec.alpha's own deps
+(spec.gen.alpha / core.specs.alpha) load transitively when its eager region runs.
+This is STRICT clj-parity: clj's `clojure.set` is NOT auto-loaded either, so cljw
+requiring it matches (verified: `set` no-require → Name error in BOTH).
+
+**Cold-start cost of parity**: floor 8.6ms (all-29 eager) → 4.6ms (eager = the 9-ns
+auto-set) vs 3.1ms (core-only, which violated parity). The +1.5ms over core-only
+buys exact clj-parity — accepted per F-011/F-002 over a parity-violating 3.1ms.
+
+**Unwind caution (user-flagged)**: eager-all was partly a D-452 optimization
+(avoid re-parse). The lazy regions stay BYTECODE (no re-parse on lazy load either),
+so that optimization is preserved; only the *eager replay* of unused libs is removed.
+A second require path bug surfaced + was fixed in the same arc: `evalRequire`
+(tree_walk) + `op_require` / `op_require_with_libspec` (vm) each carried an inline
+copy of the load logic with the `mappings.count() > 0` short-circuit (which mis-fires
+when `registerAll` pre-interned a ns's private leaves — clojure.string's `-upper-case`);
+all three now route through the single `loader.loadOrFindNs`. And `loadOrFindNs` keeps
+the `mappings.count() > 0` check as a LAST resort (after loaded_libs + region + source
+all miss) so an INLINE-defined ns — `(ns mylib …)` then `(require '[mylib])`, no region
+or file — is still found-as-is rather than raising lib_not_found (a real regression the
+core-only flip introduced, caught by phase14_macro_shadow_builtin).

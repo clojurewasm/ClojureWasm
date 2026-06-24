@@ -22,11 +22,11 @@ assert_eq() { local n="$1" g="$2" w="$3"; [[ "$g" == "$w" ]] || fail "$n: got '$
 assert_contains() { local n="$1" h="$2" needle="$3"; case "$h" in *"$needle"*) echo "PASS $n ⊇ $needle";; *) fail "$n: '$h' missing '$needle'";; esac; }
 
 # dir-fn — deterministic, == clj.
-assert_eq 'dir_fn_set' "$("$BIN" -e '(dir-fn (quote clojure.set))')" \
+assert_eq 'dir_fn_set' "$("$BIN" -e '(do (require (quote [clojure.set])) (dir-fn (quote clojure.set)))')" \
   '(difference index intersection join map-invert project rename rename-keys select subset? superset? union)'
 
 # dir — prints each public var, one per line, sorted.
-out="$("$BIN" -e '(dir clojure.set)')"
+out="$("$BIN" -e '(do (require (quote [clojure.set])) (dir clojure.set))')"
 assert_contains 'dir_first' "$out" 'difference'
 assert_contains 'dir_last'  "$out" 'union'
 

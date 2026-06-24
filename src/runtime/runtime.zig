@@ -346,6 +346,12 @@ pub const Runtime = struct {
     /// completed set. Keys are gpa-owned, freed in `deinit`.
     loaded_libs: std.StringHashMapUnmanaged(void) = .empty,
 
+    /// The embedded multi-region bootstrap blob (ADR-0163 D-516), set by
+    /// `loadCoreAot`. `loadOrFindNs` consults it: a non-eager bootstrap ns lives
+    /// here as a bytecode region and is replayed on first `require` (no re-parse),
+    /// before the source resolver. Null on the source-build path (no embedded blob).
+    bootstrap_region_blob: ?[]const u8 = null,
+
     /// Session-lifetime arena for `require`-loaded namespace Forms/Nodes
     /// (ADR-0084). Loaded fns/macros capture their analyzer Nodes, so the
     /// storage must outlive the load (as the bootstrap arena does); freed at

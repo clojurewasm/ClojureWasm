@@ -19,22 +19,23 @@ assert_eq() {
 }
 
 # --- down + node ---
-got=$("$BIN" -e '(clojure.zip/node (clojure.zip/down (clojure.zip/vector-zip [10 20 30])))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/node (clojure.zip/down (clojure.zip/vector-zip [10 20 30]))))' 2>/dev/null)
 assert_eq 'down_node' "$got" '10'
 
 # --- down on a leaf returns nil ---
-got=$("$BIN" -e '(clojure.zip/down (clojure.zip/vector-zip 42))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/down (clojure.zip/vector-zip 42)))' 2>/dev/null)
 assert_eq 'down_leaf_nil' "$got" 'nil'
 
 # --- right / left ---
-got=$("$BIN" -e '(clojure.zip/node (clojure.zip/right (clojure.zip/down (clojure.zip/vector-zip [10 20 30]))))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/node (clojure.zip/right (clojure.zip/down (clojure.zip/vector-zip [10 20 30])))))' 2>/dev/null)
 assert_eq 'right_node' "$got" '20'
 
-got=$("$BIN" -e '(clojure.zip/node (clojure.zip/left (clojure.zip/right (clojure.zip/down (clojure.zip/vector-zip [10 20 30])))))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/node (clojure.zip/left (clojure.zip/right (clojure.zip/down (clojure.zip/vector-zip [10 20 30]))))))' 2>/dev/null)
 assert_eq 'left_node' "$got" '10'
 
 # --- right at rightmost returns nil ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.zip])
 (prn (clojure.zip/right
   (clojure.zip/right
     (clojure.zip/right
@@ -44,15 +45,16 @@ EOF
 assert_eq 'right_past_end_nil' "$got" 'nil'
 
 # --- up climbs to parent ---
-got=$("$BIN" -e '(clojure.zip/node (clojure.zip/up (clojure.zip/down (clojure.zip/vector-zip [10 20 30]))))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/node (clojure.zip/up (clojure.zip/down (clojure.zip/vector-zip [10 20 30])))))' 2>/dev/null)
 assert_eq 'up_to_root' "$got" '[10 20 30]'
 
 # --- up at root returns nil ---
-got=$("$BIN" -e '(clojure.zip/up (clojure.zip/vector-zip [10 20 30]))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/up (clojure.zip/vector-zip [10 20 30])))' 2>/dev/null)
 assert_eq 'up_at_root_nil' "$got" 'nil'
 
 # --- root returns the root node value ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.zip])
 (prn (clojure.zip/root
   (clojure.zip/right
     (clojure.zip/down (clojure.zip/vector-zip [10 20 30])))))
@@ -62,6 +64,7 @@ assert_eq 'root_value' "$got" '[10 20 30]'
 
 # --- leftmost / rightmost ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.zip])
 (prn (clojure.zip/node
   (clojure.zip/leftmost
     (clojure.zip/right
@@ -71,12 +74,13 @@ EOF
 )
 assert_eq 'leftmost' "$got" '10'
 
-got=$("$BIN" -e '(clojure.zip/node (clojure.zip/rightmost (clojure.zip/down (clojure.zip/vector-zip [10 20 30]))))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/node (clojure.zip/rightmost (clojure.zip/down (clojure.zip/vector-zip [10 20 30])))))' 2>/dev/null)
 assert_eq 'rightmost' "$got" '30'
 
 # --- lefts / rights — JVM returns a SEQ, not the raw vector field
 # (clojure.zip sweep 2026-06-02: `(lefts …)`→`(10 20)` not `[10 20]`). ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.zip])
 (prn (clojure.zip/lefts
   (clojure.zip/right
     (clojure.zip/right
@@ -86,6 +90,7 @@ EOF
 assert_eq 'lefts_field' "$got" '(10 20)'
 
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.zip])
 (prn (clojure.zip/rights
   (clojure.zip/right
     (clojure.zip/down (clojure.zip/vector-zip [10 20 30 40])))))
@@ -95,6 +100,7 @@ assert_eq 'rights_field' "$got" '(30 40)'
 
 # --- path walks parent chain, root-down, excluding current ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.zip])
 (prn (clojure.zip/path
   (clojure.zip/down
     (clojure.zip/right

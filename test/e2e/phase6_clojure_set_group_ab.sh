@@ -33,45 +33,45 @@ assert_eq() {
 }
 
 # --- union (2-arity) ---
-assert_eq 'union_basic'    "$("$BIN" -e '(clojure.set/union (hash-set 1 2) (hash-set 2 3))')" '#{1 2 3}'
-assert_eq 'union_disjoint' "$("$BIN" -e '(clojure.set/union (hash-set 1) (hash-set 2))')"     '#{1 2}'
-assert_eq 'union_empty_l'  "$("$BIN" -e '(clojure.set/union (hash-set) (hash-set 1 2))')"     '#{1 2}'
-assert_eq 'union_empty_r'  "$("$BIN" -e '(clojure.set/union (hash-set 1 2) (hash-set))')"     '#{1 2}'
+assert_eq 'union_basic'    "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/union (hash-set 1 2) (hash-set 2 3)))')" '#{1 2 3}'
+assert_eq 'union_disjoint' "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/union (hash-set 1) (hash-set 2)))')"     '#{1 2}'
+assert_eq 'union_empty_l'  "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/union (hash-set) (hash-set 1 2)))')"     '#{1 2}'
+assert_eq 'union_empty_r'  "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/union (hash-set 1 2) (hash-set)))')"     '#{1 2}'
 
 # --- intersection (2-arity) ---
-assert_eq 'inter_basic'    "$("$BIN" -e '(clojure.set/intersection (hash-set 1 2 3) (hash-set 2 3 4))')" '#{2 3}'
-assert_eq 'inter_empty'    "$("$BIN" -e '(clojure.set/intersection (hash-set 1 2) (hash-set 3 4))')"     '#{}'
-assert_eq 'inter_id'       "$("$BIN" -e '(clojure.set/intersection (hash-set 1 2) (hash-set 1 2))')"     '#{1 2}'
+assert_eq 'inter_basic'    "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/intersection (hash-set 1 2 3) (hash-set 2 3 4)))')" '#{2 3}'
+assert_eq 'inter_empty'    "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/intersection (hash-set 1 2) (hash-set 3 4)))')"     '#{}'
+assert_eq 'inter_id'       "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/intersection (hash-set 1 2) (hash-set 1 2)))')"     '#{1 2}'
 
 # --- difference (2-arity) ---
-assert_eq 'diff_basic'     "$("$BIN" -e '(clojure.set/difference (hash-set 1 2 3) (hash-set 2 3))')" '#{1}'
-assert_eq 'diff_empty_r'   "$("$BIN" -e '(clojure.set/difference (hash-set 1 2) (hash-set))')"     '#{1 2}'
-assert_eq 'diff_all'       "$("$BIN" -e '(clojure.set/difference (hash-set 1 2) (hash-set 1 2))')" '#{}'
+assert_eq 'diff_basic'     "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/difference (hash-set 1 2 3) (hash-set 2 3)))')" '#{1}'
+assert_eq 'diff_empty_r'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/difference (hash-set 1 2) (hash-set)))')"     '#{1 2}'
+assert_eq 'diff_all'       "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/difference (hash-set 1 2) (hash-set 1 2)))')" '#{}'
 
 # --- subset? ---
-assert_eq 'subset_true'    "$("$BIN" -e '(clojure.set/subset? (hash-set 1 2) (hash-set 1 2 3))')" 'true'
-assert_eq 'subset_eq'      "$("$BIN" -e '(clojure.set/subset? (hash-set 1 2) (hash-set 1 2))')"   'true'
-assert_eq 'subset_empty'   "$("$BIN" -e '(clojure.set/subset? (hash-set) (hash-set 1 2))')"       'true'
-assert_eq 'subset_false'   "$("$BIN" -e '(clojure.set/subset? (hash-set 1 4) (hash-set 1 2 3))')" 'false'
-assert_eq 'subset_bigger'  "$("$BIN" -e '(clojure.set/subset? (hash-set 1 2 3) (hash-set 1 2))')" 'false'
+assert_eq 'subset_true'    "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/subset? (hash-set 1 2) (hash-set 1 2 3)))')" 'true'
+assert_eq 'subset_eq'      "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/subset? (hash-set 1 2) (hash-set 1 2)))')"   'true'
+assert_eq 'subset_empty'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/subset? (hash-set) (hash-set 1 2)))')"       'true'
+assert_eq 'subset_false'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/subset? (hash-set 1 4) (hash-set 1 2 3)))')" 'false'
+assert_eq 'subset_bigger'  "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/subset? (hash-set 1 2 3) (hash-set 1 2)))')" 'false'
 
 # --- superset? ---
-assert_eq 'super_true'     "$("$BIN" -e '(clojure.set/superset? (hash-set 1 2 3) (hash-set 1 2))')" 'true'
-assert_eq 'super_eq'       "$("$BIN" -e '(clojure.set/superset? (hash-set 1 2) (hash-set 1 2))')"   'true'
-assert_eq 'super_false'    "$("$BIN" -e '(clojure.set/superset? (hash-set 1 2) (hash-set 1 2 3))')" 'false'
+assert_eq 'super_true'     "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/superset? (hash-set 1 2 3) (hash-set 1 2)))')" 'true'
+assert_eq 'super_eq'       "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/superset? (hash-set 1 2) (hash-set 1 2)))')"   'true'
+assert_eq 'super_false'    "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/superset? (hash-set 1 2) (hash-set 1 2 3)))')" 'false'
 
 # --- rename-keys ---
-assert_eq 'rename_basic'   "$("$BIN" -e '(clojure.set/rename-keys (hash-map :a 1 :b 2) (hash-map :a :A))')" '{:b 2, :A 1}'
-assert_eq 'rename_absent'  "$("$BIN" -e '(clojure.set/rename-keys (hash-map :a 1) (hash-map :missing :M))')" '{:a 1}'
-assert_eq 'rename_noop'    "$("$BIN" -e '(clojure.set/rename-keys (hash-map :a 1) (hash-map))')" '{:a 1}'
+assert_eq 'rename_basic'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/rename-keys (hash-map :a 1 :b 2) (hash-map :a :A)))')" '{:b 2, :A 1}'
+assert_eq 'rename_absent'  "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/rename-keys (hash-map :a 1) (hash-map :missing :M)))')" '{:a 1}'
+assert_eq 'rename_noop'    "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/rename-keys (hash-map :a 1) (hash-map)))')" '{:a 1}'
 
 # --- map-invert ---
-assert_eq 'invert_basic'   "$("$BIN" -e '(clojure.set/map-invert (hash-map :a 1 :b 2))')" '{1 :a, 2 :b}'
-assert_eq 'invert_empty'   "$("$BIN" -e '(clojure.set/map-invert (hash-map))')"           '{}'
+assert_eq 'invert_basic'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/map-invert (hash-map :a 1 :b 2)))')" '{1 :a, 2 :b}'
+assert_eq 'invert_empty'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/map-invert (hash-map)))')"           '{}'
 
 # --- compositional sanity ---
-assert_eq 'subset_of_union' "$("$BIN" -e '(clojure.set/subset? (hash-set 1) (clojure.set/union (hash-set 1) (hash-set 2)))')" 'true'
-assert_eq 'inter_of_diff'   "$("$BIN" -e '(clojure.set/intersection (clojure.set/difference (hash-set 1 2 3) (hash-set 1)) (hash-set 2))')" '#{2}'
+assert_eq 'subset_of_union' "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/subset? (hash-set 1) (clojure.set/union (hash-set 1) (hash-set 2))))')" 'true'
+assert_eq 'inter_of_diff'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/intersection (clojure.set/difference (hash-set 1 2 3) (hash-set 1)) (hash-set 2)))')" '#{2}'
 
 echo ""
 echo "=== phase6_clojure_set_group_ab: all assertions passed (Group A + B as .clj defns; variadic 3+ deferred D-070) ==="

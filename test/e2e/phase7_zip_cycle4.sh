@@ -19,44 +19,45 @@ assert_eq() {
 }
 
 # --- replace ---
-got=$("$BIN" -e '(clojure.zip/root (clojure.zip/replace (clojure.zip/down (clojure.zip/vector-zip [1 2 3])) 99))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/root (clojure.zip/replace (clojure.zip/down (clojure.zip/vector-zip [1 2 3])) 99)))' 2>/dev/null)
 assert_eq 'replace_first_child' "$got" '[99 2 3]'
 
 # --- edit with variadic args ---
-got=$("$BIN" -e '(clojure.zip/root (clojure.zip/edit (clojure.zip/down (clojure.zip/vector-zip [1 2 3])) + 10))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/root (clojure.zip/edit (clojure.zip/down (clojure.zip/vector-zip [1 2 3])) + 10)))' 2>/dev/null)
 assert_eq 'edit_with_arg' "$got" '[11 2 3]'
 
-got=$("$BIN" -e '(clojure.zip/root (clojure.zip/edit (clojure.zip/down (clojure.zip/vector-zip [1 2 3])) + 10 100))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/root (clojure.zip/edit (clojure.zip/down (clojure.zip/vector-zip [1 2 3])) + 10 100)))' 2>/dev/null)
 assert_eq 'edit_with_two_args' "$got" '[111 2 3]'
 
 # --- insert-child prepends, append-child appends ---
-got=$("$BIN" -e '(clojure.zip/root (clojure.zip/insert-child (clojure.zip/vector-zip [1 2 3]) 0))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/root (clojure.zip/insert-child (clojure.zip/vector-zip [1 2 3]) 0)))' 2>/dev/null)
 assert_eq 'insert_child_prepend' "$got" '[0 1 2 3]'
 
-got=$("$BIN" -e '(clojure.zip/root (clojure.zip/append-child (clojure.zip/vector-zip [1 2 3]) 4))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/root (clojure.zip/append-child (clojure.zip/vector-zip [1 2 3]) 4)))' 2>/dev/null)
 assert_eq 'append_child' "$got" '[1 2 3 4]'
 
 # --- insert-right / insert-left ---
-got=$("$BIN" -e '(clojure.zip/root (clojure.zip/insert-right (clojure.zip/down (clojure.zip/vector-zip [1 2 3])) 99))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/root (clojure.zip/insert-right (clojure.zip/down (clojure.zip/vector-zip [1 2 3])) 99)))' 2>/dev/null)
 assert_eq 'insert_right' "$got" '[1 99 2 3]'
 
-got=$("$BIN" -e '(clojure.zip/root (clojure.zip/insert-left (clojure.zip/right (clojure.zip/down (clojure.zip/vector-zip [1 2 3]))) 99))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/root (clojure.zip/insert-left (clojure.zip/right (clojure.zip/down (clojure.zip/vector-zip [1 2 3]))) 99)))' 2>/dev/null)
 assert_eq 'insert_left' "$got" '[1 99 2 3]'
 
 # --- insert-right at root raises ---
 # Top-level surfaces the thrown ex-info's message + `exception` label
 # (ADR-0055 am2 / D-144), not the old generic "ThrownValue".
-diag=$("$BIN" -e '(clojure.zip/insert-right (clojure.zip/vector-zip [1 2 3]) 99)' 2>&1 || true)
+diag=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/insert-right (clojure.zip/vector-zip [1 2 3]) 99))' 2>&1 || true)
 case "$diag" in
     *"Exception"*"insert-right at root has no parent"*) echo "PASS insert_right_root_raises -> ex-info message surfaced" ;;
     *) fail "insert_right_root_raises: missing ex-info message ($diag)" ;;
 esac
 
 # --- remove ---
-got=$("$BIN" -e '(clojure.zip/root (clojure.zip/remove (clojure.zip/down (clojure.zip/vector-zip [1 2 3]))))' 2>/dev/null)
+got=$("$BIN" -e '(do (require (quote [clojure.zip])) (clojure.zip/root (clojure.zip/remove (clojure.zip/down (clojure.zip/vector-zip [1 2 3])))))' 2>/dev/null)
 assert_eq 'remove_first_child' "$got" '[2 3]'
 
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.zip])
 (prn (clojure.zip/root
   (clojure.zip/remove
     (clojure.zip/right
@@ -67,6 +68,7 @@ assert_eq 'remove_middle_child' "$got" '[1 3]'
 
 # --- composition: walk, edit each leaf, return modified root ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.zip])
 (prn (loop* [loc (clojure.zip/vector-zip [1 [2 3] 4])]
   (if (clojure.zip/end? loc)
     (clojure.zip/root loc)

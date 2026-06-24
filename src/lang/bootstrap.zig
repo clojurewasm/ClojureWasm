@@ -59,6 +59,31 @@ pub const FileEntry = struct {
 /// first because it lands `(def not ...)` and the future
 /// `clojure.core` companions that subsequent files may reference.
 /// Each non-first file is expected to open with `(in-ns 'foo.bar)`.
+/// Namespaces replayed EAGERLY at startup (ADR-0163 D-516) — exactly the set JVM
+/// Clojure makes usable WITHOUT an explicit `require` (measured 2026-06-24 via
+/// `(find-ns 'X)` in a fresh `clj`: clojure.core + the set clojure.core/spec.alpha
+/// transitively load). Eager-loading exactly these keeps `clojure.string/upper-case`
+/// etc. working require-free (F-011 parity); every OTHER bootstrap ns is lazy — a
+/// `require` is needed, matching clj (e.g. clj's `clojure.set` is NOT auto-loaded
+/// either). `clojure.spec.alpha`'s own deps (spec.gen.alpha / core.specs.alpha) load
+/// transitively when its eager region's `(:require …)` runs. Run in FILES order.
+pub const EAGER_NS = std.StaticStringMap(void).initComptime(.{
+    .{"clojure.core"},           .{"clojure.string"},  .{"clojure.walk"},
+    .{"clojure.edn"},            .{"clojure.java.io"},  .{"clojure.core.protocols"},
+    .{"clojure.uuid"},           .{"clojure.instant"},  .{"clojure.spec.alpha"},
+    // cljw-SPECIFIC (not in clj's auto-set): the Wasm-component `:require` desugar
+    // (ADR-0135 am1) emits `(cljw.wasm/require-component-libspec …)` which is resolved
+    // at ANALYZE time — before its own `(require 'cljw.wasm)` prelude EVALs — so the
+    // ns must already be loaded. Eager (91 lines, def-only top level — its `wasm/`
+    // primitive refs are resolved at call time, so loading is safe in any build).
+    .{"cljw.wasm"},
+});
+
+/// True when `ns_name` is eager-loaded at startup (see `EAGER_NS`).
+pub fn isEagerNs(ns_name: []const u8) bool {
+    return EAGER_NS.has(ns_name);
+}
+
 pub const FILES: []const FileEntry = &.{
     .{ .label = "<bootstrap>", .source = @embedFile("clj/clojure/core.clj") },
     .{ .label = "<clojure.string>", .source = @embedFile("clj/clojure/string.clj") },
@@ -535,23 +560,28 @@ pub fn loadCoreAot(
     // a hashmap, no parse). `macro_table` is no longer needed: the blob is
     // post-macro bytecode, replayed by the VM without expansion.
     var prof = startup_profile.Profiler.start(rt.io);
+    // ADR-0163 D-516: publish the region blob so loadOrFindNs can replay a lazy ns
+    // on first require. Register EVERY file's source (cheap — a slice into a hashmap)
+    // so a lazy ns's runtime error frame keeps its per-file SourceContext.
+    rt.bootstrap_region_blob = bootstrap_blob;
     for (FILES) |file| try rt.registerSource(file.label, file.source);
     prof.mark("    registerSource");
-    // ADR-0163: pre-register every eager ns as loaded BEFORE the monolith replays.
-    // The envelope contains the libs' own `(:require …)` forms (e.g. clojure.data
-    // requires clojure.set); they execute during `runEnvelope` and hit
-    // `loadOrFindNs`'s loaded_libs-keyed guard. Pre-marking makes those
-    // intra-bootstrap requires no-ops (the required ns's def chunks already ran —
-    // FILES is dependency-ordered), exactly as the old mappings-count guard did.
-    // Without this, an intra-bootstrap require would re-parse the embedded source.
-    try markFilesLoaded(rt, FILES);
-    // ADR-0163 D-516: the blob is now a multi-region blob (one self-contained
-    // envelope per ns). Run every region in FILES order — cross-region var_refs
-    // (e.g. clojure.data → clojure.set) resolve because the referenced ns's region
-    // ran earlier (FILES is dependency-ordered), exactly as the old single
-    // envelope's interleaved chunks did. (The lazy split trims this to the eager
-    // region set + an on-require resolver for the rest.)
-    try runEagerRegions(rt, env, arena, bootstrap_blob, FILES);
+    // ADR-0163 D-516: pre-register the EAGER set (EAGER_NS = clj's no-require set)
+    // as loaded BEFORE running, so an intra-eager `(:require eager-lib)` is a no-op
+    // (e.g. spec.alpha requires walk — both eager). Without this the loaded_libs
+    // guard would re-parse. Run only the eager regions; every other ns replays from
+    // its region on first `require` (loadOrFindNs → loadRegionNamespace).
+    for (FILES) |file| {
+        const ns_name = nsNameFromLabel(file.label);
+        if (isEagerNs(ns_name)) try markOneLoaded(rt, ns_name);
+    }
+    for (FILES) |file| {
+        const ns_name = nsNameFromLabel(file.label);
+        if (!isEagerNs(ns_name)) continue;
+        // A missing region means the embedded blob is malformed (build bug).
+        const region = serialize.findRegion(bootstrap_blob, ns_name) orelse return error.MissingBootstrapRegion;
+        try driver.runEnvelope(rt, env, arena, region);
+    }
     prof.mark("    runEnvelope");
     try finalizeUserNs(rt, env);
     prof.mark("    finalizeUserNs");
@@ -580,13 +610,16 @@ pub fn runEagerRegions(rt: *Runtime, env: *Env, arena: std.mem.Allocator, blob: 
 /// gpa-owned (freed at `rt.deinit`), mirroring `loader.loadNamespace`. Takes a
 /// slice so the lazy split (ADR-0163 commit 3) can pass only the trimmed eager set.
 pub fn markFilesLoaded(rt: *Runtime, files: []const FileEntry) !void {
-    for (files) |file| {
-        const ns_name = nsNameFromLabel(file.label);
-        if (rt.loaded_libs.contains(ns_name)) continue;
-        const key = try rt.gpa.dupe(u8, ns_name);
-        errdefer rt.gpa.free(key);
-        try rt.loaded_libs.put(rt.gpa, key, {});
-    }
+    for (files) |file| try markOneLoaded(rt, nsNameFromLabel(file.label));
+}
+
+/// Record a single namespace as loaded in `rt.loaded_libs` (idempotent). Key is
+/// gpa-owned (freed at `rt.deinit`), mirroring `loader.loadNamespace`.
+pub fn markOneLoaded(rt: *Runtime, ns_name: []const u8) !void {
+    if (rt.loaded_libs.contains(ns_name)) return;
+    const key = try rt.gpa.dupe(u8, ns_name);
+    errdefer rt.gpa.free(key);
+    try rt.loaded_libs.put(rt.gpa, key, {});
 }
 
 /// FileEntry labels are `<ns-name>` except core's, which is `<bootstrap>`. Map a

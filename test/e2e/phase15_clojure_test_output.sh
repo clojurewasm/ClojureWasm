@@ -58,6 +58,7 @@ hasf 'D-pass-actual' "$D" '#   actual:(= 1 1)'
 
 # --- E. *test-out* is re-enabled: resolvable + binding it redirects report output
 E=$("$BIN" - <<'EOF' 2>&1
+(require '[clojure.test])
 (prn (some? (resolve 'clojure.test/*test-out*)))
 EOF
 )

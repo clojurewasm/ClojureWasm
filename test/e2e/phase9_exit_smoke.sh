@@ -42,6 +42,7 @@ assert_eq 'edn_round_trip' "$(last_line "$got")" '[1 2 3]'
 
 # --- (2) JSON round-trip ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.data.json])
 (prn (clojure.data.json/read-str (clojure.data.json/write-str [1 "x" nil true])))
 EOF
 ) || fail "(2): non-zero exit"
@@ -49,6 +50,7 @@ assert_eq 'json_round_trip' "$(last_line "$got")" '[1 "x" nil true]'
 
 # --- (3) CSV round-trip (JVM shape: write-csv writer-first; read-csv → seq) ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.data.csv])
 (prn (clojure.data.csv/read-csv
        (let [w (java.io.StringWriter.)]
          (clojure.data.csv/write-csv w [["a" "b,c"] ["d" "e\"f"]])
@@ -59,6 +61,7 @@ assert_eq 'csv_round_trip' "$(last_line "$got")" '(["a" "b,c"] ["d" "e\"f"])'
 
 # --- (4) tools.cli parse-opts smoke ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.tools.cli])
 (prn (get (clojure.tools.cli/parse-opts
   ["--port" "8080" "input.clj"]
   [["-p" "--port PORT" "Port"]])
@@ -79,6 +82,7 @@ echo "PASS modules_zone_check_gate"
 # clojure.core (defn / let / fn) + clojure.set (intersection) +
 # clojure.edn (read-string) — three distinct embedded namespaces.
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.set])
 (prn (clojure.set/intersection
   #{1 2 3}
   (clojure.edn/read-string "#{2 3 4}")))

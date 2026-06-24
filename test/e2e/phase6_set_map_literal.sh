@@ -33,7 +33,7 @@ assert_eq 'set_empty'        "$("$BIN" -e '#{}')"                    '#{}'
 assert_eq 'set_count'        "$("$BIN" -e '(count #{:a :b :c})')"    '3'
 assert_eq 'set_contains'     "$("$BIN" -e '(contains? #{:a :b} :a)')" 'true'
 assert_eq 'set_duplicates'   "$("$BIN" -e '(count #{1 1 2 2 3})')"    '3'
-assert_eq 'set_subset'       "$("$BIN" -e '(clojure.set/subset? #{1 2} #{1 2 3})')" 'true'
+assert_eq 'set_subset'       "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/subset? #{1 2} #{1 2 3}))')" 'true'
 
 # --- map literal ---
 assert_eq 'map_one_entry'    "$("$BIN" -e '{:a 1}')"                  '{:a 1}'
@@ -48,9 +48,9 @@ assert_eq 'map_in_set'       "$("$BIN" -e '(count #{{:a 1} {:b 2}})')" '2'
 assert_eq 'vector_in_map'    "$("$BIN" -e '(count (get {:v [1 2 3]} :v))')" '3'
 
 # --- composition with clojure.set ---
-assert_eq 'union_literals'   "$("$BIN" -e '(clojure.set/union #{1 2} #{2 3})')" '#{1 2 3}'
-assert_eq 'rename_literal'   "$("$BIN" -e '(clojure.set/rename-keys {:a 1 :b 2} {:a :A})')" '{:b 2, :A 1}'
-assert_eq 'invert_literal'   "$("$BIN" -e '(clojure.set/map-invert {:a 1 :b 2})')" '{1 :a, 2 :b}'
+assert_eq 'union_literals'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/union #{1 2} #{2 3}))')" '#{1 2 3}'
+assert_eq 'rename_literal'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/rename-keys {:a 1 :b 2} {:a :A}))')" '{:b 2, :A 1}'
+assert_eq 'invert_literal'   "$("$BIN" -e '(do (require (quote [clojure.set])) (clojure.set/map-invert {:a 1 :b 2}))')" '{1 :a, 2 :b}'
 
 # --- evaluation order (expressions inside literals) ---
 assert_eq 'set_evals_inside' "$("$BIN" -e '(count #{(+ 1 1) (+ 2 0) 3})')" '2'

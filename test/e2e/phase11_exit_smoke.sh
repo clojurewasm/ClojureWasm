@@ -25,6 +25,7 @@ last_line() { awk 'END { print }' <<< "$1"; }
 
 # --- (1) clojure.test compose smoke ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.test])
 (clojure.test/deftest t1 (clojure.test/is (= 1 1)))
 (clojure.test/deftest t2 (clojure.test/is true))
 (prn (let [s (clojure.test/run-tests)] [(:pass s) (:fail s)]))
@@ -38,6 +39,7 @@ echo "PASS tier_a_13_of_13_still_green"
 
 # --- (3) self-host cross-ns smoke (test + set + edn) ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.test] '[clojure.set])
 (clojure.test/deftest ts1
   (clojure.test/is
     (= 2 (count (clojure.set/intersection

@@ -23,6 +23,7 @@ last_line() { awk 'END { print }' <<< "$1"; }
 
 # --- Case 1: pprint returns nil ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.pprint])
 (prn (clojure.pprint/pprint [1 2 3]))
 EOF
 ) || fail "pprint_returns_nil: non-zero exit"
@@ -30,6 +31,7 @@ assert_eq 'pprint_returns_nil' "$(last_line "$got")" 'nil'
 
 # --- Case 2: print-table on empty returns nil ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.pprint])
 (prn (clojure.pprint/print-table []))
 EOF
 ) || fail "print_table_empty: non-zero exit"
@@ -37,6 +39,7 @@ assert_eq 'print_table_empty_returns_nil' "$(last_line "$got")" 'nil'
 
 # --- Case 3: pprint string ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.pprint])
 (prn (clojure.pprint/pprint "hello"))
 EOF
 ) || fail "pprint_string: non-zero exit"
@@ -44,6 +47,7 @@ assert_eq 'pprint_string_returns_nil' "$(last_line "$got")" 'nil'
 
 # --- Case 4: pprint nil ---
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.pprint])
 (prn (clojure.pprint/pprint nil))
 EOF
 ) || fail "pprint_nil: non-zero exit"
@@ -53,6 +57,7 @@ assert_eq 'pprint_nil_returns_nil' "$(last_line "$got")" 'nil'
 # clj renders a leading blank line + padded `| col | col |` rows with a
 # `|----+----|` rule. cljw previously emitted a simpler non-matching format.
 got=$("$BIN" - <<'EOF' 2>/dev/null
+(require '[clojure.pprint])
 (prn (with-out-str (clojure.pprint/print-table [{:a 1 :b 2} {:a 3 :b 4}])))
 EOF
 ) || fail "print_table_format: non-zero exit"

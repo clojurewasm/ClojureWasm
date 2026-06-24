@@ -29,8 +29,8 @@ assert_eq 'set_of_maps'  "$("$BIN" -e '(count (set [{:a 1} {:a 1} {:a 2}]))')" '
 assert_eq 'distinct'     "$("$BIN" -e '(count (distinct [{:a 1} {:a 1} {:b 2}]))')" '2'
 assert_eq 'zipmap'       "$("$BIN" -e '(get (zipmap [{:a 1} {:b 2}] [10 20]) {:a 1})')" '10'
 # clojure.set/index merges equal map keys; join finds matches
-assert_eq 'index'        "$("$BIN" -e '(count (clojure.set/index #{{:a 1 :b 1} {:a 1 :b 2} {:a 2 :b 3}} [:a]))')" '2'
-assert_eq 'join'         "$("$BIN" -e '(count (clojure.set/join #{{:a 1 :b 2}} #{{:a 1 :c 3}}))')" '1'
+assert_eq 'index'        "$("$BIN" -e '(do (require (quote [clojure.set])) (count (clojure.set/index #{{:a 1 :b 1} {:a 1 :b 2} {:a 2 :b 3}} [:a])))')" '2'
+assert_eq 'join'         "$("$BIN" -e '(do (require (quote [clojure.set])) (count (clojure.set/join #{{:a 1 :b 2}} #{{:a 1 :c 3}})))')" '1'
 # user-facing (hash coll) is content-based + order-independent for maps/sets
 assert_eq 'hash_map'     "$("$BIN" -e '(= (hash {:a 1 :b 2}) (hash {:b 2 :a 1}))')" 'true'
 assert_eq 'hash_set'     "$("$BIN" -e '(= (hash #{1 2}) (hash #{2 1}))')"   'true'

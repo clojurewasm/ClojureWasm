@@ -19,6 +19,7 @@ const analyzeForm = @import("analyzer/analyzer.zig").analyze;
 const macro_dispatch = @import("macro_dispatch.zig");
 const driver = @import("driver.zig");
 const vm_compiler = @import("backend/vm/compiler.zig");
+const serialize = @import("bytecode/serialize.zig");
 const Form = @import("form.zig").Form;
 const error_catalog = @import("../runtime/error/catalog.zig");
 const error_mod = @import("../runtime/error/info.zig");
@@ -114,11 +115,61 @@ pub fn loadOrFindNs(rt: *Runtime, env: *Env, name: []const u8, loc: SourceLocati
     if (rt.loaded_libs.contains(name)) {
         if (env.findNs(name)) |existing| return existing;
     }
-    const resolver = rt.require_resolver orelse
-        return error_catalog.raise(.lib_not_found, loc, .{ .ns = name });
-    const resolved = (try resolver(rt, name)) orelse
-        return error_catalog.raise(.lib_not_found, loc, .{ .ns = name });
-    try loadNamespace(rt, env, name, resolved, loc);
-    return env.findNs(name) orelse
-        return error_catalog.raise(.lib_not_found, loc, .{ .ns = name });
+    // ADR-0163 D-516: a lazy bootstrap namespace lives as a bytecode region in the
+    // embedded blob — replay it (no re-parse) before consulting the source resolver.
+    if (rt.bootstrap_region_blob) |blob| {
+        if (serialize.findRegion(blob, name)) |region| {
+            try loadRegionNamespace(rt, env, name, region, loc);
+            return env.findNs(name) orelse
+                return error_catalog.raise(.lib_not_found, loc, .{ .ns = name });
+        }
+    }
+    if (rt.require_resolver) |resolver| {
+        if (try resolver(rt, name)) |resolved| {
+            try loadNamespace(rt, env, name, resolved, loc);
+            return env.findNs(name) orelse
+                return error_catalog.raise(.lib_not_found, loc, .{ .ns = name });
+        }
+    }
+    // Neither in loaded_libs, nor a bytecode region, nor resolvable to source —
+    // but the ns may have been defined INLINE (e.g. `(ns mylib …)` then
+    // `(require '[mylib])`): there is nothing to load, so a non-empty ns is found
+    // as-is. (This is the legitimate residue of the old mappings-count guard, now
+    // a last resort so it no longer masks a lazy bootstrap ns whose registerAll
+    // private leaves made `mappings.count() > 0` before its `.clj` body ran.)
+    if (env.findNs(name)) |existing| {
+        if (existing.mappings.count() > 0) return existing;
+    }
+    return error_catalog.raise(.lib_not_found, loc, .{ .ns = name });
+}
+
+/// Replay a lazy bootstrap namespace's bytecode `region` (ADR-0163 D-516) into
+/// `env`. The bytecode analog of `loadNamespace`: same cycle-detection + `*ns*`
+/// save/restore + loaded-lib bookkeeping, but runs `driver.runEnvelope` (the
+/// region is a self-contained envelope whose `(in-ns 'X)` creates the ns and
+/// whose `(:require dep)` forms cascade-load deps through `loadOrFindNs`) instead
+/// of parse+analyze+eval. Forms live on `rt.load_arena` (session-lifetime) since
+/// the ns's fns/macros capture their bytecode constants.
+fn loadRegionNamespace(rt: *Runtime, env: *Env, ns_name: []const u8, region: []const u8, loc: SourceLocation) !void {
+    if (rt.loaded_libs.contains(ns_name)) return;
+    if (rt.require_in_progress.contains(ns_name))
+        return error_catalog.raise(.circular_require, loc, .{ .chain = ns_name });
+
+    const gpa = rt.gpa;
+    {
+        const key = try gpa.dupe(u8, ns_name);
+        errdefer gpa.free(key);
+        try rt.require_in_progress.put(gpa, key, {});
+    }
+    defer if (rt.require_in_progress.fetchRemove(ns_name)) |kv| gpa.free(kv.key);
+
+    // Restore the caller's ns after the region's own `(in-ns …)` switches it.
+    const saved_ns = env.current_ns;
+    defer if (saved_ns) |s| env.setCurrentNs(s);
+
+    try driver.runEnvelope(rt, env, rt.load_arena.allocator(), region);
+
+    const loaded_key = try gpa.dupe(u8, ns_name);
+    errdefer gpa.free(loaded_key);
+    try rt.loaded_libs.put(gpa, loaded_key, {});
 }

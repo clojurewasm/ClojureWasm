@@ -13,6 +13,8 @@
 ;; The final form prints `[passes fails]` for `test/run_all.sh`'s
 ;; `test_clj` step to capture.
 
+(require '[clojure.test] '[clojure.set])
+
 ;; CLJW: A — arithmetic (clojure.core arithmetic test fragment)
 (clojure.test/deftest test-add-int
   (clojure.test/is (= 6 (+ 1 2 3))))

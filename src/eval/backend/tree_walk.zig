@@ -584,18 +584,13 @@ fn evalNs(rt: *Runtime, env: *Env, n: node_mod.NsNode) !Value {
 /// :as/:refer; a not-yet-loaded namespace is source-loaded via
 /// `loader.loadNamespace`.
 fn evalRequire(rt: *Runtime, env: *Env, n: node_mod.RequireNode) !Value {
-    const target_ns = blk: {
-        if (env.findNs(n.ns_name)) |existing| {
-            if (existing.mappings.count() > 0) break :blk existing;
-        }
-        const resolver = rt.require_resolver orelse
-            return error_catalog.raise(.lib_not_found, n.loc, .{ .ns = n.ns_name });
-        const resolved = (try resolver(rt, n.ns_name)) orelse
-            return error_catalog.raise(.lib_not_found, n.loc, .{ .ns = n.ns_name });
-        try loader.loadNamespace(rt, env, n.ns_name, resolved, n.loc);
-        break :blk env.findNs(n.ns_name) orelse
-            return error_catalog.raise(.lib_not_found, n.loc, .{ .ns = n.ns_name });
-    };
+    // ADR-0163 D-516: route through the ONE load path. `loadOrFindNs` keys
+    // "already loaded" off `rt.loaded_libs` (not `mappings.count() > 0`, which
+    // mis-fires when `registerAll` pre-interned a ns's private Pattern-B leaves —
+    // e.g. clojure.string's `-upper-case` — so the ns exists with mappings yet its
+    // `.clj` body never ran) and replays a lazy bootstrap ns from its bytecode
+    // region before the source resolver. The old inline copy did neither.
+    const target_ns = try loader.loadOrFindNs(rt, env, n.ns_name, n.loc);
 
     const here = env.current_ns orelse
         return error_catalog.raise(.current_namespace_missing, n.loc, .{ .sym = n.ns_name });
