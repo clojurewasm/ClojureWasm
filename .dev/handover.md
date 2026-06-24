@@ -18,20 +18,15 @@
   borderline (~1.07× py). **ONLY `gc_alloc_rate` remains a clear gap** (cljw 45.3 / bb 39.9 =
   1.14×, GC-bound not floor-bound). fastest-script ~19/30→~27/30. THEN attack the surviving
   gap = **D-519 auto-collect (ADR-0164, design ACCEPTED + DA-vetted)**: root-caused via
-  `CLJW_GC_STATS=1` (committed 07176327) — reuse=0%/collects=0 = cljw does NO threshold-driven
-  auto-collect during eval → unbounded malloc (perf gap + latent OS-OOM memory bug). ADR-0164
-  decides **BOTH sites** — alloc-boundary (gc_heap.alloc, bulk-primitive completeness, beside
-  heap_ceiling) + VM back-edge poll (vm.zig:305, cheap tight-loop) — threshold-gated on the
-  proven CLJW_GC_TORTURE_ALLOC path; raise default threshold 1MB→4MB + a knob; keep torture in
-  the gate. **QUIET-Mac-GATED (DA #1 mistake-warning)**: correctness is load-independent (diff
-  oracle + GC_TORTURE + GC_STATS: collects>0/reuse>0/bytes bounded), but the KEEP/REVERT
-  decision needs a wall-clock all-bench re-run (string_ops is the regression CANARY; a count
-  proxy is INSUFFICIENT) — DO NOT commit the impl under load. Precise BOTH-sites code in the
-  note. Honest framing: fixes the memory bug decisively, PARTIAL gc_alloc_rate win (full
-  closure = the deferred bump-nursery, F-006-out-of-scope). D-517 zero-copy = LOW value now.
-  D-518 heap-snapshot DEFERRED to the moving-GC unit. **GUARDRAIL**: never Zig-ify the .clj
-  bootstrap. Plans: `private/notes/9.2.S-coldstart-architecture-20260624.md` +
-  `D516-lazy-ns-survey.md`; decisions ADR-0162/0163/0164. D-515 binary-size axis (standing).
+  `CLJW_GC_STATS=1` (07176327, reuse=0%/collects=0 = NO eval auto-collect → unbounded malloc +
+  latent OS-OOM bug). ADR-0164 = BOTH sites (alloc-boundary + VM back-edge poll), threshold-gated
+  on the proven CLJW_GC_TORTURE_ALLOC path, default 1MB→4MB + knob, keep torture. **QUIET-Mac-
+  GATED**: correctness is load-independent, but KEEP/REVERT needs a wall-clock all-bench re-run
+  (string_ops CANARY; count proxy INSUFFICIENT) — don't commit under load. Full detail +
+  BOTH-sites code: ADR-0164 / D-519 / the note. D-517 zero-copy = LOW value now; D-518
+  heap-snapshot DEFERRED (moving-GC unit). **GUARDRAIL**: never Zig-ify the .clj bootstrap.
+  Decisions ADR-0162/0163/0164; plan `private/notes/9.2.S-coldstart-architecture-20260624.md`.
+  D-515 binary-size axis (standing).
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm` (false fails —
   `zig_build_test_needs_dwasm`); bare `zig build` for a probe (ADR-0133 — ReleaseSafe).
 
@@ -76,17 +71,14 @@ Live ledger: `.dev/zwasm_capabilities.md`.
 
 ## Cold-start reading order (resume)
 
-handover → **ADR-0162** (cold-start architecture decision; DA red-team in Alternatives) →
-`private/notes/9.2.S-coldstart-architecture-20260624.md` (measured attribution + D-516
-lazy-ns Step-0 prep + D-140 record; gitignored, on local disk) → `.dev/debt.yaml`
-**D-516/D-517/D-518** (the arc's steps) + **D-450** (the 9 other gaps, re-measure quiet) →
-memories `perf_campaign_roadmap_9_2_s` / `perf_beat_python_every_bench` /
-`verify_actual_pattern_not_proxy` / `verify_against_releasesafe_binary` /
-`smoke_first_batch_full_gate`. Profiler: `CLJW_PROFILE_STARTUP=1 cljw -e 1` (stderr phase
-deltas). GC diag: `CLJW_GC_STATS=1 cljw <prog>` (alloc/pool_hits/reuse%/collects at exit).
-Decisions: **ADR-0162** (cold-start arch) / **ADR-0163** (lazy-ns) / **ADR-0164** (eval
-auto-collect = D-519, the next unit). The campaign fast-mode is injected by
-`scripts/perf_campaign_remind.sh` (`.dev/.perf_campaign_active` set).
+handover → **ADR-0162/0163/0164** (cold-start arch / lazy-ns / eval auto-collect = D-519, the
+next unit; DA folded in each) → `private/notes/9.2.S-coldstart-architecture-20260624.md` (the
+full arc: measured attribution + payoff + gc_alloc_rate root-cause + BOTH-sites code) +
+`D516-lazy-ns-survey.md` → `.dev/debt.yaml` **D-519** (next) / **D-450** (the 9 gaps,
+re-measure quiet). Tools: `CLJW_PROFILE_STARTUP=1` (startup phases) / `CLJW_GC_STATS=1`
+(alloc/reuse%/collects). Memories: `verify_against_releasesafe_binary` /
+`smoke_first_batch_full_gate` / `perf_campaign_roadmap_9_2_s`. Campaign fast-mode injected by
+`scripts/perf_campaign_remind.sh` (`.dev/.perf_campaign_active`).
 
 ## Stopped — user requested
 
