@@ -724,6 +724,7 @@ run_step "e2e_phase14_extend_protocol_targets" "bash test/e2e/phase14_extend_pro
 run_step "e2e_phase14_extend_fn"             "bash test/e2e/phase14_extend_fn.sh"
 run_step "e2e_phase14_deftype_imeta"         "bash test/e2e/phase14_deftype_imeta.sh"
 run_step "e2e_phase14_deftype_iseq"          "bash test/e2e/phase14_deftype_iseq.sh"
+run_step "e2e_phase14_deftype_overload_arity" "bash test/e2e/phase14_deftype_overload_arity.sh"
 run_step "e2e_phase14_deftype_indexed"       "bash test/e2e/phase14_deftype_indexed.sh"
 run_step "e2e_phase14_deftype_ireduce"       "bash test/e2e/phase14_deftype_ireduce.sh"
 run_step "e2e_phase14_catch_fqcn_exceptions" "bash test/e2e/phase14_catch_fqcn_exceptions.sh"

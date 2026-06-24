@@ -3205,14 +3205,36 @@ fn lowerDefType(
         break :blk try list(arena, def_map_arrow_items, loc);
     } else null;
 
-    // Protocol-section parsing — mirror expandExtendProtocol's
-    // section walker. args[2..] alternates between a protocol-name
-    // Symbol and one-or-more method-impl lists belonging to it; each
-    // section lowers to `(extend-type Name Proto impl1 impl2 ...)`.
-    var sections: std.ArrayList(Form) = .empty;
-    defer sections.deinit(arena);
+    // Protocol-section parsing — mirror expandExtendProtocol's section walker.
+    // args[2..] alternates between a protocol-name Symbol and one-or-more
+    // method-impl lists belonging to it; each section lowers to
+    // `(extend-type Name Proto impl1 impl2 ...)`.
+    //
+    // D-530 (cross-section same-name-arity merge): clj lets a deftype implement
+    // the same method NAME at different arities across DIFFERENT protocol
+    // sections (`clojure.lang.Seqable` `seq[this]` + `clojure.lang.Sorted`
+    // `seq[this asc]`; data.priority-map's `subseq` needs it). expandExtendType
+    // already merges same-name arities WITHIN one section into a multi-arity
+    // `fn*` (D-279) — but two sections never meet there, so each would emit its
+    // own single-arity entry and `(. inst seq true)` resolves the arity-1 row
+    // ("Wrong number of args (2)…expected 1"). The fix gathers every section's
+    // impls of a shared name and emits the FULL clause set under EACH
+    // contributing protocol, so expandExtendType builds the complete multi-arity
+    // fn for both — `lookupMethod`/`MethodEntry`/the dispatch path stay unchanged
+    // (`selectMethod` picks the body by arg count). Survey: 9.2.T-D530.
+    const FieldImpl = struct { wrapped: []const Form, proto: Form };
+    var parsed: std.ArrayList(FieldImpl) = .empty;
+    defer parsed.deinit(arena);
+    // method name → every wrapped impl of that name across ALL sections.
+    var by_name: std.StringHashMapUnmanaged(std.ArrayList(Form)) = .empty;
+    defer by_name.deinit(arena);
+    // method name → bitset of section indices it appears in (popcount > 1 ⇒
+    // cross-section overload). Section count past 63 is absurd for a deftype.
+    var name_secmask: std.StringHashMapUnmanaged(u64) = .empty;
+    defer name_secmask.deinit(arena);
 
     var i: usize = 2;
+    var sec_idx: u6 = 0;
     while (i < args.len) {
         if (args[i].data != .symbol)
             return error_catalog.raise(.extend_protocol_section_invalid, args[i].location, .{});
@@ -3221,19 +3243,55 @@ fn lowerDefType(
         const impls_start = i;
         while (i < args.len and args[i].data == .list) : (i += 1) {}
         const impls = args[impls_start..i];
-        // A zero-impl section is a MARKER protocol (e.g. `Sequential`):
-        // it lowers to `(extend-type Name Marker)` with no method forms,
-        // which `__extend-type!` records into `protocol_impls` (D-190/ADR-0068).
-
-        var ext_items = try arena.alloc(Form, 3 + impls.len);
-        ext_items[0] = sym("extend-type", proto_form.location);
-        ext_items[1] = args[0];
-        ext_items[2] = proto_form;
         // Each method body gets the record fields as implicit locals (D-202
-        // gap 1); a marker section (zero impls) skips the loop entirely.
-        for (impls, 0..) |impl, k|
-            ext_items[3 + k] = try wrapMethodBodyWithFields(arena, impl, fields_in, loc);
-        try sections.append(arena, try list(arena, ext_items, proto_form.location));
+        // gap 1); a malformed impl passes through untouched (expandExtendType
+        // raises the precise error). A zero-impl section is a MARKER protocol
+        // (e.g. `Sequential`) → `(extend-type Name Marker)`, recorded into
+        // `protocol_impls` (D-190/ADR-0068).
+        const wrapped = try arena.alloc(Form, impls.len);
+        for (impls, 0..) |impl, k| {
+            wrapped[k] = try wrapMethodBodyWithFields(arena, impl, fields_in, loc);
+            const w = wrapped[k];
+            if (w.data != .list or w.data.list.len < 2 or w.data.list[0].data != .symbol) continue;
+            const mname = w.data.list[0].data.symbol.name;
+            const gop = try by_name.getOrPut(arena, mname);
+            if (!gop.found_existing) gop.value_ptr.* = .empty;
+            try gop.value_ptr.append(arena, w);
+            const mgop = try name_secmask.getOrPut(arena, mname);
+            if (!mgop.found_existing) mgop.value_ptr.* = 0;
+            mgop.value_ptr.* |= (@as(u64, 1) << sec_idx);
+        }
+        try parsed.append(arena, .{ .wrapped = wrapped, .proto = proto_form });
+        if (sec_idx < 63) sec_idx += 1;
+    }
+
+    var sections: std.ArrayList(Form) = .empty;
+    defer sections.deinit(arena);
+    for (parsed.items) |section| {
+        var out_impls: std.ArrayList(Form) = .empty;
+        defer out_impls.deinit(arena);
+        // A cross-section name's full clause set is emitted once per section.
+        var emitted_cross: std.StringHashMapUnmanaged(void) = .empty;
+        defer emitted_cross.deinit(arena);
+        for (section.wrapped) |impl| {
+            if (impl.data == .list and impl.data.list.len >= 2 and impl.data.list[0].data == .symbol) {
+                const mname = impl.data.list[0].data.symbol.name;
+                if (@popCount(name_secmask.get(mname) orelse 0) > 1) {
+                    if (emitted_cross.get(mname) == null) {
+                        try emitted_cross.put(arena, mname, {});
+                        try out_impls.appendSlice(arena, by_name.get(mname).?.items);
+                    }
+                    continue; // its arities are folded into the full set above
+                }
+            }
+            try out_impls.append(arena, impl);
+        }
+        var ext_items = try arena.alloc(Form, 3 + out_impls.items.len);
+        ext_items[0] = sym("extend-type", section.proto.location);
+        ext_items[1] = args[0];
+        ext_items[2] = section.proto;
+        @memcpy(ext_items[3..], out_impls.items);
+        try sections.append(arena, try list(arena, ext_items, section.proto.location));
     }
 
     // (do (def Name (rt/__defrecord! ...)) (def ->Name ...) extend-type-sections...)
@@ -3463,6 +3521,41 @@ fn expandReify(
     if (args[0].data != .symbol)
         return error_catalog.raise(.reify_section_invalid, args[0].location, .{});
 
+    // D-530 (reify cross-section same-name-arity merge): same gap + fix as
+    // `lowerDefType` — a method NAME at different arities across DIFFERENT
+    // protocol sections (Seqable `seq[this]` + Sorted `seq[this asc]`) must merge
+    // into one multi-arity fn (clj allows it on reify too). The per-section
+    // grouping below only sees one section's impls, so pre-scan ALL sections:
+    // `reify_by_name` collects every section's impls of a name, `reify_secmask`
+    // the bitset of sections it appears in (popcount > 1 ⇒ cross-section). A
+    // cross-section name then gathers its clauses from the full set under each
+    // contributing protocol. Best-effort scan; the main loop below validates.
+    var reify_by_name: std.StringHashMapUnmanaged(std.ArrayList(Form)) = .empty;
+    defer reify_by_name.deinit(arena);
+    var reify_secmask: std.StringHashMapUnmanaged(u64) = .empty;
+    defer reify_secmask.deinit(arena);
+    {
+        var pi: usize = 0;
+        var psec: u6 = 0;
+        while (pi < args.len) {
+            if (args[pi].data != .symbol) break;
+            pi += 1;
+            const ps = pi;
+            while (pi < args.len and args[pi].data == .list) : (pi += 1) {}
+            for (args[ps..pi]) |impl| {
+                if (impl.data != .list or impl.data.list.len < 2 or impl.data.list[0].data != .symbol) continue;
+                const mn = impl.data.list[0].data.symbol.name;
+                const gop = try reify_by_name.getOrPut(arena, mn);
+                if (!gop.found_existing) gop.value_ptr.* = .empty;
+                try gop.value_ptr.append(arena, impl);
+                const mg = try reify_secmask.getOrPut(arena, mn);
+                if (!mg.found_existing) mg.value_ptr.* = 0;
+                mg.value_ptr.* |= (@as(u64, 1) << psec);
+            }
+            if (psec < 63) psec += 1;
+        }
+    }
+
     var interfaces: std.ArrayList(Form) = .empty;
     defer interfaces.deinit(arena);
     var method_rows: std.ArrayList(Form) = .empty;
@@ -3543,7 +3636,15 @@ fn expandReify(
             var clauses: std.ArrayList(Form) = .empty;
             defer clauses.deinit(arena);
             var name_loc = proto_form.location;
-            for (impls) |impl| {
+            // D-530: a cross-section overload (same name in >1 section) gathers its
+            // clauses from EVERY section's impls (the full arity set), so the
+            // multi-arity fn under THIS protocol carries all arities; a plain
+            // single-section name gathers only this section's impls (unchanged).
+            const gather_src = if (@popCount(reify_secmask.get(method_name) orelse 0) > 1)
+                reify_by_name.get(method_name).?.items
+            else
+                impls;
+            for (gather_src) |impl| {
                 if (!std.mem.eql(u8, impl.data.list[0].data.symbol.name, method_name)) continue;
                 const stripped = try stripMethodParamNs(arena, impl.data.list[1]);
                 // Lower destructured method params (`[_ [k x]]`) the same way fn

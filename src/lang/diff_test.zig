@@ -951,6 +951,29 @@ test "diff: deftype macro binds ->Name + applies protocol body (ADR-0066/D-087)"
     try f.check("(do (defprotocol IDiffP (dval [t])) (deftype DiffV [v] IDiffP (dval [_] (.v _))) (dval (->DiffV 5)))", 5);
 }
 
+test "diff: deftype overloaded same-name method across protocol sections (D-530)" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    // `foo` is defined at arity-1 under PA AND arity-2 under PB (two protocol
+    // sections); the lowering merges them into one multi-arity fn so the 2-arg
+    // dot-form resolves the arity-2 body (was "Wrong number of args" pre-fix).
+    // Both backends must agree the merged fn dispatches by arg count. (User
+    // protocols, not clojure.lang.* markers — the Fixture has no core.clj; the
+    // real clojure.lang.Seqable/Sorted case is covered by the e2e.)
+    try f.check("(do (defprotocol PA (foo [this])) (defprotocol PB (foo [this x])) (deftype DiffOvl [v] PA (foo [this] 1) PB (foo [this x] 2)) (. (DiffOvl. 0) foo true))", 2);
+}
+
+test "diff: reify overloaded same-name method across protocol sections (D-530)" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    // reify shares the deftype cross-section gap + fix (expandReify); `bar` is
+    // arity-1 under RA and arity-2 under RB, merged into one multi-arity fn so
+    // the 2-arg dot-form resolves the RB body. Both backends must agree.
+    try f.check("(do (defprotocol RA (bar [this])) (defprotocol RB (bar [this x])) (def r (reify RA (bar [this] 10) RB (bar [this x] (+ 20 x)))) (. r bar 5))", 25);
+}
+
 test "diff: interop_call_node .constructor second field" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
