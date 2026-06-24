@@ -8,21 +8,24 @@
 - **HEAD**: `main` (`git log` = SSOT; ≈ `888d7573`). Per-commit = smoke; commit
   **and** push (CLAUDE.md § atomic Step 6). `build.zig.zon` `.zwasm` = tag pin
   `v2.0.0-alpha.3`.
-- **First commit on resume MUST be**: resume the **gap-III perf campaign (D-450)
-  — fastest-script goal** (ADR-0148: cljw FASTEST among cljw/Python/Ruby/Node/
-  Babashka cold-start on the 9 top-gap benches). The active quick-wins are drained
-  (D-510 ✓, D-511 2-arg ctor ✓; D-511 double-ctor + D-513 are deferred/foundational
-  — see Standing units). **MEASURE-FIRST** (`bash bench/compare_langs.sh --cold`,
-  ≥10 runs) to refresh the cljw÷fastest-script ratios, THEN take the highest-ROI
-  lever. D-450 ROI order (2026-06-16): ratio_sum 3.15× (numeric-tower fused
-  accumulators) · gc_alloc_rate 2.81× / gc_large_heap 2.22× (GC-arch theme —
-  generational/nursery, F-006, OWN ADR+DA fork when designed) · destructure 1.72× ·
-  json_parse 1.59× · bigint_factorial 1.49× · nested_update 1.37× · string_ops
-  1.35× · sieve 1.23×. **ratio_sum is the contained highest-ROI start; the GC-arch
-  pair is the bigger design unit.** Per perf_v0_baseline.md the campaign's highest-
-  risk lever (exact-count frame rooting, the O-005 redo) needs a FOCUSED cycle, not
-  a rushed one — verify under CLJW_GC_TORTURE. D-180 (into/vec vector.fromSlice) is
-  DONE; do not re-open it.
+- **First commit on resume MUST be**: continue the **gap-III perf campaign (D-450)
+  — fastest-script goal**. RE-MEASURED 2026-06-24 (`bench/cross-lang-latest.yaml` +
+  README regenerated): still **19/30 fastest-script**; ratio_sum CLOSED (O-046 +
+  O-050). The 9 LIVE GAPS (cljw÷fastest-script): **sieve 1.59×(bb)** · gc_alloc_rate
+  1.43×(bb) · string_ops 1.40×(bb) · destructure 1.20× · json_parse 1.12× ·
+  map_filter_reduce 1.11× · bigint_factorial 1.08× · gc_large_heap 1.07× ·
+  nested_update 1.05×. **RECONSTRUCTED LEVER ORDER**: (1) **startup floor (D-140)**
+  = highest cross-cutting — sieve (top gap) is floor-sensitive + the ~10-13ms cold
+  floor is added to every bench; PROFILE `runner.zig setupCoreAot` (envelope
+  deserialize + ~hundreds of op_def core-var interns + primitive.registerAll) — the
+  measure-first next step; (2) GC-arch pair (own ADR+DA); (3) string_ops; (4)
+  map_filter_reduce (NEW gap — check the O-045 fused-reduce gate). **CAVEAT**: this
+  session's machine was under load (~+7-8ms all benches; floor proxy fib_loop 13.7ms
+  vs 2026-06-16 5.1ms, but peers rose similarly → mostly load) — re-measure on a
+  quiet Mac before treating bigint_factorial/destructure/gc_alloc_rate (prev O-047/
+  O-048/O-040-closed) as genuine regressions. Full analysis:
+  `private/notes/9.2.S-plan-reconstruction-20260624.md`. D-180 / D-510 / D-511(2-arg)
+  are DONE; D-511 double-ctor + D-513 deferred/foundational (Standing units).
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm` (false fails —
   `zig_build_test_needs_dwasm`); bare `zig build` for a probe (ADR-0133 — ReleaseSafe).
 
@@ -54,11 +57,10 @@ host_enum (G3 green).
   `:doc` metadata absent — `(:doc (meta #'reduce))` → nil; wiring docstrings
   through every bootstrap defn/def + primitive var registration is a large,
   separate unit and the real prerequisite for a useful `clojure.repl`.
-- **gap-III perf campaign** (ROADMAP §9.2.S, D-180/D-450) — the fastest-script goal
-  (ADR-0148): cljw FASTEST among cljw/Python/Ruby/Node/Babashka cold-start on the
-  top-gap benches. Resume at D-180 (bulk `persistent!`/`vector.fromSlice`, the
-  into/vec 121s bottleneck). Measure-first (`bench/compare_langs.sh`). The
-  high-value standing directive once the active quick-wins drain.
+- **gap-III perf campaign** (ROADMAP §9.2.S, D-450) — the fastest-script goal
+  (ADR-0148): cljw FASTEST among cljw/Python/Ruby/Node/Babashka cold-start. The
+  ACTIVE front (see Resume contract for the re-measured 2026-06-24 gaps + lever
+  order). Then D-386 dispatch→superinstructions→JIT.
 
 ## North star (ACTIVE)
 

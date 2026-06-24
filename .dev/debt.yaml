@@ -355,7 +355,7 @@ active:
       into an op_load_class. Not campaign-blocking.
     last_reviewed: "2026-06-16"
   - id: "D-450"
-    status: "open (2026-06-16, ADR-0148, user-directed). Make cljw the FASTEST script interpreter (among cljw/Python/Ruby/Node.js/Babashka cold-start) on the 9 top-gap benches. The active perf-campaign front; resume target in handover."
+    status: "open (RE-MEASURED 2026-06-24, Mac M4 Pro; supersedes the stale 2026-06-16 list). Still 19/30 fastest-script. ratio_sum CLOSED (was #1 @3.15x -> now 0.84x; O-046 small-tier + O-050 Knuth big-tier add). LIVE GAPS (cljw/fastest-script): sieve 1.59x(bb) . gc_alloc_rate 1.43x(bb) . string_ops 1.40x(bb) . destructure 1.20x(bb) . json_parse 1.12x(py) . map_filter_reduce 1.11x(py) . bigint_factorial 1.08x(py) . gc_large_heap 1.07x(bb) . nested_update 1.05x(py). CAVEAT: this session machine under load (~+7-8ms all benches; cljw cold-floor proxy fib_loop 13.7ms vs 2026-06-16 5.1ms, peers rose similarly -> mostly load not a cljw regression) -> relative gaps are the signal; re-measure on a quiet Mac before treating bigint_factorial/destructure/gc_alloc_rate (prev O-047/O-048/O-040-closed) as genuine regressions vs load-compression. RECONSTRUCTED LEVER ORDER (private/notes/9.2.S-plan-reconstruction-20260624.md): (1) STARTUP FLOOR D-140 = highest cross-cutting (sieve top-gap floor-sensitive; profile runner.zig setupCoreAot restore) (2) GC-arch pair (own ADR+DA) (3) string_ops (4) map_filter_reduce NEW gap (check O-045 fused-reduce gate). README table regenerated from the fresh yaml."
     category: "perf"
     quality_floor: "fastest-script campaign: 9 targets ratio_sum/gc_alloc_rate/gc_large_heap/destructure/json_parse/bigint_factorial/nested_update/string_ops/sieve"
     barrier: |-
@@ -374,7 +374,7 @@ active:
       Experiment aggressively + revert (reverted-experiment commits MAY stay in the log;
       never leave main red; diff oracle + corpus stay green; short benches carry noise →
       ≥10 runs). After the 9 → resume D-386 (dispatch→superinstructions→JIT) + §9.0 gaps.
-    last_reviewed: "2026-06-16"
+    last_reviewed: "2026-06-24"
   - id: "D-449"
     status: "open (2026-06-16, ADR-0147 S3). The Alt-2 forward+reverse lazy DFA (`src/runtime/regex/dfa.zig`) is BUILT + equivalence-locked but UNWIRED — measurement showed wiring it REGRESSES perf vs the S2-prefiltered Pike VM (regex_count 17→23ms, sparse 0.05→0.47s). RESERVED engine, not the default matcher."
     category: "perf"
