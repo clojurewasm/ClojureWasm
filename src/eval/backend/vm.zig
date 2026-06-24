@@ -322,6 +322,13 @@ pub fn eval(
         if (gc_torture.period != 0 and !root_set.is_registered_worker and gc_torture.tick()) {
             mark_sweep.collectStopTheWorld(&rt.gc, .{ .envs = &.{env}, .gc = &rt.gc }, false);
         }
+        // D-519 (ADR-0164): threshold-driven auto-collect at the back-edge poll —
+        // the cheap tight-loop path (a `recur` loop back-edges every iteration but
+        // allocs once, so the common churn case trips here at the cleanest safe
+        // point: sp/op_top settled, fabrication_depth 0 by construction). Idempotent
+        // with the alloc-boundary site via the shared `bytes_since_last_gc` reset;
+        // one predicted-not-taken compare per op when the threshold is not yet crossed.
+        rt.gc.maybeAutoCollect();
         var flatten_req: ?FlattenReq = null;
         const step_result = stepOnce(rt, env, cur.locals, cur.chunk, &ar.stack, &ar.loc, &ar.op_top, &ip, &handlers, &handler_count, &flatten_req);
         // D-486: a flattenPush FRAMES_MAX overflow must reach the shared error arm

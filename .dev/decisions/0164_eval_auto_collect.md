@@ -1,6 +1,6 @@
 # ADR-0164 — Threshold-driven auto-collect during eval (BOTH alloc-boundary + VM back-edge), within mark-sweep
 
-- **Status**: Proposed → Accepted (2026-06-24; D-450 gc_alloc_rate root cause; DA-fork folded verbatim below). **Implementation + the wall-clock GO gate are a SEPARATE next unit (a quiet Mac is required — see Decision §5).**
+- **Status**: Proposed → Accepted → **IMPLEMENTED + GO-PASSED** (2026-06-24; D-450 gc_alloc_rate root cause; DA-fork folded verbatim below). The BOTH-sites auto-collect landed at 4MB default + the `CLJW_GC_THRESHOLD_MB` knob; the load-robust OFF-vs-ON A/B (interleaved hyperfine, 20 runs) passed decisively — see **§ GO result** below. The DA's predicted "partial win" was too conservative: ON is FASTER than OFF on all 8 measured benches (1.12–1.65×), the `string_ops` canary INCLUDED (1.28× faster, not slower).
 - **Driven by**: D-450's surviving fastest-script gap `gc_alloc_rate` (cljw 45.3ms / bb 39.9ms = 1.14×). Root-caused load-independently via the new `CLJW_GC_STATS=1` counter (committed 07176327): a tight allocating loop shows **reuse=0%, collects=0** — cljw runs **NO threshold-driven auto-collect during eval**, so it mallocs unboundedly (1.28GB for 4M short-lived vectors) and never reuses the free pool, while Babashka wins via JVM TLAB-bump + young-gen collect-and-reuse. This is BOTH the gap AND a latent **memory bug** (default `heap_ceiling=null` → no cap + no auto-collect → a real allocating loop OS-OOMs).
 - **Relates to**: F-006 (GC = mark-sweep + 3-layer allocator; a moving/generational/nursery GC is a SEPARATE deferred unit — D-518 / the moving-GC unit), F-004 (NaN-box absolute pointers — non-moving collect), F-011 (GC timing not observable), F-002 (finished-form wins). ADR-0028 (mark-sweep + free-pool + adaptive threshold), ADR-0090 (STW safe-points), D-352/D-361 (the `heap_ceiling`/`checkInfraCap` alloc-boundary memory check this complements), the `CLJW_GC_TORTURE_ALLOC` validation path (the proven template).
 
@@ -25,9 +25,50 @@ Add threshold-driven auto-collect at **BOTH** sites (the DA's Alt 2 — finished
 ## Consequences
 
 - Fixes the latent **unbounded-alloc memory bug** decisively (any allocating loop now collects at the threshold instead of growing until OS-OOM) — the more important half.
-- **Partial** `gc_alloc_rate` perf win, NOT full closure. Honest framing (DA PT5): collect+reuse trades malloc-storm for pool-reuse + per-threshold mark+sweep; it narrows but likely does not fully close 1.14× — bb's edge is bump-allocation (no malloc, just pointer-increment), which is the DEFERRED nursery unit (Alt 3, out of F-006 scope). The last slice of the gap awaits that unit.
+- **Partial** `gc_alloc_rate` perf win, NOT full closure. Honest framing (DA PT5): collect+reuse trades malloc-storm for pool-reuse + per-threshold mark+sweep; it narrows but likely does not fully close 1.14× — bb's edge is bump-allocation (no malloc, just pointer-increment), which is the DEFERRED nursery unit (Alt 3, out of F-006 scope). The last slice of the gap awaits that unit. **(Measured — see § GO result: the wall-clock win was LARGER than this prediction; the OFF-vs-ON A/B shows ON beat OFF 1.39× on gc_alloc_rate itself, 49→35ms, because collect+reuse also wins cache/page-fault locality. Whether cljw fully beats bb's bump-allocator still awaits a quiet-Mac peer re-rank + possibly the nursery.)**
 - A global GC-timing change: re-validated by the wall-clock all-bench gate (§5) before it ships.
 - `gc_large_heap` (already a cljw win) and any &gt;threshold-retention workload may shift; the wall-clock gate covers them.
+
+## GO result (2026-06-24) — KEEP, decisively
+
+Implemented as a shared `GcHeap.maybeAutoCollect()` (the torture-alloc collect verbatim,
+gated on `bytes_since_last_gc > threshold_bytes`) called from BOTH sites: the `alloc`
+boundary (after the torture block, before `lockMutex`) and the VM back-edge poll
+(`vm.zig`, after the torture poll). Default floor 1MB→4MB via a new per-heap
+`threshold_floor_bytes` field (so `CLJW_GC_THRESHOLD_MB` survives each collect's recompute);
+torture kept in the gate.
+
+**Load-independent validation (conclusive):**
+- Diff oracle (`zig build test -Dwasm`, ReleaseSafe) green, no failures.
+- `CLJW_GC_STATS`: 200K vectors → collects 0→**15**, reuse 0%→**93%**, mallocs 401K→**27,335**;
+  4M vectors → collects **305**, reuse **99%**, mallocs **27,335 (FLAT)** = memory bounded
+  regardless of loop size (was 1.28 GB unbounded — the latent OS-OOM bug, fixed decisively).
+- Rooting: the 15/305 auto-collects fire MID-EVAL yet the sums are mathematically exact
+  (`20000300000` / `8000006000000`); torture-alloc on the bench + `(+ 1 1)` clean.
+
+**Wall-clock GO — the load-robust OFF-vs-ON knob A/B** (same ReleaseSafe binary,
+`CLJW_GC_THRESHOLD_MB=1000000` = auto-collect off ≈ pre-D-519, vs default 4MB = on;
+interleaved hyperfine 20 runs/5 warmup, so transient load hits both equally):
+
+| bench               | OFF (no auto-collect) | ON (4MB)    | ON faster  |
+|---------------------|-----------------------|-------------|------------|
+| gc_alloc_rate       | 49.2 ± 4.3 ms        | 35.4 ± 0.6 | **1.39×** |
+| string_ops (canary) | 27.3 ± 5.5           | 21.3 ± 0.3 | **1.28×** |
+| sieve               | 21.9 ± 4.7           | 17.4 ± 0.6 | 1.26×     |
+| map_filter_reduce   | 16.2 ± 6.6           | 9.8 ± 0.3  | 1.65×     |
+| gc_large_heap       | 35.9 ± 1.2           | 31.9 ± 0.5 | 1.12×     |
+| destructure         | 57.2 ± 7.1           | 50.5 ± 1.4 | 1.13×     |
+| nested_update       | 14.7 ± 1.2           | 10.9 ± 0.2 | 1.35×     |
+| bigint_factorial    | 21.9 ± 1.1           | 17.8 ± 0.4 | 1.23×     |
+
+ON is faster on EVERY bench AND ~10× lower variance (σ 0.3–1.4 vs 4–7). The mechanism the
+DA under-weighted (PT5): collect-and-reuse keeps the working set small → far fewer page
+faults / malloc syscalls / cache misses, which OUTWEIGHS the mid-bench STW cost — so the
+"the single most likely regression" (string_ops, PT2) instead IMPROVED. No threshold
+tuning was needed; 4MB holds across the board. The separate **absolute peer re-rank** (does
+cljw beat bb on the 9) is a campaign-standing question needing a genuinely quiet Mac (a
+cross-run peer measure at load ~4 was contamination-noisy) — NOT a D-519 blocker, since the
+A/B proves D-519 strictly improves cljw's own numbers.
 
 ## Alternatives considered
 

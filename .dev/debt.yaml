@@ -24,21 +24,6 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
-  - id: "D-519"
-    status: "open (ADR-0164 ACCEPTED, design DA-vetted; D-450 gc_alloc_rate surviving gap). IMPLEMENT threshold-driven auto-collect during eval — BOTH the alloc-boundary (gc_heap.alloc, beside heap_ceiling; completeness floor for bulk primitives) AND the VM back-edge poll (vm.zig:305, beside the gc_requested poll; cheap tight-loop path), gated on bytes_since_last_gc>threshold_bytes, mirroring the proven CLJW_GC_TORTURE_ALLOC collect. Raise default_gc_threshold_bytes 1MB->4MB + CLJW_GC_THRESHOLD_MB knob. Keep CLJW_GC_TORTURE_ALLOC in the gate (threshold is a weaker completeness probe). Root-caused via CLJW_GC_STATS (committed 07176327): reuse=0% collects=0 = no eval auto-collect = unbounded malloc (perf gap + latent OS-OOM memory bug). Fixes the memory bug decisively; PARTIAL gc_alloc_rate win (full closure = the deferred bump-nursery Alt 3, F-006-out-of-scope)."
-    category: "perf"
-    barrier: |-
-      QUIET-Mac-GATED (DA #1 mistake-warning, ADR-0164 §5 + PT2): the change alters WHEN GC
-      fires for EVERY allocating program. Correctness is load-independent (diff oracle +
-      CLJW_GC_TORTURE + CLJW_GC_STATS: collects>0/reuse>0/bytes bounded), but the KEEP/REVERT
-      (experiment-and-revert) decision is WALL-CLOCK-gated: a now-firing mid-bench collect can
-      REGRESS one of the 7 fastest-script benches the cold-start arc just won — string_ops is
-      the CANARY. A count proxy (collects>0) is INSUFFICIENT. GO requires a before/after
-      wall-clock re-run of all 7 won benches on a ReleaseSafe binary (quiet Mac; margin is ms);
-      raise the threshold until every won bench holds. DO NOT commit the impl until that
-      wall-clock GO passes. Precise BOTH-sites code + threshold draft in
-      private/notes/9.2.S-coldstart-architecture-20260624.md.
-    last_reviewed: "2026-06-24"
   - id: "D-516"
     status: "DISCHARGED 2026-06-24 (0f159228, ADR-0163). Lazy-namespace bytecode loading COMPLETE (commits 1 missing-:require, 2 loaded_libs guard+pre-register, 3a+3b region blob, 3c the flip). Eager = clj no-require set (SSOT bootstrap.EAGER_NS: core+string/walk/edn/java.io/core.protocols/uuid/instant/spec.alpha + cljw.wasm); rest lazy via loadOrFindNs region replay = STRICT clj-parity. Cold floor 9.4->4.3ms. Bugs fixed: require 4-path mappings.count short-circuit unified to loadOrFindNs; mylib inline-ns last-resort; cljw.wasm analyze-time eager; check_corpus_regression auto-require. Blast-radius: 27 e2e + cw_ported.clj missing-require added (zero real bugs). The region blob is D-517-ready."
     category: "perf"
@@ -2492,6 +2477,11 @@ standing:
     barrier: "open after the D-440 arc completes (R4 + R5 must first rewrite the bulk of 'Phase N' citations to gap-area terms). Premature adoption = ~70 dangling citations with no 1:1 redirect. Trigger: D-440 R4/R5 done + a user nod to re-architect the planning axis (it is depth-4, the project's organizing metaphor)."
     last_reviewed: "2026-06-15"
 discharged:
+  - id: "D-519"
+    status: "DISCHARGED 2026-06-24 (ADR-0164 IMPLEMENTED + GO-PASSED). Threshold-driven auto-collect during eval at BOTH sites — shared GcHeap.maybeAutoCollect() (torture-alloc collect verbatim, gated bytes_since_last_gc>threshold_bytes) called from the alloc boundary (gc_heap.alloc, after the torture block, before lockMutex) AND the VM back-edge poll (vm.zig, after the torture poll). Default floor 1MB->4MB via new per-heap threshold_floor_bytes (so CLJW_GC_THRESHOLD_MB knob survives each collect recompute; mark_sweep uses the floor). Kept CLJW_GC_TORTURE_ALLOC in the gate. Validation: diff oracle green; CLJW_GC_STATS 200K vectors collects 0->15 reuse 0%->93% mallocs 401K->27335, 4M vectors collects 305 reuse 99% mallocs 27335 FLAT (= memory bounded regardless of N; was 1.28GB unbounded -> latent OS-OOM bug fixed). Rooting: 15/305 collects mid-eval yet sums exact (20000300000/8000006000000). GO = load-robust OFF-vs-ON knob A/B (interleaved hyperfine 20 runs): ON FASTER than OFF on ALL 8 benches (gc_alloc_rate 1.39x, string_ops-canary 1.28x, sieve 1.26x, map_filter_reduce 1.65x, gc_large_heap 1.12x, destructure 1.13x, nested_update 1.35x, bigint_factorial 1.23x) + ~10x lower variance — the DA's predicted partial-win/canary-regression was REFUTED (collect+reuse wins cache/page-fault locality too). FOLLOW-UP (NOT a D-519 blocker): absolute peer re-rank (cljw vs bb on the 9) needs a genuinely quiet Mac — a load-~4 cross-run peer measure was contamination-noisy."
+    category: "perf"
+    barrier: "none — DISCHARGED."
+    last_reviewed: "2026-06-24"
   - id: "D-509"
     status: "DISCHARGED 2026-06-23 (reader/number sweep find). `(Class/FIELD)` in CALL position (parenthesized static field) crashed — `(str (Math/PI))` → 'Cannot call value of type float' (cljw resolved Math/PI to the float then tried to CALL it); clj treats `(Class/staticField)` with no args as a field READ. Fix in analyzer.zig analyzeList's `(Class/method)` block: when the class resolves but the name is NOT a method AND there are no args, look up a static field and return its value via a new `staticFieldValue` helper (extracted from the bare `Class/FIELD` symbol path so both share one resolver — DRY, no duplicated singleton/int/float/bool switch). clj-verified: (Math/PI)/(Math/E)/(Integer/MAX_VALUE)/(Long/MAX_VALUE) all = bare-field value; method-with-args (Math/abs -5) + unknown-ns + no-arg method still behave. e2e phase14_static_fields.sh (paren_field_*). SEPARATE pre-existing gap (LANDED same arc 2026-06-24): `Math/random` — added as a no-arg method on the Math surface (Math.zig) sharing the process PRNG with core `rand` (random_mod.nextDouble); e2e phase14_math_extra.sh (math_random_range/double)."
     category: "interop"

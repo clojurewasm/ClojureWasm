@@ -70,10 +70,13 @@ const HeapHeader = heap_header.HeapHeader;
 const FreePoolMap = free_pool_mod.FreePoolMap;
 const Value = value_mod.Value;
 
-/// Default GC trigger threshold (bytes since last collection).
-/// Adaptive at runtime: `threshold = max(default, last_live_bytes * 2)`
-/// per ADR-0028 §1 Load-bearing-concern #2 disposition.
-pub const default_gc_threshold_bytes: usize = 1 * 1024 * 1024;
+/// Default GC trigger threshold (bytes since last collection), and the default
+/// floor of the per-heap adaptive threshold. Adaptive at runtime:
+/// `threshold = max(threshold_floor_bytes, last_live_bytes * 2)` per ADR-0028 §1.
+/// Raised 1MB→4MB by ADR-0164/D-519: for a churn workload `last_live≈0` so the
+/// floor IS the operative cadence; 4MB ≈ ¼ the collects (same total sweep work,
+/// fewer STW fences) at ~3MB extra peak. Tune via `CLJW_GC_THRESHOLD_MB`.
+pub const default_gc_threshold_bytes: usize = 4 * 1024 * 1024;
 
 /// Minimum allocation size (bytes) per ADR-0028 §3: the freed payload
 /// must host the FreeNode overlay at offset 8 (8 bytes header +
@@ -185,6 +188,10 @@ pub const GcHeap = struct {
     /// Adaptive GC trigger threshold (bytes since last collect).
     /// Recomputed at end of each `collect()` cycle.
     threshold_bytes: usize = default_gc_threshold_bytes,
+    /// D-519 (ADR-0164): persistent floor for the adaptive `threshold_bytes`, so a
+    /// `CLJW_GC_THRESHOLD_MB` knob survives each collect's recompute (which would
+    /// otherwise reset the floor to the module default). Defaults to the module const.
+    threshold_floor_bytes: usize = default_gc_threshold_bytes,
     /// Bytes allocated since the last `collect()` invocation. Trips
     /// collection when it exceeds `threshold_bytes`.
     bytes_since_last_gc: usize = 0,
@@ -212,6 +219,18 @@ pub const GcHeap = struct {
     pub fn init(infra: std.mem.Allocator) GcHeap {
         var g = GcHeap{ .infra = infra };
         g.free_pools.initMap(infra);
+        // D-519 (ADR-0164): CLJW_GC_THRESHOLD_MB tunes the auto-collect floor — the
+        // wall-clock GO gate raises it until every won fastest-script bench holds.
+        // Invalid / unset / 0 → the 4MB default. Process env is published at startup
+        // (cli.zig) before the runtime + its GcHeap are built, so the read is live.
+        if (@import("../process_env.zig").get("CLJW_GC_THRESHOLD_MB")) |raw| {
+            if (std.fmt.parseInt(usize, raw, 10) catch null) |mb| {
+                if (mb > 0) {
+                    g.threshold_floor_bytes = mb * 1024 * 1024;
+                    g.threshold_bytes = g.threshold_floor_bytes;
+                }
+            }
+        }
         return g;
     }
 
@@ -223,9 +242,9 @@ pub const GcHeap = struct {
         if (@import("../process_env.zig").get("CLJW_GC_STATS") != null) {
             const s = self.stats;
             std.debug.print("[gc-stats] allocs={d} pool_hits={d} mallocs={d} reuse={d}% collects={d} sweeps={d} bytes_alloc={d}\n", .{
-                s.alloc_count, s.pool_hits, s.alloc_count - s.pool_hits,
-                if (s.alloc_count > 0) s.pool_hits * 100 / s.alloc_count else 0,
-                s.collect_count, s.sweep_count, s.bytes_allocated,
+                s.alloc_count,                                                   s.pool_hits,     s.alloc_count - s.pool_hits,
+                if (s.alloc_count > 0) s.pool_hits * 100 / s.alloc_count else 0, s.collect_count, s.sweep_count,
+                s.bytes_allocated,
             });
         }
         // Drain every live allocation back to infra. Calls the per-tag
@@ -379,6 +398,12 @@ pub const GcHeap = struct {
             defer in_alloc_torture = false;
             mark_sweep.collectStopTheWorld(self, .{ .envs = &.{e}, .gc = self }, false);
         }
+        // D-519 (ADR-0164): threshold-driven auto-collect — the completeness floor
+        // for a bulk Zig-primitive allocation that never crosses a VM back-edge (the
+        // same boundary + roots-quiescent rationale as the `heap_ceiling` check
+        // below). Idempotent with the back-edge site via `bytes_since_last_gc`. A
+        // no-op if CLJW_GC_TORTURE_ALLOC just collected (it reset the byte counter).
+        self.maybeAutoCollect();
         io_default.lockMutex(&self.gc_mutex);
         defer io_default.unlockMutex(&self.gc_mutex);
         const align_t: std.mem.Alignment = .fromByteUnits(@alignOf(T));
@@ -420,6 +445,33 @@ pub const GcHeap = struct {
         self.stats.alloc_count += 1;
         self.bytes_since_last_gc += effective_size;
         return obj;
+    }
+
+    /// D-519 (ADR-0164): threshold-driven auto-collect during eval. Run a STW
+    /// collect when the heap has grown past `threshold_bytes` since the last GC,
+    /// at a quiescent-roots boundary. Called from BOTH the `alloc` boundary (the
+    /// completeness floor for a bulk Zig-primitive allocation that never crosses a
+    /// VM back-edge — the same boundary + rationale as the `heap_ceiling` REFUSE
+    /// check, its collecting twin) AND the VM back-edge poll (the cheap tight-loop
+    /// path: a `recur` loop back-edges every iteration but allocs once). The shared
+    /// `bytes_since_last_gc` reset (a collect sets it to 0) keeps the two sites
+    /// idempotent — no double collect. The guard set + collect ARE the
+    /// `CLJW_GC_TORTURE_ALLOC` path verbatim, gated on the byte threshold instead of
+    /// a torture period; torture stays in the gate as the stronger frequent rooting
+    /// probe (this 4MB cadence can step over a 2-alloc unrooted window for years).
+    pub fn maybeAutoCollect(self: *GcHeap) void {
+        if (self.bytes_since_last_gc <= self.threshold_bytes) return;
+        // A multi-alloc builder's intermediate node is live-but-unrooted here; defer
+        // the collect to just after the builder (the gate the torture path uses).
+        if (fabrication_depth > 0) return;
+        const root_set = @import("root_set.zig");
+        if (root_set.is_registered_worker or in_alloc_torture) return;
+        const e = root_set.active_env orelse return;
+        const mark_sweep = @import("mark_sweep.zig");
+        // Reentrancy guard reuse: the collect's own bookkeeping must not re-trigger.
+        in_alloc_torture = true;
+        defer in_alloc_torture = false;
+        mark_sweep.collectStopTheWorld(self, .{ .envs = &.{e}, .gc = self }, false);
     }
 
     /// D-361: enforce the per-eval live-heap ceiling against a BULK `infra`

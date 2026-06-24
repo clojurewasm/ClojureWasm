@@ -168,8 +168,11 @@ pub fn collect(gc: *GcHeap, ctx: root_set_mod.WalkContext) void {
     // during STW, so its tx is quiescent). Empty registry in single-thread → no-op.
     root_set_mod.markRegisteredTxs(@ptrCast(gc), &markWorkerTx);
     sweep(gc);
+    // D-519 (ADR-0164): the floor is the per-heap `threshold_floor_bytes` (default
+    // = the module const, overridable by CLJW_GC_THRESHOLD_MB) so the knob survives
+    // this recompute; the adaptive `last_live*2` arm is unchanged (growth workloads).
     gc.threshold_bytes = @max(
-        gc_heap_mod.default_gc_threshold_bytes,
+        gc.threshold_floor_bytes,
         gc.stats.last_live_bytes *| 2,
     );
     gc.bytes_since_last_gc = 0;
