@@ -130,6 +130,9 @@ const java_surfaces = [_]type{
 /// live under `runtime/clojure/lang/`). Hand-maintained like `java_surfaces`.
 const clojure_surfaces = [_]type{
     @import("../clojure/lang/Util.zig"),
+    // tools.macro / algo.monads read `clojure.lang.Compiler/specials` — a map of
+    // cljw's special-form symbols (derived from analyzer SPECIAL_FORMS) → nil.
+    @import("../clojure/lang/Compiler.zig"),
     // ADR-0108 am1 / D-375: abstract-collection static hash/equality helpers that
     // custom-collection deftypes call from hashCode/hasheq/equals bodies.
     @import("../clojure/lang/APersistentMap.zig"),

@@ -272,6 +272,17 @@ pub const Runtime = struct {
     /// `math_context.zig::singleton`; freed in `deinit`.
     math_contexts: [4]@import("value/value.zig").Value = @splat(.nil_val),
 
+    /// `clojure.lang.Compiler/specials` — a map `{<special-form-symbol> nil…}`
+    /// whose keys are cljw's SPECIAL_FORMS (the SSOT in analyzer.zig). Unlike
+    /// the leaf singletons above, this is a HAMT collection, so it is built ONCE
+    /// on the managed `gc` heap via the normal `assoc` API and pinned via
+    /// `gc.pin` (the `permanent_roots` walker re-traces it + every HAMT node each
+    /// cycle, so the map's structure survives sweep; symbol keys are
+    /// interner-owned and never swept). Lazily filled by
+    /// `analyzer.buildCompilerSpecials`; `nil` until first use. The pin is
+    /// process-lifetime (a true singleton), released by `gc.deinit`.
+    compiler_specials: @import("value/value.zig").Value = .nil_val,
+
     /// User-set Java system properties (`(System/setProperty k v)`). Keys +
     /// values are `gpa`-owned dupes; consulted by `getProperty` BEFORE the
     /// OS-truthful static table (JVM: a set property overrides). Freed in

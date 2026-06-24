@@ -743,6 +743,7 @@ run_step "e2e_phase14_empty_catch"           "bash test/e2e/phase14_empty_catch.
 run_step "e2e_phase14_extend_type_nil"       "bash test/e2e/phase14_extend_type_nil.sh"
 run_step "e2e_phase14_deftype_method_lowering" "bash test/e2e/phase14_deftype_method_lowering.sh"
 run_step "e2e_phase14_clojure_lang_util"     "bash test/e2e/phase14_clojure_lang_util.sh"
+run_step "e2e_phase14_compiler_specials"     "bash test/e2e/phase14_compiler_specials.sh"
 run_step "e2e_phase14_opaque_host_class"     "bash test/e2e/phase14_opaque_host_class.sh"
 run_step "e2e_phase14_bigdecimal_setscale"   "bash test/e2e/phase14_bigdecimal_setscale.sh"
 run_step "e2e_phase14_ratio_interop"        "bash test/e2e/phase14_ratio_interop.sh"

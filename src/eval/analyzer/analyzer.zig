@@ -398,10 +398,44 @@ fn staticFieldValue(rt: *Runtime, sf: *const @import("../../runtime/type_descrip
             .empty_queue => try @import("../../runtime/collection/persistent_queue.zig").emptyQueue(rt),
             .locale_us => try @import("../../runtime/locale.zig").singleton(rt, .us),
             .locale_root => try @import("../../runtime/locale.zig").singleton(rt, .root),
+            .compiler_specials => try buildCompilerSpecials(rt),
         },
         .host_enum => |he| try @import("../../runtime/host_enum.zig").singleton(rt, @enumFromInt(he.enum_idx), he.ordinal),
         .math_context => |which| try @import("../../runtime/math_context.zig").singleton(rt, which),
     };
+}
+
+/// Build (once, then cache) `clojure.lang.Compiler/specials` — a map whose keys
+/// are cljw's special-form symbols (derived from `SPECIAL_FORMS`, the analyzer's
+/// SSOT, so the surface can never drift from the real set) and whose values are
+/// `nil`. The only known consumer (`tools.macro`) does `(keys …)` only, so `nil`
+/// values are faithful. Lives in the analyzer (the eval layer) because the
+/// runtime/ zone may not import eval/ — only the `.compiler_specials` Singleton
+/// TAG lives in `type_descriptor.zig`.
+///
+/// GC: a map is a HAMT, not a leaf, so rather than hand-build one on
+/// `gc.infra` (which every leaf singleton uses) it is assembled on the managed
+/// `gc` heap via the normal `assoc` API and pinned with `gc.pin`. The
+/// `permanent_roots` walker yields the pinned root every collect, so the map +
+/// all its HAMT nodes are re-traced and survive sweep; the symbol keys are
+/// owned by the never-swept symbol interner. The pin is process-lifetime (a
+/// genuine singleton) and is released by `gc.deinit`.
+fn buildCompilerSpecials(rt: *Runtime) AnalyzeError!Value {
+    if (!rt.compiler_specials.isNil()) return rt.compiler_specials;
+    var m = map_collection.empty();
+    for (SPECIAL_FORMS.keys()) |name| {
+        const sym = try symbol_mod.intern(rt, null, name);
+        // `assoc`'s `HashCollision` / `AssocOnNonMap` cannot fire here (interned
+        // symbol keys, `m` is always a map) — collapse them into the AnalyzeError
+        // set as InternalError so the resolver's error set stays unchanged.
+        m = map_collection.assoc(rt, m, sym, .nil_val) catch |e| switch (e) {
+            error.HashCollision, error.AssocOnNonMap => return error.InternalError,
+            else => |other| return other,
+        };
+    }
+    try rt.gc.pin(m);
+    rt.compiler_specials = m;
+    return m;
 }
 
 /// Used by both the atom-analyzer path and the quote-lift path.
