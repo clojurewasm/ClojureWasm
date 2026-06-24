@@ -137,22 +137,19 @@ raises an explicit error rather than quietly mis-behaving.
 
 ### Concurrency tail
 
-The concurrency *primitives* are complete (`future` / `promise` / `delay`,
-full STM `dosync` / `alter` / `commute` / `ensure` / `ref-set`, `atom` with
-CAS, `agent` with error modes, reference **watches** — `add-watch` /
+The concurrency surface is complete (`future` / `promise` / `delay`, full STM
+`dosync` / `alter` / `commute` / `ensure` / `ref-set`, `atom` with CAS, `agent`
+with error modes — `agent-error` / `restart-agent` / `set-error-handler!` /
+`agent-errors` / `clear-agent-errors` — reference **watches** — `add-watch` /
 `remove-watch` fire uniformly across atoms, agents, refs and vars —
-`locking`, `volatile`, real threads, `Thread/sleep`). The lower-frequency
-tail is deferred:
+**validators** — `set-validator!` / `get-validator` on atoms, agents, refs and
+vars — `await` / `await-for`, `shutdown-agents`, `locking`, `volatile`, real
+threads, `Thread/sleep`). The one lower-frequency gap:
 
-- **validators** are `atom`-only today (`set-validator!` / `get-validator`);
-  `agent` / `ref` / `var` validators are not yet wired
-- `await-for`, `shutdown-agents`, agent error-handlers
-
-### Host / IO
-
-- General `*out*` / `*err*` writer redirection is partial. `with-out-str`
-  works (via a thread-local capture sink); full first-class writer values
-  are deferred.
+- the **reference-constructor option map** — `(ref v :validator f)` /
+  `:min-history` / `:max-history` (clj's `ref` accepts these; cljw's `ref` ctor
+  does not yet — use `(doto (ref v) (set-validator! f))` instead). `(atom v
+  :validator f)` / `(agent v :validator f)` already work.
 
 ### JVM-only surface (deferred or permanently out of scope)
 
