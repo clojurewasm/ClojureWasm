@@ -217,6 +217,12 @@ active:
       site is INSIDE the partitions-M lazy realization itself (a cljw core op the
       library calls — likely nth/subvec/concat over a multiset structure — drops
       a root mid-realize). D-244 #4b family (eval-reentrant lazy-realization rooting).
+      NARROWED 2026-06-25: base `(partitions (cons 0 (range 5)))` (NO :min/:max)
+      panics too → it is the partitions-M (MULTISET, duplicate-element) realization
+      itself, not the kwarg-filter path. Plain `(apply concat (map range (range 8)))`,
+      a recursive lazy `join`, `mapcat identity`, `subvec`+`rseq`, all torture-CLEAN
+      → NOT a generic concat/subvec rooting gap; it is the partitions-M-specific
+      access pattern (the line-123-130 assoc/subvec/rseq/cons-over-join loop).
     category: "gc"
     barrier: |-
       Localize the unrooted intermediate: run the repro under
