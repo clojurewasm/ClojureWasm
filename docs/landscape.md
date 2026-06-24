@@ -12,7 +12,7 @@ corner, and the only numbers it claims are its own measured ones.
 | **ClojureScript**  | JavaScript. Front-end and the Node ecosystem.                                                                         | JS host.                                 |
 | **jank**           | LLVM / C++. Native code and seamless C++ interop.                                                                     | Native.                                  |
 | **ClojureDart**    | Dart / Flutter. Mobile and cross-platform UI.                                                                         | App bundles.                             |
-| **ClojureWasm**    | Zig. Embeds a Wasm engine so Clojure calls modules from Rust/Go/C (polyglot FFI), and compiles to WebAssembly itself. | ~2 MB native binary, starts in a few ms. |
+| **ClojureWasm**    | Zig. Embeds a Wasm engine so Clojure calls modules from Rust/Go/C (polyglot FFI), and compiles to WebAssembly itself. | ~3 MB native binary, starts in a few ms. |
 
 The other rows are respectful summaries of what each runtime is known for, not
 evaluations. The ClojureWasm row lists only its own
