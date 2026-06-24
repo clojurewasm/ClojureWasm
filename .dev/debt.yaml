@@ -230,7 +230,12 @@ active:
       calls (the library uses nth/concat over its multiset rep). Repro: load
       math.combinatorics via deps.edn :local/root, exercise (partitions (cons 0
       (range 5)) :min/:max). Then bracket the site with the ADR-0150 fabrication
-      region or a root slot.
+      region or a root slot. TOOLING NOTE (2026-06-25): localization is hard —
+      ReleaseSafe panics WITHOUT a stack trace ("stack tracing is disabled"), and
+      a Debug build under CLJW_GC_TORTURE_ALLOC=1 is too slow to reach the panic
+      (>2 min, the Debug perf cliff). A future unit needs either a smaller input
+      that still panics (try shrinking the multiset), a stack-trace-enabled build,
+      or an lldb attach to capture the panicking frame.
     last_reviewed: "2026-06-25"
   - id: "D-521"
     status: |-
