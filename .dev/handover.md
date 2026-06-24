@@ -73,3 +73,17 @@ also the OFF-vs-ON A/B lever) / `CLJW_PROFILE_STARTUP=1`. Measurement discipline
 peer benches need a QUIET Mac (load <~2); the load-robust signal is the interleaved OFF-vs-ON
 knob A/B. Memories: `verify_against_releasesafe_binary` / `smoke_first_batch_full_gate` /
 `perf_campaign_roadmap_9_2_s`. Campaign fast-mode injected by `scripts/perf_campaign_remind.sh`.
+
+## Stopped — user requested
+
+User instruction (2026-06-24): 「よし、最適化キャンペーン全体について、きりの良いところで
+停止して」(stop the whole optimization campaign at a clean point). Honored the designed
+campaign-pause switch: **`.dev/.perf_campaign_active` removed** (gitignored), so the campaign
+fast-mode injection is now silent — re-`touch` it to re-open §9.2.S. Clean state: tree clean,
+HEAD pushed (`755a64c1`), smoke green (stamp `6e34be03`). This session: D-519 eval auto-collect
+LANDED + GO-passed (1.1–1.65× faster, memory bug fixed) + the clean peer re-rank CORRECTION
+(cljw LOSES the bb-benches on a real compute gap; ratio_sum the one win; lever = JIT, not
+per-bench). If resumed: the campaign is PAUSED — do not auto-resume per-bench tuning; the
+First-commit-on-resume above (confirm re-rank at load <2 + the JIT framing) applies only when
+the user re-opens the campaign. Extended-challenge 3-items: `private/notes/
+9.2.S-clean-peer-rerank-20260624.md`.
