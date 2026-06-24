@@ -201,9 +201,20 @@ active:
       (2) is a contained predicate fix (sortedQFn consults clojure.lang.Sorted
       membership, mirroring the D-528 map? fix). (1) is deeper: the deftype method
       table appears keyed by name only, so an overloaded same-name/different-arity
-      method (seq/1 Seqable vs seq/2 Sorted) collides. Drain when a consumer needs
-      deftype Sorted dispatch. Repro: load data.priority-map via deps.edn
-      :local/root, run test_priority_map.clj (subseq/rsubseq errors).
+      method (seq/1 Seqable vs seq/2 Sorted) collides. PRECISE DIAGNOSTIC
+      (2026-06-25): a deftype declaring BOTH `(seq [_])` and `(seq [_ asc])`
+      DEFINES without error but SILENTLY keeps only the arity-1 fn — `(seq t)`
+      runs the Seqable body; `(. t seq true)` calls that SAME arity-1 fn with 2
+      args → "expected 1". So the lowering registers ONE single-arity fn per
+      method NAME, dropping the other arity. FIX PLAN: `expandDeftype`
+      (macro_transforms.zig) must MERGE same-name bodies of different arity into
+      ONE multi-arity `fn*` (clj treats a deftype method name with N arities as
+      one multi-arity method), so `lookupMethod(name)` returns one arity-
+      dispatching fn. Touches the lowering + both backends' method-call path
+      (dual_backend_parity) + warrants a DA fork (dispatch-representation change).
+      Drain as a focused unit. Repro: load data.priority-map via deps.edn
+      :local/root, run test_priority_map.clj; or minimal — a deftype with
+      `(seq [_] …)` + `(seq [_ a] …)`, then `(. t seq true)`.
     last_reviewed: "2026-06-25"
   - id: "D-531"
     status: |-
