@@ -205,6 +205,27 @@ active:
       deftype Sorted dispatch. Repro: load data.priority-map via deps.edn
       :local/root, run test_priority_map.clj (subseq/rsubseq errors).
     last_reviewed: "2026-06-25"
+  - id: "D-531"
+    status: |-
+      open (2026-06-25, D-528 math.combinatorics finding). A GC-rooting panic in
+      a lazy realization path exercised by the partitions-M (multiset) algorithm:
+      `(doall (clojure.math.combinatorics/partitions (cons 0 (range 5)) :min 1
+      :max 2))` panics "index out of bounds: index 16, len 16" under
+      CLJW_GC_TORTURE_ALLOC=1 (DETERMINISTIC), and intermittently wrong-results /
+      "nth: nil" without torture. SEPARATE from the seqEqualWalk lazy-`=` rooting
+      fix (commit 31ca0b6f), which fixed the general `=`-over-lazy case — this
+      site is INSIDE the partitions-M lazy realization itself (a cljw core op the
+      library calls — likely nth/subvec/concat over a multiset structure — drops
+      a root mid-realize). D-244 #4b family (eval-reentrant lazy-realization rooting).
+    category: "gc"
+    barrier: |-
+      Localize the unrooted intermediate: run the repro under
+      CLJW_GC_TORTURE_ALLOC=1 and bisect the cljw core ops the partitions-M path
+      calls (the library uses nth/concat over its multiset rep). Repro: load
+      math.combinatorics via deps.edn :local/root, exercise (partitions (cons 0
+      (range 5)) :min/:max). Then bracket the site with the ADR-0150 fabrication
+      region or a root slot.
+    last_reviewed: "2026-06-25"
   - id: "D-521"
     status: |-
       open (2026-06-24, user-directed) — TWO destructure-lowering systems can DRIFT.
