@@ -17,13 +17,18 @@
   map_filter_reduce/gc_large_heap/string_ops/destructure/bigint_factorial; json_parse
   borderline (~1.07× py). **ONLY `gc_alloc_rate` remains a clear gap** (cljw 45.3 / bb 39.9 =
   1.14×, GC-bound not floor-bound). fastest-script ~19/30→~27/30. **Next lever = gc_alloc_rate**,
-  SURVEYED (note §"gc_alloc_rate lever survey"): smallest-lever = single-threaded alloc
-  fast-path — elide the per-alloc `gc_mutex` when no worker is registered
-  (`root_set.is_registered_worker`) + a size-class free-list vs the FreePoolKey hashmap; NOT
-  the generational rewrite (gc_large_heap already closed). Correctness-sensitive GC change →
-  fresh unit + measure on a quiet Mac (1.14× may differ). D-517 zero-copy = LOW value now
-  (lazy cut the bulk). D-518 heap-snapshot DEFERRED to the moving-GC unit. **GUARDRAIL**:
-  never Zig-ify the .clj bootstrap. Plans: `private/notes/9.2.S-coldstart-architecture-20260624.md`
+  ROOT-CAUSED load-independently via `CLJW_GC_STATS=1` (committed): the bench shows
+  **reuse=0%, collects=0** — cljw does **NO threshold-driven auto-collect during eval**, so a
+  tight allocating loop mallocs unboundedly (1.28GB for 4M vectors), never reusing; bb wins via
+  TLAB-bump + young-gen collect-reuse. (My earlier mutex/free-list survey guesses are RULED
+  OUT.) **LEVER = alloc-driven auto-collect** — at the alloc boundary, when `bytes_since_last_gc
+  > threshold_bytes` + `fabrication_depth==0` + live `active_env`, run `collectStopTheWorld` =
+  the proven `CLJW_GC_TORTURE_ALLOC` path threshold-gated (PRECISE draft in the note). Also
+  fixes a latent unbounded-alloc MEMORY bug. DA-gated (global GC-timing change → re-run ALL
+  benches for no-regression). Validate load-independently (diff oracle + GC_TORTURE + GC_STATS:
+  collects>0/reuse>0/bytes bounded); wall-clock win needs a quiet Mac. D-517 zero-copy = LOW
+  value now. D-518 heap-snapshot DEFERRED to the moving-GC unit. **GUARDRAIL**: never Zig-ify
+  the .clj bootstrap. Plans: `private/notes/9.2.S-coldstart-architecture-20260624.md`
   + `D516-lazy-ns-survey.md`. D-515 binary-size axis (standing).
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm` (false fails —
   `zig_build_test_needs_dwasm`); bare `zig build` for a probe (ADR-0133 — ReleaseSafe).
