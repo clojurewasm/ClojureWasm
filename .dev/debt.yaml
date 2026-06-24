@@ -24,6 +24,32 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-516"
+    status: "open (ADR-0162 step 2; D-450 startup-floor lever). LAZY-NAMESPACE bytecode loading: shrink the eager bootstrap to the true minimal 'needed with no require' set (clojure.core + its load-time deps, determined by audit) and make every other of the ~28 non-core stdlib ns its OWN embedded bytecode envelope replayed on demand by require/first-var-ref via driver.runEnvelope. Measured win ~3.6ms for the common case (-e 1 floor 9.4->~4.8ms with D-140); the non-core 79% (1148/1442 col-0 forms) is what a one-liner never touches but eagerly replays today (D-452 Part B made it one eager blob). Keeps .clj as the definition language (NOT the v0 Zig-ify rut) — touches only the restore mechanism + eager set."
+    category: "perf"
+    barrier: |-
+      ADR-0162 step 2. Prereq: D-140 (step 1) lands first. MANDATORY F-011 gate in the
+      same arc (the DA's one real correctness item): (a) a build-time check that EVERY
+      embedded ns replays clean (cache_gen already builds each envelope — small extension)
+      so 'load errors move boot->first-use' is neutralised; (b) audit load-time global-table
+      side effects (defmethod/defmulti/derive/extend-type/print-method installs) so no
+      default-path behaviour silently depends on a now-lazy ns. Matches JVM Clojure (core
+      auto-loads; the rest you require) — current eager-all is accidental eager semantics.
+      Determine the minimal eager set by tracing what core's load + the default REPL/-e path
+      actually dereferences (e.g. core.protocols, the error-render peer, core-macro helpers).
+    last_reviewed: "2026-06-24"
+  - id: "D-517"
+    status: "open (ADR-0162 step 3; D-450 startup-floor lever). ZERO-COPY in-place bytecode deserialize: redesign the envelope/chunk format so chunks are position-independent and the VM reads bytecode arrays + constant pools straight from the @embedFile'd .rodata with NO per-chunk alloc/copy. Attacks the ~2.1ms deserialize half of runEnvelope (the other ~2.5ms vm.eval legitimately runs). ZERO pointer-relocation risk (rodata read-only; VM builds heap objects normally so pointers are born absolute-correct via the existing codec) — most F-NNN-safe option, no F-004/F-006 surface touched. Applied to core's eager chunks AND reused by D-516's lazy non-core chunks. Floor -> ~3.5-3.8ms (sub-4ms)."
+    category: "perf"
+    barrier: |-
+      ADR-0162 step 3. Sequenced AFTER D-516 (so it applies to both eager core + lazy
+      non-core chunks). Makes the serialize/envelope format load-bearing/rigid — a
+      chunk-layout change becomes an on-rodata-format change (accepted; the format is
+      already AOT-embedded). Survey: serialize.zig EnvelopeIterator/deserializeChunk +
+      the BytecodeChunk shape; cw v0 / wasmtime for in-place/position-independent chunk
+      formats. Watch the JIT (ADR-0200) may operate on a different layer — do not
+      over-invest in a format it would replace.
+    last_reviewed: "2026-06-24"
   - id: "D-514"
     status: "DISCHARGED (2026-06-24). BigInteger instance-method surface complete: abs/negate/signum/gcd/pow/mod/sqrt + modPow (square-and-multiply) + bitLength + isProbablePrime (deterministic Miller-Rabin, witnesses {2..37}; 561 Carmichael→false verified). bigint_methods.zig on the .big_int native descriptor; e2e phase14_biginteger (29 cases). Only `.modPow` with a NEGATIVE exponent (modular inverse via extended Euclid) is left unimplemented — currently raises; rare, low priority (re-file if a real consumer needs it)."
     category: "clj-parity"
@@ -1294,6 +1320,40 @@ active:
 # Trackers + the user-directed indefinitely-deferred future bucket (broad JIT / CLJS->JS / C-FFI /
 # generational-GC / virtual-threads / out-of-process isolation / wasm structural-future). 2026-06-15.
 standing:
+  - id: "D-518"
+    status: "DEFERRED forward debt (ADR-0162 step 4) — build-time HEAP SNAPSHOT (SBCL save-lisp-and-die / Emacs pdumper / V8 / GraalVM image-heap tier): dump the post-bootstrap GC heap as a relocatable image embedded in the binary; startup = mmap + relocation instead of bytecode replay. Eliminates the whole ~4.6ms replay. NOT pursued now: the DA red-team (ADR-0162 Alternatives) showed B buys only core's ~1ms replay share behind a ~3.4ms un-addressable exec/page-fault wall, at the cost of (1) a SECOND per-tag relocate-slot reflection surface the GC trace table does NOT provide, (2) Var/namespace-metadata + builtin_fn(0xFFFF linker-set native) pointers needing a V8-style external-ref table, (3) a single-missed-pointer=silent-heap-corruption surface, (4) a cache_gen(host)<->runtime(target) layout-skew build-matrix lock. After ADR-0162 steps 1-3 the floor is already ~3.5-3.8ms (sub-4ms) with none of that risk."
+    category: "perf"
+    barrier: |-
+      CO-OWNED with the future generational/nursery-GC unit (F-006). A moving GC must
+      ALREADY build "rewrite every pointer slot when an object moves" = the identical
+      machinery B's snapshot relocation needs, and may adopt base-relative/compressed-oops
+      encoding under which snapshot relocation becomes FREE. So B done now (non-moving GC)
+      is built-twice / soon-unwound (Smallest-diff-bias smell). Re-open ONLY when the
+      moving-GC unit decides the pointer encoding; then B rides that unit's slot-rewrite
+      surface as a clean increment. Scope when taken up = CORE-only snapshot (not all 29 ns
+      — relocating 1148 forms a one-liner never derefs is wasteful) + lazy-bytecode the rest
+      (D-516). Cross-ref ADR-0162, F-004 (NaN-box absolute payload), F-006.
+    last_reviewed: "2026-06-24"
+  - id: "D-515"
+    status: "open (recorded 2026-06-24, user-directed) — BINARY-SIZE axis, DISTINCT from the D-450 speed campaign. cljw ReleaseSafe is 8.8MB (incl. a ~1.4MB embedded bytecode bootstrap blob). Single-binary (F-013 / ADR-0158) is an inviolable invariant — NO side-product files; any size win MUST stay within one static binary. Size grows with feature coverage (unavoidable) but the growth should be deliberately managed. NOT the current focus (speed is) — debt-ized so it is touchable on demand. Cross-ref: the eager-comprehensiveness-vs-size/startup standing tension (this file, search 'Eager comprehensiveness') + D-140 (binary_size_bytes 1.2x bench anchor) + D-450 cold-start (a smaller binary also cuts the ~3.4ms exec/linker/page-fault residual — the two axes partly co-move)."
+    category: "perf"
+    barrier: |-
+      Standing axis — does not close as a single unit. Pick up on demand (NOT
+      auto-drained). When taken up, FIRST web-search Zig size-optimization
+      knowledge (the user mandated this) — candidate levers to evaluate:
+        - `-Doptimize=ReleaseSmall` for the deploy artifact (vs ReleaseSafe);
+          measure the size/speed/safety trade (ReleaseSafe is the gate config).
+        - `strip=true` / `--gc-sections` / dead-code elimination of unreached
+          surfaces; section ordering for startup locality (overlaps D-450).
+        - compressing the embedded bootstrap blob (decompress at startup — costs
+          cold-start time, so co-decide with D-450; OR a heap-snapshot may change
+          the blob entirely, see the cold-start ADR).
+        - auditing what the ~29 eager-bootstrap libs cost in rodata vs how often
+          they are used (overlaps the lazy-namespace lever in the cold-start ADR).
+      Method: measure binary_size_bytes before/after each lever; never trade the
+      single-binary invariant or correctness for size. Record findings as O-NNN /
+      a `.dev/optimizations.md` row if a lever lands.
+    last_reviewed: "2026-06-24"
   - id: "D-451"
     status: "Ratio canonical-invariant guard (ADR-0149 / O-046). The two-tier Ratio (small inline-i64 / big BigInt) is CANONICAL — small IFF reduced numer+denom both fit i64 — so a small `1/2` and a big `1/2` never coexist, which is what keeps the rt-free `equal.zig::ratioKeyEq` + `.ratio` hash arms correct WITHOUT an rt param (small-vs-big never equal). INVARIANT: every Ratio constructor MUST funnel through `allocFromI64Pair` / `allocFromManagedPair` (the canonicalizing allocators, which collapse a reduced i64-fitting pair to small). A constructor that emits a big ratio whose value fits i64 silently breaks ratio map keys. Guarded by: ratio.zig unit tests (small/big/collapse) + `test/diff/clj_corpus/ratio_small_canonical.txt` (cross-rep eq/hash/map-key pins)."
     category: "perf"
