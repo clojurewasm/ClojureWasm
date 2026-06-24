@@ -235,7 +235,15 @@ active:
       a Debug build under CLJW_GC_TORTURE_ALLOC=1 is too slow to reach the panic
       (>2 min, the Debug perf cliff). A future unit needs either a smaller input
       that still panics (try shrinking the multiset), a stack-trace-enabled build,
-      or an lldb attach to capture the panicking frame.
+      or an lldb attach to capture the panicking frame. DIAGNOSTIC (2026-06-25):
+      input size is IRRELEVANT — even `(partitions (cons 0 (range 1)))` (the
+      2-element multiset `(0 0)`) panics with the SAME "index 16, len 16", so it
+      is a FIXED index-16-into-a-len-16 array, not a data-dependent overflow (a
+      freed-and-reused header read back with length 16, then indexed at 16 — a
+      use-after-free). A DEBUG build does NOT reproduce it (the tiny input returns
+      the correct count 2), so it is ReleaseSafe-memory-layout-specific and yields
+      no stack trace via Debug — an lldb attach on the ReleaseSafe panic (or a GC
+      write-barrier/poison instrument) is the way in.
     last_reviewed: "2026-06-25"
   - id: "D-521"
     status: |-
