@@ -172,78 +172,6 @@ active:
       surface OR check an upstream addition; fix meaningful DIFFs. SSOT: ADR-0166
       row 6; cross-ref D-175.
     last_reviewed: "2026-06-24"
-  - id: "D-534"
-    status: |-
-      DISCHARGED 2026-06-25 (6bcbd3b4). Added `APersistentSet`→SET_NAMES +
-      `IPersistentList`→IPLIST_NAMES to `host_interface.zig::nativeExtendTags`
-      (the SET_TAGS {hash_set,sorted_set} + IPLIST_TAGS {list,cons,queue} lists
-      already existed, so just 2 `*_NAMES` exports + 2 dispatch lines). A protocol
-      extended onto these abstract bases now distributes over the native set/list
-      tags (mirrors IPersistentVector→INDEXED). clj-verified (set print order is
-      AD-001, values `=`); regression-clean on the extend-type/protocol e2e.
-      **algo.monads now fully loads + runs clj-faithfully** (maybe-m → 3,
-      sequence-m → (11 21 12 22)) — completing the Compiler/specials → tools.macro
-      → APersistentSet → algo.monads chain. e2e phase14_extend_abstract_base.
-      ORIGINAL: open (2026-06-25, algo.monads real-library finding, post-Compiler/specials).
-      `clojure.lang.APersistentSet` and `clojure.lang.IPersistentList` are not
-      recognised as extend-type / extend-protocol TARGET markers that distribute
-      to the native set / list tags. `host_interface.zig::nativeExtendTags`
-      recognises IPersistentVector→vector, ISeq→seq, IPersistentSet (protocol_remap)
-      etc., but NOT APersistentSet (the abstract base, distinct from the
-      IPersistentSet interface) nor IPersistentList. So
-      `(extend-protocol P clojure.lang.APersistentSet (m [c] …))` →
-      "Unable to resolve symbol: clojure.lang.APersistentSet". Surfaced loading
-      clojure.algo.monads (monads.clj:481-493 extends a writer-monad protocol onto
-      IPersistentVector [OK] / IPersistentList / APersistentSet / String): it now
-      loads PAST the tools.macro barrier (Compiler/specials, 8c12a5d6) and stops
-      here. Fix: add APersistentSet→set + IPersistentList→list to the native-tag
-      distribution recognition (mirror the IPersistentVector entry). LOW-frequency
-      (these abstract bases as extend targets are rare); cross-ref the
-      nativeExtendTags table + the D-286/D-317 host-supertype family.
-    category: "interop"
-    barrier: |-
-      Add `clojure.lang.APersistentSet` (→ native set tag) + `clojure.lang.IPersistentList`
-      (→ native list tag) to `host_interface.zig`'s native-distribution recognition,
-      mirroring IPersistentVector. Repro: `(extend-protocol P clojure.lang.APersistentSet
-      (m [c] c))`, or load clojure.algo.monads with tools.macro on the deps.
-    last_reviewed: "2026-06-25"
-  - id: "D-533"
-    status: |-
-      DISCHARGED 2026-06-25 (80d9395b). `set-validator!`/`get-validator` + the
-      `:validator` ctor option now work on REFS and VARS (mirrors the atom/agent
-      surface, ADR-0081/D-223/D-441): requireValidatable + the iref* dispatch
-      extend to `.ref`/`.var_ref`; a Layer-0 `iref.validateOrThrow` is shared. VAR:
-      a `validator` field on Var (GC-traced via a new ns_vars `pending_validator`
-      stage) validated in `alter-var-root` before setRoot. REF: a `validator` field
-      on Ref (traceGc-marked) validated at COMMIT in `lock_tx.commit` (all-or-
-      nothing pre-pass, clj `Ref.validate`); `(ref v :validator f)` parses kwargs
-      like atomFn (validates initial value, throws on bad-init) + `:min/max-history`
-      wire the real ring bounds. clj-verified all 4 ref types; GC-torture-rooted;
-      e2e phase14_ref_var_validator (16 cases). Also discharges the **D-239 ref-meta
-      deferral** (a real Ref `:meta` field + meta/reset-meta! dispatch, observable
-      not silently dropped). RESIDUAL (narrow, low-value): `set!` on a `binding`-
-      shadowed dynamic var does not route through a validatable store, so a validator
-      is not consulted on that path (clj's `Var.set` does validate); deferred — a
-      rare edge, not worth a new row unless a consumer needs it. ORIGINAL:
-      open (2026-06-25, D-523 doc-audit finding). VALIDATORS on `ref` and `var`
-      are not wired: `set-validator!` / `get-validator` (atom.zig `requireValidatable`)
-      accept ONLY `.atom` / `.agent` — a ref/var arg errors "expected atom or
-      agent". And the `ref` constructor rejects its option map (`(ref v :validator
-      f)` / `:min-history` / `:max-history`) — `refFn` is arity-1 (stm.zig), unlike
-      `atomFn`/`agentFn` which parse `:validator`/`:meta`. clj wires all four ref
-      types' validators + the ref ctor options. The atom + agent halves are DONE
-      (D-223 / D-441); ref/var are the residue.
-    category: "concurrency"
-    barrier: |-
-      Ref validators need STM integration (no `ref_mod.setValidator` today; add a
-      `validator` field to Ref + validate the proposed value at commit in
-      `lock_tx.doSet`/`doCommute`, not a plain set like atom). Var validators are a
-      smaller add (a validator slot on the Var root). Then extend
-      `requireValidatable` + `irefValidatorOf`/`irefSetValidator` to `.ref`/`.var_ref`,
-      and make `refFn` parse the option map like `atomFn`. Repro: `(set-validator!
-      (ref 1) pos?)` / `(ref 1 :validator pos?)`. LOW-frequency (ref validators are
-      rare). Cross-ref ADR-0081, D-223, D-441.
-    last_reviewed: "2026-06-25"
   - id: "D-528"
     status: |-
       open (2026-06-24, user-directed; ADR-0166). Real deps.edn famous-library
@@ -322,66 +250,6 @@ active:
       against its SSOT (optimizations.md / feature_deps.yaml / gc_rooting.md);
       retire stale, condense. SSOT: ADR-0166 row 8.
     last_reviewed: "2026-06-24"
-  - id: "D-530"
-    status: |-
-      DISCHARGED 2026-06-25 (ADR-0066 Amendment 1). BOTH parts fixed. Part (1) —
-      cross-section same-name-arity overload (the deeper one) — fixed by a
-      cross-section merge in the lowering: `lowerDefType` (deftype + defrecord) AND
-      `expandReify` pre-scan all protocol sections, group impls by method name +
-      section bitset, and a name spanning >1 section emits its FULL arity set under
-      each contributing protocol → `expandExtendType` / the reify builder produce
-      one multi-arity `fn*` per protocol; `selectMethod` dispatches by arg count.
-      MethodEntry/lookupMethod/dispatch/both backends unchanged (lowering-only,
-      upstream of the Node split). Step 0 survey 9.2.T-D530 + a DA fork (3
-      alternatives, reflected in ADR-0066 Amendment 1). clj-verified: deftype/
-      defrecord/reify cross-section `seq` overload + real data.priority-map
-      subseq/rsubseq all match clj. Same-arity duplicates error via the `fn*`
-      validator (F-011 parity). e2e phase14_deftype_overload_arity (6 cases:
-      deftype/defrecord/reify/within-section/priority-map) + 2 diff cases
-      (deftype + reify, both backends). Part (2) was discharged earlier (b476242e).
-      ORIGINAL: open (2026-06-25, D-528 data.priority-map real-library finding). TWO
-      deftype-Sorted gaps surfaced by running the library's own test suite
-      (13 errors remain after the map?/= equality fix in commit ceb2c460):
-      (1) `(. inst seq true)` on a deftype implementing BOTH clojure.lang.Seqable
-      (seq[this]) AND clojure.lang.Sorted (seq[this ascending]) fails "Wrong number
-      of args (2) passed to fn, expected 1" — cljw's `.method`-with-arg dispatch
-      does not resolve the 2-arity same-NAMED deftype method (overloaded method
-      name by arity). `.seqFrom`/`.comparator` (unique names) work fine. This
-      breaks data.priority-map's own subseq/rsubseq.
-      (2) DISCHARGED 2026-06-25 (commit b476242e): `(sorted? deftype-Sorted)` now
-      true — sortedQFn consults clojure.lang.Sorted membership like the map? fix;
-      e2e phase14_deftype_sorted/sorted_pred_deftype. Part (1) (overloaded seq
-      arity dispatch) REMAINS open and is the deeper, multi-file deftype-lowering
-      change below.
-    category: "interop"
-    barrier: |-
-      (2) is a contained predicate fix (sortedQFn consults clojure.lang.Sorted
-      membership, mirroring the D-528 map? fix). (1) is deeper: the deftype method
-      table appears keyed by name only, so an overloaded same-name/different-arity
-      method (seq/1 Seqable vs seq/2 Sorted) collides. PRECISE DIAGNOSTIC
-      (2026-06-25): a deftype declaring BOTH `(seq [_])` and `(seq [_ asc])`
-      DEFINES without error but SILENTLY keeps only the arity-1 fn — `(seq t)`
-      runs the Seqable body; `(. t seq true)` calls that SAME arity-1 fn with 2
-      args → "expected 1". So the lowering registers ONE single-arity fn per
-      method NAME, dropping the other arity. FIX PLAN: `expandDeftype`
-      (macro_transforms.zig) must MERGE same-name bodies of different arity into
-      ONE multi-arity `fn*` (clj treats a deftype method name with N arities as
-      one multi-arity method), so `lookupMethod(name)` returns one arity-
-      dispatching fn. Touches the lowering + both backends' method-call path
-      (dual_backend_parity) + warrants a DA fork (dispatch-representation change).
-      Drain as a focused unit. Repro: load data.priority-map via deps.edn
-      :local/root, run test_priority_map.clj; or minimal — a deftype with
-      `(seq [_] …)` + `(seq [_ a] …)`, then `(. t seq true)`. IMPLEMENTATION SCOPE
-      (mapped 2026-06-25): the change is MULTI-POINT, not one-line. `expandDeftype`
-      → `lowerDefType` + `wrapMethodBodyWithFields` BOTH assume a single-arity method
-      (`impl.data.list[1].data == .vector` — the param vector), so they handle
-      neither multi-arity method SYNTAX `(name ([a] …) ([a b] …))` nor two same-name
-      impls. Merging needs: detect same-name impls in lowerDefType → emit one
-      multi-arity `fn*` as the method_val → wrapMethodBodyWithFields per arity →
-      the runtime method dispatch (lookupMethod + vt.callFn) invoke the multi-arity
-      fn. High blast radius (every deftype/reify) ⇒ DA fork + the full
-      dual_backend_parity e2e set. A fresh focused unit, NOT a session-tail change.
-    last_reviewed: "2026-06-25"
   - id: "D-531"
     status: |-
       open (2026-06-25, D-528 math.combinatorics finding). A GC-rooting panic in
@@ -504,20 +372,6 @@ active:
       Cross-ref: `clj_diff_sweep.md` (sweep harness + Disciplines), the clj `destructure`
       fn (core.clj), macro_transforms.zig `associativeDestructure`/`sequentialDestructure`.
     last_reviewed: "2026-06-24"
-  - id: "D-516"
-    status: "DISCHARGED 2026-06-24 (0f159228, ADR-0163). Lazy-namespace bytecode loading COMPLETE (commits 1 missing-:require, 2 loaded_libs guard+pre-register, 3a+3b region blob, 3c the flip). Eager = clj no-require set (SSOT bootstrap.EAGER_NS: core+string/walk/edn/java.io/core.protocols/uuid/instant/spec.alpha + cljw.wasm); rest lazy via loadOrFindNs region replay = STRICT clj-parity. Cold floor 9.4->4.3ms. Bugs fixed: require 4-path mappings.count short-circuit unified to loadOrFindNs; mylib inline-ns last-resort; cljw.wasm analyze-time eager; check_corpus_regression auto-require. Blast-radius: 27 e2e + cw_ported.clj missing-require added (zero real bugs). The region blob is D-517-ready."
-    category: "perf"
-    barrier: |-
-      ADR-0162 step 2. Prereq: D-140 (step 1) lands first. MANDATORY F-011 gate in the
-      same arc (the DA's one real correctness item): (a) a build-time check that EVERY
-      embedded ns replays clean (cache_gen already builds each envelope — small extension)
-      so 'load errors move boot->first-use' is neutralised; (b) audit load-time global-table
-      side effects (defmethod/defmulti/derive/extend-type/print-method installs) so no
-      default-path behaviour silently depends on a now-lazy ns. Matches JVM Clojure (core
-      auto-loads; the rest you require) — current eager-all is accidental eager semantics.
-      Determine the minimal eager set by tracing what core's load + the default REPL/-e path
-      actually dereferences (e.g. core.protocols, the error-render peer, core-macro helpers).
-    last_reviewed: "2026-06-24"
   - id: "D-517"
     status: "open (ADR-0162 step 3; D-450 startup-floor lever). ZERO-COPY in-place bytecode deserialize: redesign the envelope/chunk format so chunks are position-independent and the VM reads bytecode arrays + constant pools straight from the @embedFile'd .rodata with NO per-chunk alloc/copy. Attacks the ~2.1ms deserialize half of runEnvelope (the other ~2.5ms vm.eval legitimately runs). ZERO pointer-relocation risk (rodata read-only; VM builds heap objects normally so pointers are born absolute-correct via the existing codec) — most F-NNN-safe option, no F-004/F-006 surface touched. Applied to core's eager chunks AND reused by D-516's lazy non-core chunks. Floor -> ~3.5-3.8ms (sub-4ms)."
     category: "perf"
@@ -529,13 +383,6 @@ active:
       the BytecodeChunk shape; cw v0 / wasmtime for in-place/position-independent chunk
       formats. Watch the JIT (ADR-0200) may operate on a different layer — do not
       over-invest in a format it would replace.
-    last_reviewed: "2026-06-24"
-  - id: "D-514"
-    status: "DISCHARGED (2026-06-24). BigInteger instance-method surface complete: abs/negate/signum/gcd/pow/mod/sqrt + modPow (square-and-multiply) + bitLength + isProbablePrime (deterministic Miller-Rabin, witnesses {2..37}; 561 Carmichael→false verified). bigint_methods.zig on the .big_int native descriptor; e2e phase14_biginteger (29 cases). Only `.modPow` with a NEGATIVE exponent (modular inverse via extended Euclid) is left unimplemented — currently raises; rare, low priority (re-file if a real consumer needs it)."
-    category: "clj-parity"
-    barrier: |-
-      DISCHARGED — BigInteger instance methods complete bar negative-exponent modPow
-      (modular inverse), which raises; re-open only if a consumer needs it.
     last_reviewed: "2026-06-24"
   - id: "D-513"
     status: "OPEN (2026-06-24). Missing stdlib/contrib namespaces + the var-docstring gap, found in the 2026-06-24 deeper-namespace sweep. Lower priority — each needs foundation/scope work, not a clean drop-in."
@@ -561,12 +408,6 @@ active:
           it unblocks `doc`/`find-doc` and is the real prerequisite for a useful
           clojure.repl. Large, separate unit.
     last_reviewed: "2026-06-24"
-  - id: "D-512"
-    status: "DISCHARGED (2026-06-24). `.until(d2, ChronoUnit)` now complete across all three temporal types: LocalDate (6d8af75c), LocalDateTime (7c6e0872; date units via instant.dateUntil + time-of-day adjust, time units via JVM piecewise day-split, makeLong promote), Instant (this commit; fixed-duration NANOS..DAYS via i128 total nanos, WEEKS+ raise). clj-verified throughout. e2e: phase15_java_time_dow_month (until/ldt-until) + phase15_java_time_instant (instant-until)."
-    category: "clj-parity"
-    barrier: |-
-      DISCHARGED — `.until` complete for LocalDate / LocalDateTime / Instant.
-    last_reviewed: "2026-06-24"
   - id: "D-511"
     status: "OPEN-LOW (2026-06-24). 2-arg `(BigDecimal. x mc)` round-on-construct LANDED (8db6d82f; parse x then allocRoundPrecision, pin/unpin GC-rooting; 6 clj-verified e2e in phase14_bigdecimal_setscale). REMAINING (low priority, deferred): only the exact-binary `(BigDecimal. double)` ctor — clj 0.1 → 0.1000…0625 full binary expansion (a clj footgun, differs from bigdec shortest-round-trip; high impl cost via mantissa·2^exp decimal expansion, low value). Re-file/implement only if a real consumer needs it."
     category: "clj-parity"
@@ -578,167 +419,6 @@ active:
       expansion (a footgun; differs from bigdec's shortest-round-trip). Verify vs
       clj + e2e if landed.
     last_reviewed: "2026-06-24"
-  - id: "D-510"
-    status: "DISCHARGED (2026-06-24, ADR-0161, 2 cycles). Unified all four host enums (RoundingMode/ChronoUnit/DayOfWeek/Month) onto ONE comptime registry (runtime/host_enum.zig) + ONE flat rt.host_enum_consts[43] cache with a single interning entry point (DA Alt-3). Cycle 1: built the mechanism + migrated Group A (RoundingMode/ChronoUnit) behaviour-preserving; folded+deleted rounding_mode.zig/chrono_unit.zig. Cycle 2: folded Group B (DayOfWeek/Month) from .typed_instance getter-mint to .host_instance singletons — new surfaces DayOfWeek.zig/Month.zig (static fields + getValue/name/toString), getters return the interned singleton, TypeDescriptor.host_enum_idx drives unified pr-print + compare-by-ordinal; removed the typed_instance equal/compare/print arms + day_of_week_value.zig/month_value.zig + their per-Runtime descriptors. PARITY WINS: DayOfWeek/MONDAY..Month/DECEMBER static fields now resolve; (identical? (.getDayOfWeek monday) DayOfWeek/MONDAY) => true; all four enums JVM-Comparable (sign-based, AD-043 extended). compat_tiers: 4 entries → keyword host_enum (G3 green). MathContext stays a consumer (not a member). Pinned by test/e2e/phase15_java_time_dow_month.sh (enum-const/identity/compare blocks)."
-    category: "host-surface"
-    barrier: |-
-      ADR-0160 modelled java.math.RoundingMode as a host-enum object singleton
-      (Locale pattern + a `StaticFieldValue.rounding_mode: u8` arm + the neutral
-      runtime/rounding_mode.zig). The DA-fork (Alt 3) noted this is one instance of
-      a RECURRING need: java.util.concurrent.TimeUnit, java.time.DayOfWeek / Month
-      (ALREADY ad-hoc in TemporalPrint's enum arms), java.time.temporal.ChronoUnit.
-      The finished form for the enum CATEGORY is a first-class mechanism:
-        - a `StaticFieldValue.host_enum_const { enum_fqcn, name, ordinal }` arm
-          (generalising the `.rounding_mode: u8` one-off),
-        - a per-Runtime interned singleton resolver (generalising rounding_mode.zig
-          + the locale slots),
-        - a uniform bare-name `.toString` + `(class …)` path, subsuming the bespoke
-          `day_of_week` / `month` arms in type_descriptor.zig's TemporalPrint.
-      Per F-003 this is a STRUCTURAL plan deferred to its owning unit, not seized mid
-      clj-parity-sweep. Retrofit targets when opened: fold RoundingMode + DayOfWeek +
-      Month into the one mechanism; add TimeUnit / ChronoUnit as new members; a
-      MathContext host class (the with-precision :rounding consumer) is the first
-      downstream beneficiary of a TYPED enum arg (vs the int/precision ambiguity).
-      Barrier dissolves when a 2nd or 3rd host enum is actually needed (TimeUnit /
-      MathContext) — at that point the one-off count justifies the mechanism.
-    last_reviewed: "2026-06-24"
-  - id: "D-501"
-    status: "DISCHARGED (2026-06-22). Implemented `clojure.core/time` as a bootstrap macro in src/lang/clj/clojure/core.clj (right after with-out-str): `(defmacro time [expr] \\`(let [start# (System/nanoTime) ret# ~expr] (prn (str \"Elapsed time: \" (/ (double (- (System/nanoTime) start#)) 1000000.0) \" msecs\")) ret#))`. Uses prn (so the string is quoted, matching JVM clj: `(time 42)` → prints `\"Elapsed time: N msecs\"` then returns 42). System/nanoTime was already reachable (clock.zig nanoTime). e2e in phase14_core_cluster.sh (time_value→42 / time_prefix / time_msecs, with-out-str-captured so the timing-dependent number isn't asserted). Verified vs clj oracle: identical shape. ORIGINAL: open (2026-06-22, found while building cw-playground JIT examples). `clojure.core/time` was UNRESOLVED: `(time expr)` → Name error; `(resolve 'time)` → nil. The cw-playground 'jit-speed' example wanted `(time …)` and fell back to the UI's :ms display."
-    category: "clj-parity"
-    barrier: |-
-      Quick clj-parity win. Implement `clojure.core/time` as a macro in the bootstrap
-      core (src/lang/clj/clojure/core.clj or the Zig special-form table — survey where
-      defmacro-level core macros live). clj's form:
-        (defmacro time [expr]
-          `(let [start# (. System (nanoTime)) ret# ~expr]
-             (prn (str "Elapsed time: " (/ (double (- (. System (nanoTime)) start#)) 1000000.0) " msecs"))
-             ret#))
-      cljw needs a nanosecond clock primitive reachable from bootstrap .clj (D-053 noted
-      std.time.nanoTimestamp was removed in Zig 0.16 — check the current clock surface,
-      runtime/clock.zig / instant.zig). Output goes to *out* (clj) — match it. Add an e2e
-      asserting `(time 42)` returns 42 and prints an \"Elapsed time:\" line. One small TDD cycle.
-    last_reviewed: "2026-06-22"
-  - id: "D-487"
-    status: "DISCHARGED (2026-06-21, user re-flagged the Debug slowness). VALIDATED the hypothesis decisively: `zig build test -Dwasm -Doptimize=ReleaseSafe` = ~59s cold / ~1.0s warm vs Debug ~200s (3.4× cold, ~200× warm), ALL TESTS PASS (ReleaseSafe keeps bounds/overflow/UB panics; the F-012 diff oracle does not depend on Debug's 0xAA undefined-poisoning). APPLIED: run_all.sh L313-314 now pass `-Doptimize=ReleaseSafe` for both backends; the build-mode policy table (.claude/rules/perf_measure_release.md) amended (gate unit tests = ReleaseSafe; bare `zig build test -Dwasm` stays Debug for dev undefined-poisoning diagnostics). The smoke's dominant cost (zig build test ×2, ~400s) drops to ~120s cold / ~2s warm. ORIGINAL: open (2026-06-21, audited on user prompt re: smoke slowness). The per-commit smoke's dominant cost is `zig build test` ×2 (run_all.sh L313/314: `zig build test -Dwasm` [+ `-Dbackend=tree_walk`]), which default to **Debug** (no `-Doptimize`, per the build-mode policy 'unit tests = Debug for fast-compile + max diagnostics'). MEASURED 2026-06-21: a WARM `zig build test -Dwasm` (compile cached → pure RUN) = **real 114.67s / user 112.96s**; cold (after a vm.zig edit) ≈ 168s = ~114s RUN + ~54s compile. So the RUN dominates — the F-012 diff oracle + all unit tests evaluate MANY programs on the DEBUG-compiled interpreter, hitting the Debug-perf-cliff (perf_measure_release: e.g. (count (vec (range 1e6))) = Debug 121s vs ReleaseFast 0.02s). The shipped/e2e binary is correctly ReleaseSafe (verified `cljw --version`); only the unit-test build is Debug. The build-mode policy assumed COMPILE dominates for unit tests — the diff oracle makes that BACKWARDS (RUN dominates)."
-    category: "perf"
-    barrier: |-
-      Hypothesis (high-value, aligns with the throughput focus — efficient_gate_pipeline /
-      smoke_first_batch_full_gate): run `zig build test` in **ReleaseSafe** instead of Debug.
-      ReleaseSafe KEEPS all safety checks (bounds / overflow / UB panics) — it is the
-      'safe optimized' mode — so the correctness oracle stays sound, while the interpreter
-      runs ~10-100× faster, likely cutting the 114s RUN to seconds (smoke ~6min→~1-2min;
-      warm re-runs near-instant). Tradeoff: ReleaseSafe COMPILES slower than Debug (~54s →
-      maybe ~90-120s), but the RUN saving dwarfs it, and warm builds skip compile entirely.
-      ADR-level (reverses the build-mode policy table for the unit-test step). VALIDATION
-      REQUIRED before flipping: (1) `time zig build test -Dwasm -Doptimize=ReleaseSafe` —
-      confirm it is materially faster AND all tests still PASS (some may rely on Debug-only
-      undefined-value detection or exact panic text); (2) check the diff oracle doesn't
-      depend on Debug `undefined` poisoning; (3) keep Debug available via a flag for deep
-      diagnostics. The measurement command + the policy table to amend live in
-      `.claude/rules/perf_measure_release.md`. Quick win for the next session.
-    last_reviewed: "2026-06-21"
-  - id: "D-488"
-    status: "DISCHARGED (2026-06-22, JIT-default unit). zwasm cut v2.0.0-alpha.3 (pin fc7ff0b3b, 3-host green: Mac aarch64 + ubuntu x86_64 + Win64) which RE-LANDS its `.auto`→JIT flip (its D-478) AND fixes the gating x86_64 LSRA dual-spill miscompile (D-489/D-494) — to_cljw_09. So the flip is now correctness-safe on all 3 hosts. cljw flipped `engine.LoadOpts.engine` default `.interp`→`.auto` (removed the PROVISIONAL marker + emptied feature_deps#runtime/cljw/wasm/engine_default, same commit): a no-opts `(wasm/load path)` now rides zwasm's JIT-first `.auto` (transparent interp fallback). Components stay interp-pinned on the zwasm side (D-500) so the component path is unaffected; the F-012 dual-backend diff oracle uses explicit `.interp`/`.jit` so it is untouched. e2e phase16_wasm_engine_select.sh extended: the no-opts default now executes a SIMD body that ONLY the JIT can run (proves the default flipped to JIT, not interp). ORIGINAL: open / blocked-by: zwasm fixes D-489 (x86_64-only JIT realworld miscompile) so the `.auto`→JIT flip is correctness-safe (2026-06-21, JIT adoption unit, ROADMAP §9.0 gap II×III). TERMINAL STATE for the cljw side: zwasm pivot-CLOSED the dispatch-matrix bundle @7d8584f97 — 'goal achieved + cljw-verified' (the 1/2-arg JIT invoke matrix is complete + my e2e locks it); the `.auto`-flip is now a NON-URGENT, debt-gated zwasm item on D-489, explicitly 'not blocking cljw'. So cljw's JIT adoption is COMPLETE for everything zwasm offers; the default-flip awaits a non-urgent zwasm codegen fix (D-489, also relates to D-490 emitV128Select x86_64 spill). cljw default stays `.interp` (zwasm-endorsed); explicit `:engine :jit` is solid on arm64 for all 0/1/2/3-arg scalar + multi-value + SIMD-body shapes. PROGRESS via same-session co-dev (from_cljw_02 → to_cljw_03): the ORIGINAL exportFuncSig-on-JIT blocker is RESOLVED — zwasm shipped the JIT arm of `Instance.exportFuncSig` @5b6449779 (resolves via `jit.exportFuncSig` over the module bytes, mirroring the memory/global/table JIT accessors). cljw rebuilt on that and VERIFIED `(wasm/call (wasm/load p {:engine :jit}) …)` works end-to-end (GPR add jit==interp==5; SIMD lane0 on jit → 42; interp traps catchably). The cljw-surface dual-engine e2e is now LANDED + gate-registered (test/e2e/phase16_wasm_engine_select.sh). REMAINING (why this row stays open): zwasm REVERTED its `.auto`→JIT flip (@1e01e6797) because `.auto`→JIT exposed a wider gap on the C-ABI invoke/export-handle path (interp-conformance harness via `wasm_instance_new` broke on x86_64 under JIT; the arm64 Mac run did not exercise it — exactly why the 3-host gate exists). So `.auto` is interp again; the transparent `.auto`→JIT north-star returns when zwasm's C-surface is complete + 3-host green. cljw's `.interp` default is zwasm-endorsed (to_cljw_03) meanwhile."
-    category: "wasm"
-    barrier: |-
-      Blocker for flipping cljw's default to `.auto` (zwasm-side; cljw keeps `.interp`):
-      **zwasm D-489 — an x86_64-only JIT realworld MISCOMPILE** (tinygo_json mangles fmt
-      output under x86_64 JIT; correct on interp + arm64 JIT; to_cljw_05). zwasm keeps the
-      `.auto`→JIT flip OFF until x86_64 JIT realworld correctness is hardened. This is a
-      deeper correctness issue than dispatch coverage, and firmly validates cljw's `.interp`
-      default. Deferred zwasm gaps (NOT blocking, no real cljw need — D-477): wide arity
-      (SysV >5 / Win64 >3 params), >2 results (the `many-results` 17-value extreme),
-      v128-at-boundary; use `.interp` for these.
-      DONE (the dispatch-matrix sub-blocker is RESOLVED): the 1/2-arg JIT invoke matrix is
-      COMPLETE @3cf40a573 (the per-combo veneer now falls through to the generic buffer
-      thunk for any uncovered 1/2-arg scalar shape). cljw verified on @f4848e680: GPR,
-      multi-value, same-type-2-arg f32/f64 (addf=3.75), MIXED 2-arg `(i32,f64)→f64`=5.5,
-      3-arg via buffer — all jit==interp. SIMD body is JIT-only by design (to_cljw_03).
-      test/e2e lock GPR + multi-value + SIMD + same-type-2-arg + mixed-2-arg f64.
-      On close (D-489 + x86_64 `.auto` 3-host verdict): flip `engine.LoadOpts.engine`
-      default `.interp`→`.auto` (remove the PROVISIONAL marker +
-      feature_deps#engine_default), assert the no-opts default rides the JIT.
-    last_reviewed: "2026-06-21"
-  - id: "D-486"
-    status: "DISCHARGED (2026-06-21, commit completes ADR-0157). The flatten dispatch in vm.eval now unifies flattenPush's error into the SAME `else |err|` arm (via a `result` expression) instead of bare-`try`-propagating it out of eval — so a deep DIRECT recursion overflow inside a `try` is caught (catch StackOverflowError/Throwable; not Exception — clj parity), uncaught still renders gracefully, bounded recursion no false-trip. Validated by the dual-backend diff oracle + e2e phase15_watch_recursion (direct_recursion_caught/_thr/legit_direct_recursion). The full stack-overflow catchability story (re-entry AND direct recursion) is now clj-faithful. ORIGINAL: open (2026-06-21, split from D-485 2a). A stack overflow raised by FLATTENED direct recursion at FRAMES_MAX=2048 (`((fn f [n] (f (inc n))) 0)` inside a `try`) is NOT caught by an enclosing `(catch StackOverflowError/Throwable …)` — it propagates uncaught + prints a trace, where clj recovers. Re-entry overflows (validator/reducer/watch, via nested vm.eval) ARE caught (ADR-0157 2a/2b). The flattened recursion stays in ONE vm.eval (op_call flattens in-VM), so the vm.eval-entry stack guard never re-fires, and the existing handler-synthesis (vm.zig:372 — convert a catalog error to a thrown value when handler_count>0) does NOT fire for the flattenPush(:149)/eval-entry(:227) FRAMES_MAX raise in the handler's OWN eval (the synthesis path is reached for nested-eval raises but apparently not this same-eval-exhausted case). LOW severity: graceful (no crash) + the common runaway-recursion case; only the catchability diverges from clj. Repro: `(try ((fn f [n] (f (inc n))) 0) (catch Throwable e :ok))` → cljw prints trace / clj → :ok."
-    category: "clj-parity"
-    barrier: |-
-      Localised to the VM same-eval FRAMES_MAX unwind. Finished form: the flattened
-      unwind path (vm.zig ~331-381) must run the handler-synthesis (kindToHostClass →
-      thrown value) for a FRAMES_MAX stack_overflow raised in the handler's own eval,
-      exactly as it does for a nested-eval raise — so `(catch StackOverflowError …)`
-      catches a deep direct recursion too. Needs tracing WHY the synthesis at
-      vm.zig:372 does not fire when frame_base==0 and the raise is flattenPush/eval-
-      entry (handler_count check? Info cleared during the 2048-frame unwind?). Take
-      up as a focused VM-handler unit; ADR-0157 2a/2b already removed the crash + made
-      re-entry overflows catchable, so this is the residual catchability parity.
-      ROOT CAUSE PINPOINTED (2026-06-21): the flatten dispatch in `vm.eval` does
-      `try flattenPush(rt, ar, fr)` (the `if (flatten_req) |fr| { … }` block) — flattenPush
-      raises the FRAMES_MAX stack_overflow and the bare `try` propagates it STRAIGHT OUT
-      of `eval`, bypassing the `if (step_result) |ret| {…} else |err| {…}` arm that unwinds
-      the flattened frames + synthesises the catalog error into a catchable thrown value +
-      jumps to the handler. Re-entry overflows surface as a `stepOnce` error → they DO reach
-      the `else |err|` arm → caught. FIX SHAPE: route a flattenPush error through the SAME
-      unwind+synthesise+catch path as a stepOnce error (`flattenPush(...) catch |e|` → fall
-      into the shared error handling, don't bare-`try`). The error arm mutates many loop
-      locals (handlers/cur/ip/op_top/frame_top), and the eval loop is the hottest path, so
-      factor carefully (a labeled-block / shared-handler restructure) to avoid a control-flow
-      regression. Verify: `(try ((fn f [n] (f (inc n))) 0) (catch StackOverflowError e :ok))` → :ok.
-    last_reviewed: "2026-06-21"
-  - id: "D-485"
-    status: "DISCHARGED (2026-06-21, ADR-0157). 2b (aaf391e3): stack_overflow is a catchable own-Kind StackOverflowError. 2a (48be8e91): a self-calibrating native-stack guard (threadlocal stack-base anchor at the shallowest vm.eval entry + a 6 MiB byte-budget check) raises the catchable stack_overflow before the native stack overflows — validator/reducer/watch re-entry (all were SIGSEGV) now error gracefully + catchably; legit flat reduce(1e6) + HOF-recursion to ~500-1000 deep still run; the watch-256 partial is subsumed + removed. The ONE residual (split to D-486): same-eval direct-recursion-at-FRAMES_MAX catch (flattened recursion never re-enters vm.eval, so neither the entry guard nor the existing handler-synthesis catches it). ORIGINAL: open (2026-06-21, surfaced by the atom/watch differential sweep). A higher-order primitive that re-enters the evaluator via a user callback — `notifyWatches`→`invokeCallable`, a `set-validator!` validator, a `sort` comparator, a `reduce` fn — recurses in NATIVE Zig frames that the VM's per-run frame budget (vm.zig FRAMES_MAX=2048) does NOT bound (each `vt.callFn` re-entry starts a fresh VM run with frame_top=0). So an UNBOUNDED self-re-entering callback overflows the native stack → SIGSEGV (exit 134), where clj raises a catchable StackOverflowError. Repro (was SIGSEGV): `(let [a (atom 0)] (add-watch a :w (fn [k r o n] (swap! r inc))) (swap! a inc))`. PARTIAL FIX LANDED for the watch case: a threadlocal watch-nesting guard (iref.enterWatchNotify, cap 256) in BOTH the sync (atom.zig) + async (iref.zig) notify loops converts the watch runaway into a graceful stack_overflow error (e2e phase15_watch_recursion). STILL OPEN: validators / comparators / reduce-fns re-entering unboundedly are NOT yet guarded — they share the same native-reentry overflow. RELATED: cljw's stack_overflow error is NOT catchable by (catch Throwable …) (clj's StackOverflowError is) — a separate AD-007-adjacent gap. SCOPE CONFIRMED (2026-06-21 investigation): a `set-validator!` validator that re-triggers its atom AND a `reduce` fn that re-reduces BOTH still SIGSEGV (unguarded re-entry); but a comparator that recurses on ITSELF (`(sort (fn cmp [x y] (cmp x y)) …)`) is ALREADY graceful (direct VM self-call → op_call/flattenPush, FRAMES_MAX-bounded) — only PRIMITIVE→callFn re-entry is unguarded, not VM self-recursion. NAIVE FIX RULED OUT: a low nesting cap at `higher_order.invokeCallable` (the shared re-entry chokepoint) would FALSE-TRIP legit deep recursion that flows through map/reduce (those nest invokeCallable too), since clj + cljw's VM allow 2048-deep recursion. So a 256-ish invokeCallable cap breaks `(defn f [n] (when (pos? n) (reduce + (map (fn [_] (f (dec n))) [1]))))` at depth 256. CORRECT FIX = the GLOBAL-frame-budget variant (below): the re-entrant VM run CONTINUES the outer frame_top instead of resetting, so legit recursion-through-higher-order AND infinite re-entry BOTH hit the same 2048 limit that plain recursion does (2048 VM-frames of native stack is KNOWN safe — plain recursion proves it). The watch partial's cap-256 is safe ONLY because watch nesting never legitimately deep-recurses. 2b LANDED (commit aaf391e3, ADR-0157): stack_overflow is now a catchable own-Kind StackOverflowError (re-entry + nested-eval overflows catch). REMAINING 2a: the self-calibrating native-stack guard that converts the still-SIGSEGV validator/reducer cases to a graceful error + fixes the same-eval direct-recursion-at-FRAMES_MAX catch edge (the synthesis does not fire when frames are exhausted in the handler's own eval)."
-    category: "robustness"
-    barrier: |-
-      MECHANISM FULLY TRACED (2026-06-21). The VM frame budget is ALREADY global:
-      `vm.eval` (vm.zig:194) saves `frame_base = ar.frame_top` on entry and
-      CONTINUES from it (does NOT reset to 0), and the FRAMES_MAX=2048 check
-      (vm.zig:227 + flattenPush:149) sees the global depth. Plain VM recursion is
-      safe at 2048 because op_call FLATTENS in-VM (iterative — ~1 native frame per
-      VM frame). The segfault is NOT a missing global budget — it is that each
-      PRIMITIVE→callFn re-entry (callBuiltin→notifyWatches→invokeCallable→
-      treeWalkCall→callMethodImpl→eval) adds ~6-10 NATIVE Zig frames but only ~1-2
-      VM frames, so `frame_top` UNDER-COUNTS native depth and the native stack
-      overflows before frame_top reaches 2048.
-      CLEAN FIX (the dedicated unit): a threadlocal `eval_reentry_depth` counter
-      incremented at the `vm.eval` ENTRY (defer-decrement), capped, raising
-      stack_overflow — this bounds the EXPENSIVE native-eval-nesting dimension
-      uniformly for ALL primitive re-entry (watch/validator/reducer/comparator-
-      via-primitive). It is NOT the hot per-call path: op_call/flattenPush stay
-      unbounded-by-this; only nested eval-entry (per higher-order element, depth 1
-      for a flat reduce — never accumulates) is counted, so `(reduce + (range 1e6))`
-      stays at depth 1. It SUBSUMES the D-485-partial watch counter (remove it).
-      The ONE empirical unknown = the CAP value: must be safe for the worst-case
-      per-re-entry native frame size (8MB stack / ~2KB-per-level ≈ a few thousand)
-      yet as high as possible to match clj's deep-recursion-through-HOF (clj also
-      bounds it at the JVM stack — cljw will error EARLIER but gracefully, both
-      bound it). cap-256 is proven safe (the watch partial) but likely too low for
-      legit recursion-through-map/reduce. MEASURE the safe ceiling empirically.
-      ADR-level (new resource limit + behavior change + cap calibration) → draft
-      ADR + mandatory Devil's-advocate fork. Take up as a dedicated unit; the watch
-      partial removes the realistic footgun's crash meanwhile.
-    last_reviewed: "2026-06-21"
-  - id: "D-458"
-    status: "DISCHARGED (2026-06-20). `cl-dir` now emits a `:cl-arg` sentinel for `V`/`v` and `:cl-remaining` for `#`; `cl-run` resolves both against argv BEFORE dispatch via `cl-resolve-params` (V pulls + CONSUMES the next operand, advancing pos; # = remaining-arg count, no consume), so EVERY parameterised directive gets V/# uniformly with no per-arm change. `~n[`/`~#[` clause-select added (a prefix param selects + consumes no arg). e2e phase14_cl_format: param-V-mincol/-padchar/-radix/-money/-float-w/-float-d, param-hash-mincol, param-hash-select-1/-2, param-n-select; corpus test/diff/clj_corpus/cl_format_params.txt (10 cases). KNOWN clj DIFF NOT chased: consecutive-V on a float (`~V,VF` 8 2) — clj is internally INCONSISTENT there (gives \"3.14159000\" ≠ its own `~8,2F` \"    3.14\"); cljw produces the consistent literal-equivalent value. Too niche to AD (a clj bug, not a cljw gap; promote-to-AD if a real corpus hits it). SEPARATE pre-existing gap found + filed as D-465: `~F` without a d-param defaults to 0 decimals (`~8F` → cljw \"       3\" vs clj \" 3.14159\" full-precision). ORIGINAL: open (2026-06-17, surfaced completing cl-format ~E/~G, D-455 chunk3)."
-    category: "clj-parity"
-    barrier: |-
-      none — localized to cl-dir. Finished form: when cl-dir sees `V`/`v` it emits a
-      sentinel param (e.g. :cl-arg) that each directive arm resolves by pulling the
-      next operand off argv (advancing pos); `#` emits the remaining-arg count. Needs
-      the param list to thread through the arg-navigator (already index-based since
-      D-455 chunk2), so the plumbing exists. Small, self-contained; take up alongside
-      or after D-455 chunk4. Repro: `(cl-format nil "~VD" 5 42)` → cljw raises (clj → "   42").
-    last_reviewed: "2026-06-20"
-  - id: "D-465"
-    status: "DISCHARGED (2026-06-20, same session as the D-458 find). ~F without a d-param now prints the natural (shortest round-trip) value in PLAIN fixed notation, always with a decimal point, left-padded to w — never scientific. New helpers in pprint.clj: `cl-float-natural` (= `(str (double x))`, then `cl-expand-exp` rewrites any E-notation the printer emitted to plain) + `cl-parse-int` (self-contained, no read-string). Surface check done: ~E/~G already handled no-d correctly (cl-efloat/cl-gfloat) and ~$ defaults d=2 — so ONLY ~F needed the fix. e2e phase14_cl_format: float-natural/-0/-int/-w/-big/-small/-neg + param-V-float (re-added now ~VF works); corpus cl_format_params.txt (+8 ~F cases). All clj-oracle-verified incl. extreme magnitudes (1e10→\"10000000000.0\", 1.5e-7→\"0.00000015\")."
-    category: "clj-parity"
-    barrier: |-
-      none — localized to cl-run's ~F arm (pprint.clj). Finished form: when the
-      d-param (p1) is nil, print the float's natural decimal representation (no
-      forced `%.<n>f`) then `cl-pad` to the w-param, instead of `(or p1 0)` →
-      `%w.0f`. Needs a clj-faithful float→string for the natural case (trailing-
-      zero / exponent behaviour); verify vs the clj oracle across ~F/~E/~G/~$
-      d-omitted cases (big-bang the float-d-default surface, don't drip). Small.
-    last_reviewed: "2026-06-20"
   - id: "D-466"
     status: "open (2026-06-20, clj-diff sweep). `(instance? java.util.Map (java.util.HashMap.))` → cljw FALSE, clj TRUE. The java.util host_instance surfaces (HashMap/TreeMap/ArrayList/HashSet/TreeSet) are not recognised as instances of their java.util supertypes (Map/List/Set/Collection/SortedMap/NavigableMap/SortedSet/NavigableSet/Iterable). NATIVE cljw collections ARE (class_name.zig NATIVE_ENTRIES Map/List/Set/Collection → tag), but host_instances dispatch through `matchUserType` (descriptor walk), which finds none of these. ATTEMPTED FIX REVERTED: setting the descriptors' `protocol_impls` to the interface FQCNs made `matchUserType` match BUT deterministically CRASHED cache_gen (the AOT bootstrap) with SIGABRT — protocol_impls is also the extend-protocol-target distribution source (ADR-0116/D-317), so a native-surface descriptor claiming `java.util.Map` breaks a bootstrap distribution path. Also the tree-specific interfaces (SortedMap/NavigableMap/SortedSet/NavigableSet) don't even RESOLVE as instance? class args ('Unable to resolve symbol') — they're not registered classes. Needs a PROPER host-supertype mechanism (a per-descriptor supertype list consulted ONLY by matchUserType, distinct from protocol_impls' distribution role) + registering the Sorted/Navigable interface class symbols. DISCHARGED (2026-06-20, same session — the proper mechanism). Root cause of the crash CORRECTED: it was NOT the distribution path but `runtime.zig`'s descriptor deinit FREEING `td.protocol_impls` (assuming gc.infra-owned); a comptime-const `&.{…}` is not heap-owned → invalid free → SIGABRT. Fix: a NEW `host_supertypes: []const []const u8 = &.{}` field on TypeDescriptor (mirrors `static_fields` — comptime-const, set in the descriptor literal, NOT freed by deinit), consulted by `class_name.zig::matchUserType` only (normalized compare). The 5 java.util descriptors declare the RESOLVING interfaces: HashMap/TreeMap→java.util.Map; ArrayList→List/Collection; HashSet/TreeSet→Set/Collection. `(instance? java.util.Map/List/Set/Collection <host>)` now match clj exactly (incl. negatives: a Map is NOT a Collection; ArrayList is NOT a Map). corpus cases in all 5 class corpora. SUB-FOLLOW-UP instance? part DONE (2026-06-20, same session): registered SortedMap/NavigableMap/SortedSet/NavigableSet as recognised interface symbols (FQCN_MAP + interface_membership TABLE with EMPTY native-tag sets — clj-verified that native sorted colls are clojure.lang.Sorted, NOT java.util.SortedMap, so they match only the host descriptors) + extended host_supertypes: TreeMap→+SortedMap/NavigableMap; TreeSet→+SortedSet/NavigableSet/Iterable; ArrayList/HashSet→+Iterable (Collection extends Iterable; a Map is NOT Iterable, so HashMap/TreeMap correctly stay non-Iterable). All 12 instance? cases match clj exactly (incl. native-coll negatives + clojure.lang.Sorted positives); corpus cases in all 5 class corpora. REMAINING (low value): isa? parity on two HOST CONCRETE classes — `(isa? java.util.TreeMap java.util.SortedMap)` raises a Name error (cljw can't resolve a host concrete class like java.util.TreeMap as an isa? class VALUE, and isa? would need a host_supertypes walk); rare (isa? on host java.util classes), deeper change than the instance? fix (concrete-class-value resolution + isa? host_supertypes traversal)."
     category: "interop"
@@ -755,30 +435,6 @@ active:
       workload type-checks java.util host collections, or alongside a host-supertype
       refactor. Cross-ref class_name.zig matchUserType, ADR-0116, ADR-0102.
     last_reviewed: "2026-06-20"
-  - id: "D-467"
-    status: "DISCHARGED (2026-06-20, same session). IMPLEMENTED `with-precision` (HALF_UP). Interned `clojure.core/*math-context*` ^:dynamic (root nil) + cached `rt.math_context_var` (bootstrap, mirrors *agent*); `promote.divPromoting`'s BigDecimal arm reads it lock-free and, when set to a positive integer precision, calls the new `big_decimal.allocDivPrecision` (sig-fig-rounded divide) instead of `allocDiv` (exact/raise). The macro `(with-precision precision & body)` binds it; a leading `:rounding mode` is accepted-and-ignored (HALF_UP only — other modes a follow-up). allocDivPrecision: exact-first (precision is a MAXIMUM — a terminating quotient within it keeps its natural un-padded form, e.g. `(with-precision 4 (/ 1M 8))`→0.125M not 0.1250M), else a shift-adjust loop to `precision` sig figs + true-remainder HALF_UP + carry renormalization. VERIFICATION-DRIVEN: the 24-case clj-oracle diff caught + fixed 2 real bugs — (a) exact-terminating was padded to precision; (b) the HALF_UP comparison used the bare divisor `d` instead of the EFFECTIVE `d·10^|s|` for s<0, over-rounding large magnitudes (`(with-precision 4 (/ 1000000M 3))`). corpus with_precision.txt (10). All 24 verified cases (precisions 1-10, non-terminating, exact ≤/> precision, negatives, large magnitudes, ties/carries, :rounding, nested, scope) match clj. Follow-up: non-HALF_UP rounding modes; *math-context* affecting other BigDecimal ops (setScale/round) if a real workload needs it."
-    category: "clj-parity"
-    barrier: |-
-      none external — a self-contained feature. Land when controlled-precision
-      BigDecimal math is needed: intern `clojure.core/*math-context*` (^:dynamic,
-      root nil = exact/raise), add the `with-precision` macro
-      (`(with-precision precision [:rounding mode] & body)` → binds *math-context*),
-      and make big_dec division (+ setScale/round) consult *math-context* for the
-      precision + RoundingMode when set (else the current exact/raise behaviour).
-      Verify vs the clj oracle: `(with-precision 5 (/ 1M 3))` → 0.33333M,
-      rounding-mode variants, nested with-precision. Cross-ref the numeric tower
-      (F-005), big_dec.zig.
-    last_reviewed: "2026-06-20"
-  - id: "D-468"
-    status: "open (2026-06-20, clj-diff probe). Host java.util collections print OPAQUELY, losing their content: cljw `(prn (doto (java.util.ArrayList.) (.add 1) (.add 2)))` → `#<cljw.java.util.ArrayList>`; clj → `[1 2]`. clj prints java.util collections BY CONTENT in Clojure syntax: ArrayList→`[1 2]` (pr) / `[1, 2]` (str/toString), HashSet/TreeSet→`#{1 2}`, HashMap/TreeMap→`{:a 1}` (TreeMap sorted). cljw's `seq` over these already works (content IS accessible) — only print is opaque, so this is a real F-011 fidelity gap, NOT covered by AD-020 (which is opaque-IDENTITY objects like java.util.Random with no printable content). NOT a quick fix: TWO print contexts (pr vs str) + per-backing logic — HashSet/TreeSet/HashMap/TreeMap hold a NATIVE cljw persistent collection in host_instance state[0] (printable directly → exact clj form), but ArrayList holds a raw `*std.ArrayList(Value)` (state[0]) needing a vector rebuild. Design idea: an rt/env-aware print pre-pass (sibling of print.zig deepRealize) maps a 'collection' host_instance to its backing native Value before the pure printer (printValueNative line 973 `#<fqcn>`) sees it → pr gets `[1 2]`/`#{1 2}`/`{:a 1}` generically; str wants the Java-comma `[1, 2]` form (add a toString method per descriptor, reusing the existing str-context hook at print.zig:165). MODERATE value (printing a RAW java.util collection is uncommon — code usually `vec`/`into`s first), so deferred for a focused cycle rather than rushed into a long session. Repro: `(prn (doto (java.util.HashSet.) (.add 1) (.add 2)))` → cljw `#<cljw.java.util.HashSet>` vs clj `#{1 2}`. DISCHARGED (2026-06-20, same session — the focused cycle was now). Mechanism: a new `print_content: ?*const fn(rt, recv) anyerror!Value` hook on TypeDescriptor (fn-pointer field beside host_trace/host_finalise); the print pre-pass (print.zig deepRealize) calls it on a host_instance and RECURSES on the result (so nested host collections transform too — verified `[#{9}]`). The 5 descriptors wire it: sets/maps return their backing native collection (state[0], already the printable Value → exact clj form incl. sorted); ArrayList rebuilds a vector from its `*std.ArrayList(Value)` via vector.fromSlice. pr/pr-str/REPL now match clj EXACTLY for all 5 (`[1 2]`/`#{1 2}`/`{:a 1}`, sorted variants sorted; string-quoting `[\"a\" \"b\"]`; nested). The str/.toString form remains Clojure-rendered (`{:a 1, :b 2}`) NOT JVM toString (`{:b=2, :a=1}` with `=` pairs + JVM iteration order) — classified as **AD-047** (ADR-0059 no-JVM; matching JVM toString is undesirable + needs non-reproducible JVM order). Corpus cases in all 5 class corpora; e2e phase14_hashmap str_clojure_form + print_pr_content."
-    category: "robustness"
-    barrier: "RESOLVED 2026-06-20 — print_content descriptor hook + deepRealize substitution (pr); str classified AD-047. See status."
-    last_reviewed: "2026-06-20"
-  - id: "D-469"
-    status: "DISCHARGED (2026-06-20, clj-diff probe found + fixed same cycle). cljw's `extend-type`/`extend-protocol` rejected the GROUPED multi-arity method spelling `(g ([x] b1) ([x y] b2))` (error: 'extend-type method implementation must be a list `(method-name [params...] body...)`') where clj accepts it — clj allows both the grouped form AND the repeated single-arity `(g [x] b1) (g [x y] b2)` (the latter cljw already supported via D-279). Verified clj `(extend-protocol Q Long (g ([x] :one) ([x y] :two)))` → `[:one :two]`. FIX: a `expandGroupedArities` pre-pass in macro_transforms.zig `expandExtendType` normalises each grouped impl into one repeated single-arity impl per arity-clause BEFORE validation, so the existing multi-arity-fn* grouping (D-279) folds both spellings into the same `(fn* ([p1] b1) ([p2] b2))`. `isGroupedArity` distinguishes the forms by the 2nd element's tag (grouped = a list starting with a params vector; single = a params vector directly). e2e phase7_polymorphic_extend cases 12 (extend-protocol grouped) / 13 (extend-type grouped) / 14 (repeated regression). The clj-diff harness CANNOT test this (its clj side wraps each expr in `(prn …)`, making defrecord/defprotocol non-top-level → clj errors); verified by direct top-level cljw-vs-clj instead."
-    category: "clj-parity"
-    barrier: "none — DISCHARGED."
-    last_reviewed: "2026-06-20"
   - id: "D-470"
     status: "open (2026-06-20, clj-diff format probe). `clojure.core/format` does NOT support the `%t`/`%T` date/time conversion family: `(format \"%tY\" (java.util.Date. 0))` → cljw 'unsupported directive %t' vs clj '1970'. The `%t` family is ~40 sub-conversions (%tY year / %tm month / %td day / %tH hour / %tM min / %tS sec / %tF ISO-date / %tT ISO-time / %tc full / %tj day-of-year / %tB %tb month-name / %ta %tA weekday / %tp am-pm / %tI %tl 12h / %tR %tr / %tD / %tZ %tz zone / %ts epoch-sec / %tQ epoch-ms …) over a Date/Calendar/Long/TemporalAccessor arg. The rest of the format flag/conversion surface is COMPLETE (D-216 discharged 2026-06-03 + a 2026-06-20 verify-sweep re-confirmed: heap-Long %d, unsigned-64 %x, # alternate, float +/space/(/, flags, %S/%H, %.Ns, %s-nil→null all match clj; %h/%H hashcode = AD-009). LOW priority — `%t` printf-style date formatting is rare in idiomatic Clojure (date code uses java.time formatters / clojure.instant, not (format \"%tY\" …)). Take up on a real consumer; mechanise via the format_surface corpus (anti-D-177) when landed. The zone sub-directives (%tZ/%tz) would also need the user/ADR-owned tz-DB (cf. D-462 ZonedDateTime)."
     category: "clj-parity"
@@ -794,30 +450,10 @@ active:
     category: "clj-parity"
     barrier: "uri? = a small Zig primitive (URI descriptor identity check) — none, just not yet done. bytes? = blocked by AD-019 array type-erasure (no per-array component type); needs an AD or an over-broad impl decision. Both low-value."
     last_reviewed: "2026-06-20"
-  - id: "D-475"
-    status: "DISCHARGED (2026-06-23, verified at resume). spec.alpha + spec.gen.alpha + core.specs.alpha are BUNDLED (src/lang/clj/clojure/spec/) and FULLY FUNCTIONAL: load + s/def/and/or/valid?/conform/cat/*/+/alt/?/&/coll-of/every/keys/map-of/tuple/merge/nilable/conformer/explain-data/explain-str/form all clj-verified in the current binary (incl. s/keys, the row's last-claimed blocker — the &-destructure path now works). s/form's rt/int? qualification is the accepted AD-049 (pin in phase15_spec.sh). e2e phase15_spec.sh + corpus spec.txt/core_specs_alpha.txt cover it. ORIGINAL: open (2026-06-20, fresh-namespace probe — HIGH VALUE, the highest-value remaining clj-parity gap). `clojure.spec.alpha` does NOT load — `(require '[clojure.spec.alpha])` → 'Could not locate'. spec is FUNDAMENTAL to modern Clojure (s/def / s/valid? / s/conform / s/cat / s/and / s/or / s/keys / s/coll-of / s/fdef / instrument), so a large class of real code + libs is blocked. FEASIBILITY (it is a SUBSTANTIAL multi-cycle unit, NOT a quick add): spec.alpha is mostly PURE-Clojure (over clojure.walk, which cljw has) — so it is BUNDLEABLE as src/lang/clj/clojure/spec/alpha.clj like clojure.set/walk/zip already are. Sources: `~/Documents/OSS/spec.alpha/src/main/clojure/clojure/spec/alpha.clj` (official) + a SCI-adapted reference at `~/Documents/OSS/.../babashka/src/babashka/impl/clojure/spec/alpha.clj` (bb also lacks full JVM — its adaptation shows the no-JVM-feasible subset). DEPENDENCY: spec.alpha `(:require clojure.spec.gen.alpha)` at load — gen LAZY-loads test.check via requiring-resolve, so it LOADS without test.check present (only s/gen/s/exercise fail at CALL time); bundle clojure.spec.gen.alpha too (it stays a lazy stub). RISKS to verify: (1) the regex-op spec machinery (s/cat/s/* /s/alt — `(instance? clojure.spec.alpha.Spec x)` protocol + deftype Specize/regex impls) exercises deftype/defprotocol/dynamic-var/metadata features cljw must fully support; (2) `(alias 'c 'clojure.core)` + the AOT cache_gen bootstrap of a ~1500-line .clj (cache_gen must compile it — watch for the host-class-in-bootstrap trap, memory `bootstrap-clj-host-class-unresolvable`, + regex-literal-in-bootstrap-.clj trap). PLAN: copy alpha.clj + gen/alpha.clj into the bundle's @embedFile FILES list, rebuild, fix the cljw feature gaps the load surfaces one by one, verify s/def/valid?/conform/cat/keys against the clj oracle, add a clj_corpus spec area. A focused FRESH-CONTEXT unit (the highest-value one available); also add a spec.alpha NEEDS-ROW to docs/works/ladder.md when landed. FEASIBILITY INVESTIGATED 2026-06-20 (de-risks the fresh cycle): bundle mechanism = add a `.{ .label, .source = @embedFile(\"clj/clojure/spec/alpha.clj\") }` entry to bootstrap.zig FILES (after clojure.walk + after the gen file). SIZES: official alpha.clj = 1996 lines (defprotocol Spec + Specize, 14 deftype/defprotocol constructs); gen/alpha.clj = 227 lines, NO deftypes, lazy-loads test.check via `dynaload`+`delay` (loads clean without test.check; s/gen fails only at call). FIRST CONCRETE BLOCKER: the OFFICIAL alpha.clj has a REGEX LITERAL `#\"(.*)\\$(.*?)(__[0-9]+)?\"` at line ~132 — a bundled/AOT .clj CANNOT carry a `#\"\"` literal (memory `regex_literal_unsupported_bootstrap_clj`); worse, it sits in a `(.. f getClass getName)` JVM-fn-class-name reflection path that does not apply to cljw (no-JVM fns have no class name). RECOMMENDATION: base the cljw port on the BABASHKA SCI-adapted version (`~/Documents/OSS/.../babashka/src/babashka/impl/clojure/spec/alpha.clj`) — bb also lacks full JVM, so it has ALREADY adapted the getClass/getName + other JVM paths to the no-JVM-feasible subset; diff it against the official to see exactly what cljw needs. Then iterate: bundle → rebuild → fix each cljw-feature gap cache_gen surfaces (expect the regex path, possibly deftype/protocol edge cases, dynamic-var/alias) → verify s/def/valid?/conform/cat/keys vs the clj oracle → clj_corpus spec area. Multi-cycle but the line-by-line blocker path is now mapped. LOAD-BLOCKER CHAIN (probed 2026-06-20 via `-cp /tmp/spec_cp` classpath load of the official src — this is the right dev harness: the classpath resolver loads .clj WITHOUT touching the @embedFile bundle, so the tracked build stays green while iterating blockers; bundle into FILES only once it loads + s/valid?/conform verify): #1 gen/alpha.clj `BigDecimal/valueOf` — FIXED commit 1a5e0ed0 (the static cljw.java.math.BigDecimal descriptor had an empty method_table; added valueOf + an .init populate fn). #2 gen/alpha.clj:188 `bytes?` unresolved — cljw lacks the predicate AND it is AD-019-blocked (JavaArray is fully type-erased, no element-type field, so byte[] is indistinguishable from int[]; = the known D-472). gen-builtins needs ALL 43 core type-predicates to resolve at analyze time (delay-body map KEYS); only bytes? is missing — so the port adapts that one gen-builtins entry (gen is generators-only, never forced without test.check) OR a deliberate bytes?=array? AD decision in the focused cycle (DA subagent on the AD-019 envelope). #3+ spec.alpha CORE (1996 lines) unprobed past gen; static scan: 12 `reify` of the Spec/Specize protocols (THE core spec mechanism — cljw reify-of-protocol must carry these), 2 `set!` on dynamic vars (*recursion-limit* etc.), defmulti/defmethod `describe`, `(alias 'c 'clojure.core)`, JVM-internal RT/checkSpecAsserts + Compiler/demunge (AD-008 deferred-host-ref handles those — ns loads, errors only if called). MILESTONE 2026-06-20: spec.alpha LOADS (`:loaded`) — 6 blockers cleared: 3 committed cljw clj-parity fixes [#1 BigDecimal/valueOf 1a5e0ed0; reify/deftype destructured method params 8c4f4827; (symbol var) f74f8f18] + 3 port adaptations in scratch /tmp/spec_cp [drop the bytes? gen-builtin (AD-019), `clojure.spec.alpha.Spec` FQCN→protocol var `Spec` (no-JVM, ADR-0059), checkSpecAsserts JVM-static→cljw atom]. REMAINING FUNCTIONAL BLOCKER (spec loads but s/valid? errors `Unable to resolve spec`): spec's `with-name` (alpha.clj:90) attaches `::name` metadata to every spec object, but a spec object is a `reify` instance and cljw reify instances are NOT IObj/metable — `(instance? clojure.lang.IObj <reify>)` is false + `(with-meta <reify> m)` raises `cannot attach metadata to reified_instance`, so `with-name` returns nil → the registry stores nil → lookup fails. clj's reify ALWAYS auto-implements IObj (metable); plain deftype does NOT (cljw already matches deftype). FIX (reify-only, ADR-0134-coupled — the instance?-IObj⟹with-meta-works invariant D-271): add a `meta: Value` slot to ReifiedInstance (16→24B + the @sizeOf asserts at type_descriptor.zig:476/797), init in allocReifiedInstance, mark it in traceReifiedInstance (mirror traceTypedInstance), a reifiedInstWithMeta minting helper, the withMetaFn/.reified_instance arm mints-fresh instead of raising, the metaFn/.reified_instance arm returns inst.meta, and isInstance/matchUserType answers IObj+IMeta true for reified_instance. Needs an inline ADR (extends ADR-0134 IObj activation to reify) + mandatory DA fork. Port adaptations still need promoting from /tmp into the tracked bundle once reify-IObj lands + s/valid?/conform verify green. MILESTONE-3 2026-06-20: reify-IObj-metadata LANDED (commit 458be654, ADR-0134 reify slice) → spec's registry resolves. BASIC SPECS NOW FUNCTIONAL + clj-verified: `(s/def ::age (s/and int? pos?))` + s/valid?/conform all correct. 5 GENERIC cljw clj-parity fixes extracted+committed this arc (BigDecimal/valueOf, reify/deftype destructured method params, symbol-of-var, reify-IObj-metadata) — these benefit ALL cljw code, not just spec. 4th port adaptation added in /tmp scratch: fn-sym→nil (alpha.clj:131 used `(.. f getClass getName)`+regex to name anon fns; cljw fns have no class name, so anon-fn specs describe as ::unknown via the specize* Object fallback — acceptable divergence). REMAINING DEEP TAIL (the regex-op + every machinery — spec-internal, diminishing generic-fix yield, a focused multi-cycle continuation): `s/coll-of`/`s/every` → alpha.clj:1291 `cpred` is nil at conform (every-impl closure-capture or opts-destructure issue — classify generic-cljw vs spec-internal); `s/or` → Exception; `s/keys` → alpha.clj:317 (unfn conj-on-symbol — cljw's postwalk-replace/destructure/conj all individually MATCH clj, so the trigger is a specific s/keys path, needs isolation); `s/cat`/`s/*` regex-op conform → `::invalid` (the regex-op state-machine — the hardest part). The 4 port adaptations (bytes?-drop, Spec-FQCN→var, checkSpecAsserts→atom, fn-sym→nil) live in /tmp/spec_cp and are re-derivable from this blocker chain; promote into the tracked bundle (src/lang/clj/clojure/spec/ + bootstrap.zig FILES, EPL variant-① header per clj_attribution.md) only once the regex-op tail is green. MILESTONE-4 2026-06-20: the regex-op tail is GREEN — 2 more generic cljw fixes landed [:keys [::ns-key] auto-resolve a17b97c8 (unblocked coll-of/s/* via every-impl's {:keys [::cpred]}); (conj map other-map) merge 8fc081d4 (unblocked the whole pcat* state machine → s/cat/s/*/s/+/s/alt conform)]. spec.alpha is now MOSTLY FUNCTIONAL + clj-verified: load + s/def + s/and (basic) + s/valid? + s/conform + s/cat + s/* + s/+ + s/alt + s/coll-of + s/keys all correct. The LAST blocker is the builtin-macro-shadow bug → D-476 (s/or mis-routes to core/or; strict s/and validates only the last pred). 7 generic clj-parity fixes total this arc (BigDecimal/valueOf, reify/deftype destructured params, symbol-of-var, reify-IObj-metadata, :keys auto-resolve, conj map-merge — all committed + benefit ALL cljw code). Resolve D-476, then promote the /tmp port into the bundle + verify the full surface. MILESTONE-6 2026-06-20: D-476 RESOLVED (7c40041f, macro-shadow gate + caseTest rt/or hygiene) → s/or + strict s/and work. 3 more generic fixes landed: clojure.walk over a cons/lazy-tailed list (cf0b8dd2), valueToForm .hash_map macro return (978b41e2). 10 generic cljw fixes total this arc; spec ~95% functional (s/def/and/or/valid?/conform/cat/*/+/alt/coll-of all clj-verified). THE ONE REMAINING BLOCKER = s/keys: cljw's `&`-destructure (sequentialDestructure, macro_transforms.zig:344) uses nth/nthnext, but clj's `& rest` expands to (seq g)/(first cur)/(next cur) — fails on the non-Indexed map at alpha.clj:837 `(loop [… [[k v] & ks] m] …)`. Fix = make the `&`-case seq-based (clj-faithful; NO-`&` keeps nth which clj-correctly errors on maps). Then drain any further conform-path blockers. Full spec spec/fix sequence is in `.dev/handover.md` First-commit-on-resume + `private/notes/spec-alpha-port-arc.md`."
-    category: "clj-parity"
-    barrier: "none structurally (pure-Clojure, bundleable; gen is a lazy stub so it loads without test.check) — it is just SUBSTANTIAL + deserves a fresh focused cycle (copy 2 .clj into the bundle, AOT-rebuild, drain the cljw-feature gaps the load surfaces). The HIGHEST-value remaining clj-parity unit."
-    last_reviewed: "2026-06-23"
-  - id: "D-476"
-    status: "DISCHARGED (7c40041f, verified 2026-06-23). The macro-shadow gate (nil-root marker check in expandIfMacro) + caseTest rt/or hygiene landed; a user/lib macro shadowing a builtin name now runs its own body. Verified: phase14_macro_shadow_builtin.sh + spec's s/or/s/and route correctly. ORIGINAL: open (2026-06-20). BUG: a user/lib macro that SHADOWS a builtin-macro NAME is hijacked by the builtin. `expandIfMacro` (src/eval/macro_dispatch.zig:107) looks up the Zig builtin-macro table by `head_name` (NAME only) BEFORE the user-defmacro fallback, so an alias/qualified call to a same-named macro in another ns runs the BUILTIN transform, not the resolved Var's own body. Repro: `(ns mylib (:refer-clojure :exclude [or])) (defmacro or [& xs] ...) (ns user (:require [mylib :as m])) (m/or 1 2)` → expands as clojure.core/or, NOT mylib/or (even `(mylib/or …)` fully-qualified; `(ns-resolve 'mylib 'or)` correctly returns #'mylib/or). Hits clojure.spec.alpha HARD: spec excludes + redefines `or`/`and`/`cat`/`keys`/`def`/`merge`; `s/or` mis-routes to core/or (returns the first label `:i`), `s/and` mis-routes to core/and (validates only the LAST pred — silently wrong, only LOOKED right for `(s/and int? pos?)` by coincidence). ATTEMPTED FIX (reverted 2026-06-20): gate the table lookup on the resolved Var being a nil-root MARKER (builtins are interned `.nil_val` in rt ns, registerInto; a user defmacro has a callable root) — the minimal repro then works (`m/or` → user body) and builtin or/and/case/cond regress-clean. BUT it cascaded: spec's macros then route through the callFn fallback, and a spec macro THROWS during expansion (`error.ThrownValue` at alpha.clj:1516, masked as 'foreign error' → now surfaced via @errorName), and `ExpandError = ClojureWasmError` does NOT include `error.ThrownValue`, so the throw cannot propagate (clj surfaces a macro-expansion throw as a compile error / lets the expanding code catch it). FULL LANDING (focused cycle) = (a) the nil-root gate (or a Var-pointer-identity gate vs the rt builtin), PLUS (b) widen the macro-expansion error channel to carry a user throw — add `error.ThrownValue` to ExpandError + thread it through the analyzer's expand call sites — AND (c) root-cause WHY a spec macro throws at expansion (the 1516 location is suspicious; renderer may mis-point). Keep the @errorName(e) diagnostic (strict improvement over the fixed 'foreign error' string). This is the LAST blocker for full s/or + strict s/and (D-475 is otherwise mostly-functional: load + s/cat/*/+/alt/coll-of/keys/conform/valid? all clj-verified via the 6 committed generic fixes). ROOT-CAUSE LEAD (for the focused cycle): spec.alpha's own `(defmacro …)` set that shadows a Zig builtin name = {`and`, `or`, `assert`} (verified via `comm` of spec defmacros ∩ the Zig BOOTSTRAP table; the wider {cat/keys/def/merge/fdef/…} are NOT Zig builtins so they always took the callFn fallback and are unaffected). Under the nil-root gate, bare `and`/`or`/`assert` in spec's ns route to spec's OWN macro via callFn. BUT all of spec's bare `and`/`or` uses are inside SYNTAX-QUOTE templates (describe* at 1125/1192; the `(spec (and …))` in int-in/inst-in/double-in macro bodies at 1902/1917/1930) — i.e. they are quoted SYMBOLS, not expanded at load — and there is no bare load-time `assert`. So the 1516 (`add-ret`, which uses only let/case/fn = nil-root builtins) throw should NOT happen by static reasoning → the error LOCATION is almost certainly mis-pointed (known renderer issue). The focused cycle should re-apply the gate + add a one-shot trace of (head_name, head_var.ns.name) at the callFn entry to find the ACTUAL throwing macro/site, rather than trust 1516. Likely candidate to check first: a builtin whose deref is unexpectedly callable, or a syntax-quote expansion path that evaluates a shadowed macro."
-    category: "interop"
-    barrier: "none — a self-contained analyzer fix; the architectural part is widening ExpandError to carry error.ThrownValue (a known-bounded change across the macro-expand call sites). High clj-parity value (affects ANY lib defining macros named like core forms), not just spec."
-    last_reviewed: "2026-06-23"
   - id: "D-477"
     status: "open (2026-06-20, surfaced bundling clojure.spec.alpha). LATENT GAP: an EAGER-bundled lib that does a top-level `(set! *config-var* v)` raises, because eager libs load DURING loadCore/buildBootstrapEnvelope (AOT build) + are replayed atomically by loadCoreAot (AOT restore) — both BEFORE `installBaselineBindings` establishes the thread-binding frame that makes config-var set! work (the frame is installed AFTER all libs load, in setupCore/setupCoreAot). spec.alpha's `(set! *warn-on-reflection* true)` was the first hit; it was DROPPED as a no-JVM adaptation (warn-on-reflection is a no-op in cljw), sidestepping the gap. But a future stdlib/contrib bundled lib that set!s a MEANINGFUL config var at top level (`*print-length*`/`*unchecked-math*`/`*math-context*`) WILL hit it. FIX (when a real consumer appears): install the baseline binding frame AFTER core.clj (FILES[0]) but BEFORE the non-core libs, in all three paths (loadCoreFiles source-mode, buildBootstrapEnvelope AOT-build, and crucially loadCoreAot AOT-restore — which replays the whole blob atomically, so the frame must be pushed before the replay or the set! op must be hoisted). The AOT-restore path is the hard part (atomic blob replay). Diagnostic landed this cycle: builder.zig buildBootstrapEnvelope now prints `[AOT-FAIL] <file> form #N` on a bootstrap-eval error (was a bare ValueError)."
     category: "structure"
     barrier: "none yet — no bundled lib needs a meaningful top-level config-var set! (spec's was a dropped no-op). Take up when a stdlib/contrib sweep lib actually requires it. The AOT-restore atomic-replay path is the design challenge. Cross-ref: the eager→lazy bundled-lib switch (lazy-AOT, the DA Alt-2 finished form in ADR for spec bundling) would also resolve this by replaying per-lib on require with the frame active."
-    last_reviewed: "2026-06-20"
-  - id: "D-481"
-    status: "DISCHARGED 2026-06-21 — moved `self.gc.deinit()` in Runtime.deinit to BEFORE the native/class/user TypeDescriptor frees (it was last, after them). The host_instance finaliers run inside gc.deinit + read `inst.descriptor`, so the descriptors must outlive finalisation; the frees use `gc.infra` (a passed-in allocator field gc.deinit never tears down) so they stay valid after. Validated: the `app.builder.test.deserialized fn_val` test + full suite + CLJW_GC_TORTURE green WITH datafy bundled. Unblocked the datafy re-land (D-478). ORIGINAL: GC-deinit ordering bug: `Runtime.deinit` FREES the per-Tag native descriptors + the class_descriptors (and user TypeDescriptors) — all gc.infra-allocated — BEFORE calling `self.gc.deinit()`, which is what RUNS the host_instance finaliers (`host_instance.zig:96 finaliseGc` reads `inst.descriptor.host_finalise`). So a host_instance whose descriptor is one of those freed native/class descriptors dangles → segfault at finalize. Repro: extend a protocol to BOTH `Object` AND a host-native-tag (`(extend-protocol Datafiable Object … )` in core.protocols + datafy's `(extend-protocol Datafiable clojure.lang.Namespace/IRef java.lang.Throwable/Class …)`) at the SOURCE-bootstrap path, then deinit (the `app.builder.test.deserialized fn_val` test crashed). The tangle: gc.deinit BOTH runs finalisers AND tears down gc.infra (the descriptors' backing allocator), so descriptors are freed before gc.deinit by necessity — but finalisers run during gc.deinit, after the free. FIX needs SPLITTING gc.deinit into a finalise phase (descriptors alive) then an infra-teardown phase, OR freeing the native/class/user descriptors between finalise + teardown. A focused GC-lifetime unit (careful — finalisers also touch the time/locale singletons freed at deinit's top). Blocks re-bundling clojure.datafy (D-478). The AOT-restore binary path does NOT hit it (datafy works there). Bisected: bisect A (datafy host-extends, no Object default) PASSED; bisect B (Datafiable Object default + datafy host-extends) CRASHED → the Object×host-tag combination on one protocol is the trigger."
-    category: "interop"
-    barrier: "GC-deinit finalise-vs-descriptor-free ordering (gc.deinit runs finalisers AND tears down gc.infra). Needs a finalise/teardown split — careful GC surgery, deferred from a 4am session. Not production-affecting (AOT binary works); blocks the datafy SOURCE-bootstrap bundle. Medium value (unblocks datafy + hardens deinit)."
-    last_reviewed: "2026-06-21"
-  - id: "D-478"
-    status: "DISCHARGED 2026-06-21 — clojure.datafy bundled + clj-verified (datafy 5→5 / nil / (atom 42)→[42] / *ns*→user / nav, corpus datafy.txt 10), once D-481 (the gc.deinit ordering bug it exposed) was fixed. The generic enablers: (1) extend-protocol/type TO a concrete host type via 4 nativeExtendTags arms (Namespace→.ns / IRef→atom/agent/ref/var / Throwable→.ex_info / Class→.type_descriptor; e2e phase7_extend_host_type), (2) `ns-imports` (→ empty map), (3) core.protocols' Datafiable/Navigable nil/Object defaults were missing — added. ORIGINAL note: the generic D-478 fix LANDED (extend-protocol/type TO a concrete host type via 4 nativeExtendTags arms — Namespace→.ns / IRef→atom/agent/ref/var / Throwable→.ex_info / Class→.type_descriptor; e2e phase7_extend_host_type), PLUS `ns-imports` (→ empty map). But BUNDLING clojure.datafy itself is DEFERRED to D-481: datafy needs core.protocols' `(extend-protocol Datafiable Object (datafy [x] x))` default, and extend-to-Object + the host-native-tag extends on the same protocol at the SOURCE-bootstrap path triggers a GC-deinit-ordering segfault (D-481). datafy LOADS + runs correctly in the AOT binary (verified: datafy 5→5, datafy (atom 42)→[42], datafy *ns*→user, all clj-matched); the crash is only the source-load test path. Reverted datafy.clj + the core.protocols defaults; re-land once D-481 is fixed. ORIGINAL plan was: (1) extend-protocol/type TO a concrete host type (clojure.lang.Namespace→.ns / IRef→atom/agent/ref/var / java.lang.Throwable→.ex_info / java.lang.Class→.type_descriptor) via 4 nativeExtendTags arms — the IPersistentVector→vector mechanism, NOT the structural rewrite first feared (the value→marker dispatch already exists via rt/__native-type, which scans the whole Tag enum); (2) `ns-imports` added (→ empty map, cljw has no Java imports, ADR-0059); (3) the bundled core.protocols was MISSING Datafiable/Navigable's nil/Object default impls (so `(datafy 5)` errored instead of returning x) — added. datafy.txt corpus (10) + phase7_extend_host_type.sh e2e (7). ORIGINAL: clojure.datafy does not load: it `(extend-protocol p/Datafiable …)` over 4 CONCRETE host types cljw does not recognize as extend-type targets — `clojure.lang.Namespace`, `clojure.lang.IRef`, `java.lang.Throwable`, `java.lang.Class` (AOT-FAIL form #5: 'Unable to resolve symbol: clojure.lang.Namespace'). cljw's host-supertype closed set (host_interfaces.yaml, F-013, ADR-0102) recognizes ~40 interface markers but none of these 4 concrete types. To bundle datafy properly each needs (a) a host_interfaces.yaml entry + (b) a value→marker dispatch mapping (interface_membership) so a namespace/atom-ref/exception/class VALUE dispatches the extended Datafiable arm — a STRUCTURAL F-013 extension, NOT a load-level accept (a load-only extend that never dispatches would silently drop datafy's rich {:name/:publics/…} return = permanent-no-op smell, forbidden). IRef may be cheap (atoms already match IDeref, so the value→marker machinery exists); Namespace/Class/Throwable are new concrete-type predicates. The Class arm also `(requiring-resolve 'clojure.reflect/reflect)` (clojure.reflect unbundled — lazy, fails only at call). Take up as a FOCUSED host-marker-extension unit (likely its own ADR amending the F-013 closed set); datafy is niche (REPL tooling) so not urgent. Prep: private/notes/datafy-bundle-prep.md. The datafy port + FILES wiring were reverted to keep main green."
-    category: "interop"
-    barrier: "none structurally, but it is an F-013 closed-set extension (4 concrete host types → extend-type targets + their value→marker dispatch) deserving a focused unit + ADR, not a rushed add. Low urgency (datafy is niche). Generic value: enables `(extend-protocol P clojure.lang.Namespace …)` etc. for any code."
     last_reviewed: "2026-06-20"
   - id: "D-482"
     status: "open (2026-06-21, found probing instance? Counted). cljw EAGERLY REALIZES the output of some seq ops into a counted `PersistentList` where clj keeps a lazy non-counted Cons/LazySeq → `counted?` (and `(instance? clojure.lang.Counted x)`) diverge: `(counted? (cons 1 [2 3]))` / `(counted? (take 3 (iterate inc 0)))` / `(counted? (take 3 (repeat 1)))` → cljw TRUE, clj FALSE. Confirmed via `(class …)`: all three are `PersistentList` in cljw, `Cons`/`LazySeq` in clj. The legit chunked-vector-seq `(seq (vec (range 40)))` is counted in BOTH (clj-correct). So the divergence is exactly: cljw `cons`/`take`/… build an eager realized list, clj a lazy seq. ROOT = cljw's seq-realization model (the ADR-0054 print-realizes lineage), NOT a countedQ tag-membership bug — removing `.cons`/`.list` from countedQ would wrongly un-count a real `(list …)`. `(take 3 (range))` works (take IS bounded-lazy on its INPUT — only the OUTPUT is realized eager), so this is not an infinite-seq hang, just a counted?/laziness representation gap. Likely broader side-effect-timing implications (eager realization). A focused seq-laziness unit (make cons/take return a lazy/Cons-equivalent non-counted seq) — deep, deferred; low-urgency (counted? on a lazy seq is rare). Could alternatively be classified as an accepted divergence if the eager model is deemed permanent."
@@ -1096,15 +732,6 @@ active:
       untrusted-data is an unusual pattern; load_paths are operator-controlled.
       Cross-ref ADR-0123 § Scope, require_resolver.zig, SE-6/7.
     last_reviewed: "2026-06-09"
-  - id: "D-348"
-    status: "DISCHARGED (2026-06-20). The barrier dissolved: the 'no unified array_map/hash_map iterator in Zig' blocker is gone — `map.zig::forEachEntry` (added for the java.util/TreeMap work) now walks either map shape. `(wasm/run …)` now accepts `:env {name value}` — a map whose keys are strings OR keywords (`:PATH` → \"PATH\") and whose values are strings; parsed in surface.zig via forEachEntry into the parallel env_keys/env_vals slices `engine.RunOpts` already threads to zwasm's runWasmCapturedFull. A non-map :env or a non-string value raises a catchable wasm_run_arg_invalid. VERIFICATION SCOPE (honest): the cljw-side PARSE + threading is e2e-verified (phase16_wasm_run: PASS wasm-run-env on a valid string+keyword-keyed :env; the NOT-CAUGHT guard covers the non-map + non-string-value type errors). The env actually reaching the guest's WASI environ is zwasm's runWasmCapturedFull responsibility (pre-existing + zwasm-tested) — NOT re-verified end-to-end here because the repo's wasm_run_probe.wasm imports environ_get but does not ECHO env (prebuilt, no source to modify), so there is no in-cljw observable of guest env. If a future module echoes env, add an output assertion. Surfaced 2026-06-09 (ADR-0124, DA review F-013); the wasm/run option surface (args/stdin/dir/dirs/env) is now complete."
-    category: "feature"
-    barrier: |-
-      blocked-by: a small cljw map-iteration helper (or array_map+hash_map dual
-      walk) to extract parallel key/val string slices from an :env map. Low
-      effort; deferred because no current demo needs env. Cross-ref surface.zig
-      wasmRunFn :dir/:dirs block.
-    last_reviewed: "2026-06-09"
   - id: "D-353"
     status: "open — SCI-style capability gating (var/ns allow-deny) (isolation dim (c)). cljw resolves ANY var (env.zig:173); there is no allow/deny on which vars/namespaces evaluated code may reach (cf. SCI's :allow/:deny/:namespaces). A compat_tiers.yaml-driven allow-list at the var-resolution choke point would let an embedder restrict untrusted code to a safe surface. Surfaced 2026-06-09 (isolation scope study)."
     category: "isolation"
@@ -1123,11 +750,6 @@ active:
       verified lib needs it; then hash UTF-8 (AD-009) or add a UTF-16 path. Cross-ref
       ADR-0108 am1, AD-009.
     last_reviewed: "2026-06-10"
-  - id: "D-413"
-    status: "open (2026-06-13, surfaced by a since-rewritten diff case) — in the minimal diff_test Fixture (primitive.registerAll only, no core.clj), analyzing an UNRESOLVED symbol that falls through to the host-class lookup (analyzer.zig analyzeSymbol → env.rt.types.get) panics with 'integer overflow' at std hash_map getIndex `capacity() - 1` instead of raising symbol_unresolved. stdlib has a size==0 guard, so the mechanism is NOT a plain empty-map get — needs a minimal repro to classify (corrupt map state vs fixture lifetime vs stdlib edge). Production unaffected (installAll always populates rt.types and the host-class path is exercised constantly). Repro recipe: add `try f.check(\"(re-matcher 1)\", 0);` (any unresolved symbol) to src/lang/diff_test.zig and run zig build test. DISCHARGED (2026-06-20). CLASSIFIED = fixture-lifetime (NOT corrupt-map / stdlib-edge / production). Root cause: the diff_test `Fixture.init` returned the Fixture BY VALUE after `Env.init(&f.rt)` captured `&f.rt`; `return f` relocated `rt` to the caller's storage, leaving `env.rt` a DANGLING pointer to the pre-move init-local stack slot. Resolvable symbols never deref it (they resolve as var/primitive before the host-class fallthrough), so 1180 tests passed by luck; an unresolved symbol reaches `resolveClassValue(env.rt,…)` → `rt.types.get` on the dead slot. Proven by instrumentation: `&self.rt != env.rt` (different addresses), and the abort was NON-DETERMINISTIC (adding two intervening `get()` calls made it pass) = textbook dangling-stack-slot UB; the std `size==0` guard means a valid-but-empty map would never abort, ruling out the empty-map hypothesis. FIX (finished-form, the COMPLETE one — the Fixture also self-references `rt.io`→`&threaded`): converted `Fixture.init` to init-in-place via an out-pointer `fn init(f: *Fixture, alloc)` so the struct is built at its final address and never moved; updated all 117 call sites to `var f: Fixture = undefined; try Fixture.init(&f, …)`. Regression test 'D-413 unresolved symbol → clean symbol_unresolved, not a panic' asserts `(re-matcher 1)` raises NameError on BOTH backends. zig build test -Dwasm green; lint clean."
-    category: "robustness"
-    barrier: "none — reproduce, then either fix the map-state bug or make the class-lookup fall through cleanly to symbol_unresolved on a types miss."
-    last_reviewed: "2026-06-13"
   - id: "D-433"
     status: "open (2026-06-14, surfaced building the D-431 Throwable class_corpus). cljw conflates an exception's str/toString with its pr/pr-str: `(str ex)` / `(.toString ex)` / `(pr-str ex)` ALL return cljw's compact `#error{:message \"boom\" :data nil}` form. clj distinguishes: `(.toString ex)` = `(str ex)` → \"java.lang.Exception: boom\" (Throwable.toString = class + ': ' + message, a readable one-liner); `(pr-str ex)` → the `#error {:cause :via :trace [JVM frames]}` data literal. cljw matches NEITHER. The JVM-FQCN + JVM-stack-trace parts are correctly out of scope (ADR-0059 / AD-003 / AD-007 — no JVM class, no JVM trace). The IMPROVEMENT toward F-011: give `(str ex)` / `(.toString ex)` the readable `<simple-name>: <message>` one-liner (AD-003 simple name), and keep `#error{...}` for the pr/pr-str (data-literal) context — i.e. introduce the str-vs-pr distinction cljw lacks for error values. Excluded from the Throwable class_corpus (a divergence, not a clj match). SCOPE (user-confirmed 2026-06-14): this is ONLY the str/pr one-liner — the STACK TRACE is intentionally NOT chased (cljw-native trace, no JVM frames; codified in AD-007). A SEPARATE, possibly-higher-value layer is matching the error DATA-SHAPE keys a lib reads programmatically (Throwable->map → :cause/:via/:data/:message; ex-data/ex-message already match) while keeping trace VALUES cljw-native — verify which libs read these before investing. D-433 itself (the readable `(str ex)` one-liner) is LOW priority; may not be worth doing at all per the user's integration that clj's error UX is not the bar."
     category: "clj-parity"
@@ -1146,7 +768,7 @@ active:
       Anonymous NaN-box slot reservations to revisit. ADR-0027 §2 leaves Group D slots D11 / D12 / D13 + Group B slot B15 declared but unnamed (2 reserves — count updated post-ADR-0027-amendment-5 which named D13 = hamt_map_node + D14 = hash_collision_map_node for PersistentHashMap internals at §9.7 row 5.5.a; remaining B15 + D15 stay anonymous). Per F-002 + Devil's-advocate "reservations are memos, not contracts" verdict: name a Phase-5-to-15 horizon use case for each, OR shrink the slot count by re-drawing F-004's 4 × 16 group boundaries (depth-4 surgery) per measured dispatch frequency. Also tracks the Phase 7+ immediate-band candidate ADR (Devil's-advocate Wildcard Alt 3 on ADR-0027: inline 15-bit-id interned keyword / symbol at a new immediate band like `int_53` at `NB_INT_TAG`) — if adopted, B15 / C11 / D11-D15 may be reclaimed entirely. Phase 7 entry owner picks: name, shrink, or both. | Phase 7 entry
     last_reviewed: "2026-05-28"
   - id: "D-239"
-    status: "now (PARTIAL: var + atom + AGENT landed — agent meta via D-441, agent.zig:110 + metadata.zig dispatch; only ns + ref still deferred. Corrected 2026-06-17 audit: status previously said agent deferred.)"
+    status: "now (PARTIAL: var + atom + AGENT + REF landed — agent meta via D-441 (agent.zig:110 + metadata.zig dispatch); REF meta via D-533 (2026-06-25: Ref.meta field + `(ref v :meta m)` ctor kwarg + meta/reset-meta! dispatch; `with-meta` on a ref correctly THROWS — clj's Ref is not IObj, so that is clj-parity, not a gap). Only NS meta still deferred. Corrected 2026-06-17 audit (agent) + 2026-06-25 audit (ref).)"
     category: "runtime"
     quality_floor: "metadata: alter-meta!/reset-meta! on namespace / ref / agent refs"
     barrier: |-
@@ -1401,7 +1023,7 @@ active:
     quality_floor: 'correctness: nested seq/lazy map-KEY content hash + rt-free memoized seq-key hash (ADR-0139 Alt-2 finished form)'
     last_reviewed: "2026-06-14"
   - id: "D-439"
-    status: 'open (2026-06-14, found probing the BigDecimal interop surface during the clj-parity floor drain). The BigDecimal instance-method surface is PARTIAL: setScale (2+3 arg) + scale/signum/unscaledValue/precision are LANDED (e2e phase14_bigdecimal_setscale, 28 cases); PARTIAL 2026-06-15 — negate\/abs\/toBigInteger\/stripTrailingZeros LANDED (e2e phase14_bigdecimal_setscale 35); STILL unimplemented: movePointLeft/movePointRight (scale shift), stripTrailingZeros (trailing-zero strip + scale reduce), negate/abs/plus, toBigInteger/toBigIntegerExact (truncate to int), add/subtract/multiply/divide instance forms. Each returns a new BigDecimal needing Managed arithmetic (negate/clone/mul-10^n) — fiddly but bounded. NICHE: clojure.core ops (- abs + * / and bigdec contagion) cover most arithmetic; the .method interop forms are reached mainly by Java-ported lib code. Take up when a real consumer hits one, or as a big-bang BigDecimal-interop-completion unit (clj_diff_sweep Discipline 2). NARROWED 2026-06-20 (the big-bang completion unit ran): the COMMON instance arithmetic + point-shift LANDED — add/subtract/multiply (delegate to the shared allocAdd/allocSub/allocMul the +/-/* operators use), divide (allocDiv; throws non_terminating_decimal/divide_by_zero like clj (/ aM bM)), movePointLeft/movePointRight (new big_decimal.allocMovePoint: unscaled unchanged + scale shift by ±n, a negative result-scale normalized by *10^|scale|). All clj-verified incl. movePointRight scale<0 (12.34 ·10^3 -> 12340); e2e phase14_bigdecimal_setscale now 43. The BigDecimal interop surface is now SUBSTANTIALLY COMPLETE (setScale/scale/signum/unscaledValue/precision/negate/abs/toBigInteger/stripTrailingZeros + add/subtract/multiply/divide/movePointLeft/movePointRight). REMAINING (niche, take-up-on-consumer): pow/sqrt/remainder/divideAndRemainder/scaleByPowerOfTen/round/min/max/compareTo/ulp.'
+    status: 'open (2026-06-14, found probing the BigDecimal interop surface during the clj-parity floor drain). The BigDecimal instance-method surface is PARTIAL: setScale (2+3 arg) + scale/signum/unscaledValue/precision are LANDED (e2e phase14_bigdecimal_setscale, 28 cases); PARTIAL 2026-06-15 — negate\/abs\/toBigInteger\/stripTrailingZeros LANDED (e2e phase14_bigdecimal_setscale 35); STILL unimplemented: movePointLeft/movePointRight (scale shift), stripTrailingZeros (trailing-zero strip + scale reduce), negate/abs/plus, toBigInteger/toBigIntegerExact (truncate to int), add/subtract/multiply/divide instance forms. Each returns a new BigDecimal needing Managed arithmetic (negate/clone/mul-10^n) — fiddly but bounded. NICHE: clojure.core ops (- abs + * / and bigdec contagion) cover most arithmetic; the .method interop forms are reached mainly by Java-ported lib code. Take up when a real consumer hits one, or as a big-bang BigDecimal-interop-completion unit (clj_diff_sweep Discipline 2). NARROWED 2026-06-20 (the big-bang completion unit ran): the COMMON instance arithmetic + point-shift LANDED — add/subtract/multiply (delegate to the shared allocAdd/allocSub/allocMul the +/-/* operators use), divide (allocDiv; throws non_terminating_decimal/divide_by_zero like clj (/ aM bM)), movePointLeft/movePointRight (new big_decimal.allocMovePoint: unscaled unchanged + scale shift by ±n, a negative result-scale normalized by *10^|scale|). All clj-verified incl. movePointRight scale<0 (12.34 ·10^3 -> 12340); e2e phase14_bigdecimal_setscale now 43. The BigDecimal interop surface is now SUBSTANTIALLY COMPLETE (setScale/scale/signum/unscaledValue/precision/negate/abs/toBigInteger/stripTrailingZeros + add/subtract/multiply/divide/movePointLeft/movePointRight). REMAINING (niche, take-up-on-consumer; RE-NARROWED 2026-06-25 debt audit — pow/compareTo/min/max/remainder/round now LAND too, verified directly: 8M/-1/1M/2M/1M/3.14M): only sqrt/scaleByPowerOfTen/ulp/divideAndRemainder still unimplemented.'
     category: clj-parity
     barrier: none — bounded numeric work (Managed negate/clone/mul-by-10^n + scale arithmetic), each clj-oracle-verifiable. Deferred as NICHE (clojure.core arithmetic covers the common path; .method interop is Java-port-only). Do as one big-bang completion unit or when a lib pulls a specific method.
     last_reviewed: "2026-06-14"
@@ -1790,15 +1412,6 @@ active:
     category: "clj-parity"
     barrier: "none for the local family (DONE). Remaining: (1) ZonedDateTime needs a bundled IANA tz database (named-zone offset/DST resolution) — a binary-size + update-cadence scope decision, user/ADR-owned, NOT autonomous; a fixed-offset subset would just be OffsetDateTime. (2) Arithmetic methods (plus*/minus*/between/atTime/atStartOfDay) are bounded follow-up units, take up on demand. Mechanise any new method via the phase15_java_time_* corpus/e2e."
     last_reviewed: "2026-06-18"
-  - id: "D-463"
-    status: "PARTIAL (2026-06-18 — clojure.test report-format fidelity LANDED; only per-var lifecycle-event emission residual). The named scope is DONE: (1) `*test-out*` re-enabled (`(def ^:dynamic *test-out* *out*)` + `with-test-out` now rebinds *out* to it; `(resolve 'clojure.test/*test-out*)` non-nil, `(binding [*test-out* w] (run-tests))` redirects — the no-JVM deferral reason was obsolete); (2) FAIL/ERROR 'in' line uses `testing-vars-str` rendering clj's `(test-name)` list form; (3) `=` + generic-predicate `:actual` now the clj `(not (= 1 2))` / `(not (pos? -1))` bare-symbol not-form (added a clj-style `function?` guard to the :default assert-expr so a predicate call gets the (not …) treatment, a value/macro form the plain value); (4) context line now the clj `outer inner` join (was `  context: [..]`); (5) a `:begin-test-ns` 'Testing <ns>' line. Mechanised: e2e phase15_clojure_test_output.sh (clj-grounded) + phase15_clojure_test_tap.sh golden updated (now `(pass-t)`/`(= 1 1)`/`(not (= 1 2))`, clj-faithful). Unmatchable parts → AD-041 (no source location ⇒ no ` (file:line)` suffix; no JVM stack ⇒ :error prints the ex value not a cause trace). RESIDUAL = per-var lifecycle events (begin/end-test-var, end-test-ns) are not emitted, so a custom reporter (tap) sees a subset of the events clj emits — low value (only affects custom-reporter diagnostic noise; the default reporter has empty methods for these)."
-    category: "clj-parity"
-    barrier: "none for the report-format scope (DONE). Remaining = per-var lifecycle event emission (begin/end-test-var, end-test-ns) — a small run-tests/test-var change to (do-report …) around each var, with matching report methods (default = no-op, like clj). Low priority: clj's default reporter ignores them; only custom reporters (tap) would gain the extra diagnostics. Take up if a real custom-reporter consumer needs the full event stream; mechanise by extending phase15_clojure_test_output.sh / _tap goldens."
-    last_reviewed: "2026-06-18"
-# === STANDING (epics / campaigns / capstones / deferred-future bucket) ===
-# Not drained as single units by the autonomous loop (CLAUDE.md self-select reads active: only).
-# Trackers + the user-directed indefinitely-deferred future bucket (broad JIT / CLJS->JS / C-FFI /
-# generational-GC / virtual-threads / out-of-process isolation / wasm structural-future). 2026-06-15.
 standing:
   - id: "D-520"
     status: "Collection-perf campaign (§9.2.S collection sub-strategy; ADR-0165, 2026-06-24). cljw LOSES bb 1.02-1.16x on collection-heavy benches (sieve/destructure/gc_*/bigint) but WINS pure-compute 2x + ratio_sum — the gap is the COLLECTION/LIBRARY layer, not the VM engine (bb=SCI tree-walk+clojure.lang, no JIT; cljw's VM beats SCI on compute). Strategy: keep best-of-breed ALGORITHMS (cljw already has real CHAMP+@popCount, radix+tail, array-map, std.math.big — no rewrite; RRB REJECTED), win on Zig-native LAYOUT (no headers + cache layout + GC-backed sharing, no Arc). ROI-ordered levers: L1 transients(owner-token)+bulk build [HIGHEST, first], L2 chunked-seq WALK path (sieve), L3 keyword-map get fast-path+@Vector scan (destructure), L4 variable vector tail+size-class free-list, L5 big.int.Mutable in-place (factorial, low), L6 CHAMP delete-canonicalization for fast =. Per-lever: branch develop/collection-<lever>, experiment-and-revert/commit-no-push, FULL diff oracle (global change, not smoke) + interleaved cljw-vs-bb A/B. The JIT (D-386) is the SEPARATE bigger compute frontier (bb can't follow). PAUSED-toggle = .dev/.perf_campaign_active."
@@ -6382,6 +5995,393 @@ discharged:
     category: clj-parity
     barrier: none — DONE this cycle (ADR-0140).
     last_reviewed: "2026-06-14"
+  - id: "D-534"
+    status: |-
+      DISCHARGED 2026-06-25 (6bcbd3b4). Added `APersistentSet`→SET_NAMES +
+      `IPersistentList`→IPLIST_NAMES to `host_interface.zig::nativeExtendTags`
+      (the SET_TAGS {hash_set,sorted_set} + IPLIST_TAGS {list,cons,queue} lists
+      already existed, so just 2 `*_NAMES` exports + 2 dispatch lines). A protocol
+      extended onto these abstract bases now distributes over the native set/list
+      tags (mirrors IPersistentVector→INDEXED). clj-verified (set print order is
+      AD-001, values `=`); regression-clean on the extend-type/protocol e2e.
+      **algo.monads now fully loads + runs clj-faithfully** (maybe-m → 3,
+      sequence-m → (11 21 12 22)) — completing the Compiler/specials → tools.macro
+      → APersistentSet → algo.monads chain. e2e phase14_extend_abstract_base.
+      ORIGINAL: open (2026-06-25, algo.monads real-library finding, post-Compiler/specials).
+      `clojure.lang.APersistentSet` and `clojure.lang.IPersistentList` are not
+      recognised as extend-type / extend-protocol TARGET markers that distribute
+      to the native set / list tags. `host_interface.zig::nativeExtendTags`
+      recognises IPersistentVector→vector, ISeq→seq, IPersistentSet (protocol_remap)
+      etc., but NOT APersistentSet (the abstract base, distinct from the
+      IPersistentSet interface) nor IPersistentList. So
+      `(extend-protocol P clojure.lang.APersistentSet (m [c] …))` →
+      "Unable to resolve symbol: clojure.lang.APersistentSet". Surfaced loading
+      clojure.algo.monads (monads.clj:481-493 extends a writer-monad protocol onto
+      IPersistentVector [OK] / IPersistentList / APersistentSet / String): it now
+      loads PAST the tools.macro barrier (Compiler/specials, 8c12a5d6) and stops
+      here. Fix: add APersistentSet→set + IPersistentList→list to the native-tag
+      distribution recognition (mirror the IPersistentVector entry). LOW-frequency
+      (these abstract bases as extend targets are rare); cross-ref the
+      nativeExtendTags table + the D-286/D-317 host-supertype family.
+    category: "interop"
+    barrier: |-
+      Add `clojure.lang.APersistentSet` (→ native set tag) + `clojure.lang.IPersistentList`
+      (→ native list tag) to `host_interface.zig`'s native-distribution recognition,
+      mirroring IPersistentVector. Repro: `(extend-protocol P clojure.lang.APersistentSet
+      (m [c] c))`, or load clojure.algo.monads with tools.macro on the deps.
+    last_reviewed: "2026-06-25"
+  - id: "D-533"
+    status: |-
+      DISCHARGED 2026-06-25 (80d9395b). `set-validator!`/`get-validator` + the
+      `:validator` ctor option now work on REFS and VARS (mirrors the atom/agent
+      surface, ADR-0081/D-223/D-441): requireValidatable + the iref* dispatch
+      extend to `.ref`/`.var_ref`; a Layer-0 `iref.validateOrThrow` is shared. VAR:
+      a `validator` field on Var (GC-traced via a new ns_vars `pending_validator`
+      stage) validated in `alter-var-root` before setRoot. REF: a `validator` field
+      on Ref (traceGc-marked) validated at COMMIT in `lock_tx.commit` (all-or-
+      nothing pre-pass, clj `Ref.validate`); `(ref v :validator f)` parses kwargs
+      like atomFn (validates initial value, throws on bad-init) + `:min/max-history`
+      wire the real ring bounds. clj-verified all 4 ref types; GC-torture-rooted;
+      e2e phase14_ref_var_validator (16 cases). Also discharges the **D-239 ref-meta
+      deferral** (a real Ref `:meta` field + meta/reset-meta! dispatch, observable
+      not silently dropped). RESIDUAL (narrow, low-value): `set!` on a `binding`-
+      shadowed dynamic var does not route through a validatable store, so a validator
+      is not consulted on that path (clj's `Var.set` does validate); deferred — a
+      rare edge, not worth a new row unless a consumer needs it. ORIGINAL:
+      open (2026-06-25, D-523 doc-audit finding). VALIDATORS on `ref` and `var`
+      are not wired: `set-validator!` / `get-validator` (atom.zig `requireValidatable`)
+      accept ONLY `.atom` / `.agent` — a ref/var arg errors "expected atom or
+      agent". And the `ref` constructor rejects its option map (`(ref v :validator
+      f)` / `:min-history` / `:max-history`) — `refFn` is arity-1 (stm.zig), unlike
+      `atomFn`/`agentFn` which parse `:validator`/`:meta`. clj wires all four ref
+      types' validators + the ref ctor options. The atom + agent halves are DONE
+      (D-223 / D-441); ref/var are the residue.
+    category: "concurrency"
+    barrier: |-
+      Ref validators need STM integration (no `ref_mod.setValidator` today; add a
+      `validator` field to Ref + validate the proposed value at commit in
+      `lock_tx.doSet`/`doCommute`, not a plain set like atom). Var validators are a
+      smaller add (a validator slot on the Var root). Then extend
+      `requireValidatable` + `irefValidatorOf`/`irefSetValidator` to `.ref`/`.var_ref`,
+      and make `refFn` parse the option map like `atomFn`. Repro: `(set-validator!
+      (ref 1) pos?)` / `(ref 1 :validator pos?)`. LOW-frequency (ref validators are
+      rare). Cross-ref ADR-0081, D-223, D-441.
+    last_reviewed: "2026-06-25"
+  - id: "D-530"
+    status: |-
+      DISCHARGED 2026-06-25 (ADR-0066 Amendment 1). BOTH parts fixed. Part (1) —
+      cross-section same-name-arity overload (the deeper one) — fixed by a
+      cross-section merge in the lowering: `lowerDefType` (deftype + defrecord) AND
+      `expandReify` pre-scan all protocol sections, group impls by method name +
+      section bitset, and a name spanning >1 section emits its FULL arity set under
+      each contributing protocol → `expandExtendType` / the reify builder produce
+      one multi-arity `fn*` per protocol; `selectMethod` dispatches by arg count.
+      MethodEntry/lookupMethod/dispatch/both backends unchanged (lowering-only,
+      upstream of the Node split). Step 0 survey 9.2.T-D530 + a DA fork (3
+      alternatives, reflected in ADR-0066 Amendment 1). clj-verified: deftype/
+      defrecord/reify cross-section `seq` overload + real data.priority-map
+      subseq/rsubseq all match clj. Same-arity duplicates error via the `fn*`
+      validator (F-011 parity). e2e phase14_deftype_overload_arity (6 cases:
+      deftype/defrecord/reify/within-section/priority-map) + 2 diff cases
+      (deftype + reify, both backends). Part (2) was discharged earlier (b476242e).
+      ORIGINAL: open (2026-06-25, D-528 data.priority-map real-library finding). TWO
+      deftype-Sorted gaps surfaced by running the library's own test suite
+      (13 errors remain after the map?/= equality fix in commit ceb2c460):
+      (1) `(. inst seq true)` on a deftype implementing BOTH clojure.lang.Seqable
+      (seq[this]) AND clojure.lang.Sorted (seq[this ascending]) fails "Wrong number
+      of args (2) passed to fn, expected 1" — cljw's `.method`-with-arg dispatch
+      does not resolve the 2-arity same-NAMED deftype method (overloaded method
+      name by arity). `.seqFrom`/`.comparator` (unique names) work fine. This
+      breaks data.priority-map's own subseq/rsubseq.
+      (2) DISCHARGED 2026-06-25 (commit b476242e): `(sorted? deftype-Sorted)` now
+      true — sortedQFn consults clojure.lang.Sorted membership like the map? fix;
+      e2e phase14_deftype_sorted/sorted_pred_deftype. Part (1) (overloaded seq
+      arity dispatch) REMAINS open and is the deeper, multi-file deftype-lowering
+      change below.
+    category: "interop"
+    barrier: |-
+      (2) is a contained predicate fix (sortedQFn consults clojure.lang.Sorted
+      membership, mirroring the D-528 map? fix). (1) is deeper: the deftype method
+      table appears keyed by name only, so an overloaded same-name/different-arity
+      method (seq/1 Seqable vs seq/2 Sorted) collides. PRECISE DIAGNOSTIC
+      (2026-06-25): a deftype declaring BOTH `(seq [_])` and `(seq [_ asc])`
+      DEFINES without error but SILENTLY keeps only the arity-1 fn — `(seq t)`
+      runs the Seqable body; `(. t seq true)` calls that SAME arity-1 fn with 2
+      args → "expected 1". So the lowering registers ONE single-arity fn per
+      method NAME, dropping the other arity. FIX PLAN: `expandDeftype`
+      (macro_transforms.zig) must MERGE same-name bodies of different arity into
+      ONE multi-arity `fn*` (clj treats a deftype method name with N arities as
+      one multi-arity method), so `lookupMethod(name)` returns one arity-
+      dispatching fn. Touches the lowering + both backends' method-call path
+      (dual_backend_parity) + warrants a DA fork (dispatch-representation change).
+      Drain as a focused unit. Repro: load data.priority-map via deps.edn
+      :local/root, run test_priority_map.clj; or minimal — a deftype with
+      `(seq [_] …)` + `(seq [_ a] …)`, then `(. t seq true)`. IMPLEMENTATION SCOPE
+      (mapped 2026-06-25): the change is MULTI-POINT, not one-line. `expandDeftype`
+      → `lowerDefType` + `wrapMethodBodyWithFields` BOTH assume a single-arity method
+      (`impl.data.list[1].data == .vector` — the param vector), so they handle
+      neither multi-arity method SYNTAX `(name ([a] …) ([a b] …))` nor two same-name
+      impls. Merging needs: detect same-name impls in lowerDefType → emit one
+      multi-arity `fn*` as the method_val → wrapMethodBodyWithFields per arity →
+      the runtime method dispatch (lookupMethod + vt.callFn) invoke the multi-arity
+      fn. High blast radius (every deftype/reify) ⇒ DA fork + the full
+      dual_backend_parity e2e set. A fresh focused unit, NOT a session-tail change.
+    last_reviewed: "2026-06-25"
+  - id: "D-516"
+    status: "DISCHARGED 2026-06-24 (0f159228, ADR-0163). Lazy-namespace bytecode loading COMPLETE (commits 1 missing-:require, 2 loaded_libs guard+pre-register, 3a+3b region blob, 3c the flip). Eager = clj no-require set (SSOT bootstrap.EAGER_NS: core+string/walk/edn/java.io/core.protocols/uuid/instant/spec.alpha + cljw.wasm); rest lazy via loadOrFindNs region replay = STRICT clj-parity. Cold floor 9.4->4.3ms. Bugs fixed: require 4-path mappings.count short-circuit unified to loadOrFindNs; mylib inline-ns last-resort; cljw.wasm analyze-time eager; check_corpus_regression auto-require. Blast-radius: 27 e2e + cw_ported.clj missing-require added (zero real bugs). The region blob is D-517-ready."
+    category: "perf"
+    barrier: |-
+      ADR-0162 step 2. Prereq: D-140 (step 1) lands first. MANDATORY F-011 gate in the
+      same arc (the DA's one real correctness item): (a) a build-time check that EVERY
+      embedded ns replays clean (cache_gen already builds each envelope — small extension)
+      so 'load errors move boot->first-use' is neutralised; (b) audit load-time global-table
+      side effects (defmethod/defmulti/derive/extend-type/print-method installs) so no
+      default-path behaviour silently depends on a now-lazy ns. Matches JVM Clojure (core
+      auto-loads; the rest you require) — current eager-all is accidental eager semantics.
+      Determine the minimal eager set by tracing what core's load + the default REPL/-e path
+      actually dereferences (e.g. core.protocols, the error-render peer, core-macro helpers).
+    last_reviewed: "2026-06-24"
+  - id: "D-514"
+    status: "DISCHARGED (2026-06-24). BigInteger instance-method surface complete: abs/negate/signum/gcd/pow/mod/sqrt + modPow (square-and-multiply) + bitLength + isProbablePrime (deterministic Miller-Rabin, witnesses {2..37}; 561 Carmichael→false verified). bigint_methods.zig on the .big_int native descriptor; e2e phase14_biginteger (29 cases). Only `.modPow` with a NEGATIVE exponent (modular inverse via extended Euclid) is left unimplemented — currently raises; rare, low priority (re-file if a real consumer needs it)."
+    category: "clj-parity"
+    barrier: |-
+      DISCHARGED — BigInteger instance methods complete bar negative-exponent modPow
+      (modular inverse), which raises; re-open only if a consumer needs it.
+    last_reviewed: "2026-06-24"
+  - id: "D-512"
+    status: "DISCHARGED (2026-06-24). `.until(d2, ChronoUnit)` now complete across all three temporal types: LocalDate (6d8af75c), LocalDateTime (7c6e0872; date units via instant.dateUntil + time-of-day adjust, time units via JVM piecewise day-split, makeLong promote), Instant (this commit; fixed-duration NANOS..DAYS via i128 total nanos, WEEKS+ raise). clj-verified throughout. e2e: phase15_java_time_dow_month (until/ldt-until) + phase15_java_time_instant (instant-until)."
+    category: "clj-parity"
+    barrier: |-
+      DISCHARGED — `.until` complete for LocalDate / LocalDateTime / Instant.
+    last_reviewed: "2026-06-24"
+  - id: "D-510"
+    status: "DISCHARGED (2026-06-24, ADR-0161, 2 cycles). Unified all four host enums (RoundingMode/ChronoUnit/DayOfWeek/Month) onto ONE comptime registry (runtime/host_enum.zig) + ONE flat rt.host_enum_consts[43] cache with a single interning entry point (DA Alt-3). Cycle 1: built the mechanism + migrated Group A (RoundingMode/ChronoUnit) behaviour-preserving; folded+deleted rounding_mode.zig/chrono_unit.zig. Cycle 2: folded Group B (DayOfWeek/Month) from .typed_instance getter-mint to .host_instance singletons — new surfaces DayOfWeek.zig/Month.zig (static fields + getValue/name/toString), getters return the interned singleton, TypeDescriptor.host_enum_idx drives unified pr-print + compare-by-ordinal; removed the typed_instance equal/compare/print arms + day_of_week_value.zig/month_value.zig + their per-Runtime descriptors. PARITY WINS: DayOfWeek/MONDAY..Month/DECEMBER static fields now resolve; (identical? (.getDayOfWeek monday) DayOfWeek/MONDAY) => true; all four enums JVM-Comparable (sign-based, AD-043 extended). compat_tiers: 4 entries → keyword host_enum (G3 green). MathContext stays a consumer (not a member). Pinned by test/e2e/phase15_java_time_dow_month.sh (enum-const/identity/compare blocks)."
+    category: "host-surface"
+    barrier: |-
+      ADR-0160 modelled java.math.RoundingMode as a host-enum object singleton
+      (Locale pattern + a `StaticFieldValue.rounding_mode: u8` arm + the neutral
+      runtime/rounding_mode.zig). The DA-fork (Alt 3) noted this is one instance of
+      a RECURRING need: java.util.concurrent.TimeUnit, java.time.DayOfWeek / Month
+      (ALREADY ad-hoc in TemporalPrint's enum arms), java.time.temporal.ChronoUnit.
+      The finished form for the enum CATEGORY is a first-class mechanism:
+        - a `StaticFieldValue.host_enum_const { enum_fqcn, name, ordinal }` arm
+          (generalising the `.rounding_mode: u8` one-off),
+        - a per-Runtime interned singleton resolver (generalising rounding_mode.zig
+          + the locale slots),
+        - a uniform bare-name `.toString` + `(class …)` path, subsuming the bespoke
+          `day_of_week` / `month` arms in type_descriptor.zig's TemporalPrint.
+      Per F-003 this is a STRUCTURAL plan deferred to its owning unit, not seized mid
+      clj-parity-sweep. Retrofit targets when opened: fold RoundingMode + DayOfWeek +
+      Month into the one mechanism; add TimeUnit / ChronoUnit as new members; a
+      MathContext host class (the with-precision :rounding consumer) is the first
+      downstream beneficiary of a TYPED enum arg (vs the int/precision ambiguity).
+      Barrier dissolves when a 2nd or 3rd host enum is actually needed (TimeUnit /
+      MathContext) — at that point the one-off count justifies the mechanism.
+    last_reviewed: "2026-06-24"
+  - id: "D-501"
+    status: "DISCHARGED (2026-06-22). Implemented `clojure.core/time` as a bootstrap macro in src/lang/clj/clojure/core.clj (right after with-out-str): `(defmacro time [expr] \\`(let [start# (System/nanoTime) ret# ~expr] (prn (str \"Elapsed time: \" (/ (double (- (System/nanoTime) start#)) 1000000.0) \" msecs\")) ret#))`. Uses prn (so the string is quoted, matching JVM clj: `(time 42)` → prints `\"Elapsed time: N msecs\"` then returns 42). System/nanoTime was already reachable (clock.zig nanoTime). e2e in phase14_core_cluster.sh (time_value→42 / time_prefix / time_msecs, with-out-str-captured so the timing-dependent number isn't asserted). Verified vs clj oracle: identical shape. ORIGINAL: open (2026-06-22, found while building cw-playground JIT examples). `clojure.core/time` was UNRESOLVED: `(time expr)` → Name error; `(resolve 'time)` → nil. The cw-playground 'jit-speed' example wanted `(time …)` and fell back to the UI's :ms display."
+    category: "clj-parity"
+    barrier: |-
+      Quick clj-parity win. Implement `clojure.core/time` as a macro in the bootstrap
+      core (src/lang/clj/clojure/core.clj or the Zig special-form table — survey where
+      defmacro-level core macros live). clj's form:
+        (defmacro time [expr]
+          `(let [start# (. System (nanoTime)) ret# ~expr]
+             (prn (str "Elapsed time: " (/ (double (- (. System (nanoTime)) start#)) 1000000.0) " msecs"))
+             ret#))
+      cljw needs a nanosecond clock primitive reachable from bootstrap .clj (D-053 noted
+      std.time.nanoTimestamp was removed in Zig 0.16 — check the current clock surface,
+      runtime/clock.zig / instant.zig). Output goes to *out* (clj) — match it. Add an e2e
+      asserting `(time 42)` returns 42 and prints an \"Elapsed time:\" line. One small TDD cycle.
+    last_reviewed: "2026-06-22"
+  - id: "D-487"
+    status: "DISCHARGED (2026-06-21, user re-flagged the Debug slowness). VALIDATED the hypothesis decisively: `zig build test -Dwasm -Doptimize=ReleaseSafe` = ~59s cold / ~1.0s warm vs Debug ~200s (3.4× cold, ~200× warm), ALL TESTS PASS (ReleaseSafe keeps bounds/overflow/UB panics; the F-012 diff oracle does not depend on Debug's 0xAA undefined-poisoning). APPLIED: run_all.sh L313-314 now pass `-Doptimize=ReleaseSafe` for both backends; the build-mode policy table (.claude/rules/perf_measure_release.md) amended (gate unit tests = ReleaseSafe; bare `zig build test -Dwasm` stays Debug for dev undefined-poisoning diagnostics). The smoke's dominant cost (zig build test ×2, ~400s) drops to ~120s cold / ~2s warm. ORIGINAL: open (2026-06-21, audited on user prompt re: smoke slowness). The per-commit smoke's dominant cost is `zig build test` ×2 (run_all.sh L313/314: `zig build test -Dwasm` [+ `-Dbackend=tree_walk`]), which default to **Debug** (no `-Doptimize`, per the build-mode policy 'unit tests = Debug for fast-compile + max diagnostics'). MEASURED 2026-06-21: a WARM `zig build test -Dwasm` (compile cached → pure RUN) = **real 114.67s / user 112.96s**; cold (after a vm.zig edit) ≈ 168s = ~114s RUN + ~54s compile. So the RUN dominates — the F-012 diff oracle + all unit tests evaluate MANY programs on the DEBUG-compiled interpreter, hitting the Debug-perf-cliff (perf_measure_release: e.g. (count (vec (range 1e6))) = Debug 121s vs ReleaseFast 0.02s). The shipped/e2e binary is correctly ReleaseSafe (verified `cljw --version`); only the unit-test build is Debug. The build-mode policy assumed COMPILE dominates for unit tests — the diff oracle makes that BACKWARDS (RUN dominates)."
+    category: "perf"
+    barrier: |-
+      Hypothesis (high-value, aligns with the throughput focus — efficient_gate_pipeline /
+      smoke_first_batch_full_gate): run `zig build test` in **ReleaseSafe** instead of Debug.
+      ReleaseSafe KEEPS all safety checks (bounds / overflow / UB panics) — it is the
+      'safe optimized' mode — so the correctness oracle stays sound, while the interpreter
+      runs ~10-100× faster, likely cutting the 114s RUN to seconds (smoke ~6min→~1-2min;
+      warm re-runs near-instant). Tradeoff: ReleaseSafe COMPILES slower than Debug (~54s →
+      maybe ~90-120s), but the RUN saving dwarfs it, and warm builds skip compile entirely.
+      ADR-level (reverses the build-mode policy table for the unit-test step). VALIDATION
+      REQUIRED before flipping: (1) `time zig build test -Dwasm -Doptimize=ReleaseSafe` —
+      confirm it is materially faster AND all tests still PASS (some may rely on Debug-only
+      undefined-value detection or exact panic text); (2) check the diff oracle doesn't
+      depend on Debug `undefined` poisoning; (3) keep Debug available via a flag for deep
+      diagnostics. The measurement command + the policy table to amend live in
+      `.claude/rules/perf_measure_release.md`. Quick win for the next session.
+    last_reviewed: "2026-06-21"
+  - id: "D-488"
+    status: "DISCHARGED (2026-06-22, JIT-default unit). zwasm cut v2.0.0-alpha.3 (pin fc7ff0b3b, 3-host green: Mac aarch64 + ubuntu x86_64 + Win64) which RE-LANDS its `.auto`→JIT flip (its D-478) AND fixes the gating x86_64 LSRA dual-spill miscompile (D-489/D-494) — to_cljw_09. So the flip is now correctness-safe on all 3 hosts. cljw flipped `engine.LoadOpts.engine` default `.interp`→`.auto` (removed the PROVISIONAL marker + emptied feature_deps#runtime/cljw/wasm/engine_default, same commit): a no-opts `(wasm/load path)` now rides zwasm's JIT-first `.auto` (transparent interp fallback). Components stay interp-pinned on the zwasm side (D-500) so the component path is unaffected; the F-012 dual-backend diff oracle uses explicit `.interp`/`.jit` so it is untouched. e2e phase16_wasm_engine_select.sh extended: the no-opts default now executes a SIMD body that ONLY the JIT can run (proves the default flipped to JIT, not interp). ORIGINAL: open / blocked-by: zwasm fixes D-489 (x86_64-only JIT realworld miscompile) so the `.auto`→JIT flip is correctness-safe (2026-06-21, JIT adoption unit, ROADMAP §9.0 gap II×III). TERMINAL STATE for the cljw side: zwasm pivot-CLOSED the dispatch-matrix bundle @7d8584f97 — 'goal achieved + cljw-verified' (the 1/2-arg JIT invoke matrix is complete + my e2e locks it); the `.auto`-flip is now a NON-URGENT, debt-gated zwasm item on D-489, explicitly 'not blocking cljw'. So cljw's JIT adoption is COMPLETE for everything zwasm offers; the default-flip awaits a non-urgent zwasm codegen fix (D-489, also relates to D-490 emitV128Select x86_64 spill). cljw default stays `.interp` (zwasm-endorsed); explicit `:engine :jit` is solid on arm64 for all 0/1/2/3-arg scalar + multi-value + SIMD-body shapes. PROGRESS via same-session co-dev (from_cljw_02 → to_cljw_03): the ORIGINAL exportFuncSig-on-JIT blocker is RESOLVED — zwasm shipped the JIT arm of `Instance.exportFuncSig` @5b6449779 (resolves via `jit.exportFuncSig` over the module bytes, mirroring the memory/global/table JIT accessors). cljw rebuilt on that and VERIFIED `(wasm/call (wasm/load p {:engine :jit}) …)` works end-to-end (GPR add jit==interp==5; SIMD lane0 on jit → 42; interp traps catchably). The cljw-surface dual-engine e2e is now LANDED + gate-registered (test/e2e/phase16_wasm_engine_select.sh). REMAINING (why this row stays open): zwasm REVERTED its `.auto`→JIT flip (@1e01e6797) because `.auto`→JIT exposed a wider gap on the C-ABI invoke/export-handle path (interp-conformance harness via `wasm_instance_new` broke on x86_64 under JIT; the arm64 Mac run did not exercise it — exactly why the 3-host gate exists). So `.auto` is interp again; the transparent `.auto`→JIT north-star returns when zwasm's C-surface is complete + 3-host green. cljw's `.interp` default is zwasm-endorsed (to_cljw_03) meanwhile."
+    category: "wasm"
+    barrier: |-
+      Blocker for flipping cljw's default to `.auto` (zwasm-side; cljw keeps `.interp`):
+      **zwasm D-489 — an x86_64-only JIT realworld MISCOMPILE** (tinygo_json mangles fmt
+      output under x86_64 JIT; correct on interp + arm64 JIT; to_cljw_05). zwasm keeps the
+      `.auto`→JIT flip OFF until x86_64 JIT realworld correctness is hardened. This is a
+      deeper correctness issue than dispatch coverage, and firmly validates cljw's `.interp`
+      default. Deferred zwasm gaps (NOT blocking, no real cljw need — D-477): wide arity
+      (SysV >5 / Win64 >3 params), >2 results (the `many-results` 17-value extreme),
+      v128-at-boundary; use `.interp` for these.
+      DONE (the dispatch-matrix sub-blocker is RESOLVED): the 1/2-arg JIT invoke matrix is
+      COMPLETE @3cf40a573 (the per-combo veneer now falls through to the generic buffer
+      thunk for any uncovered 1/2-arg scalar shape). cljw verified on @f4848e680: GPR,
+      multi-value, same-type-2-arg f32/f64 (addf=3.75), MIXED 2-arg `(i32,f64)→f64`=5.5,
+      3-arg via buffer — all jit==interp. SIMD body is JIT-only by design (to_cljw_03).
+      test/e2e lock GPR + multi-value + SIMD + same-type-2-arg + mixed-2-arg f64.
+      On close (D-489 + x86_64 `.auto` 3-host verdict): flip `engine.LoadOpts.engine`
+      default `.interp`→`.auto` (remove the PROVISIONAL marker +
+      feature_deps#engine_default), assert the no-opts default rides the JIT.
+    last_reviewed: "2026-06-21"
+  - id: "D-486"
+    status: "DISCHARGED (2026-06-21, commit completes ADR-0157). The flatten dispatch in vm.eval now unifies flattenPush's error into the SAME `else |err|` arm (via a `result` expression) instead of bare-`try`-propagating it out of eval — so a deep DIRECT recursion overflow inside a `try` is caught (catch StackOverflowError/Throwable; not Exception — clj parity), uncaught still renders gracefully, bounded recursion no false-trip. Validated by the dual-backend diff oracle + e2e phase15_watch_recursion (direct_recursion_caught/_thr/legit_direct_recursion). The full stack-overflow catchability story (re-entry AND direct recursion) is now clj-faithful. ORIGINAL: open (2026-06-21, split from D-485 2a). A stack overflow raised by FLATTENED direct recursion at FRAMES_MAX=2048 (`((fn f [n] (f (inc n))) 0)` inside a `try`) is NOT caught by an enclosing `(catch StackOverflowError/Throwable …)` — it propagates uncaught + prints a trace, where clj recovers. Re-entry overflows (validator/reducer/watch, via nested vm.eval) ARE caught (ADR-0157 2a/2b). The flattened recursion stays in ONE vm.eval (op_call flattens in-VM), so the vm.eval-entry stack guard never re-fires, and the existing handler-synthesis (vm.zig:372 — convert a catalog error to a thrown value when handler_count>0) does NOT fire for the flattenPush(:149)/eval-entry(:227) FRAMES_MAX raise in the handler's OWN eval (the synthesis path is reached for nested-eval raises but apparently not this same-eval-exhausted case). LOW severity: graceful (no crash) + the common runaway-recursion case; only the catchability diverges from clj. Repro: `(try ((fn f [n] (f (inc n))) 0) (catch Throwable e :ok))` → cljw prints trace / clj → :ok."
+    category: "clj-parity"
+    barrier: |-
+      Localised to the VM same-eval FRAMES_MAX unwind. Finished form: the flattened
+      unwind path (vm.zig ~331-381) must run the handler-synthesis (kindToHostClass →
+      thrown value) for a FRAMES_MAX stack_overflow raised in the handler's own eval,
+      exactly as it does for a nested-eval raise — so `(catch StackOverflowError …)`
+      catches a deep direct recursion too. Needs tracing WHY the synthesis at
+      vm.zig:372 does not fire when frame_base==0 and the raise is flattenPush/eval-
+      entry (handler_count check? Info cleared during the 2048-frame unwind?). Take
+      up as a focused VM-handler unit; ADR-0157 2a/2b already removed the crash + made
+      re-entry overflows catchable, so this is the residual catchability parity.
+      ROOT CAUSE PINPOINTED (2026-06-21): the flatten dispatch in `vm.eval` does
+      `try flattenPush(rt, ar, fr)` (the `if (flatten_req) |fr| { … }` block) — flattenPush
+      raises the FRAMES_MAX stack_overflow and the bare `try` propagates it STRAIGHT OUT
+      of `eval`, bypassing the `if (step_result) |ret| {…} else |err| {…}` arm that unwinds
+      the flattened frames + synthesises the catalog error into a catchable thrown value +
+      jumps to the handler. Re-entry overflows surface as a `stepOnce` error → they DO reach
+      the `else |err|` arm → caught. FIX SHAPE: route a flattenPush error through the SAME
+      unwind+synthesise+catch path as a stepOnce error (`flattenPush(...) catch |e|` → fall
+      into the shared error handling, don't bare-`try`). The error arm mutates many loop
+      locals (handlers/cur/ip/op_top/frame_top), and the eval loop is the hottest path, so
+      factor carefully (a labeled-block / shared-handler restructure) to avoid a control-flow
+      regression. Verify: `(try ((fn f [n] (f (inc n))) 0) (catch StackOverflowError e :ok))` → :ok.
+    last_reviewed: "2026-06-21"
+  - id: "D-485"
+    status: "DISCHARGED (2026-06-21, ADR-0157). 2b (aaf391e3): stack_overflow is a catchable own-Kind StackOverflowError. 2a (48be8e91): a self-calibrating native-stack guard (threadlocal stack-base anchor at the shallowest vm.eval entry + a 6 MiB byte-budget check) raises the catchable stack_overflow before the native stack overflows — validator/reducer/watch re-entry (all were SIGSEGV) now error gracefully + catchably; legit flat reduce(1e6) + HOF-recursion to ~500-1000 deep still run; the watch-256 partial is subsumed + removed. The ONE residual (split to D-486): same-eval direct-recursion-at-FRAMES_MAX catch (flattened recursion never re-enters vm.eval, so neither the entry guard nor the existing handler-synthesis catches it). ORIGINAL: open (2026-06-21, surfaced by the atom/watch differential sweep). A higher-order primitive that re-enters the evaluator via a user callback — `notifyWatches`→`invokeCallable`, a `set-validator!` validator, a `sort` comparator, a `reduce` fn — recurses in NATIVE Zig frames that the VM's per-run frame budget (vm.zig FRAMES_MAX=2048) does NOT bound (each `vt.callFn` re-entry starts a fresh VM run with frame_top=0). So an UNBOUNDED self-re-entering callback overflows the native stack → SIGSEGV (exit 134), where clj raises a catchable StackOverflowError. Repro (was SIGSEGV): `(let [a (atom 0)] (add-watch a :w (fn [k r o n] (swap! r inc))) (swap! a inc))`. PARTIAL FIX LANDED for the watch case: a threadlocal watch-nesting guard (iref.enterWatchNotify, cap 256) in BOTH the sync (atom.zig) + async (iref.zig) notify loops converts the watch runaway into a graceful stack_overflow error (e2e phase15_watch_recursion). STILL OPEN: validators / comparators / reduce-fns re-entering unboundedly are NOT yet guarded — they share the same native-reentry overflow. RELATED: cljw's stack_overflow error is NOT catchable by (catch Throwable …) (clj's StackOverflowError is) — a separate AD-007-adjacent gap. SCOPE CONFIRMED (2026-06-21 investigation): a `set-validator!` validator that re-triggers its atom AND a `reduce` fn that re-reduces BOTH still SIGSEGV (unguarded re-entry); but a comparator that recurses on ITSELF (`(sort (fn cmp [x y] (cmp x y)) …)`) is ALREADY graceful (direct VM self-call → op_call/flattenPush, FRAMES_MAX-bounded) — only PRIMITIVE→callFn re-entry is unguarded, not VM self-recursion. NAIVE FIX RULED OUT: a low nesting cap at `higher_order.invokeCallable` (the shared re-entry chokepoint) would FALSE-TRIP legit deep recursion that flows through map/reduce (those nest invokeCallable too), since clj + cljw's VM allow 2048-deep recursion. So a 256-ish invokeCallable cap breaks `(defn f [n] (when (pos? n) (reduce + (map (fn [_] (f (dec n))) [1]))))` at depth 256. CORRECT FIX = the GLOBAL-frame-budget variant (below): the re-entrant VM run CONTINUES the outer frame_top instead of resetting, so legit recursion-through-higher-order AND infinite re-entry BOTH hit the same 2048 limit that plain recursion does (2048 VM-frames of native stack is KNOWN safe — plain recursion proves it). The watch partial's cap-256 is safe ONLY because watch nesting never legitimately deep-recurses. 2b LANDED (commit aaf391e3, ADR-0157): stack_overflow is now a catchable own-Kind StackOverflowError (re-entry + nested-eval overflows catch). REMAINING 2a: the self-calibrating native-stack guard that converts the still-SIGSEGV validator/reducer cases to a graceful error + fixes the same-eval direct-recursion-at-FRAMES_MAX catch edge (the synthesis does not fire when frames are exhausted in the handler's own eval)."
+    category: "robustness"
+    barrier: |-
+      MECHANISM FULLY TRACED (2026-06-21). The VM frame budget is ALREADY global:
+      `vm.eval` (vm.zig:194) saves `frame_base = ar.frame_top` on entry and
+      CONTINUES from it (does NOT reset to 0), and the FRAMES_MAX=2048 check
+      (vm.zig:227 + flattenPush:149) sees the global depth. Plain VM recursion is
+      safe at 2048 because op_call FLATTENS in-VM (iterative — ~1 native frame per
+      VM frame). The segfault is NOT a missing global budget — it is that each
+      PRIMITIVE→callFn re-entry (callBuiltin→notifyWatches→invokeCallable→
+      treeWalkCall→callMethodImpl→eval) adds ~6-10 NATIVE Zig frames but only ~1-2
+      VM frames, so `frame_top` UNDER-COUNTS native depth and the native stack
+      overflows before frame_top reaches 2048.
+      CLEAN FIX (the dedicated unit): a threadlocal `eval_reentry_depth` counter
+      incremented at the `vm.eval` ENTRY (defer-decrement), capped, raising
+      stack_overflow — this bounds the EXPENSIVE native-eval-nesting dimension
+      uniformly for ALL primitive re-entry (watch/validator/reducer/comparator-
+      via-primitive). It is NOT the hot per-call path: op_call/flattenPush stay
+      unbounded-by-this; only nested eval-entry (per higher-order element, depth 1
+      for a flat reduce — never accumulates) is counted, so `(reduce + (range 1e6))`
+      stays at depth 1. It SUBSUMES the D-485-partial watch counter (remove it).
+      The ONE empirical unknown = the CAP value: must be safe for the worst-case
+      per-re-entry native frame size (8MB stack / ~2KB-per-level ≈ a few thousand)
+      yet as high as possible to match clj's deep-recursion-through-HOF (clj also
+      bounds it at the JVM stack — cljw will error EARLIER but gracefully, both
+      bound it). cap-256 is proven safe (the watch partial) but likely too low for
+      legit recursion-through-map/reduce. MEASURE the safe ceiling empirically.
+      ADR-level (new resource limit + behavior change + cap calibration) → draft
+      ADR + mandatory Devil's-advocate fork. Take up as a dedicated unit; the watch
+      partial removes the realistic footgun's crash meanwhile.
+    last_reviewed: "2026-06-21"
+  - id: "D-458"
+    status: "DISCHARGED (2026-06-20). `cl-dir` now emits a `:cl-arg` sentinel for `V`/`v` and `:cl-remaining` for `#`; `cl-run` resolves both against argv BEFORE dispatch via `cl-resolve-params` (V pulls + CONSUMES the next operand, advancing pos; # = remaining-arg count, no consume), so EVERY parameterised directive gets V/# uniformly with no per-arm change. `~n[`/`~#[` clause-select added (a prefix param selects + consumes no arg). e2e phase14_cl_format: param-V-mincol/-padchar/-radix/-money/-float-w/-float-d, param-hash-mincol, param-hash-select-1/-2, param-n-select; corpus test/diff/clj_corpus/cl_format_params.txt (10 cases). KNOWN clj DIFF NOT chased: consecutive-V on a float (`~V,VF` 8 2) — clj is internally INCONSISTENT there (gives \"3.14159000\" ≠ its own `~8,2F` \"    3.14\"); cljw produces the consistent literal-equivalent value. Too niche to AD (a clj bug, not a cljw gap; promote-to-AD if a real corpus hits it). SEPARATE pre-existing gap found + filed as D-465: `~F` without a d-param defaults to 0 decimals (`~8F` → cljw \"       3\" vs clj \" 3.14159\" full-precision). ORIGINAL: open (2026-06-17, surfaced completing cl-format ~E/~G, D-455 chunk3)."
+    category: "clj-parity"
+    barrier: |-
+      none — localized to cl-dir. Finished form: when cl-dir sees `V`/`v` it emits a
+      sentinel param (e.g. :cl-arg) that each directive arm resolves by pulling the
+      next operand off argv (advancing pos); `#` emits the remaining-arg count. Needs
+      the param list to thread through the arg-navigator (already index-based since
+      D-455 chunk2), so the plumbing exists. Small, self-contained; take up alongside
+      or after D-455 chunk4. Repro: `(cl-format nil "~VD" 5 42)` → cljw raises (clj → "   42").
+    last_reviewed: "2026-06-20"
+  - id: "D-465"
+    status: "DISCHARGED (2026-06-20, same session as the D-458 find). ~F without a d-param now prints the natural (shortest round-trip) value in PLAIN fixed notation, always with a decimal point, left-padded to w — never scientific. New helpers in pprint.clj: `cl-float-natural` (= `(str (double x))`, then `cl-expand-exp` rewrites any E-notation the printer emitted to plain) + `cl-parse-int` (self-contained, no read-string). Surface check done: ~E/~G already handled no-d correctly (cl-efloat/cl-gfloat) and ~$ defaults d=2 — so ONLY ~F needed the fix. e2e phase14_cl_format: float-natural/-0/-int/-w/-big/-small/-neg + param-V-float (re-added now ~VF works); corpus cl_format_params.txt (+8 ~F cases). All clj-oracle-verified incl. extreme magnitudes (1e10→\"10000000000.0\", 1.5e-7→\"0.00000015\")."
+    category: "clj-parity"
+    barrier: |-
+      none — localized to cl-run's ~F arm (pprint.clj). Finished form: when the
+      d-param (p1) is nil, print the float's natural decimal representation (no
+      forced `%.<n>f`) then `cl-pad` to the w-param, instead of `(or p1 0)` →
+      `%w.0f`. Needs a clj-faithful float→string for the natural case (trailing-
+      zero / exponent behaviour); verify vs the clj oracle across ~F/~E/~G/~$
+      d-omitted cases (big-bang the float-d-default surface, don't drip). Small.
+    last_reviewed: "2026-06-20"
+  - id: "D-467"
+    status: "DISCHARGED (2026-06-20, same session). IMPLEMENTED `with-precision` (HALF_UP). Interned `clojure.core/*math-context*` ^:dynamic (root nil) + cached `rt.math_context_var` (bootstrap, mirrors *agent*); `promote.divPromoting`'s BigDecimal arm reads it lock-free and, when set to a positive integer precision, calls the new `big_decimal.allocDivPrecision` (sig-fig-rounded divide) instead of `allocDiv` (exact/raise). The macro `(with-precision precision & body)` binds it; a leading `:rounding mode` is accepted-and-ignored (HALF_UP only — other modes a follow-up). allocDivPrecision: exact-first (precision is a MAXIMUM — a terminating quotient within it keeps its natural un-padded form, e.g. `(with-precision 4 (/ 1M 8))`→0.125M not 0.1250M), else a shift-adjust loop to `precision` sig figs + true-remainder HALF_UP + carry renormalization. VERIFICATION-DRIVEN: the 24-case clj-oracle diff caught + fixed 2 real bugs — (a) exact-terminating was padded to precision; (b) the HALF_UP comparison used the bare divisor `d` instead of the EFFECTIVE `d·10^|s|` for s<0, over-rounding large magnitudes (`(with-precision 4 (/ 1000000M 3))`). corpus with_precision.txt (10). All 24 verified cases (precisions 1-10, non-terminating, exact ≤/> precision, negatives, large magnitudes, ties/carries, :rounding, nested, scope) match clj. Follow-up: non-HALF_UP rounding modes; *math-context* affecting other BigDecimal ops (setScale/round) if a real workload needs it."
+    category: "clj-parity"
+    barrier: |-
+      none external — a self-contained feature. Land when controlled-precision
+      BigDecimal math is needed: intern `clojure.core/*math-context*` (^:dynamic,
+      root nil = exact/raise), add the `with-precision` macro
+      (`(with-precision precision [:rounding mode] & body)` → binds *math-context*),
+      and make big_dec division (+ setScale/round) consult *math-context* for the
+      precision + RoundingMode when set (else the current exact/raise behaviour).
+      Verify vs the clj oracle: `(with-precision 5 (/ 1M 3))` → 0.33333M,
+      rounding-mode variants, nested with-precision. Cross-ref the numeric tower
+      (F-005), big_dec.zig.
+    last_reviewed: "2026-06-20"
+  - id: "D-469"
+    status: "DISCHARGED (2026-06-20, clj-diff probe found + fixed same cycle). cljw's `extend-type`/`extend-protocol` rejected the GROUPED multi-arity method spelling `(g ([x] b1) ([x y] b2))` (error: 'extend-type method implementation must be a list `(method-name [params...] body...)`') where clj accepts it — clj allows both the grouped form AND the repeated single-arity `(g [x] b1) (g [x y] b2)` (the latter cljw already supported via D-279). Verified clj `(extend-protocol Q Long (g ([x] :one) ([x y] :two)))` → `[:one :two]`. FIX: a `expandGroupedArities` pre-pass in macro_transforms.zig `expandExtendType` normalises each grouped impl into one repeated single-arity impl per arity-clause BEFORE validation, so the existing multi-arity-fn* grouping (D-279) folds both spellings into the same `(fn* ([p1] b1) ([p2] b2))`. `isGroupedArity` distinguishes the forms by the 2nd element's tag (grouped = a list starting with a params vector; single = a params vector directly). e2e phase7_polymorphic_extend cases 12 (extend-protocol grouped) / 13 (extend-type grouped) / 14 (repeated regression). The clj-diff harness CANNOT test this (its clj side wraps each expr in `(prn …)`, making defrecord/defprotocol non-top-level → clj errors); verified by direct top-level cljw-vs-clj instead."
+    category: "clj-parity"
+    barrier: "none — DISCHARGED."
+    last_reviewed: "2026-06-20"
+  - id: "D-475"
+    status: "DISCHARGED (2026-06-23, verified at resume). spec.alpha + spec.gen.alpha + core.specs.alpha are BUNDLED (src/lang/clj/clojure/spec/) and FULLY FUNCTIONAL: load + s/def/and/or/valid?/conform/cat/*/+/alt/?/&/coll-of/every/keys/map-of/tuple/merge/nilable/conformer/explain-data/explain-str/form all clj-verified in the current binary (incl. s/keys, the row's last-claimed blocker — the &-destructure path now works). s/form's rt/int? qualification is the accepted AD-049 (pin in phase15_spec.sh). e2e phase15_spec.sh + corpus spec.txt/core_specs_alpha.txt cover it. ORIGINAL: open (2026-06-20, fresh-namespace probe — HIGH VALUE, the highest-value remaining clj-parity gap). `clojure.spec.alpha` does NOT load — `(require '[clojure.spec.alpha])` → 'Could not locate'. spec is FUNDAMENTAL to modern Clojure (s/def / s/valid? / s/conform / s/cat / s/and / s/or / s/keys / s/coll-of / s/fdef / instrument), so a large class of real code + libs is blocked. FEASIBILITY (it is a SUBSTANTIAL multi-cycle unit, NOT a quick add): spec.alpha is mostly PURE-Clojure (over clojure.walk, which cljw has) — so it is BUNDLEABLE as src/lang/clj/clojure/spec/alpha.clj like clojure.set/walk/zip already are. Sources: `~/Documents/OSS/spec.alpha/src/main/clojure/clojure/spec/alpha.clj` (official) + a SCI-adapted reference at `~/Documents/OSS/.../babashka/src/babashka/impl/clojure/spec/alpha.clj` (bb also lacks full JVM — its adaptation shows the no-JVM-feasible subset). DEPENDENCY: spec.alpha `(:require clojure.spec.gen.alpha)` at load — gen LAZY-loads test.check via requiring-resolve, so it LOADS without test.check present (only s/gen/s/exercise fail at CALL time); bundle clojure.spec.gen.alpha too (it stays a lazy stub). RISKS to verify: (1) the regex-op spec machinery (s/cat/s/* /s/alt — `(instance? clojure.spec.alpha.Spec x)` protocol + deftype Specize/regex impls) exercises deftype/defprotocol/dynamic-var/metadata features cljw must fully support; (2) `(alias 'c 'clojure.core)` + the AOT cache_gen bootstrap of a ~1500-line .clj (cache_gen must compile it — watch for the host-class-in-bootstrap trap, memory `bootstrap-clj-host-class-unresolvable`, + regex-literal-in-bootstrap-.clj trap). PLAN: copy alpha.clj + gen/alpha.clj into the bundle's @embedFile FILES list, rebuild, fix the cljw feature gaps the load surfaces one by one, verify s/def/valid?/conform/cat/keys against the clj oracle, add a clj_corpus spec area. A focused FRESH-CONTEXT unit (the highest-value one available); also add a spec.alpha NEEDS-ROW to docs/works/ladder.md when landed. FEASIBILITY INVESTIGATED 2026-06-20 (de-risks the fresh cycle): bundle mechanism = add a `.{ .label, .source = @embedFile(\"clj/clojure/spec/alpha.clj\") }` entry to bootstrap.zig FILES (after clojure.walk + after the gen file). SIZES: official alpha.clj = 1996 lines (defprotocol Spec + Specize, 14 deftype/defprotocol constructs); gen/alpha.clj = 227 lines, NO deftypes, lazy-loads test.check via `dynaload`+`delay` (loads clean without test.check; s/gen fails only at call). FIRST CONCRETE BLOCKER: the OFFICIAL alpha.clj has a REGEX LITERAL `#\"(.*)\\$(.*?)(__[0-9]+)?\"` at line ~132 — a bundled/AOT .clj CANNOT carry a `#\"\"` literal (memory `regex_literal_unsupported_bootstrap_clj`); worse, it sits in a `(.. f getClass getName)` JVM-fn-class-name reflection path that does not apply to cljw (no-JVM fns have no class name). RECOMMENDATION: base the cljw port on the BABASHKA SCI-adapted version (`~/Documents/OSS/.../babashka/src/babashka/impl/clojure/spec/alpha.clj`) — bb also lacks full JVM, so it has ALREADY adapted the getClass/getName + other JVM paths to the no-JVM-feasible subset; diff it against the official to see exactly what cljw needs. Then iterate: bundle → rebuild → fix each cljw-feature gap cache_gen surfaces (expect the regex path, possibly deftype/protocol edge cases, dynamic-var/alias) → verify s/def/valid?/conform/cat/keys vs the clj oracle → clj_corpus spec area. Multi-cycle but the line-by-line blocker path is now mapped. LOAD-BLOCKER CHAIN (probed 2026-06-20 via `-cp /tmp/spec_cp` classpath load of the official src — this is the right dev harness: the classpath resolver loads .clj WITHOUT touching the @embedFile bundle, so the tracked build stays green while iterating blockers; bundle into FILES only once it loads + s/valid?/conform verify): #1 gen/alpha.clj `BigDecimal/valueOf` — FIXED commit 1a5e0ed0 (the static cljw.java.math.BigDecimal descriptor had an empty method_table; added valueOf + an .init populate fn). #2 gen/alpha.clj:188 `bytes?` unresolved — cljw lacks the predicate AND it is AD-019-blocked (JavaArray is fully type-erased, no element-type field, so byte[] is indistinguishable from int[]; = the known D-472). gen-builtins needs ALL 43 core type-predicates to resolve at analyze time (delay-body map KEYS); only bytes? is missing — so the port adapts that one gen-builtins entry (gen is generators-only, never forced without test.check) OR a deliberate bytes?=array? AD decision in the focused cycle (DA subagent on the AD-019 envelope). #3+ spec.alpha CORE (1996 lines) unprobed past gen; static scan: 12 `reify` of the Spec/Specize protocols (THE core spec mechanism — cljw reify-of-protocol must carry these), 2 `set!` on dynamic vars (*recursion-limit* etc.), defmulti/defmethod `describe`, `(alias 'c 'clojure.core)`, JVM-internal RT/checkSpecAsserts + Compiler/demunge (AD-008 deferred-host-ref handles those — ns loads, errors only if called). MILESTONE 2026-06-20: spec.alpha LOADS (`:loaded`) — 6 blockers cleared: 3 committed cljw clj-parity fixes [#1 BigDecimal/valueOf 1a5e0ed0; reify/deftype destructured method params 8c4f4827; (symbol var) f74f8f18] + 3 port adaptations in scratch /tmp/spec_cp [drop the bytes? gen-builtin (AD-019), `clojure.spec.alpha.Spec` FQCN→protocol var `Spec` (no-JVM, ADR-0059), checkSpecAsserts JVM-static→cljw atom]. REMAINING FUNCTIONAL BLOCKER (spec loads but s/valid? errors `Unable to resolve spec`): spec's `with-name` (alpha.clj:90) attaches `::name` metadata to every spec object, but a spec object is a `reify` instance and cljw reify instances are NOT IObj/metable — `(instance? clojure.lang.IObj <reify>)` is false + `(with-meta <reify> m)` raises `cannot attach metadata to reified_instance`, so `with-name` returns nil → the registry stores nil → lookup fails. clj's reify ALWAYS auto-implements IObj (metable); plain deftype does NOT (cljw already matches deftype). FIX (reify-only, ADR-0134-coupled — the instance?-IObj⟹with-meta-works invariant D-271): add a `meta: Value` slot to ReifiedInstance (16→24B + the @sizeOf asserts at type_descriptor.zig:476/797), init in allocReifiedInstance, mark it in traceReifiedInstance (mirror traceTypedInstance), a reifiedInstWithMeta minting helper, the withMetaFn/.reified_instance arm mints-fresh instead of raising, the metaFn/.reified_instance arm returns inst.meta, and isInstance/matchUserType answers IObj+IMeta true for reified_instance. Needs an inline ADR (extends ADR-0134 IObj activation to reify) + mandatory DA fork. Port adaptations still need promoting from /tmp into the tracked bundle once reify-IObj lands + s/valid?/conform verify green. MILESTONE-3 2026-06-20: reify-IObj-metadata LANDED (commit 458be654, ADR-0134 reify slice) → spec's registry resolves. BASIC SPECS NOW FUNCTIONAL + clj-verified: `(s/def ::age (s/and int? pos?))` + s/valid?/conform all correct. 5 GENERIC cljw clj-parity fixes extracted+committed this arc (BigDecimal/valueOf, reify/deftype destructured method params, symbol-of-var, reify-IObj-metadata) — these benefit ALL cljw code, not just spec. 4th port adaptation added in /tmp scratch: fn-sym→nil (alpha.clj:131 used `(.. f getClass getName)`+regex to name anon fns; cljw fns have no class name, so anon-fn specs describe as ::unknown via the specize* Object fallback — acceptable divergence). REMAINING DEEP TAIL (the regex-op + every machinery — spec-internal, diminishing generic-fix yield, a focused multi-cycle continuation): `s/coll-of`/`s/every` → alpha.clj:1291 `cpred` is nil at conform (every-impl closure-capture or opts-destructure issue — classify generic-cljw vs spec-internal); `s/or` → Exception; `s/keys` → alpha.clj:317 (unfn conj-on-symbol — cljw's postwalk-replace/destructure/conj all individually MATCH clj, so the trigger is a specific s/keys path, needs isolation); `s/cat`/`s/*` regex-op conform → `::invalid` (the regex-op state-machine — the hardest part). The 4 port adaptations (bytes?-drop, Spec-FQCN→var, checkSpecAsserts→atom, fn-sym→nil) live in /tmp/spec_cp and are re-derivable from this blocker chain; promote into the tracked bundle (src/lang/clj/clojure/spec/ + bootstrap.zig FILES, EPL variant-① header per clj_attribution.md) only once the regex-op tail is green. MILESTONE-4 2026-06-20: the regex-op tail is GREEN — 2 more generic cljw fixes landed [:keys [::ns-key] auto-resolve a17b97c8 (unblocked coll-of/s/* via every-impl's {:keys [::cpred]}); (conj map other-map) merge 8fc081d4 (unblocked the whole pcat* state machine → s/cat/s/*/s/+/s/alt conform)]. spec.alpha is now MOSTLY FUNCTIONAL + clj-verified: load + s/def + s/and (basic) + s/valid? + s/conform + s/cat + s/* + s/+ + s/alt + s/coll-of + s/keys all correct. The LAST blocker is the builtin-macro-shadow bug → D-476 (s/or mis-routes to core/or; strict s/and validates only the last pred). 7 generic clj-parity fixes total this arc (BigDecimal/valueOf, reify/deftype destructured params, symbol-of-var, reify-IObj-metadata, :keys auto-resolve, conj map-merge — all committed + benefit ALL cljw code). Resolve D-476, then promote the /tmp port into the bundle + verify the full surface. MILESTONE-6 2026-06-20: D-476 RESOLVED (7c40041f, macro-shadow gate + caseTest rt/or hygiene) → s/or + strict s/and work. 3 more generic fixes landed: clojure.walk over a cons/lazy-tailed list (cf0b8dd2), valueToForm .hash_map macro return (978b41e2). 10 generic cljw fixes total this arc; spec ~95% functional (s/def/and/or/valid?/conform/cat/*/+/alt/coll-of all clj-verified). THE ONE REMAINING BLOCKER = s/keys: cljw's `&`-destructure (sequentialDestructure, macro_transforms.zig:344) uses nth/nthnext, but clj's `& rest` expands to (seq g)/(first cur)/(next cur) — fails on the non-Indexed map at alpha.clj:837 `(loop [… [[k v] & ks] m] …)`. Fix = make the `&`-case seq-based (clj-faithful; NO-`&` keeps nth which clj-correctly errors on maps). Then drain any further conform-path blockers. Full spec spec/fix sequence is in `.dev/handover.md` First-commit-on-resume + `private/notes/spec-alpha-port-arc.md`."
+    category: "clj-parity"
+    barrier: "none structurally (pure-Clojure, bundleable; gen is a lazy stub so it loads without test.check) — it is just SUBSTANTIAL + deserves a fresh focused cycle (copy 2 .clj into the bundle, AOT-rebuild, drain the cljw-feature gaps the load surfaces). The HIGHEST-value remaining clj-parity unit."
+    last_reviewed: "2026-06-23"
+  - id: "D-476"
+    status: "DISCHARGED (7c40041f, verified 2026-06-23). The macro-shadow gate (nil-root marker check in expandIfMacro) + caseTest rt/or hygiene landed; a user/lib macro shadowing a builtin name now runs its own body. Verified: phase14_macro_shadow_builtin.sh + spec's s/or/s/and route correctly. ORIGINAL: open (2026-06-20). BUG: a user/lib macro that SHADOWS a builtin-macro NAME is hijacked by the builtin. `expandIfMacro` (src/eval/macro_dispatch.zig:107) looks up the Zig builtin-macro table by `head_name` (NAME only) BEFORE the user-defmacro fallback, so an alias/qualified call to a same-named macro in another ns runs the BUILTIN transform, not the resolved Var's own body. Repro: `(ns mylib (:refer-clojure :exclude [or])) (defmacro or [& xs] ...) (ns user (:require [mylib :as m])) (m/or 1 2)` → expands as clojure.core/or, NOT mylib/or (even `(mylib/or …)` fully-qualified; `(ns-resolve 'mylib 'or)` correctly returns #'mylib/or). Hits clojure.spec.alpha HARD: spec excludes + redefines `or`/`and`/`cat`/`keys`/`def`/`merge`; `s/or` mis-routes to core/or (returns the first label `:i`), `s/and` mis-routes to core/and (validates only the LAST pred — silently wrong, only LOOKED right for `(s/and int? pos?)` by coincidence). ATTEMPTED FIX (reverted 2026-06-20): gate the table lookup on the resolved Var being a nil-root MARKER (builtins are interned `.nil_val` in rt ns, registerInto; a user defmacro has a callable root) — the minimal repro then works (`m/or` → user body) and builtin or/and/case/cond regress-clean. BUT it cascaded: spec's macros then route through the callFn fallback, and a spec macro THROWS during expansion (`error.ThrownValue` at alpha.clj:1516, masked as 'foreign error' → now surfaced via @errorName), and `ExpandError = ClojureWasmError` does NOT include `error.ThrownValue`, so the throw cannot propagate (clj surfaces a macro-expansion throw as a compile error / lets the expanding code catch it). FULL LANDING (focused cycle) = (a) the nil-root gate (or a Var-pointer-identity gate vs the rt builtin), PLUS (b) widen the macro-expansion error channel to carry a user throw — add `error.ThrownValue` to ExpandError + thread it through the analyzer's expand call sites — AND (c) root-cause WHY a spec macro throws at expansion (the 1516 location is suspicious; renderer may mis-point). Keep the @errorName(e) diagnostic (strict improvement over the fixed 'foreign error' string). This is the LAST blocker for full s/or + strict s/and (D-475 is otherwise mostly-functional: load + s/cat/*/+/alt/coll-of/keys/conform/valid? all clj-verified via the 6 committed generic fixes). ROOT-CAUSE LEAD (for the focused cycle): spec.alpha's own `(defmacro …)` set that shadows a Zig builtin name = {`and`, `or`, `assert`} (verified via `comm` of spec defmacros ∩ the Zig BOOTSTRAP table; the wider {cat/keys/def/merge/fdef/…} are NOT Zig builtins so they always took the callFn fallback and are unaffected). Under the nil-root gate, bare `and`/`or`/`assert` in spec's ns route to spec's OWN macro via callFn. BUT all of spec's bare `and`/`or` uses are inside SYNTAX-QUOTE templates (describe* at 1125/1192; the `(spec (and …))` in int-in/inst-in/double-in macro bodies at 1902/1917/1930) — i.e. they are quoted SYMBOLS, not expanded at load — and there is no bare load-time `assert`. So the 1516 (`add-ret`, which uses only let/case/fn = nil-root builtins) throw should NOT happen by static reasoning → the error LOCATION is almost certainly mis-pointed (known renderer issue). The focused cycle should re-apply the gate + add a one-shot trace of (head_name, head_var.ns.name) at the callFn entry to find the ACTUAL throwing macro/site, rather than trust 1516. Likely candidate to check first: a builtin whose deref is unexpectedly callable, or a syntax-quote expansion path that evaluates a shadowed macro."
+    category: "interop"
+    barrier: "none — a self-contained analyzer fix; the architectural part is widening ExpandError to carry error.ThrownValue (a known-bounded change across the macro-expand call sites). High clj-parity value (affects ANY lib defining macros named like core forms), not just spec."
+    last_reviewed: "2026-06-23"
+  - id: "D-481"
+    status: "DISCHARGED 2026-06-21 — moved `self.gc.deinit()` in Runtime.deinit to BEFORE the native/class/user TypeDescriptor frees (it was last, after them). The host_instance finaliers run inside gc.deinit + read `inst.descriptor`, so the descriptors must outlive finalisation; the frees use `gc.infra` (a passed-in allocator field gc.deinit never tears down) so they stay valid after. Validated: the `app.builder.test.deserialized fn_val` test + full suite + CLJW_GC_TORTURE green WITH datafy bundled. Unblocked the datafy re-land (D-478). ORIGINAL: GC-deinit ordering bug: `Runtime.deinit` FREES the per-Tag native descriptors + the class_descriptors (and user TypeDescriptors) — all gc.infra-allocated — BEFORE calling `self.gc.deinit()`, which is what RUNS the host_instance finaliers (`host_instance.zig:96 finaliseGc` reads `inst.descriptor.host_finalise`). So a host_instance whose descriptor is one of those freed native/class descriptors dangles → segfault at finalize. Repro: extend a protocol to BOTH `Object` AND a host-native-tag (`(extend-protocol Datafiable Object … )` in core.protocols + datafy's `(extend-protocol Datafiable clojure.lang.Namespace/IRef java.lang.Throwable/Class …)`) at the SOURCE-bootstrap path, then deinit (the `app.builder.test.deserialized fn_val` test crashed). The tangle: gc.deinit BOTH runs finalisers AND tears down gc.infra (the descriptors' backing allocator), so descriptors are freed before gc.deinit by necessity — but finalisers run during gc.deinit, after the free. FIX needs SPLITTING gc.deinit into a finalise phase (descriptors alive) then an infra-teardown phase, OR freeing the native/class/user descriptors between finalise + teardown. A focused GC-lifetime unit (careful — finalisers also touch the time/locale singletons freed at deinit's top). Blocks re-bundling clojure.datafy (D-478). The AOT-restore binary path does NOT hit it (datafy works there). Bisected: bisect A (datafy host-extends, no Object default) PASSED; bisect B (Datafiable Object default + datafy host-extends) CRASHED → the Object×host-tag combination on one protocol is the trigger."
+    category: "interop"
+    barrier: "GC-deinit finalise-vs-descriptor-free ordering (gc.deinit runs finalisers AND tears down gc.infra). Needs a finalise/teardown split — careful GC surgery, deferred from a 4am session. Not production-affecting (AOT binary works); blocks the datafy SOURCE-bootstrap bundle. Medium value (unblocks datafy + hardens deinit)."
+    last_reviewed: "2026-06-21"
+  - id: "D-478"
+    status: "DISCHARGED 2026-06-21 — clojure.datafy bundled + clj-verified (datafy 5→5 / nil / (atom 42)→[42] / *ns*→user / nav, corpus datafy.txt 10), once D-481 (the gc.deinit ordering bug it exposed) was fixed. The generic enablers: (1) extend-protocol/type TO a concrete host type via 4 nativeExtendTags arms (Namespace→.ns / IRef→atom/agent/ref/var / Throwable→.ex_info / Class→.type_descriptor; e2e phase7_extend_host_type), (2) `ns-imports` (→ empty map), (3) core.protocols' Datafiable/Navigable nil/Object defaults were missing — added. ORIGINAL note: the generic D-478 fix LANDED (extend-protocol/type TO a concrete host type via 4 nativeExtendTags arms — Namespace→.ns / IRef→atom/agent/ref/var / Throwable→.ex_info / Class→.type_descriptor; e2e phase7_extend_host_type), PLUS `ns-imports` (→ empty map). But BUNDLING clojure.datafy itself is DEFERRED to D-481: datafy needs core.protocols' `(extend-protocol Datafiable Object (datafy [x] x))` default, and extend-to-Object + the host-native-tag extends on the same protocol at the SOURCE-bootstrap path triggers a GC-deinit-ordering segfault (D-481). datafy LOADS + runs correctly in the AOT binary (verified: datafy 5→5, datafy (atom 42)→[42], datafy *ns*→user, all clj-matched); the crash is only the source-load test path. Reverted datafy.clj + the core.protocols defaults; re-land once D-481 is fixed. ORIGINAL plan was: (1) extend-protocol/type TO a concrete host type (clojure.lang.Namespace→.ns / IRef→atom/agent/ref/var / java.lang.Throwable→.ex_info / java.lang.Class→.type_descriptor) via 4 nativeExtendTags arms — the IPersistentVector→vector mechanism, NOT the structural rewrite first feared (the value→marker dispatch already exists via rt/__native-type, which scans the whole Tag enum); (2) `ns-imports` added (→ empty map, cljw has no Java imports, ADR-0059); (3) the bundled core.protocols was MISSING Datafiable/Navigable's nil/Object default impls (so `(datafy 5)` errored instead of returning x) — added. datafy.txt corpus (10) + phase7_extend_host_type.sh e2e (7). ORIGINAL: clojure.datafy does not load: it `(extend-protocol p/Datafiable …)` over 4 CONCRETE host types cljw does not recognize as extend-type targets — `clojure.lang.Namespace`, `clojure.lang.IRef`, `java.lang.Throwable`, `java.lang.Class` (AOT-FAIL form #5: 'Unable to resolve symbol: clojure.lang.Namespace'). cljw's host-supertype closed set (host_interfaces.yaml, F-013, ADR-0102) recognizes ~40 interface markers but none of these 4 concrete types. To bundle datafy properly each needs (a) a host_interfaces.yaml entry + (b) a value→marker dispatch mapping (interface_membership) so a namespace/atom-ref/exception/class VALUE dispatches the extended Datafiable arm — a STRUCTURAL F-013 extension, NOT a load-level accept (a load-only extend that never dispatches would silently drop datafy's rich {:name/:publics/…} return = permanent-no-op smell, forbidden). IRef may be cheap (atoms already match IDeref, so the value→marker machinery exists); Namespace/Class/Throwable are new concrete-type predicates. The Class arm also `(requiring-resolve 'clojure.reflect/reflect)` (clojure.reflect unbundled — lazy, fails only at call). Take up as a FOCUSED host-marker-extension unit (likely its own ADR amending the F-013 closed set); datafy is niche (REPL tooling) so not urgent. Prep: private/notes/datafy-bundle-prep.md. The datafy port + FILES wiring were reverted to keep main green."
+    category: "interop"
+    barrier: "none structurally, but it is an F-013 closed-set extension (4 concrete host types → extend-type targets + their value→marker dispatch) deserving a focused unit + ADR, not a rushed add. Low urgency (datafy is niche). Generic value: enables `(extend-protocol P clojure.lang.Namespace …)` etc. for any code."
+    last_reviewed: "2026-06-20"
+  - id: "D-348"
+    status: "DISCHARGED (2026-06-20). The barrier dissolved: the 'no unified array_map/hash_map iterator in Zig' blocker is gone — `map.zig::forEachEntry` (added for the java.util/TreeMap work) now walks either map shape. `(wasm/run …)` now accepts `:env {name value}` — a map whose keys are strings OR keywords (`:PATH` → \"PATH\") and whose values are strings; parsed in surface.zig via forEachEntry into the parallel env_keys/env_vals slices `engine.RunOpts` already threads to zwasm's runWasmCapturedFull. A non-map :env or a non-string value raises a catchable wasm_run_arg_invalid. VERIFICATION SCOPE (honest): the cljw-side PARSE + threading is e2e-verified (phase16_wasm_run: PASS wasm-run-env on a valid string+keyword-keyed :env; the NOT-CAUGHT guard covers the non-map + non-string-value type errors). The env actually reaching the guest's WASI environ is zwasm's runWasmCapturedFull responsibility (pre-existing + zwasm-tested) — NOT re-verified end-to-end here because the repo's wasm_run_probe.wasm imports environ_get but does not ECHO env (prebuilt, no source to modify), so there is no in-cljw observable of guest env. If a future module echoes env, add an output assertion. Surfaced 2026-06-09 (ADR-0124, DA review F-013); the wasm/run option surface (args/stdin/dir/dirs/env) is now complete."
+    category: "feature"
+    barrier: |-
+      blocked-by: a small cljw map-iteration helper (or array_map+hash_map dual
+      walk) to extract parallel key/val string slices from an :env map. Low
+      effort; deferred because no current demo needs env. Cross-ref surface.zig
+      wasmRunFn :dir/:dirs block.
+    last_reviewed: "2026-06-09"
+  - id: "D-468"
+    status: "open (2026-06-20, clj-diff probe). Host java.util collections print OPAQUELY, losing their content: cljw `(prn (doto (java.util.ArrayList.) (.add 1) (.add 2)))` → `#<cljw.java.util.ArrayList>`; clj → `[1 2]`. clj prints java.util collections BY CONTENT in Clojure syntax: ArrayList→`[1 2]` (pr) / `[1, 2]` (str/toString), HashSet/TreeSet→`#{1 2}`, HashMap/TreeMap→`{:a 1}` (TreeMap sorted). cljw's `seq` over these already works (content IS accessible) — only print is opaque, so this is a real F-011 fidelity gap, NOT covered by AD-020 (which is opaque-IDENTITY objects like java.util.Random with no printable content). NOT a quick fix: TWO print contexts (pr vs str) + per-backing logic — HashSet/TreeSet/HashMap/TreeMap hold a NATIVE cljw persistent collection in host_instance state[0] (printable directly → exact clj form), but ArrayList holds a raw `*std.ArrayList(Value)` (state[0]) needing a vector rebuild. Design idea: an rt/env-aware print pre-pass (sibling of print.zig deepRealize) maps a 'collection' host_instance to its backing native Value before the pure printer (printValueNative line 973 `#<fqcn>`) sees it → pr gets `[1 2]`/`#{1 2}`/`{:a 1}` generically; str wants the Java-comma `[1, 2]` form (add a toString method per descriptor, reusing the existing str-context hook at print.zig:165). MODERATE value (printing a RAW java.util collection is uncommon — code usually `vec`/`into`s first), so deferred for a focused cycle rather than rushed into a long session. Repro: `(prn (doto (java.util.HashSet.) (.add 1) (.add 2)))` → cljw `#<cljw.java.util.HashSet>` vs clj `#{1 2}`. DISCHARGED (2026-06-20, same session — the focused cycle was now). Mechanism: a new `print_content: ?*const fn(rt, recv) anyerror!Value` hook on TypeDescriptor (fn-pointer field beside host_trace/host_finalise); the print pre-pass (print.zig deepRealize) calls it on a host_instance and RECURSES on the result (so nested host collections transform too — verified `[#{9}]`). The 5 descriptors wire it: sets/maps return their backing native collection (state[0], already the printable Value → exact clj form incl. sorted); ArrayList rebuilds a vector from its `*std.ArrayList(Value)` via vector.fromSlice. pr/pr-str/REPL now match clj EXACTLY for all 5 (`[1 2]`/`#{1 2}`/`{:a 1}`, sorted variants sorted; string-quoting `[\"a\" \"b\"]`; nested). The str/.toString form remains Clojure-rendered (`{:a 1, :b 2}`) NOT JVM toString (`{:b=2, :a=1}` with `=` pairs + JVM iteration order) — classified as **AD-047** (ADR-0059 no-JVM; matching JVM toString is undesirable + needs non-reproducible JVM order). Corpus cases in all 5 class corpora; e2e phase14_hashmap str_clojure_form + print_pr_content."
+    category: "robustness"
+    barrier: "RESOLVED 2026-06-20 — print_content descriptor hook + deepRealize substitution (pr); str classified AD-047. See status."
+    last_reviewed: "2026-06-20"
+  - id: "D-413"
+    status: "open (2026-06-13, surfaced by a since-rewritten diff case) — in the minimal diff_test Fixture (primitive.registerAll only, no core.clj), analyzing an UNRESOLVED symbol that falls through to the host-class lookup (analyzer.zig analyzeSymbol → env.rt.types.get) panics with 'integer overflow' at std hash_map getIndex `capacity() - 1` instead of raising symbol_unresolved. stdlib has a size==0 guard, so the mechanism is NOT a plain empty-map get — needs a minimal repro to classify (corrupt map state vs fixture lifetime vs stdlib edge). Production unaffected (installAll always populates rt.types and the host-class path is exercised constantly). Repro recipe: add `try f.check(\"(re-matcher 1)\", 0);` (any unresolved symbol) to src/lang/diff_test.zig and run zig build test. DISCHARGED (2026-06-20). CLASSIFIED = fixture-lifetime (NOT corrupt-map / stdlib-edge / production). Root cause: the diff_test `Fixture.init` returned the Fixture BY VALUE after `Env.init(&f.rt)` captured `&f.rt`; `return f` relocated `rt` to the caller's storage, leaving `env.rt` a DANGLING pointer to the pre-move init-local stack slot. Resolvable symbols never deref it (they resolve as var/primitive before the host-class fallthrough), so 1180 tests passed by luck; an unresolved symbol reaches `resolveClassValue(env.rt,…)` → `rt.types.get` on the dead slot. Proven by instrumentation: `&self.rt != env.rt` (different addresses), and the abort was NON-DETERMINISTIC (adding two intervening `get()` calls made it pass) = textbook dangling-stack-slot UB; the std `size==0` guard means a valid-but-empty map would never abort, ruling out the empty-map hypothesis. FIX (finished-form, the COMPLETE one — the Fixture also self-references `rt.io`→`&threaded`): converted `Fixture.init` to init-in-place via an out-pointer `fn init(f: *Fixture, alloc)` so the struct is built at its final address and never moved; updated all 117 call sites to `var f: Fixture = undefined; try Fixture.init(&f, …)`. Regression test 'D-413 unresolved symbol → clean symbol_unresolved, not a panic' asserts `(re-matcher 1)` raises NameError on BOTH backends. zig build test -Dwasm green; lint clean."
+    category: "robustness"
+    barrier: "none — reproduce, then either fix the map-state bug or make the class-lookup fall through cleanly to symbol_unresolved on a types miss."
+    last_reviewed: "2026-06-13"
+  - id: "D-463"
+    status: "DISCHARGED 2026-06-25 (debt audit — the lone residual is CLOSED: cljw now emits the per-var lifecycle events; a custom `report` reporter sees the full [:begin-test-ns :begin-test-var :end-test-var :end-test-ns] set bit-for-bit with clj, verified directly). ORIGINAL: PARTIAL (2026-06-18 — clojure.test report-format fidelity LANDED; only per-var lifecycle-event emission residual). The named scope is DONE: (1) `*test-out*` re-enabled (`(def ^:dynamic *test-out* *out*)` + `with-test-out` now rebinds *out* to it; `(resolve 'clojure.test/*test-out*)` non-nil, `(binding [*test-out* w] (run-tests))` redirects — the no-JVM deferral reason was obsolete); (2) FAIL/ERROR 'in' line uses `testing-vars-str` rendering clj's `(test-name)` list form; (3) `=` + generic-predicate `:actual` now the clj `(not (= 1 2))` / `(not (pos? -1))` bare-symbol not-form (added a clj-style `function?` guard to the :default assert-expr so a predicate call gets the (not …) treatment, a value/macro form the plain value); (4) context line now the clj `outer inner` join (was `  context: [..]`); (5) a `:begin-test-ns` 'Testing <ns>' line. Mechanised: e2e phase15_clojure_test_output.sh (clj-grounded) + phase15_clojure_test_tap.sh golden updated (now `(pass-t)`/`(= 1 1)`/`(not (= 1 2))`, clj-faithful). Unmatchable parts → AD-041 (no source location ⇒ no ` (file:line)` suffix; no JVM stack ⇒ :error prints the ex value not a cause trace). RESIDUAL = per-var lifecycle events (begin/end-test-var, end-test-ns) are not emitted, so a custom reporter (tap) sees a subset of the events clj emits — low value (only affects custom-reporter diagnostic noise; the default reporter has empty methods for these)."
+    category: "clj-parity"
+    barrier: "none for the report-format scope (DONE). Remaining = per-var lifecycle event emission (begin/end-test-var, end-test-ns) — a small run-tests/test-var change to (do-report …) around each var, with matching report methods (default = no-op, like clj). Low priority: clj's default reporter ignores them; only custom reporters (tap) would gain the extra diagnostics. Take up if a real custom-reporter consumer needs the full event stream; mechanise by extending phase15_clojure_test_output.sh / _tap goldens."
+    last_reviewed: "2026-06-18"
+# === STANDING (epics / campaigns / capstones / deferred-future bucket) ===
+# Not drained as single units by the autonomous loop (CLAUDE.md self-select reads active: only).
+# Trackers + the user-directed indefinitely-deferred future bucket (broad JIT / CLJS->JS / C-FFI /
+# generational-GC / virtual-threads / out-of-process isolation / wasm structural-future). 2026-06-15.
 conventions: |-
   - Structure: two top-level lists — `active:` and `discharged:`. Active entries carry id / status / category / barrier (+ optional quality_floor / last_reviewed); discharged entries carry id / discharged_at / resolution. Edit as YAML (no Markdown table to align).
   - New debt: grep `.dev/debt.yaml` for class-overlap before adding (per `.claude/rules/debt_dedup.md`).
