@@ -5,7 +5,7 @@
 
 ## Resume contract
 
-- **HEAD**: `main` (`git log` = SSOT; ≈ `888d7573`). Per-commit = smoke; commit
+- **HEAD**: `main` (`git log` = SSOT; ≈ `368c9851`). Per-commit = smoke; commit
   **and** push (CLAUDE.md § atomic Step 6). `build.zig.zon` `.zwasm` = tag pin
   `v2.0.0-alpha.3`.
 - **First commit on resume MUST be**: continue the **gap-III perf campaign (D-450)
@@ -71,9 +71,24 @@ Live ledger: `.dev/zwasm_capabilities.md`.
 
 ## Cold-start reading order (resume)
 
-handover → `.dev/debt.yaml` D-511 (next unit) + D-513 (foundational) → memory
-`clj_diff_sweep_methodology` + `.claude/rules/clj_diff_sweep.md` → for the perf
-pivot: `.dev/perf_v0_baseline.md` + memories `perf_campaign_roadmap_9_2_s` /
-`perf_beat_python_every_bench`. memories `char_literal_e2e_oracle`,
-`verify_actual_pattern_not_proxy`, `smoke_first_batch_full_gate`,
-`verify_against_releasesafe_binary`.
+handover → `.dev/debt.yaml` **D-450** (the active perf front, re-measured) →
+`private/notes/9.2.S-plan-reconstruction-20260624.md` (the full 2026-06-24 gap
+analysis + lever order; gitignored but on local disk) → `.dev/perf_v0_baseline.md`
++ ADR-0148 + memories `perf_campaign_roadmap_9_2_s` / `perf_beat_python_every_bench`
+/ `verify_actual_pattern_not_proxy` (the stale-data lesson this session re-confirmed)
+/ `verify_against_releasesafe_binary` / `smoke_first_batch_full_gate`. The campaign
+fast-mode (relax the gate to diff-oracle for pure-perf) is injected each session by
+`scripts/perf_campaign_remind.sh` (`.dev/.perf_campaign_active` is set).
+
+## Stopped — user requested
+
+User instruction (2026-06-24): 「であれば、クリーンなセッションからやらせたいので、
+continueだけで継続できるように配線・参照チェーンを監査して停止して。」(after the
+cross-lang re-measure + plan reconstruction landed; the startup-floor lever is best
+started with a clean session + a quiet Mac for reliable timing). Resume contract
+above is audited: tree clean, HEAD `368c9851` pushed, src fingerprint == `.smoke_pass`
+(HEAD green), D-450 + the plan note carry the reconstructed gaps + lever order.
+**First action on `/continue`**: measure-first the startup floor (D-140) — profile
+`runner.zig setupCoreAot` restore time on a QUIET Mac (the load caveat: do not chase
+this session's inflated absolutes), confirm the floor is genuinely ~10ms+ at rest,
+then tune the AOT restore. Per-task note: `private/notes/9.2.S-plan-reconstruction-20260624.md`.
