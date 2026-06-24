@@ -116,25 +116,14 @@ fn sqrtFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
     return big_int.allocFromManaged(rt, &r, .bigint);
 }
 
-/// `(.modPow n exp m)` — `n^exp mod m`, exp ≥ 0, m > 0 (JVM `BigInteger.modPow`),
-/// via square-and-multiply. (Negative exp = modular inverse — D-514.)
-fn modPowFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
-    try error_catalog.checkArity("modPow", args, 3, loc);
-    try requireBigInt(args[1], "modPow", loc);
-    try requireBigInt(args[2], "modPow", loc);
-    const infra = rt.gc.infra;
-    const m = big_int.asManaged(args[2]);
-    if (m.toConst().orderAgainstScalar(0) != .gt)
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "modPow", .expected = "a positive modulus", .actual = "a non-positive modulus" });
-    if (!big_int.asManaged(args[1]).toConst().positive)
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "modPow", .expected = "a non-negative exponent", .actual = "a negative exponent" });
-
-    var result = try Managed.initSet(infra, 1);
-    defer result.deinit();
+/// `out = base^exp mod m` (exp ≥ 0, m > 0) via square-and-multiply, all on
+/// `infra` Managed temporaries. Shared by `.modPow` and Miller-Rabin
+/// (`.isProbablePrime`). `out` must be an initialised Managed (overwritten).
+fn modPowManaged(infra: std.mem.Allocator, out: *Managed, base_in: *const Managed, exp_in: *const Managed, m: *const Managed) !void {
+    try out.set(1);
     var base = try Managed.init(infra);
     defer base.deinit();
-    var e = try big_int.asManaged(args[1]).clone();
+    var e = try exp_in.clone();
     defer e.deinit();
     var two = try Managed.initSet(infra, 2);
     defer two.deinit();
@@ -147,19 +136,102 @@ fn modPowFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     var sq = try Managed.init(infra);
     defer sq.deinit();
 
-    try sq.divFloor(&base, big_int.asManaged(args[0]), m); // base = n mod m ∈ [0,m)
+    try sq.divFloor(&base, base_in, m); // base = base_in mod m ∈ [0,m)
     while (e.toConst().orderAgainstScalar(0) == .gt) {
         try ehalf.divFloor(&ebit, &e, &two); // ehalf = e/2, ebit = e%2
         if (!ebit.eqlZero()) {
-            try prod.mul(&result, &base);
-            try sq.divFloor(&result, &prod, m); // result = result·base mod m
+            try prod.mul(out, &base);
+            try sq.divFloor(out, &prod, m); // out = out·base mod m
         }
         try prod.mul(&base, &base);
         try sq.divFloor(&base, &prod, m); // base = base² mod m
         e.swap(&ehalf);
     }
-    try sq.divFloor(&prod, &result, m); // final reduce (handles m = 1 → 0)
-    return big_int.allocFromManaged(rt, &prod, .bigint);
+    try prod.copy(out.toConst());
+    try sq.divFloor(out, &prod, m); // final reduce (handles m = 1 → 0)
+}
+
+/// `(.modPow n exp m)` — `n^exp mod m`, exp ≥ 0, m > 0 (JVM `BigInteger.modPow`).
+/// (Negative exp = modular inverse — D-514.)
+fn modPowFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("modPow", args, 3, loc);
+    try requireBigInt(args[1], "modPow", loc);
+    try requireBigInt(args[2], "modPow", loc);
+    if (big_int.asManaged(args[2]).toConst().orderAgainstScalar(0) != .gt)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "modPow", .expected = "a positive modulus", .actual = "a non-positive modulus" });
+    if (!big_int.asManaged(args[1]).toConst().positive)
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "modPow", .expected = "a non-negative exponent", .actual = "a negative exponent" });
+    var out = try Managed.init(rt.gc.infra);
+    defer out.deinit();
+    try modPowManaged(rt.gc.infra, &out, big_int.asManaged(args[0]), big_int.asManaged(args[1]), big_int.asManaged(args[2]));
+    return big_int.allocFromManaged(rt, &out, .bigint);
+}
+
+/// `(.isProbablePrime n certainty)` — deterministic Miller-Rabin with the fixed
+/// witness set {2,3,…,37}, which is EXACT for n < 3.3·10²⁴ and a strong
+/// probable-prime test beyond (JVM `BigInteger.isProbablePrime`; cljw ignores
+/// `certainty` — the deterministic witnesses are stronger than a round count and
+/// avoid hidden randomness). Negative / 0 / 1 → false.
+fn isProbablePrimeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("isProbablePrime", args, 2, loc);
+    const infra = rt.gc.infra;
+    const nm = big_int.asManaged(args[0]);
+    const ord2 = nm.toConst().orderAgainstScalar(2);
+    if (ord2 == .lt) return Value.initBoolean(false); // n < 2
+    if (ord2 == .eq or nm.toConst().orderAgainstScalar(3) == .eq) return Value.initBoolean(true); // 2 or 3
+
+    var two = try Managed.initSet(infra, 2);
+    defer two.deinit();
+    var one = try Managed.initSet(infra, 1);
+    defer one.deinit();
+    var q = try Managed.init(infra);
+    defer q.deinit();
+    var rem = try Managed.init(infra);
+    defer rem.deinit();
+    try q.divFloor(&rem, nm, &two);
+    if (rem.eqlZero()) return Value.initBoolean(false); // even, n > 3
+
+    // n − 1 = 2^s · d  (d odd)
+    var nminus1 = try nm.clone();
+    defer nminus1.deinit();
+    try nminus1.sub(&nminus1, &one);
+    var d = try nminus1.clone();
+    defer d.deinit();
+    var s: usize = 0;
+    while (true) {
+        try q.divFloor(&rem, &d, &two);
+        if (!rem.eqlZero()) break;
+        d.swap(&q);
+        s += 1;
+    }
+
+    var a = try Managed.init(infra);
+    defer a.deinit();
+    var x = try Managed.init(infra);
+    defer x.deinit();
+    var prod = try Managed.init(infra);
+    defer prod.deinit();
+    const witnesses = [_]u32{ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37 };
+    for (witnesses) |w| {
+        try a.set(w);
+        if (a.order(nm.*) != .lt) continue; // witness must be < n (small n)
+        try modPowManaged(infra, &x, &a, &d, nm); // x = a^d mod n
+        if (x.toConst().orderAgainstScalar(1) == .eq or x.order(nminus1) == .eq) continue;
+        var composite = true;
+        var i: usize = 0;
+        while (i + 1 < s) : (i += 1) {
+            try prod.mul(&x, &x);
+            try q.divFloor(&x, &prod, nm); // x = x² mod n
+            if (x.order(nminus1) == .eq) {
+                composite = false;
+                break;
+            }
+        }
+        if (composite) return Value.initBoolean(false);
+    }
+    return Value.initBoolean(true);
 }
 
 /// `(.bitLength n)` — minimal two's-complement bit count excl. sign (JVM
@@ -195,6 +267,7 @@ pub fn installNativeMethods(rt: *Runtime) !void {
         .{ "sqrt", &sqrtFn },
         .{ "modPow", &modPowFn },
         .{ "bitLength", &bitLengthFn },
+        .{ "isProbablePrime", &isProbablePrimeFn },
     };
     const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
     inline for (specs, 0..) |spec, i| {

@@ -25,13 +25,11 @@
 
 active:
   - id: "D-514"
-    status: "OPEN (2026-06-24). BigInteger instance methods abs/negate/signum/gcd/pow/mod/sqrt + modPow (square-and-multiply) + bitLength LANDED (bigint_methods.zig). Only `.isProbablePrime` (+ negative-exponent modPow = modular inverse) remain."
+    status: "DISCHARGED (2026-06-24). BigInteger instance-method surface complete: abs/negate/signum/gcd/pow/mod/sqrt + modPow (square-and-multiply) + bitLength + isProbablePrime (deterministic Miller-Rabin, witnesses {2..37}; 561 Carmichael→false verified). bigint_methods.zig on the .big_int native descriptor; e2e phase14_biginteger (29 cases). Only `.modPow` with a NEGATIVE exponent (modular inverse via extended Euclid) is left unimplemented — currently raises; rare, low priority (re-file if a real consumer needs it)."
     category: "clj-parity"
     barrier: |-
-      `.isProbablePrime(certainty)` = Miller-Rabin (~50 lines + a deterministic
-      witness set or an RNG) — the last BigInteger method; niche (primality testing).
-      Also `.modPow` with a NEGATIVE exponent (modular inverse via extended Euclid) —
-      currently raises; rare. Verify vs clj (isProbablePrime(97,10)=true) + e2e.
+      DISCHARGED — BigInteger instance methods complete bar negative-exponent modPow
+      (modular inverse), which raises; re-open only if a consumer needs it.
     last_reviewed: "2026-06-24"
   - id: "D-513"
     status: "OPEN (2026-06-24). Missing stdlib/contrib namespaces + the var-docstring gap, found in the 2026-06-24 deeper-namespace sweep. Lower priority — each needs foundation/scope work, not a clean drop-in."

@@ -57,5 +57,14 @@ assert_eq 'bi_bitlen'   "$(bm '(.bitLength (biginteger 255))')"   '8'
 assert_eq 'bi_bitlen2'  "$(bm '(.bitLength (biginteger 256))')"   '9'
 assert_eq 'bi_bitlen0'  "$(bm '(.bitLength (biginteger 0))')"     '0'
 assert_eq 'bi_bitlen_neg' "$(bm '(.bitLength (biginteger -256))')" '8'
+# isProbablePrime — deterministic Miller-Rabin (561 is a Carmichael composite).
+assert_eq 'bi_prime_2'    "$(bm '(.isProbablePrime (biginteger 2) 20)')"     'true'
+assert_eq 'bi_prime_97'   "$(bm '(.isProbablePrime (biginteger 97) 20)')"    'true'
+assert_eq 'bi_prime_4'    "$(bm '(.isProbablePrime (biginteger 4) 20)')"     'false'
+assert_eq 'bi_prime_561'  "$(bm '(.isProbablePrime (biginteger 561) 20)')"   'false'
+assert_eq 'bi_prime_7919' "$(bm '(.isProbablePrime (biginteger 7919) 20)')"  'true'
+assert_eq 'bi_prime_1m3'  "$(bm '(.isProbablePrime (biginteger 1000003) 20)')" 'true'
+assert_eq 'bi_prime_1m4'  "$(bm '(.isProbablePrime (biginteger 1000004) 20)')" 'false'
+assert_eq 'bi_prime_0'    "$(bm '(.isProbablePrime (biginteger 0) 20)')"     'false'
 
-echo "OK — phase14_biginteger (21 cases) green"
+echo "OK — phase14_biginteger (29 cases) green"
