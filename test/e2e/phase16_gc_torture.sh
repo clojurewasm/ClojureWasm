@@ -40,7 +40,7 @@ assert_eq 'nested_deep'  "$("$BIN" -e '(do (defn dp [n] (if (zero? n) (reduce + 
 # class, now for the shared-arena locals). fib proves nothing here (fixnum-only).
 # dp(n) = (first [n n n]) + dp(n-1) = n + dp(n-1) = sum(1..200) = 20100.
 assert_eq 'frame_local_alloc' "$("$BIN" -e '(do (defn dp [n] (if (zero? n) 0 (let [v [n n n]] (+ (first v) (dp (dec n)))))) (dp 200))')" '20100'
-assert_eq 'sqrt'         "$("$BIN" -e '(clojure.math/sqrt 16)')"                               '4.0'
+assert_eq 'sqrt'         "$("$BIN" -e '(do (require (quote [clojure.math])) (clojure.math/sqrt 16))')" '4.0'
 assert_eq 'filter_count' "$("$BIN" -e '(count (filter even? (range 1 200)))')"                 '99'
 # closure capturing a GC vector — exercises the .fn_val closure_bindings trace.
 assert_eq 'closure_vec'  "$("$BIN" -e '(let [x [1 2 3]] ((fn [] (reduce + x))))')"             '6'

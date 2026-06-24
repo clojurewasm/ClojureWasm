@@ -48,7 +48,7 @@ E2E_JOBS="${E2E_JOBS:-8}"
 # how many smoke-only commits ride before a full gate is forced.
 SMOKE_MODE=0
 SMOKE_E2E=""
-SMOKE_CORE="zig_build_test_vm,zig_build_test_tree_walk,zlinter,build_cljw,corpus_regression"
+SMOKE_CORE="zig_build_test_vm,zig_build_test_tree_walk,zlinter,build_cljw,lazy_ns_replay,corpus_regression"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -384,6 +384,7 @@ run_step "assert_e2e_releasesafe" 'mode=$(zig-out/bin/cljw --version 2>/dev/null
 # no clj/network). Makes a "X/Y landed" discharge claim mechanically
 # re-checkable (anti D-177 false-positive-discharge) + catches behaviour
 # drift. See .claude/rules/clj_diff_sweep.md.
+run_step "lazy_ns_replay"      "bash scripts/check_lazy_ns_replay.sh"
 run_step "corpus_regression"   "bash scripts/check_corpus_regression.sh"
 
 run_step "e2e_phase2_exit"     "bash test/e2e/phase2_exit.sh"
