@@ -231,7 +231,16 @@ active:
       (dual_backend_parity) + warrants a DA fork (dispatch-representation change).
       Drain as a focused unit. Repro: load data.priority-map via deps.edn
       :local/root, run test_priority_map.clj; or minimal — a deftype with
-      `(seq [_] …)` + `(seq [_ a] …)`, then `(. t seq true)`.
+      `(seq [_] …)` + `(seq [_ a] …)`, then `(. t seq true)`. IMPLEMENTATION SCOPE
+      (mapped 2026-06-25): the change is MULTI-POINT, not one-line. `expandDeftype`
+      → `lowerDefType` + `wrapMethodBodyWithFields` BOTH assume a single-arity method
+      (`impl.data.list[1].data == .vector` — the param vector), so they handle
+      neither multi-arity method SYNTAX `(name ([a] …) ([a b] …))` nor two same-name
+      impls. Merging needs: detect same-name impls in lowerDefType → emit one
+      multi-arity `fn*` as the method_val → wrapMethodBodyWithFields per arity →
+      the runtime method dispatch (lookupMethod + vt.callFn) invoke the multi-arity
+      fn. High blast radius (every deftype/reify) ⇒ DA fork + the full
+      dual_backend_parity e2e set. A fresh focused unit, NOT a session-tail change.
     last_reviewed: "2026-06-25"
   - id: "D-531"
     status: |-
