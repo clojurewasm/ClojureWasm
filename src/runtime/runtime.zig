@@ -260,6 +260,11 @@ pub const Runtime = struct {
     /// `java/util/Locale.zig::singleton`; freed in `deinit`.
     locale_us: @import("value/value.zig").Value = .nil_val,
     locale_root: @import("value/value.zig").Value = .nil_val,
+    /// The 8 `java.math.RoundingMode` enum-constant singletons (UP..UNNECESSARY,
+    /// indexed by ordinal), gc.infra-allocated host_instances lazily filled by
+    /// `rounding_mode.zig::singleton`; freed in `deinit`. Cached for `=` /
+    /// identity parity (ADR-0160).
+    rounding_modes: [8]@import("value/value.zig").Value = @splat(.nil_val),
 
     /// User-set Java system properties (`(System/setProperty k v)`). Keys +
     /// values are `gpa`-owned dupes; consulted by `getProperty` BEFORE the
@@ -631,6 +636,7 @@ pub const Runtime = struct {
         @import("collection/list.zig").deinitEmptyList(self);
         @import("collection/persistent_queue.zig").deinitEmptyQueue(self);
         @import("locale.zig").deinitSingletons(self);
+        @import("rounding_mode.zig").deinitSingletons(self);
         // Free the per-Runtime Date descriptor (gc.infra — D-200/ADR-0079).
         @import("time/date.zig").deinitDescriptor(self);
         @import("time/timestamp.zig").deinitDescriptor(self);

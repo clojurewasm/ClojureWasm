@@ -534,6 +534,20 @@ tiers:
           impl: runtime/numeric/big_decimal.zig
         methods: [valueOf, add, subtract, multiply, divide, toPlainString]
         clojure_peer_vars: [clojure.core/bigdec]
+      # java.math.RoundingMode — the 8 enum constants (UP..UNNECESSARY) as
+      # host-enum object singletons + .toString (ADR-0160). The clj-modern
+      # rounding API (`(.setScale bd n RoundingMode/X)`); the deprecated int
+      # form is BigDecimal/ROUND_*. (class e) = the enum class, NOT Long.
+      - fqn: java.math.RoundingMode
+        cljw_ns: cljw.java.math.RoundingMode
+        keyword: rounding_mode
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/math/RoundingMode.zig
+          impl: runtime/rounding_mode.zig
+        methods: [toString]
+        clojure_peer_vars: []
       # java.security
       - fqn: java.security.MessageDigest
         cljw_ns: cljw.java.security.MessageDigest

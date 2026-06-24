@@ -399,6 +399,7 @@ fn staticFieldValue(rt: *Runtime, sf: *const @import("../../runtime/type_descrip
             .locale_us => try @import("../../runtime/locale.zig").singleton(rt, .us),
             .locale_root => try @import("../../runtime/locale.zig").singleton(rt, .root),
         },
+        .rounding_mode => |ord| try @import("../../runtime/rounding_mode.zig").singleton(rt, ord),
     };
 }
 

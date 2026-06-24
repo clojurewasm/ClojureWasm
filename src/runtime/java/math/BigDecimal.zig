@@ -26,6 +26,8 @@ const error_catalog = @import("../../error/catalog.zig");
 const big_decimal = @import("../../numeric/big_decimal.zig");
 const big_int = @import("../../numeric/big_int.zig");
 const print_mod = @import("../../print.zig");
+const host_instance = @import("../../host_instance.zig");
+const rounding_mode = @import("../../rounding_mode.zig");
 
 fn requireBd(v: Value, name: []const u8, loc: SourceLocation) !void {
     if (v.tag() != .big_decimal)
@@ -228,8 +230,17 @@ fn setScale(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     try error_catalog.checkArityRange("setScale", args, 2, 3, loc);
     if (args[0].tag() != .big_decimal)
         return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "setScale", .actual = @tagName(args[0].tag()) });
-    // ROUND_UNNECESSARY (7) for the no-mode form (JVM setScale(int)).
+    // ROUND_UNNECESSARY (7) for the no-mode form (JVM setScale(int)). The mode
+    // arg is either a deprecated `ROUND_*` int OR a `RoundingMode` enum constant
+    // (a host_instance carrying its ordinal in state[0]) — both decode to 0-7.
     const mode: i64 = if (args.len == 3) blk: {
+        if (args[2].tag() == .host_instance) {
+            const hi = host_instance.asHostInstance(args[2]);
+            if (hi.descriptor.fqcn) |fqcn| {
+                if (std.mem.eql(u8, fqcn, "java.math.RoundingMode"))
+                    break :blk @intCast(hi.state[0]);
+            }
+        }
         if (!args[2].isInt())
             return error_catalog.raise(.type_arg_not_number, loc, .{ .fn_name = "setScale", .actual = "non-integer scale/mode" });
         break :blk args[2].asInteger();
@@ -308,16 +319,16 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 
 /// The deprecated-but-still-public `BigDecimal.ROUND_*` int constants
 /// (java.math.BigDecimal). Real Clojure libs (clojure.math.numeric-tower's
-/// floor/ceil) read them for `(.setScale n 0 BigDecimal/ROUND_FLOOR)`.
-const big_decimal_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
-    .{ .name = "ROUND_UP", .value = .{ .int = 0 } },
-    .{ .name = "ROUND_DOWN", .value = .{ .int = 1 } },
-    .{ .name = "ROUND_CEILING", .value = .{ .int = 2 } },
-    .{ .name = "ROUND_FLOOR", .value = .{ .int = 3 } },
-    .{ .name = "ROUND_HALF_UP", .value = .{ .int = 4 } },
-    .{ .name = "ROUND_HALF_DOWN", .value = .{ .int = 5 } },
-    .{ .name = "ROUND_HALF_EVEN", .value = .{ .int = 6 } },
-    .{ .name = "ROUND_UNNECESSARY", .value = .{ .int = 7 } },
+/// floor/ceil) read them for `(.setScale n 0 BigDecimal/ROUND_FLOOR)`. Generated
+/// from the canonical `rounding_mode` name↔ordinal table so the `ROUND_<name>`
+/// suffix + ordinal stay a single source of truth shared with the modern
+/// `RoundingMode/<name>` enum constants (ADR-0160).
+const big_decimal_static_fields = build: {
+    var arr: [rounding_mode.COUNT]type_descriptor.TypeDescriptor.StaticField = undefined;
+    for (&arr, 0..) |*sf, i| {
+        sf.* = .{ .name = "ROUND_" ++ rounding_mode.name(@intCast(i)), .value = .{ .int = @intCast(i) } };
+    }
+    break :build arr;
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{

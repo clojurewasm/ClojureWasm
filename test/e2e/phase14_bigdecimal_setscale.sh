@@ -79,4 +79,24 @@ assert_eq 'bd_mpr'      "$("$BIN" -e '(str (.movePointRight (bigdec "1.5") 2))' 
 assert_eq 'bd_mpr_big'  "$("$BIN" -e '(str (.movePointRight (bigdec "12.34") 3))' 2>&1 | awk 'END{print}')"        '"12340"'
 assert_eq 'bd_div_nonterm' "$("$BIN" -e '(try (.divide (bigdec "1") (bigdec "3")) (catch Throwable e :caught))' 2>&1 | awk 'END{print}')" ':caught'
 
-echo "OK — phase14_bigdecimal_setscale (43 cases) green"
+# java.math.RoundingMode enum constants (ADR-0160) — host-enum singletons, NOT
+# the deprecated ROUND_* ints. `str`/`class`/`=` match clj; only the opaque
+# print form diverges (AD-002). `rm` drives setScale via the FQCN enum constant.
+rm() { "$BIN" -e "(str (.setScale (bigdec \"$1\") $2 java.math.RoundingMode/$3))" 2>&1 | awk 'END{print}'; }
+
+# All 8 constants resolve; (str e) = the bare JVM enum name (clj parity).
+assert_eq 'rm_names' "$("$BIN" -e '(mapv str [java.math.RoundingMode/UP java.math.RoundingMode/DOWN java.math.RoundingMode/CEILING java.math.RoundingMode/FLOOR java.math.RoundingMode/HALF_UP java.math.RoundingMode/HALF_DOWN java.math.RoundingMode/HALF_EVEN java.math.RoundingMode/UNNECESSARY])' 2>&1 | awk 'END{print}')" '["UP" "DOWN" "CEILING" "FLOOR" "HALF_UP" "HALF_DOWN" "HALF_EVEN" "UNNECESSARY"]'
+# (class e) = the enum class (NOT Long — the int-ordinal anti-pattern); = is by
+# identity (cached singleton), and an enum is NEVER `=` to its int ordinal (clj).
+assert_eq 'rm_class'  "$("$BIN" -e '(class java.math.RoundingMode/HALF_UP)' 2>&1 | awk 'END{print}')" 'java.math.RoundingMode'
+assert_eq 'rm_eq'     "$("$BIN" -e '(= java.math.RoundingMode/HALF_UP java.math.RoundingMode/HALF_UP)' 2>&1 | awk 'END{print}')" 'true'
+assert_eq 'rm_eq_int' "$("$BIN" -e '(= java.math.RoundingMode/HALF_UP 4)' 2>&1 | awk 'END{print}')" 'false'
+# setScale accepts a RoundingMode enum constant (the clj-modern API). The bug
+# this fixes: (.setScale (bigdec "3.14159") 2 java.math.RoundingMode/HALF_UP).
+assert_eq 'rm_setscale'  "$(rm 3.14159 2 HALF_UP)" '"3.14"'
+assert_eq 'rm_floor'     "$(rm 2.5 0 FLOOR)"       '"2"'
+assert_eq 'rm_ceiling'   "$(rm 2.5 0 CEILING)"     '"3"'
+assert_eq 'rm_half_even' "$(rm 2.5 0 HALF_EVEN)"   '"2"'
+assert_eq 'rm_up_neg'    "$(rm -2.5 0 UP)"         '"-3"'
+
+echo "OK — phase14_bigdecimal_setscale (52 cases) green"

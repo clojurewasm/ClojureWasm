@@ -209,6 +209,11 @@ pub const TypeDescriptor = struct {
         float: f64,
         bool: bool, // Boolean/TRUE, Boolean/FALSE (ADR-0061 am 2026-05-31)
         singleton: Singleton,
+        /// A `java.math.RoundingMode` enum constant, carrying its ordinal (0-7).
+        /// Resolves to the per-Runtime cached host_instance singleton via
+        /// `rounding_mode.zig::singleton` (ADR-0160). Distinct from `singleton`
+        /// because it is ordinal-parameterised, not a fixed named slot.
+        rounding_mode: u8,
     };
 
     /// Find a static field by name (ADR-0061). Linear — field tables are
