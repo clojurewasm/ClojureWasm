@@ -154,6 +154,27 @@ active:
       surface OR check an upstream addition; fix meaningful DIFFs. SSOT: ADR-0166
       row 6; cross-ref D-175.
     last_reviewed: "2026-06-24"
+  - id: "D-533"
+    status: |-
+      open (2026-06-25, D-523 doc-audit finding). VALIDATORS on `ref` and `var`
+      are not wired: `set-validator!` / `get-validator` (atom.zig `requireValidatable`)
+      accept ONLY `.atom` / `.agent` — a ref/var arg errors "expected atom or
+      agent". And the `ref` constructor rejects its option map (`(ref v :validator
+      f)` / `:min-history` / `:max-history`) — `refFn` is arity-1 (stm.zig), unlike
+      `atomFn`/`agentFn` which parse `:validator`/`:meta`. clj wires all four ref
+      types' validators + the ref ctor options. The atom + agent halves are DONE
+      (D-223 / D-441); ref/var are the residue.
+    category: "concurrency"
+    barrier: |-
+      Ref validators need STM integration (no `ref_mod.setValidator` today; add a
+      `validator` field to Ref + validate the proposed value at commit in
+      `lock_tx.doSet`/`doCommute`, not a plain set like atom). Var validators are a
+      smaller add (a validator slot on the Var root). Then extend
+      `requireValidatable` + `irefValidatorOf`/`irefSetValidator` to `.ref`/`.var_ref`,
+      and make `refFn` parse the option map like `atomFn`. Repro: `(set-validator!
+      (ref 1) pos?)` / `(ref 1 :validator pos?)`. LOW-frequency (ref validators are
+      rare). Cross-ref ADR-0081, D-223, D-441.
+    last_reviewed: "2026-06-25"
   - id: "D-528"
     status: |-
       open (2026-06-24, user-directed; ADR-0166). Real deps.edn famous-library
