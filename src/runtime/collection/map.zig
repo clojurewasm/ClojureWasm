@@ -182,6 +182,21 @@ fn keyEq(a: Value, b: Value) !bool {
     return equal.eqConsult(a, b);
 }
 
+/// PERF: keyword keys are interned, so `=` over them is bit-identity — scan an
+/// array_map's entries by raw payload, skipping the per-entry
+/// keyEq→eqConsult→keyEqValue call chain (+ its error union). Returns the
+/// matching key's 0-based entry index, or null. Caller guarantees `kw` is a
+/// keyword. Powers the keyword fast path in `get` / `contains` (destructure /
+/// config-map lookups dominate map get). [refs: O-051]
+fn arrayMapKeywordSlot(am: *const ArrayMap, kw: Value) ?u32 {
+    const kb = @intFromEnum(kw);
+    var i: u32 = 0;
+    while (i < am.count) : (i += 1) {
+        if (@intFromEnum(am.entries[2 * i]) == kb) return i;
+    }
+    return null;
+}
+
 /// Bucketing hash for every HAMT key site. Routes to `equal.hashConsult`
 /// (ADR-0129): a custom-`hasheq` deftype/reify key hashes via its impl, else
 /// the rt-free `equal.valueHash`. MUST stay paired with `keyEq` so a deftype
@@ -395,6 +410,7 @@ pub fn contains(v: Value, k: Value) !bool {
     return switch (v.tag()) {
         .array_map => blk: {
             const am = v.decodePtr(*const ArrayMap);
+            if (k.tag() == .keyword) break :blk arrayMapKeywordSlot(am, k) != null;
             var i: u32 = 0;
             while (i < am.count) : (i += 1) {
                 if (try keyEq(am.entries[2 * i], k)) break :blk true;
@@ -492,6 +508,8 @@ pub fn get(v: Value, k: Value) !Value {
     return switch (v.tag()) {
         .array_map => blk: {
             const am = v.decodePtr(*const ArrayMap);
+            if (k.tag() == .keyword)
+                break :blk if (arrayMapKeywordSlot(am, k)) |i| am.entries[2 * i + 1] else Value.nil_val;
             var i: u32 = 0;
             while (i < am.count) : (i += 1) {
                 if (try keyEq(am.entries[2 * i], k)) break :blk am.entries[2 * i + 1];
@@ -1100,6 +1118,39 @@ test "ArrayMap.get: linear scan on hand-built 3-entry map" {
     try testing.expectEqual(@as(i48, 200), (try get(v, Value.initInteger(2))).asInteger());
     try testing.expectEqual(@as(i48, 300), (try get(v, Value.initInteger(3))).asInteger());
     try testing.expectEqual(Value.nil_val, try get(v, Value.initInteger(999)));
+}
+
+test "keyword fast path: get / contains hit, miss, and mixed key types" {
+    var fix = RuntimeFixture.init();
+    defer fix.deinit();
+    const keyword_mod = @import("../keyword.zig");
+
+    const ka = try keyword_mod.intern(&fix.rt, null, "a");
+    const kb = try keyword_mod.intern(&fix.rt, null, "b");
+    const kc = try keyword_mod.intern(&fix.rt, null, "c");
+    const kz = try keyword_mod.intern(&fix.rt, null, "z");
+
+    // Map mixing a keyword key, an integer key, and a string key — the keyword
+    // fast path must read the keyword entry and never mis-hit a non-keyword one.
+    var m = empty();
+    m = try assoc(&fix.rt, m, ka, Value.initInteger(1));
+    m = try assoc(&fix.rt, m, Value.initInteger(7), Value.initInteger(70));
+    m = try assoc(&fix.rt, m, kb, Value.initInteger(2));
+
+    // A re-interned keyword is the SAME heap object, so the raw-bits scan finds it.
+    const ka2 = try keyword_mod.intern(&fix.rt, null, "a");
+    try testing.expectEqual(@as(i48, 1), (try get(m, ka2)).asInteger());
+    try testing.expectEqual(@as(i48, 2), (try get(m, kb)).asInteger());
+    try testing.expect(try contains(m, ka));
+    try testing.expect(try contains(m, kb));
+
+    // Absent keyword → nil / false (full scan, no false hit on the int/string keys).
+    try testing.expectEqual(Value.nil_val, try get(m, kz));
+    try testing.expect(!try contains(m, kz));
+    try testing.expect(!try contains(m, kc));
+
+    // The non-keyword key still resolves through the general path.
+    try testing.expectEqual(@as(i48, 70), (try get(m, Value.initInteger(7))).asInteger());
 }
 
 const RuntimeFixture = struct {
