@@ -1103,6 +1103,69 @@ pub fn readEmbeddedPayload(io: std.Io, gpa: std.mem.Allocator, file: std.Io.File
     return payload;
 }
 
+// === Multi-region blob (ADR-0163, D-516 lazy-namespace loading) ===
+//
+// One position-independent blob holding the eager core region + each lazy
+// namespace's own envelope region, addressable by namespace name through a
+// header index. Each region IS a self-contained `serializeEnvelope` output, so
+// `EnvelopeIterator` / `driver.runEnvelope` consume a region verbatim — no new
+// chunk format. Layout:
+//   ["CLJR"][u32 region_count]
+//   [per region: u32 name_len, name, u32 abs_offset, u32 env_len]   (the index)
+//   [region envelopes, concatenated]
+// `abs_offset` is measured from the blob start, so a lookup returns a sub-slice
+// and the blob works at any load address (no absolute pointers — D-517-ready).
+
+pub const REGION_MAGIC: [4]u8 = .{ 'C', 'L', 'J', 'R' };
+
+/// One namespace's bytecode region: its name + its serialized envelope bytes.
+pub const Region = struct {
+    ns_name: []const u8,
+    envelope: []const u8,
+};
+
+/// Serialize `regions` into one position-independent blob (layout above). Each
+/// `region.envelope` must be a `serializeEnvelope` output; the caller owns them.
+pub fn serializeRegions(allocator: std.mem.Allocator, regions: []const Region) ![]u8 {
+    var index_size: usize = 4 + 4; // magic + count
+    for (regions) |reg| index_size += 4 + reg.ns_name.len + 4 + 4; // name_len+name+off+len
+
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    errdefer aw.deinit();
+    const w = &aw.writer;
+    try w.writeAll(&REGION_MAGIC);
+    try writeU32(w, @intCast(regions.len));
+    var off: usize = index_size;
+    for (regions) |reg| {
+        try writeLenPrefixed(w, reg.ns_name);
+        try writeU32(w, @intCast(off));
+        try writeU32(w, @intCast(reg.envelope.len));
+        off += reg.envelope.len;
+    }
+    for (regions) |reg| try w.writeAll(reg.envelope);
+    return try aw.toOwnedSlice();
+}
+
+/// Return the envelope bytes for `ns_name` (a sub-slice into `blob`), or null if
+/// `blob` is not a region blob or has no such region. O(region_count) linear scan
+/// of the header index — region_count is ~30 and lazy `require` is not a hot path.
+pub fn findRegion(blob: []const u8, ns_name: []const u8) ?[]const u8 {
+    if (blob.len < 8 or !std.mem.eql(u8, blob[0..4], &REGION_MAGIC)) return null;
+    var r: ByteReader = .{ .bytes = blob, .pos = 4 };
+    const count = r.readU32() catch return null;
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        const name = r.readLenPrefixed() catch return null;
+        const off = r.readU32() catch return null;
+        const len = r.readU32() catch return null;
+        if (std.mem.eql(u8, name, ns_name)) {
+            if (off + len > blob.len) return null;
+            return blob[off .. off + len];
+        }
+    }
+    return null;
+}
+
 // --- tests ---
 
 const testing = std.testing;
@@ -1134,6 +1197,45 @@ test "payload envelope round-trips two chunks in order" {
     try testing.expect(out[0].constants[1].tag() == .keyword);
     try testing.expectEqual(@as(usize, 1), out[1].constants.len);
     try testing.expectEqual(@as(i64, 99), out[1].constants[0].asInteger());
+}
+
+test "region blob: findRegion returns each ns's envelope; absent / non-region -> null (D-516)" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+    var env = try @import("../../runtime/env.zig").Env.init(&rt);
+    defer env.deinit();
+
+    // Two single-chunk envelopes standing in for two namespaces' regions.
+    const consts_a = [_]Value{Value.initInteger(7)};
+    const chunk_a: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts_a };
+    const env_a = try serializeEnvelope(testing.allocator, &.{chunk_a}, null, &.{});
+    defer testing.allocator.free(env_a);
+    const consts_b = [_]Value{Value.initInteger(42)};
+    const chunk_b: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts_b };
+    const env_b = try serializeEnvelope(testing.allocator, &.{chunk_b}, null, &.{});
+    defer testing.allocator.free(env_b);
+
+    const blob = try serializeRegions(testing.allocator, &.{
+        .{ .ns_name = "clojure.core", .envelope = env_a },
+        .{ .ns_name = "clojure.string", .envelope = env_b },
+    });
+    defer testing.allocator.free(blob);
+
+    // Each region's sub-slice equals its source envelope and deserializes to its chunk.
+    const got_a = findRegion(blob, "clojure.core") orelse return error.NoRegion;
+    try testing.expectEqualSlices(u8, env_a, got_a);
+    const chunks_a = try deserializeEnvelope(testing.allocator, &rt, &env, got_a);
+    defer freeEnvelope(testing.allocator, chunks_a);
+    try testing.expectEqual(@as(i64, 7), chunks_a[0].constants[0].asInteger());
+
+    const got_b = findRegion(blob, "clojure.string") orelse return error.NoRegion;
+    try testing.expectEqualSlices(u8, env_b, got_b);
+
+    // Absent ns + a non-region blob both yield null.
+    try testing.expect(findRegion(blob, "clojure.set") == null);
+    try testing.expect(findRegion("not a region blob!!", "x") == null);
 }
 
 test "envelope entry manifest round-trips; chunk readers skip it (ADR-0034 am4)" {

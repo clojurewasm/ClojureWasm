@@ -44,6 +44,7 @@ const writer_value = @import("../runtime/writer_value.zig");
 const uuid_prim = @import("primitive/uuid.zig");
 const inst_prim = @import("primitive/inst.zig");
 const startup_profile = @import("../runtime/startup_profile.zig");
+const serialize = @import("../eval/bytecode/serialize.zig");
 
 /// One entry in the bootstrap file table. `label` is the synthetic
 /// source label the renderer attributes to errors raised while
@@ -544,10 +545,31 @@ pub fn loadCoreAot(
     // FILES is dependency-ordered), exactly as the old mappings-count guard did.
     // Without this, an intra-bootstrap require would re-parse the embedded source.
     try markFilesLoaded(rt, FILES);
-    try driver.runEnvelope(rt, env, arena, bootstrap_blob);
+    // ADR-0163 D-516: the blob is now a multi-region blob (one self-contained
+    // envelope per ns). Run every region in FILES order — cross-region var_refs
+    // (e.g. clojure.data → clojure.set) resolve because the referenced ns's region
+    // ran earlier (FILES is dependency-ordered), exactly as the old single
+    // envelope's interleaved chunks did. (The lazy split trims this to the eager
+    // region set + an on-require resolver for the rest.)
+    try runEagerRegions(rt, env, arena, bootstrap_blob, FILES);
     prof.mark("    runEnvelope");
     try finalizeUserNs(rt, env);
     prof.mark("    finalizeUserNs");
+}
+
+/// Run each namespace region in `files` order from a multi-region `blob`
+/// (ADR-0163). Each region is a self-contained envelope consumed via
+/// `driver.runEnvelope`. Regions must run in dependency order so a later region's
+/// `var_ref` to an earlier region's `def` resolves at run time. Shared by
+/// `loadCoreAot` and the build-tool round-trip test.
+pub fn runEagerRegions(rt: *Runtime, env: *Env, arena: std.mem.Allocator, blob: []const u8, files: []const FileEntry) !void {
+    for (files) |file| {
+        const ns_name = nsNameFromLabel(file.label);
+        // A missing region means the embedded blob is malformed (a build-time
+        // bug, never user input) — fail loudly rather than silently skipping a ns.
+        const region = serialize.findRegion(blob, ns_name) orelse return error.MissingBootstrapRegion;
+        try driver.runEnvelope(rt, env, arena, region);
+    }
 }
 
 /// Mark every namespace in `files` as loaded in `rt.loaded_libs` (ADR-0163).
@@ -568,8 +590,8 @@ pub fn markFilesLoaded(rt: *Runtime, files: []const FileEntry) !void {
 }
 
 /// FileEntry labels are `<ns-name>` except core's, which is `<bootstrap>`. Map a
-/// label to the namespace name used as the `require` / `loaded_libs` key.
-fn nsNameFromLabel(label: []const u8) []const u8 {
+/// label to the namespace name used as the `require` / `loaded_libs` / region key.
+pub fn nsNameFromLabel(label: []const u8) []const u8 {
     if (std.mem.eql(u8, label, "<bootstrap>")) return "clojure.core";
     if (label.len >= 2 and label[0] == '<' and label[label.len - 1] == '>')
         return label[1 .. label.len - 1];

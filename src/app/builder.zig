@@ -198,8 +198,14 @@ pub fn buildBootstrapEnvelope(
     arena: std.mem.Allocator,
     files: []const bootstrap.FileEntry,
 ) ![]u8 {
-    var chunks: std.ArrayList(BytecodeChunk) = .empty;
-    defer chunks.deinit(allocator);
+    // ADR-0163 D-516: emit ONE region per file (each a self-contained envelope),
+    // keyed by ns-name, instead of one flat envelope. The runtime runs the eager
+    // region(s) at startup and replays a lazy region on first `require`.
+    var regions: std.ArrayList(serialize.Region) = .empty;
+    defer {
+        for (regions.items) |reg| allocator.free(reg.envelope);
+        regions.deinit(allocator);
+    }
     var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
     // ADR-0163: pre-register so a lib's build-time `(:require other-bootstrap-lib)`
     // is a loaded_libs no-op (the dep's chunks already eval'd earlier in this loop),
@@ -209,6 +215,8 @@ pub fn buildBootstrapEnvelope(
         // Register the file's bytes so a build-time error frame keeps its
         // per-file SourceContext (mirror of loadCoreFiles; idempotent).
         try rt.registerSource(file.label, file.source);
+        var chunks: std.ArrayList(BytecodeChunk) = .empty;
+        defer chunks.deinit(allocator); // chunk slices are arena-owned; only the list is ours
         var reader = Reader.init(arena, file.source);
         var form_idx: usize = 0;
         while (true) {
@@ -232,10 +240,13 @@ pub fn buildBootstrapEnvelope(
                 return err;
             };
         }
+        // Serialize this file's chunks as its own region envelope (the bundled
+        // bootstrap `:require`s no Wasm components, so the component table is empty).
+        const region_env = try serialize.serializeEnvelope(allocator, chunks.items, null, &.{});
+        errdefer allocator.free(region_env);
+        try regions.append(allocator, .{ .ns_name = bootstrap.nsNameFromLabel(file.label), .envelope = region_env });
     }
-    // The eager bootstrap (clojure.core + bundled libs) `:require`s no Wasm
-    // components, so the embedded table is always empty here.
-    return serialize.serializeEnvelope(allocator, chunks.items, null, &.{});
+    return serialize.serializeRegions(allocator, regions.items);
 }
 
 /// `cljw build -m <ns>` (ADR-0034 amendment 4 A4-D1/D2). Build-time eval of
@@ -606,8 +617,10 @@ test "aot: full bootstrap round-trips — a NON-core lib restores from bytecode 
     var table = macro_dispatch.Table.init(A);
     defer table.deinit();
     try bootstrap.setupCorePrefix(&rt, &env, &table);
-    // The whole eager bootstrap from bytecode (no .clj re-parse) — the loadCoreAot path.
-    try driver.runEnvelope(&rt, &env, arena, blob);
+    // The whole eager bootstrap from the region blob (no .clj re-parse) — mirrors
+    // the loadCoreAot path: pre-register loaded_libs, then run every region in order.
+    try bootstrap.markFilesLoaded(&rt, bootstrap.FILES);
+    try bootstrap.runEagerRegions(&rt, &env, arena, blob, bootstrap.FILES);
 
     // clojure.string/upper-case is a non-core lib var: present ONLY if the
     // non-core AOT chunks ran. Call it to prove the restored fn dispatches.
