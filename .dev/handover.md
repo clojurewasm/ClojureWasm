@@ -8,40 +8,40 @@
 - **HEAD**: `main` (`git log` = SSOT). Per-commit = smoke; commit **and** push
   (CLAUDE.md § atomic Step 6 — the perf-campaign no-push mode is LIFTED; push normally).
   `build.zig.zon` `.zwasm` = tag pin `v2.0.0-alpha.3`.
-- **First commit on resume MUST be**: self-select the highest-value §9.2.T unit
-  (**ADR-0166** standing mode; Step 0.5 reads the `quality_floor:` rows). The
-  **contained correctness floor is now drained** — so the highest-value remaining
-  is the two deep real-library bugs: **D-530** (deftype overloaded same-name-method
-  arity dispatch — the top *code-tractable* target: investigate the `expandDeftype`
-  lowering + `lookupMethod` name-only keying; fully unblocks data.priority-map's
-  subseq; warrants a DA fork as a dispatch-design change) and **D-531** (partitions-M
-  UAF — needs a GC-poison instrument or faster torture-under-lldb first; see its
-  debt row's tooling diagnostics). Lower-value standing fallbacks: **D-528** more
-  real-library loads (3 done: priority-map/math.combinatorics buggy, core.unify
-  clean), then the pure-polish rows **D-522** (de-pointer — note: few BARE pointers
-  exist; most refs are anchors within explanatory prose, keep those) · **D-523**
-  doc audit · **D-524** `private/` decouple · **D-525** rules/skills review ·
-  **D-529** marker inventory (the PERF/optimizations.md cross-check is clean bar
-  ISO-8601 regex noise). **D-526 is COMPLETE** (java.lang scalar statics + Objects).
-  A correctness/clj-parity floor outranks pure polish.
+- **First commit on resume MUST be**: open **D-530** as a fresh focused unit (the
+  top remaining code-tractable clj-parity gap; the contained correctness floor +
+  the D-523 doc pass + the accessible D-528 library hunt are all drained). Its
+  implementation SCOPE is already mapped (multi-point, NOT one-line): `expandDeftype`
+  → `lowerDefType` + `wrapMethodBodyWithFields` BOTH assume a single-arity method
+  (`impl[1]==.vector`), so overloaded same-name methods need merging into one
+  multi-arity `fn*` at lowering + the runtime dispatch (`lookupMethod` name-only)
+  invoking it — high blast radius (every deftype/reify), so **DA fork + full
+  dual_backend_parity e2e set are mandatory**. Step 0 survey clj/v1 first. Lower
+  fallbacks: **D-533** (ref/var validators + ref ctor option — moderate STM/Var-GC),
+  **D-531** (partitions-M UAF — GC-poison instrument first), **D-532** (BigInteger
+  construction DONE; only a fuzzy float round-trip + speculative arith remain), then
+  pure-polish **D-522** (de-pointer — few BARE pointers; most refs anchor explanatory
+  prose, keep those) · **D-524/525** (`.claude/`-blocked, surface to user) · **D-529**
+  marker inventory. A correctness/clj-parity floor outranks pure polish.
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm` (false fails);
   bare `zig build` for a probe (ADR-0133 — use ReleaseSafe). Note: `.claude/**` edits
   (D-524/525) may hit the auto-mode self-modification block — surface those to the user.
 
 ## Last landed (git log = SSOT)
 
-§9.2.T correctness-floor session (D-526/527/528). **D-526 java.lang scalar static
-surface COMPLETE** (Long/Integer/Double/Boolean/Character/Math; String/join,
-unsigned-arithmetic cluster, Character surrogate/codePoint, Double bit-conversion,
-hashCode + Math ceilDiv family — 6 corpus files) + **new java.util.Objects surface**.
-**D-527**: clj-parity sweeps found no real bugs (solid); fixed clj_diff_sweep.sh to
-auto-require qualified ns on the cljw side. **D-528 real-library load found + fixed
-4 bugs**: deftype-as-map `=` symmetry (MapEquivalence gate), map?/sorted?/set?
-deftype recognition, and a **core lazy-`=` GC-rooting bug** (seqEqualWalk root frame;
-minimal torture repro). Deep bugs recorded with full diagnostics: **D-530** (deftype
-overloaded same-name-method arity dispatch — blocks data.priority-map subseq),
-**D-531** (partitions-M lazy-realization UAF — ReleaseSafe-only, lldb/Debug both
-tooling-blocked). All gates green.
+§9.2.T public-ization session. **Interop**: java.lang scalar statics (D-526) +
+java.util.Objects + **java.util.UUID 2-long ctor** + **java.math.BigInteger surface**
+(`<init>` String/byte[] + valueOf + `.toBigInteger`) + **BigDecimal(BigInteger,scale)
+ctor** — all corpus-backed. **8 real bug fixes** (deftype-as-map `=` symmetry via
+MapEquivalence, map?/sorted?/set? deftype recognition, a core lazy-`=` GC-rooting bug,
++ the UUID/BigInteger/BigDecimal interop chain). **D-528 library drain**: 6 real libs
+exercised (priority-map/math.combinatorics/data.generators → fixes; core.unify/data.zip/
+data.codec → clean) — the accessible self-contained-lib hunt is now exhausted (8
+attempts; tools.reader/algo.monads/test.check load-blocked on JVM features/transitive
+deps). **D-523 doc audit COMPLETE**: all 7 user-facing docs/ audited, 6 had real stale
+claims (concurrency-tail/binary-size/:kind-counts/deps.edn-method/cadence-resume). Deep
+work recorded with diagnostics: **D-530** (scope mapped), **D-531** (tooling-blocked),
+**D-532**/**D-533** (new). All gates green.
 
 ## Standing units (tracked in .dev/debt.yaml)
 
