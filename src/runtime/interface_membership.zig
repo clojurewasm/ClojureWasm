@@ -286,6 +286,12 @@ pub const IREF_NAMES = tagNames(&IREF_TAGS);
 pub const NS_NAMES = tagNames(&NS_TAGS);
 pub const THROWABLE_NAMES = tagNames(&THROWABLE_TAGS);
 pub const CLASS_NAMES = tagNames(&CLASS_TAGS);
+// D-534: extend-protocol TO the abstract collection bases — a user protocol
+// extended onto `clojure.lang.APersistentSet` / `clojure.lang.IPersistentList`
+// (as algo.monads' writer-monad does) distributes over the native set / list
+// tags, the same way IPersistentVector → INDEXED_NAMES does.
+pub const SET_NAMES = tagNames(&SET_TAGS);
+pub const IPLIST_NAMES = tagNames(&IPLIST_TAGS);
 
 // --- tests ---
 

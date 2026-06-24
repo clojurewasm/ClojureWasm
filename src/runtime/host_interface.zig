@@ -577,6 +577,10 @@ pub fn nativeExtendTags(name: []const u8) ?[]const []const u8 {
     const simple = interface_membership.simpleOf(name);
     if (std.mem.eql(u8, simple, "IPersistentVector")) return interface_membership.INDEXED_NAMES;
     if (std.mem.eql(u8, simple, "ISeq")) return interface_membership.ISEQ_NAMES;
+    // D-534: the abstract collection bases as extend-protocol targets (algo.monads
+    // writer-monad extends a user protocol onto them) → native set / list tags.
+    if (std.mem.eql(u8, simple, "APersistentSet")) return interface_membership.SET_NAMES;
+    if (std.mem.eql(u8, simple, "IPersistentList")) return interface_membership.IPLIST_NAMES;
     if (std.mem.eql(u8, simple, "Named")) return interface_membership.NAMED_NAMES;
     if (std.mem.eql(u8, simple, "IPersistentMap")) return interface_membership.MAP_NAMES;
     // D-478: concrete host types clojure.datafy extends Datafiable to — each has a
