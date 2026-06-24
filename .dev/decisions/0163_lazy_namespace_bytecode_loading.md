@@ -227,8 +227,8 @@ logic; align cljw to it*, and keep the eager/lazy split a **single SSOT**.
 
 **Measured (2026-06-24, fresh `clj`, `(some? (find-ns 'X))` with no require):**
 
-| auto-loaded in clj (TRUE) → cljw EAGER | NOT auto-loaded (FALSE) → cljw LAZY (require needed) |
-|----------------------------------------|------------------------------------------------------|
+| auto-loaded in clj (TRUE) → cljw EAGER                                                                                                             | NOT auto-loaded (FALSE) → cljw LAZY (require needed)                                                                                                                                                                               |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | clojure.core, clojure.string, clojure.walk, clojure.edn, clojure.java.io, clojure.core.protocols, clojure.uuid, clojure.instant, clojure.spec.alpha | clojure.set, clojure.zip, clojure.data.json, clojure.data.csv, clojure.tools.cli, clojure.pprint, clojure.test, clojure.data, clojure.math, clojure.template, clojure.stacktrace, clojure.datafy, clojure.repl (+ cljw.* originals) |
 
 **SSOT** = `bootstrap.EAGER_NS` (a `StaticStringMap`) + the single predicate

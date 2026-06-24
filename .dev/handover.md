@@ -8,37 +8,39 @@
 - **HEAD**: `main` (`git log` = SSOT; ≈ `368c9851`). Per-commit = smoke; commit
   **and** push (CLAUDE.md § atomic Step 6). `build.zig.zon` `.zwasm` = tag pin
   `v2.0.0-alpha.3`.
-- **First commit on resume MUST be**: **ADR-0162 step 2 = D-516 lazy-namespace bytecode**
-  (the cold-start floor arc, D-450's highest cross-cutting lever). Steps 1 DONE: env-gated
-  startup profiler (24a2d635) + **D-140 footer-seek (74970240)**. Measure-first attributed
-  the ~9.4ms floor: self-exe read ~1ms / runEnvelope ~4.6ms (deserialize≈eval, 891 chunks,
-  **non-core 79%**) / exec-residual ~3.4ms; D-140 cut tryRunEmbedded ~1000µs→~44µs (floor
-  9.4→8.6ms). **D-516**: shrink the eager bootstrap to core + its load-time deps; embed each
-  of the ~28 non-core stdlib ns as its OWN bytecode envelope replayed on demand by `require`
-  (NOT re-parse) → ~4.8ms common case. MANDATORY F-011 gate same arc: build-time per-ns
-  replay-clean check + audit defmethod/derive/extend-type/print-method side-effect visibility.
-  Then step 3 D-517 zero-copy in-place deserialize (~3.5-3.8ms); step 4 D-518 heap-snapshot
-  DEFERRED to the moving-GC unit (DA-vetted: B buys ~1ms behind a ~3.4ms wall at silent-heap-
-  corruption risk). Plan: `private/notes/9.2.S-coldstart-architecture-20260624.md`; decision
-  **ADR-0162** (DA folded verbatim). **GUARDRAIL**: never Zig-ify the .clj bootstrap (cljw-v0
-  rut) — touch only the restore mechanism + eager set, .clj stays the definition language.
-  9 other LIVE GAPS (D-450, re-measure on a quiet Mac — this session loaded): sieve 1.59× ·
-  gc_alloc_rate 1.43× · string_ops 1.40× · destructure 1.20× · json_parse 1.12× ·
-  map_filter_reduce 1.11× · bigint_factorial 1.08× · gc_large_heap 1.07× · nested_update 1.05×
-  — after the cold-start arc. D-180/D-510/D-511(2-arg) DONE; D-515 binary-size axis (standing).
+- **First commit on resume MUST be**: **RE-MEASURE the cross-lang benches on a QUIET Mac**
+  (`bash bench/compare_langs.sh --yaml=bench/cross-lang-latest.yaml` + regen README) — the
+  cold-start arc just cut the floor **9.4→4.3ms** (ADR-0162), which should sharply improve
+  every cold bench, especially **sieve** (the floor-sensitive top gap) + the cheap benches.
+  The D-450 gap list is now STALE; re-rank from the fresh numbers. The cold-start arc is
+  DONE: D-140 footer-seek (74970240) + **D-516 lazy-namespace bytecode (0f159228, ADR-0163)** —
+  eager = clj's no-`require` set (SSOT `bootstrap.EAGER_NS`), rest lazy via region replay =
+  strict clj-parity; floor 9.4→4.3ms. **OPTIONAL next levers** after the re-measure: D-517
+  zero-copy in-place deserialize (now LOWER value — lazy cut the bulk; the eager set's
+  deserialize is only ~0.8ms; the region blob is already D-517-ready) · D-518 heap-snapshot
+  (DEFERRED to the moving-GC unit) · the residual D-450 compute gaps (gc_alloc_rate/string_ops/
+  etc. — re-confirm on the quiet re-measure). **GUARDRAIL**: never Zig-ify the .clj bootstrap
+  (cljw-v0 rut). Plan: `private/notes/9.2.S-coldstart-architecture-20260624.md` +
+  `private/notes/D516-lazy-ns-survey.md`; decisions ADR-0162 / ADR-0163 (DA folded). D-515
+  binary-size axis (standing).
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm` (false fails —
   `zig_build_test_needs_dwasm`); bare `zig build` for a probe (ADR-0133 — ReleaseSafe).
 
 ## Last landed (git log = SSOT)
 
-**Cold-start floor arc (ADR-0162), steps 1 of 4.** Measure-first attribution of the
-~9.4ms cold floor via a new env-gated startup profiler (`CLJW_PROFILE_STARTUP=1`,
-24a2d635) → **D-140 footer-seek (74970240)**: `serialize.readEmbeddedPayload` stats the
-self-exe + reads ONLY the 12-byte trailer (was: whole 8.8MB read every startup);
-tryRunEmbedded ~1000µs→~44µs, floor 9.4→8.6ms. ADR-0162 (DA red-team folded verbatim)
-chose lazy-ns bytecode (D-516) + zero-copy deserialize (D-517) for sub-4ms, deferring the
-heap-snapshot (D-518) to the moving-GC unit. Survey+DA showed snapshot buys ~1ms behind a
-~3.4ms exec wall at silent-heap-corruption risk. Guardrail: no .clj→Zig bootstrap rewrite.
+**Cold-start floor arc DONE — floor 9.4→4.3ms (ADR-0162 + ADR-0163).** Measure-first
+attribution (env-gated profiler `CLJW_PROFILE_STARTUP=1`, 24a2d635) → **D-140 footer-seek
+(74970240)** → **D-516 lazy-namespace bytecode (0f159228)**. The bootstrap blob is now a
+multi-region position-independent blob (one envelope per ns); loadCoreAot runs ONLY the
+EAGER set (SSOT `bootstrap.EAGER_NS` = JVM Clojure's measured no-`require` set: core +
+string/walk/edn/java.io/core.protocols/uuid/instant/spec.alpha + cljw.wasm), the rest
+replay on first `require` via `loadOrFindNs`→`loadRegionNamespace`. STRICT clj-parity:
+what clj uses require-free, cljw does too; what clj require-gates, cljw does too. Bugs
+fixed: the require 4-path `mappings.count()` short-circuit unified to `loadOrFindNs`
+(+ inline-ns last-resort); cljw.wasm eager (analyze-time component desugar); corpus runner
+auto-requires. Blast-radius (27 e2e + cw_ported.clj) = missing-require, zero real bugs.
+D-518 heap-snapshot DEFERRED to the moving-GC unit (DA: ~1ms behind a ~3.4ms exec wall at
+silent-heap-corruption risk). Guardrail held: no .clj→Zig rewrite.
 
 ## Standing units (tracked in .dev/debt.yaml)
 
