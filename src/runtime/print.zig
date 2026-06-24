@@ -58,8 +58,6 @@ const td_mod = @import("type_descriptor.zig");
 const instant_mod = @import("time/instant.zig");
 const duration_value_mod = @import("time/duration_value.zig");
 const local_date_time_value_mod = @import("time/local_date_time_value.zig");
-const day_of_week_value_mod = @import("time/day_of_week_value.zig");
-const month_value_mod = @import("time/month_value.zig");
 const lazy_seq_mod = @import("lazy_seq.zig");
 const range_collection = @import("collection/range.zig");
 const env_mod = @import("env.zig");
@@ -980,8 +978,18 @@ fn printValueNative(w: *Writer, v: Value) anyerror!void {
         },
         // ADR-0106 / AD-020: a stateful host object prints opaquely by its
         // surface fqcn (e.g. `#<java.util.Random>`) — clj prints an identity
-        // hash cljw cannot mirror.
-        .host_instance => try w.print("#<{s}>", .{@import("host_instance.zig").asHostInstance(v).descriptor.fqcn orelse "host_instance"}),
+        // hash cljw cannot mirror. EXCEPTION (ADR-0161): a host-enum constant
+        // (RoundingMode/ChronoUnit/DayOfWeek/Month) prints its bare `toString`
+        // (the enum/display name), matching the former D-462 DayOfWeek/Month form.
+        .host_instance => {
+            const inst = @import("host_instance.zig").asHostInstance(v);
+            if (inst.descriptor.host_enum_idx) |idx| {
+                const ord: u8 = @intCast(inst.state[0]);
+                try w.writeAll(@import("host_enum.zig").toStringOf(@enumFromInt(idx), ord));
+            } else {
+                try w.print("#<{s}>", .{inst.descriptor.fqcn orelse "host_instance"});
+            }
+        },
         // ADR-0121 / AD-025: callable values print `#<ns/name>`, not the leaked
         // internal tag (`#<fn_val>`). `.fn_val` is read via the eval-injected
         // accessor (its Function is Layer 1); `.multi_fn` / `.protocol_fn` are
@@ -1188,20 +1196,6 @@ fn printTypedInstance(w: *Writer, v: Value) anyerror!void {
             if (inst.field_count >= 1 and inst.fields()[0].tag() == .integer) {
                 var buf: [24]u8 = undefined;
                 try w.writeAll(instant_mod.formatLocalTime(&buf, inst.fields()[0].asInteger()));
-                return;
-            }
-        },
-        .day_of_week => {
-            // java.time.DayOfWeek: 1 field = ISO value 1..7 → bare enum NAME.
-            if (inst.field_count >= 1 and inst.fields()[0].tag() == .integer) {
-                try w.writeAll(day_of_week_value_mod.nameOf(inst.fields()[0].asInteger()));
-                return;
-            }
-        },
-        .month => {
-            // java.time.Month: 1 field = value 1..12 → bare enum NAME.
-            if (inst.field_count >= 1 and inst.fields()[0].tag() == .integer) {
-                try w.writeAll(month_value_mod.nameOf(inst.fields()[0].asInteger()));
                 return;
             }
         },

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # test/e2e/phase15_java_time_dow_month.sh — LocalDate/LocalDateTime getDayOfWeek /
-# getMonth / getDayOfYear (D-462). DayOfWeek + Month are enum value types
-# (.typed_instance [value 1-7 / 1-12]; (str) = the enum NAME via a temporal_print
-# name-table arm; getValue → int; value-`=` by the int). getDayOfYear returns an
-# int (no enum). clj-grounded. Uses `cljw -` (stdin). Layer 2.
+# getMonth / getDayOfYear (D-462 / ADR-0161). DayOfWeek + Month are host-enum
+# singletons (.host_instance, ordinal in state[0]; (str)/.name = enum NAME, getValue
+# → ISO int; static fields DayOfWeek/MONDAY etc; getters return the SAME interned
+# singleton as the constant — identical? parity). getDayOfYear returns an int (no
+# enum). clj-grounded. Uses `cljw -` (stdin). Layer 2.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 BIN="zig-out/bin/cljw"
@@ -93,4 +94,32 @@ EOF
 )
 eq 'ldt-until' "$H" '426 10230 613830 36829815 14 1'
 
-echo "OK — phase15_java_time_dow_month (D-462) green"
+# --- DayOfWeek/Month static-field enum constants (ADR-0161 / D-510): name / getValue
+I=$(out <<'EOF' 2>&1
+(println (str java.time.DayOfWeek/MONDAY) (.getValue java.time.DayOfWeek/SUNDAY) (.name java.time.DayOfWeek/MONDAY)
+         (str java.time.Month/JANUARY) (.getValue java.time.Month/DECEMBER) (.name java.time.Month/MARCH))
+EOF
+)
+eq 'enum-const' "$I" 'MONDAY 7 MONDAY JANUARY 12 MARCH'
+
+# --- getter returns the SAME interned singleton as the constant (clj identical? parity)
+J=$(out <<'EOF' 2>&1
+(println (= (.getDayOfWeek (java.time.LocalDate/of 2024 3 9)) java.time.DayOfWeek/SATURDAY)
+         (identical? (.getDayOfWeek (java.time.LocalDate/of 2024 3 9)) java.time.DayOfWeek/SATURDAY)
+         (= (.getMonth (java.time.LocalDate/of 2024 3 9)) java.time.Month/MARCH)
+         (identical? (.getMonth (java.time.LocalDate/of 2024 3 9)) java.time.Month/MARCH))
+EOF
+)
+eq 'enum-identity' "$J" 'true true true true'
+
+# --- host-enum Comparable: sign-based compare (AD-043) + sort by ordinal
+K=$(out <<'EOF' 2>&1
+(println (compare java.time.DayOfWeek/MONDAY java.time.DayOfWeek/SUNDAY)
+         (compare java.time.Month/MARCH java.time.Month/JANUARY)
+         (compare java.math.RoundingMode/UP java.math.RoundingMode/DOWN)
+         (mapv str (sort [java.time.DayOfWeek/WEDNESDAY java.time.DayOfWeek/MONDAY java.time.DayOfWeek/FRIDAY])))
+EOF
+)
+eq 'enum-compare' "$K" '-1 1 -1 [MONDAY WEDNESDAY FRIDAY]'
+
+echo "OK — phase15_java_time_dow_month (D-462 / ADR-0161) green"

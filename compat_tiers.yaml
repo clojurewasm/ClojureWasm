@@ -437,28 +437,26 @@ tiers:
         status: "WIRED (D-462) - statics of(y m d h mi [s [n]] arity 5-7)/now/parse mint a `.typed_instance` LocalDateTime VALUE (local_date_time_value.zig, per-Runtime descriptor) carrying [epoch_day, nano_of_day] (epoch_day via the Hinnant civil algorithm reused from instant.zig); instance methods getYear/getMonthValue/getDayOfMonth/getHour/getMinute/getSecond/getNano + toLocalDate/toLocalTime (return the sibling LocalDate/LocalTime VALUE types) + value `=` + `(str d)` = ISO local date-time (conditional :ss omitted when sec=nano=0, variable fraction; the date/time halves are shared with LocalDate/LocalTime via instant.zig) all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/e2e/phase15_java_time_local_date_time.sh + toLocalDate/toLocalTime by test/e2e/phase15_java_time_local_date.sh. Arithmetic plusDays/minusDays/plusWeeks/minusWeeks (epoch_day) + plusHours/minusHours/plusMinutes/minusMinutes/plusSeconds/minusSeconds/plusNanos/minusNanos (nano_of_day with midnight carry/borrow into epoch_day) are implemented + reachable (pinned by test/e2e/phase15_java_time_ldt_arith.sh). Cross-type ops plus/minus (Duration arg, with midnight carry/borrow into epoch_day) ARE implemented + reachable (pinned by test/e2e/phase15_java_time_duration_between.sh). Calendar arithmetic plusMonths/minusMonths/plusYears/minusYears (civil month/year shift on the DATE part with JVM day-clamping, time-of-day kept; shares instant.zig's addMonthsToEpochDay/addYearsToEpochDay with LocalDate) ARE implemented + reachable (pinned by test/e2e/phase15_java_time_ldt_calendar.sh). `now` is UTC-based (cljw has no zone DB). getDayOfWeek/getMonth return the DayOfWeek/Month enum VALUE types (`(str …)` = enum NAME, getValue = ISO ordinal); getDayOfYear returns an int 1..366 — pinned by test/e2e/phase15_java_time_dow_month.sh."
       - fqn: java.time.DayOfWeek
         cljw_ns: cljw.java.time.DayOfWeek
-        keyword: day_of_week
+        keyword: host_enum
         tier: A
-        phase: 6
+        phase: 14
         files:
-          # Value-wrap layer (F-009 wrap slot, G3-exempt): mints the
-          # .typed_instance DayOfWeek enum Value (1 field [value 1..7, ISO]).
-          wrap: runtime/time/day_of_week_value.zig
-        methods: [getValue]
+          surface: runtime/java/time/DayOfWeek.zig
+          impl: runtime/host_enum.zig
+        methods: [getValue, name, toString]
         clojure_peer_vars: []
-        status: "WIRED (D-462) — enum value returned by LocalDate/LocalDateTime.getDayOfWeek; (str)=name, getValue=1-7 (ISO Mon=1), value `=`; no static-field access (DayOfWeek/MONDAY) yet, on-demand"
+        status: "WIRED (ADR-0161, folds D-462) — host-enum singleton (.host_instance, ordinal in state[0]). Static field DayOfWeek/MONDAY..SUNDAY resolves; LocalDate/LocalDateTime.getDayOfWeek returns the SAME interned singleton (identical? parity). (str)/.name = enum NAME, getValue = 1-7 (ISO Mon=1), value `=` by identity, compare by ordinal (sign, AD-043). Pinned by test/e2e/phase15_java_time_dow_month.sh."
       - fqn: java.time.Month
         cljw_ns: cljw.java.time.Month
-        keyword: month
+        keyword: host_enum
         tier: A
-        phase: 6
+        phase: 14
         files:
-          # Value-wrap layer (F-009 wrap slot, G3-exempt): mints the
-          # .typed_instance Month enum Value (1 field [value 1..12]).
-          wrap: runtime/time/month_value.zig
-        methods: [getValue]
+          surface: runtime/java/time/Month.zig
+          impl: runtime/host_enum.zig
+        methods: [getValue, name, toString]
         clojure_peer_vars: []
-        status: "WIRED (D-462) — enum value returned by LocalDate/LocalDateTime.getMonth; (str)=name, getValue=1-12, value `=`; no static-field access (Month/JANUARY) yet, on-demand"
+        status: "WIRED (ADR-0161, folds D-462) — host-enum singleton (.host_instance, ordinal in state[0]). Static field Month/JANUARY..DECEMBER resolves; LocalDate/LocalDateTime.getMonth returns the SAME interned singleton (identical? parity). (str)/.name = enum NAME, getValue = 1-12, value `=` by identity, compare by ordinal (sign, AD-043). Pinned by test/e2e/phase15_java_time_dow_month.sh."
       - fqn: java.time.Duration
         cljw_ns: cljw.java.time.Duration
         keyword: duration
@@ -540,12 +538,12 @@ tiers:
       # form is BigDecimal/ROUND_*. (class e) = the enum class, NOT Long.
       - fqn: java.math.RoundingMode
         cljw_ns: cljw.java.math.RoundingMode
-        keyword: rounding_mode
+        keyword: host_enum
         tier: A
         phase: 14
         files:
           surface: runtime/java/math/RoundingMode.zig
-          impl: runtime/rounding_mode.zig
+          impl: runtime/host_enum.zig
         methods: [toString]
         clojure_peer_vars: []
       # java.math.MathContext — precision+RoundingMode host object (D-511). The
@@ -567,12 +565,12 @@ tiers:
       # to (.until d1 d2 unit). 2nd host-enum after RoundingMode (D-510 folds both).
       - fqn: java.time.temporal.ChronoUnit
         cljw_ns: cljw.java.time.temporal.ChronoUnit
-        keyword: chrono_unit
+        keyword: host_enum
         tier: A
         phase: 14
         files:
           surface: runtime/java/time/ChronoUnit.zig
-          impl: runtime/chrono_unit.zig
+          impl: runtime/host_enum.zig
         methods: [toString, name]
         clojure_peer_vars: []
       # java.security

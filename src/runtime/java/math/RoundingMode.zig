@@ -72,4 +72,5 @@ var descriptor: type_descriptor.TypeDescriptor = .{
     .static_fields = &static_fields,
     .parent = null,
     .meta = .nil_val,
+    .host_enum_idx = @intFromEnum(host_enum.Idx.rounding_mode),
 };

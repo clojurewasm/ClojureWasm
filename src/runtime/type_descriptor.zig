@@ -57,12 +57,6 @@ pub const TemporalPrint = enum {
     /// `java.time.LocalTime` — bare ISO local time `HH:mm[:ss[.fraction]]`
     /// (1 field: nano_of_day), conditional seconds + variable fraction.
     iso_local_time,
-    /// `java.time.DayOfWeek` — bare enum NAME `MONDAY`..`SUNDAY` (1 field:
-    /// ISO value 1..7), via `day_of_week_value.nameOf`.
-    day_of_week,
-    /// `java.time.Month` — bare enum NAME `JANUARY`..`DECEMBER` (1 field:
-    /// value 1..12), via `month_value.nameOf`.
-    month,
 };
 
 /// Descriptor for one type. Process-lifetime — allocated on
@@ -130,6 +124,13 @@ pub const TypeDescriptor = struct {
     /// Duration value descriptors only; checked BEFORE `print_tag` in
     /// `printTypedInstance`. `.none` for every other type.
     temporal_print: TemporalPrint = .none,
+    /// Host-enum identity (ADR-0161 / D-510): when non-null, this descriptor backs
+    /// a `.host_instance` enum constant (RoundingMode/ChronoUnit/DayOfWeek/Month);
+    /// the value is `@intFromEnum(host_enum.Idx)`. Drives the unified host-enum
+    /// print (`pr` emits the bare `toString`, not `#<fqcn>`) + `compare` (by
+    /// ordinal). `null` for every non-enum host type. Distinct from `temporal_print`
+    /// (which drives the bare-ISO print of LocalDate/Instant/… date-time values).
+    host_enum_idx: ?u8 = null,
     /// `.host_instance` finaliser hook (ADR-0106): when this descriptor backs a
     /// host instance that owns heap state (a gpa-duped string pointer in
     /// `state[0..1]`, e.g. java.net.URI), the shared `.host_instance` tag

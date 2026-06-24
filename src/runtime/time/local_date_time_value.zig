@@ -32,8 +32,6 @@ const instant = @import("instant.zig");
 const local_date_value = @import("local_date_value.zig");
 const local_time_value = @import("local_time_value.zig");
 const duration_value = @import("duration_value.zig");
-const day_of_week_value = @import("day_of_week_value.zig");
-const month_value = @import("month_value.zig");
 const host_instance = @import("../host_instance.zig");
 const host_enum = @import("../host_enum.zig");
 const big_int = @import("../numeric/big_int.zig");
@@ -69,14 +67,16 @@ fn getDayOfMonthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 fn getDayOfWeekFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("getDayOfWeek", args, 1, loc);
-    return day_of_week_value.make(rt, @mod(epochDayOf(args[0]) + 3, 7) + 1);
+    // ordinal = ISO value - 1; ISO value = @mod(epoch_day+3,7)+1 (epoch day 0 = Thu).
+    return host_enum.singleton(rt, .day_of_week, @intCast(@mod(epochDayOf(args[0]) + 3, 7)));
 }
 
 /// `(.getMonth d)` — the Month enum value (JVM `LocalDateTime.getMonth`).
 fn getMonthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("getMonth", args, 1, loc);
-    return month_value.make(rt, instant.civilFromDays(epochDayOf(args[0])).m);
+    // ordinal = month value (1..12) - 1.
+    return host_enum.singleton(rt, .month, @intCast(instant.civilFromDays(epochDayOf(args[0])).m - 1));
 }
 
 /// `(.getDayOfYear d)` — the day-of-year 1..366 (JVM `LocalDateTime.getDayOfYear`).

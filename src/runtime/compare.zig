@@ -36,6 +36,7 @@ const duration_value = @import("time/duration_value.zig");
 const local_date_value = @import("time/local_date_value.zig");
 const local_time_value = @import("time/local_time_value.zig");
 const local_date_time_value = @import("time/local_date_time_value.zig");
+const host_instance = @import("host_instance.zig");
 
 const NumCat = enum { integer, floating, ratio, decimal, none };
 
@@ -201,6 +202,19 @@ pub fn valueCompare(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyer
         // `.vector` (+ `.map_entry`) handled by the vector-like branch above.
         // java.time temporal values (D-462) compare by their fields.
         .typed_instance => try temporalOrder(rt, a, b, loc),
+        // Host-enum constants (ADR-0161): all four (RoundingMode/ChronoUnit/
+        // DayOfWeek/Month) are JVM-Comparable by ordinal. Same enum only; a
+        // cross-enum or non-enum host_instance pairing is uncomparable (JVM throws).
+        .host_instance => blk: {
+            const hi_a = host_instance.asHostInstance(a);
+            const hi_b = host_instance.asHostInstance(b);
+            if (hi_a.descriptor.host_enum_idx) |ia| {
+                if (hi_b.descriptor.host_enum_idx) |ib| {
+                    if (ia == ib) break :blk std.math.order(hi_a.state[0], hi_b.state[0]);
+                }
+            }
+            break :blk raiseUncomparable(loc, a);
+        },
         // lists / maps / sets / fns etc. are not Comparable (JVM throws).
         else => raiseUncomparable(loc, a),
     };
