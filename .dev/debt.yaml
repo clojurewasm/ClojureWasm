@@ -160,6 +160,19 @@ active:
       usage: load popular Clojure libraries via their actual deps.edn and run
       them — surface bugs / unimplemented surfaces from real-world use, not
       synthetic tests. Each finding → a fix (diff oracle) or a tracked gap.
+      DRAIN 1 (2026-06-25): exercised 5 real libraries via deps.edn :local/root
+      (run their own clojure.test suites where possible). org.clojure/
+      data.priority-map → FIXED deftype-as-map `=` symmetry (MapEquivalence) +
+      map?/sorted?/set? deftype recognition (ceb2c460/b476242e/58dca277); deep
+      subseq method-arity → D-530. math.combinatorics → FIXED a core lazy-`=`
+      GC-rooting bug (31ca0b6f); deep partitions-M UAF → D-531. data.generators →
+      FIXED UUID 2-long ctor + java.math.BigInteger surface + BigDecimal(BigInteger,
+      scale) ctor (0a5c65c4/33739d68/8400646a); fuzzy float + speculative
+      arithmetic → D-532. core.unify → CLEAN (12 tests pass). data.zip core →
+      CLEAN (matches clj). So 3/5 yielded contained fixes (all landed + corpus),
+      2/5 clean; the deep/fuzzy residue is D-530/D-531/D-532. Repeatable: pick
+      another lib next /continue (a self-contained-test lib avoids transitive deps
+      — data.zip's XML test needed the un-cloned data.xml).
     category: "clj-parity"
     quality_floor: "public-ization: real-library deps.edn usage (ADR-0166)"
     barrier: |-
