@@ -355,6 +355,10 @@ fn seqEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
 /// other operand, must survive a collect the second realize / element compares
 /// can trigger), then compare element-wise.
 fn seqEqualInstance(rt: *Runtime, env: *Env, a0: Value, b0: Value) anyerror!bool {
+    // GC-ROOT: §C reentrant realize — `realizeSequentialInstance` re-enters eval
+    // (the ISeq `-next` protocol), so both operands are collector-addressable
+    // roots; a moving GC must RELOCATE these slots [ref: .dev/gc_rooting.md §C,
+    // debt D-252].
     var roots: [2]Value = .{ a0, b0 };
     var sp: u16 = 2;
     var gc_frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
@@ -375,9 +379,11 @@ fn seqEqualWalk(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     if (isCountable(a) and isCountable(b) and seqLen(a) != seqLen(b)) return false;
     var ca = Cursor.init(a);
     var cb = Cursor.init(b);
-    // GC-root the operands, the advancing lazy cursor heads, and the per-step
-    // elements. `ca.next` / `cb.next` realize lazy tails (allocating), and so can
-    // `valueEqual` on the elements — a collect mid-walk would otherwise free the
+    // GC-ROOT: §C reentrant cursor — the lazy walk re-enters eval (realize) per
+    // element, so the advancing cursor heads + pulled elements are collector-
+    // addressable roots; a moving GC must RELOCATE these slots [ref: .dev/gc_rooting.md
+    // §C, debt D-252]. `ca.next` / `cb.next` realize lazy tails (allocating), and so
+    // can `valueEqual` on the elements — a collect mid-walk would otherwise free the
     // OTHER cursor's freshly-realized (unrooted) head or a just-pulled element,
     // corrupting the comparison (observed as a wrong result / `nth: nil` / an
     // out-of-bounds panic under alloc-torture). Mirrors `seqEqualInstance`'s frame

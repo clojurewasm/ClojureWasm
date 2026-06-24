@@ -89,7 +89,16 @@ collect) while holding a `Value` accumulator in a Zig local on no published
 stack. ROOTED → opened an `EvalFrame`. UNROOTED-CANDIDATE → latent UAF the next
 torture round can hit.
 
-**ROOTED (safe):** `reduceFn` (A2) — the canonical exemplar.
+**ROOTED (safe):** `reduceFn` (A2) — the canonical exemplar. Also
+`equal.zig` `seqEqualInstance` (realizes a Sequential-instance operand via the
+ISeq `-next` protocol) and `seqEqualWalk` (walks two native seqs via lazy
+cursors — its frame roots the operands, the advancing cursor heads, AND the
+per-step elements). `seqEqualWalk` was an UNLISTED unrooted candidate until
+2026-06-25: comparing two lazy seqs interleaves their realization, and a collect
+mid-walk corrupted the comparison (a math.combinatorics partitions test failed
+intermittently; minimal repro `(= (map inc (range 50)) (filter pos? (map inc
+(range 50))))` → false under alloc-torture). Now frame-rooted; e2e guard
+`phase16_gc_torture/lazy_eq_interleave`.
 
 **UNROOTED-CANDIDATE (tracked D-252):**
 
@@ -218,9 +227,9 @@ instead of per-hook (DA Alt B-finished-form-clean; debt **D-318**).
 
 ## Site census (grep target)
 
-- EvalFrame producers: 4 production (vm, reduceFn, iref.notifyWatches, lock_tx.fireWatches) + 1 test.
+- EvalFrame producers: 6 production (vm, reduceFn, iref.notifyWatches, lock_tx.fireWatches, equal.seqEqualInstance, equal.seqEqualWalk) + 1 test.
 - Threadlocal root slots: 4 (2 inert).
-- Reentrant accumulators: 1 rooted (`reduceFn`) + 9 UNROOTED-CANDIDATE (C1-C9, D-252).
+- Reentrant accumulators: 3 rooted (`reduceFn`, `equal.seqEqualInstance`, `equal.seqEqualWalk`) + 9 UNROOTED-CANDIDATE (C1-C9, D-252).
 - Permanent/pinned: 3 `pin` callers + 6 `trackHeap`/`persistent_marks` callers.
 - In-txn/concurrency: self-tx + worker-tx + `ThreadGcContext` (2 registrants) + safepoint (STW rendezvous + blocking-safepoint).
 - Per-tag traces: ~37 `registerTrace` + 13 `registerFinaliser`; 4 non-GC tags + 2 GC-leaf tags.
