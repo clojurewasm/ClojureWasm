@@ -191,9 +191,11 @@ active:
       does not resolve the 2-arity same-NAMED deftype method (overloaded method
       name by arity). `.seqFrom`/`.comparator` (unique names) work fine. This
       breaks data.priority-map's own subseq/rsubseq.
-      (2) `(sorted? x)` is false for a deftype implementing clojure.lang.Sorted
-      (clj returns true) — sorted? (sorted.zig sortedQFn) only checks native
-      sorted tags; same gap class as the now-fixed map?/IPersistentMap recognition.
+      (2) DISCHARGED 2026-06-25 (commit b476242e): `(sorted? deftype-Sorted)` now
+      true — sortedQFn consults clojure.lang.Sorted membership like the map? fix;
+      e2e phase14_deftype_sorted/sorted_pred_deftype. Part (1) (overloaded seq
+      arity dispatch) REMAINS open and is the deeper, multi-file deftype-lowering
+      change below.
     category: "interop"
     barrier: |-
       (2) is a contained predicate fix (sortedQFn consults clojure.lang.Sorted
