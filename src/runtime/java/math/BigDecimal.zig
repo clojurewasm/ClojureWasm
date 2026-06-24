@@ -496,6 +496,22 @@ pub fn installNativeMethods(rt: *Runtime) !void {
 fn initBigDecimal(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArityRange("BigDecimal", args, 1, 2, loc);
+    // JVM `BigDecimal(BigInteger unscaledVal, int scale)` → unscaledVal × 10^-scale
+    // (e.g. `(BigDecimal. (biginteger 12345) 2)` = 123.45). Distinguished from the
+    // `(value, MathContext)` round form by the 2nd arg being a plain int, not a
+    // MathContext; the 1st arg is a BigInteger (`.big_int`) or an int. Handled
+    // before parseBigDecimalArg, which rejects a bare `.big_int` first arg.
+    if (args.len == 2 and mathContextOf(args[1]) == null and args[1].isInt()) {
+        const s64 = args[1].asInteger();
+        if (s64 < std.math.minInt(i32) or s64 > std.math.maxInt(i32))
+            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "BigDecimal", .expected = "an int scale", .actual = "an out-of-int-range scale" });
+        const scale: i32 = @intCast(s64);
+        if (args[0].tag() == .big_int)
+            return big_decimal.allocFromManagedScale(rt, big_int.asManaged(args[0]), scale);
+        if (args[0].isInt())
+            return big_decimal.allocFromI64Scale(rt, args[0].asInteger(), scale);
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "BigDecimal", .expected = "a BigInteger or int unscaled value", .actual = @tagName(args[0].tag()) });
+    }
     const parsed = try parseBigDecimalArg(rt, args[0], loc);
     if (args.len == 1) return parsed;
     // 2-arg: round to the MathContext. `parsed` is a fresh GC-heap value held only

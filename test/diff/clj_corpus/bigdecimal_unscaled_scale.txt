@@ -1,0 +1,12 @@
+(str (java.math.BigDecimal. (biginteger 12345) 2))
+;;=> "123.45"
+(str (java.math.BigDecimal. (biginteger 5) 0))
+;;=> "5"
+(str (java.math.BigDecimal. (biginteger -7) 3))
+;;=> "-0.007"
+(str (java.math.BigDecimal. (java.math.BigInteger. "999999999999999999999") 5))
+;;=> "9999999999999999.99999"
+(str (.setScale (java.math.BigDecimal. "1.5") 3))
+;;=> "1.500"
+(str (java.math.BigDecimal. "1.50"))
+;;=> "1.50"
