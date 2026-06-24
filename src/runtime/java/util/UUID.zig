@@ -59,6 +59,21 @@ fn fromString(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 
 const std = @import("std");
 
+/// `(java.util.UUID. mostSigBits leastSigBits)` — the only public JVM ctor,
+/// `UUID(long, long)`. Writes the two 64-bit halves big-endian into the 16-byte
+/// representation (msb → bytes[0..8], lsb → bytes[8..16]), the inverse of
+/// getMostSignificantBits / getLeastSignificantBits. JVM ref: java.util.UUID#<init>.
+fn uuidCtor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.util.UUID.", args, 2, loc);
+    const msb = try error_catalog.expectI64(args[0], "java.util.UUID.", loc);
+    const lsb = try error_catalog.expectI64(args[1], "java.util.UUID.", loc);
+    var bytes: [16]u8 = undefined;
+    std.mem.writeInt(i64, bytes[0..8], msb, .big);
+    std.mem.writeInt(i64, bytes[8..16], lsb, .big);
+    return try uuid.alloc(rt, bytes);
+}
+
 // --- instance methods on a `.uuid` value (D-431 per-class completeness) ---
 
 /// `(.getMostSignificantBits u)` — the high 64 bits as a signed long (JVM).
@@ -149,7 +164,7 @@ pub fn installNativeMethods(rt: *Runtime) !void {
 
 fn initUUID(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
     if (td.method_table.len != 0) return; // idempotent re-run
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 2);
+    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 3);
     entries[0] = .{
         .protocol_name = "",
         .method_name = try gpa.dupe(u8, "randomUUID"),
@@ -159,6 +174,11 @@ fn initUUID(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerro
         .protocol_name = "",
         .method_name = try gpa.dupe(u8, "fromString"),
         .method_val = Value.initBuiltinFn(&fromString),
+    };
+    entries[2] = .{
+        .protocol_name = "",
+        .method_name = try gpa.dupe(u8, "<init>"),
+        .method_val = Value.initBuiltinFn(&uuidCtor),
     };
     td.method_table = entries;
 }

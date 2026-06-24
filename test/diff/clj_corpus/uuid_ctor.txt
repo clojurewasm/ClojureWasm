@@ -1,0 +1,14 @@
+(str (java.util.UUID. 123 456))
+;;=> "00000000-0000-007b-0000-0000000001c8"
+(str (java.util.UUID. 0 0))
+;;=> "00000000-0000-0000-0000-000000000000"
+(str (java.util.UUID. -1 -1))
+;;=> "ffffffff-ffff-ffff-ffff-ffffffffffff"
+(.getMostSignificantBits (java.util.UUID. 123 456))
+;;=> 123
+(.getLeastSignificantBits (java.util.UUID. 123 456))
+;;=> 456
+(= (java.util.UUID. 7 9) (java.util.UUID. 7 9))
+;;=> true
+(= (java.util.UUID. 7 9) (java.util.UUID. 7 8))
+;;=> false
