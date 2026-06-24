@@ -24,6 +24,30 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-510"
+    status: "OPEN (2026-06-24). Deferred structural plan from ADR-0160's DA-fork (Alt 3). RoundingMode landed as a one-off host-enum singleton (ADR-0160 Alt 2); the GENERAL host-enum mechanism is owed."
+    category: "host-surface"
+    barrier: |-
+      ADR-0160 modelled java.math.RoundingMode as a host-enum object singleton
+      (Locale pattern + a `StaticFieldValue.rounding_mode: u8` arm + the neutral
+      runtime/rounding_mode.zig). The DA-fork (Alt 3) noted this is one instance of
+      a RECURRING need: java.util.concurrent.TimeUnit, java.time.DayOfWeek / Month
+      (ALREADY ad-hoc in TemporalPrint's enum arms), java.time.temporal.ChronoUnit.
+      The finished form for the enum CATEGORY is a first-class mechanism:
+        - a `StaticFieldValue.host_enum_const { enum_fqcn, name, ordinal }` arm
+          (generalising the `.rounding_mode: u8` one-off),
+        - a per-Runtime interned singleton resolver (generalising rounding_mode.zig
+          + the locale slots),
+        - a uniform bare-name `.toString` + `(class …)` path, subsuming the bespoke
+          `day_of_week` / `month` arms in type_descriptor.zig's TemporalPrint.
+      Per F-003 this is a STRUCTURAL plan deferred to its owning unit, not seized mid
+      clj-parity-sweep. Retrofit targets when opened: fold RoundingMode + DayOfWeek +
+      Month into the one mechanism; add TimeUnit / ChronoUnit as new members; a
+      MathContext host class (the with-precision :rounding consumer) is the first
+      downstream beneficiary of a TYPED enum arg (vs the int/precision ambiguity).
+      Barrier dissolves when a 2nd or 3rd host enum is actually needed (TimeUnit /
+      MathContext) — at that point the one-off count justifies the mechanism.
+    last_reviewed: "2026-06-24"
   - id: "D-501"
     status: "DISCHARGED (2026-06-22). Implemented `clojure.core/time` as a bootstrap macro in src/lang/clj/clojure/core.clj (right after with-out-str): `(defmacro time [expr] \\`(let [start# (System/nanoTime) ret# ~expr] (prn (str \"Elapsed time: \" (/ (double (- (System/nanoTime) start#)) 1000000.0) \" msecs\")) ret#))`. Uses prn (so the string is quoted, matching JVM clj: `(time 42)` → prints `\"Elapsed time: N msecs\"` then returns 42). System/nanoTime was already reachable (clock.zig nanoTime). e2e in phase14_core_cluster.sh (time_value→42 / time_prefix / time_msecs, with-out-str-captured so the timing-dependent number isn't asserted). Verified vs clj oracle: identical shape. ORIGINAL: open (2026-06-22, found while building cw-playground JIT examples). `clojure.core/time` was UNRESOLVED: `(time expr)` → Name error; `(resolve 'time)` → nil. The cw-playground 'jit-speed' example wanted `(time …)` and fell back to the UI's :ms display."
     category: "clj-parity"
