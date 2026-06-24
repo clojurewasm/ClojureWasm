@@ -46,4 +46,16 @@ EOF
 )
 eq 'dow-boundary' "$D" 'THURSDAY SUNDAY'
 
+# --- ChronoUnit enum constants: (str)=display name, (.name)=enum name, = (D-511/D-510)
+E=$(out <<'EOF' 2>&1
+(println (str java.time.temporal.ChronoUnit/DAYS)
+         (.name java.time.temporal.ChronoUnit/DAYS)
+         (str java.time.temporal.ChronoUnit/HALF_DAYS)
+         (.name java.time.temporal.ChronoUnit/MILLENNIA)
+         (= java.time.temporal.ChronoUnit/DAYS java.time.temporal.ChronoUnit/DAYS)
+         (= java.time.temporal.ChronoUnit/DAYS java.time.temporal.ChronoUnit/WEEKS))
+EOF
+)
+eq 'chrono-unit' "$E" 'Days DAYS HalfDays MILLENNIA true false'
+
 echo "OK — phase15_java_time_dow_month (D-462) green"

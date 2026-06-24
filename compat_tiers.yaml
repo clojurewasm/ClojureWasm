@@ -561,6 +561,19 @@ tiers:
           surface: runtime/java/math/MathContext.zig
         methods: ["<init>", getPrecision, getRoundingMode, toString]
         clojure_peer_vars: []
+      # java.time.temporal.ChronoUnit — 16 enum constants (NANOS..FOREVER) as
+      # host-enum singletons; (str)=display name, (.name)=enum name. The unit arg
+      # to (.until d1 d2 unit). 2nd host-enum after RoundingMode (D-510 folds both).
+      - fqn: java.time.temporal.ChronoUnit
+        cljw_ns: cljw.java.time.temporal.ChronoUnit
+        keyword: chrono_unit
+        tier: A
+        phase: 14
+        files:
+          surface: runtime/java/time/ChronoUnit.zig
+          impl: runtime/chrono_unit.zig
+        methods: [toString, name]
+        clojure_peer_vars: []
       # java.security
       - fqn: java.security.MessageDigest
         cljw_ns: cljw.java.security.MessageDigest

@@ -400,6 +400,7 @@ fn staticFieldValue(rt: *Runtime, sf: *const @import("../../runtime/type_descrip
             .locale_root => try @import("../../runtime/locale.zig").singleton(rt, .root),
         },
         .rounding_mode => |ord| try @import("../../runtime/rounding_mode.zig").singleton(rt, ord),
+        .chrono_unit => |ord| try @import("../../runtime/chrono_unit.zig").singleton(rt, ord),
     };
 }
 

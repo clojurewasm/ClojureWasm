@@ -97,6 +97,7 @@ const java_surfaces = [_]type{
     @import("net/URLEncoder.zig"),
     @import("security/MessageDigest.zig"),
     @import("time/Instant.zig"),
+    @import("time/ChronoUnit.zig"), // 2nd host-enum (RoundingMode sibling; D-510)
     @import("time/LocalDate.zig"),
     @import("time/LocalDateTime.zig"),
     @import("time/LocalTime.zig"),

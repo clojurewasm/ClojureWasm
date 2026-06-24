@@ -40,7 +40,7 @@ active:
       host-enum mechanism could absorb (1) if it lands first.
     last_reviewed: "2026-06-24"
   - id: "D-510"
-    status: "OPEN (2026-06-24). Deferred structural plan from ADR-0160's DA-fork (Alt 3). RoundingMode landed as a one-off host-enum singleton (ADR-0160 Alt 2); the GENERAL host-enum mechanism is owed."
+    status: "OPEN (2026-06-24). General host-enum mechanism (ADR-0160 DA Alt 3). NOW JUSTIFIED: there are TWO parallel one-off host-enum singletons — RoundingMode (`.rounding_mode: u8` arm + rounding_mode.zig) AND ChronoUnit (`.chrono_unit: u8` arm + chrono_unit.zig, 2026-06-24). The barrier (2nd enum appears) has dissolved — unify into one StaticFieldValue arm + registry, folding both + the ad-hoc DayOfWeek/Month TemporalPrint arms. Note per-enum toString differs (RoundingMode str=enum-name 'HALF_UP'; ChronoUnit str=display-name 'Days'), so the mechanism needs a per-enum name fn."
     category: "host-surface"
     barrier: |-
       ADR-0160 modelled java.math.RoundingMode as a host-enum object singleton

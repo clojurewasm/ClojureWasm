@@ -214,6 +214,9 @@ pub const TypeDescriptor = struct {
         /// `rounding_mode.zig::singleton` (ADR-0160). Distinct from `singleton`
         /// because it is ordinal-parameterised, not a fixed named slot.
         rounding_mode: u8,
+        /// A `java.time.temporal.ChronoUnit` enum constant (ordinal 0-15) →
+        /// `chrono_unit.zig::singleton`. The 2nd host-enum (D-510 folds both).
+        chrono_unit: u8,
     };
 
     /// Find a static field by name (ADR-0061). Linear — field tables are
