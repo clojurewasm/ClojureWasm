@@ -179,6 +179,13 @@ active:
       a JVM stateful reader class cljw has no surface for (cljw's reader is native,
       not PushbackReader-based). Supporting JVM-reader-class-coupled libs is a meaty
       distal interop unit, not a contained fix; deprioritized (cljw is not the JVM).
+      LOAD-BLOCKED libs (the accessible-lib hunt is now EXHAUSTED — 8 attempts):
+      tools.reader (clojure.lang.LineNumberingPushbackReader), algo.monads
+      (transitive clojure.tools.macro, un-cloned), test.check (`proxy` — a Tier-D
+      JVM-bytecode feature, ADR-0013 out-of-scope). The remaining cloned libs need
+      a JVM feature (proxy / reader classes) or an un-cloned transitive dep, so the
+      cheap real-library yield is spent; the next /continue should NOT re-hunt these
+      blocked libs (clone their transitive deps first, or pick a fresh pure-clj lib).
     category: "clj-parity"
     quality_floor: "public-ization: real-library deps.edn usage (ADR-0166)"
     barrier: |-
