@@ -90,3 +90,82 @@ by backend — **BUG-1 is fixed as a side effect**.
 DA recommendation (non-binding): Alt 2 with the shared kind-param primitive — the
 main loop adopts exactly this. No F-NNN blocks any alternative; cycle/diff size
 did not factor into the ranking.
+
+## Amendment 1 (2026-06-25) — cross-section same-name-arity overload merge (D-530)
+
+clj lets a deftype / defrecord / reify implement the same method NAME at
+different arities across DIFFERENT protocol sections — `clojure.lang.Seqable`
+`seq[this]` + `clojure.lang.Sorted` `seq[this asc]` (`NewInstanceMethod` keys
+methods by `[name, arity]`). data.priority-map's `subseq`/`rsubseq` need it.
+cljw already merged same-name arities WITHIN one protocol section into a
+multi-arity `fn*` (D-279, in `expandExtendType` + inline in `expandReify`), but
+two sections never met that grouping, so each emitted its own single-arity
+method-table entry and the dot-form `(. inst seq true)` resolved the first
+(arity-1) row → "Wrong number of args (2)…expected 1".
+
+**Decision**: a cross-section merge in the lowering. `lowerDefType` (deftype +
+defrecord) and `expandReify` each pre-scan all sections, grouping impls by method
+name + a per-name section bitset; a name appearing in >1 section (popcount > 1)
+emits its FULL arity set under EACH contributing protocol, so `expandExtendType`
+/ the reify per-section builder produce the complete multi-arity `fn*` for each.
+`MethodEntry` stays `{protocol_name, method_name, method_val}` (NO arity field —
+F-004), `lookupMethod` stays first-match, the dot-form call path + BOTH backends
+are untouched — `selectMethod` already dispatches a multi-arity fn by arg count,
+and the fix is in macro lowering (upstream of the analyzer Node split), so
+TreeWalk + VM get it identically (no VM-DEFER). One file pair, lowering-only,
+reusing the proven D-279 multi-arity-fn path.
+
+**Risks (DA-surfaced, resolved):**
+- *Same-arity duplicate* (two clauses, identical arity, which clj rejects
+  "Duplicate method name&signature"): already caught — the merged `(fn* …)` hits
+  the existing multi-arity validator "can't have two overloads with same arity",
+  so cljw errors too. **F-011 accept/reject parity holds** (verified both sides).
+- *Per-protocol fn duplication*: the merged fn registered under two protocols is
+  two `MethodEntry` rows holding the SAME heap-fn handle — F-004's 8-byte Value
+  is non-owning, GC traces the fn once, no double-free. Benign by construction.
+- *Arity-surface widening* (Sorted's arity-2 `seq` also reachable via the Seqable
+  entry): only the dot-form (null-protocol, arg-counted) reaches the union arity;
+  no cljw protocol-fn is multi-arity, so a `(seq inst)` protocol call still
+  selects arity-1 — the widening is unobservable. Protocol MEMBERSHIP is tracked
+  separately (`protocol_impls` / `declaresProtocol`), not inferred from the shared
+  method row, so sharing the fn does not make Sorted "satisfy" Seqable.
+- *reify scope*: reify has the same gap and clj allows the overload on reify too,
+  so fixing only deftype/defrecord would be a finished-form asymmetry (F-002). The
+  same cross-section merge is applied to `expandReify` in the SAME cycle.
+
+### Amendment 1 — Alternatives considered (Devil's-advocate output)
+
+A fresh-context `general-purpose` DA was briefed with the active F-NNN envelope
+(F-004 uniform Value slot / F-009 neutrality / F-002 finished-form / F-011 parity
+/ ADR-0008 am3 method_val convergence) and produced three shapes:
+
+- **Alt 1 — smallest-diff: the chosen merge + a per-protocol arity filter + a
+  same-arity error.** Closes the widening by filtering each protocol's entry to
+  its own declared arities, but to keep the dot-form's union it must add a
+  synthetic fallback row OR a `selectMethod` arity-miss-fallthrough — i.e. it
+  reaches into the dispatch path anyway, while leaving "is Seqable's seq arity-1
+  or 2?" answered by whichever workaround.
+- **Alt 2 — finished-form (DA-recommended): one canonical multi-arity fn per
+  method NAME (interned once), with the protocol-fn surface routed through the
+  same shared `selectMethod` as the dot-form**, so F-009 ("reachable identically
+  from every surface") holds by construction rather than by current wiring.
+  Bigger diff (touches `dispatch.zig`); the DA recommended it citing F-002.
+- **Alt 3 — wildcard: leave lowering untouched, make `lookupMethod`/`selectMethod`
+  arity-aware at the dispatch layer** (return all same-name rows, pick by argc).
+  Most faithful to clj's `[name,arity]` keying and never widens a protocol's
+  surface, but it pushes work into the dispatch hot path and creates a split-brain
+  (within-section → merged fn at lowering; cross-section → arity-lookup) unless
+  the within-section D-279 path is ALSO migrated — a much larger change.
+
+**Main-loop decision (within the F-NNN envelope; DA recommendation is
+non-binding):** keep the lowering-merge (the chosen design ≈ the DA's "Option A"),
+NOT Alt 2. The DA's case for Alt 2 rests on the arity-surface widening being an
+F-009 weakness; but the widening is **unobservable** (no cljw protocol-fn is
+multi-arity, so only the arg-counted dot-form reaches the union arity, where
+by-argc dispatch is correct), and protocol membership is tracked independently of
+the method table — so Option A satisfies F-009 in practice, not merely "by current
+wiring". Adopting Alt 2's `dispatch.zig` changes for a non-manifesting concern is
+over-reach, not finished-form. The two DA risks that ARE real were both addressed:
+the same-arity duplicate already errors via the `fn*` validator (F-011), and reify
+is fixed in the same cycle (F-002 symmetry). Alt 3 is rejected as a split-brain
+absent migrating the within-section path too.

@@ -247,7 +247,22 @@ active:
     last_reviewed: "2026-06-24"
   - id: "D-530"
     status: |-
-      open (2026-06-25, D-528 data.priority-map real-library finding). TWO
+      DISCHARGED 2026-06-25 (ADR-0066 Amendment 1). BOTH parts fixed. Part (1) —
+      cross-section same-name-arity overload (the deeper one) — fixed by a
+      cross-section merge in the lowering: `lowerDefType` (deftype + defrecord) AND
+      `expandReify` pre-scan all protocol sections, group impls by method name +
+      section bitset, and a name spanning >1 section emits its FULL arity set under
+      each contributing protocol → `expandExtendType` / the reify builder produce
+      one multi-arity `fn*` per protocol; `selectMethod` dispatches by arg count.
+      MethodEntry/lookupMethod/dispatch/both backends unchanged (lowering-only,
+      upstream of the Node split). Step 0 survey 9.2.T-D530 + a DA fork (3
+      alternatives, reflected in ADR-0066 Amendment 1). clj-verified: deftype/
+      defrecord/reify cross-section `seq` overload + real data.priority-map
+      subseq/rsubseq all match clj. Same-arity duplicates error via the `fn*`
+      validator (F-011 parity). e2e phase14_deftype_overload_arity (6 cases:
+      deftype/defrecord/reify/within-section/priority-map) + 2 diff cases
+      (deftype + reify, both backends). Part (2) was discharged earlier (b476242e).
+      ORIGINAL: open (2026-06-25, D-528 data.priority-map real-library finding). TWO
       deftype-Sorted gaps surfaced by running the library's own test suite
       (13 errors remain after the map?/= equality fix in commit ceb2c460):
       (1) `(. inst seq true)` on a deftype implementing BOTH clojure.lang.Seqable
