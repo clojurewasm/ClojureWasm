@@ -24,9 +24,14 @@ Selects the stderr render format.
 {:cljw/error true
  :kind <keyword>      ; catalog error: one of :syntax_error :number_error :string_error
                       ;   :name_error :arity_error :value_error :not_implemented :type_error
-                      ;   :arithmetic_error :index_error :io_error :internal_error
+                      ;   :arithmetic_error :index_error :cancellation_error :state_error
+                      ;   :io_error :file_not_found :stack_overflow_error :internal_error
+                      ;   (+ the internal-condition Kinds :out_of_memory /
+                      ;    :resource_exhausted / :cancellation_abort, which rarely reach
+                      ;    the renderer — a resource breach / worker cancel unwind)
                       ; user (throw v):  :exception
- :phase <keyword>     ; one of: :tokenize :parse :analysis :macroexpand :eval
+ :phase <keyword>     ; one of: :parse :analysis :macroexpand :eval
+                      ;   (tokenize-level errors render under :parse)
  :file <string>       ; source file path or synthetic label ("<-e>", "<stdin>", "<repl:N>")
  :line <int>          ; 1-based; 0 if unknown
  :column <int>        ; 1-based; 0 if unknown
@@ -51,9 +56,12 @@ Selects the stderr render format.
 
 - Future keys MAY be added (e.g. `:cause`, `:trace`); a reader MUST
   tolerate unknown keys.
-- The 13 `:kind` values (12 catalog + `:exception`) and 5 `:phase`
-  values listed above are stable from v0.1.0; new variants ride a
-  MAJOR bump.
+- The `:kind` values and 4 `:phase` values listed above are stable;
+  new variants ride a MAJOR bump. v0.1.0 shipped 12 catalog kinds; the
+  v1.0.0 MAJOR added 7 (`:cancellation_error` / `:state_error` /
+  `:file_not_found` / `:out_of_memory` / `:resource_exhausted` /
+  `:stack_overflow_error` / `:cancellation_abort`), for 19 catalog +
+  `:exception` today. A reader MUST tolerate an unknown `:kind`.
 - `:file` / `:line` / `:column` carry the analyzer's known
   location; today some locations surface as `"unknown"` /
   `0` / `0` (the analyzer doesn't yet populate the field from
@@ -108,9 +116,10 @@ may surface for runtime control — out of scope for v0.1.0.
 
 The env var **names** (`CLJW_ERROR_FORMAT` / `CLJW_ERROR_LOG`),
 the format **value set** (`text` / `edn`), the EDN event
-**discriminator key** (`:cljw/error true`), and the **12 :kind
-values + 5 :phase values** above are stable from v0.1.0. Changes
-require a MAJOR version bump per ROADMAP §1.4.
+**discriminator key** (`:cljw/error true`), and the **19 catalog
+:kind values (+ `:exception`) + 4 :phase values** above are stable.
+Changes require a MAJOR version bump per ROADMAP §1.4 (the v1.0.0
+MAJOR is where the 7 post-v0.1.0 kinds were added).
 
 ## Cross-references
 
