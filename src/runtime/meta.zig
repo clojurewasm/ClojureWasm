@@ -25,6 +25,7 @@ const list = @import("collection/list.zig");
 const lazy_seq = @import("lazy_seq.zig");
 const atom = @import("atom.zig");
 const agent = @import("agent.zig");
+const ref = @import("stm/ref.zig");
 const symbol = @import("symbol.zig");
 const keyword = @import("keyword.zig");
 const td_mod = @import("type_descriptor.zig");
@@ -44,6 +45,7 @@ pub fn metaOf(rt: *Runtime, env: *Env, v: Value, loc: SourceLocation) anyerror!V
         .var_ref => try synthVarMeta(rt, v),
         .atom => atom.metaOf(v),
         .agent => agent.metaOf(v),
+        .ref => ref.metaOf(v),
         .symbol => symbol.metaOf(v),
         .typed_instance => blk: {
             var cs: dispatch.CallSite = .{};

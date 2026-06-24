@@ -386,6 +386,10 @@ pub const RootIterator = struct {
         /// `var_ref` is GC-filtered, so its watch fns are reachable for the
         /// collector ONLY here.
         pending_watches: ?*const env_mod.Var = null,
+        /// Same, for the Var's `validator` fn (yielded after `watches`): a
+        /// `var_ref` is GC-filtered, so the `set-validator!` fn is reachable
+        /// for the collector ONLY here.
+        pending_validator: ?*const env_mod.Var = null,
     };
 
     /// Walks the per-thread execution roots thread-major (ADR-0091): for
@@ -457,9 +461,9 @@ pub const RootIterator = struct {
     fn nextNsVar(self: *RootIterator) ?*HeapHeader {
         const c = &self.cursor.ns_vars;
         while (true) {
-            // Flush pending Var.meta then Var.watches from the previous Var
-            // before advancing (meta immediate/absent falls through to watches;
-            // watches immediate/absent falls through to the next Var).
+            // Flush pending Var.meta → Var.watches → Var.validator from the
+            // previous Var before advancing (each immediate/absent slot falls
+            // through to the next; validator immediate/absent advances the Var).
             if (c.pending_meta) |v_ptr| {
                 c.pending_meta = null;
                 c.pending_watches = v_ptr;
@@ -467,7 +471,12 @@ pub const RootIterator = struct {
             }
             if (c.pending_watches) |v_ptr| {
                 c.pending_watches = null;
+                c.pending_validator = v_ptr;
                 if (v_ptr.watches.heapHeader()) |hdr| return hdr;
+            }
+            if (c.pending_validator) |v_ptr| {
+                c.pending_validator = null;
+                if (v_ptr.validator.heapHeader()) |hdr| return hdr;
             }
             // Advance Var iterator within current Namespace.
             if (c.var_it) |*var_it| {

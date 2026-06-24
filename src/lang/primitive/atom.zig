@@ -336,14 +336,14 @@ pub fn removeWatchFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
 // --- validators (set-validator! / get-validator) — ADR-0081 / D-441 ---
 
 /// Validator surface dispatch. `set-validator!` / `get-validator` work on any
-/// IRef carrying a validator field — today the atom and the agent (D-441). Ref /
-/// var join when their field lands. Each type stores its own `validator`.
+/// IRef carrying a validator field — the atom, agent (D-441), ref + var (D-533).
+/// Each type stores its own `validator`.
 fn requireValidatable(name: []const u8, v: Value, loc: SourceLocation) !void {
     switch (v.tag()) {
-        .atom, .agent => {},
+        .atom, .agent, .ref, .var_ref => {},
         else => return error_catalog.raise(.type_arg_invalid, loc, .{
             .fn_name = name,
-            .expected = "atom or agent",
+            .expected = "atom, agent, ref, or var",
             .actual = @tagName(v.tag()),
         }),
     }
@@ -353,6 +353,10 @@ fn irefCurrent(v: Value) Value {
     return switch (v.tag()) {
         .atom => atom_mod.current(v),
         .agent => agent_mod.current(v),
+        .ref => ref_mod.current(v),
+        // A var's "current" value for validation is its root (clj
+        // `alter-var-root` validates the root, not a dynamic binding).
+        .var_ref => v.decodePtr(*const env_mod.Var).root,
         else => unreachable, // gated by requireValidatable
     };
 }
@@ -361,6 +365,8 @@ fn irefValidatorOf(v: Value) Value {
     return switch (v.tag()) {
         .atom => atom_mod.validatorOf(v),
         .agent => agent_mod.validatorOf(v),
+        .ref => ref_mod.validatorOf(v),
+        .var_ref => env_mod.varValidatorOf(v),
         else => unreachable, // gated by requireValidatable
     };
 }
@@ -369,6 +375,8 @@ fn irefSetValidator(v: Value, f: Value) void {
     switch (v.tag()) {
         .atom => atom_mod.setValidator(v, f),
         .agent => agent_mod.setValidator(v, f),
+        .ref => ref_mod.setValidator(v, f),
+        .var_ref => env_mod.varSetValidator(v, f),
         else => unreachable, // gated by requireValidatable
     }
 }

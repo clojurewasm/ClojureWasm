@@ -24,6 +24,7 @@ const list = @import("../../runtime/collection/list.zig");
 const lazy_seq = @import("../../runtime/lazy_seq.zig");
 const atom = @import("../../runtime/atom.zig");
 const agent = @import("../../runtime/agent.zig");
+const ref_mod = @import("../../runtime/stm/ref.zig");
 const symbol = @import("../../runtime/symbol.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
 const meta_mod = @import("../../runtime/meta.zig");
@@ -56,6 +57,7 @@ pub fn resetMetaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
         },
         .atom => atom.setMeta(r, m),
         .agent => agent.setMeta(r, m),
+        .ref => ref_mod.setMeta(r, m),
         else => return error_catalog.raise(.reset_meta_target_not_ref, loc, .{ .actual = @tagName(r.tag()) }),
     }
     return m;

@@ -19,6 +19,31 @@ const map_mod = @import("collection/map.zig");
 const list_mod = @import("collection/list.zig");
 const error_mod = @import("error/info.zig");
 const SourceLocation = error_mod.SourceLocation;
+const dispatch = @import("dispatch.zig");
+const ex_info = @import("collection/ex_info.zig");
+
+/// Run `validator` (if non-nil) against `newval` BEFORE the change is committed
+/// (clj `ARef.validate`). A falsey return throws IllegalStateException "Invalid
+/// reference state" so the caller MUST NOT commit (the ref is left unchanged); a
+/// validator that itself throws propagates as-is. Layer-0 helper for the STM
+/// commit (`lock_tx.zig`), which cannot reach the Layer-2 `invokeCallable` the
+/// synchronous atom path uses — funnels through the Runtime vtable `callFn`,
+/// like `notifyWatches`. `newval` is published on an EvalFrame (GC-ROOT) so a
+/// collect during the validator's VM re-entry cannot sweep it.
+pub fn validateOrThrow(rt: *Runtime, env: *Env, validator: Value, newval: Value) !void {
+    if (validator.isNil()) return;
+    const vt = rt.vtable orelse return error.InternalError;
+    var gc_roots: [1]Value = .{newval};
+    var gc_sp: u16 = 1;
+    var gc_frame: root_set.EvalFrame = .{ .stack = &gc_roots, .sp = &gc_sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &gc_frame;
+    defer root_set.eval_frame_head = gc_frame.parent;
+    const ok = try vt.callFn(rt, env, validator, &[_]Value{newval}, .{});
+    if (!ok.isTruthy()) {
+        dispatch.last_thrown_exception = try ex_info.allocException(rt, "Invalid reference state", "IllegalStateException");
+        return error.ThrownValue;
+    }
+}
 
 /// Fire every registered watch `(fn key ref old new)` for `ref_val`. `watches`
 /// is the ref's `{key -> fn}` map (nil / empty short-circuits). A watch fn may

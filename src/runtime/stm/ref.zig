@@ -60,6 +60,15 @@ pub const Ref = extern struct {
     /// once per committing transaction with the net `[pre-tx, post-tx]` change
     /// (JVM `LockingTransaction` notifies after commit, outside the lock).
     watches: Value = .nil_val,
+    /// Validator fn (`nil` or a fn), `(ref init :validator f)` / `set-validator!`.
+    /// The STM commit validates each written Ref's proposed value against this
+    /// before splicing it into the ring (clj `Ref.validate` in the commit loop);
+    /// a falsey return aborts the whole transaction (the ring is left unchanged).
+    validator: Value = .nil_val,
+    /// `^{...}` metadata (`(ref init :meta m)` / `reset-meta!` / `with-meta`), or
+    /// nil. clj's `ref` accepts a `:meta` ctor kwarg; storing it here makes it
+    /// observable via `(meta r)` instead of a silently-dropped option.
+    meta: Value = .nil_val,
 
     comptime {
         std.debug.assert(@alignOf(Ref) >= 8);
@@ -114,6 +123,8 @@ pub fn traceGc(gc_ptr: *anyopaque, header: *HeapHeader) void {
     const r: *Ref = @ptrCast(@alignCast(header));
     mark_sweep.mark(gc, &r.tvals.header);
     if (r.watches.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
+    if (r.validator.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
+    if (r.meta.heapHeader()) |hdr| mark_sweep.mark(gc, hdr);
 }
 
 /// The Ref's watch map (`nil` or a persistent `{key -> fn}`). IRef surface.
@@ -125,6 +136,37 @@ pub fn watchesOf(v: Value) Value {
 /// commit lock; a racing commit just notifies the slightly-stale set (JVM-like).
 pub fn setWatches(v: Value, m: Value) void {
     v.decodePtr(*Ref).watches = m;
+}
+
+/// The Ref's validator fn (`nil` or a fn). IRef surface.
+pub fn validatorOf(v: Value) Value {
+    return v.decodePtr(*const Ref).validator;
+}
+
+/// Install/clear the Ref's validator (`set-validator!` / ctor). Set outside the
+/// commit lock; the commit reads `ref.validator` under the lock at validate time.
+pub fn setValidator(v: Value, f: Value) void {
+    v.decodePtr(*Ref).validator = f;
+}
+
+/// Set the ring's minimum history bound (`(ref init :min-history n)`).
+pub fn setMinHistory(v: Value, n: u32) void {
+    v.decodePtr(*Ref).min_history = n;
+}
+
+/// Set the ring's maximum history bound (`(ref init :max-history n)`).
+pub fn setMaxHistory(v: Value, n: u32) void {
+    v.decodePtr(*Ref).max_history = n;
+}
+
+/// The Ref's metadata map (`nil` or a map). `(meta r)`.
+pub fn metaOf(v: Value) Value {
+    return v.decodePtr(*const Ref).meta;
+}
+
+/// Replace the Ref's metadata map (`reset-meta!` / `with-meta` / ctor `:meta`).
+pub fn setMeta(v: Value, m: Value) void {
+    v.decodePtr(*Ref).meta = m;
 }
 
 /// Register Ref's trace fn at `.ref`. Idempotent.

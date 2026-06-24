@@ -28,15 +28,47 @@ const atom_mod = @import("../../runtime/atom.zig");
 const agent_mod = @import("../../runtime/agent.zig");
 const volatile_mod = @import("../../runtime/volatile.zig");
 const reduced_mod = @import("../../runtime/collection/reduced.zig");
+const keyword_mod = @import("../../runtime/keyword.zig");
+const iref = @import("../../runtime/iref.zig");
 
-/// `(ref init)` — construct a Tier A STM Ref seeded with `init`.
-/// JVM `clojure.core/ref` also accepts `:meta` / `:validator` /
-/// `:min-history` / `:max-history` option kwargs; those ride the
-/// Phase B transaction engine (D-102) and are not accepted yet.
+/// `(ref init & {:keys [meta validator min-history max-history]})` — construct a
+/// Tier A STM Ref seeded with `init` (clj `clojure.core/ref`). `:validator`
+/// validates the INITIAL value (clj `ARef.setValidator`), so
+/// `(ref -1 :validator pos?)` throws IllegalStateException. `:meta` stores the
+/// metadata map (observable via `(meta r)`); `:min-history` / `:max-history` set
+/// the ring history bounds (clj `Ref.setMinHistory` / `setMaxHistory`). Unknown
+/// keys are ignored; an odd-length options tail is an error.
 pub fn refFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
-    try error_catalog.checkArity("ref", args, 1, loc);
-    return try ref_mod.alloc(rt, args[0]);
+    if (args.len < 1)
+        return error_catalog.raise(.arity_below_min, loc, .{ .fn_name = "ref", .got = args.len, .min = 1 });
+    const r = try ref_mod.alloc(rt, args[0]);
+    if (args.len == 1) return r;
+    if ((args.len - 1) % 2 != 0)
+        return error_catalog.raise(.ref_options_odd, loc, .{ .fn_name = "ref" });
+
+    const kw_meta = try keyword_mod.intern(rt, null, "meta");
+    const kw_validator = try keyword_mod.intern(rt, null, "validator");
+    const kw_min = try keyword_mod.intern(rt, null, "min-history");
+    const kw_max = try keyword_mod.intern(rt, null, "max-history");
+    var validator: Value = .nil_val;
+    var i: usize = 1;
+    while (i + 1 < args.len) : (i += 2) {
+        const k = args[i];
+        const val = args[i + 1];
+        if (@intFromEnum(k) == @intFromEnum(kw_meta)) {
+            ref_mod.setMeta(r, val);
+        } else if (@intFromEnum(k) == @intFromEnum(kw_validator)) {
+            ref_mod.setValidator(r, val);
+            validator = val;
+        } else if (@intFromEnum(k) == @intFromEnum(kw_min)) {
+            if (val.tag() == .integer) ref_mod.setMinHistory(r, @intCast(@max(0, val.asInteger())));
+        } else if (@intFromEnum(k) == @intFromEnum(kw_max)) {
+            if (val.tag() == .integer) ref_mod.setMaxHistory(r, @intCast(@max(0, val.asInteger())));
+        }
+    }
+    // clj's setValidator validates the current (initial) value — throw if rejected.
+    if (!validator.isNil()) try iref.validateOrThrow(rt, env, validator, args[0]);
+    return r;
 }
 
 /// `(deref r)` / `@r` — return an Atom / Ref / Delay / Promise /

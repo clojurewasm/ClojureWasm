@@ -104,6 +104,13 @@ pub const Var = struct {
     /// collector only via the `ns_vars` root walk (`root_set.zig` yields it
     /// alongside `Var.root` + `Var.meta`).
     watches: Value = .nil_val,
+    /// Validator fn (`nil` or a fn) installed by `set-validator!` (clj
+    /// `ARef.setValidator`). `alter-var-root` validates the proposed new root
+    /// against this before storing it. Like `watches`, a `var_ref` is
+    /// GC-filtered, so this fn is reachable for the collector only via the
+    /// `ns_vars` root walk (`root_set.zig` yields it alongside `.root` /
+    /// `.meta` / `.watches`).
+    validator: Value = .nil_val,
 
     /// Return the active value: dynamic binding (if any) for dynamic
     /// Vars, otherwise the root.
@@ -120,6 +127,16 @@ pub const Var = struct {
     pub fn setRoot(self: *Var, v: Value) void {
         self.root = v;
     }
+
+    /// Install (or clear, with `nil`) the validator fn. `set-validator!`.
+    pub fn setValidator(self: *Var, f: Value) void {
+        self.validator = f;
+    }
+
+    /// The installed validator fn, or `nil`. `get-validator`.
+    pub fn validatorOf(self: *const Var) Value {
+        return self.validator;
+    }
 };
 
 /// The Var's watch map (`nil` or a persistent `{key -> fn}`). IRef surface; `v`
@@ -131,6 +148,16 @@ pub fn varWatchesOf(v: Value) Value {
 /// Replace the Var's watch map (`add-watch` / `remove-watch`). `v` is a `.var_ref`.
 pub fn varSetWatches(v: Value, m: Value) void {
     @constCast(v.decodePtr(*const Var)).watches = m;
+}
+
+/// The Var's validator fn (`nil` or a fn). IRef surface; `v` is a `.var_ref`.
+pub fn varValidatorOf(v: Value) Value {
+    return v.decodePtr(*const Var).validator;
+}
+
+/// Install/clear the Var's validator (`set-validator!`). `v` is a `.var_ref`.
+pub fn varSetValidator(v: Value, f: Value) void {
+    @constCast(v.decodePtr(*const Var)).validator = f;
 }
 
 // --- Namespace ---

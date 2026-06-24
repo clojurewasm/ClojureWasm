@@ -290,6 +290,19 @@ fn commit(rt: *Runtime, env: *Env, tx: *LockingTransaction, loc: SourceLocation)
     // All locked + validated + replayed → write every WRITTEN ref under one
     // commit-point. An ensure-only ref is locked + checked but not in `vals`, so
     // it is skipped here (read-locked, not written).
+    // Validate every WRITTEN ref's proposed value against its validator BEFORE
+    // any splice (clj `Ref.validate` in the commit loop). A falsey/throwing
+    // validator returns `error.ThrownValue` here, which the `defer` above
+    // releases all held locks for and aborts the transaction with NO ring
+    // written — so the rejected `dosync` leaves every ref unchanged. Done in a
+    // separate pre-pass so a later ref's rejection never half-writes an earlier
+    // ref's ring (all-or-nothing commit).
+    for (locked.items) |ref| {
+        if (tx.vals.get(ref)) |v| {
+            if (!ref.validator.isNil()) try iref.validateOrThrow(rt, env, ref.validator, v);
+        }
+    }
+
     const commit_point = nextPoint();
     for (locked.items) |ref| {
         if (tx.vals.get(ref)) |v| {

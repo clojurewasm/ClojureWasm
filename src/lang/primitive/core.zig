@@ -1503,6 +1503,10 @@ pub fn alterVarRootFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     call_args[0] = v.deref();
     @memcpy(call_args[1..], args[2..]);
     const newroot = try higher_order.invokeCallable(rt, env, args[1], call_args, loc);
+    // clj `alter-var-root` validates the proposed root against the Var's
+    // validator BEFORE storing it; a falsey return throws IllegalStateException
+    // and the root is left unchanged (the `setRoot` below never runs).
+    try iref.validateOrThrow(rt, env, v.validatorOf(), newroot);
     v.setRoot(newroot);
     // ADR-0130: redefining any cached core arith/comparison op deopts the
     // intrinsic opcodes so the new root is honoured — the one rebinding case the
