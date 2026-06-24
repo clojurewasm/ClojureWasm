@@ -86,6 +86,7 @@ const java_surfaces = [_]type{
     @import("lang/Exception.zig"),
     @import("lang/RuntimeException.zig"),
     @import("math/BigDecimal.zig"),
+    @import("math/BigInteger.zig"), // D-532 — static ctor + valueOf over native big_int
     @import("math/RoundingMode.zig"), // ADR-0160 — enum-constant host singletons
     @import("math/MathContext.zig"), // D-511 — precision+rounding host object
     // Socket / MessageDigest backing impls under runtime/net/ +

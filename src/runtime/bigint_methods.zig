@@ -51,6 +51,17 @@ fn negateFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return big_int.allocFromManaged(rt, &m, .bigint);
 }
 
+/// `(.toBigInteger n)` — identity: a cljw `.big_int` already IS a BigInteger
+/// (F-005 numeric tower). Real code calls it on a value it treats as a
+/// BigInteger (e.g. data.generators' `(BigDecimal. (.toBigInteger x) …)`).
+fn toBigIntegerFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    _ = env;
+    try error_catalog.checkArity("toBigInteger", args, 1, loc);
+    try requireBigInt(args[0], "toBigInteger", loc);
+    return args[0];
+}
+
 /// `(.signum n)` — -1 / 0 / 1 (JVM `BigInteger.signum`).
 fn signumFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
@@ -260,6 +271,7 @@ pub fn installNativeMethods(rt: *Runtime) !void {
     const specs = .{
         .{ "abs", &absFn },
         .{ "negate", &negateFn },
+        .{ "toBigInteger", &toBigIntegerFn },
         .{ "signum", &signumFn },
         .{ "gcd", &gcdFn },
         .{ "pow", &powFn },

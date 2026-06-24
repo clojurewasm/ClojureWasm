@@ -1,0 +1,24 @@
+(str (java.math.BigInteger. "123456789012345678901234567890"))
+;;=> "123456789012345678901234567890"
+(str (java.math.BigInteger. "-42"))
+;;=> "-42"
+(str (java.math.BigInteger. (byte-array [1 2 3])))
+;;=> "66051"
+(str (java.math.BigInteger. (byte-array [-1])))
+;;=> "-1"
+(str (java.math.BigInteger. (byte-array [0 -1])))
+;;=> "255"
+(str (java.math.BigInteger. (byte-array [127 -1 -1 -1])))
+;;=> "2147483647"
+(str (java.math.BigInteger/valueOf 42))
+;;=> "42"
+(str (java.math.BigInteger/valueOf -1000000000000))
+;;=> "-1000000000000"
+(.signum (java.math.BigInteger. (byte-array [-1])))
+;;=> -1
+(.signum (java.math.BigInteger. "0"))
+;;=> 0
+(str (.toBigInteger (bigint 999)))
+;;=> "999"
+(str (+ (java.math.BigInteger. "100") 23))
+;;=> "123"
