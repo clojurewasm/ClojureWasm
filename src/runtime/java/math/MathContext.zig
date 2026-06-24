@@ -8,7 +8,7 @@
 //! (D-467) — this surface is the explicit object form.
 //!
 //! Backend: impl-only
-//! Impl deps: rounding_mode, big_decimal, math_context
+//! Impl deps: host_enum, big_decimal, math_context
 //! Clojure peer: none.
 //!
 //! `<init>` + the instance methods are registered on the rt.types descriptor in
@@ -26,7 +26,7 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const host_instance = @import("../../host_instance.zig");
 const string_collection = @import("../../collection/string.zig");
-const rounding_mode = @import("../../rounding_mode.zig");
+const host_enum = @import("../../host_enum.zig");
 
 /// The live rt.types descriptor (set in `initMathContext`), embedded into every
 /// instance so the `<init>` path and method dispatch share it.
@@ -72,7 +72,7 @@ fn getPrecisionFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 fn getRoundingModeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("getRoundingMode", args, 1, loc);
-    return rounding_mode.singleton(rt, @intCast(host_instance.asHostInstance(args[0]).state[1]));
+    return host_enum.singleton(rt, .rounding_mode, @intCast(host_instance.asHostInstance(args[0]).state[1]));
 }
 
 /// `(str mc)` / `(.toString mc)` — "precision=N roundingMode=NAME" (JVM form).
@@ -81,7 +81,7 @@ fn toStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     try error_catalog.checkArity("toString", args, 1, loc);
     const hi = host_instance.asHostInstance(args[0]);
     var buf: [96]u8 = undefined;
-    const s = std.fmt.bufPrint(&buf, "precision={d} roundingMode={s}", .{ hi.state[0], rounding_mode.name(@intCast(hi.state[1])) }) catch unreachable;
+    const s = std.fmt.bufPrint(&buf, "precision={d} roundingMode={s}", .{ hi.state[0], host_enum.name(.rounding_mode, @intCast(hi.state[1])) }) catch unreachable;
     return string_collection.alloc(rt, s);
 }
 

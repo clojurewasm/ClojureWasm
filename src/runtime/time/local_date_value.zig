@@ -31,7 +31,7 @@ const day_of_week_value = @import("day_of_week_value.zig");
 const month_value = @import("month_value.zig");
 const local_date_time_value = @import("local_date_time_value.zig");
 const host_instance = @import("../host_instance.zig");
-const chrono_unit = @import("../chrono_unit.zig");
+const host_enum = @import("../host_enum.zig");
 
 /// `(.getYear d)` — the proleptic year (JVM `LocalDate.getYear`).
 fn getYearFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -226,7 +226,7 @@ fn untilFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a ChronoUnit", .actual = @tagName(args[2].tag()) });
     const ord: u8 = @intCast(host_instance.asHostInstance(args[2]).state[0]);
     const result = instant.dateUntil(epochDayOf(args[0]), epochDayOf(args[1]), ord) orelse
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a date-based ChronoUnit (DAYS/WEEKS/MONTHS/YEARS/DECADES/CENTURIES/MILLENNIA)", .actual = chrono_unit.name(ord) });
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a date-based ChronoUnit (DAYS/WEEKS/MONTHS/YEARS/DECADES/CENTURIES/MILLENNIA)", .actual = host_enum.name(.chrono_unit, ord) });
     return Value.initInteger(result);
 }
 

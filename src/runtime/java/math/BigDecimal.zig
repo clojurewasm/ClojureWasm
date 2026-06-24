@@ -27,7 +27,7 @@ const big_decimal = @import("../../numeric/big_decimal.zig");
 const big_int = @import("../../numeric/big_int.zig");
 const print_mod = @import("../../print.zig");
 const host_instance = @import("../../host_instance.zig");
-const rounding_mode = @import("../../rounding_mode.zig");
+const host_enum = @import("../../host_enum.zig");
 const nb = @import("../../value/nan_box.zig");
 const string_collection = @import("../../collection/string.zig");
 
@@ -535,9 +535,9 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 /// suffix + ordinal stay a single source of truth shared with the modern
 /// `RoundingMode/<name>` enum constants (ADR-0160).
 const big_decimal_static_fields = build: {
-    var arr: [rounding_mode.COUNT]type_descriptor.TypeDescriptor.StaticField = undefined;
+    var arr: [host_enum.count(.rounding_mode)]type_descriptor.TypeDescriptor.StaticField = undefined;
     for (&arr, 0..) |*sf, i| {
-        sf.* = .{ .name = "ROUND_" ++ rounding_mode.name(@intCast(i)), .value = .{ .int = @intCast(i) } };
+        sf.* = .{ .name = "ROUND_" ++ host_enum.name(.rounding_mode, @intCast(i)), .value = .{ .int = @intCast(i) } };
     }
     break :build arr;
 };

@@ -10,8 +10,8 @@
 //! Impl deps: chrono_unit
 //! Clojure peer: none.
 //!
-//! Singletons + the ordinal↔name↔display mapping live in the neutral
-//! `runtime/chrono_unit.zig` (zone rule). This file owns the descriptor +
+//! Singletons + the ordinal↔name↔display mapping live in the neutral host-enum
+//! registry `runtime/host_enum.zig` (zone rule). This file owns the descriptor +
 //! static-field table + `.toString`/`.name`.
 
 const std = @import("std");
@@ -24,14 +24,14 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const host_instance = @import("../../host_instance.zig");
 const string_collection = @import("../../collection/string.zig");
-const chrono_unit = @import("../../chrono_unit.zig");
+const host_enum = @import("../../host_enum.zig");
 
 /// `(str u)` / `(.toString u)` — the DISPLAY name ("Days", "HalfDays").
 fn toString(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("toString", args, 1, loc);
     const ord: u8 = @intCast(host_instance.asHostInstance(args[0]).state[0]);
-    return string_collection.alloc(rt, chrono_unit.displayName(ord));
+    return string_collection.alloc(rt, host_enum.toStringOf(.chrono_unit, ord));
 }
 
 /// `(.name u)` — the enum-constant name ("DAYS").
@@ -39,7 +39,7 @@ fn nameFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
     _ = env;
     try error_catalog.checkArity("name", args, 1, loc);
     const ord: u8 = @intCast(host_instance.asHostInstance(args[0]).state[0]);
-    return string_collection.alloc(rt, chrono_unit.name(ord));
+    return string_collection.alloc(rt, host_enum.name(.chrono_unit, ord));
 }
 
 fn initDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
@@ -50,11 +50,14 @@ fn initDescriptor(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) a
     td.method_table = entries;
 }
 
-/// The 16 enum constants, generated from the canonical `chrono_unit` table.
+/// The 16 enum constants, generated from the canonical `host_enum` registry.
 const static_fields = build: {
-    var arr: [chrono_unit.COUNT]type_descriptor.TypeDescriptor.StaticField = undefined;
+    var arr: [host_enum.count(.chrono_unit)]type_descriptor.TypeDescriptor.StaticField = undefined;
     for (&arr, 0..) |*sf, i| {
-        sf.* = .{ .name = chrono_unit.name(@intCast(i)), .value = .{ .chrono_unit = @intCast(i) } };
+        sf.* = .{
+            .name = host_enum.name(.chrono_unit, @intCast(i)),
+            .value = .{ .host_enum = .{ .enum_idx = @intFromEnum(host_enum.Idx.chrono_unit), .ordinal = @intCast(i) } },
+        };
     }
     break :build arr;
 };

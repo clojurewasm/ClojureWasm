@@ -27,7 +27,7 @@ const error_catalog = @import("../error/catalog.zig");
 const SourceLocation = @import("../error/info.zig").SourceLocation;
 const duration_value = @import("duration_value.zig");
 const host_instance = @import("../host_instance.zig");
-const chrono_unit = @import("../chrono_unit.zig");
+const host_enum = @import("../host_enum.zig");
 const big_int = @import("../numeric/big_int.zig");
 const nb = @import("../value/nan_box.zig");
 
@@ -113,7 +113,7 @@ fn untilFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
         5 => 3_600 * NS_PER_SEC, // HOURS
         6 => 43_200 * NS_PER_SEC, // HALF_DAYS
         7 => 86_400 * NS_PER_SEC, // DAYS (fixed 86_400 s, no civil date)
-        else => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a time-based ChronoUnit (NANOS..DAYS)", .actual = chrono_unit.name(ord) }),
+        else => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a time-based ChronoUnit (NANOS..DAYS)", .actual = host_enum.name(.chrono_unit, ord) }),
     };
     const s1 = @divFloor(epochMsOf(args[0]), 1000);
     const s2 = @divFloor(epochMsOf(args[1]), 1000);

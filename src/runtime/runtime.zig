@@ -260,16 +260,13 @@ pub const Runtime = struct {
     /// `java/util/Locale.zig::singleton`; freed in `deinit`.
     locale_us: @import("value/value.zig").Value = .nil_val,
     locale_root: @import("value/value.zig").Value = .nil_val,
-    /// The 8 `java.math.RoundingMode` enum-constant singletons (UP..UNNECESSARY,
-    /// indexed by ordinal), gc.infra-allocated host_instances lazily filled by
-    /// `rounding_mode.zig::singleton`; freed in `deinit`. Cached for `=` /
-    /// identity parity (ADR-0160).
-    rounding_modes: [8]@import("value/value.zig").Value = @splat(.nil_val),
-    /// The 16 `java.time.temporal.ChronoUnit` enum-constant singletons (NANOS..
-    /// FOREVER, indexed by ordinal), gc.infra-allocated host_instances lazily
-    /// filled by `chrono_unit.zig::singleton`; freed in `deinit`. The 2nd
-    /// host-enum after `rounding_modes` (D-510 folds both eventually).
-    chrono_units: [16]@import("value/value.zig").Value = @splat(.nil_val),
+    /// The flat host-enum constant cache (ADR-0161 / D-510): one interned
+    /// `.host_instance` singleton per (enum, ordinal) for RoundingMode (8) +
+    /// ChronoUnit (16) + DayOfWeek (7) + Month (12), indexed by
+    /// `host_enum.defs[idx].cache_base + ordinal` (size = `host_enum.TOTAL` = 43).
+    /// gc.infra-allocated, lazily filled by `host_enum.zig::singleton` (the sole
+    /// minting point → `=` / `identical?` parity is structural); freed in `deinit`.
+    host_enum_consts: [@import("host_enum.zig").TOTAL]@import("value/value.zig").Value = @splat(.nil_val),
     /// The 4 `java.math.MathContext` standard constants (DECIMAL32/64/128/
     /// UNLIMITED), gc.infra-allocated host_instances lazily filled by
     /// `math_context.zig::singleton`; freed in `deinit`.
@@ -645,8 +642,7 @@ pub const Runtime = struct {
         @import("collection/list.zig").deinitEmptyList(self);
         @import("collection/persistent_queue.zig").deinitEmptyQueue(self);
         @import("locale.zig").deinitSingletons(self);
-        @import("rounding_mode.zig").deinitSingletons(self);
-        @import("chrono_unit.zig").deinitSingletons(self);
+        @import("host_enum.zig").deinitConsts(self);
         @import("math_context.zig").deinitSingletons(self);
         // Free the per-Runtime Date descriptor (gc.infra — D-200/ADR-0079).
         @import("time/date.zig").deinitDescriptor(self);

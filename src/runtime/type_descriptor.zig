@@ -209,14 +209,12 @@ pub const TypeDescriptor = struct {
         float: f64,
         bool: bool, // Boolean/TRUE, Boolean/FALSE (ADR-0061 am 2026-05-31)
         singleton: Singleton,
-        /// A `java.math.RoundingMode` enum constant, carrying its ordinal (0-7).
-        /// Resolves to the per-Runtime cached host_instance singleton via
-        /// `rounding_mode.zig::singleton` (ADR-0160). Distinct from `singleton`
-        /// because it is ordinal-parameterised, not a fixed named slot.
-        rounding_mode: u8,
-        /// A `java.time.temporal.ChronoUnit` enum constant (ordinal 0-15) →
-        /// `chrono_unit.zig::singleton`. The 2nd host-enum (D-510 folds both).
-        chrono_unit: u8,
+        /// A host-enum constant (ADR-0161 / D-510): `enum_idx` is `@intFromEnum`
+        /// of `host_enum.Idx` (RoundingMode/ChronoUnit/DayOfWeek/Month), `ordinal`
+        /// the 0-based JVM ordinal. Resolves to the interned `.host_instance`
+        /// singleton via `host_enum.zig::singleton`. One arm for all four host
+        /// enums (folds the former `.rounding_mode`/`.chrono_unit` one-offs).
+        host_enum: struct { enum_idx: u8, ordinal: u8 },
         /// A `java.math.MathContext` standard constant (0-3 = DECIMAL32/64/128/
         /// UNLIMITED) → `math_context.zig::singleton` (D-511).
         math_context: u8,

@@ -35,7 +35,7 @@ const duration_value = @import("duration_value.zig");
 const day_of_week_value = @import("day_of_week_value.zig");
 const month_value = @import("month_value.zig");
 const host_instance = @import("../host_instance.zig");
-const chrono_unit = @import("../chrono_unit.zig");
+const host_enum = @import("../host_enum.zig");
 const big_int = @import("../numeric/big_int.zig");
 const nb = @import("../value/nan_box.zig");
 
@@ -210,7 +210,7 @@ fn untilFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
         return makeLong(rt, instant.dateUntil(ed1, ed2_adj, ord).?);
     }
     if (ord > 6) // ERAS (14) / FOREVER (15)
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a supported ChronoUnit", .actual = chrono_unit.name(ord) });
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a supported ChronoUnit", .actual = host_enum.name(.chrono_unit, ord) });
 
     // Time-based (0-6): JVM piecewise day-split to keep SECONDS+ in range.
     const per_day: i64 = switch (ord) {

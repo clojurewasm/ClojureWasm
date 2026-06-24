@@ -171,6 +171,7 @@ test {
     _ = @import("runtime/time/duration_value.zig");
     _ = @import("runtime/time/local_date_value.zig");
     _ = @import("runtime/time/local_time_value.zig");
+    _ = @import("runtime/host_enum.zig");
     _ = @import("runtime/time/day_of_week_value.zig");
     _ = @import("runtime/time/month_value.zig");
     _ = @import("runtime/time/timestamp.zig");
