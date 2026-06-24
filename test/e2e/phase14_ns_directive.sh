@@ -102,5 +102,15 @@ case "$diag" in
         fail "ns_rename_diagnostic_deferred: expected :rename diagnostic, got '$diag'" ;;
 esac
 
+# --- Case 9: ns-unalias removes an alias; no-op (nil) on a missing one (clj parity) ---
+got=$("$BIN" - <<'EOF'
+(alias 's 'clojure.string)
+(let [had (contains? (ns-aliases *ns*) 's)]
+  (ns-unalias *ns* 's)
+  (prn [had (contains? (ns-aliases *ns*) 's) (ns-unalias *ns* 'nonexistent)]))
+EOF
+)
+assert_eq 'ns_unalias' "$got" '[true false nil]'
+
 echo
 echo "Phase 14 row 14.7 ns directive surface e2e: all green."

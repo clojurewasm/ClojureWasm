@@ -1583,8 +1583,11 @@ standing:
       requiring-resolve (.clj: require the ns then resolve; throws on a
       non-qualified symbol). corpus thread_bound_requiring_resolve (4). Still
       needing real plumbing (not trivial wrappers): `special-symbol?` (needs the
-      special-form-set SSOT exposed to a prim), `ns-unmap`/`ns-unalias` (env
-      mapping/alias removal with owned-key freeing).
+      special-form-set SSOT exposed to a prim), `ns-unmap` (env mapping removal +
+      Var lifetime — needs a Var-lifecycle ADR, deferred). `ns-unalias` LANDED
+      2026-06-24 (`env.removeAlias` frees the dup'd key; an alias value is a
+      borrowed `*Namespace`, NOT an owned Var, so no Var-lifecycle issue — the safe
+      half of the pair; e2e phase14_ns_directive `ns_unalias`).
       **2026-06-04 unbound sentinel + bound? + defonce LANDED** (the moderate-
       structural unit): `Var.bound: bool` (env.intern sets true; the no-init
       `(def x)` path uses `internDeclare` — unbound placeholder, no-clobber).

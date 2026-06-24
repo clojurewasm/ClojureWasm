@@ -240,6 +240,19 @@ pub fn aliasFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     return Value.nil_val;
 }
 
+/// `(ns-unalias ns sym)` — remove the alias `sym` from `ns`'s alias table.
+/// No-op (returns nil) if the alias is absent. Spec: clojure.core/ns-unalias.
+pub fn nsUnaliasFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
+    try error_catalog.checkArity("ns-unalias", args, 2, loc);
+    const ns = resolveNs(env, args[0]) orelse
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-unalias on a non-namespace" });
+    if (args[1].tag() != .symbol)
+        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-unalias requires a symbol" });
+    env.removeAlias(ns, symbol_mod.asSymbol(args[1]).name);
+    return Value.nil_val;
+}
+
 /// `(ns-aliases ns)` — map of `alias-symbol → Namespace value` for the ns.
 /// Spec: clojure.core/ns-aliases.
 pub fn nsAliasesFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -478,6 +491,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "find-var", .f = &findVarFn },
     .{ .name = "alias", .f = &aliasFn },
     .{ .name = "ns-aliases", .f = &nsAliasesFn },
+    .{ .name = "ns-unalias", .f = &nsUnaliasFn },
     .{ .name = "in-ns", .f = &inNsFn },
     .{ .name = "refer", .f = &referFn },
     .{ .name = "use", .f = &useFn },

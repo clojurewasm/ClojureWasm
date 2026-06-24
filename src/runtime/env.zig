@@ -619,6 +619,14 @@ pub const Env = struct {
         try ns.aliases.put(self.alloc, owned_key, target);
     }
 
+    /// Remove `alias_name` from `ns`'s alias table, freeing the owned key. No-op
+    /// if the alias is absent (clj `ns-unalias` is a no-op on a missing alias).
+    /// Safe (no Var lifecycle): an alias value is a borrowed `*Namespace`, not an
+    /// owned Var — only the dup'd key is freed (unlike `ns-unmap`/`remove-ns`).
+    pub fn removeAlias(self: *Env, ns: *Namespace, alias_name: []const u8) void {
+        if (ns.aliases.fetchRemove(alias_name)) |kv| self.alloc.free(kv.key);
+    }
+
     /// `(def name root)` equivalent. Creates a new Var in `ns`, or
     /// updates the existing Var's `root` in place if `name` is already
     /// bound. Update-in-place is what makes `def` idempotent at the
