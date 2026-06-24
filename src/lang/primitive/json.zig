@@ -74,6 +74,16 @@ pub fn readStrFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
             .name = "JSON parse error in clojure.data.json/read-str",
         });
     };
+    // GC: read-str fabricates an unpublished result tree (vectors/maps/strings)
+    // via recursive jsonToCw + bulk fromSlice/fromLiteralPairs buffers that are
+    // unrooted across nested allocs. Since D-519 (alloc-boundary auto-collect)
+    // a mid-parse collect would sweep an in-progress buffer → a 0-element /
+    // corrupt result (the json_parse bench's intermittent 0-count; deterministic
+    // under CLJW_GC_TORTURE_ALLOC). The whole parse is ONE fabrication region:
+    // the tree is unpublished until return, and std.json already holds the parsed
+    // value in `arena`, so deferring collection is memory-bounded by the doc.
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     return jsonToCw(rt, parsed.value, loc);
 }
 
@@ -113,10 +123,9 @@ fn jsonToCw(rt: *Runtime, jv: std.json.Value, loc: SourceLocation) anyerror!Valu
         .array => |arr| blk: {
             // PERF: bulk-build via fromSlice instead of empty + N×conj (which
             // allocated N throwaway intermediate vectors per JSON array). Mirrors
-            // O-040 (op_vector_literal). Shares the pre-existing D-244 #4 alloc-
-            // torture fabrication status (the buffer is unrooted across the build,
-            // identical to the old conj-fold accumulator; production never collects
-            // mid-alloc). [refs: O-041]
+            // O-040 (op_vector_literal). The buffer is unrooted across the build,
+            // so the whole parse runs inside readStrFn's fabrication region (no
+            // mid-build collect can sweep it — see readStrFn). [refs: O-041]
             const n = arr.items.len;
             if (n == 0) break :blk vector_collection.empty();
             const buf = try rt.gc.infra.alloc(Value, n);

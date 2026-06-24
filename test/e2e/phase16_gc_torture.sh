@@ -196,6 +196,13 @@ assert_alloc 'set_promote'    '(count (into #{} (range 12)))'              '12'
 assert_alloc 'hashmap_fn'     '(get (hash-map :a 1 :b 2) :b)'               '2'
 assert_alloc 'map_literal'    '(get {:a 1 :b 2 :c 3} :c)'                   '3'
 assert_alloc 'map_promote'    '(count (into {} [[1 1] [2 2] [3 3] [4 4] [5 5] [6 6] [7 7] [8 8] [9 9] [10 10]]))' '10'
+# json read-str fabricates an UNPUBLISHED result tree (recursive jsonToCw +
+# fromSlice/fromLiteralPairs buffers, unrooted across nested allocs); the whole
+# parse is bracketed by readStrFn's fabrication region. Without it a mid-parse
+# alloc-collect swept the in-progress "users" vector -> count 0 (D-519's
+# alloc-boundary auto-collect EXPOSED this latent gap; surfaced as the json_parse
+# bench's intermittent 19000-vs-20000, deterministic 0 under alloc-torture).
+assert_alloc 'json_nested'    '(do (require (quote [clojure.data.json :as json])) (count (get (json/read-str (json/write-str {:users (vec (map (fn [i] {:id i :tags ["a" "b"]}) (range 20)))})) "users")))' '20'
 
 # D-244 #4b — eval-REENTRANT lazy-seq realization / reduce over a RANGE source.
 # Before the fix these returned 1 / nil-errors under alloc-torture (the range
