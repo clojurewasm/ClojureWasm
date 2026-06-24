@@ -43,6 +43,7 @@ const map_entry_mod = @import("collection/map_entry.zig");
 const set = @import("collection/set.zig");
 const sorted = @import("collection/sorted.zig");
 const big_int = @import("numeric/big_int.zig");
+const class_name_mod = @import("class_name.zig");
 const ratio = @import("numeric/ratio.zig");
 const big_decimal = @import("numeric/big_decimal.zig");
 const td_mod = @import("type_descriptor.zig");
@@ -842,6 +843,24 @@ pub fn valueEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
     // non-native operand). So consult `a` (left) only, matching clj. A defrecord
     // keeps its type-sensitive `=` by exclusion; an impl-less deftype falls through.
     if (try instanceEquiv(rt, env, a, b)) |r| return r;
+
+    // 3b. Symmetric map equality with a `MapEquivalence` deftype. clj's
+    // `APersistentMap.equiv(o)` returns false when `o` is an IPersistentMap that
+    // is NOT `clojure.lang.MapEquivalence` (a "box"), but compares by CONTENT
+    // when `o` declares MapEquivalence (clj's marker that "my `=` is map-content
+    // equivalence"). So `(= {…} box) → false` (phase14_deftype_equiv) stays, but
+    // a deftype declaring MapEquivalence (e.g. data.priority-map) makes
+    // `(= hash-map pm)` symmetric. cljw's native map equiv (mapEqual below) only
+    // walks native-tag operands, so when the LEFT is a native map and the RIGHT is
+    // a MapEquivalence deftype, consult the RIGHT operand's (content-based) equiv —
+    // its own contract under the MapEquivalence marker — to get clj's symmetric
+    // result. (Surfaced by data.priority-map: its `(equiv [this o] (= item->priority
+    // o))` made `(= hash-map pm)` and even `(= pm1 pm2)` false before this.)
+    if ((b.tag() == .typed_instance or b.tag() == .reified_instance) and
+        isAnyMapTag(a.tag()) and class_name_mod.isInstance(b, "clojure.lang.MapEquivalence"))
+    {
+        if (try instanceEquiv(rt, env, b, a)) |r| return r;
+    }
 
     // 4. Sets and maps are `=` by ELEMENTS across all impl tags (clj: a
     // sorted-set = a hash-set, a sorted-map = an array-/hash-map with the same

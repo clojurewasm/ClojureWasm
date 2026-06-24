@@ -267,6 +267,12 @@ pub fn mapQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     if (t == .array_map or t == .hash_map or t == .sorted_map) return .true_val;
     // A defrecord IS an IPersistentMap in clj (`(map? rec)` → true).
     if (t == .typed_instance and v.decodePtr(*const td_mod.TypedInstance).descriptor.kind == .defrecord) return .true_val;
+    // A deftype/reify implementing clojure.lang.IPersistentMap is also a map:
+    // clj defines `(map? x)` as `(instance? clojure.lang.IPersistentMap x)`, so
+    // a custom map type (e.g. data.priority-map's PersistentPriorityMap) answers
+    // true. Consults the same membership oracle instance? uses.
+    if ((t == .typed_instance or t == .reified_instance) and
+        class_name.isInstance(v, "clojure.lang.IPersistentMap")) return .true_val;
     return .false_val;
 }
 

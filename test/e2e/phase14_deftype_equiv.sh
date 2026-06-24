@@ -35,5 +35,35 @@ EOF
 )
 assert_eq 'deftype_equiv_left_operand' "$got" '[true false false false true]'
 
+# A MapEquivalence deftype (the data.priority-map shape) is `=` SYMMETRICALLY
+# with a native map — clj's APersistentMap.equiv compares to the RIGHT operand by
+# content iff it declares clojure.lang.MapEquivalence (NOT a plain IPersistentMap
+# "box"). `(map? x)` is `(instance? clojure.lang.IPersistentMap x)`, so a custom
+# map type answers true even without MapEquivalence. clj-verified: a MM (declares
+# MapEquivalence + implements size/get/containsKey) is `=` both directions; a
+# Box (IPersistentMap only) is map? but NOT `=` from a native-map LHS.
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(deftype MM [m]
+  Object (equiv [_ o] (= m o))
+  clojure.lang.Seqable (seq [_] (seq m))
+  clojure.lang.Counted (count [_] (count m))
+  clojure.lang.ILookup (valAt [_ k] (get m k)) (valAt [_ k d] (get m k d))
+  clojure.lang.IPersistentMap
+  clojure.lang.MapEquivalence
+  java.util.Map (size [_] (count m)) (get [_ k] (get m k)) (containsKey [_ k] (contains? m k)))
+(deftype Box [m]
+  Object (equiv [_ o] (= m o))
+  clojure.lang.Seqable (seq [_] (seq m))
+  clojure.lang.IPersistentMap)
+(prn [(= {:a 1 :b 2} (MM. {:a 1 :b 2}))
+      (= (MM. {:a 1 :b 2}) {:a 1 :b 2})
+      (= {:a 9} (MM. {:a 1}))
+      (map? (MM. {:a 1}))
+      (map? (Box. {:a 1}))
+      (= {:a 1} (Box. {:a 1}))])
+EOF
+)
+assert_eq 'deftype_mapequivalence_symmetric' "$got" '[true true false true true false]'
+
 echo
 echo "Cross-type deftype equiv (D-377 = facet) e2e: all green."
