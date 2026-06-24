@@ -1,0 +1,44 @@
+(java.util.Objects/isNull nil)
+;;=> true
+(java.util.Objects/isNull 5)
+;;=> false
+(java.util.Objects/nonNull 5)
+;;=> true
+(java.util.Objects/nonNull nil)
+;;=> false
+(java.util.Objects/equals 1 1)
+;;=> true
+(java.util.Objects/equals nil nil)
+;;=> true
+(java.util.Objects/equals "a" "b")
+;;=> false
+(java.util.Objects/equals [1 2] [1 2])
+;;=> true
+(java.util.Objects/equals nil 5)
+;;=> false
+(java.util.Objects/requireNonNull 5)
+;;=> 5
+(java.util.Objects/requireNonNull "x")
+;;=> "x"
+(java.util.Objects/requireNonNullElse nil 7)
+;;=> 7
+(java.util.Objects/requireNonNullElse 3 7)
+;;=> 3
+(java.util.Objects/toString nil)
+;;=> "null"
+(java.util.Objects/toString nil "def")
+;;=> "def"
+(java.util.Objects/toString 5)
+;;=> "5"
+(java.util.Objects/toString [1 2])
+;;=> "[1 2]"
+(java.util.Objects/toString :kw)
+;;=> ":kw"
+(try (java.util.Objects/requireNonNull nil) :no (catch NullPointerException _ :npe))
+;;=> :npe
+(try (java.util.Objects/requireNonNull nil "boom") :no (catch NullPointerException e (.getMessage e)))
+;;=> "boom"
+(try (java.util.Objects/requireNonNullElse nil nil) :no (catch NullPointerException _ :npe))
+;;=> :npe
+(try (java.util.Objects/requireNonNull 5) :ok (catch NullPointerException _ :npe))
+;;=> :ok

@@ -118,6 +118,13 @@ active:
       test/diff/clj_corpus/double_bit_conversion.txt (14 golden pairs). NEXT:
       java.util.Objects/* is a whole new surface (separate unit); the i48→u64
       bitcast widening repeats across surfaces (a simplify candidate).
+      DRAIN 5 (2026-06-25): NEW surface java.util.Objects (runtime/java/util/
+      Objects.zig + _host_api + compat_tiers). isNull/nonNull/equals (valueEqual)/
+      requireNonNull (1+2 arg, throws a REAL NullPointerException via the ex_info
+      host-throw path)/requireNonNullElse/toString (1+2 arg). hash/hashCode
+      deferred (Java-hashCode ≠ cljw value hash). Corpus: objects_static.txt
+      (22 golden, incl. catch-by-NullPointerException error cases). REMAINING
+      simplify candidate: the i48→u64 bitcast widening repeated across surfaces.
     category: "interop"
     quality_floor: "public-ization: java-interop static-member gaps (ADR-0166)"
     barrier: |-
