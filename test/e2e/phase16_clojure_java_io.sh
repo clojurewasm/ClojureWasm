@@ -94,5 +94,16 @@ cat > "$APP" <<EOF
 EOF
 assert_eq 'spit_append_options' "$("$BIN" "$APP" 2>&1)" $'123\nX\nreset\nenc\n42\n{:a 1}'
 
+# --- D-471: slurp/spit accept a java.io.File arg (clojure.java.io/Coercions).
+# cljw extracts the File's stored path (state[0]); clj routes via Coercions/IOFactory.
+FARG="$TMP/farg_smoke.clj"
+cat > "$FARG" <<EOF
+(spit (clojure.java.io/file "$TMP/farg.txt") "filebody")   ; File arg to spit
+(println (slurp (clojure.java.io/file "$TMP/farg.txt")))   ; File arg to slurp
+(spit (clojure.java.io/file "$TMP" "sub.txt") "nested")    ; multi-segment File
+(println (slurp (clojure.java.io/file "$TMP/sub.txt")))    ; nested
+EOF
+assert_eq 'slurp_spit_file_arg' "$("$BIN" "$FARG" 2>&1)" $'filebody\nnested'
+
 rm -rf "$TMP"
 echo "ALL PASS phase16_clojure_java_io"

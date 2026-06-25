@@ -19,6 +19,27 @@ const string_collection = @import("../../runtime/collection/string.zig");
 const std = @import("std");
 const keyword_mod = @import("../../runtime/keyword.zig");
 const print_mod = @import("../../runtime/print.zig");
+const host_instance = @import("../../runtime/host_instance.zig");
+
+/// Coerce the file arg of `slurp`/`spit` to a path string: a `.string` directly,
+/// or a `java.io.File` host instance (its path lives in `state[0]`, ADR-0126) —
+/// the common `clojure.java.io/Coercions` case. Returns null for any other type.
+/// R4-clean: identifies the File by descriptor identity via `rt.types` +
+/// `host_instance` (neutral), NOT by importing the `runtime/java/io` surface
+/// (same pattern as `core.zig` uriQ). The URL / URI / Reader / Writer / stream
+/// Coercions arrive when those host types land (D-471).
+fn coerceToPath(rt: *Runtime, v: Value) ?[]const u8 {
+    if (v.tag() == .string) return string_collection.asString(v);
+    if (v.tag() == .host_instance) {
+        const td = rt.types.get("java.io.File") orelse return null;
+        const hi = host_instance.asHostInstance(v);
+        if (hi.descriptor == td) {
+            const path_val: Value = @enumFromInt(hi.state[0]);
+            return string_collection.asString(path_val);
+        }
+    }
+    return null;
+}
 
 /// Map a host I/O error from `slurp`/`spit` to a catchable cljw exception.
 /// A missing path (or missing parent directory) routes to the leaf
@@ -34,10 +55,8 @@ fn raiseFileIoError(op: []const u8, path: []const u8, e: anyerror, loc: SourceLo
 pub fn slurp(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("slurp", args, 1, loc);
-    if (args[0].tag() != .string) {
+    const path = coerceToPath(rt, args[0]) orelse
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "slurp", .actual = @tagName(args[0].tag()) });
-    }
-    const path = string_collection.asString(args[0]);
     // SE-6: confine to the deploy FS jail (CLJW_FS_ROOT) and open the RESOLVED
     // path (so the file read is the one that was containment-checked).
     const jailed = file_io.jailResolve(rt.gpa, rt.fs_jail_root, path) catch |e| switch (e) {
@@ -64,9 +83,8 @@ pub fn spit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     // options are keyword/value pairs; cljw honours `:append` (truthy → append)
     // and accepts `:encoding` (UTF-8 always, a no-op) plus any further keys.
     try error_catalog.checkArityMin("spit", args, 2, loc);
-    if (args[0].tag() != .string) {
+    const path = coerceToPath(rt, args[0]) orelse
         return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "spit", .actual = @tagName(args[0].tag()) });
-    }
     var append_mode = false;
     var i: usize = 2;
     while (i + 1 < args.len) : (i += 2) {
@@ -74,7 +92,6 @@ pub fn spit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
         if (std.mem.eql(u8, keyword_mod.asKeyword(args[i]).name, "append"))
             append_mode = args[i + 1].isTruthy();
     }
-    const path = string_collection.asString(args[0]);
     // Coerce content via `(str content)`; a string is used directly (fast path).
     const content_owned: ?[]u8 = if (args[1].tag() == .string) null else blk: {
         var aw: std.Io.Writer.Allocating = .init(rt.gpa);
