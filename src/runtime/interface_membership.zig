@@ -118,6 +118,35 @@ const TVEC_TAGS = [_]Tag{.transient_vector};
 const TMAP_TAGS = [_]Tag{.transient_map};
 const TSET_TAGS = [_]Tag{.transient_set};
 
+/// Serializable (java.io.Serializable) — clj-oracle 2026-06-25. A near-universal
+/// marker: clj makes nearly every value Serializable. The clj-verified TRUE set
+/// is every collection + seq + the full scalar set + the AFunction-backed fns +
+/// Var + Namespace + Class + Throwable + regex/uuid + Java arrays. The notable
+/// clj EXCLUSIONS (false here too, by ABSENCE): the mutable refs (atom / agent /
+/// ref / volatile), the pending/deref boxes (future / promise / delay / reduced),
+/// the transients — and, caught by the oracle, `multi_fn`: clj's `MultiFn`
+/// extends `AFn`, NOT the `Serializable` `AFunction`, so a `defmulti` is NOT
+/// Serializable, unlike a plain fn / builtin / protocol method. deftype/reify
+/// (`typed_instance`/`reified_instance`) + host descriptors are decided by
+/// matchUserType / host_supertypes, not this static table.
+const SERIALIZABLE_TAGS = [_]Tag{
+    // collections + seqs
+    .list,           .vector,    .array_map,   .hash_map, .hash_set,
+    .lazy_seq,       .cons,      .chunked_cons, .range,   .string_seq,
+    .array_seq,      .map_entry, .persistent_queue, .sorted_map, .sorted_set,
+    // scalars (full numeric tower + the rest)
+    .string,         .symbol,    .keyword,     .char,     .boolean,
+    .integer,        .float,     .big_int,     .ratio,    .big_decimal,
+    // callables — fn_val/builtin_fn/protocol_fn are AFunction (Serializable);
+    // multi_fn (MultiFn) is deliberately ABSENT (clj-verified false).
+    .fn_val,         .builtin_fn, .protocol_fn,
+    // Var + Namespace ARE Serializable (clj true); the other refs are not.
+    .var_ref,        .ns,
+    // host-ish values with a Serializable clj counterpart (regex Pattern, UUID,
+    // Throwable, Class, and Java arrays are all Serializable on the JVM).
+    .regex,          .uuid,      .ex_info,     .type_descriptor, .array,
+};
+
 // --- deref / pending / ref family (ADR-0116; clj-oracle 2026-06-08) ---
 
 /// IDeref — every deref-able value.
@@ -218,6 +247,10 @@ pub const TABLE = [_]Entry{
     .{ .name = "ITransientVector", .tags = &TVEC_TAGS },
     .{ .name = "ITransientMap", .tags = &TMAP_TAGS },
     .{ .name = "ITransientSet", .tags = &TSET_TAGS },
+    // Serializable (D-480 completion, clj-oracle 2026-06-25) — the last deferred
+    // marker. Near-universal; the SERIALIZABLE_TAGS doc records the clj-verified
+    // inclusions + the deliberate exclusions (refs/pending/transients/multi_fn).
+    .{ .name = "Serializable", .tags = &SERIALIZABLE_TAGS },
 };
 
 /// Strip a recognised host package prefix so both `ISeq` and `clojure.lang.ISeq`
@@ -350,6 +383,20 @@ test "isInterface bounds the recognised set" {
     try testing.expect(isInterface("IFn"));
     try testing.expect(!isInterface("String")); // a native exact class, not an interface
     try testing.expect(!isInterface("NotARealInterface"));
+}
+
+test "Serializable membership (clj-oracle 2026-06-25): near-universal but NOT refs/pending/transients/multi_fn" {
+    // TRUE: collections, seqs, scalars, plain fns, Var, Namespace, regex/uuid,
+    // Throwable, Class, Java arrays.
+    inline for (.{ .vector, .list, .lazy_seq, .map_entry, .sorted_map, .integer, .big_int, .ratio, .keyword, .char, .boolean, .fn_val, .builtin_fn, .protocol_fn, .var_ref, .ns, .regex, .uuid, .ex_info, .type_descriptor, .array }) |t| {
+        try testing.expect(isMember(t, "Serializable"));
+        try testing.expect(isMember(t, "java.io.Serializable"));
+    }
+    // FALSE: mutable refs, pending/deref boxes, transients — and MultiFn (clj's
+    // MultiFn is NOT the Serializable AFunction).
+    inline for (.{ .atom, .agent, .ref, .@"volatile", .future, .promise, .delay, .reduced, .transient_vector, .transient_map, .transient_set, .multi_fn }) |t| {
+        try testing.expect(!isMember(t, "Serializable"));
+    }
 }
 
 test "extend-target tag-name derivation matches the ISeq tag set" {

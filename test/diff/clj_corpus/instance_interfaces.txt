@@ -152,3 +152,21 @@
 ;;=> true
 (instance? clojure.lang.ITransientMap (transient [1]))
 ;;=> false
+(instance? java.io.Serializable [])
+;;=> true
+(instance? java.io.Serializable (range 3))
+;;=> true
+(instance? java.io.Serializable :k)
+;;=> true
+(instance? java.io.Serializable 1/3)
+;;=> true
+(instance? java.io.Serializable inc)
+;;=> true
+(instance? java.io.Serializable (byte-array 3))
+;;=> true
+(instance? java.io.Serializable (atom 1))
+;;=> false
+(instance? java.io.Serializable (transient []))
+;;=> false
+(instance? java.io.Serializable (delay 1))
+;;=> false
