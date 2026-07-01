@@ -7,17 +7,26 @@
 
 - **HEAD**: `main` (`git log` = SSOT; tip `ac1b883c`). Per-commit = smoke; commit
   **and** push (atomic Step 6). `build.zig.zon` `.zwasm` = tag pin `v2.0.0-alpha.3`.
-- **First commit on resume MUST be**: continue the **EASIEST-FIRST `active:` drain**
-  (CLAUDE.md § next-task rule). Read `private/notes/2026-06-25-debt-drain-order.md`
-  + `yq -r '.active[]|.category+" "+.id' .dev/debt.yaml|sort`. This session cleared
-  the easy interop tail — **D-472/D-480/D-532/D-511 discharged**; **D-439** re-narrowed
-  to *only sqrt(MathContext) remains*; **D-471** to *File-arg done; URL/URI/Reader/stream
-  remain*. Next contained candidates: **D-305** (Zig-builtin var :arglists/:doc) /
-  **D-470** (`format` %t/%T date-time, ~40 sub-conv) / **D-222** (*flush-on-newline*) /
-  **D-460** (sorted-coll-as-key, rt-free wrinkle). Deferred-by-tractability (bigger,
-  NOT abandoned): **D-439 sqrt** (correct-rounding + JDK preferred scale; base =
-  Managed.sqrt), **D-526 Arrays/Collections** (new surface), **D-446 multidim aget/aset**
-  (perf-vs-F-009-layering DA-fork). A correctness / clj-parity floor still PREEMPTS.
+- **ACTIVE CAMPAIGN (2026-07-01, user-directed): 1.0.0-rc.1 release readiness
+  (ADR-0167).** Full-scope A+B, fully autonomous. Drive the finite Track-A gate
+  below + the parallel Track-B (ADR-0166 D-522…D-529) quality drain. The final
+  version bump + `git tag` is **USER-OWNED** (build.zig.zon SSOT; loop never tags).
+- **rc.1 readiness gate (FINITE — the tag-cut SSOT):**
+  - [~] **D-537** community-health files — SECURITY/CoC/ISSUE_TEMPLATE/PR_TEMPLATE/
+    FUNDING + CONTRIBUTING reconcile *drafted this session; commit pending*.
+  - [ ] **D-539 ★** CI wiring (.github absent = zero external verification) — ci.yml
+    push/PR macOS+Ubuntu via `scripts/ci_gate.sh` SSOT; dependabot; gitleaks; Zig pin.
+  - [ ] **D-536** debt-ledger code-truth reconcile (zwasm S0 pattern).
+  - [ ] **D-538** personal-env decoupling (SSH host→env default; 2 src leaks;
+    settings.local.json). *`.claude/**` edits may hit auto-mode block → surface.*
+  - [ ] **D-540** CHANGELOG (`## [Unreleased]`) + THIRD_PARTY + .gitattributes/.editorconfig + ship NOTICE in .paths.
+  - [ ] **D-542** release.yml (prepared-not-fired, static cljw binary).
+  - [ ] **D-543** dep-pin coherence (zwasm alpha.3 vs rc.1; eager zlinter fetch).
+  - [ ] **D-541** version staging convention (all rc.1 strings = staged text).
+- **Track B (parallel, non-blocking for the tag):** the easiest-first `active:`
+  drain continues — D-522 de-pointer / D-523 doc-audit / D-526 interop / D-527
+  parity / D-528 real-deps.edn / D-529 / D-305 / D-470 / D-222 / D-460 / D-439 sqrt.
+  A correctness / clj-parity floor still PREEMPTS.
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm`; bare `zig build`
   for a probe (use ReleaseSafe). **The FULL gate MUST run `--serial-e2e`** — the `-P8`
   parallel default flakes the **D-418/D-258 agent load-race** (`agent_conj` →
@@ -60,15 +69,11 @@ handover → **`private/notes/2026-06-25-debt-drain-order.md`** (easiest-first s
 §9.2.T. Memories: `verify_against_releasesafe_binary` / `smoke_first_batch_full_gate` /
 `gate_parallel_e2e_timeout`.
 
-## Stopped — user requested
+## This session (2026-07-01) — rc.1 campaign kickoff
 
-User instruction (2026-06-25, verbatim): 「では、きりがよくなったら、配線・参照
-チェーンをクリアセッションからcontinueだけで続けられるよう監査し、停止してください。」
-DONE: (1) D-511 landed (the break-point); (2) wiring / reference-chain audit —
-debt.yaml well-formed, active=84 / standing=34 / discharged=404, NO dup ids, NO
-misfiled DISCHARGED-in-active rows, the 4 session-discharged rows all in
-`discharged:`, D-535 in `active:`, `check_debt_id_refs` ok (no phantom), commit
-chain fully pushed (tip `ac1b883c`); (3) the resume contract above re-pointed at the
-new easiest-first frontier. Resume = `/continue` drains `active:` easiest-first. The
-3-item extended-challenge (alt / next experiment / blocker) is in
-`private/notes/9.2.T-D511-bigdecimal-double-ctor.md`.
+User directive: not the usual loop — plan + execute the 1.0.0-rc.1 publicization,
+using the zwasm v2 S0…S7 release series as the template (studied its actual
+diffs). Scope = full A+B, fully autonomous. Landed: **ADR-0167** (release
+mechanics, DA-forked → Alt 2 finite readiness gate) + debt rows **D-536…D-543** +
+ROADMAP §9.2.T amendment. D-537 health files (SECURITY/CoC/.github templates/
+CONTRIBUTING reconcile) drafted. Next: commit the doc set, then D-539 CI (headline).

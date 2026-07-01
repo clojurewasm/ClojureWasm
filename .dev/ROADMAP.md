@@ -1260,6 +1260,20 @@ real-`deps.edn` library usage / marker-comment inventory). Mostly no behaviour
 change; code-touching rows (interop / parity / lib bugs) take the diff-oracle gate.
 The §9.2.S perf levers stay in standing debt for a future deliberate decision.
 
+**Release mechanics for 1.0.0-rc.1 (ADR-0167, 2026-07-01, user-directed).** Sibling
+to ADR-0166: 0166 = internal *quality* (comments/docs/scaffolding/interop/parity);
+**0167 = the release *mechanics* an external clone needs** (CI / community-health
+files / CHANGELOG / third-party attribution / personal-environment decoupling /
+version staging), gap-analysed against the zwasm v2.0.0-rc.1 series (S0…S7). The
+**rc.1 readiness gate is FINITE and explicit** = Track A rows **D-536…D-540** +
+version staging **D-541** + release-artifact workflow **D-542** + dep-pin coherence
+**D-543** — this finite set is the SSOT for "can the user cut the tag?". Track B
+(the ADR-0166 D-522…D-529 drain) is **fully drained but does NOT gate the rc.1
+signal** (F-compliant: F-002 governs per-task quality, not inter-task order; a
+release *candidate* cannot wait on the open-ended D-529 real-lib discovery). The
+final `1.0.0-rc.1` bump + `git tag`/publish is **USER-OWNED** — the loop prepares
+everything but never tags.
+
 ### 9.2.P clj-parity root-cause campaign (largely worked; folded into gap-area-I hardening per ADR-0142; ADR-0076, 2026-06-02)
 
 **User-directed.** A periodic audit surfaced the user's concern that small

@@ -24,6 +24,123 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-536"
+    status: |-
+      open (2026-07-01, user-directed; ADR-0167 S0). Debt-ledger code-truth
+      reconciliation ahead of the 1.0.0-rc.1 public cutover: independently
+      re-check the ~84 active: rows against code truth; delete/narrow stale +
+      false-positive rows (the zwasm S0 pattern). No source touched.
+    category: "docs"
+    quality_floor: "release-mechanics: debt code-truth reconcile (ADR-0167)"
+    barrier: |-
+      rc.1 readiness gate (finite). Per /continue: reconcile a batch of active:
+      rows vs code truth; delete RESOLVED-on-open rows (git retains history).
+    last_reviewed: "2026-07-01"
+  - id: "D-537"
+    status: |-
+      open (2026-07-01, user-directed; ADR-0167 S1). Community-health files:
+      SECURITY.md / CODE_OF_CONDUCT.md / .github/ISSUE_TEMPLATE/config.yml /
+      .github/PULL_REQUEST_TEMPLATE.md / .github/FUNDING.yml, tailored to the
+      README "Issues/PRs paused → Discussions" posture. + reconcile CONTRIBUTING
+      with that posture + the `-Dwasm -Doptimize=ReleaseSafe` build command.
+    category: "docs"
+    quality_floor: "release-mechanics: community-health files (ADR-0167)"
+    barrier: |-
+      rc.1 readiness gate (finite). Additive docs; no source. Cross-check every
+      URL/handle against real repo (clojurewasm/ClojureWasm, @chaploud).
+    last_reviewed: "2026-07-01"
+  - id: "D-538"
+    status: |-
+      open (2026-07-01, user-directed; ADR-0167 S2). Personal-environment
+      decoupling: scripts/run_remote_ubuntu.sh host → ${CLJW_UBUNTU_HOST:-ubuntunote}
+      (behavior-preserving default); the 2 src path-leak comments
+      (agent.zig:213 ubuntunote, stm/tval.zig:17 ~/Documents/OSS path) generalized;
+      personal additionalDirectories in .claude/settings.json moved to the
+      gitignored settings.local.json.
+    category: "infra"
+    quality_floor: "release-mechanics: env decoupling (ADR-0167)"
+    barrier: |-
+      rc.1 readiness gate (finite). NOTE: .claude/** edits may hit the auto-mode
+      self-modification block — surface those to the user (memory
+      claude_rules_edit_permission_block).
+    last_reviewed: "2026-07-01"
+  - id: "D-539"
+    status: |-
+      open (2026-07-01, user-directed; ADR-0167 S3 ★headline). CI wiring — .github
+      is absent, so an external contributor gets ZERO automatic verification.
+      Add .github/workflows/ci.yml (push main + PR; macOS + Ubuntu matrix) driven
+      by a single scripts/ci_gate.sh SSOT (CI can never verify less than the
+      per-host gate); .github/dependabot.yml (weekly actions); a gitleaks config
+      reusing .gitleaksignore; Zig 0.16.0 pin mirrored for CI. CWFS-specific: the
+      full gate MUST run --serial-e2e (D-418 load-race) + probe a ReleaseSafe
+      binary (ADR-0132). Non-blocking follow-up: a pinned-consumer public-API
+      contract canary (DA critique §4).
+    category: "infra"
+    quality_floor: "release-mechanics: CI wiring (ADR-0167)"
+    barrier: |-
+      rc.1 readiness gate (finite). Actions SHA-pinned; permissions: contents:read.
+      actionlint + a local↔CI equivalence check before landing.
+    last_reviewed: "2026-07-01"
+  - id: "D-540"
+    status: |-
+      open (2026-07-01, user-directed; ADR-0167). CHANGELOG.md (Keep-a-Changelog,
+      rc.1 entry under `## [Unreleased]` per the D-541 staging convention) added
+      to build.zig.zon .paths; THIRD_PARTY.md naming exact license + pinned
+      version per dep (zwasm Apache-2.0 @fc7ff0b3b/v2.0.0-alpha.3; zlinter MIT;
+      EPL clj lineage per NOTICE); .gitattributes (LF) + .editorconfig. Ship NOTICE
+      in .paths (absent despite EPL src/lang/clj/** shipping inside src).
+    category: "docs"
+    quality_floor: "release-mechanics: CHANGELOG + attribution (ADR-0167)"
+    barrier: |-
+      rc.1 readiness gate (finite). build.zig.zon edit = source-bearing (needs
+      Smell-audited). Verify THIRD_PARTY license claims against the actual dep
+      LICENSE files (zlinter LICENSE = MIT confirmed 2026-07-01).
+    last_reviewed: "2026-07-01"
+  - id: "D-541"
+    status: |-
+      open (2026-07-01, user-directed; ADR-0167). Version staging (USER-OWNED
+      boundary): all rc.1 prep lands while build.zig.zon .version stays
+      1.0.0-alpha.1; every 1.0.0-rc.1 string in CHANGELOG/THIRD_PARTY/docs is
+      STAGED text that the user's single .version bump + git tag activates
+      (CHANGELOG rc.1 under `## [Unreleased]`). The loop NEVER tags/publishes.
+    category: "infra"
+    quality_floor: "release-mechanics: version staging (ADR-0167)"
+    barrier: |-
+      rc.1 readiness gate (finite). The final bump + tag is the user's action.
+      Avoids the transient SSOT contradiction zwasm hit (fix-CHANGELOG-version).
+    last_reviewed: "2026-07-01"
+  - id: "D-542"
+    status: |-
+      open (2026-07-01, user-directed; ADR-0167). Release-artifact workflow
+      (PREPARED-not-fired): a tag-triggered .github/workflows/release.yml building
+      the static cljw binary for macOS + Linux
+      (-Dwasm -Doptimize=ReleaseSafe -Dcpu=baseline, ADR-0132) attached to the
+      GitHub release. For a single-static-binary product (F-013) a pre-built cljw
+      is most of what a non-Zig user needs. Fires ONLY on a user-pushed tag.
+    category: "infra"
+    quality_floor: "release-mechanics: release-artifact workflow (ADR-0167)"
+    barrier: |-
+      rc.1 readiness gate (finite). Depends on D-539 CI SSOT. Mirrors zwasm's
+      release.yml. -Dcpu=baseline for the deploy artifact (memory
+      fly_deploy_zig_binary_gotchas: SIGILL on shared-cpu otherwise).
+    last_reviewed: "2026-07-01"
+  - id: "D-543"
+    status: |-
+      open (2026-07-01, user-directed; ADR-0167). Dependency-pin coherence /
+      reproducibility. (a) The incoherent story of a 1.0.0-rc.1 embedding zwasm
+      v2.0.0-alpha.3: bump the pin to a coherent zwasm release once one exists
+      (user-owned CODEV) OR document the version relationship in THIRD_PARTY.md +
+      zwasm_capabilities.md as a known pre-1.0 coupling. (b) zlinter dev-dep is
+      fetched EAGERLY (a doc-reader's first `zig build` pulls an external repo —
+      offline/reproducibility footgun): make lazy/dev-only if the build.zig
+      restructure is tractable, else record as a NAMED pre-1.0 wart with this row.
+    category: "infra"
+    quality_floor: "release-mechanics: dep-pin coherence (ADR-0167)"
+    barrier: |-
+      rc.1 readiness gate (finite). (a) is partly user-owned (zwasm tag = CODEV);
+      the doc half is loop-ownable. (b) zlinter lazy-fetch is a known Zig
+      build-graph limit (cf. zwasm D-274) — may resolve to the documented-wart form.
+    last_reviewed: "2026-07-01"
   - id: "D-522"
     status: |-
       open (2026-06-24, user-directed; ADR-0166 public-ization sweep). Comment
