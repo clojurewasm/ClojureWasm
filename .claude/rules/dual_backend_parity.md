@@ -141,7 +141,7 @@ marker form + body-discipline layer; the `data/feature_deps.yaml` +
 |----------------------|---------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
 | Shape                | Intermediate semantics that ride a chicken-and-egg layer dependency | Backend asymmetry where TreeWalk has real semantics and VM is stubbed/field-dropped pending a future Phase choice |
 | Close-out trigger    | Upstream layer feature lands                                        | Future Phase row decides the bytecode shape                                                                       |
-| Source SSOT          | `data/feature_deps.yaml` entry's `provisional_markers:` list             | `data/feature_deps.yaml` entry's `provisional_markers:` list (same shape — re-used for parity tracking)               |
+| Source SSOT          | `data/feature_deps.yaml` entry's `provisional_markers:` list        | `data/feature_deps.yaml` entry's `provisional_markers:` list (same shape — re-used for parity tracking)          |
 | Hook                 | `scripts/check_provisional_sync.sh`                                 | `scripts/check_dual_backend_parity.sh`                                                                            |
 | Bad Smell preventing | Silent default-shift                                                | Dual-backend drift                                                                                                |
 

@@ -77,7 +77,7 @@ A discovery criterion is a deterministic recipe. Examples:
 |----------------------------------|--------------------------------------------------------------------------------------------------------------------|
 | `provisional_marker.md`          | `rg --no-heading -nl '(stands in for\|for now\|until Phase \d+\|temporarily)' src/ test/e2e/`                      |
 | `module_docstring.md` (Phase 5+) | `find src -name '*.zig' -newer <ref> \| xargs -I{} head -2 {} \| ...` (first 2 lines start `// SPDX:` + `//! ...`) |
-| `feature_name_consistency.md` G3 | `yq '.host_classes[].keyword' data/compat_tiers.yaml \| xargs -I{} rg -l '{}' src/`                                     |
+| `feature_name_consistency.md` G3 | `yq '.host_classes[].keyword' data/compat_tiers.yaml \| xargs -I{} rg -l '{}' src/`                                |
 | `error_catalog_only.md`          | `rg --no-heading -n 'setErrorFmt\(' src/ \| grep -v 'runtime/error/catalog.zig'`                                   |
 | `handover_framing.md`            | grep recipe at L189-194 of the rule itself                                                                         |
 
