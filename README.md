@@ -120,8 +120,8 @@ from a Clojure one.
 
 ## Documentation
 
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — a short orientation to how the runtime
-  is put together.
+- [`docs/architecture.md`](./docs/architecture.md) — a short orientation to how the
+  runtime is put together.
 - [`docs/clojure_vs_clojurewasm.md`](./docs/clojure_vs_clojurewasm.md) — what
   matches JVM Clojure, the intentional divergences, and what is not yet there.
 - [`bench/README.md`](./bench/README.md) — the benchmark catalogue and

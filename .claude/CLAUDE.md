@@ -31,11 +31,11 @@ place (ROADMAP §17). This applies to:
   smell). Stop, surgery, resume.
 
 This section is short on purpose. The mechanism lives in
-[`.dev/principle.md`](.dev/principle.md) (Bad Smell catalogue + four
+[`.dev/principle.md`](../.dev/principle.md) (Bad Smell catalogue + four
 depths of revision + three questions to picture the finished form).
 **User-declared invariants** the loop must treat as fact even when
 ROADMAP / ADR text reads differently live in
-[`.dev/project_facts.md`](.dev/project_facts.md) (F-001 zwasm v2
+[`.dev/project_facts.md`](../.dev/project_facts.md) (F-001 zwasm v2
 unavoidable, F-002 finished-form wins, F-003 deferral on
 structural plans, F-004 NaN-box 64-slot, F-005 numeric tower
 JVM-surface, F-006 GC strategy, F-007 chapter cadence dormant
@@ -95,13 +95,13 @@ configuration. **Japanese** for chat replies, `private/notes/<task>.md`
 per-task notes, and (when re-activated) `docs/ja/learn_clojurewasm/NNNN_*.md`
 learning narratives. The per-chapter cadence is currently **dormant**
 per ADR-0025; existing chapters live read-only under
-[`docs/ja/archive/`](docs/ja/archive/).
+[`docs/ja/archive/`](../docs/ja/archive/).
 
 Don't mix Japanese into English docs. In `docs/ja/`, body is Japanese;
 code blocks keep their original English identifiers.
 
 The chat-reply-in-Japanese rule is enforced by the project output style
-[`.claude/output_styles/japanese.md`](.claude/output_styles/japanese.md)
+[`.claude/output_styles/japanese.md`](../.claude/output_styles/japanese.md)
 (activated via `outputStyle: "Japanese"` in `.claude/settings.json`)
 plus a SessionStart hook that re-injects the directive on every session.
 Even with a slash command (e.g. `/continue`) as the very first input,
@@ -128,13 +128,13 @@ turn 1 must be Japanese.
   Phase boundary / pre-tag. Prefer a **ReleaseSafe** binary (`zig build
   -Dwasm -Doptimize=ReleaseSafe` = the gate config, so it cache-hits) for
   manual behaviour probes; `-Dcpu=baseline` only for deploy artifacts.
-  SSOT: [`.claude/rules/gate_cadence.md`](.claude/rules/gate_cadence.md).
+  SSOT: [`.claude/rules/gate_cadence.md`](../.claude/rules/gate_cadence.md).
   **Linux x86_64 is no longer per-commit** (ADR-0049, orphan / fan
   hazard): run `bash scripts/run_remote_ubuntu.sh` (→ `ubuntunote` SSH
   host) at Phase boundaries, before the v0.1.0 tag, and on demand.
   Don't bypass hooks. ubuntunote skips the Mac-only zlinter
   `no_deprecated` gate (ADR-0003), so a 1-PASS-count host diff is
-  expected. Setup: [`.dev/ubuntunote_setup.md`](.dev/ubuntunote_setup.md).
+  expected. Setup: [`.dev/ubuntunote_setup.md`](../.dev/ubuntunote_setup.md).
 - Commit at the natural granularity of code changes. The per-concept
   chapter cadence (`docs/ja/learn_clojurewasm/NNNN_*.md`) is **dormant**
   per ADR-0025 until a resumption ADR fires; only the per-task notes
@@ -149,7 +149,7 @@ turn 1 must be Japanese.
   unpushed — leaving them stacked invites a "should I push?"
   decision point that does not exist.
 - ROADMAP corrections follow the four-step amendment in
-  [`ROADMAP §17`](.dev/ROADMAP.md#17-amendment-policy): edit in place
+  [`ROADMAP §17`](../.dev/ROADMAP.md#17-amendment-policy): edit in place
   as if it had always been so, open an ADR, sync `handover.md`,
   reference the ADR in the commit. Quiet edits are forbidden.
 - `private/` is gitignored agent scratch (per-task surveys + notes,
@@ -276,7 +276,7 @@ per principle.md and act before commit.
 **Step 5 — Test gate** (Mac smoke per-commit; full gate batched; ubuntunote at boundaries)
 
 Two-tier per ADR-0107 (full e2e is now heavy — never run it per commit
-while batching). SSOT: [`.claude/rules/gate_cadence.md`](.claude/rules/gate_cadence.md).
+while batching). SSOT: [`.claude/rules/gate_cadence.md`](../.claude/rules/gate_cadence.md).
 
 - **Per commit = smoke**: `bash test/run_all.sh --smoke <changed-e2e-step>`
   (~tens of sec) — `zig build test` ×2 (the full F-012 diff oracle + all
@@ -289,7 +289,7 @@ while batching). SSOT: [`.claude/rules/gate_cadence.md`](.claude/rules/gate_cade
   orphan `run_all.sh` tree + PID-1-orphaned `cljw` probes, then `exec`s
   `timeout 300 bash test/run_all.sh` (writes `.dev/.gate_pass`; cadence
   hook unaffected; orphan-safe per
-  [`.claude/rules/orphan_prevention.md`](.claude/rules/orphan_prevention.md)
+  [`.claude/rules/orphan_prevention.md`](../.claude/rules/orphan_prevention.md)
   § Gate launcher + memory `premature-gate-notification`). Run it at the
   5-commit ceiling / Phase boundary / pre-tag — backgroundable as a
   look-ahead. On-demand reap without a gate: `bash scripts/run_gate.sh reap`.
@@ -313,7 +313,7 @@ chains, before v0.1.0 tag, and on demand for feature branches:
 process MUST wrap with `timeout 600 …`. REPL-pipe-specific
 hazard, `timeout`-not-propagating caveat for SSH / VM
 boundaries, and counter-examples live in
-[`.claude/rules/orphan_prevention.md`](.claude/rules/orphan_prevention.md)
+[`.claude/rules/orphan_prevention.md`](../.claude/rules/orphan_prevention.md)
 (ADR-0049 § Context is the precedent; D-128 discharged).
 
 **Step 6 — Source commit + push (atomic, smell-audited)**
@@ -538,7 +538,7 @@ These hold the canonical procedures; CLAUDE.md only points to them.
   (Step 7 writes `private/notes/<task>.md` from hot context). The
   per-concept chapter half (`docs/ja/learn_clojurewasm/NNNN_*.md`) is
   suspended; the pre-commit pairing gate is a no-op; existing chapters
-  live under [`docs/ja/archive/`](docs/ja/archive/). A future resumption
+  live under [`docs/ja/archive/`](../docs/ja/archive/). A future resumption
   ADR re-activates the chapter cadence; until then the templates
   (`TEMPLATE_TASK_NOTE.md` / `TEMPLATE_PHASE_DOC.md`) are preserved
   for that day.
@@ -584,35 +584,35 @@ zig fmt src/           # format
 
 ## Data sources
 
-- [`compat_tiers.yaml`](compat_tiers.yaml) — authoritative Tier A / B /
+- [`compat_tiers.yaml`](../compat_tiers.yaml) — authoritative Tier A / B /
   C / D classification per var, special form, and host class. Read by
   test runner, REPL error message, and future `cljw --list-vars`. See
   ADR-0013 for the Tier D rationale.
-- [`placement.yaml`](placement.yaml) — Clojure-ns var placement SSOT
+- [`placement.yaml`](../placement.yaml) — Clojure-ns var placement SSOT
   (Pattern A/B + transient_zig migration status + dependencies). Read
   by `scripts/check_placement_status.sh` (audit + status flip), future
   `cljw --list-vars` (alongside compat_tiers.yaml), and ADR-0033
   amendment history. Role split: compat_tiers.yaml = Java/cljw surface
   (Class-level), placement.yaml = Clojure-ns vars (var-level). Per
   `private/notes/clj_vs_zig_split_proposal_v5.md` §15.
-- [`host_interfaces.yaml`](host_interfaces.yaml) — closed-set SSOT for the
+- [`host_interfaces.yaml`](../host_interfaces.yaml) — closed-set SSOT for the
   deftype/reify/extend-type host-supertype markers (`Object`, `clojure.lang.*`).
   Single in-code read point: `src/runtime/host_interface.zig`. Gated by
   `scripts/check_host_interface.sh` (G4: recognised-set ⊆ rows, no over-claim).
   Closes the 個別最適化 entry structurally (ADR-0102, F-013). Distinct from
   compat_tiers.yaml: that = host *class* surface; this = deftype/reify *marker*.
-- [`.dev/debt.yaml`](.dev/debt.yaml) — row-level debt ledger. `continue`
+- [`.dev/debt.yaml`](../.dev/debt.yaml) — row-level debt ledger. `continue`
   skill Step 0.5 sweeps this on every resume. See ROADMAP §A13.
-- [`.dev/reference_clones.md`](.dev/reference_clones.md) — explicit
+- [`.dev/reference_clones.md`](../.dev/reference_clones.md) — explicit
   usage purpose for `additionalDirectories` paths.
-- [`.dev/lessons/INDEX.md`](.dev/lessons/INDEX.md) — observational
+- [`.dev/lessons/INDEX.md`](../.dev/lessons/INDEX.md) — observational
   learnings, distinct from load-bearing ADRs.
-- [`.dev/gc_rooting.md`](.dev/gc_rooting.md) — SSOT for the GC rooting
+- [`.dev/gc_rooting.md`](../.dev/gc_rooting.md) — SSOT for the GC rooting
   surface: every site that publishes / holds / decodes a GC root (EvalFrame
   producers, root slots, reentrant accumulators, pins, in-txn, per-tag traces,
   the `isGcManaged` membrane) + a moving-GC migration checklist. `GC-ROOT:`
   markers in source anchor each published-root site here.
-- [`.dev/zwasm_capabilities.md`](.dev/zwasm_capabilities.md) — cljw's view of the
+- [`.dev/zwasm_capabilities.md`](../.dev/zwasm_capabilities.md) — cljw's view of the
   **embedded zwasm v2** runtime's embedding-API capabilities + cljw's adoption
   status (F-001). zwasm is SHA-pinned but co-developed (`~/Documents/MyProducts/
   zwasm_from_scratch`) and is growing a **JIT-backed engine** (ADR-0200) — the
@@ -624,11 +624,11 @@ zig fmt src/           # format
 
 ## References
 
-- [`.dev/ROADMAP.md`](.dev/ROADMAP.md) — authoritative mission, principles,
+- [`.dev/ROADMAP.md`](../.dev/ROADMAP.md) — authoritative mission, principles,
   phase plan. **Single source of truth**; if anything in this file
   conflicts with the roadmap, the roadmap wins.
-- [`.dev/handover.md`](.dev/handover.md) — short, mutable, current state.
-  Framing per [`.claude/rules/handover_framing.md`](.claude/rules/handover_framing.md)
+- [`.dev/handover.md`](../.dev/handover.md) — short, mutable, current state.
+  Framing per [`.claude/rules/handover_framing.md`](../.claude/rules/handover_framing.md)
   (≤ 100 lines; driving doc, not session log).
-- [`.dev/decisions/`](.dev/decisions/) — ADRs (load-bearing decisions);
+- [`.dev/decisions/`](../.dev/decisions/) — ADRs (load-bearing decisions);
   numbers are time-ordered, newest wins on conflict.

@@ -35,7 +35,7 @@ fi
 
 # Files that may legitimately cite a debt ID. Exclude debt.yaml itself
 # (it defines + cross-references IDs) and the audit scratch notes.
-search_paths=(src CLAUDE.md .dev .claude scripts test feature_deps.yaml placement.yaml compat_tiers.yaml)
+search_paths=(src .dev .claude scripts test feature_deps.yaml placement.yaml compat_tiers.yaml)
 # debt.yaml itself defines + discusses IDs (incl. phantom ones it tracks for
 # repair), so it is not a citation site; the consolidation doc + audit notes
 # likewise describe phantoms by name. `.dev/decisions/` (ADRs) are excluded
