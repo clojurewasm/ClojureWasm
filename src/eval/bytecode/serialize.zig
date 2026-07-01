@@ -34,7 +34,7 @@
 //!             for each entry: simple_len:u32 + bytes + fqcn_len:u32 + bytes
 //!
 //! Per-Value tag-byte approach (NOT raw 8-byte u64 bits) so the
-//! `cljw-formats/<version>.edn` archive (ADR-0034 D11) records a
+//! `docs/spec/formats/<version>.edn` archive (ADR-0034 D11) records a
 //! decoder-stable enum the decoder permanence policy can pin —
 //! independent of F-004 NaN-box slot evolution.
 //!
@@ -115,7 +115,7 @@ pub const DeserializeError = error{
 };
 
 /// Wire-format Value classifier. **Stable enum** — the
-/// `cljw-formats/<version>.edn` archive records this byte for each
+/// `docs/spec/formats/<version>.edn` archive records this byte for each
 /// constant. Adding a tag is a version bump; removing one is
 /// forbidden by the decoder-only-permanent policy.
 pub const ValueTag = enum(u8) {
@@ -320,7 +320,7 @@ fn writeValue(allocator: std.mem.Allocator, w: *std.Io.Writer, v: Value) Seriali
             // decoder recompiles via `regex_value.alloc` (the `re-pattern` /
             // `#"..."` path). Inline flags `(?i)` live in the source, so source
             // alone round-trips (the read side passes default Flags). Was
-            // MISSING — the wire enum (0x0E), readValue, and the cljw-formats
+            // MISSING — the wire enum (0x0E), readValue, and the format
             // archive all carried regex, but writeValue did not, so a regex
             // CONSTANT (`#","` in a fn body) fell to `else` → UnsupportedValueTag
             // (surfaced building the bookshelf demo, D-365). The round-trip
@@ -1335,7 +1335,7 @@ test "embedded component table round-trips; chunk + entry readers skip it (ADR-0
 test "every wire ValueTag has BOTH a write and a read arm (symmetry gate)" {
     // Structural gate for the write↔read asymmetry class. writeValue (switch on
     // Value.Tag, with an `else`) and readValue (exhaustive switch on ValueTag)
-    // are TWO separate switches kept in sync BY HAND — plus the cljw-formats
+    // are TWO separate switches kept in sync BY HAND — plus the format
     // archive + the module-header doc, four places total. Nothing mechanical
     // enforced cross-symmetry, so `regex` (0x0E) shipped with a wire enum slot +
     // a readValue arm + an archive entry + a doc mention but NO writeValue arm —
