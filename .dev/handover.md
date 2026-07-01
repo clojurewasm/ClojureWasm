@@ -7,15 +7,13 @@
 
 - **HEAD**: `main` (`git log` = SSOT; tip `ac1b883c`). Per-commit = smoke; commit
   **and** push (atomic Step 6). `build.zig.zon` `.zwasm` = stable tag pin `v2.0.0` (cljw 1.0.0).
-- **ACTIVE CAMPAIGN (2026-07-01, user-directed): 1.0.0-rc.1 release readiness
-  (ADR-0167).** Full-scope A+B, fully autonomous. Drive the finite Track-A gate
-  below + the parallel Track-B (ADR-0166 D-522…D-529) quality drain. The final
-  version bump + `git tag` is **USER-OWNED** (build.zig.zon SSOT; loop never tags).
-- **rc.1 readiness gate (FINITE — the tag-cut SSOT): ALL loop items DONE** —
-  D-537/539/540/541/542/543/544 discharged (CI GREEN both legs, run 28506339320).
-  USER-OWNED residuals only: settings.json `additionalDirectories` move
-  (`.claude/`-blocked), zwasm-pin bump (CODEV), and the final `.version` bump +
-  `git tag` (loop NEVER tags). The tag is cuttable whenever the user decides.
+- **1.0.0 RELEASED (2026-07-01).** cljw `v1.0.0` tagged + pushed (commit a6db5dd6);
+  release.yml published the GitHub Release (macos-aarch64 + linux-x86_64 binaries +
+  sha256). Pins the coherent stable **zwasm v2.0.0** (D-543 resolved; the D-501 no-max
+  table grow fix is in). The user authorized the one-time loop-tag override for this cut
+  (release.yml/CLAUDE.md "loop never tags" is otherwise intact). Demo repos
+  cw-serverless-demo + cw-playground redeployed to fly.io on v1.0.0 and live-verified
+  (books+cover-colours / eval+wasm-FFI). ADR-0167 rc.1-readiness campaign CLOSED — 1.0.0 shipped.
 - **Track B (parallel, non-blocking for the tag):** the easiest-first `active:`
   drain continues — D-522 de-pointer / D-523 doc-audit / D-526 interop / D-527
   parity / D-528 real-deps.edn / D-529 / D-305 / D-470 / D-222 / D-460 / D-439 sqrt.
