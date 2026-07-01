@@ -35,6 +35,13 @@ active:
       cycle: mapfile→portable read loop; timeout→`run_bounded` (timeout→gtimeout
       →unbounded) fn; ripgrep installed-if-missing in CI + added to flake.nix
       (with coreutils) so nix users + bare clones both have the gate's tools.
+      2ND ITER (2026-07-01): Linux leg went GREEN, but macOS FAILED — the initial
+      portability sweep was INCOMPLETE (framework_completion). A full sweep of the
+      8 gate check_*.sh confirmed only check_lazy_ns_replay.sh (SMOKE_CORE) still
+      used bare `timeout` (macOS has none → exit 127 for every ns); fixed it with
+      the same run_bounded fallback. Verified locally 29/29 clean. That was the
+      last gate-script tool-gap (corpus/test_reach fixed prior; debt_id_refs uses
+      the CI-installed rg; the other 5 are tool-clean).
       EFFICIENCY (the ~20-min cold-cache full-gate CI): actions/cache of the Zig
       global cache (deps: zwasm/zlinter) + `.zig-cache` (build) keyed on the
       manifests; two-tier gate (push/PR = fast core smoke, nightly/dispatch =

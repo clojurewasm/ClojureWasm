@@ -17,6 +17,16 @@ cd "$(dirname "$0")/.."
 BIN="zig-out/bin/cljw"
 [ -x "$BIN" ] || { echo "building cljw…" >&2; zig build -Dwasm -Doptimize="${CLJW_OPT:-ReleaseSafe}" >/dev/null; }
 
+# Portable bounded run: GNU `timeout`, else macOS coreutils `gtimeout`, else
+# unbounded. `(require 'ns)` is finite, so the fallback is safe — the bound only
+# guards against a pathological load hang. (macOS ships no `timeout`; a bare
+# `timeout` here made this SMOKE_CORE gate fail with exit 127 for every ns.)
+run_bounded() {
+    if command -v timeout >/dev/null 2>&1; then timeout 20 "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then gtimeout 20 "$@"
+    else "$@"; fi
+}
+
 fails=0
 total=0
 # Every bundled .clj → its ns name (RT resourceName munge inverse: '/'→'.', '_'→'-';
@@ -26,7 +36,7 @@ while IFS= read -r f; do
     rel="${rel%.clj}"
     ns="$(printf '%s' "$rel" | tr '/' '.' | tr '_' '-')"
     total=$((total + 1))
-    out="$(timeout 20 "$BIN" -e "(require '$ns)" 2>&1)"
+    out="$(run_bounded "$BIN" -e "(require '$ns)" 2>&1)"
     rc=$?
     if [ "$rc" -ne 0 ]; then
         echo "FAIL lazy-replay [$ns]: exit $rc — $(printf '%s' "$out" | grep -iE 'error|exception' | head -1)"
