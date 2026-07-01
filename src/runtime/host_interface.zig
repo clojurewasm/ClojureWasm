@@ -246,14 +246,18 @@ const SEQUENTIAL: HostInterface = .{ .kind = .marker, .canonical = "Sequential" 
 // 2-arity not-found impl shares -nth via D-279 multi-arity. `nthFn`'s else-arm
 // already dispatches Indexed/-nth on a typed_instance (D-089 row 8.6) — a REAL
 // win. instaparse's AutoFlattenSeq + potemkin's collection types declare it.
-const INDEXED: HostInterface = .{ .kind = .protocol_remap, .canonical = "Indexed", .remap = &.{
-    .{ .clj = "nth", .protocol = "Indexed", .method = "-nth" },
-    // INHERITED (D-419): clj `Indexed extends Counted`, so a deftype may write
-    // `count` under its `Indexed` header (data.finger-tree's `defdigit`). Flatten
-    // it to the same target every count maps to (mirrors COUNTED → IPersistent
-    // Collection/-count). Unambiguous: `count` only ever targets -count.
-    .{ .clj = "count", .protocol = "IPersistentCollection", .method = "-count" },
-} };
+const INDEXED: HostInterface = .{
+    .kind = .protocol_remap,
+    .canonical = "Indexed",
+    .remap = &.{
+        .{ .clj = "nth", .protocol = "Indexed", .method = "-nth" },
+        // INHERITED (D-419): clj `Indexed extends Counted`, so a deftype may write
+        // `count` under its `Indexed` header (data.finger-tree's `defdigit`). Flatten
+        // it to the same target every count maps to (mirrors COUNTED → IPersistent
+        // Collection/-count). Unambiguous: `count` only ever targets -count.
+        .{ .clj = "count", .protocol = "IPersistentCollection", .method = "-count" },
+    },
+};
 
 // clojure.lang.IReduceInit (D-399) — a custom reducible deftype declares
 // `(reduce [self f init] …)`. cljw collapses JVM's IReduce+IReduceInit into one
@@ -343,16 +347,20 @@ const COUNTED: HostInterface = .{ .kind = .protocol_remap, .canonical = "Counted
 const SEQABLE: HostInterface = .{ .kind = .protocol_remap, .canonical = "Seqable", .remap = &.{
     .{ .clj = "seq", .protocol = "Seqable", .method = "-seq" },
 } };
-const ASSOCIATIVE: HostInterface = .{ .kind = .protocol_remap, .canonical = "Associative", .remap = &.{
-    .{ .clj = "assoc", .protocol = "Associative", .method = "-assoc" },
-    .{ .clj = "containsKey", .protocol = "Associative", .method = "-contains-key?" },
-    .{ .clj = "entryAt", .protocol = "Associative", .method = "-entry-at" },
-    // INHERITED (D-419): clj `Associative extends ILookup`, so a deftype may write
-    // `valAt` under its `Associative` header (data.finger-tree's CountedDoubleList).
-    // Flatten it to the same target `ILookup`/`IPersistentSet.get` map valAt to.
-    // Unambiguous: `valAt` only ever targets ILookup/-lookup.
-    .{ .clj = "valAt", .protocol = "ILookup", .method = "-lookup" },
-} };
+const ASSOCIATIVE: HostInterface = .{
+    .kind = .protocol_remap,
+    .canonical = "Associative",
+    .remap = &.{
+        .{ .clj = "assoc", .protocol = "Associative", .method = "-assoc" },
+        .{ .clj = "containsKey", .protocol = "Associative", .method = "-contains-key?" },
+        .{ .clj = "entryAt", .protocol = "Associative", .method = "-entry-at" },
+        // INHERITED (D-419): clj `Associative extends ILookup`, so a deftype may write
+        // `valAt` under its `Associative` header (data.finger-tree's CountedDoubleList).
+        // Flatten it to the same target `ILookup`/`IPersistentSet.get` map valAt to.
+        // Unambiguous: `valAt` only ever targets ILookup/-lookup.
+        .{ .clj = "valAt", .protocol = "ILookup", .method = "-lookup" },
+    },
+};
 const IPERSISTENT_COLLECTION: HostInterface = .{
     .kind = .protocol_remap,
     .canonical = "IPersistentCollection",
@@ -632,13 +640,18 @@ pub fn isHostInert(name: []const u8) bool {
 pub fn isJavaUtilMethod(name: []const u8) bool {
     const SET = std.StaticStringMap(void).initComptime(.{
         // java.lang.Iterable
-        .{"iterator"}, .{"forEach"}, .{"spliterator"},
+        .{"iterator"},       .{"forEach"},      .{"spliterator"},
         // java.util.Collection
-        .{"size"}, .{"isEmpty"}, .{"contains"}, .{"containsAll"}, .{"toArray"}, .{"stream"}, .{"parallelStream"},
+        .{"size"},           .{"isEmpty"},      .{"contains"},
+        .{"containsAll"},    .{"toArray"},      .{"stream"},
+        .{"parallelStream"},
         // java.util.Map
-        .{"containsKey"}, .{"containsValue"}, .{"keySet"}, .{"values"}, .{"entrySet"}, .{"getOrDefault"},
+        .{"containsKey"},  .{"containsValue"},
+        .{"keySet"},         .{"values"},       .{"entrySet"},
+        .{"getOrDefault"},
         // java.util.List
-        .{"listIterator"}, .{"indexOf"}, .{"lastIndexOf"}, .{"subList"},
+          .{"listIterator"}, .{"indexOf"},
+        .{"lastIndexOf"},    .{"subList"},
     });
     return SET.has(name);
 }

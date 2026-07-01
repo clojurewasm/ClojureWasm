@@ -113,7 +113,6 @@ fn readLine(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return string_mod.alloc(rt, line);
 }
 
-
 /// `.write` (String) — append the string's bytes to the accumulator.
 fn write(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;

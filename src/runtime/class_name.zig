@@ -343,9 +343,9 @@ pub fn isCallableClassName(name: []const u8) bool {
         // (fn_val / builtin_fn / protocol_fn / multi_fn) per `displayClassName`
         // (D-337); `(isa? (class +) IFn)` resolves through these names, not the
         // retired raw heap-tag names.
-        "Fn",                 "MultiFn",           "Keyword",           "Symbol",
-        "Var",                "PersistentVector",  "PersistentArrayMap", "PersistentHashMap",
-        "PersistentHashSet",  "PersistentTreeMap", "PersistentTreeSet",
+        "Fn",                "MultiFn",           "Keyword",            "Symbol",
+        "Var",               "PersistentVector",  "PersistentArrayMap", "PersistentHashMap",
+        "PersistentHashSet", "PersistentTreeMap", "PersistentTreeSet",
     };
     const simple = normalizeClassName(name);
     inline for (CALLABLE) |c| {
@@ -375,9 +375,9 @@ pub fn isClassInterfaceMember(child: []const u8, interface: []const u8) bool {
 /// ambiguous `Fn` is omitted (IFn membership is `isCallableClassName`).
 fn seqDisplayTag(name: []const u8) ?Tag {
     const M = std.StaticStringMap(Tag).initComptime(.{
-        .{ "LazySeq", .lazy_seq },     .{ "LongRange", .range },
+        .{ "LazySeq", .lazy_seq },        .{ "LongRange", .range },
         .{ "ChunkedSeq", .chunked_cons }, .{ "Cons", .cons },
-        .{ "StringSeq", .string_seq }, .{ "ArraySeq", .array_seq },
+        .{ "StringSeq", .string_seq },    .{ "ArraySeq", .array_seq },
     });
     return M.get(name);
 }

@@ -131,20 +131,20 @@ const TSET_TAGS = [_]Tag{.transient_set};
 /// matchUserType / host_supertypes, not this static table.
 const SERIALIZABLE_TAGS = [_]Tag{
     // collections + seqs
-    .list,           .vector,    .array_map,   .hash_map, .hash_set,
-    .lazy_seq,       .cons,      .chunked_cons, .range,   .string_seq,
-    .array_seq,      .map_entry, .persistent_queue, .sorted_map, .sorted_set,
+    .list,      .vector,     .array_map,        .hash_map,        .hash_set,
+    .lazy_seq,  .cons,       .chunked_cons,     .range,           .string_seq,
+    .array_seq, .map_entry,  .persistent_queue, .sorted_map,      .sorted_set,
     // scalars (full numeric tower + the rest)
-    .string,         .symbol,    .keyword,     .char,     .boolean,
-    .integer,        .float,     .big_int,     .ratio,    .big_decimal,
+    .string,    .symbol,     .keyword,          .char,            .boolean,
+    .integer,   .float,      .big_int,          .ratio,           .big_decimal,
     // callables — fn_val/builtin_fn/protocol_fn are AFunction (Serializable);
     // multi_fn (MultiFn) is deliberately ABSENT (clj-verified false).
-    .fn_val,         .builtin_fn, .protocol_fn,
+    .fn_val,    .builtin_fn, .protocol_fn,
     // Var + Namespace ARE Serializable (clj true); the other refs are not.
-    .var_ref,        .ns,
+         .var_ref,         .ns,
     // host-ish values with a Serializable clj counterpart (regex Pattern, UUID,
     // Throwable, Class, and Java arrays are all Serializable on the JVM).
-    .regex,          .uuid,      .ex_info,     .type_descriptor, .array,
+    .regex,     .uuid,       .ex_info,          .type_descriptor, .array,
 };
 
 // --- deref / pending / ref family (ADR-0116; clj-oracle 2026-06-08) ---

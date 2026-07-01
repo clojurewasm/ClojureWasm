@@ -188,11 +188,11 @@ test "peephole: jump operand re-resolved when a pair is removed between jump and
     // pair, then op_const, op_ret. After removal the jump's distance
     // to op_ret shrinks from 3 to 1.
     const input = [_]Instruction{
-        jmp(3),              // 0: jump → 4 (op_ret)
-        inst(.op_const, 99),  // 1: removable pair start
-        inst(.op_pop, 0),     // 2: removable pair end
-        inst(.op_const, 1),   // 3: kept
-        inst(.op_ret, 0),     // 4: jump target
+        jmp(3), // 0: jump → 4 (op_ret)
+        inst(.op_const, 99), // 1: removable pair start
+        inst(.op_pop, 0), // 2: removable pair end
+        inst(.op_const, 1), // 3: kept
+        inst(.op_ret, 0), // 4: jump target
     };
     const out = try optimize(a, &input);
     try testing.expectEqual(@as(usize, 3), out.len);
@@ -212,10 +212,10 @@ test "peephole: branch target inside a candidate pair blocks the removal" {
     // const+pop pair starts at the target, so the guard must block
     // its removal (removing index 1 would orphan the incoming edge).
     const input = [_]Instruction{
-        jif(0),              // 0: jif → 1
-        inst(.op_const, 0),   // 1: branch target — guard prevents removal
-        inst(.op_pop, 0),     // 2: would-be pop, kept
-        inst(.op_ret, 0),     // 3
+        jif(0), // 0: jif → 1
+        inst(.op_const, 0), // 1: branch target — guard prevents removal
+        inst(.op_pop, 0), // 2: would-be pop, kept
+        inst(.op_ret, 0), // 3
     };
     const out = try optimize(a, &input);
     try testing.expectEqual(@as(usize, 4), out.len);

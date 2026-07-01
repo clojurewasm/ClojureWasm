@@ -1017,7 +1017,7 @@ test "compareValue (1.50 vs 1.5): equal numerically despite different scale" {
     defer fix.deinit();
 
     const a = try allocFromI64Scale(&fix.rt, 150, 2); // 1.50
-    const b = try allocFromI64Scale(&fix.rt, 15, 1);  // 1.5
+    const b = try allocFromI64Scale(&fix.rt, 15, 1); // 1.5
     try testing.expectEqual(std.math.Order.eq, try compareValue(&fix.rt, a, b));
 }
 

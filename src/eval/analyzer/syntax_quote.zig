@@ -34,11 +34,11 @@ const GensymMap = std.StringHashMap([]const u8);
 /// (handled separately by `hasDot`). Kept in sync with `analyzer.SPECIAL_FORMS`
 /// (a local copy because analyzer ↔ syntax_quote is a circular import).
 const BARE_SYMS = std.StaticStringMap(void).initComptime(.{
-    .{"def"},        .{"defmacro"}, .{"if"},     .{"do"},      .{"quote"},
-    .{"var"},        .{"fn*"},      .{"let*"},   .{"letfn*"},  .{"loop*"},
-    .{"recur"},      .{"binding"},  .{"try"},    .{"throw"},   .{"in-ns"},
-    .{"require"},    .{"ns"},       .{"catch"},  .{"finally"}, .{"&"},
-    .{"new"},        .{"set!"},     .{"."},
+    .{"def"},     .{"defmacro"}, .{"if"},    .{"do"},      .{"quote"},
+    .{"var"},     .{"fn*"},      .{"let*"},  .{"letfn*"},  .{"loop*"},
+    .{"recur"},   .{"binding"},  .{"try"},   .{"throw"},   .{"in-ns"},
+    .{"require"}, .{"ns"},       .{"catch"}, .{"finally"}, .{"&"},
+    .{"new"},     .{"set!"},     .{"."},
 });
 
 fn hasDot(name: []const u8) bool {

@@ -105,18 +105,20 @@ pub fn analyzeFnStar(
     }
 
     const n = try arena.create(Node);
-    n.* = .{ .fn_node = .{
-        .methods = try arena.dupe(node_mod.FnMethod, methods.items),
-        .variadic = variadic,
-        .slot_base = slot_base,
-        // ADR-0119: every fn carries a name on the value. Default = a gensym
-        // `fn__<id>` (clj parity for anonymous fns); a named context
-        // (`defn` / `letfn*`) overrides this via a post-analyze patch.
-        // `defining_ns` is display-only (the analyze-time current ns).
-        .name = try rt.gensymFn(arena),
-        .defining_ns = if (env.current_ns) |cns| cns.name else null,
-        .loc = form.location,
-    } };
+    n.* = .{
+        .fn_node = .{
+            .methods = try arena.dupe(node_mod.FnMethod, methods.items),
+            .variadic = variadic,
+            .slot_base = slot_base,
+            // ADR-0119: every fn carries a name on the value. Default = a gensym
+            // `fn__<id>` (clj parity for anonymous fns); a named context
+            // (`defn` / `letfn*`) overrides this via a post-analyze patch.
+            // `defining_ns` is display-only (the analyze-time current ns).
+            .name = try rt.gensymFn(arena),
+            .defining_ns = if (env.current_ns) |cns| cns.name else null,
+            .loc = form.location,
+        },
+    };
     return n;
 }
 

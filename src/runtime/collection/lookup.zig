@@ -235,13 +235,13 @@ test "keyword-as-fn: (:k m) gets, (:k m default) falls back, (:k non-map) nil" {
 
     const kw = try keyword_mod.intern(&fix.rt, null, "k");
     const m = try map.assoc(&fix.rt, map.empty(), kw, Value.initInteger(42));
-    try std_testing.expectEqual(@as(i48, 42), (try invoke(&fix.rt, &env,kw, &.{m}, noloc)).asInteger());
+    try std_testing.expectEqual(@as(i48, 42), (try invoke(&fix.rt, &env, kw, &.{m}, noloc)).asInteger());
 
     const missing = try keyword_mod.intern(&fix.rt, null, "absent");
-    try std_testing.expect((try invoke(&fix.rt, &env,missing, &.{m}, noloc)).isNil());
-    try std_testing.expectEqual(@as(i48, 7), (try invoke(&fix.rt, &env,missing, &.{ m, Value.initInteger(7) }, noloc)).asInteger());
+    try std_testing.expect((try invoke(&fix.rt, &env, missing, &.{m}, noloc)).isNil());
+    try std_testing.expectEqual(@as(i48, 7), (try invoke(&fix.rt, &env, missing, &.{ m, Value.initInteger(7) }, noloc)).asInteger());
     // keyword on a non-map yields default / nil
-    try std_testing.expect((try invoke(&fix.rt, &env,kw, &.{Value.initInteger(5)}, noloc)).isNil());
+    try std_testing.expect((try invoke(&fix.rt, &env, kw, &.{Value.initInteger(5)}, noloc)).isNil());
 }
 
 test "map-as-fn: (m k) gets; vector-as-fn: ([..] i) nth; OOB throws" {
@@ -252,16 +252,16 @@ test "map-as-fn: (m k) gets; vector-as-fn: ([..] i) nth; OOB throws" {
 
     const kw = try keyword_mod.intern(&fix.rt, null, "a");
     const m = try map.assoc(&fix.rt, map.empty(), kw, Value.initInteger(9));
-    try std_testing.expectEqual(@as(i48, 9), (try invoke(&fix.rt, &env,m, &.{kw}, noloc)).asInteger());
+    try std_testing.expectEqual(@as(i48, 9), (try invoke(&fix.rt, &env, m, &.{kw}, noloc)).asInteger());
 
     var vec = vector.empty();
     vec = try vector.conj(&fix.rt, vec, Value.initInteger(10));
     vec = try vector.conj(&fix.rt, vec, Value.initInteger(20));
-    try std_testing.expectEqual(@as(i48, 20), (try invoke(&fix.rt, &env,vec, &.{Value.initInteger(1)}, noloc)).asInteger());
+    try std_testing.expectEqual(@as(i48, 20), (try invoke(&fix.rt, &env, vec, &.{Value.initInteger(1)}, noloc)).asInteger());
     // ADR-0060: nth index errors are index_error Kind → error.IndexError
     // (→ IndexOutOfBoundsException), not type_error.
-    try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env,vec, &.{Value.initInteger(5)}, noloc)); // OOB
-    try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env,vec, &.{Value.initInteger(-1)}, noloc)); // negative
+    try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env, vec, &.{Value.initInteger(5)}, noloc)); // OOB
+    try std_testing.expectError(error.IndexError, invoke(&fix.rt, &env, vec, &.{Value.initInteger(-1)}, noloc)); // negative
 }
 
 test "map-entry-as-fn: (entry i) nth (0→key, 1→val); OOB throws" {
@@ -291,8 +291,8 @@ test "set-as-fn: (#{..} x) returns x or nil; arity errors" {
 
     var s = set.empty();
     s = try set.conj(&fix.rt, s, Value.initInteger(3));
-    try std_testing.expectEqual(@as(i48, 3), (try invoke(&fix.rt, &env,s, &.{Value.initInteger(3)}, noloc)).asInteger());
-    try std_testing.expect((try invoke(&fix.rt, &env,s, &.{Value.initInteger(99)}, noloc)).isNil());
+    try std_testing.expectEqual(@as(i48, 3), (try invoke(&fix.rt, &env, s, &.{Value.initInteger(3)}, noloc)).asInteger());
+    try std_testing.expect((try invoke(&fix.rt, &env, s, &.{Value.initInteger(99)}, noloc)).isNil());
     // set is 1-arg only
-    try std_testing.expectError(error.ArityError, invoke(&fix.rt, &env,s, &.{ Value.initInteger(3), Value.initInteger(4) }, noloc));
+    try std_testing.expectError(error.ArityError, invoke(&fix.rt, &env, s, &.{ Value.initInteger(3), Value.initInteger(4) }, noloc));
 }

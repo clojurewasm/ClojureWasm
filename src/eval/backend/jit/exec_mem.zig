@@ -154,9 +154,21 @@ pub fn movkX(rd: u5, imm16: u16, hw: u2) u32 {
 /// for the fixnum tag-check deopt, `.vs` for the i48-overflow deopt (F-005), and
 /// the relational ones (`.ge`/`.gt`/`.lt`/`.le`/`.eq`) for the loop branch.
 pub const Cond = enum(u4) {
-    eq = 0x0, ne = 0x1, hs = 0x2, lo = 0x3, mi = 0x4, pl = 0x5,
-    vs = 0x6, vc = 0x7, hi = 0x8, ls = 0x9, ge = 0xA, lt = 0xB,
-    gt = 0xC, le = 0xD, al = 0xE,
+    eq = 0x0,
+    ne = 0x1,
+    hs = 0x2,
+    lo = 0x3,
+    mi = 0x4,
+    pl = 0x5,
+    vs = 0x6,
+    vc = 0x7,
+    hi = 0x8,
+    ls = 0x9,
+    ge = 0xA,
+    lt = 0xB,
+    gt = 0xC,
+    le = 0xD,
+    al = 0xE,
 };
 
 /// `CMP Xn, #imm12` (64-bit) = `SUBS XZR, Xn, #imm12`. Base 0xF100001F

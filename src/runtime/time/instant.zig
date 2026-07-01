@@ -249,8 +249,8 @@ pub fn formatInstantMillis(buf: []u8, epoch_ms: i64) []const u8 {
     // Zig's `{d:0>N}` zero-pad emits a `+` sign for SIGNED ints; cast the
     // (always non-negative) civil fields to unsigned so the pad is clean.
     return std.fmt.bufPrint(buf, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}.{d:0>3}-00:00", .{
-        @as(u64, @intCast(c.y)),  @as(u64, @intCast(c.m)),   @as(u64, @intCast(c.d)),
-        @as(u64, @intCast(hour)), @as(u64, @intCast(min)),   @as(u64, @intCast(sec)),
+        @as(u64, @intCast(c.y)),  @as(u64, @intCast(c.m)), @as(u64, @intCast(c.d)),
+        @as(u64, @intCast(hour)), @as(u64, @intCast(min)), @as(u64, @intCast(sec)),
         @as(u64, @intCast(ms)),
     }) catch buf[0..0];
 }
@@ -270,8 +270,8 @@ pub fn formatInstantNanos(buf: []u8, epoch_ms: i64, nanos: i32) []const u8 {
     const min = @rem(rem, 60);
     const hour = @divFloor(rem, 60);
     return std.fmt.bufPrint(buf, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}.{d:0>9}-00:00", .{
-        @as(u64, @intCast(c.y)),  @as(u64, @intCast(c.m)),   @as(u64, @intCast(c.d)),
-        @as(u64, @intCast(hour)), @as(u64, @intCast(min)),   @as(u64, @intCast(sec)),
+        @as(u64, @intCast(c.y)),   @as(u64, @intCast(c.m)), @as(u64, @intCast(c.d)),
+        @as(u64, @intCast(hour)),  @as(u64, @intCast(min)), @as(u64, @intCast(sec)),
         @as(u64, @intCast(nanos)),
     }) catch buf[0..0];
 }
@@ -292,8 +292,8 @@ pub fn formatIsoInstant(buf: []u8, epoch_ms: i64, nanos: i32) []const u8 {
     const min = @rem(rem, 60);
     const hour = @divFloor(rem, 60);
     const head = std.fmt.bufPrint(buf, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}", .{
-        @as(u64, @intCast(c.y)),  @as(u64, @intCast(c.m)),   @as(u64, @intCast(c.d)),
-        @as(u64, @intCast(hour)), @as(u64, @intCast(min)),   @as(u64, @intCast(sec)),
+        @as(u64, @intCast(c.y)),  @as(u64, @intCast(c.m)), @as(u64, @intCast(c.d)),
+        @as(u64, @intCast(hour)), @as(u64, @intCast(min)), @as(u64, @intCast(sec)),
     }) catch return buf[0..0];
     var len = head.len;
     const n: u32 = @intCast(nanos);

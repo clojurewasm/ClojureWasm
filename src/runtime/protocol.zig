@@ -330,7 +330,7 @@ test "satisfies returns true when td.method_table carries any entry for proto.fq
     defer rt.deinit();
 
     // Protocol "user/ISeq" with 1 method declared.
-    const ms = [_]MethodEntry{ .{ .name = "first", .arity = 1 } };
+    const ms = [_]MethodEntry{.{ .name = "first", .arity = 1 }};
     const proto_v = try makeProtocol(&rt, "user/ISeq", &ms, false, "user");
     defer rt.gc.infra.destroy(@constCast(asProtocol(proto_v)));
     const proto = asProtocol(proto_v);

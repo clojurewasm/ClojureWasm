@@ -1008,8 +1008,7 @@ pub fn hashDispatch(rt: *Runtime, env: *Env, v: Value) ClojureWasmError!u32 {
 pub fn hashConsult(v: Value) ClojureWasmError!u32 {
     if (dispatch_mod.current_env) |env| {
         switch (v.tag()) {
-            .typed_instance, .reified_instance, .lazy_seq, .range, .chunked_cons, .list =>
-                return hashDispatch(env.rt, env, v),
+            .typed_instance, .reified_instance, .lazy_seq, .range, .chunked_cons, .list => return hashDispatch(env.rt, env, v),
             else => {},
         }
     }

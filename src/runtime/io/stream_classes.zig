@@ -52,17 +52,17 @@ pub const OUTPUT_CHAIN = [_][]const u8{ "java.io.BufferedOutputStream", "java.io
 /// resolve it or ClassNotFound, which cljw cannot replicate without a classpath).
 pub const SIBLING_NAMES = [_][]const u8{
     // Reader subtree (minus the BufferedReader/Reader chain)
-    "java.io.LineNumberReader", "java.io.CharArrayReader",   "java.io.FilterReader", "java.io.PushbackReader",
-    "java.io.InputStreamReader", "java.io.FileReader",       "java.io.PipedReader",  "java.io.StringReader",
+    "java.io.LineNumberReader",      "java.io.CharArrayReader",   "java.io.FilterReader",        "java.io.PushbackReader",
+    "java.io.InputStreamReader",     "java.io.FileReader",        "java.io.PipedReader",         "java.io.StringReader",
     // Writer subtree (minus the BufferedWriter/Writer chain)
-    "java.io.CharArrayWriter",  "java.io.FilterWriter",      "java.io.OutputStreamWriter", "java.io.FileWriter",
-    "java.io.PipedWriter",      "java.io.PrintWriter",       "java.io.StringWriter",
+    "java.io.CharArrayWriter",       "java.io.FilterWriter",      "java.io.OutputStreamWriter",  "java.io.FileWriter",
+    "java.io.PipedWriter",           "java.io.PrintWriter",       "java.io.StringWriter",
     // InputStream subtree (minus the Buffered/Filter/InputStream chain)
-    "java.io.ByteArrayInputStream", "java.io.FileInputStream",   "java.io.DataInputStream", "java.io.PushbackInputStream",
-    "java.io.LineNumberInputStream", "java.io.ObjectInputStream", "java.io.PipedInputStream", "java.io.SequenceInputStream",
-    "java.io.StringBufferInputStream",
+           "java.io.ByteArrayInputStream",
+    "java.io.FileInputStream",       "java.io.DataInputStream",   "java.io.PushbackInputStream", "java.io.LineNumberInputStream",
+    "java.io.ObjectInputStream",     "java.io.PipedInputStream",  "java.io.SequenceInputStream", "java.io.StringBufferInputStream",
     // OutputStream subtree (minus the Buffered/Filter/OutputStream chain)
-    "java.io.ByteArrayOutputStream", "java.io.FileOutputStream",  "java.io.DataOutputStream", "java.io.PrintStream",
+    "java.io.ByteArrayOutputStream", "java.io.FileOutputStream",  "java.io.DataOutputStream",    "java.io.PrintStream",
     "java.io.ObjectOutputStream",    "java.io.PipedOutputStream",
 };
 
