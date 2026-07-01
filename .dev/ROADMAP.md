@@ -185,7 +185,7 @@ These do not change between phases. Changing one requires an ADR.
 |-----|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | P1  | **Move forward only with understanding**  | Continuous autonomous execution; understanding enforced per-commit by the gate (ADR-0107) + Step-6 smell-audit, not human pacing (rescoped, ADR-0168). |
 | P2  | **See the final shape on day 1**          | Final directory layout fixed in §5. Adding a file ≠ adding a feature.                                                                                |
-| P3  | **Core stays stable**                     | The core, once built, stops changing. Extensions go to `modules/` or pods.                                                                             |
+| P3  | **Core stays stable**                     | The core, once built, stops changing. Extensions go to `src/lang/clj/` (in-source libs) or pods.                                                       |
 | P4  | **No ad-hoc patches**                     | Solve structurally. Ad-hoc fixes are escalated to ADRs or rejected.                                                                                    |
 | P5  | **Modular by build**                      | Only the bytes you need land in the binary (modules + comptime flags + pods).                                                                          |
 | P6  | **Error quality is non-negotiable**       | From day 1: file/ns/line/col/source-context/colour/stack trace.                                                                                        |
@@ -1671,24 +1671,24 @@ they are wired.
 Maps each gate to its current activation state (per ADR-0005 / 0009 /
 0013 / 0016 and the Wave 2 scripts).
 
-| Gate                               | Mac      | OrbStack | Wired by                                 |
-|------------------------------------|----------|----------|------------------------------------------|
-| zig build test                     | Active   | Active   | `test/run_all.sh`                        |
-| `zone_check.sh --gate`             | Active   | Active   | `test/run_all.sh` + `.githooks/pre-push` |
-| zlinter `no_deprecated`            | Active   | (skip)   | ADR-0003 (Mac-only)                      |
-| `phase3_cli.sh` / `phase3_exit.sh` | Active   | Active   | `test/run_all.sh`                        |
-| `check_learning_doc.sh`            | Active   | Active   | PreToolUse Bash hook                     |
-| `check_md_tables.sh`               | Active   | Active   | PreToolUse Bash hook                     |
-| `check_stale_git_lock.sh`          | Active   | Active   | PreToolUse Bash hook                     |
-| `check_roadmap_amendment.sh`       | Active   | Active   | PreToolUse Edit\|Write hook              |
-| `check_adr_history.sh`             | Active   | Active   | pre-commit script                        |
-| `bench/quick.sh`                   | Phase 4  | Phase 4  | task 4.0                                 |
-| `Evaluator.compare()`              | Phase 4  | Phase 4  | task 4.10, ADR-0005                      |
-| `check_compat_tiers_sync.sh`       | Phase 5  | Phase 5  | scripts (informational P4)               |
-| `check_no_op_stub.sh`              | Phase 5  | Phase 5  | scripts (informational P4)               |
-| `check_tier_d_error_msg.sh`        | Phase 5  | Phase 5  | scripts (informational P4)               |
-| `file_size_check.sh`               | Phase 5  | Phase 5  | ADR-0016                                 |
-| Clojure upstream test (Tier A)     | Phase 11 | Phase 11 | Skip taxonomy ADR (future)               |
+| Gate                               | Mac       | OrbStack  | Wired by                                    |
+|------------------------------------|-----------|-----------|---------------------------------------------|
+| zig build test                     | Active    | Active    | `test/run_all.sh`                           |
+| `zone_check.sh --gate`             | Active    | Active    | `test/run_all.sh` + `.githooks/pre-push`    |
+| zlinter `no_deprecated`            | Active    | (skip)    | ADR-0003 (Mac-only)                         |
+| `phase3_cli.sh` / `phase3_exit.sh` | Active    | Active    | `test/run_all.sh`                           |
+| `check_learning_doc.sh`            | Active    | Active    | PreToolUse Bash hook                        |
+| `check_md_tables.sh`               | Active    | Active    | PreToolUse Bash hook                        |
+| `check_stale_git_lock.sh`          | Active    | Active    | PreToolUse Bash hook                        |
+| `check_roadmap_amendment.sh`       | Active    | Active    | PreToolUse Edit\|Write hook                 |
+| `check_adr_history.sh`             | Active    | on-demand | on-demand audit (unwired; D-547)            |
+| `bench/quick.sh`                   | Phase 4   | Phase 4   | task 4.0                                    |
+| `Evaluator.compare()`              | Phase 4   | Phase 4   | task 4.10, ADR-0005                         |
+| `check_compat_tiers_sync.sh`       | on-demand | on-demand | informational scan (ADR-0142: no promotion) |
+| `check_no_op_stub.sh`              | on-demand | on-demand | informational scan (ADR-0142: no promotion) |
+| `check_tier_d_error_msg.sh`        | on-demand | on-demand | informational scan (ADR-0142: no promotion) |
+| `file_size_check.sh`               | on-demand | on-demand | informational scan (ADR-0016)               |
+| Clojure upstream test (Tier A)     | Phase 11  | Phase 11  | Skip taxonomy ADR (future)                  |
 
 ### 11.8 Periodic scaffolding audit
 
@@ -1934,14 +1934,14 @@ points; this section enumerates every required file).
 **`scripts/` (gates and helpers)**:
 - `scripts/check_learning_doc.sh` — pairing gate (PreToolUse hook)
 - `scripts/check_md_tables.sh` — md-table-align gate
-- `scripts/check_adr_history.sh` — ADR Revision history gate
+- `scripts/check_adr_history.sh` — ADR Revision history audit (on-demand; not a wired gate, D-547)
 - `scripts/check_roadmap_amendment.sh` — ROADMAP edit reminder hook
 - `scripts/check_stale_git_lock.sh` — stale `.git/index.lock` cleanup
 - `scripts/zone_check.sh` — zone checker (info / --strict / --gate)
 - `scripts/scan_lib.sh` — shared library for source-scan gates (per ADR-0024)
 - `scripts/scan_catalog_only.sh` — ADR-0018 enforcement (informational at Phase 4)
 - `scripts/scan_panic_audit.sh` — ADR-0019 enforcement (informational at Phase 4)
-- `scripts/check_compat_tiers_sync.sh` / `check_no_op_stub.sh` / `check_tier_d_error_msg.sh` / `file_size_check.sh` — informational at Phase 4, gates at Phase 5+
+- `scripts/check_compat_tiers_sync.sh` / `check_no_op_stub.sh` / `check_tier_d_error_msg.sh` / `file_size_check.sh` — informational on-demand scans (the Phase-5 promotion is retired, ADR-0142)
 - `scripts/print_handover_brief.sh` — SessionStart / PostCompact hook
 - `.githooks/pre-commit`, `.githooks/pre-push`
 
@@ -2147,8 +2147,8 @@ ADRs progress through these statuses:
 - **Demoted to .dev/lessons/<file>** — observational learning only.
 
 Status changes are recorded in the ADR's `## Revision history`
-section. `scripts/check_adr_history.sh` (pre-commit gate) requires
-the section on every ADR.
+section. `scripts/check_adr_history.sh` (on-demand audit — not a wired
+gate; see D-547) checks the section on every ADR.
 
 ### 17.5 Why this exists
 

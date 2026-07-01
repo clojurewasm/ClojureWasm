@@ -175,3 +175,8 @@ available as user-owned follow-ups.
 
 - 2026-07-01: Status: Proposed → Accepted (initial landing). Surfaced by the
   round-2 quality audit; Devil's-advocate output reflected above.
+- 2026-07-01: Amended (user-authorized) — folded in the **P3** truth-fix (§2 Effect
+  "Extensions go to `modules/`" → "`src/lang/clj/` or pods"; `modules/` retired) and the
+  D-547 ROADMAP relabels (`check_adr_history` → on-demand audit; the 4 scripts' retired
+  "Phase 5 promotion" → on-demand). Same operating-model-reconciliation theme; P3 is a
+  truth-fix (intent unchanged), not a rescope, so no separate DA fork.

@@ -237,6 +237,10 @@ Every marker's `[refs: D-NNN, feature_deps.yaml#<key>]` must point
 at a real debt row + real yaml entry:
 
 ```sh
+# Fail-loud (D-546): a missing SSOT must FAIL, never read empty (= false "no drift").
+for f in .dev/debt.yaml data/feature_deps.yaml; do
+  test -f "$f" || { echo "E2 FAIL: SSOT $f missing"; exit 1; }
+done
 # Markers in source
 # Note: ripgrep's `-E` flag is encoding (NOT "extended regex" like grep);
 # use plain `-o` and rely on default Rust regex syntax. The character class
@@ -289,6 +293,7 @@ For every `status: provisional` entry in `data/feature_deps.yaml`, the
 `provisional_markers:` field should match `rg 'feature_deps.yaml#<name>' src/`:
 
 ```sh
+test -f data/feature_deps.yaml || { echo "E2.4 FAIL: SSOT data/feature_deps.yaml missing"; exit 1; }  # D-546 fail-loud
 # Note: the rg pattern below anchors with a trailing terminator class so a
 # prefix match (e.g. `feature_deps.yaml#clojure.set/rename` substring-matching
 # `feature_deps.yaml#clojure.set/rename-keys`) does NOT double-count
@@ -316,6 +321,7 @@ discharged. If yes, the entry is a candidate for `provisional →
 landed` reclassification.
 
 ```sh
+test -f data/feature_deps.yaml || { echo "E2.5 FAIL: SSOT data/feature_deps.yaml missing"; exit 1; }  # D-546 fail-loud
 # For each provisional entry: walk its requires_features + requires_debts;
 # if all features landed and all debts discharged, propose reclassify.
 yq -r '.entries[] | select(.status == "provisional") | .name' data/feature_deps.yaml \

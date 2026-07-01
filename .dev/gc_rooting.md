@@ -15,7 +15,8 @@
 > `claude-rules-edit-permission-block`).
 >
 > Keep current: re-run the sweep (a `general-purpose` agent over `src/`) at each
-> Phase boundary or when a new reentrant primitive / root slot / per-tag trace
+> gap-area-unit start (the phase-queue model is retired, ADR-0142) or when a new
+> reentrant primitive / root slot / per-tag trace
 > lands; reconcile against this file. The mechanical guards (below) catch the
 > two highest-value drifts automatically.
 

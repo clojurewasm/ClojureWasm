@@ -26,29 +26,19 @@
 active:
   - id: "D-547"
     status: |-
-      open (2026-07-01). Enforcement-honesty sweep — surfaced by the round-3
-      completeness-critic (multi-agent, adversarially verified). The scaffolding
-      advertises enforcement it does not have:
-      (1) `scripts/check_adr_history.sh` is described in ROADMAP §16/§17.4 as an
-      ACTIVE pre-commit gate but is wired NOWHERE (not in run_all.sh / run_gate.sh /
-      .githooks / settings.json) AND fails on ~100/169 ADRs (missing `## Revision
-      history`). Decide: backfill the 100 ADRs + wire it as a real gate, OR correct
-      ROADMAP to call it an on-demand audit tool. Also drop the retired "Phase 5
-      promotion" language (ADR-0142) on check_compat_tiers_sync / check_no_op_stub /
-      check_tier_d_error_msg / file_size_check (they are permanent on-demand scans).
-      (2) `.claude/rules/clojure_spec_citation.md` declares a MANDATORY spec-citation
-      discipline over pre-existing src/ but ships no discovery recipe + no script
-      (violates framework_completion.md) — add a discovery recipe (grep primitives
-      lacking the spec line) + optional checker, OR downgrade to reviewer-only
-      convention like module_docstring.md.
-      (3) `.dev/gc_rooting.md` census had a dead refresh trigger ("re-run at each
-      Phase boundary" — retired) — re-anchor to a live event (gap-area-unit start)
-      or add a check_gc_rooting_census.sh that diffs live registerTrace/
-      registerFinaliser/GC-ROOT counts vs the doc and fails on drift (counts already
-      refreshed 37/13 -> 49/22 this cycle). Same fail-loud class as D-546.
-      Also: ROADMAP §2 inviolable P3 Effect still cites the retired `modules/`
-      ("Extensions go to modules/ or pods") — a P3 truth-fix (like the ADR-0168 P1
-      rescope) is a user-owned principle edit; surface, do not self-amend.
+      open (2026-07-01, NARROWED same day). Enforcement-honesty sweep — surfaced by the
+      round-3 completeness-critic. LANDED this cycle (user-directed): (1) ROADMAP corrected
+      — check_adr_history relabelled on-demand audit (not a wired gate) in §16/§17.4, and
+      the retired "Phase 5 promotion" language dropped on check_compat_tiers_sync /
+      check_no_op_stub / check_tier_d_error_msg / file_size_check (ADR-0142); (2)
+      clojure_spec_citation.md downgraded to reviewer-convention + a discovery recipe added
+      (framework_completion-clean); (3) gc_rooting.md census trigger re-anchored to
+      gap-area-unit start + counts refreshed 37/13 -> 49/22; and the P3 principle truth-fix
+      landed (Effect `modules/` -> `src/lang/clj/`, user-authorized, ADR-0168 amended).
+      REMAINING (optional — no false claim remains): the check_adr_history BACKFILL decision
+      (~100 ADRs lack `## Revision history` — backfill + wire as a real gate, OR leave
+      on-demand as now labelled) + optional check_spec_citation.sh / check_gc_rooting_census.sh
+      fail-loud scripts.
     category: "tooling"
     barrier: |-
       tractable now (no external block) EXCEPT the P3 principle edit (user-owned).
@@ -57,15 +47,13 @@ active:
     last_reviewed: "2026-07-01"
   - id: "D-546"
     status: |-
-      open (2026-07-01). audit_scaffolding `CHECKS.md` E2.2/E2.4/E2.5 recipes read the
-      SSOT yaml by BARE path (`feature_deps.yaml` etc.); after the 2026-07-01 reorg moved
-      them to `data/`, the reads silently returned EMPTY so the checks FALSE-PASSED (a
-      `comm`/count over an empty set reports "no drift"). Surfaced by the multi-round
-      truth-audit workflow + adversarial verify. PATH FIX landed same cycle (recipes now
-      read `data/<yaml>`; proven bare=0 vs data/=30 entries). REMAINING (this row): make
-      the recipes FAIL-LOUD — assert each SSOT file exists before the read so a future
-      move can never silently pass again; sweep the rest of CHECKS.md / scripts for other
-      bare-path SSOT reads. Silent-failure smell class (cf. silent-failure-hunter).
+      DISCHARGED 2026-07-01: fail-loud guards landed in CHECKS.md E2.2/E2.4/E2.5
+      (`test -f <SSOT> || exit 1` before the reads — a missing SSOT now FAILS instead of
+      reading empty = false "no drift"); round-2 also swept + fixed the bare `CLAUDE.md`
+      B1/B2 reads. ORIGINAL: audit_scaffolding recipes read the SSOT yaml by BARE path;
+      after the reorg moved them to `data/` the reads silently returned EMPTY so the
+      checks FALSE-PASSED. Path fix + fail-loud both landed. (Misfiled in active: pending
+      the next ledger relocation.)
     category: "tooling"
     barrier: |-
       tractable now (no external block). Harden audit_scaffolding recipes to error on a

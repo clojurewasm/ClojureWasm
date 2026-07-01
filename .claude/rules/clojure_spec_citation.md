@@ -37,6 +37,23 @@ pub fn primConj(rt: *Runtime, ...) !Value { ... }
 
 ## How to apply
 
-- New primitive: spec line is mandatory before merging.
+- New primitive: spec line is expected before merging.
 - Modified primitive: spec line is updated alongside.
-- Phase 4 mid: audit primitives without spec line and add them.
+
+## Enforcement
+
+**Reviewer-checked convention — no hard gate** (like `module_docstring.md`;
+per `framework_completion.md`, a discipline without a backing script must say
+so honestly). Discovery recipe to find primitives missing the spec line:
+
+```sh
+# public primitives (pub fn prim*/special*) whose preceding doc block lacks a
+# `/// Spec:` line — candidates for a spec citation.
+rg -n 'pub fn (prim|special)\w+' src/lang/primitive src/eval \
+  | while IFS=: read -r f l _; do
+      sed -n "$((l>6?l-6:1)),${l}p" "$f" | grep -q '/// Spec:' || echo "$f:$l"
+    done
+```
+
+A future `scripts/check_spec_citation.sh` could gate this (D-547); until then it
+is a review-time check, not a blocking hook.
