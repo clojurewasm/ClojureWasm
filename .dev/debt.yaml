@@ -36,19 +36,6 @@ active:
       rc.1 readiness gate (finite). Per /continue: reconcile a batch of active:
       rows vs code truth; delete RESOLVED-on-open rows (git retains history).
     last_reviewed: "2026-07-01"
-  - id: "D-537"
-    status: |-
-      open (2026-07-01, user-directed; ADR-0167 S1). Community-health files:
-      SECURITY.md / CODE_OF_CONDUCT.md / .github/ISSUE_TEMPLATE/config.yml /
-      .github/PULL_REQUEST_TEMPLATE.md / .github/FUNDING.yml, tailored to the
-      README "Issues/PRs paused → Discussions" posture. + reconcile CONTRIBUTING
-      with that posture + the `-Dwasm -Doptimize=ReleaseSafe` build command.
-    category: "docs"
-    quality_floor: "release-mechanics: community-health files (ADR-0167)"
-    barrier: |-
-      rc.1 readiness gate (finite). Additive docs; no source. Cross-check every
-      URL/handle against real repo (clojurewasm/ClojureWasm, @chaploud).
-    last_reviewed: "2026-07-01"
   - id: "D-538"
     status: |-
       open (2026-07-01, user-directed; ADR-0167 S2). Personal-environment
@@ -2653,6 +2640,11 @@ standing:
     barrier: "open after the D-440 arc completes (R4 + R5 must first rewrite the bulk of 'Phase N' citations to gap-area terms). Premature adoption = ~70 dangling citations with no 1:1 redirect. Trigger: D-440 R4/R5 done + a user nod to re-architect the planning axis (it is depth-4, the project's organizing metaphor)."
     last_reviewed: "2026-06-15"
 discharged:
+  - id: "D-537"
+    status: "DISCHARGED 2026-07-01 (ADR-0167 S1). Community-health files added, tailored to README's 'Issues/PRs paused -> Discussions' posture: SECURITY.md (scope = a runtime executing untrusted .wasm bytecode + in-process untrusted Clojure; private vuln reporting; supported = 1.0.0-rc.*/main), CODE_OF_CONDUCT.md (Contributor Covenant 2.1, @chaploud), .github/ISSUE_TEMPLATE/config.yml (blank_issues_enabled:false -> Discussions + private security advisory), .github/PULL_REQUEST_TEMPLATE.md (PRs-paused notice), .github/FUNDING.yml (github: chaploud). CONTRIBUTING reconciled with the paused posture (open-issue -> start-a-Discussion), the -Dwasm -Doptimize=ReleaseSafe build command, the --serial-e2e full-gate caveat, and Discussions-primary + SECURITY.md pointer. All URLs/handle cross-checked (clojurewasm/ClojureWasm, @chaploud). No source touched."
+    category: "docs"
+    barrier: "none — DISCHARGED."
+    last_reviewed: "2026-07-01"
   - id: "D-519"
     status: "DISCHARGED 2026-06-24 (ADR-0164 IMPLEMENTED + GO-PASSED). Threshold-driven auto-collect during eval at BOTH sites — shared GcHeap.maybeAutoCollect() (torture-alloc collect verbatim, gated bytes_since_last_gc>threshold_bytes) called from the alloc boundary (gc_heap.alloc, after the torture block, before lockMutex) AND the VM back-edge poll (vm.zig, after the torture poll). Default floor 1MB->4MB via new per-heap threshold_floor_bytes (so CLJW_GC_THRESHOLD_MB knob survives each collect recompute; mark_sweep uses the floor). Kept CLJW_GC_TORTURE_ALLOC in the gate. Validation: diff oracle green; CLJW_GC_STATS 200K vectors collects 0->15 reuse 0%->93% mallocs 401K->27335, 4M vectors collects 305 reuse 99% mallocs 27335 FLAT (= memory bounded regardless of N; was 1.28GB unbounded -> latent OS-OOM bug fixed). Rooting: 15/305 collects mid-eval yet sums exact (20000300000/8000006000000). GO = load-robust OFF-vs-ON knob A/B (interleaved hyperfine 20 runs): ON FASTER than OFF on ALL 8 benches (gc_alloc_rate 1.39x, string_ops-canary 1.28x, sieve 1.26x, map_filter_reduce 1.65x, gc_large_heap 1.12x, destructure 1.13x, nested_update 1.35x, bigint_factorial 1.23x) + ~10x lower variance — the DA's predicted partial-win/canary-regression was REFUTED (collect+reuse wins cache/page-fault locality too). FOLLOW-UP (NOT a D-519 blocker): absolute peer re-rank (cljw vs bb on the 9) needs a genuinely quiet Mac — a load-~4 cross-run peer measure was contamination-noisy."
     category: "perf"

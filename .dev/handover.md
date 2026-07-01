@@ -12,8 +12,8 @@
   below + the parallel Track-B (ADR-0166 D-522…D-529) quality drain. The final
   version bump + `git tag` is **USER-OWNED** (build.zig.zon SSOT; loop never tags).
 - **rc.1 readiness gate (FINITE — the tag-cut SSOT):**
-  - [~] **D-537** community-health files — SECURITY/CoC/ISSUE_TEMPLATE/PR_TEMPLATE/
-    FUNDING + CONTRIBUTING reconcile *drafted this session; commit pending*.
+  - [x] **D-537** community-health files — SECURITY/CoC/ISSUE_TEMPLATE/PR_TEMPLATE/
+    FUNDING + CONTRIBUTING reconcile *DISCHARGED 2026-07-01*.
   - [ ] **D-539 ★** CI wiring (.github absent = zero external verification) — ci.yml
     push/PR macOS+Ubuntu via `scripts/ci_gate.sh` SSOT; dependabot; gitleaks; Zig pin.
   - [ ] **D-536** debt-ledger code-truth reconcile (zwasm S0 pattern).

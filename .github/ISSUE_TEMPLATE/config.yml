@@ -1,0 +1,15 @@
+# Issues are paused for ClojureWasm (small, resource-limited project).
+# Route everything to Discussions; disable blank issues.
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions, bugs & Clojure divergences → Discussions
+    url: https://github.com/clojurewasm/ClojureWasm/discussions
+    about: >-
+      Issues and Pull Requests are currently paused. Please start a Discussion
+      and mention @chaploud. Reports of behaviour that differs from JVM Clojure
+      are especially welcome.
+  - name: 🔒 Report a security vulnerability (private)
+    url: https://github.com/clojurewasm/ClojureWasm/security/advisories/new
+    about: >-
+      Do NOT report security problems in public. Use private vulnerability
+      reporting — see SECURITY.md.
