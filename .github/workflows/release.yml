@@ -1,0 +1,80 @@
+# Release — build the ReleaseSafe, Wasm-enabled `cljw` binary for each supported
+# target on its NATIVE runner and attach it to the GitHub Release. Native builds
+# (not cross-compile) keep the embedded zwasm JIT's arch-specific codegen honest.
+#
+# TRIGGER: a maintainer pushing a `v*` tag (a deliberate human act — the
+# autonomous loop never tags or releases; build.zig.zon .version is the SSOT),
+# or manual dispatch. PREPARED-not-fired: this workflow only runs on such a tag.
+#
+# NOTE (first-tag validation): the artifact build uses
+# `-Dwasm -Doptimize=ReleaseSafe -Dcpu=baseline` (baseline CPU avoids SIGILL on
+# shared/older hosts, the shipped/deploy config). Validate each artifact runs
+# (`cljw --version` reports `(ReleaseSafe)`) on the first real release.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macos-aarch64
+            runs-on: macos-15
+            zig-dir: zig-aarch64-macos-0.16.0
+            artifact: cljw-macos-aarch64
+          - name: linux-x86_64
+            runs-on: ubuntu-22.04
+            zig-dir: zig-x86_64-linux-0.16.0
+            artifact: cljw-linux-x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Install Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/versions.lock
+          mkdir -p ~/.local
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/${{ matrix.zig-dir }}.tar.xz" -o /tmp/zig.tar.xz
+          tar -xJf /tmp/zig.tar.xz -C ~/.local
+          echo "$HOME/.local/${{ matrix.zig-dir }}" >> "$GITHUB_PATH"
+
+      - name: Build cljw (ReleaseSafe, Wasm-enabled, baseline CPU)
+        shell: bash
+        run: |
+          set -euo pipefail
+          zig build -Dwasm -Doptimize=ReleaseSafe -Dcpu=baseline
+          zig-out/bin/cljw --version
+          mkdir -p dist
+          tar -C zig-out/bin -czf "dist/${{ matrix.artifact }}.tar.gz" cljw
+          ( cd dist && shasum -a 256 "${{ matrix.artifact }}.tar.gz" > "${{ matrix.artifact }}.tar.gz.sha256" )
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Create the release once (idempotent — later matrix legs just upload).
+          gh release view "$TAG_NAME" >/dev/null 2>&1 || \
+            gh release create "$TAG_NAME" --title "$TAG_NAME" --generate-notes
+          gh release upload "$TAG_NAME" dist/* --clobber

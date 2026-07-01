@@ -18,12 +18,15 @@
     via `scripts/ci_gate.sh` SSOT + versions.lock + dependabot; repo made zig-fmt-clean.
     First GitHub run verified post-push. Follow-ups (non-blocking): gitleaks job, API canary.
   - [ ] **D-536** debt-ledger code-truth reconcile (zwasm S0 pattern).
-  - [ ] **D-538** personal-env decoupling (SSH host→env default; 2 src leaks;
-    settings.local.json). *`.claude/**` edits may hit auto-mode block → surface.*
+  - [~] **D-538** personal-env decoupling — SSH host+dir→env default + 2 src leaks
+    *DONE 2026-07-01*; **settings.json `additionalDirectories` move = USER action**
+    (`.claude/`-edit-blocked, non-autonomous; surfaced — not a loop blocker).
   - [x] **D-540** CHANGELOG (`## [Unreleased]`) + THIRD_PARTY + .gitattributes/.editorconfig + ship NOTICE/CHANGELOG/THIRD_PARTY in .paths *DISCHARGED 2026-07-01*.
-  - [ ] **D-542** release.yml (prepared-not-fired, static cljw binary).
-  - [ ] **D-543** dep-pin coherence (zwasm alpha.3 vs rc.1; eager zlinter fetch).
-  - [ ] **D-541** version staging convention (all rc.1 strings = staged text).
+  - [x] **D-542** release.yml (prepared-not-fired, native matrix, cljw tar.gz+sha) *DONE 2026-07-01; fires on user tag*.
+  - [x] **D-543** dep-pin coherence *DONE 2026-07-01 (loop part)* — pins in THIRD_PARTY;
+    eager zlinter fetch confirmed structural (build.zig:5 top-level @import) → documented
+    pre-1.0 wart; **zwasm-pin bump = user-owned CODEV** (needs a zwasm release).
+  - [x] **D-541** version staging convention (rc.1 strings staged; .version stays alpha.1) *DONE 2026-07-01*.
 - **Track B (parallel, non-blocking for the tag):** the easiest-first `active:`
   drain continues — D-522 de-pointer / D-523 doc-audit / D-526 interop / D-527
   parity / D-528 real-deps.edn / D-529 / D-305 / D-470 / D-222 / D-460 / D-439 sqrt.

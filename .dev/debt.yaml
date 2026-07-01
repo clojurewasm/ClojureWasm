@@ -38,63 +38,24 @@ active:
     last_reviewed: "2026-07-01"
   - id: "D-538"
     status: |-
-      open (2026-07-01, user-directed; ADR-0167 S2). Personal-environment
-      decoupling: scripts/run_remote_ubuntu.sh host → ${CLJW_UBUNTU_HOST:-ubuntunote}
-      (behavior-preserving default); the 2 src path-leak comments
-      (agent.zig:213 ubuntunote, stm/tval.zig:17 ~/Documents/OSS path) generalized;
-      personal additionalDirectories in .claude/settings.json moved to the
-      gitignored settings.local.json.
+      PARTIAL 2026-07-01 (ADR-0167 S2). Loop-ownable parts DONE:
+      scripts/run_remote_ubuntu.sh host+dir → ${CLJW_UBUNTU_HOST:-ubuntunote} /
+      ${CLJW_REMOTE_DIR:-...} (behavior-preserving defaults; all `ssh $HOST`);
+      the 2 src path-leak comments generalized (agent.zig:213 "Mac vs ubuntunote"
+      → "host- and scheduler-dependent"; stm/tval.zig:17 dropped the author-local
+      `~/Documents/OSS/.../Ref.java:64-69` absolute path, kept the useful
+      `clojure.lang.Ref.TVal` upstream reference). REMAINING (non-autonomous,
+      `.claude/`-edit-blocked): move the personal `additionalDirectories`
+      (`~/Documents/MyProducts/`, `~/Documents/OSS/`) in .claude/settings.json to
+      the gitignored settings.local.json — surfaced to the user (the auto-mode
+      self-modification classifier denies `.claude/` edits; memory
+      claude_rules_edit_permission_block).
     category: "infra"
     quality_floor: "release-mechanics: env decoupling (ADR-0167)"
     barrier: |-
-      rc.1 readiness gate (finite). NOTE: .claude/** edits may hit the auto-mode
-      self-modification block — surface those to the user (memory
-      claude_rules_edit_permission_block).
-    last_reviewed: "2026-07-01"
-  - id: "D-541"
-    status: |-
-      open (2026-07-01, user-directed; ADR-0167). Version staging (USER-OWNED
-      boundary): all rc.1 prep lands while build.zig.zon .version stays
-      1.0.0-alpha.1; every 1.0.0-rc.1 string in CHANGELOG/THIRD_PARTY/docs is
-      STAGED text that the user's single .version bump + git tag activates
-      (CHANGELOG rc.1 under `## [Unreleased]`). The loop NEVER tags/publishes.
-    category: "infra"
-    quality_floor: "release-mechanics: version staging (ADR-0167)"
-    barrier: |-
-      rc.1 readiness gate (finite). The final bump + tag is the user's action.
-      Avoids the transient SSOT contradiction zwasm hit (fix-CHANGELOG-version).
-    last_reviewed: "2026-07-01"
-  - id: "D-542"
-    status: |-
-      open (2026-07-01, user-directed; ADR-0167). Release-artifact workflow
-      (PREPARED-not-fired): a tag-triggered .github/workflows/release.yml building
-      the static cljw binary for macOS + Linux
-      (-Dwasm -Doptimize=ReleaseSafe -Dcpu=baseline, ADR-0132) attached to the
-      GitHub release. For a single-static-binary product (F-013) a pre-built cljw
-      is most of what a non-Zig user needs. Fires ONLY on a user-pushed tag.
-    category: "infra"
-    quality_floor: "release-mechanics: release-artifact workflow (ADR-0167)"
-    barrier: |-
-      rc.1 readiness gate (finite). Depends on D-539 CI SSOT. Mirrors zwasm's
-      release.yml. -Dcpu=baseline for the deploy artifact (memory
-      fly_deploy_zig_binary_gotchas: SIGILL on shared-cpu otherwise).
-    last_reviewed: "2026-07-01"
-  - id: "D-543"
-    status: |-
-      open (2026-07-01, user-directed; ADR-0167). Dependency-pin coherence /
-      reproducibility. (a) The incoherent story of a 1.0.0-rc.1 embedding zwasm
-      v2.0.0-alpha.3: bump the pin to a coherent zwasm release once one exists
-      (user-owned CODEV) OR document the version relationship in THIRD_PARTY.md +
-      zwasm_capabilities.md as a known pre-1.0 coupling. (b) zlinter dev-dep is
-      fetched EAGERLY (a doc-reader's first `zig build` pulls an external repo —
-      offline/reproducibility footgun): make lazy/dev-only if the build.zig
-      restructure is tractable, else record as a NAMED pre-1.0 wart with this row.
-    category: "infra"
-    quality_floor: "release-mechanics: dep-pin coherence (ADR-0167)"
-    barrier: |-
-      rc.1 readiness gate (finite). (a) is partly user-owned (zwasm tag = CODEV);
-      the doc half is loop-ownable. (b) zlinter lazy-fetch is a known Zig
-      build-graph limit (cf. zwasm D-274) — may resolve to the documented-wart form.
+      rc.1 readiness gate (finite) — but the residual (settings.json move) is
+      the `.claude/`-edit-blocked non-autonomous remainder; a USER action, not a
+      loop blocker. The finite gate treats D-538's loop-ownable half as done.
     last_reviewed: "2026-07-01"
   - id: "D-522"
     status: |-
@@ -2608,6 +2569,21 @@ standing:
     barrier: "open after the D-440 arc completes (R4 + R5 must first rewrite the bulk of 'Phase N' citations to gap-area terms). Premature adoption = ~70 dangling citations with no 1:1 redirect. Trigger: D-440 R4/R5 done + a user nod to re-architect the planning axis (it is depth-4, the project's organizing metaphor)."
     last_reviewed: "2026-06-15"
 discharged:
+  - id: "D-543"
+    status: "DISCHARGED 2026-07-01 (ADR-0167; loop-ownable part). (a) Dep pins recorded exactly in THIRD_PARTY.md (zwasm Apache-2.0 @fc7ff0b3b/v2.0.0-alpha.3, -Dwasm-only; zlinter MIT @9b4d67b9). Resolving the '1.0.0-rc.1 embeds zwasm v2.0.0-alpha.3' stability story by BUMPING the pin to a coherent zwasm release is USER-OWNED CODEV (needs zwasm to cut one — tracked via handover north-star + .dev/zwasm_capabilities.md), not a loop task. (b) Confirmed the eager zlinter fetch is STRUCTURAL: build.zig:5 has a top-level comptime `@import(\"zlinter\")`, which the Zig build graph resolves eagerly (matches zwasm's ratified D-274 — lazy needs an upstream b.lazyDependency-able builder). Recorded as a NAMED pre-1.0 limitation in THIRD_PARTY.md (accepted development-time fetch, not a runtime dep). Both parts resolved to the loop's extent; the zwasm-bump residual is user/upstream-gated."
+    category: "infra"
+    barrier: "none — DISCHARGED (zwasm-pin bump residual is user-owned CODEV)."
+    last_reviewed: "2026-07-01"
+  - id: "D-542"
+    status: "DISCHARGED 2026-07-01 (ADR-0167). Release-artifact workflow .github/workflows/release.yml (PREPARED-not-fired): native matrix (macos-15 aarch64 + ubuntu-22.04 x86_64 — native, not cross-compile, to keep the embedded zwasm JIT's arch-specific codegen honest) builds cljw with `-Dwasm -Doptimize=ReleaseSafe -Dcpu=baseline` (baseline CPU = shipped/deploy config, avoids SIGILL on shared hosts per memory fly_deploy_zig_binary_gotchas), verifies `cljw --version`, tar.gz + .sha256, attaches to the GitHub Release (idempotent create + upload --clobber). Triggers ONLY on a user-pushed `v*` tag or manual dispatch (the loop never tags). permissions contents:write; TAG_NAME via env (no injection). actionlint clean. First-tag validation (each artifact runs, reports ReleaseSafe) noted in the workflow header."
+    category: "infra"
+    barrier: "none — DISCHARGED (fires on the user's tag; first-tag validation noted)."
+    last_reviewed: "2026-07-01"
+  - id: "D-541"
+    status: "DISCHARGED 2026-07-01 (ADR-0167). Version-staging convention established + honoured: build.zig.zon .version stays `1.0.0-alpha.1` (verified — no premature rc.1 bump); every `1.0.0-rc.1` string in CHANGELOG/THIRD_PARTY/docs is STAGED text under `## [Unreleased]` (+ a CHANGELOG STAGING NOTE spelling out the maintainer's bump+tag step). This avoids the transient SSOT contradiction zwasm hit (their dedicated fix-CHANGELOG-version commit). The final `.version` bump + `git tag`/publish is USER-OWNED — the loop prepares everything and never tags. Nothing left for the loop to do here until the user cuts the tag."
+    category: "infra"
+    barrier: "none — DISCHARGED (convention set; the bump/tag is the user's action)."
+    last_reviewed: "2026-07-01"
   - id: "D-540"
     status: "DISCHARGED 2026-07-01 (ADR-0167). CHANGELOG.md (Keep-a-Changelog; the rc.1 entry sits under `## [Unreleased]` per the D-541 staging convention + a STAGING NOTE explaining the maintainer's tag/bump step). THIRD_PARTY.md naming exact license + pinned commit per fetched dep (zwasm Apache-2.0 @fc7ff0b3b/v2.0.0-alpha.3, -Dwasm-only; zlinter MIT @9b4d67b9, dev-only) — an EPL-2.0 project building against non-EPL deps (none vendored in-tree; fetched by the Zig pkg mgr) + the EPL clj lineage cross-ref to NOTICE. .gitattributes (LF normalize + .wasm/.png binary + docs/ja/archive linguist-documentation) + .editorconfig. build.zig.zon .paths now ships LICENSE + NOTICE + THIRD_PARTY.md + CHANGELOG.md + README + src (NOTICE was absent despite EPL src/lang/clj/** shipping inside src). zlinter MIT verified against the fetched LICENSE."
     category: "docs"
