@@ -19,9 +19,15 @@
 name: ci
 
 on:
+  # Skip CI on doc/scaffolding-only pushes (markdown, .dev/ ledger + ADRs + notes):
+  # they cannot change build/test outcome, so a ~15-min gate on them is pure waste.
+  # A commit that also touches src / scripts / build.zig* / flake.nix / .github /
+  # a root data-yaml still runs (paths-ignore skips only when ALL changed files match).
   pull_request:
+    paths-ignore: ['**/*.md', '.dev/**']
   push:
     branches: [main]
+    paths-ignore: ['**/*.md', '.dev/**']
   workflow_dispatch:
   schedule:
     # Nightly full gate (03:17 UTC) — the batched Linux full-e2e coverage that
