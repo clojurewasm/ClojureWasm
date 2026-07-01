@@ -29,16 +29,14 @@
 
 ## Last landed (git log = SSOT)
 
-Easiest-first `active:` drain (2026-06-25): **D-472** `bytes?` (over-broad = `array?`
-per AD-051, type-erasure-forced; DA-fork recommended always-false, overridden by a
-probe). **D-480** `instance? Serializable` (last deferred marker; clj-oracle all tags,
-`multi_fn` EXCLUDED — MultiFn is not AFunction). **D-439** BigDecimal `scaleByPowerOfTen`/
-`ulp`/`divideAndRemainder`. **D-532** BigInteger `.add/.subtract/.multiply/.divide` (new
-`allocDivTruncManaged` — trunc-toward-zero). **D-471** slurp/spit accept a `java.io.File`
-arg (R4-clean coerceToPath). **D-511** exact `(BigDecimal. double)` ctor (reuses
-`allocFromRatioParts`). **D-535** opened (user-directed): Java-interop import-gating
-parity — the Java analogue of D-516/ADR-0163, deferred to the import-semantics owner
-alongside D-461.
+2026-07-01 session (user-directed hygiene): **top-level reorg** (yaml→`data/`,
+examples→`docs/`, verified_projects→`test/conformance/`, NOTICE/THIRD_PARTY→`legal/`,
+CLAUDE.md→`.claude/`, cljw-formats→`docs/spec/`; modules/spike/.gitleaksignore/
+.editorconfig/.envrc.example removed; root 11 dirs/18 files → 7/7). **2-round
+multi-agent quality audit** (find→adversarial-verify→synthesize): repaired reorg-stale
+refs + a silently-false-passing audit gate (**D-546** filed for fail-loud hardening).
+**ADR-0168** reconciled ROADMAP §0/§2/§12.4/§16 with the autonomous loop + rescoped
+inviolable **P1** (interactive → continuous autonomous). Full gate green throughout.
 
 ## Standing units (tracked in .dev/debt.yaml)
 

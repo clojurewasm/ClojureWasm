@@ -22,24 +22,24 @@
 A cold-context AI (or new contributor) starting from `/continue`
 hits this stack in order:
 
-1. **`CLAUDE.md`** (every-turn auto-load) — `§ Autonomous Workflow`
-   Step 0-8 loop + Stop ONLY / Do NOT stop / When in doubt continue.
-2. **`ARCHITECTURE.md`** (5-minute orientation) — zones / backends /
-   error / tier / phase map. Pointers to all the documents below.
+1. **`.claude/CLAUDE.md`** (every-turn auto-load) — `§ Autonomous Workflow`
+   Step 0→7 loop + `§ The only stop` (single condition: explicit user request).
+2. **`docs/architecture.md`** (5-minute orientation) — zones / backends /
+   error / tier map. Pointers to all the documents below.
 3. **`.dev/principle.md`** — working principles + Bad Smell
    catalogue + four depths of revision. Re-read at Step 1 / 4 / 6.
-4. **`.dev/handover.md`** — current state, Active task, Next Phase
-   Queue. The `SessionStart` hook auto-prints the Current state +
+4. **`.dev/handover.md`** — current state, Active task, First task on
+   resume. The `SessionStart` hook auto-prints the Current state +
    Active task sections.
 5. **This file (`.dev/ROADMAP.md`)** — authoritative plan, with
    §15.0 listing all entry points if you need to scan further.
-6. **`.dev/decisions/NNNN_*.md`** — 25 ADRs (browse on demand,
+6. **`.dev/decisions/NNNN_*.md`** — the ADRs (browse on demand,
    §15.1 ADR category index).
 
 The autonomous TDD loop runs entirely from this stack — there are
-no other "must-read" documents. Phase open procedure is in
-CLAUDE.md `§ Autonomous Workflow`; ROADMAP placeholders for
-Phase 5-20 (§9.7-§9.22) are the targets the procedure expands.
+no other "must-read" documents. The phase-queue model is retired
+(ADR-0142); the loop self-selects the next gap-area unit / debt row
+per CLAUDE.md `§ When the active work unit completes`.
 
 ## 0.1 Table of contents
 
@@ -181,20 +181,20 @@ now (ADR-0135's mapping table) and implements when that API freezes (D-404).
 
 These do not change between phases. Changing one requires an ADR.
 
-| #   | Principle                                 | Effect                                                                                              |
-|-----|-------------------------------------------|-----------------------------------------------------------------------------------------------------|
-| P1  | **Move forward only with understanding**  | Interactive Claude Code use. No overnight batch commits.                                            |
-| P2  | **See the final shape on day 1**          | Final directory layout fixed in §5. Adding a file ≠ adding a feature.                             |
-| P3  | **Core stays stable**                     | The core, once built, stops changing. Extensions go to `modules/` or pods.                          |
-| P4  | **No ad-hoc patches**                     | Solve structurally. Ad-hoc fixes are escalated to ADRs or rejected.                                 |
-| P5  | **Modular by build**                      | Only the bytes you need land in the binary (modules + comptime flags + pods).                       |
-| P6  | **Error quality is non-negotiable**       | From day 1: file/ns/line/col/source-context/colour/stack trace.                                     |
-| P7  | **Upstream fidelity is not a constraint** | Practicality first. Compatibility differences are documented via tiers.                             |
-| P8  | **One `cljw` binary**                     | Single binary serves REPL / nREPL / eval / build / wasm-component-out.                              |
-| P9  | **One commit = one task**                 | Structural change and behavioural change live in separate commits. Never commit when tests are red. |
-| P10 | **Honour Zig 0.16 idioms**                | `std.Io` DI, `*std.Io.Writer`, packed struct, comptime, `@branchHint`, etc.                         |
-| P11 | **Observable-semantics compatibility**    | Match what callers can observe; the inside of `.toString` is ours to choose.                        |
-| P12 | **Dual backend from Phase 4 onward**      | TreeWalk and VM agree on every test, verified by `--compare` (CI mandatory; ADR-0005, ADR-0022).    |
+| #   | Principle                                 | Effect                                                                                                                                                 |
+|-----|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| P1  | **Move forward only with understanding**  | Continuous autonomous execution; understanding enforced per-commit by the gate (ADR-0107) + Step-6 smell-audit, not human pacing (rescoped, ADR-0168). |
+| P2  | **See the final shape on day 1**          | Final directory layout fixed in §5. Adding a file ≠ adding a feature.                                                                                |
+| P3  | **Core stays stable**                     | The core, once built, stops changing. Extensions go to `modules/` or pods.                                                                             |
+| P4  | **No ad-hoc patches**                     | Solve structurally. Ad-hoc fixes are escalated to ADRs or rejected.                                                                                    |
+| P5  | **Modular by build**                      | Only the bytes you need land in the binary (modules + comptime flags + pods).                                                                          |
+| P6  | **Error quality is non-negotiable**       | From day 1: file/ns/line/col/source-context/colour/stack trace.                                                                                        |
+| P7  | **Upstream fidelity is not a constraint** | Practicality first. Compatibility differences are documented via tiers.                                                                                |
+| P8  | **One `cljw` binary**                     | Single binary serves REPL / nREPL / eval / build / wasm-component-out.                                                                                 |
+| P9  | **One commit = one task**                 | Structural change and behavioural change live in separate commits. Never commit when tests are red.                                                    |
+| P10 | **Honour Zig 0.16 idioms**                | `std.Io` DI, `*std.Io.Writer`, packed struct, comptime, `@branchHint`, etc.                                                                            |
+| P11 | **Observable-semantics compatibility**    | Match what callers can observe; the inside of `.toString` is ours to choose.                                                                           |
+| P12 | **Dual backend from Phase 4 onward**      | TreeWalk and VM agree on every test, verified by `--compare` (CI mandatory; ADR-0005, ADR-0022).                                                       |
 
 ### 2.1 Architecture principles (verifiable)
 
@@ -1761,18 +1761,20 @@ skill with "続けて" / "/continue" / "resume"; the skill reads
 handover, finds the next task, runs tests, prints a brief summary,
 then **immediately enters the TDD loop and runs autonomously**.
 
-The TDD loop has seven steps per task:
+The TDD loop has seven steps per task (this table mirrors CLAUDE.md
+§ Autonomous Workflow — the **SSOT** for the loop procedure + stop model;
+change the procedure there, not here):
 
-| # | Step                  | Where                                      |
-|---|-----------------------|--------------------------------------------|
-| 0 | Survey                | Subagent (`general-purpose`)               |
-| 1 | Plan                  | Main                                       |
-| 2 | Red                   | Main                                       |
-| 3 | Green                 | Main                                       |
-| 4 | Refactor              | Main                                       |
-| 5 | Test gate (Mac+Linux) | Main or Subagent (Bash) if log > 200 lines |
-| 6 | Commit + push         | Main; atomic — push runs on every commit  |
-| 7 | Per-task note         | Main → `private/notes/<phase>-<task>.md`  |
+| # | Step                                      | Where                                      |
+|---|-------------------------------------------|--------------------------------------------|
+| 0 | Survey                                    | Subagent (`general-purpose`)               |
+| 1 | Plan                                      | Main                                       |
+| 2 | Red                                       | Main                                       |
+| 3 | Green                                     | Main                                       |
+| 4 | Refactor                                  | Main                                       |
+| 5 | Test gate (Mac smoke; full+Linux batched) | Main or Subagent (Bash) if log > 200 lines |
+| 6 | Commit + push                             | Main; atomic — push runs on every commit  |
+| 7 | Per-task note                             | Main → `private/notes/<phase>-<task>.md`  |
 
 Chapters (`docs/ja/learn_clojurewasm/NNNN_*.md`) are written **per
 concept** (every 3–5 source commits or at phase boundary), not
@@ -1786,9 +1788,10 @@ parallel subagents. The loop continues into §9.<N+1> immediately
 after the fan-out synthesises; the phase boundary is not a stop
 point.
 
-The loop stops only on the two CLAUDE.md § Autonomous Workflow
-closed conditions: explicit user request, or a physical block
-(unrecoverable build / test failure). ADR-level design choices are
+The loop stops on the SINGLE CLAUDE.md § The only stop condition:
+an explicit user request. Gate-red does NOT stop — the loop diagnoses
+and fixes in-flight; a genuinely underivable external fact uses an
+in-task AskUserQuestion, not a session stop. ADR-level design choices are
 handled inline (the AI drafts and accepts the ADR autonomously per
 CLAUDE.md "ADR-level designs are handled inline, not as a stop").
 Push to `main` runs on every commit as part of Step 6.
@@ -2065,17 +2068,17 @@ Project-specific:
 
 Phase 4 entry batch additions:
 
-| Term                     | Meaning                                                                                                                                                                                                                          |
-|--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Bad Smell**            | Mid-implementation "this feels off" signals catalogued in `.dev/principle.md`. Memory aid, not a checklist. Triggers Step 1 / 4 / 6 self-audit (per A23 / A24).                                                                  |
-| **depth (1-4)**          | Revision depth picked when a Bad Smell triggers: 1 local fix → 2 ADR amend → 3 ADR cascade → 4 Big rewrite. Per `.dev/principle.md`.                                                                                          |
-| **catalog Code**         | A variant of `Code` in `src/runtime/error_catalog.zig` identifying a user-facing message. Naming: `<target>_<state-adjective>` per ADR-0018 amendment 2.                                                                         |
-| **ClojureWasmError**     | The Zig error union returned by every `raise()` site in `src/runtime/error_catalog.zig` (per ADR-0018).                                                                                                                          |
-| **TypeDescriptor**       | cw v1's Option β `Class`-equivalent (per ADR-0007). Holds `fqcn` / `kind` / `field_layout` / `protocol_impls` / `method_table` / `parent` / `meta`.                                                                             |
-| **Tier D form**          | A form permanently excluded from cw v1 (per ADR-0013). Each Tier D form has a dedicated `tier_d_<form>` catalog Code with a hand-written user-helpful template.                                                                  |
-| **Phase open procedure** | The five-step move at a Phase boundary: promote Next Phase Queue → expand §9.<N+1> from placeholder → flip Phase tracker → commit `roadmap: open Phase <N+1> task list` → proceed (per `CLAUDE.md § Autonomous Workflow`). |
-| **Layer (test)**         | One of the 5 test layers in ADR-0021: Unit / E2E / Differential / Bench quick / Conformance.                                                                                                                                     |
-| **principle.md**         | `.dev/principle.md`: the meta layer above ROADMAP / ADR / CLAUDE.md. Defines premises, Bad Smell catalogue, depth 1-4, three questions to picture the finished form.                                                             |
+| Term                                         | Meaning                                                                                                                                                              |
+|----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Bad Smell**                                | Mid-implementation "this feels off" signals catalogued in `.dev/principle.md`. Memory aid, not a checklist. Triggers Step 1 / 4 / 6 self-audit (per A23 / A24).      |
+| **depth (1-4)**                              | Revision depth picked when a Bad Smell triggers: 1 local fix → 2 ADR amend → 3 ADR cascade → 4 Big rewrite. Per `.dev/principle.md`.                              |
+| **catalog Code**                             | A variant of `Code` in `src/runtime/error_catalog.zig` identifying a user-facing message. Naming: `<target>_<state-adjective>` per ADR-0018 amendment 2.             |
+| **ClojureWasmError**                         | The Zig error union returned by every `raise()` site in `src/runtime/error_catalog.zig` (per ADR-0018).                                                              |
+| **TypeDescriptor**                           | cw v1's Option β `Class`-equivalent (per ADR-0007). Holds `fqcn` / `kind` / `field_layout` / `protocol_impls` / `method_table` / `parent` / `meta`.                 |
+| **Tier D form**                              | A form permanently excluded from cw v1 (per ADR-0013). Each Tier D form has a dedicated `tier_d_<form>` catalog Code with a hand-written user-helpful template.      |
+| **Phase open procedure** (RETIRED, ADR-0142) | The former phase-boundary expansion move; superseded by the gap-area self-selection model (CLAUDE.md § When the active work unit completes).                        |
+| **Layer (test)**                             | One of the 5 test layers in ADR-0021: Unit / E2E / Differential / Bench quick / Conformance.                                                                         |
+| **principle.md**                             | `.dev/principle.md`: the meta layer above ROADMAP / ADR / CLAUDE.md. Defines premises, Bad Smell catalogue, depth 1-4, three questions to picture the finished form. |
 
 ---
 
