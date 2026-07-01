@@ -231,7 +231,7 @@ Severity: **watch** if count climbs > 10 net over a Phase boundary
 without matching discharge commits; **soon** if any single file
 carries > 3 markers (= concentrated rot).
 
-### E2.2 Marker / feature_deps.yaml / debt.yaml cross-reference
+### E2.2 Marker / data/feature_deps.yaml / debt.yaml cross-reference
 
 Every marker's `[refs: D-NNN, feature_deps.yaml#<key>]` must point
 at a real debt row + real yaml entry:
@@ -248,8 +248,8 @@ rg --no-heading -o 'PROVISIONAL:.*\[refs: ([^]]+)\]' src/ \
 # Refs that exist in debt.yaml
 grep -oE 'D-[0-9]+' .dev/debt.yaml | sort -u > /tmp/debt_refs.txt
 
-# Refs that exist in feature_deps.yaml
-grep -E '^  - name:' feature_deps.yaml \
+# Refs that exist in data/feature_deps.yaml
+grep -E '^  - name:' data/feature_deps.yaml \
   | sed -E 's/.*- name: *(.+)/feature_deps.yaml#\1/' \
   | sort -u > /tmp/yaml_refs.txt
 
@@ -283,9 +283,9 @@ features that will not land this phase. But each row should be
 checked against its `.dev/debt.yaml` close-out predicate; flip from
 "waiting" to "actionable" if the upstream landed.
 
-### E2.4 feature_deps.yaml ↔ marker round-trip
+### E2.4 data/feature_deps.yaml ↔ marker round-trip
 
-For every `status: provisional` entry in `feature_deps.yaml`, the
+For every `status: provisional` entry in `data/feature_deps.yaml`, the
 `provisional_markers:` field should match `rg 'feature_deps.yaml#<name>' src/`:
 
 ```sh
@@ -294,9 +294,9 @@ For every `status: provisional` entry in `feature_deps.yaml`, the
 # `feature_deps.yaml#clojure.set/rename-keys`) does NOT double-count
 # (review finding F2). `\b` would also work but is more permissive on `?`/`!`
 # suffixes that Clojure identifiers carry.
-yq '.entries[] | select(.status == "provisional") | .name' feature_deps.yaml \
+yq '.entries[] | select(.status == "provisional") | .name' data/feature_deps.yaml \
   | while read name; do
-      decl=$(yq ".entries[] | select(.name == \"$name\") | .provisional_markers[]" feature_deps.yaml 2>/dev/null | wc -l)
+      decl=$(yq ".entries[] | select(.name == \"$name\") | .provisional_markers[]" data/feature_deps.yaml 2>/dev/null | wc -l)
       grep=$(rg --no-heading -c "feature_deps\.yaml#${name}([], \t]|\$)" src/ 2>/dev/null \
              | awk -F: '{s+=$2} END {print s+0}')
       if [[ $decl -ne $grep ]]; then
@@ -318,14 +318,14 @@ landed` reclassification.
 ```sh
 # For each provisional entry: walk its requires_features + requires_debts;
 # if all features landed and all debts discharged, propose reclassify.
-yq -r '.entries[] | select(.status == "provisional") | .name' feature_deps.yaml \
+yq -r '.entries[] | select(.status == "provisional") | .name' data/feature_deps.yaml \
   | while read name; do
-      pending_features=$(yq -r ".entries[] | select(.name == \"$name\") | .requires_features[]?" feature_deps.yaml \
+      pending_features=$(yq -r ".entries[] | select(.name == \"$name\") | .requires_features[]?" data/feature_deps.yaml \
         | while read req; do
-            status=$(yq -r ".entries[] | select(.name == \"$req\") | .status" feature_deps.yaml)
+            status=$(yq -r ".entries[] | select(.name == \"$req\") | .status" data/feature_deps.yaml)
             [[ "$status" != "landed" ]] && echo "$req:$status"
           done)
-      pending_debts=$(yq -r ".entries[] | select(.name == \"$name\") | .requires_debts[]?" feature_deps.yaml \
+      pending_debts=$(yq -r ".entries[] | select(.name == \"$name\") | .requires_debts[]?" data/feature_deps.yaml \
         | while read drow; do
             # Discharged entries live under `discharged:` (or an `active:`
             # entry whose status starts DISCHARGED). Echo $drow only if NOT yet discharged.

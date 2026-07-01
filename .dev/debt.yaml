@@ -24,6 +24,22 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-546"
+    status: |-
+      open (2026-07-01). audit_scaffolding `CHECKS.md` E2.2/E2.4/E2.5 recipes read the
+      SSOT yaml by BARE path (`feature_deps.yaml` etc.); after the 2026-07-01 reorg moved
+      them to `data/`, the reads silently returned EMPTY so the checks FALSE-PASSED (a
+      `comm`/count over an empty set reports "no drift"). Surfaced by the multi-round
+      truth-audit workflow + adversarial verify. PATH FIX landed same cycle (recipes now
+      read `data/<yaml>`; proven bare=0 vs data/=30 entries). REMAINING (this row): make
+      the recipes FAIL-LOUD — assert each SSOT file exists before the read so a future
+      move can never silently pass again; sweep the rest of CHECKS.md / scripts for other
+      bare-path SSOT reads. Silent-failure smell class (cf. silent-failure-hunter).
+    category: "tooling"
+    barrier: |-
+      tractable now (no external block). Harden audit_scaffolding recipes to error on a
+      missing SSOT path; drain on a /continue quality-loop cycle.
+    last_reviewed: "2026-07-01"
   - id: "D-536"
     status: |-
       open (2026-07-01, user-directed; ADR-0167 S0). Debt-ledger code-truth

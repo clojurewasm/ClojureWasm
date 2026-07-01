@@ -16,8 +16,8 @@ because it implements a Clojure / Clojure-contrib API, so it is EPL-2.0.
 
 `src/lang/clj/cljw/**` is **out of scope**: those namespaces are
 ClojureWasm-original (no upstream lineage), so they carry no upstream
-attribution. `.zig` is clean-room; tree-level attribution is the root
-`NOTICE`.
+attribution. `.zig` is clean-room; tree-level attribution is
+`legal/NOTICE`.
 
 **Docstrings are not notices** — never edit a docstring for attribution
 reasons, even when its text is copied from upstream (that is what variant ①
@@ -107,7 +107,7 @@ carry the SPDX line, so the single check guarantees both.
 
 - `private/20260609_license_research/PROMPT.md` § B — the settled work order
   (judgement; this rule is its durable form) + `REPORT.md` (rationale).
-- root `NOTICE` — tree-level attribution (the import relationship +
+- `legal/NOTICE` — tree-level attribution (the import relationship +
   the two variant-① files).
 - `LICENSE` (EPL-2.0) — the project license.
 - `.claude/rules/framework_completion.md` — the discovery + sweep + retrofit
