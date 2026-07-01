@@ -18,9 +18,10 @@
 The CFP's differentiator is polyglot: WebAssembly as an FFI, so a Clojure REPL
 can `(wasm/load "add.wasm")` a module compiled from another language and
 `(wasm/call inst "add" 2 40)` → `42`. The Zig-level feasibility is already
-proven: the D-037 spike (`spike/zwasm_embed.zig`, `zig build zwasm-spike`)
-consumes zwasm v2's embedding API via a `build.zig.zon` relative-path import
-and returns `42`. What is missing is the **Clojure-level surface**.
+proven: the D-037 spike (`spike/zwasm_embed.zig`, `zig build zwasm-spike` —
+both removed 2026-07-01 once the Phase-16 FFI shipped) consumed zwasm v2's
+embedding API via a `build.zig.zon` relative-path import and returned `42`.
+What is missing is the **Clojure-level surface**.
 
 F-001 is the governing constraint. zwasm v2 is under active AI development on
 its `zwasm-from-scratch` long-lived branch; the loop **must not** make cljw's

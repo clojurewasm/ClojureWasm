@@ -49,8 +49,8 @@ a cljw-side shim.
   no-push) once zwasm cut the pinnable tag (3-host green) — so the no-push mode is
   LIFTED and cljw pushes `main` again. The tag is annotated, tag-only (no GitHub
   Release), so it is reproducible for others without disturbing the `Latest` pointer.
-- `lazy` dependency: the default build + gate never resolve it; only `-Dwasm` /
-  `-Dzwasm-spike` do. So a churning dep never breaks the day-to-day gate — it
+- `lazy` dependency: resolved only under `-Dwasm`. So a churning dep never
+  breaks the day-to-day gate when the flag is off — it
   only gates what `cljw.wasm/*` can do.
 - Pin-bump (to a newer tag/SHA): zwasm `docs/consuming_prerelease_zwasm.md`. Re-pin is
   **user-gated** (a moving north-star API; the loop proposes, the user confirms).

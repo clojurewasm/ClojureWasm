@@ -126,29 +126,6 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_exe_tests.step);
 
-    // `zig build zwasm-spike` — D-037 / F-001 zwasm v2 embedding spike.
-    // Behind `-Dzwasm-spike` + a LAZY path-dep (build.zig.zon) so the default
-    // build + `bash test/run_all.sh` gate never resolve zwasm (which is under
-    // active dev on its `zwasm-from-scratch` branch — a churning tree must not
-    // break cljw's gate). Proves cljw can consume zwasm's Zig embedding API via
-    // a relative-path import. `b.lazyDependency` returns null on the first pass
-    // if a fetch is needed (Zig re-runs build); skip the step until it resolves.
-    const zwasm_spike = b.option(bool, "zwasm-spike", "Build + run the zwasm v2 embedding spike (D-037).") orelse false;
-    if (zwasm_spike) {
-        if (b.lazyDependency("zwasm", .{ .target = target, .optimize = optimize })) |zw| {
-            const spike_mod = b.createModule(.{
-                .root_source_file = b.path("spike/zwasm_embed.zig"),
-                .target = target,
-                .optimize = optimize,
-            });
-            spike_mod.addImport("zwasm", zw.module("zwasm"));
-            const spike_exe = b.addExecutable(.{ .name = "zwasm-spike", .root_module = spike_mod });
-            const run_spike = b.addRunArtifact(spike_exe);
-            const spike_step = b.step("zwasm-spike", "Build + run the zwasm v2 embedding spike (D-037).");
-            spike_step.dependOn(&run_spike.step);
-        }
-    }
-
     // `zig build lint` — zlinter rule chain (ADR-0003).
     // Runs where zlinter can be fetched from GitHub; the gate skips it on
     // hosts without network reach. Run with `--max-warnings 0` for strict
