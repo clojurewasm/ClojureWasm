@@ -526,7 +526,7 @@ end of all phases is fixed below. Phase 1 stubs out the directories; later
 phases fill the contents without adding new directories.
 
 ```
-ClojureWasm/                         (working dir on disk: ClojureWasmFromScratch/)
+ClojureWasm/                         (working dir on disk)
 ├── src/
 │   ├── runtime/                    [Layer 0]
 │   │   ├── runtime.zig             Runtime handle (io, gpa, keywords, gc, interop, vtable)
@@ -1791,8 +1791,7 @@ closed conditions: explicit user request, or a physical block
 (unrecoverable build / test failure). ADR-level design choices are
 handled inline (the AI drafts and accepts the ADR autonomously per
 CLAUDE.md "ADR-level designs are handled inline, not as a stop").
-Push to `cw-from-scratch` runs on every commit as part of Step 6;
-push to `main` is forbidden.
+Push to `main` runs on every commit as part of Step 6.
 
 ---
 
@@ -1803,7 +1802,7 @@ If `.claude/CLAUDE.md` and this file conflict, this file wins.
 - ❌ Branching code in existing `.clj`/`.zig` for a Tier-D library (§6.4)
 - ❌ Ad-hoc workarounds to make a test pass (§11.4)
 - ❌ Committing with `--no-verify`
-- ❌ `git push --force` to `cw-from-scratch`
+- ❌ `git push --force` to `main`
 - ❌ `git reset --hard` to throw away commits
 - ❌ No-op stubs that mask missing semantics
   (per `.claude/rules/no_op_stub_forbidden.md`)
@@ -1815,11 +1814,9 @@ If `.claude/CLAUDE.md` and this file conflict, this file wins.
 - ❌ Letting any single file drift past 2,000 lines without a
   `FILE-SIZE-EXEMPT` marker (per ADR-0016)
 - ❌ Running with only one backend after Phase 4 (per ADR-0005)
-- ❌ Pushing to `main` (push to `cw-from-scratch` is automatic per
-  Step 6; only `main` is the forbidden target)
-- ❌ Leaving local commits on `cw-from-scratch` unpushed (Step 6
-  pushes immediately; accumulation invites a "should I push?"
-  pseudo-decision that the closed stop list does not authorise)
+- ❌ Leaving local commits on `main` unpushed (Step 6 pushes
+  immediately; accumulation invites a "should I push?" pseudo-decision
+  that the closed stop list does not authorise)
 - ❌ Writing a doc commit that omits any unpaired source SHA from `commits:` (§12.2 Rule 2)
 - ❌ Mixing source and a `docs/ja/learn_clojurewasm/NNNN_*.md` in the same commit (§12.2 Rule 1)
 
@@ -2014,17 +2011,17 @@ ADR-0033) + `compat_tiers.yaml` (var/class tier). The originally-planned
 
 ### 15.2 Local reference clones (already present)
 
-| Path                                                               | Purpose                                                                                                 |
-|--------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
-| `~/Documents/MyProducts/ClojureWasm/`                              | ClojureWasm v1 (89K LOC, v0.5.0). Design reference.                                                     |
-| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/`            | Previous redesign attempt (Phase 1+2). Implementation reference for Runtime handle, NaN boxing, Reader. |
-| `~/Documents/OSS/clojure/`                                         | Upstream Clojure JVM. core.clj / LispReader.java / Numbers.java.                                        |
-| `~/Documents/OSS/babashka/`                                        | Babashka (SCI-based). Pod / native / compatibility precedent.                                           |
-| `~/Documents/OSS/spec.alpha/`                                      | clojure.spec.alpha source.                                                                              |
-| `~/Documents/OSS/zig/`                                             | Zig stdlib source.                                                                                      |
-| `~/Documents/OSS/wasmtime/`                                        | Wasm runtime reference.                                                                                 |
-| `~/Documents/OSS/malli/`                                           | Spec alternative.                                                                                       |
-| `~/Documents/OSS/mattpocock_skills/improve-codebase-architecture/` | Module/Interface/Depth vocabulary and deepening principles.                                             |
+| Path                                                               | Purpose                                                                                                                             |
+|--------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| cw v0 — git tag `v0.5.0`                                          | ClojureWasm v0 (89K LOC). Design reference; NOT in `main`'s tree (`-s ours` merge) — reach via `git worktree add ../cw-v0 v0.5.0`. |
+| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/`            | Previous redesign attempt (Phase 1+2). Implementation reference for Runtime handle, NaN boxing, Reader.                             |
+| `~/Documents/OSS/clojure/`                                         | Upstream Clojure JVM. core.clj / LispReader.java / Numbers.java.                                                                    |
+| `~/Documents/OSS/babashka/`                                        | Babashka (SCI-based). Pod / native / compatibility precedent.                                                                       |
+| `~/Documents/OSS/spec.alpha/`                                      | clojure.spec.alpha source.                                                                                                          |
+| `~/Documents/OSS/zig/`                                             | Zig stdlib source.                                                                                                                  |
+| `~/Documents/OSS/wasmtime/`                                        | Wasm runtime reference.                                                                                                             |
+| `~/Documents/OSS/malli/`                                           | Spec alternative.                                                                                                                   |
+| `~/Documents/OSS/mattpocock_skills/improve-codebase-architecture/` | Module/Interface/Depth vocabulary and deepening principles.                                                                         |
 
 ### 15.3 Official docs (web)
 

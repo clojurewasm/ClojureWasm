@@ -9,7 +9,7 @@ paths:
 
 ## Rule
 
-Do not copy cw v0 (`~/Documents/MyProducts/ClojureWasm/`) code verbatim.
+Do not copy cw v0 (git tag `v0.5.0`) code verbatim.
 Read v0 as a read-only reference and re-derive semantics in Zig 0.16
 idiom.
 
@@ -38,7 +38,7 @@ When they differ, an ADR justifies the divergence.
 
 ## Counter-example
 
-Avoid: `cp ~/Documents/MyProducts/ClojureWasm/src/lang/builtins/collections.zig src/runtime/collection/vector.zig`
+Avoid: `cp ../cw-v0/src/lang/builtins/collections.zig src/runtime/collection/vector.zig` (where `../cw-v0` is a `git worktree add ../cw-v0 v0.5.0`)
 
 Do instead: Read v0 collections.zig persistent vector section, understand
 HAMT shift=5 + tail array design (per ADR-0007 TypeDescriptor and

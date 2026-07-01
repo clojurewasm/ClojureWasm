@@ -53,7 +53,7 @@ orb run -m my-ubuntu-amd64 bash -c 'zig version'   # → 0.16.0
 ```
 
 OrbStack mirrors `/Users/<you>` into the VM transparently, so the
-project tree at `/Users/<you>/.../ClojureWasmFromScratch/` is
+project tree at `/Users/<you>/.../ClojureWasm/` is
 visible from inside the VM at the **same path** with no `-v` /
 sync configuration.
 

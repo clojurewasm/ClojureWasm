@@ -136,7 +136,6 @@ Severity: **block** if Active claim is unwired.
 # additionalDirectories. If a path drifts, fix one of those two and
 # refresh this list.
 for path in \
-  ~/Documents/MyProducts/ClojureWasm \
   ~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref \
   ~/Documents/OSS/clojure \
   ~/Documents/OSS/babashka \

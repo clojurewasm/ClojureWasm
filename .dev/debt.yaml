@@ -43,27 +43,6 @@ active:
       rc.1 readiness gate (finite). Per /continue: reconcile a batch of active:
       rows vs code truth; delete RESOLVED-on-open rows (git retains history).
     last_reviewed: "2026-07-01"
-  - id: "D-538"
-    status: |-
-      PARTIAL 2026-07-01 (ADR-0167 S2). Loop-ownable parts DONE:
-      scripts/run_remote_ubuntu.sh host+dir → ${CLJW_UBUNTU_HOST:-ubuntunote} /
-      ${CLJW_REMOTE_DIR:-...} (behavior-preserving defaults; all `ssh $HOST`);
-      the 2 src path-leak comments generalized (agent.zig:213 "Mac vs ubuntunote"
-      → "host- and scheduler-dependent"; stm/tval.zig:17 dropped the author-local
-      `~/Documents/OSS/.../Ref.java:64-69` absolute path, kept the useful
-      `clojure.lang.Ref.TVal` upstream reference). REMAINING (non-autonomous,
-      `.claude/`-edit-blocked): move the personal `additionalDirectories`
-      (`~/Documents/MyProducts/`, `~/Documents/OSS/`) in .claude/settings.json to
-      the gitignored settings.local.json — surfaced to the user (the auto-mode
-      self-modification classifier denies `.claude/` edits; memory
-      claude_rules_edit_permission_block).
-    category: "infra"
-    quality_floor: "release-mechanics: env decoupling (ADR-0167)"
-    barrier: |-
-      rc.1 readiness gate (finite) — but the residual (settings.json move) is
-      the `.claude/`-edit-blocked non-autonomous remainder; a USER action, not a
-      loop blocker. The finite gate treats D-538's loop-ownable half as done.
-    last_reviewed: "2026-07-01"
   - id: "D-522"
     status: |-
       open (2026-06-24, user-directed; ADR-0166 public-ization sweep). Comment
@@ -2584,6 +2563,16 @@ standing:
     barrier: "open after the D-440 arc completes (R4 + R5 must first rewrite the bulk of 'Phase N' citations to gap-area terms). Premature adoption = ~70 dangling citations with no 1:1 redirect. Trigger: D-440 R4/R5 done + a user nod to re-architect the planning axis (it is depth-4, the project's organizing metaphor)."
     last_reviewed: "2026-06-15"
 discharged:
+  - id: "D-545"
+    status: "DISCHARGED 2026-07-01 (user-directed audit). Exhaustive audit + cleanup of stale `ClojureWasmFromScratch` (working-dir name) + `cw-from-scratch` (merged branch) references ahead of the user's planned dir move (delete this dir; checkout `main` into `~/Documents/MyProducts/ClojureWasm`). git-grep audit of the tracked tree + the memory dir. FIXED (active scaffolding): CLAUDE.md Identity/Context rewritten (working dir = ClojureWasm, branch = main, no more 'keeps from-scratch name' narrative); ROADMAP §13 push-rules (cw-from-scratch→main; the stale '❌ push to main' inversion removed) + the working-dir diagram note + reference table; scripts/run_remote_ubuntu.sh REMOTE_DIR default → ClojureWasm; .dev/{reference_clones,ubuntunote_setup,orbstack_setup,structure_plan,v0_v1_feature_parity,decisions/0049}; docs/works/ladder.md; .claude/{rules/no_copy_from_v1,rules/textbook_survey,skills/audit_scaffolding/CHECKS,skills/code_learning_doc/TEMPLATE_*} (editable now that auto-mode is on). v0-reference reframed per user: cw v0 = git tag `v0.5.0` reached via `git worktree add ../cw-v0 v0.5.0` (NOT a live `~/Documents/MyProducts/ClojureWasm/` path — that becomes the working dir; the `-s ours` merge kept the redesign tree). D-538's residual (personal additionalDirectories → gitignored settings.local.json) done in the same pass. PRESERVED as history (user decision): docs/ja/archive/** + .dev/archive/** (frozen relics, ADR-0025), .dev/debt.yaml discharged-row history, project_facts.md verbatim user quotes, decisions/0006 narrative, docs/ja/README archive-era label, and `ClojureWasmFromScratch_v1_ref` (a separate valid clone). `zwasm_from_scratch` untouched (separate live repo). Descriptive 'from-scratch runtime' (clojure_vs/RELEASE_METRICS) kept (= 'built from scratch', not the dir name). USER ACTION FLAGGED: the harness memory dir is path-keyed (`-Users-…-ClojureWasmFromScratch`); after the move it must be relocated to `-Users-…-ClojureWasm` or the project memories are lost (6 memory files carry historical `cw-from-scratch` context, left as-is)."
+    category: "docs"
+    barrier: "none — DISCHARGED (active refs fixed; archive/verbatim preserved as history; memory-dir relocation is a flagged user action)."
+    last_reviewed: "2026-07-01"
+  - id: "D-538"
+    status: "DISCHARGED 2026-07-01 (ADR-0167 S2). Personal-environment decoupling COMPLETE. Loop-ownable parts (earlier): scripts/run_remote_ubuntu.sh host+dir → ${CLJW_UBUNTU_HOST}/${CLJW_REMOTE_DIR} env defaults; 2 src path-leak comments generalized (agent.zig, stm/tval.zig). FINAL part (done once auto-mode unblocked `.claude/` edits, 2026-07-01): moved the personal `additionalDirectories` (`~/Documents/MyProducts/`, `~/Documents/OSS/`) out of the committed .claude/settings.json into the gitignored .claude/settings.local.json (both JSON re-validated). No personal-env coupling remains in shipped/committed files."
+    category: "infra"
+    barrier: "none — DISCHARGED."
+    last_reviewed: "2026-07-01"
   - id: "D-544"
     status: "DISCHARGED 2026-07-01 (ADR-0167; CI green both legs). The D-539 CI's first runs FAILED — a dev-env REPRODUCIBILITY gap, not a code bug: gate scripts assumed Nix-devshell/dev-Mac tools absent on bare runners. FIXED across 2 iters: check_test_reach mapfile→portable read loop (bash 3.2); check_corpus_regression + check_lazy_ns_replay `timeout`→`run_bounded` (timeout→gtimeout→unbounded); ripgrep install-if-missing in CI + ripgrep/coreutils added to flake.nix (nix users + bare clones both covered). A full sweep of the 8 gate check_*.sh confirmed those were the only tool-gaps. EFFICIENCY: actions/cache of the Zig global cache (deps zwasm/zlinter — HIT confirmed) + `.zig-cache`; two-tier gate (push/PR = fast core smoke, nightly cron + dispatch = full serial-e2e) per ADR-0107 + ADR-0049 — so routine pushes skip the 398-step e2e. VERIFIED: run 28506339320 GREEN on x86_64-linux + aarch64-macos. HONEST residual: a warm run is still ~15 min because the 3 core ReleaseSafe builds (test-vm + test-tree_walk + build_cljw of cljw+zwasm) dominate — the cache saves the dep FETCH, not the compile; Zig's cross-run build-cache reuse via a copied .zig-cache is limited. Further cut would need fewer core builds (a separate lever, not opened). Bare-clone contributors on stock macOS/Linux now pass the gate scripts (portability guard)."
     category: "infra"

@@ -20,7 +20,7 @@ Survey-time mapping:
 
 - **Always** when introducing a Clojure feature: `~/Documents/OSS/clojure/`
   (`clojure/lang/*.java` + `clojure/core.clj`) for canonical
-  semantics; `~/Documents/MyProducts/ClojureWasm/` (cw v0) for
+  semantics; cw v0 (git tag `v0.5.0`, via `git worktree add ../cw-v0 v0.5.0`) for
   prior-art and known pain points.
 - **When the file exists under same name in v1_ref**: read
   `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/`.
@@ -46,8 +46,8 @@ subagent writes the survey note directly. Use this brief shape:
 
 ```
 Survey how <CONCEPT> is implemented in:
-  - ~/Documents/MyProducts/ClojureWasm  (v1)
-  - ~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref  (v1_ref)
+  - ../cw-v0  (cw v0 — `git worktree add ../cw-v0 v0.5.0`)
+  - ~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref  (v1_ref, if present)
   - ~/Documents/OSS/<relevant>          (upstream)
 
 Return 200–400 lines:

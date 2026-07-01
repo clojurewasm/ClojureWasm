@@ -5,7 +5,9 @@ Never edit or commit from them. Code reading only.
 
 ## Primary references (cw lineage)
 
-- `~/Documents/MyProducts/ClojureWasm/` — **cw v0** (89K LOC, tag v0.5.0)
+- **cw v0** — git tag `v0.5.0` (89K LOC). NOT in `main`'s tree (the `-s ours`
+  redesign merge kept the redesign tree), so reach it through git rather than a
+  live path: `git worktree add ../cw-v0 v0.5.0`, or `git show v0.5.0:<path>`.
   - Use: feature contrast, interop boundary inspection, audit reference for known pain points
   - NOT to copy verbatim (per `.claude/rules/no_copy_from_v1.md`)
 - `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/` — **Phase 1+2 reference**

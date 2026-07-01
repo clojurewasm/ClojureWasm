@@ -3,10 +3,6 @@
   "outputStyle": "Japanese",
   "model": "claude-opus-4-8",
   "permissions": {
-    "additionalDirectories": [
-      "~/Documents/MyProducts/",
-      "~/Documents/OSS/"
-    ],
     "allow": [
       "Agent",
       "Bash",

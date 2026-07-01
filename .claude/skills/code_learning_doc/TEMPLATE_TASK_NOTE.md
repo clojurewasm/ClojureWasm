@@ -23,8 +23,8 @@ files:
 
 ## 教科書との対比
 
-- **v1** (`~/Documents/MyProducts/ClojureWasm/...`):
-  <v1 はどうしているか、ファイル名 + 1 行>
+- **cw v0** (git tag `v0.5.0`, via `git worktree add ../cw-v0 v0.5.0`):
+  <cw v0 はどうしているか、ファイル名 + 1 行>
 - **v1_ref** (`~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/...`):
   <前回はどうしていたか>
 - **Clojure JVM / Babashka / Zig stdlib**:

@@ -16,7 +16,7 @@
 # Prerequisites:
 #   - SSH alias `ubuntunote` (see `.dev/ubuntunote_setup.md`).
 #   - cw repository cloned at
-#     `~/Documents/MyProducts/ClojureWasmFromScratch` with
+#     `~/Documents/MyProducts/ClojureWasm` with
 #     `origin` pointing at `https://github.com/clojurewasm/ClojureWasm`.
 #   - Nix (Determinate Systems installer) on ubuntunote so
 #     `nix develop` reads the project's `flake.nix` and provides
@@ -34,7 +34,7 @@ cd "$(dirname "$0")/.."
 # setup). A different maintainer points HOST at their own SSH alias and
 # REMOTE_DIR at their clone path; external clones use CI for multi-OS coverage.
 HOST="${CLJW_UBUNTU_HOST:-ubuntunote}"
-REMOTE_DIR="${CLJW_REMOTE_DIR:-Documents/MyProducts/ClojureWasmFromScratch}"
+REMOTE_DIR="${CLJW_REMOTE_DIR:-Documents/MyProducts/ClojureWasm}"
 REMOTE_BRANCH="main"
 if [ "${1:-}" = "--branch" ]; then
     if [ -z "${2:-}" ]; then

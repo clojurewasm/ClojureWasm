@@ -52,7 +52,7 @@ TDD cycles. Cross-arch / cross-OS portability validation moves to:
    release tag, and on demand during a feature branch's late
    stages. Drives the `ubuntunote` SSH host (native x86_64 Linux,
    physical hardware) via `git fetch + reset --hard
-   origin/cw-from-scratch` + `nix develop --command bash test/run_all.sh`.
+   origin/main` + `nix develop --command bash test/run_all.sh`.
    Setup procedure at `.dev/ubuntunote_setup.md`.
 2. **Future CI integration** — a GitHub Actions / equivalent
    workflow that runs the gate on `ubuntu-latest` for every push
@@ -71,8 +71,8 @@ The migration was implemented + verified within the same cycle:
    'echo ok && nix --version'` returns `ok` + `Determinate Nix
    3.20.0`.
 2. **cw repository clone** landed on ubuntunote:
-   `~/Documents/MyProducts/ClojureWasmFromScratch` via
-   `git clone -b cw-from-scratch
+   `~/Documents/MyProducts/ClojureWasm` via
+   `git clone -b main
    https://github.com/clojurewasm/ClojureWasm.git` (HTTPS is
    sufficient for the read-only fetch flow; mirrors zwasm's
    clone pattern).

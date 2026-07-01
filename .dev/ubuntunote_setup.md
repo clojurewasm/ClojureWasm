@@ -65,8 +65,8 @@ inherits that host unchanged; only the **clone step** differs.
 ```bash
 ssh ubuntunote
 cd ~/Documents/MyProducts
-git clone -b main https://github.com/clojurewasm/ClojureWasm.git ClojureWasmFromScratch
-cd ClojureWasmFromScratch
+git clone -b main https://github.com/clojurewasm/ClojureWasm.git ClojureWasm
+cd ClojureWasm
 nix develop --command zig version   # should print 0.16.0
 ```
 

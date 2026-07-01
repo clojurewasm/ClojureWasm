@@ -4,7 +4,7 @@ Ranked by pure-Clojure degree (1 = zero host interop, easiest/earliest;
 5 = threads / java.io / reflection-heavy). See `README.md` for the method,
 the load mechanism (`-cp` manual classpath), and the status vocabulary.
 
-Probed on cljw built from `cw-from-scratch` (2026-06-06). Rows marked
+Probed on cljw built from `main` (2026-06-06). Rows marked
 **loads / partial / fails** were actually `require`'d; rows marked
 **not-probed** are static source inspection only. As of Stage 1.2,
 deps.edn resolution works (`:paths`/`:local/root`/`:aliases`/`:git/url`),

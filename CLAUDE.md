@@ -66,31 +66,26 @@ forbidden.
 **Project name (in all docs and the published artifact): `ClojureWasm`.**
 Binary name: `cljw`. Package name: `cljw`.
 
-The working directory keeps the `from-scratch` name because **this codebase
-is a ground-up redesign of ClojureWasm on top of the v0.5.0 git history**.
-On **2026-06-10 the redesign was merged into `main`** (an `-s ours` merge
-superseding the v0.5.0 main + its libc hotfix; v0.5.0 tag preserved), so
-`main` is now the working branch:
+This codebase is a ground-up redesign of ClojureWasm on top of the v0.5.0 git
+history. On **2026-06-10 the redesign was merged into `main`** (an `-s ours`
+merge superseding the v0.5.0 main + its libc hotfix; the `v0.5.0` tag is
+preserved), and `main` is the working branch:
 
-- **Working directory**: `~/Documents/MyProducts/ClojureWasmFromScratch/`
-  — the dir name keeps `from-scratch` (intentionally unchanged for now);
-  distinct from the `~/Documents/MyProducts/ClojureWasm/` reference clone.
+- **Working directory**: `~/Documents/MyProducts/ClojureWasm/`.
 - **Branch**: `main` — the working branch. **All work happens on `main`**
   and every commit is followed immediately by `git push origin main` in the
-  same Step 6 — commits do not accumulate locally. (The old `cw-from-scratch`
-  branch == `main` after the merge and is kept only as a historical alias;
-  do not commit to it. Pushing to `main` is now expected, not forbidden.)
+  same Step 6 — commits do not accumulate locally.
 - **Git remote**: `git@github.com:clojurewasm/ClojureWasm.git`.
 
-### Read-only reference clones (do not edit, do not commit from)
+### Read-only reference points (do not edit, do not commit from)
 
-| Path                                                    | What it is                            |
-|---------------------------------------------------------|---------------------------------------|
-| `~/Documents/MyProducts/ClojureWasm/`                   | ClojureWasm v1 (89K LOC, v0.5.0)      |
-| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/` | Previous redesign attempt (Phase 1+2) |
-| `~/Documents/OSS/clojure/`                              | Upstream Clojure JVM source           |
-| `~/Documents/OSS/babashka/`                             | Babashka (SCI-based)                  |
-| `~/Documents/OSS/zig/`                                  | Zig stdlib source                     |
+| Reference                                               | What it is                                                                                                                                                                                                                              |
+|---------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| cw v0 — git tag `v0.5.0`                               | ClojureWasm v0 (89K LOC), the pre-redesign design reference. Its source is NOT in `main`'s tree (the `-s ours` merge kept the redesign tree), so reach it through git: `git worktree add ../cw-v0 v0.5.0`, or `git show v0.5.0:<path>`. |
+| `~/Documents/MyProducts/ClojureWasmFromScratch_v1_ref/` | Previous redesign attempt (Phase 1+2), if present locally.                                                                                                                                                                              |
+| `~/Documents/OSS/clojure/`                              | Upstream Clojure JVM source                                                                                                                                                                                                             |
+| `~/Documents/OSS/babashka/`                             | Babashka (SCI-based)                                                                                                                                                                                                                    |
+| `~/Documents/OSS/zig/`                                  | Zig stdlib source                                                                                                                                                                                                                       |
 
 ## Language policy
 

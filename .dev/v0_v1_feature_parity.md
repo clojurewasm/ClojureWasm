@@ -2,7 +2,7 @@
 
 Convergence Campaign Stage 0.2 deliverable. Enumerates every v0 (ClojureWasm
 v0.5.0, the read-only reference clone) bundled namespace + app feature and maps
-each to its v1 (`cw-from-scratch`) status, with the owning debt row (or
+each to its v1 (`main`) status, with the owning debt row (or
 `NEEDS-ROW` where none exists yet). Generated 2026-06-06.
 
 Method: v0 namespaces read from `src/lang/lib/*.zig` `namespace_def.name` (31

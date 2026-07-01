@@ -75,7 +75,7 @@ Built 2026-05-24 from:
 ## Future tree (Phase 5-20)
 
 ```
-ClojureWasmFromScratch/
+ClojureWasm/
 ├─ build.zig
 ├─ build.zig.zon
 ├─ CLAUDE.md
