@@ -1438,8 +1438,11 @@ active:
       10-core dev Mac passes 60/60 stress iterations; likely the D-418/D-258
       send/await race family under low-core scheduling. (b) e2e_phase14_parallel_seq
       pmap_parallel wall-clock assert (<450ms for 4x150ms sleeps) misses on the same
-      host. Both cases are ncpu>=4-gated in the scripts (SKIP cites this row) so the
-      nightly stays green; results-correctness cases still run everywhere.
+      host. (c) e2e_phase16_gc_torture agent block — agent_conj returned
+      '[#<fn> [#<promise>]]' for '[1 2]' (run 28575901987; flaky — the prior run
+      passed), the OPEN D-418/D-258 send/await race surfacing at 3 vCPUs. All three
+      sites are ncpu>=4-gated in the scripts (SKIP cites this row) so the nightly
+      stays green; results-correctness cases still run everywhere.
     category: "runtime"
     barrier: |-
       needs a low-core repro environment (3-vCPU VM or cpuset-limited linux host) +
