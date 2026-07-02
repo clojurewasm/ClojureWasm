@@ -43,26 +43,35 @@ fn resolveNs(env: *Env, v: Value) ?*Namespace {
     };
 }
 
+/// Resolve `v` to a Namespace or raise the CATCHABLE the-ns error shape.
+/// clj routes every ns-taking reflection fn through `the-ns`, so a missing
+/// namespace / wrong-typed argument is a normal catchable Exception there —
+/// NOT a feature gap. Real libraries rely on that for capability probes
+/// (instaparse's `(try (ns-resolve (find-ns 'rhizome.dot) …) (catch Exception
+/// e nil))`), so raising the uncatchable `feature_not_supported` here turned
+/// a graceful upstream fallback into a hard load failure (D-430 finding).
+fn resolveNsOrRaise(env: *Env, v: Value, comptime fn_name: []const u8, loc: SourceLocation) anyerror!*Namespace {
+    if (resolveNs(env, v)) |ns| return ns;
+    // clj distinguishes (both catchable): a SYMBOL naming no namespace →
+    // "No namespace: X" (name_error); any other type → ClassCastException.
+    if (v.tag() == .symbol)
+        return error_catalog.raise(.namespace_unknown, loc, .{ .ns = symbol_mod.asSymbol(v).name });
+    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "a namespace or a symbol", .actual = @tagName(v.tag()) });
+}
+
 /// `(the-ns x)` — `x` if it is a Namespace; the named ns if `x` is a symbol;
 /// throws if the symbol names no ns. Spec: clojure.core/the-ns.
 pub fn theNsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     try error_catalog.checkArity("the-ns", args, 1, loc);
-    if (args[0].tag() == .ns) return args[0];
-    if (resolveNs(env, args[0])) |ns| return Env.nsValue(ns);
-    // clj distinguishes (both catchable): a SYMBOL naming no namespace →
-    // "No namespace: X" (name_error); any other type → ClassCastException.
-    if (args[0].tag() == .symbol)
-        return error_catalog.raise(.namespace_unknown, loc, .{ .ns = symbol_mod.asSymbol(args[0]).name });
-    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "the-ns", .expected = "a namespace or a symbol", .actual = @tagName(args[0].tag()) });
+    return Env.nsValue(try resolveNsOrRaise(env, args[0], "the-ns", loc));
 }
 
 /// `(ns-name ns)` — the namespace's name as a symbol. Accepts a ns or a symbol
 /// (via the-ns, like clj `(.name (the-ns ns))`). Spec: clojure.core/ns-name.
 pub fn nsNameFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("ns-name", args, 1, loc);
-    const ns = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-name on a non-namespace" });
+    const ns = try resolveNsOrRaise(env, args[0], "ns-name", loc);
     return symbol_mod.intern(rt, null, ns.name);
 }
 
@@ -82,7 +91,7 @@ pub fn createNsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     _ = rt;
     try error_catalog.checkArity("create-ns", args, 1, loc);
     if (args[0].tag() != .symbol)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "create-ns on a non-symbol" });
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "create-ns", .expected = "a symbol", .actual = @tagName(args[0].tag()) });
     const ns = try env.findOrCreateNs(symbol_mod.asSymbol(args[0]).name);
     return Env.nsValue(ns);
 }
@@ -96,10 +105,9 @@ pub fn createNsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 pub fn internFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     try error_catalog.checkArityRange("intern", args, 2, 3, loc);
-    const ns = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "intern into a non-namespace / unknown ns" });
+    const ns = try resolveNsOrRaise(env, args[0], "intern", loc);
     if (args[1].tag() != .symbol)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "intern with a non-symbol name" });
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "intern", .expected = "a symbol name", .actual = @tagName(args[1].tag()) });
     const name = symbol_mod.asSymbol(args[1]).name;
     const v = if (args.len == 3)
         try env.intern(ns, name, args[2], null)
@@ -138,8 +146,7 @@ fn mapOfVars(rt: *Runtime, vm: *const env_mod.VarMap, publics_only: bool) !Value
 /// refers). Spec: clojure.core/ns-interns.
 pub fn nsInternsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("ns-interns", args, 1, loc);
-    const ns = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-interns on a non-namespace" });
+    const ns = try resolveNsOrRaise(env, args[0], "ns-interns", loc);
     return mapOfVars(rt, &ns.mappings, false);
 }
 
@@ -147,8 +154,7 @@ pub fn nsInternsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 /// Spec: clojure.core/ns-publics.
 pub fn nsPublicsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("ns-publics", args, 1, loc);
-    const ns = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-publics on a non-namespace" });
+    const ns = try resolveNsOrRaise(env, args[0], "ns-publics", loc);
     return mapOfVars(rt, &ns.mappings, true);
 }
 
@@ -160,8 +166,7 @@ pub fn nsPublicsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 pub fn nsImportsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     try error_catalog.checkArity("ns-imports", args, 1, loc);
-    _ = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-imports on a non-namespace" });
+    _ = try resolveNsOrRaise(env, args[0], "ns-imports", loc);
     return map_collection.empty();
 }
 
@@ -169,8 +174,7 @@ pub fn nsImportsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 /// Spec: clojure.core/ns-map.
 pub fn nsMapFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("ns-map", args, 1, loc);
-    const ns = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-map on a non-namespace" });
+    const ns = try resolveNsOrRaise(env, args[0], "ns-map", loc);
     var m = try mapOfVars(rt, &ns.mappings, false);
     var it = ns.refers.iterator();
     while (it.next()) |entry| {
@@ -187,7 +191,7 @@ pub fn findVarFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     _ = rt;
     try error_catalog.checkArity("find-var", args, 1, loc);
     if (args[0].tag() != .symbol or symbol_mod.asSymbol(args[0]).ns == null)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "find-var needs a namespace-qualified symbol" });
+        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "find-var", .expected = "a namespace-qualified symbol", .actual = @tagName(args[0].tag()) });
     const sym = symbol_mod.asSymbol(args[0]);
     const ns = env.findNs(sym.ns.?) orelse
         return error_catalog.raise(.namespace_unknown, loc, .{ .ns = sym.ns.? });
@@ -200,8 +204,7 @@ pub fn findVarFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
 /// Spec: clojure.core/ns-refers (the refers-only counterpart of `ns-map`).
 pub fn nsRefersFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("ns-refers", args, 1, loc);
-    const ns = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-refers on a non-namespace" });
+    const ns = try resolveNsOrRaise(env, args[0], "ns-refers", loc);
     var m = map_collection.empty();
     var it = ns.refers.iterator();
     while (it.next()) |entry| {
@@ -218,8 +221,7 @@ pub fn nsRefersFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 pub fn nsResolveFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     try error_catalog.checkArity("ns-resolve", args, 2, loc);
-    const ns = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-resolve on a non-namespace" });
+    const ns = try resolveNsOrRaise(env, args[0], "ns-resolve", loc);
     if (args[1].tag() != .symbol) return Value.nil_val;
     if (ns.resolve(symbol_mod.asSymbol(args[1]).name)) |v| return Value.encodeHeapPtr(.var_ref, v);
     return Value.nil_val;
@@ -231,7 +233,7 @@ pub fn aliasFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
     _ = rt;
     try error_catalog.checkArity("alias", args, 2, loc);
     if (args[0].tag() != .symbol or args[1].tag() != .symbol)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "alias requires two symbols" });
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "alias", .expected = "two symbols", .actual = @tagName(if (args[0].tag() != .symbol) args[0].tag() else args[1].tag()) });
     const target = env.findNs(symbol_mod.asSymbol(args[1]).name) orelse
         return error_catalog.raise(.lib_not_found, loc, .{ .ns = symbol_mod.asSymbol(args[1]).name });
     const here = env.current_ns orelse
@@ -245,10 +247,9 @@ pub fn aliasFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 pub fn nsUnaliasFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     try error_catalog.checkArity("ns-unalias", args, 2, loc);
-    const ns = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-unalias on a non-namespace" });
+    const ns = try resolveNsOrRaise(env, args[0], "ns-unalias", loc);
     if (args[1].tag() != .symbol)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-unalias requires a symbol" });
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "ns-unalias", .expected = "a symbol", .actual = @tagName(args[1].tag()) });
     env.removeAlias(ns, symbol_mod.asSymbol(args[1]).name);
     return Value.nil_val;
 }
@@ -257,8 +258,7 @@ pub fn nsUnaliasFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 /// Spec: clojure.core/ns-aliases.
 pub fn nsAliasesFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("ns-aliases", args, 1, loc);
-    const ns = resolveNs(env, args[0]) orelse
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "ns-aliases on a non-namespace" });
+    const ns = try resolveNsOrRaise(env, args[0], "ns-aliases", loc);
     var m = map_collection.empty();
     var it = ns.aliases.iterator();
     while (it.next()) |entry| {
@@ -276,7 +276,7 @@ pub fn inNsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     _ = rt;
     try error_catalog.checkArity("in-ns", args, 1, loc);
     if (args[0].tag() != .symbol)
-        return error_catalog.raise(.feature_not_supported, loc, .{ .name = "in-ns requires a symbol" });
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "in-ns", .expected = "a symbol", .actual = @tagName(args[0].tag()) });
     const ns = try env.findOrCreateNs(symbol_mod.asSymbol(args[0]).name);
     env.setCurrentNs(ns);
     return Env.nsValue(ns);

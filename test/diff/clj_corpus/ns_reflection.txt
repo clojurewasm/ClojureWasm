@@ -1,0 +1,28 @@
+(try (ns-resolve nil 'x) (catch Exception e :caught))
+;;=> :caught
+(try (ns-resolve 'nope 'x) (catch Exception e :caught))
+;;=> :caught
+(try (ns-map nil) (catch Exception e :caught))
+;;=> :caught
+(try (ns-name 42) (catch Exception e :caught))
+;;=> :caught
+(try (ns-interns 'nope) (catch Exception e :caught))
+;;=> :caught
+(try (ns-publics nil) (catch Exception e :caught))
+;;=> :caught
+(try (ns-refers 'nope) (catch Exception e :caught))
+;;=> :caught
+(try (ns-aliases nil) (catch Exception e :caught))
+;;=> :caught
+(try (the-ns 'nope) (catch Exception e :caught))
+;;=> :caught
+(try (create-ns "x") (catch Exception e :caught))
+;;=> :caught
+(try (intern 'nope 'x 1) (catch Exception e :caught))
+;;=> :caught
+(try (find-var 'unqualified) (catch Exception e :caught))
+;;=> :caught
+(ns-resolve 'clojure.core 'map)
+;;=> #'clojure.core/map
+(str (try (ns-resolve (find-ns 'no.such.ns) 'x) (catch Exception e :caught)))
+;;=> ":caught"
