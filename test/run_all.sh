@@ -49,7 +49,7 @@ E2E_JOBS="${E2E_JOBS:-8}"
 # how many smoke-only commits ride before a full gate is forced.
 SMOKE_MODE=0
 SMOKE_E2E=""
-SMOKE_CORE="zig_build_test_vm,zig_build_test_tree_walk,zlinter,build_cljw,lazy_ns_replay,corpus_regression"
+SMOKE_CORE="zig_fmt_check,zig_build_test_vm,zig_build_test_tree_walk,zlinter,build_cljw,lazy_ns_replay,corpus_regression"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -344,6 +344,11 @@ run_step "debt_id_refs"         "bash scripts/check_debt_id_refs.sh --gate"
 # points at the SSOT. Keeps the "NOT a bug" list a trust contract that
 # cannot drift or accept-without-reason. Rule: accepted_divergences.md.
 run_step "accepted_divergences" "bash scripts/check_accepted_divergences.sh --gate"
+
+# Formatting gate — mirrors CI's ci_gate.sh step (1/2) so a non-canonical
+# file fails LOCALLY at smoke time, not 15 minutes later in CI (2026-07-02:
+# four pushes went red on a single stray blank line only CI checked).
+run_step "zig_fmt_check"        "zig fmt --check src/"
 
 # zlinter no_deprecated gate (ADR-0003) — Mac-host only. zlinter is
 # fetched via `zig fetch` against GitHub; OrbStack runs are network-

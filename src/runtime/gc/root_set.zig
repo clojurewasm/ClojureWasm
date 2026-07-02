@@ -86,7 +86,6 @@ pub const RootSource = enum {
 /// D-430 analysis-roots frame: it never gained a production writer, and the
 /// frame subsumes its declared purpose — `expandIfMacro` now pushes the
 /// macro-expansion intermediates + result into the current AnalysisFrame.)
-
 /// One operand-stack-resident root scope, published on the thread's
 /// eval-frame chain so a GC `collect()` walks live operand Values
 /// (`stack[0..sp]`) + slot Values (`locals`) — ADR-0091. Two kinds of
