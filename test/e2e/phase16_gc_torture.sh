@@ -237,7 +237,9 @@ assert_alloc 'lazy_eq_interleave' '(= (map inc (range 50)) (filter pos? (map inc
 # (a tree_walk eval that can collect) swept them — the cell got recycled as
 # the '->T' factory-name string and extend-type raised "host-marker method
 # not yet wired" on a fully-wired Object method (D-430 root cause).
-assert_eq 'analysis_const_root' "$("$BIN" -e '(defmacro m [x] x) (deftype T [] Object (toString [self] (m 1))) (println :ok)' | tail -1)" ':ok'
+# (`cljw -e` echoes EVERY form's value, so the assertion keys on the LAST
+# form's value — a trailing println would make tail -1 its nil return.)
+assert_eq 'analysis_const_root' "$("$BIN" -e '(defmacro m [x] x) (deftype T [] Object (toString [self] (m 1))) :ok' | tail -1)" ':ok'
 
 # ADR-0028 amendment 3 — gray-worklist mark: a ≥~400k-deep cons chain used to
 # SIGSEGV (exit 134) when the adaptive-threshold collect fired mid-walk and the
