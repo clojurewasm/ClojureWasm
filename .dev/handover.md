@@ -86,6 +86,13 @@ Publicization pass (user's 2nd directive) — ALL committed + pushed + CI GREEN:
   → English, provenance `~/Documents/OSS`→repo-relative, ladder.md. Inventory:
   `private/notes/2026-07-01-publicization-cleanup-inventory.md`.
 
+## Stopped — user requested
+
+User instruction (2026-07-02): 「そろそろきりがよいですか？であれば、このへんで
+区切りたいです。」 Session closed at a clean boundary (full gate green 23:34, all
+pushed). Resume at D-430's narrowed frontier: the `var` special form does not
+resolve NS ALIASES (minimal repro + fix site in the D-430 row; S-sized).
+
 **First task on resume:** continue **Track B** (easiest-first drain; note
 2026-07-02 order changes: D-517 UNBLOCKED, D-473 folded into D-513):
 **D-522** = the GRADUAL ~2962-line AI-narration/pointer de-pointering (worst-offender
