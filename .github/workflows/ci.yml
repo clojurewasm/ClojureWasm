@@ -104,19 +104,24 @@ jobs:
           restore-keys: |
             ${{ matrix.name }}-zigbuild-
 
-      # ripgrep is the one gate-script tool not universally preinstalled
-      # (check_debt_id_refs.sh). Install only if absent (fast no-op when the
-      # runner image already ships it). The other former gaps are removed at the
-      # source: check_test_reach uses a portable read loop (not bash-4 mapfile),
-      # and check_corpus_regression falls back timeout→gtimeout→unbounded.
-      - name: Install ripgrep if missing (gate dep)
+      # Gate deps not universally preinstalled: ripgrep (check_debt_id_refs.sh)
+      # and, on macOS, bash >= 4 — the macos-15 runner resolves `bash` to the
+      # system 3.2, which cannot parse the e2e harness idioms (heredoc inside
+      # `$()`, `case` inside `$()`, `declare -A`); 43 gate scripts fail under it
+      # (first exposed by the 2026-07-02 nightly, the first FULL run on the
+      # hosted mac runner). Every script is invoked as `bash foo.sh` or via
+      # `#!/usr/bin/env bash`, so a brew bash 5 on PATH fixes all of them.
+      # Install only what is absent (fast no-op when the image ships it).
+      - name: Install gate deps if missing (ripgrep; bash>=4 on macOS)
         shell: bash
         run: |
-          command -v rg >/dev/null 2>&1 && exit 0
           if [ "$RUNNER_OS" = "Linux" ]; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+            command -v rg >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
           else
-            brew install ripgrep
+            command -v rg >/dev/null 2>&1 || brew install ripgrep
+            if [ "$(bash -c 'echo "${BASH_VERSINFO[0]}"')" -lt 4 ]; then
+              brew install bash
+            fi
           fi
 
       - name: Verify toolchain
@@ -125,6 +130,12 @@ jobs:
           zig version
           python3 --version
           rg --version | head -1
+          # Check the PATH-resolved bash (what `bash foo.sh` + env-shebang
+          # scripts actually get), not this step's own shell.
+          bash --version | head -1
+          if [ "$(bash -c 'echo "${BASH_VERSINFO[0]}"')" -lt 4 ]; then
+            echo "::error::gate requires bash >= 4 on PATH (PATH bash is $(bash -c 'echo "$BASH_VERSION"'))"; exit 1
+          fi
 
       - name: ci_gate.sh
         shell: bash

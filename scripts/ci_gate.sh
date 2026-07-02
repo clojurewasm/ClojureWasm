@@ -10,9 +10,9 @@
 #   CLJW_CI_FULL=1  → FULL gate: `zig build test` x2 (the F-012 dual-backend diff
 #                     oracle + every unit), zlinter, a ReleaseSafe build_cljw,
 #                     zone_check, corpus_regression, AND every e2e step
-#                     (test/run_all.sh --serial-e2e). Set on push-to-main.
+#                     (test/run_all.sh --serial-e2e). Set on nightly schedule + dispatch.
 #   CLJW_CI_FULL=0  → fast CORE: the same correctness core WITHOUT the ~248 e2e
-#                     shell steps (test/run_all.sh --smoke). Set on PR / dispatch.
+#                     shell steps (test/run_all.sh --smoke). Set on push-to-main / PR.
 # Both tiers run `zig fmt --check src/` first.
 #
 # --serial-e2e (not the -P8 parallel default) is deliberate: the parallel path

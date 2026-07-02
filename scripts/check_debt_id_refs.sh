@@ -57,7 +57,11 @@ referenced=$(rg -o --no-heading '\bD-[0-9]+' "${search_paths[@]}" 2>/dev/null \
   | rg -v "$exclude" | grep -o 'D-[0-9]\+' | sort -u || true)
 missing=""
 for id in $referenced; do
-  printf '%s\n' "$defined" | grep -qx "$id" || missing="$missing $id"
+  # Herestring, NOT `printf | grep -q`: grep -q exits on first match, and
+  # under `set -o pipefail` printf's EPIPE then fails the pipeline —
+  # sporadically misclassifying a DEFINED id as missing (2026-07-02 nightly:
+  # false "UNDEFINED D-196 D-230" with `printf: write error: Broken pipe`).
+  grep -qx "$id" <<< "$defined" || missing="$missing $id"
 done
 
 # 3. quality-loop floor backlog (informational).
