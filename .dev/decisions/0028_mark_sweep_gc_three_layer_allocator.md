@@ -358,11 +358,89 @@ Load-bearing concerns #1 (sweep / finaliser ordering) **applied** at §4 Sweep o
 
 Per Devil's-advocate cross-coupling §"Triple Tag-indexed table" + ADR-0027 §3 consolidation: **§4 absorbs `tag_descriptor_table`** (moved out of ADR-0027 §3); three tables co-locate as `tag_descriptor_table` + `tag_trace_table` + `tag_finaliser_table`, with `TagOps` struct-of-arrays as an explicit row 5.3 owner's alternative.
 
+### Amendment 3 (2026-07-02) — explicit gray worklist for the mark phase
+
+A fresh-context Devil's-advocate subagent was forked per the depth ≥ 2
+mandate. Bug: the original recursive `mark()` (mark → trace_fn → mark per
+child) overflowed the native stack on a ≥~400k-deep cons chain
+(`(count (repeat 1000000 1))` SIGSEGV during a mid-walk collect; verified
+by `CLJW_GC_THRESHOLD_MB=4096` making the same expr return 1000000). The
+draft fix was: on-GcHeap `mark_worklist` gray stack, bit-set-then-push,
+auto-drain guarded by a `mark_draining: bool`, degrade-to-recursion on
+append OOM. The DA's findings (reflected near-verbatim):
+
+**Would-violate-F-NNN findings: none.** F-006 commits to mark-sweep /
+single generation / 3-layer allocator and says nothing about mark-phase
+traversal mechanics. No alternative touches F-004 / F-005 / the ADR-0009
+8-byte-header invariant.
+
+**Verification of the draft's concerns**: (1) traversal-order change has
+no observers — sweep walks `allocations` in allocation order;
+`persistent_marks` bits are cleared before marking and re-shaded on
+reach; gc_torture asserts deterministic UAF surfacing, not mark order;
+and no registered trace fn recurses internally (all ~35 route descent
+through `mark`), so the conversion fixes deep cons chains, RB trees, and
+HAMT spines uniformly with trace fns byte-for-byte unchanged.
+(2) The draft's OOM-fallback was its one unsound joint: infra-append OOM
+correlates with a large heap, which is where the deep chain lives, so
+the fallback reintroduces unbounded recursion exactly under memory
+pressure — and because the bit is set at push time each object is pushed
+at most once, so `allocations + persistent_marks` bounds the worklist
+and a single `ensureTotalCapacity` in `collect()` deletes the OOM branch
+entirely. (3) The `mark_draining` bool is race-free under the
+`gc_mutex`-serialized STW collect but is a hidden control-flow
+inversion. (4) An intrusive gray-list through `HeapHeader` was
+investigated and rejected: a link needs 8 bytes, the header is locked at
+8 bytes by ADR-0009 (offset-8 FreeNode overlay + 16-byte minimum
+allocation key on it), and growing every live object permanently to
+optimize a transient mark structure contradicts the side-table
+precedent recorded on `GcHeap`. Pointer-reversal (Deutsch-Schorr-Waite)
+also rejected: it needs per-tag knowledge of which field is mid-traversal,
+incompatible with the opaque `tag_trace_table` fn-pointer design.
+
+**Alt 1 — smallest-diff**: the draft + guaranteed-capacity worklist
+(reserve in `collect()`, delete the OOM fallback, keep auto-drain).
+Better: removes the only unsound path; mark itself never allocates.
+Breaks: the reserve can OOM — but before any bit is set, where aborting
+the collect is a safe degradation (heap intact; pressure resurfaces at
+the next `gc.alloc`).
+
+**Alt 2 — finished-form-clean (ADOPTED)**: Alt 1's capacity guarantee +
+drop `mark_draining` entirely; `mark()` is push-only (shade gray) and
+`collect()` gains one explicit `drainGray()` (blacken) after all three
+root-publication passes (root-set loop, `current_tx`,
+`markRegisteredTxs`), before `sweep()`. `collect()` reads as the
+textbook tri-color structure — publish roots → drain → sweep — which is
+the shape the §6 bit-1 tri-colour reserve and a future incremental /
+parallel marker inherit; the draft's auto-drain would have to be undone
+by that owner. Cost: direct `mark()` callers relying on transitivity
+(two unit tests: `stm/tval.zig` self-loop, the new deep-chain test) add
+a `drainGray` call — per F-002 the test edits are not a valid tiebreaker.
+
+**Alt 3 — wildcard**: allocation-free fixed 4096-slot mark stack +
+Boehm-style overflow rescan of `allocations` **and `persistent_marks`**
+(a rescan that misses waypoints would strand their children — the D-251
+class). Zero allocation during collect; attractive for a
+memory-budgeted Wasm-edge profile (gap area II). Rejected now: worst
+case O(passes × live) on wide structures, more invariants, a magic
+constant needing a bench. On record as the edge-profile candidate.
+
+**Applied**: Alt 2, plus the DA's four amendment obligations —
+(a) bit-before-push recorded as a LOAD-BEARING invariant in `mark`'s
+docstring (push-before-bit would let a failed push leave a
+traced-looking-but-untraced object → live child swept → UAF);
+(b) `collect()`'s "mark/sweep never allocate" comment rewritten to
+"never allocate through `gc.alloc`; worklist capacity reserved up front
+on `gc.infra` before any bit is set"; (c) `mark_worklist` freed in
+`GcHeap.deinit`; (d) Consequences note added: the worklist is STW-only
+state — a future parallel marker (gap area III) replaces it.
+
 ## Consequences
 
 - **Positive**: cw v0's `suppressCollection` escape hatch is rejected by enumeration (§5 root row 7). cw v0's silent BigInt limb leak is closed by per-tag finaliser dispatch (§4). cw v0's external mark hash-map is replaced by inline bits (§6) — one less heap-write per object per mark, one less hash-lookup per access. cw v0's free-pool perf inheritance is preserved (Block C) under the offset-8 overlay (§3).
 - **Negative**: 16-byte minimum allocation wastes up to 8 bytes per small object (currently only `boolean_true` / `boolean_false` could fit smaller — but those are NaN-box immediates, not heap allocations; the real impact is `cons` cell at ~16 bytes — already at the minimum). Per-tag dispatch tables (§4 finaliser + §5 trace) add 1 KiB ROM (.const data) for the 64 slots × 2 tables × 8-byte function pointers — negligible.
 - **Neutral / follow-ups**: §7 zwasm seam is declaration-only at Phase 5; Phase 16 entry consumes per F-008 + D-036. Generational GC stays an open question (D-016) decided by Phase 5 bench results (ROADMAP §10.2 quick bench window).
+- **Amendment 3**: mark depth is O(1) native stack regardless of object-graph depth (deep cons chains / RB trees / HAMT spines all mark iteratively). `gc.mark_worklist` retains its high-water capacity across collects (peak 8 bytes per live non-leaf object during a collect; no shrink policy — add one if a one-off huge collect ever matters). The worklist is STW-only state; a future parallel marker (gap area III) replaces it, per the same forward note `fabrication_depth` carries.
 
 ## Affected files
 
@@ -398,6 +476,7 @@ Per Devil's-advocate cross-coupling §"Triple Tag-indexed table" + ADR-0027 §3 
 
 ## Revision history
 
+- 2026-07-02 (amendment 3): mark phase converted from recursive per-child descent to an explicit gray worklist (`GcHeap.mark_worklist` + push-only `mark()` + `drainGray()` as a named `collect()` phase between root publication and sweep). Trigger: `(count (repeat 1000000 1))` SIGSEGV — a ≥~400k-deep cons chain overflowed the native stack when a mid-walk collect marked it recursively (confirmed via `CLJW_GC_THRESHOLD_MB` deferral); found by the 2026-07-02 debt/code-truth audit as an unledgered bug. DA fork (Alt 1 capacity-guaranteed auto-drain / Alt 2 explicit-drain tri-color [adopted] / Alt 3 fixed-stack + Boehm overflow-rescan [edge-profile candidate, on record]) reflected into Alternatives considered § Amendment 3. Load-bearing: bit-set-BEFORE-push; `collect()` reserves `allocations + persistent_marks` capacity before any bit is set (failed reserve aborts the collect safely); trace fns unchanged. Smell category: the original recursion was a latent Reservation-as-bias on §5's "recursively traces" wording — depth-unbounded recursion was never a recorded decision, just inherited shape.
 - 2026-05-24: Status: Proposed → Accepted (autonomous-loop self-accept after Devil's-advocate subagent review reflected verbatim into Alternatives considered; Alt 1 applied — §6 bit allocation deferred past mark/tri-colour to row 5.3 owner; Alt 2 items 2 / 3 / 4 applied — Var rooting timing + no-alloc finaliser invariant + Block B reconciliation; Load-bearing concerns #1-6 all applied; per-Tag dispatch tables absorbed from ADR-0027 §3 per Alt 1 cross-coupling resolution; Alt 2 item 1 ADR-split not applied — coupling argues for single ADR; Alt 3 wildcard recorded as row 5.3 owner candidate). Co-issued with ADR-0027.
 - 2026-06-05 (amendment 2): §5 Root sources table re-tabled for Phase B #3b (D-244) per **ADR-0091**. Rows 2 (`current_frame`) + 7 (`macro_root_slot`) subsumed into a single `thread_roots` E-source (binding-frame chain + macro slot + **VM operand-stack frame chain**, per live thread — self TLS + every registered worker `ThreadGcContext`). The operand stack (`vm.eval` `stack[0..sp]` + `locals`) is newly rooted so a Phase-B worker mid-`eval` does not hold un-rooted Values a concurrent `collect()` would sweep (the ADR-0090 leading-finding UAF). Net: live E-walkers 4 → 3; `RootSource` Zig enum count 10 → 9; the triplicated per-thread union-addressing helpers (`frameSourceAt`/`macroSourceAt` + their `src_idx` cursors) commonized into one `threadContextAt` + one thread-major cursor (F-011). Runtime-inert at land (no live auto-collect; empty registry + null `eval_frame_head` at quiescent collect points = today's roots). The alloc-boundary safepoint that makes auto-collect / worker-collect fire is #3b-step2 (couples to #4). DA-fork (Option A fold rejected as a different-kind conflation; Alt 1 clean-11th-source vs Alt 2 union-cursor [adopted] vs Alt 3 thread-driven spine [Phase-15/JIT re-conception candidate]) reflected verbatim into ADR-0091's Alternatives considered. Smell category: structural-imagination (F-003) — the per-thread union became the dominant root structure once a third per-thread source [operand stack] arrived, so it is named once instead of triplicated. (#3b-step2b adds a 4th `thread_roots` sub-walk — the per-thread `gc_self_guard` in-flight-fabrication slot for the `op_vector/map/set_literal` accumulator window — via the same thread-major cursor, no enum change; the cursor topology Alt 2 chose accommodates it as another sub-phase per ADR-0091's "extends, not rewrites".)
 - 2026-05-24 (amendment 1): §5 Root sources table re-shaped per the `private/notes/phase5-5.3.b.3-survey.md` finding that only 4 of the 10 enumerated sources are entry-point walkers in cw v1. Rows 3 / 4 / 8 demoted to **T** (tag-trace entries registered into `tag_ops.tag_trace_table` from the owning module — `tree_walk.zig` / `lazy_seq.zig` / `type_descriptor.zig`); rows 5 / 6 / 9 demoted to **D** (no live structs in cw v1 / closed-at-construction in `referAll` / cache holds namespace-owned pointers with no GC edge). Net: 4 live walkers + 3 tag-trace registrations + 3 documentary rows. Row 7 also moved from "Analyzer.macro_root_slot" to "macro_root_slot" because the slot lives in `runtime/gc/root_set.zig` (Layer 0) per the survey's zone-respecting access-path decision (Layer 1 reads/writes via downward import). Devil's-advocate Load-bearing concern #5's "reserved as `null` in 5.x" framing for row 9 withdrawn — the cache carries no GC-managed pointers in any Phase. Smell trigger: caught during 5.3.b.3 implementation prep when the survey traced each source against the actual cw v1 struct layouts; the original §5 table was inherited from ADR-0028's initial draft which mirrored cw v0's root-source enumeration without re-evaluating each source against cw v1's design (e.g. cw v1 splits ProtocolFn cache into per-CallSite per ADR-0008 — row 5 becomes empty by construction). Smell category: Spec-drift (ADR text inherited a cw v0 enumeration into a cw v1 design that doesn't have the same shape).
