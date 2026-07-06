@@ -14,14 +14,23 @@
   (release.yml/CLAUDE.md "loop never tags" is otherwise intact). Demo repos
   cw-serverless-demo + cw-playground redeployed to fly.io on v1.0.0 and live-verified
   (books+cover-colours / eval+wasm-FFI). ADR-0167 rc.1-readiness campaign CLOSED — 1.0.0 shipped.
+- **Stopped — user requested (2026-07-07).** The stop landed right after
+  the 5-commit-ceiling FULL gate launched; its result is in the session
+  scratchpad fullgate7.log (if red, fixing it is the first task on
+  resume; every commit is already pushed, tree clean at `6099ab4e7`).
 - **First commit on resume: the easiest-first drain head** — no floor
-  open. DONE 2026-07-07 (9 discharges): D-555+556+557 GC arc / D-526
-  (9 interop drains) / D-554 ns attr-map / D-470 format %t / D-558
-  cache_gen blob corruption (builder.zig persist seams — the D-556 sweep's
-  missed file) / D-305 builtin :arglists/:doc (core_meta.clj, regenerate
-  via scripts/extract_core_meta.sh). Plus regex lookbehind +
-  Pattern.split (HoneySQL green) + 1.12 sweep. Remaining `active:` rows
-  drain easiest-first; D-527/D-528 stay as repeatable campaign rows.
+  open. DONE 2026-07-07 (**18 discharges**): D-555+556+557+558 GC/AOT
+  arc (root fixes: persist-analysis-roots incl. builder.zig, conservative
+  stack scan, evalRecur reentrancy, vm loc fidelity) / D-526 (9 interop
+  drains) / D-554 ns attr-map / D-470 format %t / D-305+D-513-drains
+  :arglists/:doc (291 vars, scripts/extract_core_meta.sh) + clojure.repl
+  bundled (bare (doc x) at the REPL; core's pre-D-305 copies removed) /
+  D-471 stream slurp/spit / D-521 destructure corpus net / D-529 markers
+  / D-536+D-547 ledger honesty / D-241 baseline set! / D-466 stale row.
+  Plus regex lookbehind + Pattern.split (HoneySQL green) + nREPL --port 0.
+  Next candidates: D-513 lazy-ns docstrings (alt: bake per-ns meta chunks
+  into lazy regions at cache_gen — see the per-task note), D-517
+  zero-copy deserialize (M-L), D-522/523/524/525 public-ization sweeps.
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm`; bare `zig build`
   for a probe (use ReleaseSafe). **The FULL gate MUST run `--serial-e2e`** — the `-P8`
   parallel default flakes the **D-418/D-258 agent load-race** (`agent_conj` →
