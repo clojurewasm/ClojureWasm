@@ -710,6 +710,11 @@ pub fn namespaceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 /// (top-level strings emitted as raw bytes; nested strings inside a
 /// printed collection still go through `printValue` and get quoted).
 fn writeArgsSpaced(rt: *Runtime, env: *Env, w: *std.Io.Writer, args: []const Value, readable: bool) anyerror!void {
+    // *print-dup* true fail-loud (D-222 c): clj's print-dup emits JVM
+    // `#=(class/create …)` ctor forms cljw cannot represent (ADR-0059) —
+    // raise instead of silently printing the normal readable form.
+    if (readable and print_mod.printDupRequested())
+        return error_catalog.raise(.print_dup_not_supported, .{}, .{});
     // D-185: `print`/`println` (`!readable`) render strings/chars raw at EVERY
     // depth, not just the top level — thread the flag into `printValue`'s
     // collection recursion via `*print-readably*`. Restored after so a later

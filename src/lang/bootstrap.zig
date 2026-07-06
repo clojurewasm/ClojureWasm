@@ -485,7 +485,18 @@ fn registerPrintLimitVars(rt: *Runtime, env: *Env) !void {
     // *print-meta* root false; a truthy binding prefixes metadata-bearing values.
     const meta_v = try env.intern(core, "*print-meta*", Value.false_val, null);
     meta_v.flags.dynamic = true;
-    print_mod.initPrintLimitVars(len_v, lvl_v, nsmaps_v, readably_v, meta_v);
+    // *print-dup* root false (D-222 residual c). A false binding prints
+    // normally; a TRUE binding fail-louds at the pr surface — clj emits JVM
+    // `#=(class/create …)` ctor forms cljw cannot represent (ADR-0059).
+    const dup_v = try env.intern(core, "*print-dup*", Value.false_val, null);
+    dup_v.flags.dynamic = true;
+    // *flush-on-newline* root true (D-222 residual c). cljw's text_io writers
+    // flush per call, so the true contract always holds; a false binding
+    // permits (does not require) buffering — flushing anyway is a valid
+    // implementation, so no Zig-side consumer exists.
+    const fon_v = try env.intern(core, "*flush-on-newline*", Value.true_val, null);
+    fon_v.flags.dynamic = true;
+    print_mod.initPrintLimitVars(len_v, lvl_v, nsmaps_v, readably_v, meta_v, dup_v);
 }
 
 /// ADR-0096: push a process-lifetime baseline binding frame (clojure.main
@@ -505,6 +516,7 @@ fn installBaselineBindings(arena: std.mem.Allocator, env: *Env) !void {
         "*print-meta*",         "*print-length*",
         "*print-level*",        "*print-namespace-maps*",
         "*data-readers*",       "*default-data-reader-fn*",
+        "*print-dup*",          "*flush-on-newline*",
     };
     const frame = try arena.create(env_mod.BindingFrame);
     frame.* = .{};

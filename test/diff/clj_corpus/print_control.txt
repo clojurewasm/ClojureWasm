@@ -36,3 +36,11 @@
 ;;=> "{:a 1, :b 2}"
 (binding [*print-namespace-maps* true] (pr-str {:x/a 1 :x/b 2}))
 ;;=> "#:x{:a 1, :b 2}"
+*print-dup*
+;;=> false
+*flush-on-newline*
+;;=> true
+(binding [*print-dup* false] (pr-str {:a 1}))
+;;=> "{:a 1}"
+(binding [*flush-on-newline* false] (with-out-str (println "x")))
+;;=> "x\n"

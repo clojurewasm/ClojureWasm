@@ -27,4 +27,25 @@ nil'
 assert_eq 'extent'     "$("$BIN" -e '(do (binding [*print-length* 1] (prn [9 9 9])) (prn [1 2 3]))')" '[9 ...]
 [1 2 3]
 nil'
-echo "OK — phase14_print_control smoke (6 cases) green"
+
+# *print-dup* / *flush-on-newline* (D-222 residual c). Roots match clj
+# (false / true); binding print-dup false prints normally; binding
+# flush-on-newline false still works (cljw's text_io flushes per call —
+# flushing more than requested is a valid implementation of false).
+assert_eq 'dup_root'     "$("$BIN" -e '*print-dup*')"            'false'
+assert_eq 'fon_root'     "$("$BIN" -e '*flush-on-newline*')"     'true'
+assert_eq 'dup_false'    "$("$BIN" -e '(binding [*print-dup* false] (pr-str {:a 1}))')" '"{:a 1}"'
+assert_eq 'fon_false'    "$("$BIN" -e '(binding [*flush-on-newline* false] (with-out-str (println "x")))')" '"x\n"'
+# set! works at top level (baseline binding frame, ADR-0096).
+assert_eq 'fon_set'      "$("$BIN" -e '(set! *flush-on-newline* false) *flush-on-newline*')" 'false
+false'
+# *print-dup* TRUE is fail-loud: clj emits JVM #=(class/create …) ctor forms
+# cljw cannot represent (no JVM classes, ADR-0059) — an explicit error, never
+# a silent normal-form print.
+dup_true_out="$("$BIN" -e '(binding [*print-dup* true] (pr-str {:a 1}))' 2>&1 || true)"
+case "$dup_true_out" in
+  *'print-dup'*) echo "PASS dup_true_raises -> ok" ;;
+  *) fail "dup_true_raises: got '$dup_true_out'" ;;
+esac
+
+echo "OK — phase14_print_control smoke (12 cases) green"

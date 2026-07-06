@@ -319,6 +319,9 @@ pub const Code = enum {
     /// reaches a callable position whose target Var carries
     /// `^:unsupported` metadata (declare-only placeholder).
     feature_not_supported_unsupported_var,
+    /// args: `.{}` — `(binding [*print-dup* true] (pr …))`: clj's print-dup
+    /// emits JVM `#=(class/create …)` ctor forms cljw cannot represent.
+    print_dup_not_supported,
 
     // --- Require / namespace loading (ADR-0035 D5/D8) ---
     /// args: `.{ .chain = "a -> b -> a" }` — raised when
@@ -1454,6 +1457,11 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .not_implemented,
             .phase = .analysis,
             .template = "'{[sym]s}' is declared but not yet supported in ClojureWasm",
+        },
+        .print_dup_not_supported => .{
+            .kind = .not_implemented,
+            .phase = .eval,
+            .template = "*print-dup* true is not supported in ClojureWasm: it asks for JVM class-constructor forms; bind it false (the default) to print normal readable forms",
         },
         .transient_used_after_persistent => .{
             // clj: IllegalStateException "Transient used after persistent! call" —

@@ -638,14 +638,28 @@ var print_readably_var: ?*const env_mod.Var = null;
 /// `*print-meta*` cached Var — when truthy, every value carrying non-empty
 /// metadata prints with a `^{meta} ` prefix. Pure snapshot (no surface set).
 var print_meta_var: ?*const env_mod.Var = null;
+/// `*print-dup*` cached Var (D-222 residual c). Only consulted to FAIL LOUD:
+/// a truthy binding asks for clj's JVM `#=(class/create …)` ctor forms, which
+/// cljw cannot represent (ADR-0059) — the pr surface raises instead of
+/// silently printing the normal form.
+var print_dup_var: ?*const env_mod.Var = null;
 
 /// Install the cached print-control Var pointers (called once at bootstrap).
-pub fn initPrintLimitVars(len_v: ?*const env_mod.Var, lvl_v: ?*const env_mod.Var, nsmaps_v: ?*const env_mod.Var, readably_v: ?*const env_mod.Var, meta_v: ?*const env_mod.Var) void {
+pub fn initPrintLimitVars(len_v: ?*const env_mod.Var, lvl_v: ?*const env_mod.Var, nsmaps_v: ?*const env_mod.Var, readably_v: ?*const env_mod.Var, meta_v: ?*const env_mod.Var, dup_v: ?*const env_mod.Var) void {
     print_length_var = len_v;
     print_level_var = lvl_v;
     print_namespace_maps_var = nsmaps_v;
     print_readably_var = readably_v;
     print_meta_var = meta_v;
+    print_dup_var = dup_v;
+}
+
+/// True iff the user has bound `*print-dup*` truthy (the fail-loud gate the
+/// pr surface consults; root false ⇒ the common path returns false).
+pub fn printDupRequested() bool {
+    const varp = print_dup_var orelse return false;
+    const d = varp.deref();
+    return !(d.isNil() or (d.tag() == .boolean and !d.asBoolean()));
 }
 
 // === print-method consult (D-370, ADR-0127) ===
