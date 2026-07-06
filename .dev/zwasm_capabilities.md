@@ -2,8 +2,8 @@
 
 > **SSOT for "what does the zwasm we embed offer, and what has cljw adopted".**
 > cljw embeds **zwasm v2** (F-001, unavoidable). The dep is a **tag pin** —
-> **v2.0.0** (`0853f3c1`, see § Pin), pinned 2026-07-01 — the stable release cljw
-> 1.0.0 ships on (bumped from alpha.3 for the D-501 no-max-table grow fix). zwasm is itself under active
+> **v2.1.0** (`d5d685ad`, see § Pin), pinned 2026-07-06 — the table64-JIT release
+> (bumped from stable v2.0.0 for zwasm D-475 native table64 JIT). zwasm is itself under active
 > co-development (`~/Documents/MyProducts/zwasm_from_scratch`, branch
 > `zwasm-from-scratch`) and its embedding API is *growing* — notably a **JIT-backed
 > engine** (the cljw north star, ROADMAP §9.0 gap area II × III). cljw has **adopted
@@ -42,10 +42,12 @@ a cljw-side shim.
 
 ## Pin
 
-- **TAG PIN — STABLE v2.0.0 (`0853f3c1`), pinned 2026-07-01.** `build.zig.zon`
-  `.zwasm` = `.url = "git+…/zwasm.git#v2.0.0"` + `.hash = "zwasm-2.0.0-FT1Fvyv…"`,
-  resolved from GitHub. Bumped from v2.0.0-alpha.3 for the coherent cljw 1.0.0 release
-  (picks up the no-max-table `table.grow` JIT fix, zwasm D-501 tier-1). This replaced the
+- **TAG PIN — v2.1.0 (`d5d685ad`), pinned 2026-07-06.** `build.zig.zon`
+  `.zwasm` = `.url = "git+…/zwasm.git#v2.1.0"` + `.hash = "zwasm-2.1.0-FT1Fv7J…"`,
+  resolved from GitHub. Bumped from stable v2.0.0 for zwasm D-475 (native table64 JIT
+  compilation) + table64 elem-segment / instantiate-bounds hardening; cljw uses no
+  tables, so behaviorally unaffected. Prior stable pin was **v2.0.0** (`0853f3c1`,
+  2026-07-01, the cljw 1.0.0 release engine). This replaced the
   2026-06-21 relative-path JIT-adoption experiment (`.path = "../zwasm_from_scratch"`,
   no-push) once zwasm cut the pinnable tag (3-host green) — so the no-push mode is
   LIFTED and cljw pushes `main` again. v2.0.0 is a full stable GitHub Release
@@ -71,6 +73,7 @@ a cljw-side shim.
 | Components on JIT                    | interp-pinned (D-500, zwasm CM-API core); Win64 string-arg wrapper-thunk gap                                                     | YES (tag-pin)   | unaffected — `.auto` default leaves components on interp (zwasm-side pin)                                   | D-500, D-404 |
 | WIT component marshalling            | future                                                                                                                           | NO              | NOT adopted                                                                                                  | D-404        |
 | no-max table `table.grow` (JIT)      | tier-1 FIXED in v2.0.0 (D-501) — grows to a synth cap `max(min*2, 1024)`; unbounded no-max grow still interp-only               | YES (pin)       | unaffected (no `table.grow` / table decl in cljw host or FFI fixtures); available if a guest needs it        | D-501        |
+| table64 (i64-indexed tables) on JIT  | NEW in v2.1.0 (D-475) — table64 ops / `call_indirect` / elem segments compile natively (u64 index width, wrap-safe bounds); i32 tables keep the fast path | YES (pin)       | unaffected (cljw declares no tables); a table64 guest now rides the JIT instead of the interp fallback       | zwasm D-475  |
 
 ## Forward plan — the JIT adoption unit (gap area II × III) — ACTIVE
 
@@ -151,3 +154,12 @@ was the `.auto`-default flip; this ledger tracks adoption status per capability.
   confirmed the embedding API (`Engine.init` / `runWasmCapturedFull` / `wasi.host.Host` /
   `Module.InstantiateOpts`) is signature-stable. Resolves the D-543 "1.0.0 embeds a
   pre-1.0 zwasm" incoherent-pin story — cljw 1.0.0 now ships on a coherent stable zwasm v2.0.0.
+- **2026-07-06** — **PIN BUMP STABLE v2.0.0 → v2.1.0 (`d5d685ad`)**. zwasm cut a
+  `v2.1.0` release (table64-JIT): D-475 lands native JIT compilation of table64
+  (i64-indexed tables — the memory64 proposal's table extension), so table64 ops /
+  `call_indirect` / active elem segments no longer fall back to the interpreter, plus
+  instantiate-time 64-bit bounds hardening + an AOT loud-reject for oversized table64
+  minimums. cljw declares no tables in its host or FFI fixtures, so it is behaviorally
+  unaffected — a clean engine follow, not a required fix. Bumped to keep the embedded
+  engine current toward the gap-II×III north star; `build.zig.zon` `.zwasm` re-pinned
+  (tag URL + hash), smoke green.

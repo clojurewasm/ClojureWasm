@@ -6,7 +6,7 @@
 ## Resume contract
 
 - **HEAD**: `main` (`git log` = SSOT; tip ≈ `4a51ed2c`). Per-commit = smoke; commit
-  **and** push (atomic Step 6). `build.zig.zon` `.zwasm` = stable tag pin `v2.0.0` (cljw 1.0.0).
+  **and** push (atomic Step 6). `build.zig.zon` `.zwasm` = tag pin `v2.1.0` (table64-JIT; bumped from v2.0.0).
 - **1.0.0 RELEASED (2026-07-01).** cljw `v1.0.0` tagged + pushed (commit a6db5dd6);
   release.yml published the GitHub Release (macos-aarch64 + linux-x86_64 binaries +
   sha256). Pins the coherent stable **zwasm v2.0.0** (D-543 resolved; the D-501 no-max

@@ -10,16 +10,17 @@
         },
         // zwasm v2 embedding API (F-001 / D-037). `lazy` so the DEFAULT build +
         // gate never resolve it — only `-Dwasm` (b.lazyDependency) does.
-        // PINNED to STABLE tag **v2.0.0** (zwasm@0853f3c1, 2026-07-01): the coherent
-        // release cljw 1.0.0 ships on. Bumped from v2.0.0-alpha.3 to pick up the
-        // no-max-table `table.grow` JIT fix (zwasm D-501 tier-1, PR #115: grows to a
-        // `max(min*2, 1024)` cap). `.auto`=JIT-default; cljw uses explicit `.interp`/`.jit`
-        // and is behaviorally unaffected (no `table.grow` usage). (Prior relative-path
-        // form: `.path = "../zwasm_from_scratch"`, see git history.) lazy + flag-guard
-        // means a churning dep cannot break the default gate.
+        // PINNED to STABLE tag **v2.1.0** (zwasm@d5d685ad, 2026-07-06): the table64-JIT
+        // release. Bumped from v2.0.0 to pick up native table64 (i64-indexed table)
+        // JIT compilation (zwasm D-475, PR #127) + table64 elem-segment / bounds
+        // hardening. cljw uses no tables in its host or FFI fixtures, so this is
+        // behaviorally unaffected — a clean engine follow. `.auto`=JIT-default; cljw
+        // rides `.auto` (D-488). (Prior relative-path form: `.path =
+        // "../zwasm_from_scratch"`, see git history.) lazy + flag-guard means a
+        // churning dep cannot break the default gate.
         .zwasm = .{
-            .url = "git+https://github.com/clojurewasm/zwasm.git#v2.0.0",
-            .hash = "zwasm-2.0.0-FT1FvyvVigD7I5-Bcc0cT3L_Z2BjgVTl6sjuGLdOHOrc",
+            .url = "git+https://github.com/clojurewasm/zwasm.git#v2.1.0",
+            .hash = "zwasm-2.1.0-FT1Fv7J_iwADA4XfXfKPCuoNE9IzQgo4HXfLR1sO6D0h",
             .lazy = true,
         },
     },
