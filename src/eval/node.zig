@@ -477,6 +477,10 @@ pub const InNsNode = struct {
 /// is what `evalNs` passes to `findOrCreateNs`.
 pub const NsNode = struct {
     name: []const u8,
+    /// `(ns name "docstring" …)` — lands as `{:doc "…"}` on the namespace's
+    /// meta at execution (clj parity, D-239 sibling). Null = no docstring.
+    /// The attr-map form `(ns name {:author …})` is NOT yet captured (D-554).
+    doc: ?[]const u8 = null,
     /// User wrote `(:refer-clojure)`. When false the auto-refer step is
     /// skipped entirely (cljw-shell-only mode).
     refer_clojure: bool = true,

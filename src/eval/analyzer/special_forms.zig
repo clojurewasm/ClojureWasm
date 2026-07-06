@@ -1177,8 +1177,13 @@ pub fn analyzeNs(
 
     var i: usize = 2;
     // Optional docstring + attr-map after the name (clj: `(ns name doc? attrs?
-    // refs*)`) — real libs open with a docstring; skip before the directives.
-    if (i < items.len and items[i].data == .string) i += 1;
+    // refs*)`). The docstring lands as `{:doc …}` on the ns meta at execution
+    // (D-239 sibling); the attr-map is still skipped (D-554).
+    var doc: ?[]const u8 = null;
+    if (i < items.len and items[i].data == .string) {
+        doc = try arena.dupe(u8, items[i].data.string);
+        i += 1;
+    }
     if (i < items.len and items[i].data == .map) i += 1;
     while (i < items.len) : (i += 1) {
         const directive = items[i];
@@ -1223,6 +1228,7 @@ pub fn analyzeNs(
     const n = try arena.create(Node);
     n.* = .{ .ns_node = .{
         .name = ns_name,
+        .doc = doc,
         .refer_clojure = refer_clojure,
         .refer_clojure_exclude = refer_clojure_exclude,
         .refer_clojure_only = refer_clojure_only,

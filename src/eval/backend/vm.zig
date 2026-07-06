@@ -38,6 +38,7 @@ const host_class = @import("../../runtime/error/host_class.zig");
 const tree_walk = @import("tree_walk.zig");
 const ex_info_mod = @import("../../runtime/collection/ex_info.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
+const meta_mod = @import("../../runtime/meta.zig");
 const td_mod = @import("../../runtime/type_descriptor.zig");
 const object_method = @import("object_method.zig");
 const clojure_lang_method = @import("clojure_lang_method.zig");
@@ -1222,18 +1223,23 @@ inline fn stepOnce(
         },
         .op_ns_with_filter => {
             // D-098: mirror of tree_walk::evalNs's refer-clojure branch
-            // with the `:exclude`/`:only` filter. Enter the ns, then
-            // refer rt + clojure.core through referAllWithFilter.
+            // with the `:exclude`/`:only` filter. Enter the ns, apply the
+            // docstring meta (D-239 sibling), then refer rt + clojure.core
+            // through referAllWithFilter (skipped when the ns form had no
+            // refer-clojure step — the entry's flag).
             if (instr.operand >= chunk.ns_filters.len)
                 return raiseInternal("vm: op_ns_with_filter index out of range");
             const f = chunk.ns_filters[instr.operand];
             env.setCurrentNs(try env.findOrCreateNs(f.name));
-            if (env.findNs("rt")) |rt_ns| {
-                try env.referAllWithFilter(rt_ns, env.current_ns.?, f.exclude, f.only);
-            }
-            if (env.findNs("clojure.core")) |clojure_core_ns| {
-                // ADR-0035 D9 revision: clojure.core overrides rt on collision.
-                try env.referAllOverriding(clojure_core_ns, env.current_ns.?, f.exclude, f.only);
+            if (f.doc) |d| try meta_mod.setNsDoc(rt, env.current_ns.?, d);
+            if (f.refer_clojure) {
+                if (env.findNs("rt")) |rt_ns| {
+                    try env.referAllWithFilter(rt_ns, env.current_ns.?, f.exclude, f.only);
+                }
+                if (env.findNs("clojure.core")) |clojure_core_ns| {
+                    // ADR-0035 D9 revision: clojure.core overrides rt on collision.
+                    try env.referAllOverriding(clojure_core_ns, env.current_ns.?, f.exclude, f.only);
+                }
             }
             if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");

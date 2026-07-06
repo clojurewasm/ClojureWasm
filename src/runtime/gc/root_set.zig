@@ -557,6 +557,9 @@ pub const RootIterator = struct {
             if (c.ns_it) |*ns_it| {
                 if (ns_it.next()) |ns_pp| {
                     c.var_it = ns_pp.*.mappings.valueIterator();
+                    // Namespace-level meta (D-239): a heap meta map roots as
+                    // the walk enters the ns (immediate/nil falls through).
+                    if (ns_pp.*.meta.heapHeader()) |hdr| return hdr;
                     continue;
                 }
                 c.ns_it = null;

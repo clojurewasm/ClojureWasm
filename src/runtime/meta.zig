@@ -46,6 +46,7 @@ pub fn metaOf(rt: *Runtime, env: *Env, v: Value, loc: SourceLocation) anyerror!V
         .atom => atom.metaOf(v),
         .agent => agent.metaOf(v),
         .ref => ref.metaOf(v),
+        .ns => v.decodePtr(*const env_mod.Namespace).meta,
         .symbol => symbol.metaOf(v),
         .typed_instance => blk: {
             var cs: dispatch.CallSite = .{};
@@ -60,6 +61,16 @@ pub fn metaOf(rt: *Runtime, env: *Env, v: Value, loc: SourceLocation) anyerror!V
         },
         else => Value.nil_val,
     };
+}
+
+/// Apply an `(ns name "docstring" …)` docstring onto the namespace's meta as
+/// `{:doc "…"}` (clj parity — D-239 sibling). Shared by both backends' ns
+/// execution (tree_walk evalNs + the VM's op_ns ops) so the semantics cannot
+/// drift. Re-evaluating the ns form re-assocs :doc onto any existing meta.
+pub fn setNsDoc(rt: *Runtime, ns: *env_mod.Namespace, doc: []const u8) !void {
+    const string_mod = @import("collection/string.zig");
+    const base = if (ns.meta.isNil()) map.empty() else ns.meta;
+    ns.meta = try map.assoc(rt, base, try keyword.intern(rt, null, "doc"), try string_mod.alloc(rt, doc));
 }
 
 /// Var-meta projection: the Var's stored `.meta` with the mechanical

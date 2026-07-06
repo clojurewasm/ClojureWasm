@@ -168,6 +168,10 @@ const NsAliasMap = std.StringHashMapUnmanaged(*Namespace);
 /// Clojure namespace — the unit `(in-ns 'my.ns)` switches between.
 pub const Namespace = struct {
     name: []const u8,
+    /// Namespace-level metadata (`(alter-meta! (find-ns 'x) …)`, the `(ns x
+    /// "doc")` docstring — D-239). A heap map here is GC-rooted by
+    /// `root_set`'s ns_vars walk (yielded when the walk enters the ns).
+    meta: Value = Value.nil_val,
     /// Vars defined in this namespace via `(def ...)`.
     mappings: VarMap = .empty,
     /// Vars pulled in via `(refer ...)`. Phase 4 makes this end-user

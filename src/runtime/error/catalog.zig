@@ -1390,7 +1390,7 @@ pub fn entry(comptime code: Code) Entry {
         .reset_meta_target_not_ref => .{
             .kind = .type_error,
             .phase = .eval,
-            .template = "reset-meta!: expected a var or atom, got {[actual]s}",
+            .template = "reset-meta!: expected a var, atom, agent, ref, or namespace, got {[actual]s}",
         },
         .reset_meta_meta_not_map => .{
             .kind = .type_error,

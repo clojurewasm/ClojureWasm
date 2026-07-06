@@ -75,7 +75,7 @@ const tree_walk = @import("../backend/tree_walk.zig");
 const Function = tree_walk.Function;
 
 pub const MAGIC: [4]u8 = .{ 'C', 'L', 'J', 'W' };
-pub const VERSION: u16 = 3;
+pub const VERSION: u16 = 4; // v4: NsFilterEntry doc + refer_clojure (D-239 sibling)
 
 pub const SerializeError = error{
     OutOfMemory,
@@ -612,6 +612,14 @@ pub fn serializeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) ![]u8 
         } else {
             try writeU8(w, 0);
         }
+        // v4: docstring (has-flag + bytes) + refer_clojure flag (D-239 sibling).
+        if (nf.doc) |d| {
+            try writeU8(w, 1);
+            try writeLenPrefixed(w, d);
+        } else {
+            try writeU8(w, 0);
+        }
+        try writeU8(w, if (nf.refer_clojure) 1 else 0);
     }
     try writeU32(w, @intCast(chunk.ctor_sites.len));
     for (chunk.ctor_sites) |ct| {
@@ -738,7 +746,15 @@ pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@impor
             }
             only = only_buf;
         }
-        ns_filters[i] = .{ .name = name_dup, .exclude = exclude, .only = only };
+        // v4: docstring + refer_clojure flag (D-239 sibling).
+        const has_doc = try r.readU8();
+        var doc: ?[]const u8 = null;
+        if (has_doc != 0) {
+            const db = try r.readLenPrefixed();
+            doc = try allocator.dupe(u8, db);
+        }
+        const refer_clojure = (try r.readU8()) != 0;
+        ns_filters[i] = .{ .name = name_dup, .exclude = exclude, .only = only, .doc = doc, .refer_clojure = refer_clojure };
     }
 
     const ctor_count = try r.readU32();
@@ -832,6 +848,7 @@ pub fn freeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) void {
             for (only) |o| allocator.free(o);
             allocator.free(only);
         }
+        if (nf.doc) |d| allocator.free(d);
     }
     allocator.free(chunk.ns_filters);
     for (chunk.ctor_sites) |ct| allocator.free(ct.type_name);
@@ -1545,7 +1562,7 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     }
     inline for (std.meta.fields(NsFilterEntry)) |f| {
         const classified: bool = switch (@field(std.meta.FieldEnum(NsFilterEntry), f.name)) {
-            .name, .exclude, .only => true,
+            .name, .exclude, .only, .doc, .refer_clojure => true,
         };
         try testing.expect(classified);
     }
@@ -1571,7 +1588,7 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     const nf_exclude = [_][]const u8{"reduce"};
     const nf_only = [_][]const u8{"inc"};
     const ns_filters = [_]NsFilterEntry{
-        .{ .name = "app.core", .exclude = &nf_exclude, .only = &nf_only },
+        .{ .name = "app.core", .exclude = &nf_exclude, .only = &nf_only, .doc = "the ns doc", .refer_clojure = false },
     };
     const ctor_sites = [_]CtorEntry{
         .{ .type_name = "java.io.File", .arg_count = 1 },
@@ -1625,11 +1642,13 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     try testing.expectEqual(@as(usize, 1), round.libspecs[0].exclude.len);
     try testing.expectEqualStrings("map", round.libspecs[0].exclude[0]);
 
-    // ns_filters — exclude + only
+    // ns_filters — exclude + only + doc + refer_clojure (v4)
     try testing.expectEqual(@as(usize, 1), round.ns_filters.len);
     try testing.expectEqualStrings("app.core", round.ns_filters[0].name);
     try testing.expectEqualStrings("reduce", round.ns_filters[0].exclude[0]);
     try testing.expectEqualStrings("inc", round.ns_filters[0].only.?[0]);
+    try testing.expectEqualStrings("the ns doc", round.ns_filters[0].doc.?);
+    try testing.expect(!round.ns_filters[0].refer_clojure);
 
     // ctor_sites
     try testing.expectEqual(@as(usize, 1), round.ctor_sites.len);
@@ -1798,6 +1817,8 @@ test "round-trips ns_filters with no :only (null) — bare (ns x (:require …))
     try testing.expectEqualStrings("mylib.greet", round.ns_filters[0].name);
     try testing.expectEqual(@as(usize, 0), round.ns_filters[0].exclude.len);
     try testing.expect(round.ns_filters[0].only == null);
+    try testing.expect(round.ns_filters[0].doc == null);
+    try testing.expect(round.ns_filters[0].refer_clojure);
 }
 
 test "round-trips instructions" {

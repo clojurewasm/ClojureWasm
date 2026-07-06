@@ -548,6 +548,8 @@ fn evalInNs(env: *Env, n: node_mod.InNsNode) !Value {
 /// remains in bootstrap.zig + primitive.zig + macro_transforms.zig).
 fn evalNs(rt: *Runtime, env: *Env, n: node_mod.NsNode) !Value {
     env.setCurrentNs(try env.findOrCreateNs(n.name));
+    // `(ns name "docstring" …)` → {:doc "…"} on the ns meta (D-239 sibling).
+    if (n.doc) |d| try meta_mod.setNsDoc(rt, env.current_ns.?, d);
     if (n.refer_clojure) {
         // Row 14.7 (D-098): filters apply to both rt/ and clojure.core
         // (the two auto-refer sources). `rt/` is cw-side primitives;

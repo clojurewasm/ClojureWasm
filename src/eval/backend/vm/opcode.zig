@@ -642,6 +642,11 @@ pub const NsFilterEntry = struct {
     name: []const u8,
     exclude: []const []const u8 = &.{},
     only: ?[]const []const u8 = null,
+    /// `(ns name "docstring" …)` → `{:doc …}` on the ns meta (D-239 sibling).
+    doc: ?[]const u8 = null,
+    /// False = the ns form had no refer-clojure step (rare); the op skips
+    /// the rt/clojure.core refers but still applies name + doc.
+    refer_clojure: bool = true,
 };
 
 /// Compiled bytecode for a single function or top-level form.

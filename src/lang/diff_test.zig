@@ -875,6 +875,16 @@ test "diff: ns_node :refer-clojure :only filter (D-098 VM op_ns_with_filter)" {
     try f.check("(do (ns diff-ns-only (:refer-clojure :only [+])) (+ 1 2))", 3);
 }
 
+test "diff: ns_node docstring lands as {:doc} ns meta (D-239 sibling)" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    // `(ns x "d")` sets {:doc "d"} on the ns meta in BOTH backends (tree_walk
+    // evalNs + VM op_ns_with_filter's side-table doc). Count of the meta map
+    // (1 entry) keeps the assertion Value-comparable in the minimal fixture.
+    try f.check("(do (ns diff-ns-doc \"the doc\" (:refer-clojure)) (count (meta (find-ns 'diff-ns-doc))))", 1);
+}
+
 // The ADR-0035 D9 refer-override (clojure.core wins over rt on collision)
 // is NOT diff-cased here: `compare` reuses one env across both backend runs,
 // so a def/in-ns-mutating source diverges by residue, not by backend. The

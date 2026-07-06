@@ -5,9 +5,9 @@
 //! collection (sharing internals) with the new meta. `vary-meta` is a
 //! core.clj defn over these. Same-type ops (assoc/conj/dissoc) already
 //! thread `.meta` so metadata is preserved. `reset-meta!` (here) +
-//! `alter-meta!` (core.clj) mutate a Var's / atom's meta slot; namespace /
-//! ref / agent meta and symbol/keyword meta are deferred (D-239).
-//! Metadata cycle 2026-05-30; discharges D-075.
+//! `alter-meta!` (core.clj) mutate a Var's / atom's / agent's / ref's /
+//! namespace's meta slot (D-239 complete); keyword meta stays rejected
+//! (clj parity). Metadata cycle 2026-05-30; discharges D-075.
 
 const Value = @import("../../runtime/value/value.zig").Value;
 const Runtime = @import("../../runtime/runtime.zig").Runtime;
@@ -58,6 +58,12 @@ pub fn resetMetaFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
         .atom => atom.setMeta(r, m),
         .agent => agent.setMeta(r, m),
         .ref => ref_mod.setMeta(r, m),
+        // Namespace meta (D-239 last remainder): mutate the ns's meta slot
+        // (GC-rooted by root_set's ns_vars walk).
+        .ns => {
+            const ns: *env_mod.Namespace = @constCast(r.decodePtr(*const env_mod.Namespace));
+            ns.meta = m;
+        },
         else => return error_catalog.raise(.reset_meta_target_not_ref, loc, .{ .actual = @tagName(r.tag()) }),
     }
     return m;

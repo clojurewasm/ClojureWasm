@@ -27,4 +27,16 @@ assert_eq 'ns-no-docstring' \
   "$("$BIN" -e '(ns plain (:refer-clojure)) (name (ns-name *ns*))' 2>&1 | tail -1)" \
   '"plain"'
 
-echo "OK — phase15_ns_docstring (3 cases) green"
+# The docstring LANDS as {:doc "…"} on the ns meta (D-239 sibling; was
+# silently skipped). clj: (meta (find-ns 'x)) → {:doc "…"}.
+assert_eq 'ns-doc-meta' \
+  "$("$BIN" -e '(ns dm.doc "the doc") (in-ns (quote user)) (:doc (meta (find-ns (quote dm.doc))))' 2>&1 | tail -1)" \
+  '"the doc"'
+
+# alter-meta! / reset-meta! on a namespace (D-239 remainder) — mutate,
+# read back, reset to nil.
+assert_eq 'ns-alter-meta' \
+  "$("$BIN" -e '(alter-meta! (find-ns (quote user)) assoc :k 1) [(:k (meta (find-ns (quote user)))) (do (reset-meta! (find-ns (quote user)) nil) (meta (find-ns (quote user))))]' 2>&1 | tail -1)" \
+  '[1 nil]'
+
+echo "OK — phase15_ns_docstring (5 cases) green"

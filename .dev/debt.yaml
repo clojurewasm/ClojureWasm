@@ -24,6 +24,11 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-554"
+    status: "open (2026-07-06, split from D-239's discharge). The `(ns name {:attr-map} …)` ATTR-MAP and `(ns ^{:m 1} name)` name-symbol meta are still SKIPPED at analysis (special_forms.zig analyzeNs) — only the docstring lands as {:doc} ns meta. clj merges name-sym meta + attr-map + docstring into the ns meta. Rare vs the docstring (libs mostly use :author/:added attr-maps); needs a Form->Value map conversion at analysis + ADR-0169-style rooting OR an arena-thread of the literal into both backends (the doc rode NsFilterEntry as a plain string; a map needs a Value). Mechanise via phase15_ns_docstring e2e when landed."
+    category: "clj-parity"
+    barrier: "none hard — design choice: formToValue at analysis (needs AnalysisFrame rooting for the map Value in NsNode) vs re-analyzing the attr-map Form at execution. Take up easiest-first or on a lib whose ns attr-map meta is read programmatically."
+    last_reviewed: "2026-07-06"
   - id: "D-547"
     status: |-
       open (2026-07-01, NARROWED same day). Enforcement-honesty sweep — surfaced by the
@@ -655,23 +660,6 @@ active:
     barrier: |-
       `src/lang/primitive/` (math / core / error today, 3 files) will grow with collection / sequence / io / numeric / type / spec primitives across Phase 5-14. ROADMAP A6 ≤ 1000-lines cap will breach on `core.zig` (general primitives bucket) first. Sub-directory restructure (`primitive/core/`, `primitive/sequence/`, etc.) should land when the second primitive file passes ~500 lines. Owner picks exact split shape **within F-NNN envelope** (= F-005 numeric tower primitives organisation must remain coherent across the split). | each Phase 5+ primitive wave
     last_reviewed: "2026-05-28"
-  - id: "D-239"
-    status: "RE-NARROWED 2026-07-02 (audit): barrier opening ns + ref remain is half-stale — ref meta landed via D-533 (reset-meta! on refs verified). NS meta is the only remainder. ORIGINAL: now (PARTIAL: var + atom + AGENT + REF landed — agent meta via D-441 (agent.zig:110 + metadata.zig dispatch); REF meta via D-533 (2026-06-25: Ref.meta field + `(ref v :meta m)` ctor kwarg + meta/reset-meta! dispatch; `with-meta` on a ref correctly THROWS — clj's Ref is not IObj, so that is clj-parity, not a gap). Only NS meta still deferred. Corrected 2026-06-17 audit (agent) + 2026-06-25 audit (ref).)"
-    category: "runtime"
-    quality_floor: "metadata: alter-meta!/reset-meta! on namespace / ref / agent refs"
-    barrier: |-
-      **`alter-meta!` / `reset-meta!` cover Var + atom + agent refs; ns + ref
-      still deferred.** The Zig primitive `reset-meta!` mutates a Var's `.meta`
-      field, an atom's `.meta` slot, or an agent's meta (agent.zig:110 + the
-      metadata.zig dispatch, landed via D-441); `alter-meta!` is a core.clj defn
-      over it. clj also supports these on **namespaces and refs** — cljw has no
-      meta slot on Namespace (it is not yet a first-class Value-with-meta; see
-      ADR-0085 namespace-as-value), and ref is a Phase-15 concurrency type. A
-      `(reset-meta! <ns-or-ref> …)` raises `reset_meta_target_not_ref`. Barrier
-      dissolves when (a) Namespace gains a meta slot reachable through a namespace
-      Value (ADR-0085 follow-on), and (b) Phase 15 lands ref. potemkin's
-      `namespaces.clj` alter-meta! on a namespace is the first real consumer.
-      corpus alter_meta (8) covers the var/atom surface.
   - id: "D-245"
     status: "now (ADR-0092, 2026-06-05) — `locking` LANDED as Option A (header spinlock + threadlocal reentrancy held-set, runtime/concurrency/object_monitor.zig). Correct, reentrant, GC-safe (safepoint-polling spin), clj-result-equivalent (mutual-exclusion e2e = 400). The Option C blocking-monitor inflation is this row."
     category: "concurrency"
@@ -6532,6 +6520,12 @@ discharged:
     status: "DISCHARGED 2026-07-06 (easiest-first drain). `clojure.lang.Murmur3/hashUnencodedChars` landed as a REAL UTF-16 code-unit Murmur3 (hash.zig hashUnencodedChars: UTF-8 -> UTF-16 units streaming, surrogate pairs for astral codepoints, 2 units/block, fmix over 2*unit-count — the exact JVM algorithm), registered on the existing cljw.clojure.lang.Murmur3 surface. UNLIKE the AD-009 collection hashes this is JVM BIT-PARITY (input is pure code units, no cljw-native value hash) — unit test pins 6 clj-oracle values incl. a surrogate-pair case (𠮷野家 -> -383720716); corpus clojure_lang_util +5 clj-byte-matched goldens. The 2026-06-10 either/or (hash UTF-8 accepting AD-009 divergence, OR build a real UTF-16 path) resolved to the REAL path — it costs ~30 lines and removes the divergence entirely. String-arg only (a CharSequence deftype arg raises type_arg_invalid; extend on a real consumer). data.xml (the 2 call sites) has no local clone — take its full-lib run up under D-528 when cloned."
     category: "interop"
     barrier: "DISCHARGED (was: no UTF-16 hasher)."
+    last_reviewed: "2026-07-06"
+
+  - id: "D-239"
+    status: "DISCHARGED 2026-07-06 — the LAST remainder (namespace meta) landed; alter-meta!/reset-meta!/meta now cover Var + atom + agent + ref + NAMESPACE. Namespace gained a meta slot (env.zig; GC-rooted in root_set's ns_vars walk as the walk enters each ns); reset-meta!'s .ns arm + metaOf's .ns arm; the stale 'var or atom' catalog template updated. SIBLING also landed same cycle: the `(ns name \"docstring\")` docstring — previously silently SKIPPED — now lands as {:doc …} ns meta in BOTH backends (NsNode.doc; tree_walk evalNs + VM op_ns_with_filter via NsFilterEntry.doc/refer_clojure + bytecode v4 serialization; shared meta.setNsDoc helper so semantics cannot drift; diff case per the ADR-0036 contract). e2e phase15_ns_docstring (5 cases incl. ns-doc-meta/ns-alter-meta); clj-oracle-verified ({:doc \"my doc\", :k 1} after alter-meta!). The ns ATTR-MAP + name-symbol meta remain skipped -> split to D-554 (needs a Value-in-node + rooting design). HISTORY: var (D-183) + atom + agent (D-441) + ref (D-533) landed earlier."
+    category: "runtime"
+    barrier: "DISCHARGED (was: ns meta slot missing)."
     last_reviewed: "2026-07-06"
 
 conventions: |-

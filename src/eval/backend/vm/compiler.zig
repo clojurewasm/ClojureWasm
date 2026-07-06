@@ -782,8 +782,10 @@ const Compiler = struct {
         // trailing op_pop drops the prior nil before the next push, leaving
         // exactly one nil (the ns form's value).
         const has_filter = n.refer_clojure_exclude.len > 0 or n.refer_clojure_only != null;
-        if (has_filter or n.libspecs.len > 0 or n.imports.len > 0) {
-            if (n.refer_clojure) {
+        if (has_filter or n.libspecs.len > 0 or n.imports.len > 0 or n.doc != null) {
+            if (n.refer_clojure or n.doc != null) {
+                // A docstring rides the side-table entry too (D-239 sibling);
+                // the entry's `refer_clojure` keeps the no-refer shape honest.
                 if (self.ns_filters.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
                 const filter_idx: u16 = @intCast(self.ns_filters.items.len);
                 const name_dup = try self.arena.dupe(u8, n.name);
@@ -794,7 +796,8 @@ const Compiler = struct {
                     for (only, 0..) |o, i| od[i] = try self.arena.dupe(u8, o);
                     break :blk od;
                 } else null;
-                try self.ns_filters.append(self.arena, .{ .name = name_dup, .exclude = exclude_dup, .only = only_dup });
+                const doc_dup: ?[]const u8 = if (n.doc) |d| try self.arena.dupe(u8, d) else null;
+                try self.ns_filters.append(self.arena, .{ .name = name_dup, .exclude = exclude_dup, .only = only_dup, .doc = doc_dup, .refer_clojure = n.refer_clojure });
                 try self.emit(.op_ns_with_filter, filter_idx);
             } else {
                 const name_val = try string_mod.alloc(self.rt, n.name);
