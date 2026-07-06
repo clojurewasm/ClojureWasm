@@ -14,15 +14,14 @@
   (release.yml/CLAUDE.md "loop never tags" is otherwise intact). Demo repos
   cw-serverless-demo + cw-playground redeployed to fly.io on v1.0.0 and live-verified
   (books+cover-colours / eval+wasm-FFI). ADR-0167 rc.1-readiness campaign CLOSED — 1.0.0 shipped.
-- **First task on resume MUST be: D-558** (correctness floor) — adding a
-  ~60KB bundled .clj corrupts the AOT bootstrap (garbled ns-registry key;
-  GC-independent; size-triggered at ~225-230 forms). Full investigation
-  log + repro generator preserved in the D-558 row + the prior session's
-  scratchpad. It blocks D-305 (impl DONE, wiring preserved). After D-558:
-  easiest-first drain resumes. DONE 2026-07-07: D-526 (9 drains,
-  discharged) / D-554 ns attr-map / D-470 format %t / D-555+556+557 GC
-  arc / regex lookbehind + Pattern.split (HoneySQL green, D-528 drain) /
-  1.12-sweep (D-527 drain).
+- **First commit on resume: the easiest-first drain head** — no floor
+  open. DONE 2026-07-07 (9 discharges): D-555+556+557 GC arc / D-526
+  (9 interop drains) / D-554 ns attr-map / D-470 format %t / D-558
+  cache_gen blob corruption (builder.zig persist seams — the D-556 sweep's
+  missed file) / D-305 builtin :arglists/:doc (core_meta.clj, regenerate
+  via scripts/extract_core_meta.sh). Plus regex lookbehind +
+  Pattern.split (HoneySQL green) + 1.12 sweep. Remaining `active:` rows
+  drain easiest-first; D-527/D-528 stay as repeatable campaign rows.
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm`; bare `zig build`
   for a probe (use ReleaseSafe). **The FULL gate MUST run `--serial-e2e`** — the `-P8`
   parallel default flakes the **D-418/D-258 agent load-race** (`agent_conj` →
