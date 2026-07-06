@@ -26,7 +26,7 @@
 active:
   - id: "D-536"
     status: |-
-      DRAIN 2 (2026-07-07): code-truth reconciliation of the two rows the D-529 marker audit surfaced — D-048 CLOSED (the 2026-05-24 'init will need Runtime' prediction falsified by 30+ real td+gpa surfaces; the host_instance catch arm retired as unreachable; the RE-OPENED-note-stranded-in-discharged inconsistency ended) and D-117 RE-NARROWED (interrupt/load-file/CIDER-ops/auto-port all landed per the green nrepl e2e — only multi-session remains, owned by the D-418 concurrency area). REMAINING: the ~58 other '| Phase N' trigger tails in standing/discharged history + the probe-backed false-claim pass over active rows. RE-SCOPED 2026-07-02 (audit): the "~57 remaining in standing:" estimate was ~8x inflated — standing: holds 7 rows; ~53 were discharged-history lines. Remaining work ~ 7 standing tails. ORIGINAL:
+      DRAIN 3 (2026-07-07): ALL 9 live '| Phase N' barrier tails in standing: redirected to gap-area/§9.0 vocabulary (D-005/006/015/016/019/028/035/036/039 — each names its owning gap area or the boundary-review trigger; D-036's zwasm-v2-rewrite precondition marked DONE at v2.1.0). Live active/standing Phase-N tails now ZERO; the 53 remaining hits are discharged-history text (historical record, correctly untouched). REMAINING: only the probe-backed false-claim pass over active rows. DRAIN 2 (2026-07-07): code-truth reconciliation of the two rows the D-529 marker audit surfaced — D-048 CLOSED (the 2026-05-24 'init will need Runtime' prediction falsified by 30+ real td+gpa surfaces; the host_instance catch arm retired as unreachable; the RE-OPENED-note-stranded-in-discharged inconsistency ended) and D-117 RE-NARROWED (interrupt/load-file/CIDER-ops/auto-port all landed per the green nrepl e2e — only multi-session remains, owned by the D-418 concurrency area). REMAINING: the ~58 other '| Phase N' trigger tails in standing/discharged history + the probe-backed false-claim pass over active rows. RE-SCOPED 2026-07-02 (audit): the "~57 remaining in standing:" estimate was ~8x inflated — standing: holds 7 rows; ~53 were discharged-history lines. Remaining work ~ 7 standing tails. ORIGINAL:
       open (2026-07-01, user-directed; ADR-0167 S0). Debt-ledger code-truth
       reconciliation ahead of the 1.0.0-rc.1 public cutover: re-check rows against
       code truth; delete/narrow stale + false-positive rows (zwasm S0 pattern).
@@ -1296,55 +1296,55 @@ standing:
     status: "gap area III — VM perf→JIT (§9.22): broad ARM64/x86_64 JIT go/no-go. Future/distal — decided after the fusion slice + the narrow ARM64 JIT (milestone M) land. (Was 'Phase 17 target'; re-barriered per ADR-0142.)"
     category: "perf"
     barrier: |-
-      ARM64 JIT decision (go / no-go) | Phase 17 bench σ < 5%
+      ARM64 JIT decision (go / no-go) | gap area III milestone M lands + bench σ < 5% (was 'Phase 17'; §9.0/ADR-0142)
     last_reviewed: "2026-05-23"
   - id: "D-006"
     status: "gap area II — Wasm/edge-native (§9.18): Wasm FFI re-introduction via Pod boundary. Future. zwasm v2 is now stable + SHA-pinned (done); the Pod-boundary FFI shape is the remaining gap. (Was 'Phase 16 target'; ADR-0142.)"
     category: "scope"
     barrier: |-
-      Wasm FFI re-introduction via Pod boundary | zwasm v2 stable + ADR-0006 review
+      Wasm FFI re-introduction via Pod boundary | zwasm v2 stable (done) + ADR-0006 review at the gap-area-II unit that needs it
     last_reviewed: "2026-05-23"
   - id: "D-015"
     status: "open question"
     category: "concurrency"
     barrier: |-
-      virtual threads (M:N coroutine) evaluation | Phase 14 re-evaluation
+      virtual threads (M:N coroutine) evaluation | gap area I concurrency-hardening — re-evaluate when real threads land (was 'Phase 14'; §9.0/ADR-0142)
     last_reviewed: "2026-05-23"
   - id: "D-016"
     status: "open question"
     category: "runtime"
     barrier: |-
-      generational GC evaluation | Phase 5 mark-sweep bench results
+      generational GC evaluation | gap area III perf work — re-evaluate if mark-sweep pause/throughput shows in a Release bench (was 'Phase 5'; §9.0/ADR-0142; the ADR-0164 threshold collector is the current answer)
     last_reviewed: "2026-05-23"
   - id: "D-019"
     status: "Phase 5+ continuous"
     category: "docs"
     barrier: |-
-      ARCHITECTURE.md drift — new subsystems (GC / STM / lazy-seq / multimethod) must appear in the "Where to look" map | Phase 5/7/11/14 boundary audit
+      ARCHITECTURE.md drift — new subsystems (GC / STM / lazy-seq / multimethod) must appear in the "Where to look" map | boundary-review-chain audit (audit_scaffolding), each gap-area unit close (was 'Phase 5/7/11/14'; §9.0/ADR-0142)
     last_reviewed: "2026-05-23"
   - id: "D-028"
     status: "per-Phase audit"
     category: "governance"
     barrier: |-
-      ROADMAP §9.6 cleanup-wave rows (4.13 io_interface / 4.16 wasm option / 4.17 type_descriptor / 4.18 protocol / 4.20 host directory / 4.22 binding_stack) shipped as skeletons during the 2026-05-23 autonomous loop. **Audit timing: the owning Phase's entry, NOT the current loop** (per principle.md Structural imagination). Each owner decides delete / re-scope / keep / extend **within the F-NNN envelope** (= 4.17 / 4.18 / 4.20 type slots must still support F-004 64-slot enumeration; any restructure honours F-001 / F-005 / F-006). The 2026-05-23 session executed only the source-side normalisation that was unambiguous (revert wasm option in build.zig, delete binding_stack.zig re-export); ROADMAP row decisions are deferred to owners. | each row's owning Phase entry
+      ROADMAP §9.6 cleanup-wave rows (4.13 io_interface / 4.16 wasm option / 4.17 type_descriptor / 4.18 protocol / 4.20 host directory / 4.22 binding_stack) shipped as skeletons during the 2026-05-23 autonomous loop. **Audit timing: the owning Phase's entry, NOT the current loop** (per principle.md Structural imagination). Each owner decides delete / re-scope / keep / extend **within the F-NNN envelope** (= 4.17 / 4.18 / 4.20 type slots must still support F-004 64-slot enumeration; any restructure honours F-001 / F-005 / F-006). The 2026-05-23 session executed only the source-side normalisation that was unambiguous (revert wasm option in build.zig, delete binding_stack.zig re-export); ROADMAP row decisions are deferred to owners. | the owning gap-area unit's start (phase-entry model retired, §9.0/ADR-0142)
     last_reviewed: "2026-05-23"
   - id: "D-035"
     status: "gap area III — VM perf→JIT (§9.19): extract a backend-shared callable-dispatch layer BEFORE adding the JIT vtable. Future — opens with the narrow-JIT (milestone M) / broad-JIT decision. (Was 'Phase 17 entry'; ADR-0142.)"
     category: "structure"
     barrier: |-
-      `vm.installVTable` currently reuses `tree_walk.treeWalkCall` + `valueTypeKey` + `callFunction` (4.8 design — single seam is the `evalChunk` vtable hook). Phase 17 adds a 3rd backend (JIT per ADR-0005); 3-backend reuse of TreeWalk's `callFunction` skews the dependency graph. Extract a backend-shared "callable dispatch" layer (likely `src/runtime/dispatch/callable.zig`) at Phase 17 entry before adding the JIT vtable. Owner picks exact extraction shape **within F-NNN envelope** (= F-004 type set + F-005 numeric tower dispatch + F-006 GC root through callable dispatch must work unchanged through the new layer). | Phase 17 entry
+      `vm.installVTable` currently reuses `tree_walk.treeWalkCall` + `valueTypeKey` + `callFunction` (4.8 design — single seam is the `evalChunk` vtable hook). Phase 17 adds a 3rd backend (JIT per ADR-0005); 3-backend reuse of TreeWalk's `callFunction` skews the dependency graph. Extract a backend-shared "callable dispatch" layer (likely `src/runtime/dispatch/callable.zig`) at Phase 17 entry before adding the JIT vtable. Owner picks exact extraction shape **within F-NNN envelope** (= F-004 type set + F-005 numeric tower dispatch + F-006 GC root through callable dispatch must work unchanged through the new layer). | gap area III — before the JIT vtable lands (was 'Phase 17 entry'; §9.0/ADR-0142)
     last_reviewed: "2026-05-23"
   - id: "D-036"
     status: "gap area II — Wasm/edge-native (§9.18): zwasm v2 integration master row. Direction confirmed (F-001/004/006/008); zwasm is SHA-pinned + interp-embedded (done). Remaining: the finished-form embedding shape (D-350) + JIT-coordination (D-035). (Was 'Phase 16 entry'; ADR-0142.)"
     category: "scope"
     barrier: |-
-      wasm FFI confirmed **unavoidable**. **Direction confirmed (F-001 + F-004 + F-006 + F-008)**: F-004 day-1 reserves NaN-box `funcref` / `externref` inline slots in Group D for zwasm-v2 reference types. F-006 keeps cw heap and Wasm linear memory in **separate spaces**; zwasm internal bookkeeping accepts cw GC allocator via `Engine.init(allocator)` (cw v0 D110 dual-GC leak does not recur). F-008 pins zwasm v2 spec (ADR-0109) review + cw v1 stances. JIT-coordination with cw v1 Phase 17 JIT (D-035) lands at Phase 16 entry. | Phase 16 entry + zwasm v2 rewrite (ADR-0109) completion
+      wasm FFI confirmed **unavoidable**. **Direction confirmed (F-001 + F-004 + F-006 + F-008)**: F-004 day-1 reserves NaN-box `funcref` / `externref` inline slots in Group D for zwasm-v2 reference types. F-006 keeps cw heap and Wasm linear memory in **separate spaces**; zwasm internal bookkeeping accepts cw GC allocator via `Engine.init(allocator)` (cw v0 D110 dual-GC leak does not recur). F-008 pins zwasm v2 spec (ADR-0109) review + cw v1 stances. JIT-coordination with the gap-area-III JIT (D-035) lands with the gap-area-II embedding unit. | gap area II unit start + zwasm v2 rewrite (ADR-0109) completion — the latter is DONE (v2.1.0 pinned)
     last_reviewed: "2026-05-24"
   - id: "D-039"
     status: "gap area II — Wasm/edge-native (§9.18): cw io_interface (Tier 1) vs zwasm WASI responsibility split. Future — decided when the unified wasm embedding (D-350) lands. (Was 'Phase 16 entry'; ADR-0142.)"
     category: "structure"
     barrier: |-
-      cw v1 `io_interface.zig` (Tier 1) と zwasm v2 WASI (`linker.defineWasi(cfg)`) の責務分離。 (a) 別 layer に分離 default (cw io_interface は cw v1 内部 I/O 抽象、 WASI は wasm 統合用に独立)、 vs (b) cw `io_default.zig` (Tier 2) の実装を WASI 経由にする option。 Phase 16 entry owner が `structure_plan.md` の `runtime/wasm/` + `runtime/io_default.zig` 配置を見て判定。 | Phase 16 entry
+      cw v1 `io_interface.zig` (Tier 1) と zwasm v2 WASI (`linker.defineWasi(cfg)`) の責務分離。 (a) 別 layer に分離 default (cw io_interface は cw v1 内部 I/O 抽象、 WASI は wasm 統合用に独立)、 vs (b) cw `io_default.zig` (Tier 2) の実装を WASI 経由にする option。 The gap-area-II unit owner decides against `structure_plan.md`'s `runtime/wasm/` + `runtime/io_default.zig` placement. | gap area II unit start (was 'Phase 16 entry'; §9.0/ADR-0142)
     last_reviewed: "2026-05-24"
   - id: "D-210"
     status: "STANDING FLOOR (quality-loop floor: clj-parity) — the clj-parity root-cause campaign C1..C7 is **COMPLETE 2026-06-03** (ROADMAP §9.2.P, ADR-0076, user-directed 2026-06-02): C1 (D-164) + C2 (D-205) + C3 (D-207) + C4 (D-209) + C6 (D-200) + C5 (D-198) + **C7 (D-165, ADR-0080) DISCHARGED**. The anchor now persists ONLY as the standing `quality-loop floor: clj-parity` that drains any NEW cljw↔clj DIFF a future sweep surfaces (drain highest-value-first, per CLAUDE.md Step 0.5 floor-drain). No remaining campaign units. C7 spun off **D-214** (bit-ops on heap-Long, pre-existing i48-only gap)."
