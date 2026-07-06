@@ -214,32 +214,6 @@ active:
       deps.edn, exercise it, triage findings. SSOT: ADR-0166 row 7. (clj-parity
       findings fold into the D-175 floor.)
     last_reviewed: "2026-06-24"
-  - id: "D-529"
-    status: |-
-      AUDIT 2 / DRAIN (2026-07-07): all 4 PROVISIONAL markers resolved to ZERO. (1) nrepl auto_port [was refs: D-117 — a DANGLING row, removed from the ledger at some cleanup]: FIXED for real — Zig 0.16's listen() resolves the ephemeral port into Socket.address, so .nrepl-port + the banner now report server.socket.address.getPort(); live-verified (--port 0 wrote 58852). (2)+(3) catch_class_host_instance_arm x2 [was refs: D-048 — also dangling]: the arm is UNREACHABLE — host exception classes construct ex_info carriers (allocException) and the analyzer rejects a non-exception catch class, so 'false' IS the finished form; markers retired, feature_deps entries flipped to landed with the reasoning. (4) wasm_handle [D-259]: still legitimately provisional (its row is live). PROVISIONAL census: 4 -> 1. LESSON recorded: two markers pointed at debt rows that no longer exist — a future ledger cleanup should grep 'refs: D-NNN' in source before deleting a row. REMAINING for this row: the ~10 PERF markers lacking an O-NNN ref. open (2026-06-24, user-directed; ADR-0166). Marker-comment inventory +
-      validity: 110 markers (PROVISIONAL 4 / PERF 65 / GC-ROOT 41 / VM-DEFER 0).
-      Walk each; validate it is still accurate + earning its keep; retire stale;
-      keep the meaningful.
-      AUDIT 1 (2026-06-25): current counts PERF 61 / GC-ROOT 38 / PROVISIONAL 3 /
-      VM-DEFER 0. HEALTHY: VM-DEFER 0 (no dual-backend-parity debt); the 3
-      PROVISIONAL markers all carry a well-formed `[refs: D-NNN,
-      feature_deps.yaml#key]` triad (D-048 host_instance catch arm ×2,
-      D-259 wasm handle) per provisional_marker.md; no genuine BARE pointer comments
-      exist (D-522 target empty — a `^\s*//\s*(ADR|D)-NNN\s*$` scan returns 0, so the
-      in-code refs all anchor explanatory prose, which the rule says to KEEP). The
-      PERF markers lacking an explicit `O-NNN` ref (~10) are genuine speed-for-
-      simplicity trades that cite an ADR or describe the naive↔fast pair inline
-      (fromSlice-vs-N×conj, chunk fast path, i64 small-ratio per ADR-0149) — per
-      perf_marker.md enforcement is "lightweight, no hard gate" + descriptive PERF
-      is acceptable, so these are not violations. No stale/lying markers found;
-      the inventory is healthy. Re-run at the next marker-churn point.
-    category: "docs"
-    quality_floor: "public-ization: marker-comment inventory (ADR-0166)"
-    barrier: |-
-      Repeatable polish drain (ADR-0166). Per /continue: audit a marker class
-      against its SSOT (optimizations.md / feature_deps.yaml / gc_rooting.md);
-      retire stale, condense. SSOT: ADR-0166 row 8.
-    last_reviewed: "2026-06-24"
   - id: "D-521"
     status: |-
       open (2026-06-24, user-directed) — TWO destructure-lowering systems can DRIFT.
@@ -6469,6 +6443,12 @@ discharged:
     category: "clj-parity"
     barrier: "DISCHARGED (was: blocked by D-558; both landed together)."
     last_reviewed: "2026-07-07"
+  - id: "D-529"
+    status: "DISCHARGED 2026-07-07. Marker inventory walked to closure across two audits. AUDIT 1 (2026-06-25): counts PERF 61 / GC-ROOT 38 / PROVISIONAL 3+1 / VM-DEFER 0; VM-DEFER 0 healthy; no bare pointer comments. AUDIT 2 / final (2026-07-07): (a) PROVISIONAL 4 -> 1 — nrepl auto_port FIXED for real (Zig 0.16 Socket.address carries the bound ephemeral port; --port 0 live-verified), the two catch_class_host_instance_arm markers retired as UNREACHABLE (host exceptions are ex_info carriers; the analyzer rejects non-exception catch classes — false is the finished form), D-259 wasm handle stays legitimately provisional; two retired markers had DANGLING debt refs (D-117/D-048 rows deleted in some past cleanup — lesson: grep 'refs: D-NNN' in source before deleting a row). (b) The ~30 PERF markers without an O-NNN ref are formalized under the new O-051 umbrella row (.dev/optimizations.md): self-documenting micro fast-paths whose marker text states its own naive form — a per-site row would duplicate the comment. GC-ROOT markers are anchored by .dev/gc_rooting.md (their own SSOT) and were exercised end-to-end by the D-555/556 arc this same week."
+    category: "docs"
+    barrier: "DISCHARGED (was: 110-marker validity walk)."
+    last_reviewed: "2026-07-07"
+
 conventions: |-
   - Structure: two top-level lists — `active:` and `discharged:`. Active entries carry id / status / category / barrier (+ optional quality_floor / last_reviewed); discharged entries carry id / discharged_at / resolution. Edit as YAML (no Markdown table to align).
   - New debt: grep `.dev/debt.yaml` for class-overlap before adding (per `.claude/rules/debt_dedup.md`).
