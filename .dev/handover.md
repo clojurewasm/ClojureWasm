@@ -5,7 +5,7 @@
 
 ## Resume contract
 
-- **HEAD**: `main` (`git log` = SSOT; tip ≈ `4a51ed2c`). Per-commit = smoke; commit
+- **HEAD**: `main` (`git log` = SSOT; tip ≈ `40ccdc77`). Per-commit = smoke; commit
   **and** push (atomic Step 6). `build.zig.zon` `.zwasm` = tag pin `v2.1.0` (table64-JIT; bumped from v2.0.0).
 - **1.0.0 RELEASED (2026-07-01).** cljw `v1.0.0` tagged + pushed (commit a6db5dd6);
   release.yml published the GitHub Release (macos-aarch64 + linux-x86_64 binaries +
@@ -14,10 +14,14 @@
   (release.yml/CLAUDE.md "loop never tags" is otherwise intact). Demo repos
   cw-serverless-demo + cw-playground redeployed to fly.io on v1.0.0 and live-verified
   (books+cover-colours / eval+wasm-FFI). ADR-0167 rc.1-readiness campaign CLOSED — 1.0.0 shipped.
-- **Track B (parallel, non-blocking for the tag):** the easiest-first `active:`
-  drain continues — D-522 de-pointer / D-523 doc-audit / D-526 interop / D-527
-  parity / D-528 real-deps.edn / D-529 / D-305 / D-470 / D-222 / D-460 / D-439 sqrt.
-  A correctness / clj-parity floor still PREEMPTS.
+- **First commit on resume MUST be: D-557** — tree_walk lazy-`for`
+  double-consumption value corruption (`-nth on Long`); deterministic repro
+  preserved at `private/d557_repro` (tree_walk build + `cljw -cp src
+  run_direct.clj`; `run_v7.clj` = vec-wrapped for PASSES — the fix hint).
+  Then D-555's remaining pair (vm SourceLocation-fallback vs print.zig's
+  intended caret form + the two e2e expectations) → sweep clean → discharge
+  + wire check_vm_parity.sh into the nightly CI leg. Then easiest-first
+  drain resumes (D-526/D-527/D-528/D-305/D-470/D-554...).
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm`; bare `zig build`
   for a probe (use ReleaseSafe). **The FULL gate MUST run `--serial-e2e`** — the `-P8`
   parallel default flakes the **D-418/D-258 agent load-race** (`agent_conj` →
