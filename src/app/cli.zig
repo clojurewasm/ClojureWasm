@@ -305,7 +305,10 @@ fn dispatchArgsRest(
             // comptime-known) so build mode is readable at a glance instead of
             // guessed from binary size — and so the gate can assert ReleaseSafe
             // semantically (D-385 silent Debug-binary perf cliff).
-            try stdout.print("ClojureWasm v{s} ({s}{s})\n", .{ build_options.version, @tagName(@import("builtin").mode), if (build_options.wasm) ", wasm" else "" });
+            // The NON-default backend is named so scripts (check_vm_parity's
+            // backend-aware e2e cases) can detect a tree_walk binary; the vm
+            // default keeps the exact historical banner.
+            try stdout.print("ClojureWasm v{s} ({s}{s}{s})\n", .{ build_options.version, @tagName(@import("builtin").mode), if (build_options.wasm) ", wasm" else "", if (build_options.backend == .tree_walk) ", tree_walk" else "" });
             try stdout.flush();
             return;
         } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {

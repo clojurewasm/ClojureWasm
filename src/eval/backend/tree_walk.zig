@@ -440,6 +440,17 @@ pub fn allocFunctionFromSerialized(
 
 // --- Top-level eval ---
 
+/// ADR-0157 2a (tree_walk arm): per-thread native-stack guard state, the
+/// sibling of vm.zig's. The tree-walk evaluator recurses NATIVE frames per
+/// Node, so a deep user recursion (or a self-triggering watch's
+/// notify→swap!→notify chain) overflows the native stack → SIGSEGV where
+/// the VM raises the catchable stack_overflow. Anchor to the shallowest
+/// `eval` entry seen on this thread and raise once the REAL bytes consumed
+/// exceed the same 6 MiB budget. Per-node cost is a threadlocal read + two
+/// compares — negligible even for the oracle backend.
+threadlocal var stack_base: usize = 0;
+const STACK_BUDGET_BYTES: usize = 6 * 1024 * 1024;
+
 /// Evaluate one Node into a Value. `locals` is the slot array owned
 /// by the caller — typically a fixed 256-entry stack array.
 pub fn eval(
@@ -448,6 +459,14 @@ pub fn eval(
     locals: []Value,
     node: *const Node,
 ) anyerror!Value {
+    {
+        const sp = @frameAddress();
+        if (stack_base == 0 or sp > stack_base) {
+            stack_base = sp; // (re-)anchor to the shallowest (highest) entry seen
+        } else if (stack_base - sp > STACK_BUDGET_BYTES) {
+            return error_catalog.raise(.stack_overflow, .{}, .{ .max = STACK_BUDGET_BYTES });
+        }
+    }
     return switch (node.*) {
         .constant => |n| n.value,
         .local_ref => |n| {

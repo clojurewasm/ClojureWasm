@@ -25,7 +25,7 @@
 
 active:
   - id: "D-555"
-    status: "open (2026-07-06, found by D-553's first tree_walk full-e2e sweep — the repurposed check_vm_parity.sh doing exactly its job). SIX e2e steps FAIL on -Dbackend=tree_walk while green on the vm default (corpus 3901/3901 green on both): (1) phase15_watch_recursion — SEGFAULT (memory safety; HIGHEST priority); (2) phase16_gc_torture — dies (empty failure output; GC-related); (3) phase14_symbol_metadata sym_meta_gc_survives — got nil want 1 (symbol meta lost under GC — tree-walk rooting gap?); (4) phase14_seq_helpers2 interleave_large — got '' want 100000 (large-input crash/depth?); (5) phase15_dynamic_var guard — got 2 want 1; (6) phase15_require_fs missing — got 2 want 1 (exit-code shaped). The F-012 diff oracle (zig build test, both backends) is GREEN — these live in territory the oracle does not cover (GC trigger timing, deep recursion, watches, require-fs paths, e2e exit codes). Each is triage: a REAL tree-walk-backend bug (fix; the oracle backend must stay healthy) vs a vm-default assumption baked into the e2e (then SKIPS-list it in check_vm_parity.sh with the reason). Repro: bash scripts/check_vm_parity.sh (~8 min) or per-step: zig build -Dwasm -Doptimize=ReleaseSafe -Dbackend=tree_walk && CLJW_SKIP_BUILD=1 bash test/e2e/<step>.sh."
+    status: "RE-NARROWED 2026-07-06 (same day): finding (1) watch_recursion SEGFAULT is FIXED — the ADR-0157 native-stack guard (threadlocal stack_base anchor + 6MiB budget) existed ONLY in vm.zig; the tree_walk arm is now ported (per-node check in eval; a threadlocal read + two compares). SIGSEGV -> catchable stack_overflow, all watch/validator/reducer reentry cases green on BOTH backends. The e2e 500-deep legit-recursion cases were vm-shaped: tree_walk pays ~30KB native per HOF step / ~13KB per direct step (ReleaseSafe), so 500 PHYSICALLY exceeds the 6MiB budget (pre-guard: raw SIGSEGV) — cases (6)/(7) are now backend-aware (100/300 deep on tree_walk; --version gained a \", tree_walk\" marker for detection, vm banner unchanged). FORWARD: raising tree_walk depth to clj-like levels needs build.zig stack_size + an ADR-0157 budget amendment (depth-2) — take up if the oracle depth becomes limiting. REMAINING (4 findings): (2) phase16_gc_torture dies; (3) phase14_symbol_metadata sym_meta_gc_survives nil-want-1 (GC rooting gap, tree_walk-only); (4) phase14_seq_helpers2 interleave_large got-empty (possibly the SAME budget physics on a deep lazy realize — triage vs a rooting bug); (5) phase15_dynamic_var guard + (6) phase15_require_fs missing, both got-2-want-1 (exit-code shaped). ORIGINAL: six e2e fail on -Dbackend=tree_walk (D-553 first sweep), corpus green, F-012 oracle green."
     category: "runtime"
     barrier: "none — deterministic repros in hand. Start with the phase15_watch_recursion SEGFAULT (memory safety) and the two GC-related fails (torture + symbol-meta) — likely a tree-walk-only rooting gap; the exit-code pair last (may be harness-shaped)."
     last_reviewed: "2026-07-06"
@@ -6400,10 +6400,10 @@ discharged:
     category: "clj-parity"
     barrier: "none — landed. Both ctor remnants done; valueOf(double) stays shortest-round-trip (distinct path)."
     last_reviewed: "2026-06-25"
-# === STANDING (epics / campaigns / capstones / deferred-future bucket) ===
-# Not drained as single units by the autonomous loop (CLAUDE.md self-select reads active: only).
-# Trackers + the user-directed indefinitely-deferred future bucket (broad JIT / CLJS->JS / C-FFI /
-# generational-GC / virtual-threads / out-of-process isolation / wasm structural-future). 2026-06-15.
+    # === STANDING (epics / campaigns / capstones / deferred-future bucket) ===
+    # Not drained as single units by the autonomous loop (CLAUDE.md self-select reads active: only).
+    # Trackers + the user-directed indefinitely-deferred future bucket (broad JIT / CLJS->JS / C-FFI /
+    # generational-GC / virtual-threads / out-of-process isolation / wasm structural-future). 2026-06-15.
   - id: "D-531"
     status: |-
       DISCHARGED 2026-07-02 (ADR-0169 arc): the deterministic "index out of bounds:
@@ -6450,7 +6450,6 @@ discharged:
       no stack trace via Debug — an lldb attach on the ReleaseSafe panic (or a GC
       write-barrier/poison instrument) is the way in.
     last_reviewed: "2026-07-02"
-
   - id: "D-546"
     status: |-
       DISCHARGED 2026-07-01: fail-loud guards landed in CHECKS.md E2.2/E2.4/E2.5
@@ -6464,27 +6463,23 @@ discharged:
       tractable now (no external block). Harden audit_scaffolding recipes to error on a
       missing SSOT path; drain on a /continue quality-loop cycle.
     last_reviewed: "2026-07-02"
-
   - id: "D-025"
     status: "DISCHARGED 2026-07-02 (2026-07-02 code-truth audit, DONE-IN-FACT): the u16 column-overflow panic was fixed by saturation in 1b6f5a5f1 (2026-06-09, tokenizer.zig:413-421) — the tracked panic is impossible. ORIGINAL: Opportunistic — when a real input hits the u16 column limit"
     category: "tooling"
     barrier: |-
       tokenizer `column: u16` overflows on single lines > 65 535 chars (`tokenizer.zig:237`); surfaced when writing 4.1's 65537-binding test (worked around with newline-separated source). No adversarial input requires it today | next time a real input hits the limit
     last_reviewed: "2026-07-02"
-
   - id: "D-043"
     status: "DISCHARGED 2026-07-02 (audit, DONE-IN-FACT): every anonymous NaN-box reserve slot is consumed by a real type (B15=uuid, C11=rb_node, D11-D15=box/wasm family) — the name/shrink decision self-resolved via real occupants. ORIGINAL: Standing reserve (Phase 7 passed; B15/C11/D11-D15 kept per F-002 memo)"
     category: "structure"
     barrier: |-
       Anonymous NaN-box slot reservations to revisit. ADR-0027 §2 leaves Group D slots D11 / D12 / D13 + Group B slot B15 declared but unnamed (2 reserves — count updated post-ADR-0027-amendment-5 which named D13 = hamt_map_node + D14 = hash_collision_map_node for PersistentHashMap internals at §9.7 row 5.5.a; remaining B15 + D15 stay anonymous). Per F-002 + Devil's-advocate "reservations are memos, not contracts" verdict: name a Phase-5-to-15 horizon use case for each, OR shrink the slot count by re-drawing F-004's 4 × 16 group boundaries (depth-4 surgery) per measured dispatch frequency. Also tracks the Phase 7+ immediate-band candidate ADR (Devil's-advocate Wildcard Alt 3 on ADR-0027: inline 15-bit-id interned keyword / symbol at a new immediate band like `int_53` at `NB_INT_TAG`) — if adopted, B15 / C11 / D11-D15 may be reclaimed entirely. Phase 7 has passed (phase-queue retired, ADR-0142); the reserve decision now sits with the finished-form / F-004 owner (reservations are memos, not contracts — F-002): name, shrink, or both — revisit if a slot is actually needed.
     last_reviewed: "2026-07-02"
-
   - id: "D-461"
     status: "DISCHARGED 2026-07-02 (audit, DONE-IN-FACT): the deferred structural decision SHIPPED as ADR-0163/D-516 (2026-06-24, strict clj-parity lazy ns loading); probes confirm cljw==clj. The row would re-open a settled question. ORIGINAL: open (2026-06-18, whole-program integration finding — require-semantics divergence). cljw EAGER-LOADS all bundled `clojure.*` libs at startup (`bootstrap.zig loadCore` iterates the `FILES` table: clojure.set/string/walk/zip/data/math/edn/data.json/…, interning their vars), so a FULLY-QUALIFIED reference resolves WITHOUT an explicit `(require …)`: `(clojure.set/union #{1} #{2})` / `(clojure.string/upper-case \"hi\")` / `(clojure.walk/postwalk …)` all work in a fresh cljw, where clj throws `ClassNotFoundException` (the ns is loaded on-demand, require-gated). cljw is OVER-LENIENT here: code missing a bundled-lib require runs in cljw but fails in clj (a cljw→clj porting hazard; clj→cljw is unaffected since clj code HAS the requires). This is a STRUCTURAL namespace/require-semantics decision (F-003): eager-load (current, convenient, the libs ARE bundled + always present) vs require-strict (clj parity, but a foundational change — don't intern bundled-lib vars until required, OR error on unrequired fully-qualified access; would ripple through the bootstrap + many tests that rely on auto-availability). DEFERRED to the namespace-semantics owner — do NOT decide autonomously. Recorded so the clj-parity claim is honest about it."
     category: "clj-parity"
     barrier: "structural decision (F-003) — eager-load vs require-strict is the namespace-semantics owner's call, not an autonomous fix. The current eager-load is intentional bootstrap design (loadCore FILES); flipping to require-strict is a foundational change with wide blast radius (bootstrap + every test that uses a bundled lib without require). Take up only with a deliberate require-semantics ADR. If kept as-is, promote to an accepted divergence (AD) citing that ADR. Low priority (over-lenient, only bites a cljw→clj port that omits a require)."
     last_reviewed: "2026-07-02"
-
   - id: "D-473"
     status: "DISCHARGED 2026-07-02 (audit, dedup): duplicate-tracks D-513 item (1) — clojure.core.reducers absence. Folded into D-513; no information lost. ORIGINAL: open (2026-06-20, fresh-namespace probe). `clojure.core.reducers` is NOT implemented — `(require '[clojure.core.reducers])` → 'Could not locate clojure.core.reducers on the require resolver'. (clojure.zip + clojure.pprint DO resolve + work — verified `(z/node (z/right (z/down (z/vector-zip [1 [2 3] 4]))))` → [2 3]; `(pp/cl-format nil \"~:d\" 1234567)` → \"1,234,567\".) reducers provides the reducer/folder protocol + r/map/r/filter/r/remove/r/mapcat/r/take/r/drop/r/flatten + r/reduce + r/fold (the parallel reduce-combine). LOW priority + substantial + partly hard: (a) NICHE — clojure 1.7 transducers (which cljw fully supports) largely SUPERSEDED reducers for new code; reducers is legacy-ish. (b) r/fold's PARALLELISM needs a fork/join thread pool — cljw's concurrency model (per-agent worker, no java.util.concurrent ForkJoinPool, ADR-0093) would run fold SEQUENTIALLY (a correct-but-not-parallel fallback, like clj's fold on a non-foldable coll); the sequential reducer ops (r/map/r/filter/r/reduce) are tractable as a .clj namespace over the existing seq/transduce machinery but the parallel speedup is not reproducible. Take up only on a real consumer (a lib that requires clojure.core.reducers); if so, implement the sequential surface as a src/lang/clj/clojure/core/reducers.clj over reduce/transduce + a sequential r/fold. Mechanise via a clj_corpus area when landed."
     category: "clj-parity"
@@ -6495,37 +6490,31 @@ discharged:
     category: "interop"
     barrier: "DISCHARGED (was: instaparse GLL frontier)."
     last_reviewed: "2026-07-06"
-
   - id: "D-433"
     status: "DISCHARGED 2026-07-06 (easiest-first drain; the 2026-06-25 no-perpetual-defer decision overrides the old take-up-on-consumer barrier). The str-vs-pr split for exceptions landed: writeStrValue gained an .ex_info arm — `(str ex)` / `(.toString ex)` render the readable Throwable.toString one-liner `<class>: <message>` (AD-003 simple name; clj prints the FQCN), and a REAL ex-info appends the data map matching clj ExceptionInfo.toString (`ExceptionInfo: boom {:a 1}`); empty message omits the colon. pr/pr-str/prn AND print/println keep the `#error{…}` data literal — clj-verified that println/print of a Throwable emit the data form too (print-method Throwable), so print/println were deliberately NOT rerouted (writeArgsSpaced's printValue path untouched; no new divergence). e2e phase14_exception_ctor str_exc/tostr_exc/str_iae/str_exinfo/prstr_exinfo/prstr_exc. Corpus infeasible (the one-liner's class prefix is the AD-003 simple-name divergence). The data-shape-key layer (Throwable->map :cause/:via/:trace) remains OUT of this row's scope — file a new row if a lib consumer surfaces."
     category: "clj-parity"
     barrier: "DISCHARGED (was: str/pr conflation for error values)."
     last_reviewed: "2026-07-06"
-
   - id: "D-222"
     status: "DISCHARGED 2026-07-06 — ALL residuals closed (the ADR-0088 bindable-print-vars arc complete). (a) readably-shadow-around-print FIXED: print/println's internal readably choice is now INNERMOST via a print_readably_surface_owned threadlocal consulted by snapshotPrintLimits (clj models print as `(binding [*print-readably* nil] (pr …))` — a user's outer `(binding [*print-readably* true] (print [nested-str]))` is shadowed to raw, matching clj; pr still respects the user binding both directions; zero per-print frame alloc). (b) infinite-seq + *print-length* termination landed 2026-06-04. (c) *print-dup* interned root false — a TRUE binding FAIL-LOUDS (print_dup_not_supported: clj emits JVM #=(class/create …) ctor forms cljw cannot represent, ADR-0059; never a silent normal-form print); *flush-on-newline* interned root true — text_io flushes per call so the true contract always holds and a false binding permits (not requires) buffering (no Zig consumer BY DESIGN, documented at the intern site — not a no-op lie). Both in the ADR-0096 baseline frame (top-level set! works). e2e phase14_print_control (14 cases incl. print_shadows_readably + dup_true_raises); corpus print_control +4 clj-byte-matched goldens. Bindable landed earlier: *print-length*/*print-level*/*print-namespace-maps*/*print-readably*/*print-meta* (ADR-0088 2026-06-04). ADR-0088's PrintCtx-revisit note (concurrent/eval-during printing) stays with ADR-0088."
     category: "runtime"
     barrier: "DISCHARGED (was: print-control dynamic vars)."
     last_reviewed: "2026-07-06"
-
   - id: "D-376"
-    status: "DISCHARGED 2026-07-06 (easiest-first drain). `clojure.lang.Murmur3/hashUnencodedChars` landed as a REAL UTF-16 code-unit Murmur3 (hash.zig hashUnencodedChars: UTF-8 -> UTF-16 units streaming, surrogate pairs for astral codepoints, 2 units/block, fmix over 2*unit-count — the exact JVM algorithm), registered on the existing cljw.clojure.lang.Murmur3 surface. UNLIKE the AD-009 collection hashes this is JVM BIT-PARITY (input is pure code units, no cljw-native value hash) — unit test pins 6 clj-oracle values incl. a surrogate-pair case (𠮷野家 -> -383720716); corpus clojure_lang_util +5 clj-byte-matched goldens. The 2026-06-10 either/or (hash UTF-8 accepting AD-009 divergence, OR build a real UTF-16 path) resolved to the REAL path — it costs ~30 lines and removes the divergence entirely. String-arg only (a CharSequence deftype arg raises type_arg_invalid; extend on a real consumer). data.xml (the 2 call sites) has no local clone — take its full-lib run up under D-528 when cloned."
+    status: "DISCHARGED 2026-07-06 (easiest-first drain). `clojure.lang.Murmur3/hashUnencodedChars` landed as a REAL UTF-16 code-unit Murmur3 (hash.zig hashUnencodedChars: UTF-8 -> UTF-16 units streaming, surrogate pairs for astral codepoints, 2 units/block, fmix over 2*unit-count — the exact JVM algorithm), registered on the existing cljw.clojure.lang.Murmur3 surface. UNLIKE the AD-009 collection hashes this is JVM BIT-PARITY (input is pure code units, no cljw-native value hash) — unit test pins 6 clj-oracle values incl. a surrogate-pair case (\U00020BB7野家 -> -383720716); corpus clojure_lang_util +5 clj-byte-matched goldens. The 2026-06-10 either/or (hash UTF-8 accepting AD-009 divergence, OR build a real UTF-16 path) resolved to the REAL path — it costs ~30 lines and removes the divergence entirely. String-arg only (a CharSequence deftype arg raises type_arg_invalid; extend on a real consumer). data.xml (the 2 call sites) has no local clone — take its full-lib run up under D-528 when cloned."
     category: "interop"
     barrier: "DISCHARGED (was: no UTF-16 hasher)."
     last_reviewed: "2026-07-06"
-
   - id: "D-239"
     status: "DISCHARGED 2026-07-06 — the LAST remainder (namespace meta) landed; alter-meta!/reset-meta!/meta now cover Var + atom + agent + ref + NAMESPACE. Namespace gained a meta slot (env.zig; GC-rooted in root_set's ns_vars walk as the walk enters each ns); reset-meta!'s .ns arm + metaOf's .ns arm; the stale 'var or atom' catalog template updated. SIBLING also landed same cycle: the `(ns name \"docstring\")` docstring — previously silently SKIPPED — now lands as {:doc …} ns meta in BOTH backends (NsNode.doc; tree_walk evalNs + VM op_ns_with_filter via NsFilterEntry.doc/refer_clojure + bytecode v4 serialization; shared meta.setNsDoc helper so semantics cannot drift; diff case per the ADR-0036 contract). e2e phase15_ns_docstring (5 cases incl. ns-doc-meta/ns-alter-meta); clj-oracle-verified ({:doc \"my doc\", :k 1} after alter-meta!). The ns ATTR-MAP + name-symbol meta remain skipped -> split to D-554 (needs a Value-in-node + rooting design). HISTORY: var (D-183) + atom + agent (D-441) + ref (D-533) landed earlier."
     category: "runtime"
     barrier: "DISCHARGED (was: ns meta slot missing)."
     last_reviewed: "2026-07-06"
-
   - id: "D-553"
     status: "DISCHARGED 2026-07-06 — check_vm_parity.sh repurposed to the NON-default-backend full-e2e sweep: builds -Dbackend=tree_walk (enum-field spelling; build.zig comments corrected from the misleading tree-walk) and drives the corpus + ALL test/e2e/*.sh against it, with an empirically-populated SKIPS list (currently EMPTY — the suite is backend-neutral so far) whose entries require a reason. On-demand / Phase-boundary cadence per ADR-0049 (never per-commit). The FIRST run immediately paid off: corpus 3901/3901 green but SIX e2e fail on tree_walk (a SEGFAULT + two GC-related among them) — filed as D-555. ORIGINAL: lifted from D-196's discharged tail; the idle corpus-only probe risked oracle-backend rot hiding behind the vm-default gate."
     category: "tooling"
     barrier: "DISCHARGED (was: repurpose the idle probe)."
     last_reviewed: "2026-07-06"
-
 conventions: |-
   - Structure: two top-level lists — `active:` and `discharged:`. Active entries carry id / status / category / barrier (+ optional quality_floor / last_reviewed); discharged entries carry id / discharged_at / resolution. Edit as YAML (no Markdown table to align).
   - New debt: grep `.dev/debt.yaml` for class-overlap before adding (per `.claude/rules/debt_dedup.md`).
