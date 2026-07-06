@@ -875,6 +875,16 @@ test "diff: ns_node :refer-clojure :only filter (D-098 VM op_ns_with_filter)" {
     try f.check("(do (ns diff-ns-only (:refer-clojure :only [+])) (+ 1 2))", 3);
 }
 
+test "diff: ns_node attr-map merges into ns meta (D-554)" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    // `(ns x {:author "a"})` merges the attr-map into the ns meta in BOTH
+    // backends (tree_walk evalNs mergeNsMeta + the VM's attr_const literal-
+    // pool ride). Count keeps the assertion Value-comparable.
+    try f.check("(do (ns diff-ns-attr {:author \"a\" :x 1} (:refer-clojure)) (count (meta (find-ns 'diff-ns-attr))))", 2);
+}
+
 test "diff: ns_node docstring lands as {:doc} ns meta (D-239 sibling)" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);

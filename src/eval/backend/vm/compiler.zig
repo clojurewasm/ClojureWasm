@@ -782,8 +782,9 @@ const Compiler = struct {
         // trailing op_pop drops the prior nil before the next push, leaving
         // exactly one nil (the ns form's value).
         const has_filter = n.refer_clojure_exclude.len > 0 or n.refer_clojure_only != null;
-        if (has_filter or n.libspecs.len > 0 or n.imports.len > 0 or n.doc != null) {
-            if (n.refer_clojure or n.doc != null) {
+        const has_attr = !n.attr_meta.isNil();
+        if (has_filter or n.libspecs.len > 0 or n.imports.len > 0 or n.doc != null or has_attr) {
+            if (n.refer_clojure or n.doc != null or has_attr) {
                 // A docstring rides the side-table entry too (D-239 sibling);
                 // the entry's `refer_clojure` keeps the no-refer shape honest.
                 if (self.ns_filters.items.len > std.math.maxInt(u16)) return Error.TooManyConstants;
@@ -797,7 +798,10 @@ const Compiler = struct {
                     break :blk od;
                 } else null;
                 const doc_dup: ?[]const u8 = if (n.doc) |d| try self.arena.dupe(u8, d) else null;
-                try self.ns_filters.append(self.arena, .{ .name = name_dup, .exclude = exclude_dup, .only = only_dup, .doc = doc_dup, .refer_clojure = n.refer_clojure });
+                // D-554: the lifted attr map rides the literal pool (index in
+                // the side-table entry) so the chunk stays serializable.
+                const attr_idx: u32 = if (has_attr) try self.addConstant(n.attr_meta) else NsFilterEntry.NO_ATTR;
+                try self.ns_filters.append(self.arena, .{ .name = name_dup, .exclude = exclude_dup, .only = only_dup, .doc = doc_dup, .refer_clojure = n.refer_clojure, .attr_const = attr_idx });
                 try self.emit(.op_ns_with_filter, filter_idx);
             } else {
                 const name_val = try string_mod.alloc(self.rt, n.name);

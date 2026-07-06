@@ -1233,6 +1233,12 @@ inline fn stepOnce(
                 return raiseInternal("vm: op_ns_with_filter index out of range");
             const f = chunk.ns_filters[instr.operand];
             env.setCurrentNs(try env.findOrCreateNs(f.name));
+            // D-554: attr merge first, then the docstring (doc wins on :doc).
+            if (f.attr_const != opcode_mod.NsFilterEntry.NO_ATTR) {
+                if (f.attr_const >= chunk.constants.len)
+                    return raiseInternal("vm: op_ns_with_filter attr_const out of range");
+                try meta_mod.mergeNsMeta(rt, env.current_ns.?, chunk.constants[f.attr_const]);
+            }
             if (f.doc) |d| try meta_mod.setNsDoc(rt, env.current_ns.?, d);
             if (f.refer_clojure) {
                 if (env.findNs("rt")) |rt_ns| {

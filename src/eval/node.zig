@@ -479,8 +479,12 @@ pub const NsNode = struct {
     name: []const u8,
     /// `(ns name "docstring" …)` — lands as `{:doc "…"}` on the namespace's
     /// meta at execution (clj parity, D-239 sibling). Null = no docstring.
-    /// The attr-map form `(ns name {:author …})` is NOT yet captured (D-554).
     doc: ?[]const u8 = null,
+    /// `(ns ^{…} name {:attr …})` — the name-symbol reader meta merged with
+    /// the attr-map (attr wins), lifted to a map Value at analysis (D-554).
+    /// GC-safe in the node: the lift is pushed to the AnalysisFrame, which
+    /// production seams persist for the arena's lifetime (D-556). nil = none.
+    attr_meta: Value = Value.nil_val,
     /// User wrote `(:refer-clojure)`. When false the auto-refer step is
     /// skipped entirely (cljw-shell-only mode).
     refer_clojure: bool = true,

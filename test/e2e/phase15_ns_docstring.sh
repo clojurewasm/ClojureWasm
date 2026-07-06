@@ -39,4 +39,13 @@ assert_eq 'ns-alter-meta' \
   "$("$BIN" -e '(alter-meta! (find-ns (quote user)) assoc :k 1) [(:k (meta (find-ns (quote user)))) (do (reset-meta! (find-ns (quote user)) nil) (meta (find-ns (quote user))))]' 2>&1 | tail -1)" \
   '[1 nil]'
 
-echo "OK — phase15_ns_docstring (5 cases) green"
+# The attr-map + the name-symbol's ^{…} reader meta MERGE into the ns meta
+# (D-554; attr wins over name-meta, an explicit docstring wins over :doc).
+assert_eq 'ns-attr-meta' \
+  "$("$BIN" -e '(ns dm.attr "d" {:author "a" :added "1.0"}) (in-ns (quote user)) [(:doc (meta (find-ns (quote dm.attr)))) (:author (meta (find-ns (quote dm.attr)))) (:added (meta (find-ns (quote dm.attr))))]' 2>&1 | tail -1)" \
+  '["d" "a" "1.0"]'
+assert_eq 'ns-name-sym-meta' \
+  "$("$BIN" -e '(ns ^{:k 1} dm.sym) (in-ns (quote user)) (:k (meta (find-ns (quote dm.sym))))' 2>&1 | tail -1)" \
+  '1'
+
+echo "OK — phase15_ns_docstring (7 cases) green"

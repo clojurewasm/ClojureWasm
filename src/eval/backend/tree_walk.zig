@@ -567,7 +567,9 @@ fn evalInNs(env: *Env, n: node_mod.InNsNode) !Value {
 /// remains in bootstrap.zig + primitive.zig + macro_transforms.zig).
 fn evalNs(rt: *Runtime, env: *Env, n: node_mod.NsNode) !Value {
     env.setCurrentNs(try env.findOrCreateNs(n.name));
-    // `(ns name "docstring" …)` → {:doc "…"} on the ns meta (D-239 sibling).
+    // `(ns ^{…} name {:attr …} "doc" …)` → ns meta: attr merge first, then
+    // the docstring (an explicit doc wins over an attr :doc) — D-239/D-554.
+    if (!n.attr_meta.isNil()) try meta_mod.mergeNsMeta(rt, env.current_ns.?, n.attr_meta);
     if (n.doc) |d| try meta_mod.setNsDoc(rt, env.current_ns.?, d);
     if (n.refer_clojure) {
         // Row 14.7 (D-098): filters apply to both rt/ and clojure.core

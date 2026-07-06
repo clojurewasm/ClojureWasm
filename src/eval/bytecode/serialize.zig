@@ -75,7 +75,7 @@ const tree_walk = @import("../backend/tree_walk.zig");
 const Function = tree_walk.Function;
 
 pub const MAGIC: [4]u8 = .{ 'C', 'L', 'J', 'W' };
-pub const VERSION: u16 = 4; // v4: NsFilterEntry doc + refer_clojure (D-239 sibling)
+pub const VERSION: u16 = 5; // v5: NsFilterEntry attr_const (D-554); v4: doc + refer_clojure
 
 pub const SerializeError = error{
     OutOfMemory,
@@ -620,6 +620,8 @@ pub fn serializeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) ![]u8 
             try writeU8(w, 0);
         }
         try writeU8(w, if (nf.refer_clojure) 1 else 0);
+        // v5: attr-map constants index (D-554; NO_ATTR when absent).
+        try writeU32(w, nf.attr_const);
     }
     try writeU32(w, @intCast(chunk.ctor_sites.len));
     for (chunk.ctor_sites) |ct| {
@@ -754,7 +756,9 @@ pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@impor
             doc = try allocator.dupe(u8, db);
         }
         const refer_clojure = (try r.readU8()) != 0;
-        ns_filters[i] = .{ .name = name_dup, .exclude = exclude, .only = only, .doc = doc, .refer_clojure = refer_clojure };
+        // v5: attr-map constants index (D-554).
+        const attr_const = try r.readU32();
+        ns_filters[i] = .{ .name = name_dup, .exclude = exclude, .only = only, .doc = doc, .refer_clojure = refer_clojure, .attr_const = attr_const };
     }
 
     const ctor_count = try r.readU32();
@@ -1562,7 +1566,7 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     }
     inline for (std.meta.fields(NsFilterEntry)) |f| {
         const classified: bool = switch (@field(std.meta.FieldEnum(NsFilterEntry), f.name)) {
-            .name, .exclude, .only, .doc, .refer_clojure => true,
+            .name, .exclude, .only, .doc, .refer_clojure, .attr_const => true,
         };
         try testing.expect(classified);
     }
@@ -1588,7 +1592,7 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     const nf_exclude = [_][]const u8{"reduce"};
     const nf_only = [_][]const u8{"inc"};
     const ns_filters = [_]NsFilterEntry{
-        .{ .name = "app.core", .exclude = &nf_exclude, .only = &nf_only, .doc = "the ns doc", .refer_clojure = false },
+        .{ .name = "app.core", .exclude = &nf_exclude, .only = &nf_only, .doc = "the ns doc", .refer_clojure = false, .attr_const = 7 },
     };
     const ctor_sites = [_]CtorEntry{
         .{ .type_name = "java.io.File", .arg_count = 1 },
@@ -1649,6 +1653,7 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     try testing.expectEqualStrings("inc", round.ns_filters[0].only.?[0]);
     try testing.expectEqualStrings("the ns doc", round.ns_filters[0].doc.?);
     try testing.expect(!round.ns_filters[0].refer_clojure);
+    try testing.expectEqual(@as(u32, 7), round.ns_filters[0].attr_const);
 
     // ctor_sites
     try testing.expectEqual(@as(usize, 1), round.ctor_sites.len);
@@ -1819,6 +1824,7 @@ test "round-trips ns_filters with no :only (null) — bare (ns x (:require …))
     try testing.expect(round.ns_filters[0].only == null);
     try testing.expect(round.ns_filters[0].doc == null);
     try testing.expect(round.ns_filters[0].refer_clojure);
+    try testing.expectEqual(NsFilterEntry.NO_ATTR, round.ns_filters[0].attr_const);
 }
 
 test "round-trips instructions" {

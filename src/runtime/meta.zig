@@ -73,6 +73,14 @@ pub fn setNsDoc(rt: *Runtime, ns: *env_mod.Namespace, doc: []const u8) !void {
     ns.meta = try map.assoc(rt, base, try keyword.intern(rt, null, "doc"), try string_mod.alloc(rt, doc));
 }
 
+/// Merge an `(ns ^{…} name {:attr …})` lifted meta map onto the namespace's
+/// meta (D-554; shared by both backends like `setNsDoc`). Applied BEFORE the
+/// docstring so an explicit docstring wins over an attr-map `:doc`.
+pub fn mergeNsMeta(rt: *Runtime, ns: *env_mod.Namespace, attr: Value) !void {
+    const base = if (ns.meta.isNil()) map.empty() else ns.meta;
+    ns.meta = try map.mergeInto(rt, base, attr);
+}
+
 /// Var-meta projection: the Var's stored `.meta` with the mechanical
 /// :name/:ns/:macro/:dynamic/:private keys forced on top (the Var fields are the
 /// SSOT; the map is a fresh projection — matches clj's Var.setMeta).

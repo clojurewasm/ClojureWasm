@@ -1178,13 +1178,29 @@ pub fn analyzeNs(
     var i: usize = 2;
     // Optional docstring + attr-map after the name (clj: `(ns name doc? attrs?
     // refs*)`). The docstring lands as `{:doc …}` on the ns meta at execution
-    // (D-239 sibling); the attr-map is still skipped (D-554).
+    // (D-239 sibling); the attr-map and the name-symbol's `^{…}` reader meta
+    // merge into the ns meta too (D-554). The lifted map Values ride the
+    // AnalysisFrame → persisted_analysis_roots (D-556), matching the Node's
+    // arena lifetime, so embedding them in the NsNode is GC-safe.
     var doc: ?[]const u8 = null;
+    var attr_meta: Value = Value.nil_val;
+    if (name_form.meta) |meta_form| {
+        if (meta_form.data == .map) {
+            attr_meta = try analyzer_mod.formToValue(rt, env, meta_form.*);
+            try root_set.pushAnalysisRoot(attr_meta);
+        }
+    }
     if (i < items.len and items[i].data == .string) {
         doc = try arena.dupe(u8, items[i].data.string);
         i += 1;
     }
-    if (i < items.len and items[i].data == .map) i += 1;
+    if (i < items.len and items[i].data == .map) {
+        const m = try analyzer_mod.formToValue(rt, env, items[i]);
+        try root_set.pushAnalysisRoot(m);
+        // clj merges the attr-map OVER the name-symbol meta.
+        attr_meta = if (attr_meta.isNil()) m else map_collection.mergeInto(rt, attr_meta, m) catch return error.OutOfMemory;
+        i += 1;
+    }
     while (i < items.len) : (i += 1) {
         const directive = items[i];
         // D-299: clj accepts a list `(:require …)` OR a vector `[:require …]`
@@ -1229,6 +1245,7 @@ pub fn analyzeNs(
     n.* = .{ .ns_node = .{
         .name = ns_name,
         .doc = doc,
+        .attr_meta = attr_meta,
         .refer_clojure = refer_clojure,
         .refer_clojure_exclude = refer_clojure_exclude,
         .refer_clojure_only = refer_clojure_only,

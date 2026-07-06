@@ -24,11 +24,6 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
-  - id: "D-554"
-    status: "open (2026-07-06, split from D-239's discharge). The `(ns name {:attr-map} …)` ATTR-MAP and `(ns ^{:m 1} name)` name-symbol meta are still SKIPPED at analysis (special_forms.zig analyzeNs) — only the docstring lands as {:doc} ns meta. clj merges name-sym meta + attr-map + docstring into the ns meta. Rare vs the docstring (libs mostly use :author/:added attr-maps); needs a Form->Value map conversion at analysis + ADR-0169-style rooting OR an arena-thread of the literal into both backends (the doc rode NsFilterEntry as a plain string; a map needs a Value). Mechanise via phase15_ns_docstring e2e when landed."
-    category: "clj-parity"
-    barrier: "none hard — design choice: formToValue at analysis (needs AnalysisFrame rooting for the map Value in NsNode) vs re-analyzing the attr-map Form at execution. Take up easiest-first or on a lib whose ns attr-map meta is read programmatically."
-    last_reviewed: "2026-07-06"
   - id: "D-547"
     status: |-
       open (2026-07-01, NARROWED same day). Enforcement-honesty sweep — surfaced by the
@@ -6471,6 +6466,12 @@ discharged:
     status: "DISCHARGED 2026-07-07 — the Java-interop static-member catalog+fill campaign is COMPLETE across 9 drains. DRAIN 9 (final): String char[] forms — `String/valueOf` gained the char[] and char[]/offset/count overloads (was falling into the generic \"#<array>\" render — a real bug), `String/copyValueOf` (1+3 arg, the JVM alias) registered, `(String. (char-array …))` verified already working (the campaign's stale REMAINING note). Corpus string_join_static +5 clj-byte-matched goldens. FULL CAMPAIGN LEDGER: D1 java.lang scalar sweep (String/join was the only gap — filled); D2 unsigned-arithmetic + JDK-edge Long/Integer statics; D3-D4 (see history); D5 java.util.Objects (new surface); D6 java.lang scalar close-out (hashCode formulas + Math ceilDiv family); D7 java.util.Arrays (new surface: asList/toString/copyOf/sort/equals/fill); D8 java.util.Collections (new surface: emptyList/singletonList/sort/reverse/max/min); D9 String char[] forms. Deliberate omissions (all doc'd at their surfaces, dead-interop lesson): Arrays binarySearch/hashCode/typed-primitive overloads; Collections unmodifiable*/shuffle/synchronized*; Objects hash/hashCode (Java hashCode contract ≠ cljw value hash). Any future static gap is a NEW discovery against a then-current consumer, not this row."
     category: "interop"
     barrier: "DISCHARGED (was: static-member gap catalog+fill, ADR-0166 row 5)."
+    last_reviewed: "2026-07-07"
+
+  - id: "D-554"
+    status: "DISCHARGED 2026-07-07. The `(ns ^{…} name {:attr …})` ATTR-MAP and name-symbol reader meta now MERGE into the ns meta (attr wins over name-meta; an explicit docstring wins over an attr :doc — clj ns-macro merge order). The design barrier dissolved with D-556: the attr map is lifted at analysis via formToValue + pushAnalysisRoot, and production seams persist their AnalysisFrame roots (persisted_analysis_roots) for the arena's lifetime — so embedding the Value in NsNode is GC-safe with NO new rooting machinery. Both backends per ADR-0036: tree_walk evalNs -> meta.mergeNsMeta (new; over the new map.mergeInto); the VM rides the chunk literal pool (NsFilterEntry.attr_const u32 index, NO_ATTR sentinel; bytecode v5 with coverage-guard + round-trip asserts). e2e phase15_ns_docstring (7 cases incl. ns-attr-meta / ns-name-sym-meta); diff case diff-ns-attr; clj-oracle-verified ({:doc :author :added} + ^{:k 1} -> :k 1). ORIGINAL: split from D-239's discharge as the needs-a-Value-in-node residual."
+    category: "clj-parity"
+    barrier: "DISCHARGED (was: ns attr-map skipped at analysis)."
     last_reviewed: "2026-07-07"
 
 conventions: |-

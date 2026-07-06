@@ -647,6 +647,12 @@ pub const NsFilterEntry = struct {
     /// False = the ns form had no refer-clojure step (rare); the op skips
     /// the rt/clojure.core refers but still applies name + doc.
     refer_clojure: bool = true,
+    /// D-554: chunk-constants index of the lifted `(ns ^{…} name {:attr …})`
+    /// meta map, or `NO_ATTR` when the form carried none. Riding the literal
+    /// pool keeps the entry serializable (a Value cannot live here).
+    attr_const: u32 = NO_ATTR,
+
+    pub const NO_ATTR: u32 = std.math.maxInt(u32);
 };
 
 /// Compiled bytecode for a single function or top-level form.

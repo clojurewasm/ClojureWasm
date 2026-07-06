@@ -132,6 +132,22 @@ pub fn count(v: Value) u32 {
 /// safe to call from a non-reentrant primitive walk. A non-map `v` is a
 /// programming error (callers guard the tag). `.sorted_map` is NOT handled
 /// here (different backing structure); callers needing it dispatch separately.
+/// `(merge base overlay)` for two maps: every entry of `overlay` assoc'd
+/// onto `base` (overlay wins on key collision — clj merge's right-bias).
+/// Either side nil ⇒ the other. Non-sorted maps only (forEachEntry's scope).
+pub fn mergeInto(rt: *Runtime, base: Value, overlay: Value) !Value {
+    if (overlay.isNil()) return base;
+    if (base.isNil()) return overlay;
+    const Ctx = struct { rt: *Runtime, acc: Value };
+    var ctx: Ctx = .{ .rt = rt, .acc = base };
+    try forEachEntry(overlay, &ctx, struct {
+        fn put(c: *Ctx, k: Value, v: Value) anyerror!void {
+            c.acc = try assoc(c.rt, c.acc, k, v);
+        }
+    }.put);
+    return ctx.acc;
+}
+
 pub fn forEachEntry(
     v: Value,
     ctx: anytype,
