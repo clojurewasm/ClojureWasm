@@ -94,6 +94,21 @@ pub fn contentEq(a: Value, b: Value) bool {
     return map_mod.keysSubsetOf(am, bm);
 }
 
+/// Walk every element of a `.hash_set` (= the keys of its backing map).
+/// Pure (no rt/env, no allocation), mirroring `map.forEachEntry`.
+pub fn forEachElem(
+    v: Value,
+    ctx: anytype,
+    comptime cb: fn (@TypeOf(ctx), Value) anyerror!void,
+) anyerror!void {
+    const Wrap = struct {
+        fn entry(c: @TypeOf(ctx), k: Value, _: Value) anyerror!void {
+            try cb(c, k);
+        }
+    };
+    try map_mod.forEachEntry(v.decodePtr(*const PersistentHashSet).map, ctx, Wrap.entry);
+}
+
 /// `(conj s e)` — returns a new set with `e` added. Idempotent —
 /// re-adding an existing element returns an equivalent set
 /// (current implementation may copy; identity-preservation deferred).

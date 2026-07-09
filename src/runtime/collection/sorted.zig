@@ -25,7 +25,10 @@ const tag_ops = @import("../gc/tag_ops.zig");
 const gc_heap_mod = @import("../gc/gc_heap.zig");
 const mark_sweep = @import("../gc/mark_sweep.zig");
 const compare_mod = @import("../compare.zig");
+const equal = @import("../equal.zig");
+const hash_mod = @import("../hash.zig");
 const list_mod = @import("list.zig");
+const map_mod = @import("map.zig");
 const vector_mod = @import("vector.zig");
 const SourceLocation = @import("../error/info.zig").SourceLocation;
 
@@ -325,6 +328,74 @@ fn rbForEachEntry(
     try rbForEachEntry(n.left, ctx, cb);
     try cb(ctx, n.key, n.val);
     try rbForEachEntry(n.right, ctx, cb);
+}
+
+// --- rt-free value-path surface (equal.zig partners, D-460) ---
+// The keyEqValue / valueHash path deliberately lacks rt/env (D-151), so a
+// sorted collection used as a hash-map KEY / hash-set ELEMENT cannot go
+// through the comparator-based contains/get above. These compare and hash
+// STRUCTURALLY (equal.keyEqValue over the tree walk — the comparator is
+// never invoked, so custom-comparator collections work as keys too);
+// lookup is an O(n) linear walk, fine for the rare sorted-coll-as-key path.
+
+/// Content hash of a `.sorted_map` matching `map.contentHash`'s formula
+/// (order-independent `+%` fold of `map.entryHash`, then mixCollHash) so an
+/// `=` sorted-map and hash-map / array-map land in one bucket.
+pub fn contentHashMap(v: Value) u32 {
+    var acc: u32 = 0;
+    rbFoldHash(v.decodePtr(*const SortedMap).root, &acc, false);
+    return hash_mod.mixCollHash(acc, count(v));
+}
+
+/// Content hash of a `.sorted_set` matching `set.contentHash` (keys-only
+/// fold over the backing map).
+pub fn contentHashSet(v: Value) u32 {
+    const s = v.decodePtr(*const SortedSet);
+    var acc: u32 = 0;
+    rbFoldHash(s.map.decodePtr(*const SortedMap).root, &acc, true);
+    return hash_mod.mixCollHash(acc, s.count);
+}
+
+fn rbFoldHash(node: Value, acc: *u32, comptime keys_only: bool) void {
+    if (node.tag() != .rb_node) return;
+    const n = node.decodePtr(*const RbNode);
+    rbFoldHash(n.left, acc, keys_only);
+    acc.* +%= if (keys_only) equal.valueHash(n.key) else map_mod.entryHash(n.key, n.val);
+    rbFoldHash(n.right, acc, keys_only);
+}
+
+/// rt-free VALUE-based key lookup in a `.sorted_map` (linear walk with
+/// `equal.keyEqValue`; the comparator is not consulted). Returns null when
+/// the key is absent (a present nil VALUE returns nil, not null).
+pub fn getByValue(m_val: Value, k: Value) ?Value {
+    return rbGetByValue(m_val.decodePtr(*const SortedMap).root, k);
+}
+
+fn rbGetByValue(node: Value, k: Value) ?Value {
+    if (node.tag() != .rb_node) return null;
+    const n = node.decodePtr(*const RbNode);
+    if (equal.keyEqValue(n.key, k)) return n.val;
+    return rbGetByValue(n.left, k) orelse rbGetByValue(n.right, k);
+}
+
+/// rt-free VALUE-based membership in a `.sorted_set`.
+pub fn setContainsByValue(s_val: Value, x: Value) bool {
+    return getByValue(s_val.decodePtr(*const SortedSet).map, x) != null;
+}
+
+/// Walk every element of a `.sorted_set` in order (= the keys of its
+/// backing sorted map). Pure, like `forEachEntry`.
+pub fn forEachElem(
+    s_val: Value,
+    ctx: anytype,
+    comptime cb: fn (@TypeOf(ctx), Value) anyerror!void,
+) anyerror!void {
+    const Wrap = struct {
+        fn entry(c: @TypeOf(ctx), k: Value, _: Value) anyerror!void {
+            try cb(c, k);
+        }
+    };
+    try forEachEntry(s_val.decodePtr(*const SortedSet).map, ctx, Wrap.entry);
 }
 
 pub fn assoc(rt: *Runtime, env: *Env, m_val: Value, key: Value, val: Value, loc: SourceLocation) !Value {

@@ -487,11 +487,10 @@ fn setEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool {
 ///     JVM's category-based `=` for keys);
 ///   - `.string` — byte-equality (the D-151 target: non-interned String
 ///     Values with equal bytes but distinct heap pointers).
-/// VECTOR keys now compare + hash BY VALUE (D-092, recursive over
-/// elements — fixes `(frequencies [[1] [1]])` & vector-keyed maps).
-/// List / map / set keys and ratio/big_decimal/big_int keys still stay
-/// identity-compared (residual: the recursive / category-aware
-/// `valueEqual` needs `rt`; cross-type vec≡list keys also pending).
+/// Collection keys compare + hash BY VALUE: vectors/lists (D-092,
+/// recursive, cross-pairing), maps/sets across ALL impls incl. sorted
+/// (D-460), numerics by category (D-205). Residual identity-compared
+/// keys: lazy / range (cannot realize rt-free) and deftype instances.
 pub fn keyEqValue(a: Value, b: Value) bool {
     // NaN is never `=` to itself (clj `equiv`), so a NaN key can never be found
     // even when bit-identical: `(contains? #{##NaN} ##NaN)` → false. Mirrors the
@@ -532,11 +531,20 @@ pub fn keyEqValue(a: Value, b: Value) bool {
     // residual (cannot realize rt-free).
     if (isSeqKeyTag(ta) and isSeqKeyTag(tb))
         return seqKeyEq(a, b);
-    // Map / set keys by value, rt-free via the collection module (D-092).
-    if (isMapTag(ta) and isMapTag(tb))
-        return map.contentEq(a, b);
-    if (ta == .hash_set and tb == .hash_set)
-        return set.contentEq(a, b);
+    // Map / set keys by value, rt-free via the collection module (D-092),
+    // ACROSS impls incl. the sorted variants (D-460): a sorted-map key finds
+    // an `=` hash-map/array-map entry and vice versa. Hash-backed pairs keep
+    // the fast HAMT-aware path; any sorted participant takes the structural
+    // walk (the comparator is never invoked, so custom-comparator sorted
+    // collections work as keys too).
+    if (isAnyMapTag(ta) and isAnyMapTag(tb)) {
+        if (isMapTag(ta) and isMapTag(tb)) return map.contentEq(a, b);
+        return anyMapKeyEq(a, b);
+    }
+    if (isAnySetTag(ta) and isAnySetTag(tb)) {
+        if (ta == .hash_set and tb == .hash_set) return set.contentEq(a, b);
+        return anySetKeyEq(a, b);
+    }
     // defrecord keys by value (partner of typedInstanceEqual): same
     // descriptor + each field keyEqValue. deftype stays identity (a
     // non-bit-identical pair already fell through the identity check).
@@ -582,6 +590,69 @@ fn symbolStructEq(a: Value, b: Value) bool {
 
 inline fn isMapTag(t: Value.Tag) bool {
     return t == .array_map or t == .hash_map;
+}
+
+// --- sorted-coll-as-key structural compare (D-460) ---
+// Reached only when at least one side of a map/set key pair is sorted.
+// Iteration + lookup are both by structural value (equal.keyEqValue),
+// never by comparator, so no rt/env is needed (the D-151 constraint).
+
+const KeyEqAbort = error{NotEq};
+
+fn anyMapCount(v: Value) u32 {
+    return if (v.tag() == .sorted_map) sorted.count(v) else map.count(v);
+}
+
+/// VALUE-based lookup across any map impl; null = key absent.
+fn anyMapGetByValue(b: Value, k: Value) ?Value {
+    return switch (b.tag()) {
+        .sorted_map => sorted.getByValue(b, k),
+        else => if (map.contains(b, k) catch false) (map.get(b, k) catch null) else null,
+    };
+}
+
+fn anyMapKeyEq(a: Value, b: Value) bool {
+    if (anyMapCount(a) != anyMapCount(b)) return false;
+    const Ctx = struct { b: Value };
+    const Check = struct {
+        fn entry(c: Ctx, k: Value, v: Value) anyerror!void {
+            const bv = anyMapGetByValue(c.b, k) orelse return KeyEqAbort.NotEq;
+            if (!keyEqValue(v, bv)) return KeyEqAbort.NotEq;
+        }
+    };
+    const ctx: Ctx = .{ .b = b };
+    const r = if (a.tag() == .sorted_map)
+        sorted.forEachEntry(a, ctx, Check.entry)
+    else
+        map.forEachEntry(a, ctx, Check.entry);
+    r catch return false;
+    return true;
+}
+
+fn anySetContainsByValue(b: Value, x: Value) bool {
+    return if (b.tag() == .sorted_set)
+        sorted.setContainsByValue(b, x)
+    else
+        set.contains(b, x) catch false;
+}
+
+fn anySetKeyEq(a: Value, b: Value) bool {
+    const ca = if (a.tag() == .sorted_set) sorted.count(a) else set.count(a);
+    const cb = if (b.tag() == .sorted_set) sorted.count(b) else set.count(b);
+    if (ca != cb) return false;
+    const Ctx = struct { b: Value };
+    const Check = struct {
+        fn elem(c: Ctx, x: Value) anyerror!void {
+            if (!anySetContainsByValue(c.b, x)) return KeyEqAbort.NotEq;
+        }
+    };
+    const ctx: Ctx = .{ .b = b };
+    const r = if (a.tag() == .sorted_set)
+        sorted.forEachElem(a, ctx, Check.elem)
+    else
+        set.forEachElem(a, ctx, Check.elem);
+    r catch return false;
+    return true;
 }
 
 /// Any persistent-set / persistent-map representation, for value `=`: clj
@@ -653,6 +724,11 @@ pub fn valueHash(v: Value) u32 {
         // map.contentEq / set.contentEq.
         .array_map, .hash_map => map.contentHash(v),
         .hash_set => set.contentHash(v),
+        // Sorted variants hash by the SAME content formulas as their
+        // hash-backed peers (D-460), so `(sorted-map …)` / `(sorted-set …)`
+        // keys land in the bucket their `=` hash-map / hash-set occupies.
+        .sorted_map => sorted.contentHashMap(v),
+        .sorted_set => sorted.contentHashSet(v),
         // UUID hashes by its 128 bits so equal UUIDs share a bucket
         // (partner of the `.uuid` valueEqual arm, ADR-0074).
         .uuid => hash.hashString(&uuid_mod.asUuid(v).bytes),

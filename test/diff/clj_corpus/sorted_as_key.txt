@@ -1,0 +1,30 @@
+(contains? #{(sorted-set 1 2)} (sorted-set 2 1))
+;;=> true
+(contains? #{(sorted-set 1 2)} #{1 2})
+;;=> true
+(contains? #{#{1 2}} (sorted-set 1 2))
+;;=> true
+(contains? #{(sorted-set-by > 1 2)} #{1 2})
+;;=> true
+(contains? #{(sorted-set 1 2)} #{1 3})
+;;=> false
+(get {(sorted-map :a 1) :v} {:a 1})
+;;=> :v
+(get {(sorted-map :a 1 :b 2) :v} {:b 2 :a 1})
+;;=> :v
+(get {{:a 1} :v} (sorted-map :a 1))
+;;=> :v
+(get {(sorted-map-by > 1 :x 2 :y) :v} {1 :x 2 :y})
+;;=> :v
+(contains? #{(sorted-map :a 1)} {:a 2})
+;;=> false
+(= (hash (sorted-set 1 2)) (hash #{1 2}))
+;;=> true
+(= (hash (sorted-map :a 1)) (hash {:a 1}))
+;;=> true
+((juxt :found :missing) {(sorted-set 1 2 3) :found})
+;;=> [nil nil]
+(count (into #{} [(sorted-set 1 2) #{2 1} (sorted-set-by > 2 1)]))
+;;=> 1
+(get {(sorted-map :a (sorted-set 1)) :v} {:a #{1}})
+;;=> :v
