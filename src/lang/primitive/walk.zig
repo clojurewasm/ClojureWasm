@@ -194,9 +194,8 @@ fn collectHashEntry(c: *HashMapCollectCtx, k: Value, v: Value) anyerror!void {
 /// flat entries array, so collect every `(k v)` first via the pure
 /// `map.forEachEntry` (the collected Values stay alive through `form`, rooted
 /// below), then rebuild reentrantly with the same C6 rooting as the array_map
-/// path. Was a stale `feature_not_supported` stub citing D-045 — but D-045 (the
-/// HAMT body) landed 2026-05-30, so `clojure.walk` on a > 8-key map (e.g.
-/// `keywordize-keys` over a JSON-parsed map) just needed wiring.
+/// path, so `clojure.walk` on a > 8-key map (e.g. `keywordize-keys` over a
+/// JSON-parsed map) works like the small-map case.
 fn rebuildHashMap(
     rt: *Runtime,
     env: *Env,

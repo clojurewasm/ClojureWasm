@@ -60,7 +60,7 @@ pub const FileEntry = struct {
 /// `clojure.core` companions that subsequent files may reference.
 /// Each non-first file is expected to open with `(in-ns 'foo.bar)`.
 /// Namespaces replayed EAGERLY at startup (ADR-0163 D-516) — exactly the set JVM
-/// Clojure makes usable WITHOUT an explicit `require` (measured 2026-06-24 via
+/// Clojure makes usable WITHOUT an explicit `require` (measured via
 /// `(find-ns 'X)` in a fresh `clj`: clojure.core + the set clojure.core/spec.alpha
 /// transitively load). Eager-loading exactly these keeps `clojure.string/upper-case`
 /// etc. working require-free (F-011 parity); every OTHER bootstrap ns is lazy — a
@@ -135,7 +135,7 @@ pub const FILES: []const FileEntry = &.{
     .{ .label = "<cljw.wasm>", .source = @embedFile("clj/cljw/wasm.clj") },
     // clojure.spec.gen.alpha + clojure.spec.alpha — official stdlib (ships in
     // clojure.jar), so eager-bundled (the stdlib-eager / contrib-completeness
-    // policy, 2026-06-20). gen loads FIRST (alpha `(:require clojure.spec.gen.alpha)`).
+    // policy). gen loads FIRST (alpha `(:require clojure.spec.gen.alpha)`).
     // Reproduced from spec.alpha with 4 no-JVM adaptations (see each file's header).
     // Appended last so earlier FILES[N] indices stay stable. The list stays
     // data-driven so a future eager→lazy switch (lazy-AOT, deferred) is local.

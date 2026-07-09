@@ -41,13 +41,22 @@ active:
       de-pointering method: strip changelog/date narration, keep the design doc.
       Smoke 6/6. Method note: much of this file is GENUINE technical doc — do NOT
       blindly strip ADR/D refs; only the date-stamp/process narration is noise.
+      DRAIN 2 (2026-07-09): the DATE-STAMP category is now CLOSED repo-wide —
+      swept ALL remaining `2026-MM-DD` session stamps in src/**/*.zig (23 sites
+      across 20 files; `rg '2026-\d\d-\d\d' src -g '*.zig'` = 0) to present-tense
+      prose, keeping ADR/D anchors + technical content ("landed <date>" →
+      "lives"/"is", phase-row prefixes dropped, oracle dates dropped, one test
+      name). Remaining D-522 surface = the ADR/D POINTER-density condensation
+      (pointers whose surrounding prose is NOT self-contained) — a different,
+      judgement-heavier pass; the mechanical stamp category no longer recurs
+      (this drain is the sweep-then-close of it).
     category: "docs"
     quality_floor: "public-ization: comment de-pointer + condense (ADR-0166)"
     barrier: |-
       Repeatable polish drain (ADR-0166). No behaviour change (comments only).
       Per /continue: pick a high-pointer-density file, rewrite its ADR/D-NNN
       pointers into standalone prose + condense. SSOT detail: ADR-0166 row 1.
-    last_reviewed: "2026-06-24"
+    last_reviewed: "2026-07-09"
   - id: "D-523"
     status: |-
       open (2026-06-24, user-directed; ADR-0166). Doc audit vs CODE-TRUTH: the

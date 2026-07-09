@@ -6,8 +6,8 @@
 //! core.clj defn over these. Same-type ops (assoc/conj/dissoc) already
 //! thread `.meta` so metadata is preserved. `reset-meta!` (here) +
 //! `alter-meta!` (core.clj) mutate a Var's / atom's / agent's / ref's /
-//! namespace's meta slot (D-239 complete); keyword meta stays rejected
-//! (clj parity). Metadata cycle 2026-05-30; discharges D-075.
+//! namespace's meta slot (D-239); keyword meta stays rejected
+//! (clj parity; D-075).
 
 const Value = @import("../../runtime/value/value.zig").Value;
 const Runtime = @import("../../runtime/runtime.zig").Runtime;

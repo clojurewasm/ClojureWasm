@@ -774,7 +774,7 @@ const Compiler = struct {
         // (op_in_ns + referAll(rt) + referAll(clojure.core)); else bare
         // op_in_ns.
         //
-        // Row 14.7 (D-098, landed 2026-06-02): when a `:refer-clojure`
+        // D-098: when a `:refer-clojure`
         // filter (`:exclude`/`:only`) OR ns-level `:require` libspecs are
         // present, lower the (filtered) refer-clojure via op_ns_with_filter
         // over a ns_filters side-table entry, then emit one require op per

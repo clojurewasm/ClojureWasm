@@ -485,7 +485,7 @@ fn inReaderFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 /// `(rt/__stdin-reader)` — a text_io Reader over PROCESS stdin (demand-filled,
 /// blocking; clj `System.in` parity). The `*in*` ROOT (core.clj) — so
 /// `(read-line)` works on piped/redirected/interactive stdin, not just under
-/// `with-in-str` (the 2026-07-06 non-TTY read-line-nil bug).
+/// `with-in-str` (the non-TTY read-line-nil bug class).
 fn stdinReaderFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("__stdin-reader", args, 0, loc);

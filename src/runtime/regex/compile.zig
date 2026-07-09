@@ -1823,7 +1823,7 @@ test "compile \\Q.*\\E emits literal bytes, not metacharacters" {
 }
 
 // `(?x)` extended-mode preprocessing (stripExtended) — expectations mirror the
-// JVM `clj` oracle (2026-06-13). The fn is tested directly (a pure transform);
+// JVM `clj` oracle. The fn is tested directly (a pure transform);
 // the leading-flag path + matching are covered by the e2e.
 fn expectStripped(pat: []const u8, initial_ext: bool, want: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);

@@ -93,7 +93,7 @@ pub const Value = enum(u64) {
         persistent_queue = 45,
         sorted_map = 46,
         sorted_set = 47,
-        // Group D (slots 48..63) — synced with HeapTag (D-248 reorg 2026-06-15:
+        // Group D (slots 48..63) — synced with HeapTag (D-248 reorg:
         // Clojure collection internals up to D4..D8, wasm to the D12..D15 tail).
         // MUST match heap_tag.zig exactly — the test below asserts the sync.
         big_int = 48,

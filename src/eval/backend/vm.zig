@@ -1180,10 +1180,9 @@ inline fn stepOnce(
         },
         .op_in_ns => {
             // ADR-0032 in-ns — mirror of tree_walk::evalInNs.
-            // ADR-0035 D9 second amendment (Phase 7 entry T3,
-            // 2026-05-26): the prior auto-refer of rt +
-            // clojure.core has been removed. `(in-ns 'foo)` is
-            // now a naked ns switch. `.clj` heads use
+            // Per ADR-0035 D9 second amendment there is NO
+            // auto-refer of rt + clojure.core here: `(in-ns 'foo)`
+            // is a naked ns switch. `.clj` heads use
             // `(ns foo (:refer-clojure))` which compiles to
             // `op_ns_with_refer_clojure` (= this opcode + both
             // refers).

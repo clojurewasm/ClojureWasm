@@ -572,7 +572,7 @@ const MARKERS = std.StaticStringMap(HostInterface).initComptime(.{
 /// IPersistentMap / IPersistentVector) DERIVE from the `interface_membership`
 /// SSOT (the same source class_name.matchInterface uses), so the extend-target
 /// lists live in ONE place and cannot drift from instance? membership (ADR-0116
-/// Decision C; D-317 closed 2026-06-15). IPersistentVector's set = INDEXED_TAGS
+/// Decision C; D-317). IPersistentVector's set = INDEXED_TAGS
 /// {vector, map_entry}: clj distributes an IPV-extended protocol to MapEntry (a
 /// MapEntry IS-A IPersistentVector — clj-verified), so the prior {vector}-only
 /// set mis-dispatched a MapEntry. Distinct from MARKERS (deftype-supertype /

@@ -57,7 +57,7 @@ pub const ArrayMap = extern struct {
     count: u32 = 0,
     entries: [2 * ARRAY_MAP_THRESHOLD]Value = @splat(Value.nil_val),
     /// Metadata map (or nil). Same-type ops (assoc/dissoc) preserve it;
-    /// `with-meta` sets it on a copy. D-075 / metadata cycle 2026-05-30.
+    /// `with-meta` sets it on a copy (D-075).
     meta: Value = Value.nil_val,
 
     comptime {
@@ -1607,7 +1607,7 @@ test "HAMT dissoc: remove half of 60 keys, survivors intact, count tracks (no le
     try testing.expectEqual(@as(u32, N / 2), list_mod.countOf(try seq(&fix.rt, m)));
 }
 
-// hashLong-colliding i48 pairs, brute-forced 2026-07-06 (D-155). Each pair is
+// hashLong-colliding i48 pairs, brute-forced (D-155). Each pair is
 // two DISTINCT integers with one 32-bit valueHash — the tests assert the
 // collision still holds so a future hashLong change re-derives new pairs
 // instead of silently testing the non-collision path.

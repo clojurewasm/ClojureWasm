@@ -16,8 +16,8 @@
 //! matching `.clj` source sits at `src/lang/clj/clojure/edn.clj`
 //! (mirroring `clojure.string` / `clojure.set` precedent). The former
 //! top-level `modules/` reservation for a co-located `modules/edn/`
-//! layout was retired 2026-07-01 (D-095 discharged opportunistic —
-//! the migration was never warranted; primitives stay in `src/lang/`).
+//! layout was retired (D-095 — the migration was never warranted;
+//! primitives stay in `src/lang/`).
 
 const std = @import("std");
 const Value = @import("../../runtime/value/value.zig").Value;

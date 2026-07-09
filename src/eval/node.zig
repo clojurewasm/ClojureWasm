@@ -404,7 +404,7 @@ pub const ThrowNode = struct {
 /// the sibling `op_static_method_call` (ADR-0050 am2 / D-130). The ctor
 /// path delegates to the shared `special_forms.constructInstance` so
 /// TreeWalk + VM construct identically incl. the java-surface `<init>`
-/// case `(java.io.File. …)` (D-196 blocker 3, 2026-06-02).
+/// case `(java.io.File. …)` (D-196).
 pub const InteropCallNode = struct {
     pub const Kind = enum { static_method, instance_member, constructor };
 

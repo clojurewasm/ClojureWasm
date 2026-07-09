@@ -418,7 +418,7 @@ pub fn someQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 // These are the eager backends for clojure.core's map/filter/take/
 // drop/keep/remove — the Layer 3 `.clj` shim calls them directly when
 // the multi-arity form is the eager one. The transducer 1-arg arities
-// landed 2026-05-30 (D-177) in core.clj over reduce/reduced; only the
+// live (D-177) in core.clj over reduce/reduced; only the
 // lazy `sequence`/`eduction` pull surface remains (D-160).
 
 // `-map-eager` / `-filter-eager` / `-drop-eager` deleted — map/filter

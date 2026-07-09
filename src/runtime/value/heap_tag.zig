@@ -99,7 +99,7 @@ pub const HeapTag = enum(u8) {
     sorted_set = 47,
 
     // Group D — Numeric + Clojure collection internals + wasm tail (slots 48..63)
-    // (D-248 reorg 2026-06-15: Clojure persistent-collection internals moved UP to
+    // (D-248 reorg: Clojure persistent-collection internals moved UP to
     // D4..D8, the wasm surfaces moved to the D12..D15 TAIL — finished-form
     // cleanliness, ADR-0027 §2 slot-map. Slot ORDER is a discriminant only; runtime
     // dispatch is enum-NAME-based and serialized bytecode uses a decoupled ValueTag,

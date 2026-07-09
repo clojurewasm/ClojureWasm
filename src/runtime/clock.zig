@@ -35,7 +35,7 @@ test "currentMillis returns a positive epoch milliseconds value" {
     var th = std.Io.Threaded.init(testing.allocator, .{});
     defer th.deinit();
     const ms = currentMillis(th.io());
-    // 2026-05-25 ≈ 1.77e12 ms past the Unix epoch.
+    // mid-2026 ≈ 1.77e12 ms past the Unix epoch.
     try testing.expect(ms > 1_700_000_000_000);
 }
 

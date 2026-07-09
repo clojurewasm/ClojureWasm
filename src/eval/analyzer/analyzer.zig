@@ -1670,9 +1670,8 @@ test "(quote ...) lifts atoms; symbols lift to interned Symbol Values" {
 
     try testing.expectEqual(Value.nil_val, (try fix.analyzeStr("(quote nil)")).quote_node.quoted);
 
-    // ADR-0037 (T2, 2026-05-26): (quote sym) now interns a Symbol
-    // Value (F-004 Group A slot 1). The quoted slot carries a
-    // Value with .symbol tag, not the prior NotImplemented raise.
+    // ADR-0037: (quote sym) interns a Symbol Value (F-004 Group A
+    // slot 1). The quoted slot carries a Value with .symbol tag.
     const sym_node = try fix.analyzeStr("(quote x)");
     try testing.expect(sym_node.quote_node.quoted.tag() == .symbol);
     const sym = symbol_mod.asSymbol(sym_node.quote_node.quoted);
@@ -1943,8 +1942,8 @@ test "field-only access (.-x inst) sets field_only" {
     try testing.expectEqualStrings("x", n.interop_call_node.name);
 }
 
-// Row 7.4/7.5 + 2026-06-21: `defrecord`/`reify`/`definterface` all retired from
-// the staged-unsupported wedge — each now lowers via a Layer-2 macro
+// `defrecord`/`reify`/`definterface` are retired from the
+// staged-unsupported wedge — each lowers via a Layer-2 macro
 // (expandDefrecord / expandReify / expandDefinterface→defprotocol). The wedge is
 // empty and removed. definterface lowering is covered by `test/e2e/phase7_definterface.sh`
 // (the analyzer TestFixture cannot register Layer-2 macros without an upward

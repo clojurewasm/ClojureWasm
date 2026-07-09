@@ -127,7 +127,7 @@ pub fn rest(rt: *Runtime, v: Value) !Value {
     // `range.seqChunk` result (`(rest (range n))`), or a seq-walk cursor
     // being advanced in a loop. A collect inside THIS alloc would sweep the
     // shared ChunkBuffer and the input cell, leaving `new_cc.chunk` dangling
-    // (reads recycled memory: the 2026-07-09 rush-hour BFS corruption).
+    // (reads recycled memory — the rush-hour BFS corruption class).
     // Bracket the single alloc in the ADR-0150 fabrication no-collect region
     // (pure Zig, bounded, no eval reentry) so the advance is atomic w.r.t.
     // collection; the caller publishes the result before its next alloc.

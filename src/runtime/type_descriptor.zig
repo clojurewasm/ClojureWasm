@@ -208,7 +208,7 @@ pub const TypeDescriptor = struct {
     pub const StaticFieldValue = union(enum) {
         int: i64,
         float: f64,
-        bool: bool, // Boolean/TRUE, Boolean/FALSE (ADR-0061 am 2026-05-31)
+        bool: bool, // Boolean/TRUE, Boolean/FALSE (ADR-0061 amendment)
         singleton: Singleton,
         /// A host-enum constant (ADR-0161 / D-510): `enum_idx` is `@intFromEnum`
         /// of `host_enum.Idx` (RoundingMode/ChronoUnit/DayOfWeek/Month), `ordinal`

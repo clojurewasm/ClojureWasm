@@ -212,7 +212,7 @@ test "hashUnordered is order-independent" {
     try testing.expectEqual(hashUnordered(&a), hashUnordered(&b));
 }
 
-test "hashUnencodedChars matches JVM Murmur3 (clj oracle 2026-07-06)" {
+test "hashUnencodedChars matches JVM Murmur3 (clj oracle)" {
     // clj: (clojure.lang.Murmur3/hashUnencodedChars s) — UTF-16 code-unit
     // hash, JVM bit-parity (D-376). Values incl. a surrogate-pair case (𠮷 =
     // U+20BB7 → 2 UTF-16 units).

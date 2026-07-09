@@ -17,7 +17,7 @@
 //! VM in `match.zig` remains the sole user-facing matcher; this module is exercised
 //! only by its own unit tests. Span-only: captures stay the two-pass Pike VM.
 //!
-//! ## Leftmost-FIRST (matches the Pike VM, post-2026-06-16 cut-on-match fix)
+//! ## Leftmost-FIRST (matches the Pike VM's cut-on-match behaviour)
 //! Determinization keeps the NFA PCs in priority order and CUTS on match — a `.match`
 //! in a state's PC-list means lower-priority PCs do not advance on a transition
 //! (they cannot beat a higher-priority match). So a span never disagrees with the
