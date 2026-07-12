@@ -5,6 +5,42 @@ All notable changes to ClojureWasm are documented here. The format follows
 [SemVer](https://semver.org/). SemVer compatibility guarantees start at the
 first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
+## [1.1.0] - 2026-07-12
+
+Minor release: new REPL / tooling surface and Java-interop additions, a batch
+of GC-correctness fixes, and a WebAssembly engine bump. Backward-compatible
+with 1.0.x.
+
+### Added
+
+- **`clojure.repl` bundled** — `doc`, `find-doc`, `apropos`, `dir`, `demunge`,
+  plus a bare `(doc x)` at the interactive prompt (clojure.main parity).
+- **`:arglists` / `:doc` metadata** on `clojure.core` and the eager standard
+  library vars — CIDER eldoc now resolves argument lists and docstrings.
+- **Regex lookbehind** — `(?<=…)` / `(?<!…)` and `Pattern.split`.
+- **`format` date/time** — the `%t` / `%T` conversion family (UTC, English).
+- **Namespace metadata** — `alter-meta!` / `reset-meta!` on namespaces, and a
+  namespace docstring / attribute map merged into the namespace metadata.
+- **Java-interop surface** — common `java.util.Arrays` and
+  `java.util.Collections` statics, `String` `char[]` forms, and JVM-bit-parity
+  Murmur3 hashing.
+- **`slurp` / `spit` accept open streams** (the remaining IOFactory arms).
+- **WebAssembly FFI on zwasm v2.2.0** — up from v2.0.0 (table64 JIT +
+  AOT full-fidelity); hot loops inside a module keep running as native code.
+
+### Fixed
+
+- **GC-correctness batch** — several use-after-free / corruption classes under
+  frequent collection: unrooted analysis-time constants, tree-walk
+  native-stack intermediates, `recur` reentrancy inside lazy `for`, and a
+  `rest`-of-chunked-seq self-allocation hole that could corrupt a growing
+  BFS-style queue. All now hold their roots across the collection.
+- **Value semantics** — sorted collections work as hash keys / set elements;
+  hash-map full-hash collision buckets match Clojure; `count` on a
+  `CharSequence` `deftype`; `(var alias/x)` resolves namespace aliases;
+  `read-line` reads process stdin; exception `str` / `pr` and
+  `*print-readably*` shadowing match Clojure.
+
 ## [1.0.1] - 2026-07-02
 
 Patch release: memory-safety fixes found by a post-release audit. No API
