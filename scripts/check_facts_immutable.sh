@@ -40,7 +40,11 @@ COMMAND="$HOOK_COMMAND"  # used by the commit-message extraction below
 STAGED="$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)"
 [[ -z "$STAGED" ]] && exit 0
 
-if ! printf '%s\n' "$STAGED" | grep -qx '\.dev/project_facts\.md'; then
+# here-string (not `printf | grep -q`): grep -q short-circuits on first match
+# and closes the pipe, so a still-writing printf hits SIGPIPE and pipefail turns
+# the pipeline non-zero — `if !` would then invert a genuine match into a
+# phantom "not staged" pass-through.
+if ! grep -qx '\.dev/project_facts\.md' <<<"$STAGED"; then
   exit 0  # not touching project_facts; pass through
 fi
 
@@ -136,7 +140,8 @@ missing_amend=()
 missing_revhist=()
 for fid in "${modified_ids[@]}"; do
   # (b) commit message must contain `Project-facts-amend: F-NNN`
-  if ! printf '%s' "$COMMIT_MSG" | grep -qE "^Project-facts-amend:[[:space:]]*$fid([[:space:]]|—|-|:|$)"; then
+  # here-string, not `printf | grep -q` (broken-pipe/pipefail race — see L43).
+  if ! grep -qE "^Project-facts-amend:[[:space:]]*$fid([[:space:]]|—|-|:|$)" <<<"$COMMIT_MSG"; then
     missing_amend+=("$fid")
   fi
   # (a) staged body must contain a Revision history mention

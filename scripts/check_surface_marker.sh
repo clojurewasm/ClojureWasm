@@ -39,13 +39,18 @@ for file in $files; do
     # Read the first 20 lines (markers must appear at the top).
     head_lines="$(head -n 20 "$file")"
 
-    if ! printf '%s\n' "$head_lines" | grep -qE '^//! Backend: (impl-only|collection-only|impl\+collection|surface-only)$'; then
+    # here-string (not `printf | grep -q`): grep -q short-circuits on the
+    # first match and closes the pipe, so a still-writing printf hits SIGPIPE
+    # and, under `pipefail`, the pipeline returns non-zero — `if !` then
+    # inverts that into a phantom "missing marker" violation (macOS-nightly
+    # timing exposed it; a marker-present file reported as missing).
+    if ! grep -qE '^//! Backend: (impl-only|collection-only|impl\+collection|surface-only)$' <<<"$head_lines"; then
         echo "$file: G2/ADR-0029 D4: missing or malformed 'Backend:' marker" >> "$violations_file"
     fi
-    if ! printf '%s\n' "$head_lines" | grep -qE '^//! Impl deps: '; then
+    if ! grep -qE '^//! Impl deps: ' <<<"$head_lines"; then
         echo "$file: G2/ADR-0029 D4: missing 'Impl deps:' marker" >> "$violations_file"
     fi
-    if ! printf '%s\n' "$head_lines" | grep -qE '^//! Clojure peer: '; then
+    if ! grep -qE '^//! Clojure peer: ' <<<"$head_lines"; then
         echo "$file: G2/ADR-0029 D4: missing 'Clojure peer:' marker" >> "$violations_file"
     fi
 done
