@@ -7,21 +7,27 @@
 
 - **HEAD**: `main` (`git log` = SSOT). Per-commit = smoke; commit
   **and** push (atomic Step 6). `build.zig.zon` `.zwasm` = tag pin `v2.2.0` (AOT-full-fidelity; from v2.1.0).
-- **ADR-0170 nREPL re-architecture LANDED (2026-07-13, fa0917b5)** — the
-  CIDER field report (REPL RET dead / no completion / bare `NameError`)
+- **1.2.0 RELEASED (2026-07-14 JST, tag v1.2.0, user-authorized).**
+  Contents: **ADR-0170 nREPL re-architecture** (fa0917b5) — the CIDER
+  field report (REPL RET dead / no completion / bare `NameError`)
   root-caused empirically to 6 defect classes and rebuilt as
   `src/app/nrepl/` (transport drain-all framing + >4KiB frames /
   distinct sessions + per-session `*1..*e`+ns / comptime op table with
   derived describe / completions+complete+lookup+info+eldoc) + shared
   `app/eval_session.zig` (CLI REPL gained `*1`/`*2`/`*3`/`*e` same
-  cycle) + `runtime/introspect.zig` (line-editor TAB + nREPL share).
-  bencode readString now arena-dupes (its own doc's contract; the
-  borrow corrupted frames after buffer compaction). Verified vs the
-  REAL nrepl/nrepl 1.3.1 Java client end-to-end. D-117/D-118
-  re-narrowed (the "CIDER ops LANDED" 07-07 claim was false).
-  **v1.2.0 release is user-authorized this session** — flow: full gate
-  `--serial-e2e` ALONE → conformance + verify_projects → version bump →
-  CI green → tag → release.yml → brew tap bump.
+  cycle) + `runtime/introspect.zig` (line-editor TAB + nREPL share) +
+  bencode readString arena-dupe. Verified vs the REAL nrepl/nrepl 1.3.1
+  Java client. PLUS **D-369 discharged** (d1310fe9): the pre-tag
+  conformance sweep caught flatland.ordered 17→8 + data.generators
+  20→19 — both present in released 1.1.0 (NOT ADR-0170 regressions);
+  fixed at the root: -editable? = instance? IEditableCollection,
+  transient family dispatches .typed_instance to ITransient*, native
+  transients answer interop method calls (TRANSIENT_METHOD_MAP), and
+  the O-045 reduce-fusion gate no longer realizes the head to decide
+  chunked-ness (double side-effect; data.generators seeded *rnd*).
+  Pre-tag record: full gate 402/0 + conformance 17 libs 0 DRIFT +
+  verify_projects 19/19 + CI green (29261004785). D-117/D-118
+  re-narrowed by code-truth; D-560 unchanged.
 - **1.1.0 RELEASED (2026-07-12).** cljw `v1.1.0` tagged + pushed (user-authorized);
   release.yml published macos-aarch64 + linux-x86_64 binaries + sha256. Pins **zwasm
   v2.2.0**. Contents = 56 commits past v1.0.1: clojure.repl bundle + :arglists/:doc meta
