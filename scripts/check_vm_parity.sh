@@ -35,6 +35,19 @@ SKIPS=(
 restore() { zig build -Dwasm -Doptimize=ReleaseSafe >/dev/null 2>&1 || true; }
 trap restore EXIT
 
+# Portable bounded run: GNU `timeout`, else macOS coreutils `gtimeout`, else
+# unbounded. Hosted macOS runners ship NEITHER — a raw `timeout` there errors
+# with "command not found" (exit 127), which this script would have misread as
+# a tree-walk FAIL for every e2e (empty diff, since 127's text matches no
+# FAIL/error). This is the same helper the e2e scripts + check_corpus_regression
+# use; check_vm_parity was the last raw caller missed by commit 264804b7's sweep.
+run_bounded() {
+    local secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@"
+    else "$@"; fi
+}
+
 echo "check_vm_parity: building -Dbackend=tree_walk -Doptimize=ReleaseSafe…"
 if ! zig build -Dwasm -Doptimize=ReleaseSafe -Dbackend=tree_walk >/tmp/vmp_build.txt 2>&1; then
     echo "check_vm_parity: tree-walk BUILD FAILED (see /tmp/vmp_build.txt)"; exit 1
@@ -60,7 +73,7 @@ for t in test/e2e/*.sh; do
         echo "  SKIP (default-backend)    : $name"
         continue
     fi
-    if timeout 180 bash "$t" >/tmp/vmp_e2e.txt 2>&1; then
+    if run_bounded 180 bash "$t" >/tmp/vmp_e2e.txt 2>&1; then
         : # green — stay quiet (the suite is ~250 steps)
     else
         echo "  FAIL on tree-walk         : $name  ($(grep -iE 'FAIL|error' /tmp/vmp_e2e.txt | head -1 | cut -c1-100))"
