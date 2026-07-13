@@ -90,24 +90,30 @@ The core language is largely in place and exercised end-to-end:
 - **Concurrency**: STM (`ref` / `dosync` / `alter` / `commute` /
   `ensure`), `atom`, `agent`, `future` / `promise` / `delay`,
   reference watches, `locking`, `volatile`, real OS threads.
-- **Namespaces** + a CIDER-compatible **nREPL**, a `deps.edn`-aware
-  classpath, and a growing set of `clojure.*` standard-library
-  namespaces (`string` / `set` / `walk` / `zip` / `edn` / `math` /
-  `pprint` / `test` / `data.json` / `data.csv` / `tools.cli` …).
+- **Namespaces** + a full base-protocol **nREPL** (ADR-0170:
+  sessions, `completions` / `lookup` / `eldoc`, `*1`..`*e` history,
+  CLI-grade error rendering — CIDER works end-to-end), a
+  `deps.edn`-aware classpath, and a growing set of `clojure.*`
+  standard-library namespaces (`string` / `set` / `walk` / `zip` /
+  `edn` / `math` / `pprint` / `test` / `repl` / `data.json` /
+  `data.csv` / `tools.cli` …).
 - A polyglot **WebAssembly FFI** behind `-Dwasm` (`wasm/load` +
-  `wasm/call`), embedding the `zwasm` engine.
+  `wasm/call`), embedding the `zwasm` engine — whose JIT-backed
+  engine (zwasm v2.2+) runs hot Wasm loops as native code.
 
-A relentless **performance campaign** (ROADMAP §9.2.S, D-386) has
-landed 12 optimizations (O-016…O-027 — the ADR-0131 frame stack, the
-dispatch-arc superinstructions, the fused `reduce`, and per-bench
-allocation cuts); on cold-start `cljw` now beats or matches CPython on
-most `bench/` workloads (see [`bench/README.md`](bench/README.md)).
+Performance work is ledgered in `.dev/optimizations.md` (`O-NNN` rows;
+`PERF:` markers in source anchor each site); the dedicated campaign
+(ROADMAP §9.2.S) is paused with its baseline recorded in
+`.dev/perf_v0_baseline.md`. On cold-start `cljw` beats or matches
+CPython on most `bench/` workloads (see
+[`bench/README.md`](bench/README.md)).
 
-Near-term: cut the **v0.1.0** tag (not yet tagged), then a narrow
-ARM64 **JIT** is the next major performance lever. The phase plan was
-re-cut from the original linear numbering into consolidation →
-concurrency → library-gap phases (ROADMAP §9.2.R / ADR-0089); §9 is
-the live tracker.
+Releases are tagged (`v1.2.0` current; see `CHANGELOG.md`) and ship as
+single binaries for macOS arm64 + Linux x86_64, plus a Homebrew tap
+(`brew install clojurewasm/tap/cljw`). The original linear phase plan
+is retired; remaining work is tracked as gap areas (ROADMAP §9.0:
+concurrency-hardening / Wasm-edge-native / VM-perf) + a row-level debt
+ledger (`.dev/debt.yaml`).
 
 ## Where to look
 

@@ -99,9 +99,23 @@ active:
       demos match the build, "<4 MB" consistent with RELEASE_METRICS) +
       docs/ja/README.md (fixed: the "chapter-cadence resumes at Phase 4/5" framing
       was overtaken — the project reached v1.0.0-alpha with dormancy persisting).
-      So 6/7 had real stale claims, 1/7 clean. The docs/ tree pass is DONE; a future
-      drain can sweep docs/ja/archive (read-only historical) or the .dev/*.md
-      scaffolding if a public-ization need arises.
+      So 6/7 had real stale claims, 1/7 clean.
+      DRAIN 2 (2026-07-14, the handover-named residual): docs/architecture.md —
+      the "Current state" tail was pre-v0.1.0-era (claimed "cut the v0.1.0 tag
+      (not yet tagged)" while v1.2.0 had just shipped; "ARM64 JIT is the next
+      lever" superseded by the zwasm-side JIT ADR-0200; "12 optimizations
+      O-016…O-027" vs the O-051 ledger; phase-plan framing vs the §9.0 gap-area
+      model) — rewritten to current truth incl. the ADR-0170 nREPL surface +
+      release/tap facts. docs/examples/wasm/README.md + add.clj — the
+      "Expected output: 42" promise was FALSE (file mode does not echo the last
+      value; the probe printed nothing) → add.clj now printlns; the "default
+      binary does not embed zwasm" framing corrected (released/brew binaries ARE
+      wasm-enabled); the "Phase-16 FFI surface" dev-concept leak dropped. A
+      drafted string-libspec claim was PROBE-REFUTED before landing (that
+      surface is component-model-only, require-component) and rewritten
+      precisely. The docs/ tree pass is DONE incl. architecture + examples; a
+      future drain can sweep docs/ja/archive (read-only historical) or the
+      .dev/*.md scaffolding if a public-ization need arises.
     category: "docs"
     quality_floor: "public-ization: doc audit vs code-truth (ADR-0166)"
     barrier: |-

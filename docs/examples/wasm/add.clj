@@ -5,9 +5,10 @@
 ;;   (wasm/load "path")          → an instance handle
 ;;   (wasm/call handle "add" …)  → invokes the export, marshalling args/results
 ;;
-;; Run (needs the wasm-enabled build — the default cljw does not embed zwasm):
+;; Run (released binaries — GitHub releases / Homebrew — are wasm-enabled;
+;; building from source needs the flag):
 ;;   zig build -Dwasm
 ;;   ./zig-out/bin/cljw docs/examples/wasm/add.clj
 ;; Expected output: 42
 
-(wasm/call (wasm/load "docs/examples/wasm/add.wasm") "add" 2 40)
+(println (wasm/call (wasm/load "docs/examples/wasm/add.wasm") "add" 2 40))

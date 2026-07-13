@@ -16,14 +16,20 @@ name, marshalling arguments and results from the export's signature
 
 ## Run it
 
-The wasm FFI is behind a build flag (`-Dwasm`), so the **default** `cljw` binary
-does not embed zwasm — the polyglot build is opt-in:
+The **released binaries** (GitHub releases, `brew install
+clojurewasm/tap/cljw`) are wasm-enabled — `cljw --version` shows `wasm` —
+so they run this demo directly. Building from source, the FFI is behind a
+build flag (`-Dwasm`); a bare `zig build` does not embed zwasm:
 
 ```sh
 zig build -Dwasm
 ./zig-out/bin/cljw docs/examples/wasm/add.clj
 # 42
 ```
+
+(A **component-model** binary — as opposed to a plain module like this
+demo's — can additionally be required like a namespace via
+`cljw.wasm/require-component`, interning each export as a var.)
 
 ## The module
 
@@ -44,8 +50,7 @@ from Clojure through `wasm/load` + `wasm/call`.
 The module runs inside the wasm engine's sandbox: it has no ambient access to
 the filesystem or network, and its linear memory is isolated from the
 ClojureWasm heap. This demo module is pure compute (`add`); host capabilities
-(for modules that need I/O) are an explicit, opt-in import — the subject of the
-fuller Phase-16 FFI surface.
+(for modules that need I/O) are an explicit, opt-in import.
 
 A faulty or adversarial module's **trap** is contained and surfaces as an
 ordinary Clojure exception — the host never crashes. [`trap.wat`](./trap.wat)
