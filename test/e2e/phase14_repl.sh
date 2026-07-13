@@ -58,5 +58,16 @@ case "$out" in
         fail "repl_prompt_visible: expected 'user=>' or '=>' in prompt, got '$out'" ;;
 esac
 
+# --- Case 6: *1/*2/*3 REPL history (ADR-0170 shared eval engine — the
+# same rotation nREPL sessions get; pins the CLI side of the F-011
+# convergence so the two REPLs cannot drift). ---
+out=$(printf '(+ 40 2)\n(inc *1)\n*2\n' | "$BIN" repl 2>&1 | strip_prompts | grep -vE '^(ClojureWasm|$)')
+case "$out" in
+    *"42"*"43"*"42"*)
+        echo "PASS repl_star_history -> 42 / (inc *1)=43 / *2=42" ;;
+    *)
+        fail "repl_star_history: expected 42,43,42 sequence, got '$out'" ;;
+esac
+
 echo
 echo "Phase 14 row 14.9 REPL minimal e2e: all green."
