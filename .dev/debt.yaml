@@ -3161,20 +3161,38 @@ discharged:
     resolution: |-
       docs | **cljw man-page rendering**: Row 14.13 (D-066) shipped `docs/spec/error_format.md` (Markdown). v5 §13.2 + §24.2 also wanted a manpage-style render for `man cljw`. Discharge: write `docs/man/cljw.1` in mdoc(7) format covering the subcommand surface (eval / repl / nrepl / build / render-error) + env vars (CLJW_ERROR_FORMAT / CLJW_ERROR_LOG) + a synopsis section. Estimated ~150 lines of mdoc; install path under a future packaging cycle. | Opportunistic — packaging / distro polish phase | 2026-05-28
   - id: "D-118"
-    discharged_at: "Phase 15+ — when `*out*` / `*err*` dynamic-binding lands"
+    discharged_at: "RE-NARROWED 2026-07-13 (ADR-0170): out AND err both captured + streamed; residual = per-WRITE streaming (today per top-level form)"
     resolution: |-
-      runtime | **nREPL stdout/stderr capture**: Row 14.10 (2026-05-28) landed `cljw nrepl` with empty `out` / `err` keys in eval responses — the cw v1 print primitive writes to the process stdout, not a per-session buffer. CIDER's REPL buffer relies on `out` responses to display side-effect prints; today `(println "x")` runs at the server's stdout, invisible to the connected client. Discharge: bind `*out*` / `*err*` dynamic Vars to a per-session captured Writer that pushes each chunk as a separate nREPL `{out | err}` response. Estimated ~120 LOC + dynamic-binding integration. Independent of D-117 (multi-session / CIDER ops). | Phase 15+ when `*out*` / `*err*` binding lands | 2026-05-28
+      RE-NARROWED 2026-07-13 (ADR-0170): `*out*` AND `*err*` are both
+      bound to capture writers per eval (eval_session.zig) and streamed
+      to the client as `out` / `err` responses per top-level form.
+      Residual divergence FROM babashka (which streams per WRITE via a
+      proxy Writer, mid-eval): a long-running form's prints arrive only
+      when the form returns — cosmetic for fast single-threaded evals;
+      the fix shape is a callback-writer Value that emits on each
+      `.write` (text_io), taken up if a user reports the delay.
+      ORIGINAL: runtime | **nREPL stdout/stderr capture**: Row 14.10 (2026-05-28) landed `cljw nrepl` with empty `out` / `err` keys in eval responses — the cw v1 print primitive writes to the process stdout, not a per-session buffer. CIDER's REPL buffer relies on `out` responses to display side-effect prints; today `(println "x")` runs at the server's stdout, invisible to the connected client. Discharge: bind `*out*` / `*err*` dynamic Vars to a per-session captured Writer that pushes each chunk as a separate nREPL `{out | err}` response. Estimated ~120 LOC + dynamic-binding integration. Independent of D-117 (multi-session / CIDER ops). | Phase 15+ when `*out*` / `*err*` binding lands | 2026-05-28
   - id: "D-117"
-    discharged_at: "Phase 15+ — when concurrency primitives enable multi-session (RE-NARROWED 2026-07-07: only (a) multi-session remains)"
+    discharged_at: "Concurrency gap area — when thread-per-session lands (RE-NARROWED 2026-07-13 by ADR-0170: only true mid-eval interrupt + stdin remain)"
     resolution: |-
-      RE-NARROWED BY CODE-TRUTH 2026-07-07 (D-536 reconciliation): of the
-      five deferred items, (b) interrupt, (c) load-file + CIDER ops, and
-      (d) --port 0 auto-assign are LANDED (the nrepl e2e runs eval / out /
-      load-file / interrupt / ls-sessions green; auto-port fixed 2026-07-07
-      via Zig 0.16 Socket.address — feature_deps#runtime/nrepl/auto_port =
-      landed). Remaining: (a) multi-session thread-per-session (the D-418
-      concurrency area) + (e) middleware only if Tier-A tooling demands.
-      ORIGINAL:
+      RE-NARROWED 2026-07-13 (ADR-0170 re-architecture): the 2026-07-07
+      "CIDER ops LANDED" claim was FALSE — completions/complete/lookup/
+      info/eldoc did not exist (only load-file had landed; the
+      verify_actual_pattern_not_proxy lesson). ADR-0170 landed them for
+      real, plus distinct per-clone sessions with per-session *1..*e +
+      current-ns, request-session echo, drain-before-block framing,
+      >4KiB frames, the babashka 3-message error protocol with
+      CLI-grade rendering, and describe derived from the op table
+      (e2e: phase14_nrepl.sh case 4). Remaining, genuinely
+      concurrency-gated: (a) thread-per-session → true mid-eval
+      `interrupt` (today acks done+session-idle — an eval owns the only
+      thread) + `stdin` op (read-line over the wire). (e) middleware
+      framework stays not-wanted (bb precedent: op handlers suffice).
+      RE-NARROWED-2026-07-07 TEXT (superseded): of the five deferred
+      items, (b) interrupt, (c) load-file + CIDER ops, and (d) --port 0
+      auto-assign are LANDED (... auto-port fixed 2026-07-07 via Zig
+      0.16 Socket.address — feature_deps#runtime/nrepl/auto_port =
+      landed). ORIGINAL:
       tooling | **nREPL polish — multi-session, interrupt, CIDER ops, auto-port**: Row 14.10 (2026-05-28) landed a minimal 4-op nREPL server (clone / describe / eval / close) on single concurrent session. Deferred items: (a) multi-session via thread-per-session (needs Phase 15+ `std.Thread.spawn`); (b) `interrupt` op (single-thread eval cannot interrupt itself); (c) CIDER-specific ops `complete` / `info` / `load-file` / `eldoc`; (d) `--port 0` auto-assign needs `getsockname` surface (Zig 0.16 `Server` doesn't expose bound addr — see `runtime/nrepl/auto_port` feature_deps entry); (e) middleware framework if Tier-A tooling demands it. Estimated ~400-600 LOC total. | Phase 15+ — concurrency activation OR a CIDER-tooling test corpus needs a missing op | 2026-05-28
   - id: "D-116"
     discharged_at: "Opportunistic — when an interactive REPL session needs arrow-key history"

@@ -70,9 +70,14 @@ test {
     _ = @import("app/deps/run_mode.zig");
     _ = @import("app/runner.zig");
     _ = @import("app/builder.zig");
+    _ = @import("app/eval_session.zig");
+    _ = @import("app/nrepl/transport.zig");
+    _ = @import("app/nrepl/session.zig");
+    _ = @import("app/nrepl/ops.zig");
     _ = @import("app/error_render.zig");
     _ = @import("app/render_error.zig");
     _ = @import("runtime/value/value.zig");
+    _ = @import("runtime/introspect.zig");
     _ = @import("runtime/error/info.zig");
     _ = @import("runtime/error/catalog.zig");
     _ = @import("runtime/error/print.zig");

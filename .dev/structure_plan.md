@@ -111,9 +111,13 @@ ClojureWasm/
    ├─ main.zig                     Layer 3 entry (shrinks in Phase 8 ★split)
    ├─ app/                                         ★new (Phase 8 entry, D-031)
    │  ├─ repl.zig
+   │  ├─ repl/                     line_editor
+   │  ├─ eval_session.zig          shared REPL eval engine (ADR-0170; CLI + nREPL)
    │  ├─ runner.zig                file / -e / stdin 共通の eval runner
    │  ├─ self_host_loader.zig                                Phase 8
-   │  ├─ nrepl_server.zig                                    Phase 10
+   │  ├─ nrepl.zig + nrepl/        transport / session / ops (ADR-0170 package;
+   │  │                            supersedes the single-file nrepl_server.zig
+   │  │                            reservation + runtime/cljw/repl/NReplServer.zig)
    │  ├─ builder.zig                                         Phase 12 (cljw build)
    │  └─ pod_runner.zig                                      Phase 16 (zwasm v2)
    ├─ runtime/                     Layer 0

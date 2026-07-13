@@ -39,10 +39,42 @@ const Value = @import("../runtime/value/value.zig").Value;
 const bootstrap = @import("../lang/bootstrap.zig");
 const require_resolver = @import("../lang/require_resolver.zig");
 const error_print = @import("../runtime/error/print.zig");
-const print = @import("../runtime/print.zig");
 
 const error_render = @import("error_render.zig");
+const eval_session = @import("eval_session.zig");
 const LineEditor = @import("repl/line_editor.zig").LineEditor;
+
+/// Terminal sink for the shared eval engine (ADR-0170): values print
+/// to stdout, rendered errors to stderr; output capture is off (CLI
+/// prints flow straight to the process stdio), so onOut/onErrOut are
+/// never driven.
+const TermSink = struct {
+    stdout: *Writer,
+    stderr: *Writer,
+
+    pub fn onValue(self: *const TermSink, text: []const u8) !void {
+        try self.stdout.writeAll(text);
+        try self.stdout.writeByte('\n');
+        try self.stdout.flush();
+    }
+
+    pub fn onOut(self: *const TermSink, text: []const u8) !void {
+        _ = self;
+        _ = text;
+    }
+
+    pub fn onErrOut(self: *const TermSink, text: []const u8) !void {
+        _ = self;
+        _ = text;
+    }
+
+    pub fn onError(self: *const TermSink, rendered: []const u8, err_name: []const u8, thrown: ?Value) !void {
+        _ = err_name;
+        _ = thrown;
+        try self.stderr.writeAll(rendered);
+        try self.stderr.flush();
+    }
+};
 
 /// Run the REPL until stdin EOF. `arena` is per-process here — each
 /// form's analysis/eval allocates against it, and we never reset; a
@@ -106,13 +138,18 @@ pub fn run(
     // editing + multi-line); a piped / redirected stdin (tcgetattr fails)
     // falls back to the plain buffered line read so heredoc / pipe input
     // still runs and exits cleanly on EOF.
+    // `*1`/`*2`/`*3`/`*e` history for the whole session (ADR-0170:
+    // shared engine — same rotation CIDER sessions get).
+    var stars = eval_session.StarState.init(&rt.gc);
+    defer stars.release();
+
     const interactive = if (std.posix.tcgetattr(std.Io.File.stdin().handle)) |_| true else |_| false;
     if (interactive) {
         var editor = LineEditor.init(gpa, io, stdout, &env);
         defer editor.deinit();
-        try runInteractive(&rt, &env, &macro_table, arena, stdout, stderr, &editor);
+        try runInteractive(&rt, &env, &macro_table, arena, stdout, stderr, &editor, &stars);
     } else {
-        try runPiped(io, &rt, &env, &macro_table, arena, stdout, stderr);
+        try runPiped(io, &rt, &env, &macro_table, arena, stdout, stderr, &stars);
     }
 }
 
@@ -125,6 +162,7 @@ fn runInteractive(
     stdout: *Writer,
     stderr: *Writer,
     editor: *LineEditor,
+    stars: *eval_session.StarState,
 ) !void {
     var line_no: usize = 0;
     while (true) : (line_no += 1) {
@@ -145,10 +183,16 @@ fn runInteractive(
         // `line` is a slice into the editor's internal buffer; dupe into the
         // arena so the per-form ctx outlives the next readInput.
         const line_owned = try arena.dupe(u8, line);
-        const ctx = error_print.SourceContext{ .file = label, .text = line_owned };
 
-        evalOneLine(rt, env, macro_table, arena, stdout, stderr, ctx, line_owned) catch |err| {
-            error_render.renderError(stderr, ctx, err) catch {};
+        var sink = TermSink{ .stdout = stdout, .stderr = stderr };
+        _ = eval_session.evalSource(rt, env, macro_table, arena, arena, .{
+            .source = line_owned,
+            .source_label = label,
+            .stars = stars,
+        }, &sink) catch |err| {
+            // Engine-internal failure (not user code — those are already
+            // rendered through the sink). Best-effort render + continue.
+            error_render.renderError(stderr, .{ .file = label, .text = line_owned }, err) catch {};
             try stderr.flush();
         };
     }
@@ -163,6 +207,7 @@ fn runPiped(
     arena: std.mem.Allocator,
     stdout: *Writer,
     stderr: *Writer,
+    stars: *eval_session.StarState,
 ) !void {
     var stdin_buf: [4096]u8 = undefined;
     var stdin_reader = std.Io.File.stdin().readerStreaming(io, &stdin_buf);
@@ -201,10 +246,14 @@ fn runPiped(
 
         const label = try std.fmt.allocPrint(arena, "<repl:{d}>", .{line_no + 1});
         const line_owned = try arena.dupe(u8, line);
-        const ctx = error_print.SourceContext{ .file = label, .text = line_owned };
 
-        evalOneLine(rt, env, macro_table, arena, stdout, stderr, ctx, line_owned) catch |err| {
-            error_render.renderError(stderr, ctx, err) catch {};
+        var sink = TermSink{ .stdout = stdout, .stderr = stderr };
+        _ = eval_session.evalSource(rt, env, macro_table, arena, arena, .{
+            .source = line_owned,
+            .source_label = label,
+            .stars = stars,
+        }, &sink) catch |err| {
+            error_render.renderError(stderr, .{ .file = label, .text = line_owned }, err) catch {};
             try stderr.flush();
         };
     }
@@ -223,33 +272,4 @@ fn referReplUtilities(rt: *Runtime, env: *Env, macro_table: *const macro_dispatc
     const node = analyzeForm(arena, rt, env, null, form, macro_table) catch return;
     var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
     _ = driver.evalForm(rt, env, &locals, arena, node) catch return;
-}
-
-fn evalOneLine(
-    rt: *Runtime,
-    env: *Env,
-    macro_table: *const macro_dispatch.Table,
-    arena: std.mem.Allocator,
-    stdout: *Writer,
-    stderr: *Writer,
-    ctx: error_print.SourceContext,
-    source: []const u8,
-) !void {
-    _ = stderr;
-    _ = ctx;
-    var reader = Reader.init(arena, source);
-    while (true) {
-        const form_opt = try reader.read();
-        const form = form_opt orelse return;
-        // D-430: per-form analysis bracket (roots literals through eval).
-        var af: root_set.AnalysisFrame = undefined;
-        root_set.beginAnalysis(&af, rt.gc.infra);
-        defer root_set.endAnalysisPersist(&af, &rt.gc);
-        const node = try analyzeForm(arena, rt, env, null, form, macro_table);
-        var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
-        const result = try driver.evalForm(rt, env, &locals, arena, node);
-        try print.printResult(rt, env, stdout, result);
-        try stdout.writeByte('\n');
-        try stdout.flush();
-    }
 }

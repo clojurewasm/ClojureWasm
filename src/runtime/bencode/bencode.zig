@@ -99,7 +99,12 @@ const DecodeState = struct {
         const length = std.fmt.parseInt(usize, len_bytes, 10) catch return error.InvalidIntegerSyntax;
         self.advance(); // ':'
         if (self.offset + length > self.bytes.len) return error.UnexpectedEof;
-        const slice = self.bytes[self.offset .. self.offset + length];
+        // Dupe into the arena — the module contract is "Decoded is
+        // arena-owned" (ADR-0170: the nREPL framer compacts its receive
+        // buffer after decode, so a borrowed slice would dangle; the
+        // pre-ADR server borrowed and survived only because it never
+        // moved the window before the reply flushed).
+        const slice = try self.arena.dupe(u8, self.bytes[self.offset .. self.offset + length]);
         self.offset += length;
         return .{ .str = slice };
     }

@@ -42,6 +42,29 @@
 ;; ADR-0111); a plain `cljw <file>` / `-e` leaves it nil.
 (def ^:dynamic *command-line-args* nil)
 
+;; REPL history vars — upstream core.clj shape (unbound roots; a REPL binds
+;; them per evaluation). The nREPL session engine (ADR-0170) binds + rolls
+;; them per session; the CLI REPL adopts them via the same engine later.
+(def ^:dynamic
+ ^{:doc "bound in a repl thread to the most recent value printed"
+   :added "1.0"}
+ *1)
+
+(def ^:dynamic
+ ^{:doc "bound in a repl thread to the second most recent value printed"
+   :added "1.0"}
+ *2)
+
+(def ^:dynamic
+ ^{:doc "bound in a repl thread to the third most recent value printed"
+   :added "1.0"}
+ *3)
+
+(def ^:dynamic
+ ^{:doc "bound in a repl thread to the most recent exception caught by the repl"
+   :added "1.0"}
+ *e)
+
 ;; `*out*` / `*err*` — first-class cljw writer VALUES (ADR-0138). The roots are
 ;; a stdout / stderr text_io Writer (UTF-8, no JVM Charset/PrintWriter); print/
 ;; println/pr/prn/newline (core.zig emitToStdout) render + push to the bound

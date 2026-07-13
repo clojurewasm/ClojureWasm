@@ -33,8 +33,7 @@ const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const Writer = std.Io.Writer;
 const Env = @import("../../runtime/env.zig").Env;
-const Namespace = @import("../../runtime/env.zig").Namespace;
-const VarMap = @import("../../runtime/env.zig").VarMap;
+const introspect = @import("../../runtime/introspect.zig");
 const process_env = @import("../../runtime/process_env.zig");
 
 /// A decoded key event. Escape sequences and control bytes are
@@ -728,9 +727,11 @@ pub const LineEditor = struct {
 
     // --- tab completion ---
 
-    /// Complete the symbol under the cursor from the live Env. Handles
-    /// an unqualified prefix (current-ns mappings + refers + aliases +
-    /// clojure.core + full ns names) and a `ns/var` qualified prefix.
+    /// Complete the symbol under the cursor from the live Env, via the
+    /// shared `runtime/introspect.zig` enumeration (ADR-0170 — the
+    /// same candidates the nREPL `completions` op serves). Handles an
+    /// unqualified prefix and a `ns/var` qualified one; the candidate
+    /// type annotation is ignored here (a raw terminal lists names).
     fn handleTab(self: *LineEditor) void {
         const env = self.env orelse return;
 
@@ -741,30 +742,36 @@ pub const LineEditor = struct {
 
         var candidates: [64][]const u8 = undefined;
         var count: usize = 0;
+        var sink = TabSink{ .candidates = &candidates, .count = &count };
 
         if (std.mem.findScalar(u8, prefix, '/')) |slash| {
-            const ns_part = prefix[0..slash];
             const var_prefix = prefix[slash + 1 ..];
-            const target = if (env.current_ns) |ns|
-                ns.aliases.get(ns_part) orelse env.findNs(ns_part)
-            else
-                env.findNs(ns_part);
-            if (target) |ns| collectVarCompletions(&candidates, &count, &ns.mappings, var_prefix);
+            if (introspect.resolveQualifier(env, env.current_ns, prefix[0..slash])) |target| {
+                introspect.forEachNsVar(target, var_prefix, &sink, TabSink.cb);
+            }
             self.showCompletions(&candidates, count, var_prefix);
         } else {
-            if (env.current_ns) |ns| {
-                collectVarCompletions(&candidates, &count, &ns.mappings, prefix);
-                collectVarCompletions(&candidates, &count, &ns.refers, prefix);
-                collectAliasCompletions(&candidates, &count, ns, prefix);
-            }
-            if (env.findNs("clojure.core")) |core| {
-                collectVarCompletions(&candidates, &count, &core.mappings, prefix);
-                collectVarCompletions(&candidates, &count, &core.refers, prefix);
-            }
-            collectNsNameCompletions(&candidates, &count, env, prefix);
+            introspect.forEachUnqualified(env, env.current_ns, prefix, &sink, TabSink.cb);
             self.showCompletions(&candidates, count, prefix);
         }
     }
+
+    /// Fixed-slot, allocation-free candidate sink (dedup is the
+    /// consumer's concern per introspect.zig's contract).
+    const TabSink = struct {
+        candidates: *[64][]const u8,
+        count: *usize,
+
+        fn cb(self: *TabSink, c: introspect.Candidate) bool {
+            if (self.count.* >= self.candidates.len) return false;
+            for (self.candidates[0..self.count.*]) |e| {
+                if (std.mem.eql(u8, e, c.name)) return true;
+            }
+            self.candidates[self.count.*] = c.name;
+            self.count.* += 1;
+            return true;
+        }
+    };
 
     fn showCompletions(self: *LineEditor, candidates: *[64][]const u8, count: usize, prefix: []const u8) void {
         if (count == 0) return;
@@ -796,47 +803,6 @@ pub const LineEditor = struct {
             self.prev_cursor_row = 0;
             self.enableRawMode();
         }
-    }
-
-    fn collectVarCompletions(candidates: *[64][]const u8, count: *usize, map: *const VarMap, prefix: []const u8) void {
-        var it = map.iterator();
-        while (it.next()) |entry| {
-            if (count.* >= candidates.len) return;
-            const name = entry.key_ptr.*;
-            if (!std.mem.startsWith(u8, name, prefix)) continue;
-            if (containsCandidate(candidates[0..count.*], name)) continue;
-            candidates[count.*] = name;
-            count.* += 1;
-        }
-    }
-
-    fn collectAliasCompletions(candidates: *[64][]const u8, count: *usize, ns: *const Namespace, prefix: []const u8) void {
-        var it = ns.aliases.iterator();
-        while (it.next()) |entry| {
-            if (count.* >= candidates.len) return;
-            const name = entry.key_ptr.*;
-            if (!std.mem.startsWith(u8, name, prefix)) continue;
-            if (containsCandidate(candidates[0..count.*], name)) continue;
-            candidates[count.*] = name;
-            count.* += 1;
-        }
-    }
-
-    fn collectNsNameCompletions(candidates: *[64][]const u8, count: *usize, env: *const Env, prefix: []const u8) void {
-        var it = env.namespaces.iterator();
-        while (it.next()) |entry| {
-            if (count.* >= candidates.len) return;
-            const name = entry.key_ptr.*;
-            if (!std.mem.startsWith(u8, name, prefix)) continue;
-            if (containsCandidate(candidates[0..count.*], name)) continue;
-            candidates[count.*] = name;
-            count.* += 1;
-        }
-    }
-
-    fn containsCandidate(existing: []const []const u8, name: []const u8) bool {
-        for (existing) |e| if (std.mem.eql(u8, e, name)) return true;
-        return false;
     }
 
     // --- helpers ---
