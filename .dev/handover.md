@@ -79,13 +79,13 @@
   point)** — pre-tag: full gate green (one run hit only the
   D-548(a)-recorded SIGABRT, standalone 3/3, recurrence recorded) /
   conformance 0 DRIFT / verify_projects 19/19 / CI green on every arc
-  commit; release workflow published all 4 assets. **Homebrew tap bump
-  is PENDING USER**: the auto-mode classifier denied the cross-repo
-  publish (clojurewasm/homebrew-tap). The ready-to-apply v1.3.0
-  formula sits in the session scratchpad; shas — macos-aarch64
-  4806a7cd…8116b, linux-x86_64 8a7a6497…bbaf. One-liner for the user:
-  update Formula/cljw.rb version/urls/sha256s to v1.3.0 (same shape as
-  the 1.2.1 bump).
+  commit; release workflow published all 4 assets. **Homebrew tap
+  BUMPED to 1.3.0** (user-authorized 2026-07-16 morning; `brew info`
+  verified `1.2.1 → stable 1.3.0`, formula sha256 matches the live
+  tarball). NOTE: the first tap PUT emptied the formula (a vanished
+  scratchpad file piped as empty base64 — gh api sent content="")
+  and was restored within a minute; guard every external-publish
+  payload with `test -s` + non-empty checks before the API call.
 - **First task on resume**: self-select from the live `active:` list,
   easiest-first (D-523's architecture/wasm-demo residual + D-522 drain 3
   landed 2026-07-14; D-430 is DISCHARGED — the prior pointer here was
