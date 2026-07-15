@@ -5,6 +5,67 @@ All notable changes to ClojureWasm are documented here. The format follows
 [SemVer](https://semver.org/). SemVer compatibility guarantees start at the
 first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
+## [1.3.0] - 2026-07-16
+
+Minor release: mainline-parity deep-dive — the `rt` namespace is gone
+(`(resolve '+)` is `#'clojure.core/+`), CIDER completion reaches the
+built-in nREPL completion's fidelity (classes and `Class/` static members
+complete without `require`), `java.lang.Character` is complete, and
+`(hash x)` values are now portable Clojure hash values.
+
+### Added
+
+- **`java.lang.Character` complete** — the full static surface (47 methods
+  + 70 static fields incl. the category/directionality constants), with
+  classification (`isLetter`, `isDigit`, `getType`, …) evaluated over
+  generated UCD 16.0.0 tables — full Unicode, matching the JVM (previously
+  ASCII-only). Includes the JDK 21 `isEmoji*` family, `getDirectionality`,
+  the char/int overload pairs (`(Character/toUpperCase 97)` → `65`), and
+  `.charValue` / `.compareTo` instance methods. The one member out:
+  `getName` (explicit unsupported — the Unicode name table's size/value
+  trade is tracked).
+- **CIDER completion parity** — nREPL `completions` now serves every
+  source the built-in serves: special forms + literals, vars with
+  dash-fuzzy matching (`ma-i` → `map-indexed`), namespaces/aliases,
+  classes, `Class/` static members with camelCase matching
+  (`Character/isD` → `isDigit`), and interned keywords — by-name sorted,
+  with `(clojure.core)`-correct namespace annotations. Java-interop
+  completion works without `require`, from the closed class registry
+  (no JVM-internal classpath leak).
+- **`defmacro` resolves as a Var** (`#'clojure.core/defmacro`) and
+  **`definline`** is available (defn-equivalent surface).
+- nREPL `describe` advertises `versions.clojurewasm` (the babashka-style
+  key a CIDER REPL banner can render).
+
+### Changed
+
+- **The internal `rt` namespace is GONE** — Zig builtins and bootstrap
+  macros intern directly into `clojure.core`, so `(resolve '+)`,
+  `(meta #'when)`, `(ns-publics 'clojure.core)`, doc/eldoc/completion
+  namespaces, and printed values all match mainline. Kernel helpers live
+  in the documented `cljw.internal` namespace. Compiled `.cljwc` archives
+  from earlier versions need a rebuild (format v6).
+- **Portable hash values** — `(hash x)` now returns real Clojure's value
+  for strings, keywords, symbols, doubles, booleans, chars, UUIDs, ratios,
+  BigDecimals, and every collection built from them (`(hash "abc")` →
+  `74834163` everywhere). Records and identity objects remain
+  cljw-specific.
+- **`compare` returns mainline's magnitudes** for strings / chars /
+  keywords / symbols (`(compare "a" "c")` → `-2`; Java `String.compareTo`
+  semantics).
+- **`(locking 5 …)` works** (immediates share one monitor; `(locking nil
+  …)` errors, matching mainline's NPE).
+- **`Double/parseDouble` matches the exact Java grammar** — accepts
+  `1.5d`/`1.5F` suffixes and `0x1.8p1` hex floats; rejects lowercase
+  `infinity`/`nan` and exponent-less hex.
+
+### Fixed
+
+- `(read-string "@x")` prints as `(clojure.core/deref x)` (was the
+  internal `rt/deref`); `clojure.spec.alpha/form` shows
+  `clojure.core/int?` (was `rt/int?`); syntax-quote and macroexpansion
+  namespaces match mainline throughout.
+
 ## [1.2.1] - 2026-07-14
 
 Patch release: the `*cider-error*` buffer works — CIDER renders numbered

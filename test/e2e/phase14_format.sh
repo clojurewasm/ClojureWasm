@@ -81,9 +81,10 @@ assert_eq 's_nil'      "$("$BIN" -e '(format "%s" nil)')"               '"null"'
 assert_eq 'S_upper'    "$("$BIN" -e '(format "%S" "hi")')"              '"HI"'
 assert_eq 's_prec'     "$("$BIN" -e '(format "%.3s" "hello")')"         '"hel"'
 assert_eq 's_prec_w'   "$("$BIN" -e '(format "%8.3s|" "hello")')"       '"     hel|"'
-# %h/%H: valid hex hashcode; value is cljw-native (AD-009), intra-cljw stable
-assert_eq 'h_hex'      "$("$BIN" -e '(format "%h" "abc")')"             '"b3dd93fa"'
-assert_eq 'H_hex'      "$("$BIN" -e '(format "%H" "abc")')"             '"B3DD93FA"'
+# %h/%H: hex of the single-system hasheq (AD-009): hex((hash "abc")) =
+# hex(74834163) — clj's %h renders Java String.hashCode ("17862") instead.
+assert_eq 'h_hex'      "$("$BIN" -e '(format "%h" "abc")')"             '"475e0f3"'
+assert_eq 'H_hex'      "$("$BIN" -e '(format "%H" "abc")')"             '"475E0F3"'
 assert_eq 'h_nil'      "$("$BIN" -e '(format "%h" nil)')"               '"null"'
 
 # %t date/time family (D-470). AD-052 pins: UTC + English names + "+0000"

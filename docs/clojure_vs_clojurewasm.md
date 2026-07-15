@@ -56,12 +56,12 @@ render identically (matching clj).
 
 ### Numeric tower (F-005: a single Zig-native double + one arbitrary-precision integer)
 
-| Behaviour                         | Clojure (JVM)                                                        | ClojureWasm                               | AD     |
-|-----------------------------------|----------------------------------------------------------------------|-------------------------------------------|--------|
-| `Long` overflow past i64          | `+` / `*` **throw** `ArithmeticException` (only `+'` / `*'` promote) | auto-promotes to BigInt                   | AD-008 |
-| `(float x)`                       | yields an f32                                                        | yields an f64 (no f32 representation)     | AD-004 |
-| Subnormal double shortest-render  | `4.9E-324`                                                           | `5.0E-324` (same f64 bit pattern)         | AD-005 |
-| `(biginteger 5)`                  | `5` of class `java.math.BigInteger`                                  | `5N` of class `BigInt` (one big-int type) | AD-016 |
+| Behaviour                        | Clojure (JVM)                                                        | ClojureWasm                               | AD     |
+|----------------------------------|----------------------------------------------------------------------|-------------------------------------------|--------|
+| `Long` overflow past i64         | `+` / `*` **throw** `ArithmeticException` (only `+'` / `*'` promote) | auto-promotes to BigInt                   | AD-008 |
+| `(float x)`                      | yields an f32                                                        | yields an f64 (no f32 representation)     | AD-004 |
+| Subnormal double shortest-render | `4.9E-324`                                                           | `5.0E-324` (same f64 bit pattern)         | AD-005 |
+| `(biginteger 5)`                 | `5` of class `java.math.BigInteger`                                  | `5N` of class `BigInt` (one big-int type) | AD-016 |
 
 `(* Long/MAX_VALUE 2)` => `18446744073709551614N` (cljw) vs a throw (clj) is
 the one accept/reject difference; the rest are cosmetic or rare-edge. cljw
@@ -108,10 +108,10 @@ primitive-slot machinery has nothing to constrain.
 
 ### Concurrency & vars
 
-| Behaviour                                      | Clojure (JVM)                            | ClojureWasm                                         | AD     |
-|------------------------------------------------|------------------------------------------|-----------------------------------------------------|--------|
-| STM conflict resolution                        | `barge` (older txn preempts a younger)   | retry-only; identical committed result              | AD-013 |
-| An ESCAPED `with-local-vars` var, deref'd late | `#object[clojure.lang.Var$Unbound 0x…]` | `nil` (no Unbound sentinel; memory-safe)            | AD-015 |
+| Behaviour                                      | Clojure (JVM)                            | ClojureWasm                              | AD     |
+|------------------------------------------------|------------------------------------------|------------------------------------------|--------|
+| STM conflict resolution                        | `barge` (older txn preempts a younger)   | retry-only; identical committed result   | AD-013 |
+| An ESCAPED `with-local-vars` var, deref'd late | `#object[clojure.lang.Var$Unbound 0x…]` | `nil` (no Unbound sentinel; memory-safe) | AD-015 |
 
 STM's committed state is identical (4 threads × 100 `(dosync (alter c inc))`
 => 400 in both); only contention scheduling — unobservable in the result —

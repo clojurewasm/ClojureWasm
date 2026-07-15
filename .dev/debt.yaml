@@ -1144,6 +1144,11 @@ active:
       + (b) e2e_phase14_parallel_seq pmap wall-clock assert — both still ncpu>=4-gated
       pending the delay-realise / future-spawn trace. A nested-cross-agent-send variant
       found while fixing D-418 is D-559.
+      RECURRENCE 2026-07-16 (v1.3.0 pre-tag full gate, same protocol as the
+      1.2.1 record): e2e_phase14_future_promise_delay SIGABRT (exit 134) in the
+      parallel full gate; standalone 3/3 green immediately after on the same
+      tree; CI (the release platform) green on every arc commit. The (a)
+      signature unchanged — load-sensitive, not a release regression.
     category: "runtime"
     barrier: |-
       needs a low-core repro environment (3-vCPU VM or cpuset-limited linux host) +
