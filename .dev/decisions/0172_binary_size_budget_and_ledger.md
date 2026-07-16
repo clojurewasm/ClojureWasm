@@ -99,14 +99,14 @@ Size growth is feature-coupled (F-013/F-014 guarantee it), so the budget is
 per-component with explicit headroom; the total ceiling **derives** from the
 components, and a breach localizes itself via the report tool:
 
-| Component              | Measured (2026-07-16) | Budget                              | Headroom rationale                                              |
-|------------------------|-----------------------|-------------------------------------|-----------------------------------------------------------------|
-| zwasm (engine + api)   | 2.99 MB               | 4.0 MB                              | owns future x86_64 JIT emitter + component-model growth (CODEV) |
-| cljw text              | 2.57 MB               | 3.5 MB                              | F-013/F-014 comprehensiveness growth                            |
-| Zig std text           | 1.17 MB               | 1.5 MB                              |                                                                 |
-| embedded data          | 1.59 MB               | 1.75 MB                             | re-set to **1.0 MB** when L2 lands                              |
-| unwind + linkedit etc. | 0.23 MB               | 0.3 MB                              | L1 LANDED 2026-07-16 (O-052): tables dropped, budget re-set     |
-| **Derived ceiling**    | **8.73 MB**           | **≈ 11 MB → ≈ 10.3 MB post-L2**  |                                                                 |
+| Component              | Measured (2026-07-16) | Budget                             | Headroom rationale                                              |
+|------------------------|-----------------------|------------------------------------|-----------------------------------------------------------------|
+| zwasm (engine + api)   | 2.99 MB               | 4.0 MB                             | owns future x86_64 JIT emitter + component-model growth (CODEV) |
+| cljw text              | 2.57 MB               | 3.5 MB                             | F-013/F-014 comprehensiveness growth                            |
+| Zig std text           | 1.17 MB               | 1.5 MB                             |                                                                 |
+| embedded data          | 1.59 MB               | 1.75 MB                            | re-set to **1.0 MB** when L2 lands                              |
+| unwind + linkedit etc. | 0.23 MB               | 0.3 MB                             | L1 LANDED 2026-07-16 (O-052): tables dropped, budget re-set     |
+| **Derived ceiling**    | **8.73 MB**           | **≈ 11 MB → ≈ 10.3 MB post-L2** |                                                                 |
 
 A component crossing its budget line triggers: attribute (report tool) →
 either a lever lands or the budget line is consciously amended **in this ADR**
