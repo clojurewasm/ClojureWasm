@@ -60,11 +60,15 @@ active:
       (type-hash XOR mapHasheq; corpus records_method_values.txt,
       AD-035 retired as parity). deftype `(class …)` naming stays simple
       (AD-003/044 scope — revisit only with a consumer).
-      (a2) NEW: Clojure 1.12 METHOD VALUES — the static form
-      (`(every? Character/isWhitespace s)`, brew-user report 2026-07-16)
-      landed via the analyzer's Java-surface value-position branch; the
-      `Class/.instanceMethod` and `Class/new` 1.12 forms are NOT yet
-      carried (implement when a consumer appears; same branch extends).
+      (a2) DISCHARGED 2026-07-17 — all three 1.12 method-value forms now
+      carried: statics (2026-07-16), `Class/.instanceMethod` (instance
+      method as receiver-first fn — the ADR-0174 merged tables made
+      cljw's method ABI already receiver-first, so `method_val` IS the
+      fn; native-backed classes fall back to the tag-keyed descriptor)
+      and `Class/new` (the `<init>` entry as a fn). analyzeSymbol lifts
+      the value; call heads fall through to analyzeCall. e2e: 6 cases on
+      phase14_host_class_identity (map String/.length, Thread/new,
+      StringBuilder chain, Date/new higher-order), clj-1.12-oracle-matched.
       (b) **Var source meta** — clj vars carry :line/:file/:column from
       the compiler; cljw def sites know their SourceLocation but drop it.
       Adding it converges `(meta #'x)` and clojure.test's

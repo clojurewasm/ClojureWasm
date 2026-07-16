@@ -615,6 +615,31 @@ fn classValueKeyFor(name: []const u8) ?[]const u8 {
     return null;
 }
 
+/// Clojure 1.12 qualified method values (D-563 a2): `Class/.member` is the
+/// INSTANCE method as a receiver-first fn (`(map String/.length xs)`), and
+/// `Class/new` is the constructor as a fn (`(map java.util.Date/new ms)`).
+/// cljw's method ABI already takes the receiver as args[0], so the entry's
+/// `method_val` IS the fn value — no wrapper. For a native-backed class
+/// (String/Long/… — instance methods live on the tag-keyed native
+/// descriptor, not the static surface) fall back there. Returns null when
+/// the name is not one of the two forms or the member is absent (the
+/// caller's member-miss diagnostic then names the dotted spelling).
+fn qualifiedMemberValue(rt: *Runtime, td: *const type_descriptor.TypeDescriptor, class_head: []const u8, name: []const u8) ?Value {
+    if (std.mem.eql(u8, name, "new")) {
+        if (td.lookupMethod(null, "<init>")) |me| return me.method_val;
+        return null;
+    }
+    if (name.len > 1 and name[0] == '.') {
+        const mname = name[1..];
+        if (td.lookupMethod(null, mname)) |me| return me.method_val;
+        if (class_name.nativeTagFor(class_head)) |tag| {
+            const ntd = rt.nativeDescriptor(tag) catch return null;
+            if (ntd.lookupMethod(null, mname)) |me| return me.method_val;
+        }
+    }
+    return null;
+}
+
 /// Resolve a bare (dot-free) class name through the current ns's `(:import …)`
 /// map to its FQCN; qualified + unimported names pass through unchanged. Reuses
 /// `ns.imports` (D-235) — the same map `(Class. …)` consults — so an imported
@@ -743,6 +768,11 @@ fn analyzeSymbol(
         // the descriptor carries a static field of this name, the symbol
         // IS that constant — emit it directly (no Var resolution follows).
         if (special_forms.resolveJavaSurface(env.rt, env, ns_name)) |td| {
+            // 1.12 qualified method values: `Class/.member` (instance method
+            // as receiver-first fn) + `Class/new` (ctor as fn) — D-563 a2.
+            if (qualifiedMemberValue(env.rt, td, ns_name, sym.name)) |mv| {
+                return try makeConstant(arena, mv, form);
+            }
             if (td.lookupStaticField(sym.name)) |sf| {
                 // ADR-0087: a heap-singleton static field resolves to the live
                 // per-Runtime value at analyze time (handled inside the helper).
@@ -914,6 +944,11 @@ fn analyzeList(
                 if (td.lookupStaticField(head.name)) |sf| {
                     if (items.len == 1)
                         return try makeConstant(arena, try staticFieldValue(rt, sf), form);
+                } else if (qualifiedMemberValue(rt, td, ns_head, head.name) != null) {
+                    // 1.12 `(Class/.member recv …)` / `(Class/new …)` call
+                    // head: resolvable as a method value — fall through to
+                    // analyzeCall, whose head analysis (analyzeSymbol) lifts
+                    // the fn constant and the call applies it (D-563 a2).
                 } else if (!isDeferredHostNs(ns_head) and env.findNsOrAlias(ns_head) == null) {
                     // ADR-0174 D3: the class RESOLVED but has neither a method
                     // nor a static field of this name — raise the call-position

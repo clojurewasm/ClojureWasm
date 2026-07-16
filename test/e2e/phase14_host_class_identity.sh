@@ -81,6 +81,15 @@ assert_eq 'def_shadows_class' "$(run '(def System 42) System' | tail -1)" '42'
 # --- user code sees a clean class value through higher-order use ---
 assert_eq 'group_by_class' "$(run '(contains? (group-by class [(java.util.Date. 0) (java.util.Date. 1)]) java.util.Date)')" 'true'
 
+# --- Clojure 1.12 qualified method values (D-563 a2): Class/.instanceMethod
+#     is the instance method as a receiver-first fn; Class/new is the ctor fn ---
+assert_eq 'qual_instance_call'  "$(run '(String/.length "abc")')" '3'
+assert_eq 'qual_instance_value' "$(run '(map String/.length ["a" "bb"])')" '(1 2)'
+assert_eq 'qual_instance_merged' "$(run '(java.util.Date/.getTime (java.util.Date. 42))')" '42'
+assert_eq 'ctor_value_class' "$(run '(class (Thread/new (fn [])))')" 'java.lang.Thread'
+assert_eq 'ctor_value_chain' "$(run '(StringBuilder/.toString (StringBuilder/new "hi"))')" '"hi"'
+assert_eq 'ctor_value_higher_order' "$(run '(map java.util.Date/new [1 2])')" '(#inst "1970-01-01T00:00:00.001-00:00" #inst "1970-01-01T00:00:00.002-00:00")'
+
 # --- ADR-0174 D4: Class is a first-class marker (clj: java.lang.Class) ---
 assert_eq 'class_of_class'      "$(run '(class Long)')" 'Class'
 assert_eq 'class_of_host_class' "$(run '(class (class (java.util.Date. 0)))')" 'Class'
