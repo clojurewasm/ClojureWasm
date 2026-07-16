@@ -709,6 +709,10 @@ pub const BytecodeChunk = struct {
     /// (ADR-0173 C1). Non-null only for compiler-built chunks; AOT chunks
     /// report line 0 / column 0 (ADR-0118's existing AOT behaviour).
     locs: ?[]const InstrLoc = null,
+    /// True when `instructions` is a borrowed in-place view into the wire
+    /// bytes (rodata blob / session-lifetime payload buffer — ADR-0173 C3');
+    /// `freeChunk` must not free it.
+    borrowed_instrs: bool = false,
     constants: []const Value,
     /// Source file label shared by every instruction in this chunk
     /// (ADR-0118 — the per-op `line`/`column` + this = the full

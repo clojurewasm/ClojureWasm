@@ -171,11 +171,21 @@ measured per-commit (protocol below), not asserted.
   Spec archived at `docs/spec/formats/1.4.0.edn` INCLUDING the v4-v6
   backfill (three earlier bumps had violated the ADD-ONLY archive policy —
   caught by this arc). **Measured**: blob 698,159 → 544,909 B (−22%, pool
-  dedup alone); shipped binary 8,731,096 → 8,583,352 B (−148 KB); eager
-  `runEnvelope` 6,123 → 4,190 µs (−32%) — the pool cuts startup BEFORE
-  the C4′ memoization even lands. Consumer flip (`has_handlers` flatten)
-  remains C6′; the decoder still copies instr arrays (C3′ makes them
-  in-place).
+  dedup alone); shipped binary 8,731,096 → 8,583,352 B (−148 KB). Consumer
+  flip (`has_handlers` flatten) remains C6′.
+- **2026-07-16 (C3′ landing + measurement CORRECTION)**: in-place instr
+  views landed (raw-byte validation scan → `bytesAsSlice`;
+  `borrowed_instrs` ownership flag; aligned embed wrapper; copy path
+  retained for misaligned/owned callers). **Correction of the C2′ note's
+  startup claim**: the "6,123 → 4,190 µs (−32%)" figures were SINGLE-SHOT
+  probes under load — a clean median-of-20 comparison (quiet machine)
+  shows eager `runEnvelope` **neutral within noise** (baseline 3,234 µs vs
+  post-C3′ 3,261 µs median; hyperfine total-startup 1.01 ± 0.12). The v7
+  arc's verified wins so far are SIZE (−22% blob / −148 KB binary), not
+  startup; the remaining startup candidate is C4′'s memoized pool slots
+  (15.9K → 3.3K intern/resolve calls), to be judged by the same
+  median-of-20 protocol. D-517's "~2.1 ms deserialize half" premise is
+  itself load-suspect and is re-anchored by these medians.
 
 ## Measurement protocol (mandatory, per commit)
 

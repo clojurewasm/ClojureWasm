@@ -234,6 +234,9 @@ const ReadCtx = struct {
     env: *@import("../../runtime/env.zig").Env,
     pool: ?*const ConstPool,
     source_file: []const u8,
+    /// C3': read instr arrays as borrowed in-place views (caller guarantees
+    /// the bytes outlive every chunk — rodata blob / kept-alive payload).
+    in_place: bool = false,
 };
 
 // --- Writer helpers (length-prefixed UTF-8) ---
@@ -789,7 +792,7 @@ fn writeChunkBody(ctx: *WriteCtx, w: *std.Io.Writer, chunk: BytecodeChunk) Seria
 /// allocated via `allocator`; the caller frees via `freeChunk`.
 /// Constants are heap-allocated via `rt.gc.alloc` (string / list /
 /// vector / map / set / regex paths) — they participate in GC.
-pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@import("../../runtime/env.zig").Env, bytes: []const u8, pool: ?*const ConstPool) !BytecodeChunk {
+pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@import("../../runtime/env.zig").Env, bytes: []const u8, pool: ?*const ConstPool, in_place: bool) !BytecodeChunk {
     if (bytes.len < 10) return DeserializeError.BytecodeTruncated;
     if (!std.mem.eql(u8, bytes[0..4], &MAGIC)) return DeserializeError.BadMagic;
     const version = std.mem.readInt(u16, bytes[4..6], .little);
@@ -799,7 +802,7 @@ pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@impor
     const sf_wire = try r.readLenPrefixed();
     const sf = allocator.dupe(u8, if (sf_wire.len == 0) "unknown" else sf_wire) catch return DeserializeError.OutOfMemory;
     errdefer allocator.free(sf);
-    var ctx: ReadCtx = .{ .allocator = allocator, .rt = rt, .env = env, .pool = pool, .source_file = sf };
+    var ctx: ReadCtx = .{ .allocator = allocator, .rt = rt, .env = env, .pool = pool, .source_file = sf, .in_place = in_place };
     var chunk = try readChunkBody(&ctx, &r);
     chunk.source_file = sf;
     return chunk;
@@ -818,21 +821,40 @@ fn readChunkBody(ctx: *ReadCtx, r: *ByteReader) DeserializeError!BytecodeChunk {
     try r.need(pad);
     r.pos += pad;
     const instr_count = try r.readU32();
-    const instrs = try allocator.alloc(WireInstr, instr_count);
-    errdefer allocator.free(instrs);
+    var borrowed = false;
+    const instrs: []const WireInstr = blk: {
+        try r.need(instr_count * 4);
+        const raw = r.bytes[r.pos .. r.pos + instr_count * 4];
+        // C3' in-place: the wire record IS the in-memory WireInstr (4B, LE
+        // targets only — comptime-asserted below). Validate the RAW BYTES
+        // first (fail-closed for user CLJC files; an invalid enum value never
+        // materializes in the typed slice — ADR-0173 Decision 2), then view.
+        var k: usize = 0;
+        while (k < raw.len) : (k += 4) {
+            _ = std.enums.fromInt(Opcode, raw[k]) orelse return DeserializeError.UnknownOpcode;
+            if (raw[k + 1] != 0) return DeserializeError.UnknownOpcode; // reserved MUST be 0
+        }
+        comptime std.debug.assert(@import("builtin").cpu.arch.endian() == .little);
+        if (ctx.in_place and @intFromPtr(raw.ptr) % 4 == 0) {
+            r.pos += instr_count * 4;
+            borrowed = true;
+            break :blk @alignCast(std.mem.bytesAsSlice(WireInstr, raw));
+        }
+        // Copy path (misaligned source, owned-chunk callers, tests).
+        const owned = try allocator.alloc(WireInstr, instr_count);
+        errdefer allocator.free(owned);
+        var i: u32 = 0;
+        while (i < instr_count) : (i += 1) {
+            owned[i] = .{
+                .opcode = std.enums.fromInt(Opcode, raw[i * 4]).?, // validated above
+                .operand = std.mem.readInt(u16, raw[i * 4 + 2 ..][0..2], .little),
+            };
+        }
+        r.pos += instr_count * 4;
+        break :blk owned;
+    };
+    errdefer if (!borrowed) allocator.free(instrs);
     var i: u32 = 0;
-    while (i < instr_count) : (i += 1) {
-        const op_raw = try r.readU8();
-        // Validate against the Opcode enum (fail-closed DeserializeError for
-        // user CLJC files) BEFORE the typed field is written — an invalid
-        // enum value never materializes (ADR-0173 Decision 2).
-        const op = std.enums.fromInt(Opcode, op_raw) orelse return DeserializeError.UnknownOpcode;
-        // v7: 4B wire record — the reserved byte MUST be 0 (corruption tripwire).
-        const reserved = try r.readU8();
-        if (reserved != 0) return DeserializeError.UnknownOpcode;
-        const operand = try r.readU16();
-        instrs[i] = .{ .opcode = op, .operand = operand };
-    }
 
     const constants_count = try r.readU32();
     const constants = try allocator.alloc(Value, constants_count);
@@ -969,6 +991,7 @@ fn readChunkBody(ctx: *ReadCtx, r: *ByteReader) DeserializeError!BytecodeChunk {
         .ctor_sites = ctor_sites,
         .import_sites = import_sites,
         .has_handlers = has_handlers,
+        .borrowed_instrs = borrowed,
     };
 }
 
@@ -1003,7 +1026,7 @@ pub fn freeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) void {
     // source_file dupe — free is uniform. Compiler-built chunks never reach
     // freeChunk (arena-owned; see the fn_val note below).
     allocator.free(chunk.source_file);
-    allocator.free(chunk.instructions);
+    if (!chunk.borrowed_instrs) allocator.free(chunk.instructions);
     // ADR-0034 am2: a deserialized `fn_val` constant owns its method
     // bytecode sub-chunks via this `allocator`; free them recursively
     // before the constants array. This reads the Function's gpa-owned
@@ -1236,7 +1259,7 @@ pub fn deserializeEnvelope(
     while (i < n) : (i += 1) {
         const len = try r.readU32();
         try r.need(len);
-        const chunk = try deserializeChunk(allocator, rt, env, bytes[r.pos .. r.pos + len], if (pool) |*cp| cp else null);
+        const chunk = try deserializeChunk(allocator, rt, env, bytes[r.pos .. r.pos + len], if (pool) |*cp| cp else null, false);
         try chunks.append(allocator, chunk);
         r.pos += len;
     }
@@ -1731,7 +1754,7 @@ test "type_descriptor constant round-trips by name (ADR-0034 am5; D-452)" {
     var af_1433: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1433, testing.allocator);
     defer root_set.endAnalysis(&af_1433);
-    const out = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const out = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, out);
     try testing.expectEqual(@as(usize, 2), out.constants.len);
     try testing.expect(out.constants[1].tag() == .type_descriptor);
@@ -1752,7 +1775,7 @@ test "type_descriptor constant round-trips by name (ADR-0034 am5; D-452)" {
     var af_1451: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1451, testing.allocator);
     defer root_set.endAnalysis(&af_1451);
-    try testing.expectError(DeserializeError.TypeDescriptorUnresolved, deserializeChunk(testing.allocator, &rt2, &env2, bogus, null));
+    try testing.expectError(DeserializeError.TypeDescriptorUnresolved, deserializeChunk(testing.allocator, &rt2, &env2, bogus, null, false));
 }
 
 test "chunk completeness gate: every side-table + entry field round-trips (D-365 residual)" {
@@ -1797,6 +1820,8 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
             // EXEMPT: per-op loc sidecar is compiler-only (ADR-0173 C1 /
             // ADR-0118 — AOT chunks report 0:0; the wire carries no loc).
             .locs => true,
+            // EXEMPT: runtime ownership flag (C3' in-place views), not wire data.
+            .borrowed_instrs => true,
             // EXEMPT: `has_handlers` is a DERIVED field (ADR-0131 2b) — recomputable
             // by scanning the instructions. AOT omits it; a deserialized chunk
             // defaults to `true` (conservatively not flattened by the in-VM call
@@ -1885,7 +1910,7 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
     var af_1578: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1578, testing.allocator);
     defer root_set.endAnalysis(&af_1578);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
 
     // instructions + constants
@@ -2028,7 +2053,7 @@ test "header magic + version round-trips on empty chunk" {
     var af_1715: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1715, testing.allocator);
     defer root_set.endAnalysis(&af_1715);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 0), round.instructions.len);
     try testing.expectEqual(@as(usize, 0), round.constants.len);
@@ -2059,7 +2084,7 @@ test "round-trips ns_filters side-table (ADR-0034 am3 — require-closure embedd
     var af_1743: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1743, testing.allocator);
     defer root_set.endAnalysis(&af_1743);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
 
     try testing.expectEqual(@as(usize, 1), round.ns_filters.len);
@@ -2084,7 +2109,7 @@ test "round-trips ns_filters with no :only (null) — bare (ns x (:require …))
     var af_1765: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1765, testing.allocator);
     defer root_set.endAnalysis(&af_1765);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 1), round.ns_filters.len);
     try testing.expectEqualStrings("mylib.greet", round.ns_filters[0].name);
@@ -2112,7 +2137,7 @@ test "round-trips instructions" {
     var af_1787: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1787, testing.allocator);
     defer root_set.endAnalysis(&af_1787);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 2), round.instructions.len);
     try testing.expectEqual(Opcode.op_const, round.instructions[0].op());
@@ -2140,7 +2165,7 @@ test "round-trips immediate constants (nil / bool / int / float / char)" {
     var af_1812: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1812, testing.allocator);
     defer root_set.endAnalysis(&af_1812);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 6), round.constants.len);
     try testing.expect(round.constants[0].tag() == .nil);
@@ -2166,7 +2191,7 @@ test "round-trips a string constant" {
     var af_1835: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1835, testing.allocator);
     defer root_set.endAnalysis(&af_1835);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqualStrings("hello", string_collection.asString(round.constants[0]));
 }
@@ -2188,7 +2213,7 @@ test "round-trips keyword + symbol with and without ns" {
     var af_1854: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1854, testing.allocator);
     defer root_set.endAnalysis(&af_1854);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqualStrings("k", keyword_mod.asKeyword(round.constants[0]).name);
     try testing.expect(keyword_mod.asKeyword(round.constants[0]).ns == null);
@@ -2219,7 +2244,7 @@ test "round-trips vector + list constants" {
     var af_1882: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1882, testing.allocator);
     defer root_set.endAnalysis(&af_1882);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(u32, 3), vector_mod.count(round.constants[0]));
     try testing.expectEqual(@as(i64, 1), vector_mod.nth(round.constants[0], 0).asInteger());
@@ -2245,7 +2270,7 @@ test "round-trips call_sites side-table" {
     var af_1905: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1905, testing.allocator);
     defer root_set.endAnalysis(&af_1905);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 2), round.call_sites.len);
     try testing.expectEqualStrings("foo", round.call_sites[0].method_name);
@@ -2271,7 +2296,7 @@ test "round-trips libspecs side-table with alias and refers" {
     var af_1928: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1928, testing.allocator);
     defer root_set.endAnalysis(&af_1928);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null, false);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 2), round.libspecs.len);
     try testing.expectEqualStrings("a.b", round.libspecs[0].ns_name);
@@ -2292,7 +2317,7 @@ test "bad magic rejected with BadMagic" {
     var af_1946: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1946, testing.allocator);
     defer root_set.endAnalysis(&af_1946);
-    try testing.expectError(DeserializeError.BadMagic, deserializeChunk(testing.allocator, &rt, &env, &bytes, null));
+    try testing.expectError(DeserializeError.BadMagic, deserializeChunk(testing.allocator, &rt, &env, &bytes, null, false));
 }
 
 test "unsupported version rejected with UnsupportedVersion" {
@@ -2306,7 +2331,7 @@ test "unsupported version rejected with UnsupportedVersion" {
     var af_1957: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1957, testing.allocator);
     defer root_set.endAnalysis(&af_1957);
-    try testing.expectError(DeserializeError.UnsupportedVersion, deserializeChunk(testing.allocator, &rt, &env, &bytes, null));
+    try testing.expectError(DeserializeError.UnsupportedVersion, deserializeChunk(testing.allocator, &rt, &env, &bytes, null, false));
 }
 
 test "v7 pool: duplicated interned-name constants dedupe and round-trip (blob level)" {
@@ -2351,7 +2376,7 @@ test "v7 pool: duplicated interned-name constants dedupe and round-trip (blob le
     var af: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af, testing.allocator);
     defer root_set.endAnalysis(&af);
-    const out = try deserializeChunk(testing.allocator, &rt, &env, cb, &pool);
+    const out = try deserializeChunk(testing.allocator, &rt, &env, cb, &pool, false);
     defer freeChunk(testing.allocator, out);
     try testing.expectEqual(kw, out.constants[0]);
     try testing.expectEqual(sym, out.constants[1]);

@@ -776,7 +776,7 @@ test "deserialized fn_val executes through the VM (ADR-0034 am2)" {
         var af2: root_set.AnalysisFrame = undefined;
         root_set.beginAnalysis(&af2, rt2.gc.infra);
         defer root_set.endAnalysis(&af2);
-        var chunk = try serialize.deserializeChunk(run_arena, &rt2, &env2, chunk_bytes, if (payload_pool) |*cp| cp else null);
+        var chunk = try serialize.deserializeChunk(run_arena, &rt2, &env2, chunk_bytes, if (payload_pool) |*cp| cp else null, true);
         last = try vm.eval(&rt2, &env2, &locals, &chunk);
     }
 
