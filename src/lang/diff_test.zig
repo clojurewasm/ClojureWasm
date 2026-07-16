@@ -9,8 +9,9 @@
 //! `eval/evaluator.zig` cannot reach (`zone_deps.md`).
 //!
 //! Each `test "diff: …"` block describes one source form whose
-//! tree-walk and VM evaluations must agree. Per ADR-0036, every
-//! backend-touching cycle lands ≥1 case here in the same commit.
+//! tree-walk and VM evaluations must agree. Per the dual-backend
+//! parity contract (ADR-0036), every backend-touching cycle lands
+//! ≥1 case here in the same commit.
 
 const std = @import("std");
 const root_set = @import("../runtime/gc/root_set.zig");
@@ -43,7 +44,7 @@ const Fixture = struct {
 
     /// Init in place via an out-pointer. The Fixture holds self-references
     /// (`env.rt` → `&rt`, and `rt.io` → `&threaded`), so it must be built at its
-    /// final address and never moved by value afterward. D-413: the previous
+    /// final address and never moved by value afterward. A previous
     /// return-by-value `init` captured `&f.rt` into `env` and then relocated
     /// `rt` on `return f`, leaving `env.rt` a dangling pointer to the pre-move
     /// stack slot — analyzing an unresolved symbol (the only path that derefs
@@ -58,7 +59,7 @@ const Fixture = struct {
         f.table = macro_dispatch.Table.init(alloc);
         try primitive.registerAll(&f.env);
         try macro_transforms.registerInto(&f.env, &f.table);
-        // ADR-0130: arm the arith-intrinsic Var cache so the VM compiler emits
+        // Arm the arith-intrinsic Var cache (ADR-0130) so the VM compiler emits
         // op_add — without this the oracle would silently test only op_call.
         bootstrap.cacheArithIntrinsics(&f.rt, &f.env);
     }
@@ -179,7 +180,7 @@ test "diff: mod/rem/quot intrinsic (O-030) — VM op_mod/rem/quot ≡ builtin" {
 
 // NB: `not=` (op_ne, O-031) is NOT diff-tested here — the diff_test Fixture loads
 // only the Zig builtins + macros (no core.clj), and `not=` is a `.clj`-defined fn
-// (core.clj:583), so it is unresolved in this fixture and op_ne never fires here.
+// (core.clj), so it is unresolved in this fixture and op_ne never fires here.
 // op_ne's fixnum fast path is unit-tested directly (intrinsic.zig
 // "fastBinaryFixnum comparisons are exact"); its end-to-end clj-parity is locked by
 // the `not_equal` clj corpus (test/diff/clj_corpus/) on the real (core-loaded)
@@ -250,8 +251,9 @@ test "diff: variadic single seq-shaped rest arg cons-wraps (ADR-0042 am1)" {
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
     // A NORMAL call with one list trailing arg binds `xs = ((9 9))`
-    // (count 1), NOT `(9 9)` (count 2). The shape-only ADR-0042 gate
-    // got this wrong on both backends; the RestMode split fixes it.
+    // (count 1), NOT `(9 9)` (count 2). The old shape-only variadic gate
+    // got this wrong on both backends; the RestMode split (normal call
+    // cons-wraps, apply binds direct) fixes it.
     try f.check("(count ((fn* [a & xs] xs) 1 (quote (9 9))))", 1);
 }
 
@@ -363,9 +365,9 @@ test "diff: binding rebinds a dynamic var (both backends)" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // No `^:dynamic` reader-metadata surface yet (D-075); mark a Var
-    // dynamic directly (the env.zig unit-test pattern) so the binding
-    // special form has a target on both backends.
+    // Mark the Var dynamic directly via its flags (the env.zig
+    // unit-test pattern) so the binding special form has a target on
+    // both backends without pulling def-metadata handling into the test.
     const user = f.env.findNs("user").?;
     const v = try f.env.intern(user, "*tv*", Value.initInteger(1), null);
     v.flags.dynamic = true;
@@ -439,8 +441,8 @@ test "diff: catalog error escaping binding caught by outer try (ADR-0071)" {
     const v = try f.env.intern(user, "*tv*", Value.initInteger(1), null);
     v.flags.dynamic = true;
     // A catalog error (/ 1 0) escapes the binding. The cleanup edge
-    // re-raises it un-converted (ADR-0071); the catalog→exception
-    // conversion (ADR-0060) then happens at the OUTER catch handler so the
+    // re-raises it un-converted; the catalog-error→exception conversion
+    // then happens at the OUTER catch handler so the
     // ArithmeticException arm matches. Parity: both backends catch → 9.
     try f.check("(try (binding [*tv* 2] (/ 1 0)) (catch ArithmeticException _ 9))", 9);
 }
@@ -517,22 +519,17 @@ test "diff: nested if branches" {
     try f.check("(if (if true false true) 1 2)", 2);
 }
 
-// ADR-0036 T1 retrofit: 11 cases covering the previously-untested
-// non-deferred Node variants. The deftype, interop_call
-// (.constructor / field access), require-libspec, and ns
-// refer-clojure-filter arms landed their own diff cases below
-// (see L613-L926) once those VM arms shipped.
-
-// NOTE (ADR-0087): no PersistentQueue diff case here. A queue adds no new
-// analyzer Node / VM opcode (it is reached via `conj` + the `EMPTY` static
-// constant — well-trodden constant + primitive-call paths), so ADR-0036 does
-// not mandate diff coverage. The only way to construct a queue is the
-// `clojure.lang.PersistentQueue/EMPTY` static field, and this primitive-only
-// Fixture does not resolve `Class/FIELD` static fields (it skips the java/
-// surface install path — verified: `Long/MIN_VALUE` fails here too, a
-// pre-existing Fixture limitation). Dual-backend parity was confirmed via the
-// CLI (both `-Dbackend=tree_walk` and `-Dbackend=vm` give equal results) and
-// the e2e + corpus (test/e2e/phase15_persistent_queue.sh +
+// NOTE: no PersistentQueue diff case here. A queue adds no new analyzer
+// Node / VM opcode (it is reached via `conj` + the `EMPTY` static
+// constant — well-trodden constant + primitive-call paths), so the
+// parity contract does not mandate diff coverage. The only way to
+// construct a queue is the `clojure.lang.PersistentQueue/EMPTY` static
+// field, and this primitive-only Fixture does not resolve `Class/FIELD`
+// static fields (it skips the java/ surface install path — verified:
+// `Long/MIN_VALUE` fails here too, a pre-existing Fixture limitation).
+// Dual-backend parity was confirmed via the CLI (both
+// `-Dbackend=tree_walk` and `-Dbackend=vm` give equal results) and the
+// e2e + corpus (test/e2e/phase15_persistent_queue.sh +
 // test/diff/clj_corpus/persistent_queue.txt).
 
 test "diff: NaN is not = to itself; special-float str (both backends)" {
@@ -550,9 +547,9 @@ test "diff: def_node" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // Post-ADR-0038, `(do (def x ...) x)` resolves cleanly because
-    // analyzeDef pre-registers the Var in env before the body's
-    // forward references are analyzed.
+    // `(do (def x ...) x)` resolves cleanly because analyzeDef
+    // pre-registers the Var in env before the body's forward
+    // references are analyzed (ADR-0038).
     try f.check("(do (def diff-x 42) diff-x)", 42);
 }
 
@@ -569,7 +566,7 @@ test "diff: var special form const-folds to a stable var_ref" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // D-183(a): `(var x)` const-folds to a `.constant` var_ref Node on
+    // `(var x)` const-folds to a `.constant` var_ref Node on
     // both backends; deref recovers the Var's root. Verifies the shared
     // `.constant` arm yields the same stable `*Var` under TreeWalk + VM.
     try f.check("(do (def diff-vx 7) (deref (var diff-vx)))", 7);
@@ -579,7 +576,7 @@ test "diff: var-as-IFn — a var_ref callee derefs and invokes (D-231)" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // D-231: a runtime `.var_ref` Value in call position derefs to its value
+    // A runtime `.var_ref` Value in call position derefs to its value
     // and re-dispatches. Both backends route runtime calls through the shared
     // `treeWalkCall` (rt.vtable.callFn), so the `.var_ref` arm covers VM too.
     // Primitive-only (var/let*/inc) — the Fixture is a minimal env with no
@@ -593,7 +590,7 @@ test "diff: ^meta on def target reaches Var.meta" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // D-183(b)+(c): `analyzeDef` lifts a `^{...}` def-target meta into
+    // `analyzeDef` lifts a `^{...}` def-target meta into
     // `Var.meta` at analyze time (backend-shared analysis), so `(meta
     // (var x))` reads the same map under both TreeWalk + VM.
     try f.check("(do (def ^{:a 7} diff-dm 1) (:a (meta (var diff-dm))))", 7);
@@ -603,7 +600,7 @@ test "diff: defn attr-map reaches Var.meta" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // D-183(d) / D-091: `expandDefn` lowers docstring + attr-map +
+    // `expandDefn` lowers docstring + attr-map +
     // `:arglists` onto the name Form's `.meta`, so `(meta (var f))` reads
     // them identically under both backends (shared macroexpand+analyze).
     try f.check("(do (defn diff-dn {:v 9} [a] a) (:v (meta (var diff-dn))))", 9);
@@ -639,7 +636,7 @@ test "diff: empty-list literal () self-evaluates (D-188 / D-164)" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // `()` lowers to a `.constant` empty-list Node (D-164: distinct from
+    // `()` lowers to a `.constant` empty-list Node (distinct from
     // nil) baked once and shared by both backends. The empty list is
     // TRUTHY (only nil / false are falsey), so `(if () 1 2)` → 1.
     try f.check("(if () 1 2)", 1);
@@ -655,9 +652,9 @@ test "diff: def_node forward ref inside (do)" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // ADR-0038: forward references between def forms inside a single
-    // top-level (do ...) work because analyzeDef pre-registers the
-    // first def's name before the second def's value form is analyzed.
+    // Forward references between def forms inside a single top-level
+    // (do ...) work because analyzeDef pre-registers the first def's
+    // name before the second def's value form is analyzed.
     try f.check("(do (def diff-fwd-a 10) (def diff-fwd-b diff-fwd-a) diff-fwd-b)", 10);
 }
 
@@ -665,24 +662,19 @@ test "diff: def_node recursive defn" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // ADR-0038: recursive `defn` works because analyzeDef pre-registers
-    // the function name before the body (which references itself) is
-    // analyzed. Previously required `loop`/`recur` exclusively.
+    // Recursive `defn` works because analyzeDef pre-registers the
+    // function name before the body (which references itself) is
+    // analyzed.
     try f.check("(do (defn diff-rec [n] (if (= n 0) 0 (diff-rec (- n 1)))) (diff-rec 7))", 0);
 }
 
-// Row 7.7 cycle 5: protocol round-trip (defprotocol → extend-type →
-// dispatch) now lands as diff_test cases. Cycle 1's rt.trackHeap-based
-// cleanup of ProtocolDescriptor / ProtocolFn / TypeDescriptorRef
-// allocations (per ADR-0008 amendment 4 "Affected files") closed the
-// testing.allocator leak gap that previously deferred the coverage.
-// Both backends route user-fn invocation through `vtable.callFn`, so
-// the four primitive paths (count / seq / conj / reduce) below
-// produce byte-identical Values across TreeWalk and VM by construction.
-// `extendTypeWithImpls` still leaks the old method_table slice on each
-// extend (separate latent bug filed as a follow-up debt row); the test
-// fixture's testing.allocator catches it, so the diff cases below use
-// just one extend per type to avoid the bug.
+// Protocol round-trip (defprotocol → extend-type → dispatch). Both
+// backends route user-fn invocation through `vtable.callFn`, so the
+// four primitive paths (count / seq / conj / reduce) below produce
+// byte-identical Values across TreeWalk and VM by construction.
+// ProtocolDescriptor / ProtocolFn / TypeDescriptorRef allocations are
+// rt.trackHeap-registered, so the testing.allocator fixture stays
+// leak-clean.
 
 test "diff: row 7.7 count via IPersistentCollection -count slow-path" {
     var f: Fixture = undefined;
@@ -736,12 +728,12 @@ test "diff: row 7.7 reduce via IReduce -reduce fast-path" {
     , 42);
 }
 
-// D-296 (syntax-quote machinery → clojure.core/vec etc.) has NO new analyzer
-// Node — syntax-quote expands at analyze time to a form both backends share, so
-// it needs no diff-parity case. (A syntax-quoted [vector] can't be diff-tested
-// in this fixture anyway: the machinery now requires clojure.core/vec, which the
-// core.clj-less fixture does not intern. Coverage: test/e2e/
-// phase14_syntax_quote_exclude.sh on the full runtime.)
+// Syntax-quote has NO new analyzer Node — it expands at analyze time to a
+// form both backends share, so it needs no diff-parity case. (A
+// syntax-quoted [vector] can't be diff-tested in this fixture anyway: the
+// machinery requires clojure.core/vec, which the core.clj-less fixture
+// does not intern. Coverage: test/e2e/phase14_syntax_quote_exclude.sh on
+// the full runtime.)
 
 test "diff: empty catch body returns nil on both backends (D-301)" {
     var f: Fixture = undefined;
@@ -895,7 +887,7 @@ test "diff: ns_node docstring lands as {:doc} ns meta (D-239 sibling)" {
     try f.check("(do (ns diff-ns-doc \"the doc\" (:refer-clojure)) (count (meta (find-ns 'diff-ns-doc))))", 1);
 }
 
-// The ADR-0035 D9 refer-override (clojure.core wins over rt on collision)
+// The refer-override semantic (clojure.core wins over rt on collision)
 // is NOT diff-cased here: `compare` reuses one env across both backend runs,
 // so a def/in-ns-mutating source diverges by residue, not by backend. The
 // override semantics are unit-locked in env.zig ("referAllOverriding replaces
@@ -923,11 +915,10 @@ test "diff: set_literal_node" {
     try f.check("(count #{1 2 3 4})", 4);
 }
 
-// ADR-0037 T2: Symbol heap Value reaches formToValue identically on
-// both backends via analyzeQuote (no Node variant added). This case
-// actively exercises ADR-0036 D1 parity contract for the new Value
-// class — both backends intern the same (ns, name) and compare via
-// pointer-eq, so `(name 'sym)` round-trip returns 3 chars.
+// A quoted Symbol heap Value reaches formToValue identically on both
+// backends via analyzeQuote (no Node variant added) — both backends
+// intern the same (ns, name) and compare via pointer-eq, so
+// `(name 'sym)` round-trip returns 3 chars.
 test "diff: symbol quote roundtrip + name" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
@@ -935,12 +926,9 @@ test "diff: symbol quote roundtrip + name" {
     try f.check("(count (name 'foo))", 3);
 }
 
-// ADR-0035 D9 second amendment (T3): widened (:refer-clojure)
-// semantic exercised. Tree_walk evalNs and VM op_ns_with_refer_clojure
-// must both install rt + clojure.core refers into ns t3-diff, after
-// which `count` resolves and `(count [10 20])` returns 2. The 99
-// tail anchors the do-form's return value to an integer for the
-// comparator.
+// (:refer-clojure) installs BOTH the rt and clojure.core refers into
+// the new ns. Tree_walk evalNs and VM op_ns_with_refer_clojure must
+// agree, after which `count` resolves and `(count [10 20])` returns 2.
 test "diff: ns refer-clojure widening (post-T3 path)" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
@@ -948,17 +936,16 @@ test "diff: ns refer-clojure widening (post-T3 path)" {
     try f.check("(do (ns t3-diff (:refer-clojure)) (count [10 20]))", 2);
 }
 
-// ADR-0040 row 7.6 cycle 4: discharge the deftype-family +
-// method-dispatch cluster. 4 diff cases (one per new opcode).
+// deftype family + method dispatch — one diff case per opcode.
 
 test "diff: deftype macro + interop_call_node .constructor + .instance_member field" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // ADR-0066: deftype is a macro lowering to cljw.internal/__deftype! (a primitive
+    // deftype is a macro lowering to cljw.internal/__deftype! (a primitive
     // call both backends execute), op_ctor_call + op_method_call's
-    // field-first resolver. Registration is no longer a backend-specific
-    // op_deftype nil-push, so the VM registers the type itself (BUG-1 fix).
+    // field-first resolver. Registration is not a backend-specific
+    // op_deftype nil-push, so the VM registers the type itself.
     try f.check("(do (deftype DiffPoint [x y]) (.x (DiffPoint. 7 9)))", 7);
 }
 
@@ -967,7 +954,8 @@ test "diff: deftype macro binds ->Name + applies protocol body (ADR-0066/D-087)"
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
     // Both backends must agree that the positional ->Name constructor is
-    // bound and the protocol impl runs (was silently dropped pre-ADR-0066).
+    // bound and the protocol impl runs (an earlier lowering silently
+    // dropped the protocol body).
     try f.check("(do (defprotocol IDiffP (dval [t])) (deftype DiffV [v] IDiffP (dval [_] (.v _))) (dval (->DiffV 5)))", 5);
 }
 
@@ -1001,9 +989,9 @@ test "diff: interop_call_node .constructor second field" {
     try f.check("(do (deftype DiffPair [a b]) (.b (DiffPair. 1 33)))", 33);
 }
 
-// ADR-0050 am1 parity: both backends must agree on the unified
-// instance-member resolver across (a) a native-type method, (b) a
-// deftype field via the `.-name` field-only form.
+// Both backends must agree on the unified instance-member resolver
+// across (a) a native-type method, (b) a deftype field via the
+// `.-name` field-only form.
 
 test "diff: instance_member native String method (.toUpperCase)" {
     var f: Fixture = undefined;
@@ -1026,10 +1014,10 @@ test "diff: instance_member field-only (.-name) on deftype" {
     try f.check("(do (deftype DiffDash [a b]) (.-b (DiffDash. 1 33)))", 33);
 }
 
-// ADR-0050 am2 (D-130): `.static_method` now lowers to op_static_method_call
-// on the VM, so static dispatch is differential-testable. Deterministic
-// integer-returning statics only (the Phase-4 comparator is bit-pattern;
-// heap/non-deterministic statics like UUID/randomUUID can't be diffed).
+// `.static_method` lowers to op_static_method_call on the VM, so static
+// dispatch is differential-testable. Deterministic integer-returning
+// statics only (the comparator is bit-pattern; heap/non-deterministic
+// statics like UUID/randomUUID can't be diffed).
 
 test "diff: static_method (Math/max) on both backends" {
     var f: Fixture = undefined;
@@ -1045,7 +1033,7 @@ test "diff: static_method (Math/abs) on both backends" {
     try f.check("(Math/abs -5)", 5);
 }
 
-// D-076 cycle 1: `let` sequential destructuring lowers at the macro layer
+// `let` sequential destructuring lowers at the macro layer
 // (expandLet → let* + nth), so both backends see the same let* AST and
 // must agree. Integer result survives the bit-pattern comparator.
 
@@ -1067,7 +1055,7 @@ test "diff: let associative destructure both backends" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // D-076 cycle 2: {:keys}/:or lower to get; both backends agree.
+    // {:keys}/:or lower to get; both backends see the same expansion.
     try f.check("(let [{:keys [a b] :or {b 9}} {:a 1}] (+ a b))", 10);
 }
 
@@ -1075,7 +1063,7 @@ test "diff: fn param destructure both backends" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // D-076 cycle 3: pattern params → gensym + body let; both backends agree.
+    // Pattern params → gensym + body let; both backends see the same expansion.
     try f.check("((fn [[a b] {:keys [c]}] (+ a b c)) [1 2] {:c 3})", 6);
 }
 
@@ -1083,7 +1071,7 @@ test "diff: loop destructure both backends" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // D-076 cycle 4: loop macro + destructure; recur rebinds the gensym slot.
+    // Loop macro + destructure; recur rebinds the gensym slot.
     try f.check("(loop [[a b] [1 2]] (if (< a 3) (recur [(inc a) b]) (+ a b)))", 5);
 }
 
@@ -1091,30 +1079,26 @@ test "diff: map string-key lookup both backends" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
     defer f.deinit();
-    // D-151: string keys match by value (byte-eq) on both backends.
+    // String keys match by value (byte-eq) on both backends.
     try f.check("(get {\"a\" 1 \"b\" 2} \"b\")", 2);
 }
 
-// NOTE: comp/juxt/partition (D-134) are .clj defns over existing Nodes
-// (not new analyzer Node variants), so ADR-0036 requires no differential
+// NOTE: comp/juxt/partition are .clj defns over existing Nodes (not new
+// analyzer Node variants), so the parity contract requires no differential
 // case. A `((comp …) …)` diff case was tried and removed: `compare`
 // bootstraps core.clj under ONE backend then swaps the vtable per run, so
 // calling a BOOTSTRAP .clj closure (comp) cross-backend diverges in the
-// harness (D-152) — though both backends compute it correctly in real
+// harness — though both backends compute it correctly in real
 // whole-program runs (verified: tree-walk e2e + a VM-direct run both → 3).
 // e2e phase14_comp_juxt_partition is the coverage.
 
-// Row 7.10 cycle 2 (D-073 diff_test descriptor cleanup): the 2
-// previously-deferred ADR-0040 op_method_call diff cases now land.
-// Root cause of the prior DebugAllocator trip was specifically the
-// anonymous reify TypeDescriptor's protocol_impls + method_table
-// allocations on `rt.gpa` having no lifecycle owner (reify_anon is
-// not registered in `rt.types`, so Pass 3 of `Runtime.deinit` never
-// sees it). Discharge: `reifyPrim` now `rt.trackHeap`'s the descriptor
-// via `freeReifyDescriptor` (`src/lang/primitive/protocol.zig`).
-// Defrecord + extend-type paths route through `rt.types` registry +
-// Pass 3 cleanup respectively, and never tripped the detector
-// (verified empirically before the fix landed).
+// op_method_call diff cases. The anonymous reify TypeDescriptor's
+// protocol_impls + method_table allocations have no lifecycle owner via
+// the type registry (reify_anon is not registered in `rt.types`, so
+// `Runtime.deinit`'s registry pass never sees it) — `reifyPrim`
+// `rt.trackHeap`'s the descriptor via `freeReifyDescriptor`
+// (`src/lang/primitive/protocol.zig`) instead. Defrecord + extend-type
+// paths route through the `rt.types` registry cleanup.
 
 test "diff: row 7.10 op_method_call on defrecord (inline protocol body)" {
     var f: Fixture = undefined;
@@ -1139,16 +1123,14 @@ test "diff: row 7.10 op_method_call on reify (anonymous descriptor)" {
     , 21);
 }
 
-// Row 7.10 cycle 3 (D-073 sub-site d discharge): `op_require_with_libspec`
-// + `BytecodeChunk.libspecs` side-table. Both backends must produce
-// identical post-require behaviour — exercise via clojure.set (already
-// loaded at bootstrap; the `:as` / `:refer` arms are what these cases
-// probe, not the resolver path). Tests use FQN after require because
-// alias / refer resolution happens at analyzer time, but the require
-// form's side-effect (setAlias / referOne) runs at eval time — within
-// a single `do` form the analyzer cannot see alias / refer names. The
-// FQN tail confirms the require itself returned nil without raising;
-// the libspec arms still execute and exercise the side-table dispatch.
+// `op_require_with_libspec` + `BytecodeChunk.libspecs` side-table. Both
+// backends must produce identical post-require behaviour. The `:as` /
+// `:refer` arms are what these cases probe, not the resolver path — the
+// helper below pre-creates the target ns so no file loading happens.
+// Alias / refer resolution happens at analyzer time while the require
+// form's side-effect (setAlias / referOne) runs at eval time, so the
+// cases are written as top-level form sequences (see the note in the
+// first case), never a single `do`.
 
 // Helper: pre-create a target namespace `diff-target` with an
 // interned `marker = 42` so `(require '[diff-target ...])` skips the
@@ -1161,7 +1143,7 @@ fn setupDiffTargetNs(f: *Fixture) !void {
     _ = try f.env.intern(ns, "marker2", Value.initInteger(7), null);
 }
 
-// NOTE (D-234): no `for` differential cases here. `for` is a MACRO (it
+// NOTE: no `for` differential cases here. `for` is a MACRO (it
 // expands to letfn/lazy-seq/concat/cons — all bootstrap `.clj` closures), so
 // `evaluator.compare` hits the documented bootstrap-closure harness blind
 // spot (Fixture bootstraps core.clj once under one backend then swaps the
@@ -1254,13 +1236,11 @@ test "diff: libspec :exclude blacklist arm (:use refer-all minus)" {
     , 42);
 }
 
-// Row 7.11 cycle 3 (D-077 close): catch-class hierarchy walk via
-// `runtime/error/host_class.zig::matches`. Both backends share the
-// predicate (tree_walk.catchMatches + vm.matchExceptionClass both
-// 1-line delegate to `host_class.matches`); these cases lock the
-// JVM-compatible parent-chain semantics. Analyzer-time
-// `catch_class_unknown` raise also covered here via a negative
-// expectation (cf. e2e for the user-facing diagnostic).
+// Catch-class hierarchy walk via `runtime/error/host_class.zig::matches`.
+// Both backends share the predicate (tree_walk.catchMatches +
+// vm.matchExceptionClass both delegate to `host_class.matches`); these
+// cases lock the JVM-compatible parent-chain semantics. The analyzer-time
+// `catch_class_unknown` diagnostic is e2e-covered.
 
 test "diff: row 7.11 catch RuntimeException matches ex-info (parent walk)" {
     var f: Fixture = undefined;
@@ -1301,8 +1281,8 @@ test "diff: row 7.11 catch FQCN java.lang.RuntimeException normalises" {
     try f.check("(try (throw (ex-info \"x\" {})) (catch java.lang.RuntimeException e 5))", 5);
 }
 
-// ADR-0060: internal runtime errors (error_catalog) are catchable via a
-// synthesized class-name-bearing ex_info. Both backends synthesize at
+// Internal runtime errors (error_catalog) are catchable via a synthesized
+// class-name-bearing ex_info (ADR-0060). Both backends synthesize at
 // their error-propagation point and route through the SAME catch-match
 // loop, so the class hierarchy + no-match re-raise must agree.
 
@@ -1337,8 +1317,8 @@ test "diff: ADR-0060 internal error no-match inner re-raises to outer" {
     , 6);
 }
 
-// `instance?` parity coverage moved to e2e (test/e2e/phase7_instance_q.sh, full
-// runtime) with ADR-0128: `instance?` is now a clj fn over a class VALUE
+// `instance?` parity coverage lives in e2e (test/e2e/phase7_instance_q.sh,
+// full runtime): `instance?` is a clj fn over a class VALUE
 // (`(def instance? (fn* [c x] (cljw.internal/__instance-of? c x)))`), so it requires the class
 // symbol to resolve to a class value — which needs the full class-value surface
 // (gc.infra descriptors) the minimal dual-eval Fixture here does not bootstrap.
@@ -1348,11 +1328,11 @@ test "diff: ADR-0060 internal error no-match inner re-raises to outer" {
 // class_name.zig that both backends compile. So the membership oracle is covered
 // at the unit + e2e layers; a diff case would only re-run a backend-agnostic call.
 
-// ADR-0042 row 7.9: `apply` variadic-callee bind-direct gate. Both
-// backends share `tree_walk.callFunction` (vm.zig:573 wires
-// `treeWalkCall` into the VM vtable), so the gate fires identically
-// on both. Three positive cases (list / cons / leading + list tail)
-// + one negative case (vector still spreads to the rest slot).
+// `apply` variadic-callee bind-direct gate. Both backends share
+// `tree_walk.callFunction` (vm.zig wires `treeWalkCall` into the VM
+// vtable), so the gate fires identically on both. Three positive cases
+// (list / cons / leading + list tail) + one negative case (vector
+// still spreads to the rest slot).
 
 test "diff: row 7.9 apply variadic bind-direct (list tail, no leading)" {
     var f: Fixture = undefined;
@@ -1387,11 +1367,12 @@ test "diff: row 7.9 apply variadic with vector tail (spread still works)" {
     try f.check("(apply (fn* [& xs] (count xs)) [1 2 3 4 5])", 5);
 }
 
-// STM `ref` / `deref` — synchronous read-only stand-in (ADR-0010
-// amendment 3); full transactional STM is Phase B (concurrency).
-// Both backends must agree on the heap Ref construct + the deref
-// read. The second case exercises a Ref holding a heap Value
-// (vector) so the GC trace path is crossed on both backends.
+// STM `ref` / `deref` — the ref construct + the plain
+// (non-transactional) deref read; the transaction engine (dosync /
+// alter / ref-set) lives in `src/lang/primitive/stm.zig` and is
+// e2e-covered. Both backends must agree on the heap Ref construct +
+// the deref read. The second case exercises a Ref holding a heap
+// Value (vector) so the GC trace path is crossed on both backends.
 
 test "diff: ref deref round-trip" {
     var f: Fixture = undefined;
@@ -1431,9 +1412,9 @@ test "diff: peephole — if with pure-push elision inside both branches" {
     try f.check("(if true (do 9 7) (do 8 6))", 7);
 }
 
-// ADR-0056 Cycle 0 — the VM-dispatch knot. A DESERIALIZED (AOT) fn carries
+// The VM-dispatch knot (ADR-0056). A DESERIALIZED (AOT) fn carries
 // a sentinel `body` + bytecode only, so calling it MUST route through the
-// vtable's `evalChunk` slot. After Cycle 0, `driver.installVTable` wires
+// vtable's `evalChunk` slot. `driver.installVTable` wires
 // `evalChunk` into the tree_walk vtable too, so a tree_walk-default runtime
 // (the production runner) can host AOT-restored bootstrap fns. A
 // freshly-compiled fn would mask this (it retains a real AST body), so the
@@ -1470,7 +1451,7 @@ test "aot: deserialized bytecode fn dispatches via tree_walk vtable evalChunk" {
     try testing.expectEqual(@as(i64, 6), result.asInteger());
 }
 
-// ADR-0118 cycle 2.5: the arg-precise caret column must be IDENTICAL on both
+// The arg-precise caret column must be IDENTICAL on both
 // backends — a runtime error caret lands on the culprit operand, not the
 // enclosing call form, and TreeWalk (the oracle) and the VM (production) agree.
 // This is the dual-backend parity case for the error-location surface (the
@@ -1517,11 +1498,11 @@ test "diff: arg-precise caret column agrees across backends (ADR-0118 cycle 2.5)
     try testing.expectEqual(@as(u16, 10), try caretColumn(&f, "(+ 1 (/ 2 0))", .vm));
 }
 
-// ADR-0119 Stage 1: a Function carries its `name` + `defining_ns` ON THE VALUE
-// (restoring what cw v0 / clj / SCI have — the v1 redesign dropped it). White-
+// A Function carries its `name` + `defining_ns` ON THE VALUE
+// (what cw v0 / clj / SCI have — an earlier redesign dropped it). White-
 // box: read the fields off the evaluated fn on BOTH backends. The naming is
 // stamped at analyze time (shared by both backends), so the one divergence risk
-// is the VM `op_make_fn` closure reconstruct (vm.zig:499) — case (4) exercises it.
+// is the VM `op_make_fn` closure reconstruct — case (4) exercises it.
 const FnInfo = struct { name: ?[]const u8, defining_ns: ?[]const u8 };
 
 fn evalFnInfo(f: *Fixture, source: []const u8, backend: enum { tree_walk, vm }) !FnInfo {
@@ -1576,7 +1557,7 @@ test "naming: fn carries name+defining_ns on the value (ADR-0119 Stage 1, both b
     const l_vm = try evalFnInfo(&f, "(letfn* [g (fn* [x] x)] g)", .vm);
     try testing.expectEqualStrings("g", l_vm.name.?);
 
-    // (4) VM closure reconstruct (vm.zig:499 op_make_fn): an inner CAPTURING fn
+    // (4) VM closure reconstruct (op_make_fn): an inner CAPTURING fn
     // returned from an outer call is rebuilt from the template — the name must
     // survive the reconstruct. Inner is anonymous → gensym.
     const c_tw = try evalFnInfo(&f, "((fn* [y] (fn* [x] y)) 5)", .tree_walk);
@@ -1585,7 +1566,7 @@ test "naming: fn carries name+defining_ns on the value (ADR-0119 Stage 1, both b
     try testing.expect(std.mem.startsWith(u8, c_vm.name.?, "fn"));
 }
 
-// ADR-0119 Stage 2: an uncaught runtime error carries a `Trace:` snapshot of the
+// An uncaught runtime error carries a `Trace:` snapshot of the
 // runtime call stack. Frames are pushed at the single shared `treeWalkCall`
 // choke point (both backends route here), so TreeWalk + VM must produce the SAME
 // frames. `fn_name` slices point at the arena-owned fn name (stable), but the

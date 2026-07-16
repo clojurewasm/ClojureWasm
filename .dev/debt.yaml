@@ -156,8 +156,14 @@ active:
       design-citation anchors kept (ADR-0035/0037/0038/0144/0103/0059);
       4 STALE comments fixed to code-truth en route (fn/letfn named-fn
       lowering, future's real-OS-thread reality ×2 incl. stm.zig's
-      futureCallFn docstring, a map->record test comment). Next candidates
-      by density: diff_test.zig 95, vm.zig 89, print.zig 88.
+      futureCallFn docstring, a map->record test comment).
+      DRAIN 4 (2026-07-17): src/lang/diff_test.zig 95→50 ref lines, of
+      which 44 are TEST-NAME lines (kept by design — tooling greps them)
+      and 6 genuine comment anchors (ADR-0036 parity contract,
+      ADR-0130 intrinsic cache, ADR-0038 forward refs, ADR-0060 ex_info
+      class names, ADR-0047 peephole, ADR-0056 dispatch knot); comment
+      POINTER density in the file is drained. Next candidates by
+      density: vm.zig 89, print.zig 88.
     category: "docs"
     quality_floor: "public-ization: comment de-pointer + condense (ADR-0166)"
     barrier: |-
