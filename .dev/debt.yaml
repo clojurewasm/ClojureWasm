@@ -118,7 +118,15 @@ active:
       4 stale comments fixed to code-truth (single-frame claim,
       threadlocal-binding "stopgap" framing, rt-ns auto-refer, fragile
       line-number pointers). PERF/GC-ROOT marker refs kept (mandatory
-      per their rules). Next candidate by density: print.zig 88.
+      per their rules).
+      DRAIN 6 (2026-07-17): src/runtime/print.zig 88→19 (6 ADR anchors —
+      0068 seq-marker, 0088 limit snapshot, 0127 consult architecture,
+      0121 FnIdentity, 0059 simple names, 0087 #queue form; 1 GC-ROOT
+      ref; 10 AD-ledger citations kept as pinned-divergence anchors;
+      2 test names). 4 misplaced/stale docstrings re-homed to
+      code-truth. The HIGH-DENSITY layer is now EXHAUSTED — remaining
+      D-522 surface is the long tail (<60 refs/file), drained
+      opportunistically on touch rather than by dedicated sweeps.
     category: "docs"
     quality_floor: "public-ization: comment de-pointer + condense (ADR-0166)"
     barrier: |-
