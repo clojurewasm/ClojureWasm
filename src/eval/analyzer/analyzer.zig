@@ -719,6 +719,16 @@ fn analyzeSymbol(
             if (td.lookupMethod(null, sym.name)) |me| {
                 return try makeConstant(arena, me.method_val, form);
             }
+            // ADR-0174 D3: the class RESOLVED but has no such member — a
+            // member-level diagnostic, not the misleading namespace miss
+            // this used to fall through to. clojure.lang.* heads skip this
+            // (the AD-008 deferred rewrite below must keep lib loads alive).
+            if (!isDeferredHostNs(ns_name)) {
+                return error_catalog.raise(.static_member_unknown, form.location, .{
+                    .member = sym.name,
+                    .class = td.fqcn orelse ns_name,
+                });
+            }
         }
         // ADR-0113: an unresolved `clojure.lang.*` / `clojure.asm.*` qualified
         // reference is a JVM-internal class cljw has no value for (ADR-0059) —
@@ -841,14 +851,9 @@ fn analyzeList(
             }
         }
         // D-121 + ADR-0050: qualified head `(Class/method args...)` —
-        // resolve the namespace head against `rt.types` (with cljw-prefix
-        // translation per ADR-0029 D5) and, if a method of the given
-        // name exists in the descriptor's method_table, build an
-        // InteropCallNode { .kind = .static_method }. If the class
-        // resolves but the method is absent, fall through to analyzeCall
-        // which will produce a `symbol_unresolved` error citing the
-        // full Class/method symbol — better than masking it with a
-        // class-resolves-but-method-missing intermediate diagnostic.
+        // resolve the namespace head against `rt.types` and, if a method
+        // of the given name exists in the descriptor's method_table, build
+        // an InteropCallNode { .kind = .static_method }.
         if (head.ns) |ns_head| {
             if (special_forms.resolveJavaSurface(rt, env, ns_head)) |td| {
                 if (td.lookupMethod(null, head.name) != null) {
@@ -866,13 +871,25 @@ fn analyzeList(
                 }
                 // clj parity: `(Class/FIELD)` with NO args is a static field READ,
                 // not a call — `(Math/PI)` / `(Integer/MAX_VALUE)` return the field
-                // value (same as the bare `Class/FIELD` symbol path). Only when the
-                // name is not a method AND there are no args; with args it falls
-                // through to analyzeCall (a genuine arity/method error).
-                if (items.len == 1) {
-                    if (td.lookupStaticField(head.name)) |sf| {
+                // value (same as the bare `Class/FIELD` symbol path). A static
+                // field called WITH args falls through to analyzeCall (the field
+                // value is not callable — a genuine runtime error).
+                if (td.lookupStaticField(head.name)) |sf| {
+                    if (items.len == 1)
                         return try makeConstant(arena, try staticFieldValue(rt, sf), form);
-                    }
+                } else if (!isDeferredHostNs(ns_head) and env.findNsOrAlias(ns_head) == null) {
+                    // ADR-0174 D3: the class RESOLVED but has neither a method
+                    // nor a static field of this name — raise the call-position
+                    // member diagnostic here (clj's "No matching method" shape)
+                    // instead of falling through to the misleading
+                    // `No namespace:` path. Guards: clojure.lang.* keeps the
+                    // AD-008 deferred rewrite (lib loads must survive an
+                    // unmodeled member in dead code), and a REAL ns/alias of
+                    // the same name keeps its var-call resolution.
+                    return error_catalog.raise(.static_method_unknown, form.location, .{
+                        .member = head.name,
+                        .class = td.fqcn orelse ns_head,
+                    });
                 }
             }
         }

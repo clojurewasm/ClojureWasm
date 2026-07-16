@@ -97,6 +97,8 @@ pub const Code = enum {
     /// args: `.{ .form = "loop*"|"recur", .got = N, .max = 65535 }`
     arity_too_large,
     namespace_unknown,
+    static_member_unknown,
+    static_method_unknown,
     current_namespace_missing,
     /// `(in-ns ...)` arity. args: `.{ .got = N }`.
     in_ns_arity_invalid,
@@ -729,6 +731,20 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .name_error,
             .phase = .analysis,
             .template = "No namespace: '{[ns]s}'",
+        },
+        // ADR-0174 D3: a RESOLVED host class + missing member is a
+        // member-level diagnostic, never a namespace miss. Split by
+        // position like clj: bare `Class/member` symbol (value position)
+        // vs `(Class/member …)` call head.
+        .static_member_unknown => .{
+            .kind = .name_error,
+            .phase = .analysis,
+            .template = "No such static member: {[member]s} in class {[class]s} (not defined, or not yet implemented in ClojureWasm)",
+        },
+        .static_method_unknown => .{
+            .kind = .name_error,
+            .phase = .analysis,
+            .template = "No matching static method: {[member]s} in class {[class]s} (not defined, or not yet implemented in ClojureWasm)",
         },
         .current_namespace_missing => .{
             .kind = .name_error,
