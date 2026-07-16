@@ -132,11 +132,8 @@ check '(.compareTo (char 98) (char 97))'    '1'     character_instance_compareTo
 check '(hash (char 97))'                    '97'    character_hash_parity
 check '(.hashCode (char 97))'               '97'    character_instance_hashCode
 
-# --- getName: the one not-carried member (explicit unsupported, D-561) ---
-set +e
-out=$("$BIN" -e '(Character/getName 97)' 2>&1)
-set -e
-[[ "$out" == *"is not supported"* ]] || fail "character_getName_unsupported: expected explicit unsupported, got '$out'"
-echo "PASS character_getName_unsupported"
+# --- getName + codePointOf (D-561: the UCD name table, landed) ---
+check '(Character/getName 97)'  '"LATIN SMALL LETTER A"'  character_getName
+check '(Character/codePointOf "LATIN SMALL LETTER A")'  '97'  character_codePointOf
 
 echo "ALL PASS phase14_character_statics"

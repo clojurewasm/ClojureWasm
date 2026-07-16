@@ -12,7 +12,7 @@
 #     a curated MUST list must be present — where mainline's extras are
 #     its classpath leak (classes — AD-054), its environment-interned
 #     keywords, vars cljw does not carry (definline/defstruct/…, the
-#     D-562 parity-inventory arc), or Character/TYPE + codePointOf
+#     D-562 parity-inventory arc), or Character/TYPE
 #     (designed skip + D-561).
 #   - every reply must be by-name sorted (the built-in's sort-by).
 #
@@ -58,7 +58,7 @@ MUST = {
 }
 MUST_NOT = {
     "classes|Character": ["java.lang.CharacterData00", "java.lang.CharacterData"],
-    "static_members|Character/": ["Character/TYPE", "Character/codePointOf"],
+    "static_members|Character/": ["Character/TYPE"],
 }
 SUBSET_GROUPS = set(MUST) | set(MUST_NOT)
 
