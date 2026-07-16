@@ -99,6 +99,7 @@ pub const Code = enum {
     namespace_unknown,
     static_member_unknown,
     static_method_unknown,
+    thread_already_started,
     current_namespace_missing,
     /// `(in-ns ...)` arity. args: `.{ .got = N }`.
     in_ns_arity_invalid,
@@ -745,6 +746,13 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .name_error,
             .phase = .analysis,
             .template = "No matching static method: {[member]s} in class {[class]s} (not defined, or not yet implemented in ClojureWasm)",
+        },
+        // ADR-0174 D6: `.start` on a started/finished thread, or `.setDaemon`
+        // after `.start` (JVM IllegalThreadStateException).
+        .thread_already_started => .{
+            .kind = .state_error,
+            .phase = .eval,
+            .template = "Cannot {[op]s}: thread already started",
         },
         .current_namespace_missing => .{
             .kind = .name_error,

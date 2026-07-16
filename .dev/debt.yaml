@@ -24,6 +24,22 @@
 # md-table-align no longer pads it to ~800 KB of whitespace.
 
 active:
+  - id: "D-564"
+    status: |-
+      open (2026-07-17, ADR-0174 D6 residual). Thread interrupt family
+      (.interrupt / .isInterrupted / Thread/interrupted) is deliberately
+      NOT implemented: a flag-only interrupt that cannot wake a sleeping
+      thread would be a semantic lie (permanent-no-op rule) — real
+      semantics need sleep/join/deref wakeup plumbing (an interrupt check
+      in Thread/sleep's slice loop is the natural first wire, mirroring
+      the D-442 cancelRequested pattern). Until then the D3 member
+      diagnostic renders the honest error and compat_tiers carries
+      OPAQUE rows. Also parked here: .getId/.getState/.setPriority
+      (priority is accepted-constant-only — no scheduler mapping), and
+      Alt C from ADR-0174 (one class_registry.zig naming SSOT deriving
+      class_name.zig / host_class_resolve / rt.types keys / compat rows
+      from a single table — prerequisite: ADR-0174, landed).
+    last_reviewed: "2026-07-17"
   - id: "D-563"
     status: |-
       open (2026-07-16, the D-562 inventory's enumerated residuals — each

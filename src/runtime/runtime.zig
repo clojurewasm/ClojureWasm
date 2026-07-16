@@ -291,6 +291,14 @@ pub const Runtime = struct {
     system_out_val: @import("value/value.zig").Value = .nil_val,
     system_err_val: @import("value/value.zig").Value = .nil_val,
 
+    /// Join-at-exit registry (ADR-0174 D6): every started NON-daemon
+    /// `(Thread. f)` value (pinned for its run, so the entries never
+    /// dangle). The app entry calls `thread.joinAllNonDaemon` after the
+    /// program body — main waits like the JVM. Guarded by
+    /// `user_threads_mutex` (`.start` can be called off-main).
+    user_threads: std.ArrayList(@import("value/value.zig").Value) = .empty,
+    user_threads_mutex: std.Io.Mutex = .init,
+
     /// User-set Java system properties (`(System/setProperty k v)`). Keys +
     /// values are `gpa`-owned dupes; consulted by `getProperty` BEFORE the
     /// OS-truthful static table (JVM: a set property overrides). Freed in
@@ -631,9 +639,12 @@ pub const Runtime = struct {
             }
             self.system_properties.deinit(self.gpa);
         }
-        // Thread/Runtime host_instance singletons (gc.infra-allocated, no user
-        // Values inside — a plain destroy, the locale-singleton pattern).
-        for ([_]*@import("value/value.zig").Value{ &self.thread_current, &self.runtime_instance }) |slot| {
+        // Runtime host_instance singleton (gc.infra-allocated, no user Values
+        // inside — a plain destroy, the locale-singleton pattern). The Thread
+        // "main" singleton is NOT here: since ADR-0174 D6 it is a normal
+        // pinned GC-heap host_instance carrying a ThreadState — `gc.deinit`
+        // below finalises it via the descriptor's `host_finalise`.
+        for ([_]*@import("value/value.zig").Value{&self.runtime_instance}) |slot| {
             if (slot.isNil()) continue;
             self.gc.infra.destroy(@constCast(@import("host_instance.zig").asHostInstance(slot.*)));
             slot.* = .nil_val;
@@ -722,6 +733,9 @@ pub const Runtime = struct {
             self.gpa.destroy(@constCast(td));
         }
         self.types.deinit();
+        // Thread join-at-exit registry (ADR-0174 D6): values are gc-heap
+        // objects (freed by the heap teardown); only the list storage is ours.
+        self.user_threads.deinit(self.gpa);
 
         // ADR-0035 D5: free any in-progress require entries.
         // Normally empty at process exit; non-empty here means a

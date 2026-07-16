@@ -171,6 +171,10 @@ pub fn runSource(
         }
         _ = rt.gc.unpin(result);
     }
+    // ADR-0174 D6: main waits for live non-daemon `(Thread. f)` threads,
+    // JVM-exact — a fire-and-forget `(.start (Thread. f))` completes f.
+    // Daemon threads die with the process (skipped: never registered).
+    @import("../runtime/thread.zig").joinAllNonDaemon(&rt);
     try stdout.flush();
 }
 

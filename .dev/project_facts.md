@@ -1101,6 +1101,14 @@ Micro-coverage-grind smell), and it forbids the partial-class trap.
   asking for per-class completeness, a linguistically-general Java boundary,
   pure-leaning lib re-selection, and a cljw.* differentiator purpose. Recorded as
   law; operationalised by ADR-0137.
+- 2026-07-17 amended (user chat 2026-07-16): the clause-1 "OS threads-as-Java
+  OUT" exclusion is narrowed — the user explicitly requested `(Thread. f)` /
+  `.start` support ("(.start (Thread. (fn [] …))) これの対処"), authorizing the
+  MINIMAL Thread lifecycle surface (ctor / start / join / isAlive / names /
+  daemon + join-at-exit, on the future.zig worker discipline — ADR-0174 D6).
+  The exclusion still holds for the rest of the java.lang.Thread platform
+  surface (interrupt family, priorities-as-scheduling, ThreadGroup, virtual
+  threads, stack traces) — explicit OPAQUE rows + the D3 member diagnostic.
 
 ---
 
