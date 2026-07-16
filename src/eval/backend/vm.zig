@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: EPL-2.0
-//! Bytecode VM dispatch loop — the default backend (F-012, ADR-0005);
-//! TreeWalk is the differential oracle the VM is checked against.
+//! Bytecode VM dispatch loop — the default backend (F-012); TreeWalk is
+//! the differential oracle the VM is checked against.
 //! `eval` consumes a `BytecodeChunk` produced by `vm/compiler.zig` and
 //! executes its instructions against the per-thread operand arena
-//! (`VmArena`, ADR-0131 2a), borrowing a region at `op_base` per invocation.
+//! (`VmArena`), borrowing a region at `op_base` per invocation.
 //!
-//! Per ADR-0022 the VM must produce bit-for-bit identical Values to
-//! TreeWalk for the same source. Errors raised here therefore reuse
+//! The VM must produce bit-for-bit identical Values to TreeWalk for the
+//! same source (the ADR-0022 parity contract). Errors raised here reuse
 //! TreeWalk's `error_catalog` Codes; control-flow signals
 //! (`error.RecurSignaled`, `error.ThrownValue`) use the same Zig errors
 //! so a shared try/loop driver works across backends.
@@ -54,17 +54,19 @@ const Runtime = runtime_mod.Runtime;
 const SourceLocation = error_mod.SourceLocation;
 const Function = tree_walk.Function;
 
-/// Per-frame exception-handler stack ceiling. Deep `try` nesting is
-/// rare; oversize raises `internal_error`. Mirrors v1's `HANDLERS_MAX`
-/// but per-call rather than VM-global (cw v2 dispatcher is single-frame
-/// per `eval()` call).
+/// Exception-handler stack ceiling, per `eval` invocation (not
+/// VM-global): the handler array is an `eval` local, and every live
+/// handler belongs to the base frame — flattened in-VM frames are
+/// handler-free by construction. Deep `try` nesting is rare; oversize
+/// raises `internal_error`.
 pub const HANDLER_STACK_MAX: u16 = 32;
 
 /// `.catch_clause` handlers intercept + convert + match (try/catch).
 /// `.cleanup` handlers (binding / bare-try / finally-only) unwind like
 /// TreeWalk's `defer`: they run cleanup bytecode then re-fire the
 /// ORIGINAL error unchanged — no catalog→exception conversion, no
-/// context mutation (ADR-0071).
+/// context mutation. ADR-0071 records why cleanup must not behave
+/// like a catch.
 const HandlerKind = enum { catch_clause, cleanup };
 
 const Handler = struct {
@@ -73,23 +75,21 @@ const Handler = struct {
     kind: HandlerKind,
 };
 
-/// ADR-0131 increment 2a: per-thread reusable VM operand arena. The operand
-/// stack + its parallel loc stack move OFF the per-`eval` host C stack INTO this
-/// shared heap arena, so increment 2b's flattened in-VM call frames can share one
-/// operand region. Each `eval` borrows from the GLOBAL watermark `op_top` (its
-/// operands live at `stack[op_base..op_top]`); a nested reentrant `eval` borrows
-/// above it; `op_top` is restored to `op_base` on return. The live prefix
-/// `stack[0..op_top]` is GC-rooted via the EvalFrame (A1). Allocated lazily on
-/// first use, reused for the thread's life (never freed — matching the other
-/// threadlocal call-scoped state in `dispatch.zig`). `ARENA_SLOTS` is sized so
+/// Per-thread reusable VM operand arena (design record: ADR-0131). The operand
+/// stack + its parallel loc stack live OFF the per-`eval` host C stack in this
+/// shared arena, so flattened in-VM call frames can share one operand region.
+/// Each `eval` borrows from the GLOBAL watermark `op_top` (its operands live at
+/// `stack[op_base..op_top]`); a nested reentrant `eval` borrows above it;
+/// `op_top` is restored to `op_base` on return. The live prefix
+/// `stack[0..op_top]` is GC-rooted via the EvalFrame. `ARENA_SLOTS` is sized so
 /// `op_top` stays within `u16`, keeping `root_set.EvalFrame.sp` unchanged.
 const ARENA_SLOTS: usize = 1 << 14; // 16384; keeps `op_top` within u16
-/// ADR-0131 2b: in-VM call-frame stack ceiling. A flattened `op_call` pushes one
-/// `VmFrame`; exceeding this → catchable `StackOverflow` (matches v0 + clj). The
+/// In-VM call-frame stack ceiling. A flattened `op_call` pushes one
+/// `VmFrame`; exceeding this → catchable `StackOverflow` (matches clj). The
 /// operand arena (~8 slots/fib-frame) caps comparable depth, so the two align.
 const FRAMES_MAX: usize = 2048;
 /// The thread's reusable VM arenas: the operand stack + its parallel loc stack +
-/// (2b) the flattened-call-frame locals arena + the in-VM frame stack, as inline
+/// the flattened-call-frame locals arena + the in-VM frame stack, as inline
 /// arrays so the storage is threadlocal STATIC (BSS, demand-paged) — nothing to
 /// allocate or free (a never-freed heap arena leaks under the test
 /// DebugAllocator). `op_top` is the global operand watermark; `local_top` /
@@ -107,18 +107,18 @@ const VmArena = struct {
 };
 threadlocal var vm_arena: VmArena = .{};
 
-/// ADR-0157 2a: per-thread native-stack guard state. `stack_base` anchors to the
-/// shallowest (highest-address) `eval` entry seen on THIS thread (0 = uncaptured);
-/// `eval` raises a catchable stack_overflow once `stack_base - @frameAddress()`
-/// (bytes consumed below the anchor) exceeds the budget. 6 MiB is a one-sided,
-/// over-estimable margin safely under the 8 MiB main / ~16 MiB worker stacks (the
-/// std.Thread default) — measuring REAL bytes, it is immune to the per-frame-size /
-/// optimization-level / platform variance that makes a fixed frame-COUNT cap a
-/// cross-host SIGSEGV (the DA's rejection of Alternative 1).
+/// Per-thread native-stack guard state (design record: ADR-0157). `stack_base`
+/// anchors to the shallowest (highest-address) `eval` entry seen on THIS thread
+/// (0 = uncaptured); `eval` raises a catchable stack_overflow once
+/// `stack_base - @frameAddress()` (bytes consumed below the anchor) exceeds the
+/// budget. 6 MiB is a one-sided, over-estimable margin safely under the 8 MiB
+/// main / ~16 MiB worker stacks (the std.Thread default) — measuring REAL bytes,
+/// it is immune to the per-frame-size / optimization-level / platform variance
+/// that makes a fixed frame-COUNT cap a cross-host SIGSEGV.
 threadlocal var stack_base: usize = 0;
 const STACK_BUDGET_BYTES: usize = 6 * 1024 * 1024;
 
-/// ADR-0131 2b: an in-VM call frame. A flattened `op_call` pushes one + continues
+/// An in-VM call frame. A flattened `op_call` pushes one + continues
 /// the SAME eval loop (no host `eval` re-entry); `op_ret` pops it. Each carries
 /// its OWN `gc_frame`, pushed on the `eval_frame_head` chain at flatten + popped
 /// at ret, so the collector's existing chain-walk roots every active frame's
@@ -132,7 +132,7 @@ const VmFrame = struct {
     /// `local_top` on pop). Unused for the base frame (`flattened == false`).
     local_base: u16,
     flattened: bool,
-    /// Whether this frame pushed a trace frame (ADR-0119) to pop on ret.
+    /// Whether this frame pushed a stack-trace frame to pop on ret.
     trace_pushed: bool,
     gc_frame: root_set.EvalFrame,
 };
@@ -140,9 +140,9 @@ const VmFrame = struct {
 /// `op_call`'s request to the eval loop to flatten a monomorphic call: the
 /// resolved callee + where its result lands. The loop binds + pushes the frame
 /// (it owns the `frames` stack); `op_call` only resolves + signals. No
-/// consult-env (ADR-0129) save/restore is needed: a flattened callee runs in the
+/// `dispatch.current_env` save/restore is needed: a flattened callee runs in the
 /// SAME `env` as this eval (set by the outer `treeWalkCall` / driver), so
-/// `dispatch.current_env` stays invariant across the eval's frames.
+/// the consult-env threadlocal stays invariant across the eval's frames.
 const FlattenReq = struct {
     callee: Value,
     f: *Function,
@@ -153,7 +153,7 @@ const FlattenReq = struct {
     call_loc: SourceLocation,
 };
 
-/// ADR-0131 2b: bind + push a flattened in-VM call frame for `fr`. The eval loop
+/// Bind + push a flattened in-VM call frame for `fr`. The eval loop
 /// owns the `frames` stack; `op_call` only resolved + signalled. `op_call` did NOT
 /// pop the callee/args, so they stay rooted via `op_top` until `bindCallFrame`
 /// copies the args into the locals arena here.
@@ -170,7 +170,7 @@ fn flattenPush(rt: *Runtime, ar: *VmArena, fr: FlattenReq) !void {
     // Consume callee + args: the callee's operands (and its eventual result) start
     // at the result slot.
     ar.op_top = fr.result_slot;
-    // Trace (ADR-0119): advance the caller's frame to the call site, then push the
+    // Stack trace: advance the caller's frame to the call site, then push the
     // callee's frame for user-ns callables (popped on ret / unwind).
     error_mod.updateTopFrame(fr.call_loc);
     const trace_pushed = if (tree_walk.calleeFrame(fr.callee, fr.call_loc)) |tf| error_mod.pushFrame(tf) else false;
@@ -184,7 +184,8 @@ fn flattenPush(rt: *Runtime, ar: *VmArena, fr: FlattenReq) !void {
         .flattened = true,
         .trace_pushed = trace_pushed,
         // GC-ROOT: A1 — each flattened frame roots its own locals window +
-        // constants on the eval_frame_head chain (popped on ret / unwind).
+        // constants on the eval_frame_head chain (popped on ret / unwind)
+        // [ref: .dev/gc_rooting.md §A].
         .gc_frame = .{
             .stack = &ar.stack,
             .sp = &ar.op_top,
@@ -200,8 +201,8 @@ fn flattenPush(rt: *Runtime, ar: *VmArena, fr: FlattenReq) !void {
 /// Evaluate a compiled chunk. `locals` is the caller-owned slot array
 /// (typically a fixed 256-entry stack array, matching `tree_walk.eval`).
 /// Returns the value produced by `op_ret`. The operand stack lives in the
-/// per-thread `VmArena` (ADR-0131 2a), borrowed at `op_base`. A flattened
-/// `op_call` (2b) pushes an in-VM `VmFrame` + continues this loop instead of
+/// per-thread `VmArena`, borrowed at `op_base`. A flattened
+/// `op_call` pushes an in-VM `VmFrame` + continues this loop instead of
 /// re-entering `eval`; `op_ret` pops it.
 pub fn eval(
     rt: *Runtime,
@@ -209,14 +210,13 @@ pub fn eval(
     locals: []Value,
     chunk: *const BytecodeChunk,
 ) anyerror!Value {
-    // ADR-0157 2a: self-calibrating native-stack guard. A primitive→callFn
+    // Self-calibrating native-stack guard. A primitive→callFn
     // re-entry (notify/validate/reduce-fn) adds many NATIVE frames per VM frame,
     // which the flattened FRAMES_MAX budget does not see — unbounded re-entry
     // overflowed the native stack → SIGSEGV. Measure the REAL bytes consumed
     // since this thread's shallowest `eval` entry (threadlocal `stack_base`
     // auto-anchors per thread — no spawn plumbing) and raise the catchable
-    // stack_overflow (2b) below the budget. Immune to per-frame size / opt-level /
-    // platform (the fixed-cap fragility the DA rejected). Flattened direct
+    // stack_overflow below the budget. Flattened direct
     // recursion stays bounded by FRAMES_MAX (it does not re-enter `eval`).
     {
         const sp = @frameAddress();
@@ -226,7 +226,7 @@ pub fn eval(
             return error_catalog.raise(.stack_overflow, .{}, .{ .max = STACK_BUDGET_BYTES });
         }
     }
-    // ADR-0131 2a/2b: borrow this invocation's operand + locals + frame regions
+    // Borrow this invocation's operand + locals + frame regions
     // from the per-thread arena; restore all watermarks + the eval-frame chain
     // head on exit (normal OR a thrown error propagating out — the latter pops
     // every still-live flattened frame's gc_frame at once and frees its windows).
@@ -235,13 +235,13 @@ pub fn eval(
     const local_base_entry = ar.local_top;
     const frame_base = ar.frame_top;
     const head_entry = root_set.eval_frame_head;
-    // Publish this eval's env for the alloc-driven GC torture (D-386): a collect
+    // Publish this eval's env for the alloc-driven GC torture mode: a collect
     // forced from inside `gc.alloc` has no `env`, so it reads this threadlocal.
     // Validation-only; restored on exit (nested evals stack/unstack their env).
     const active_env_entry = root_set.active_env;
     root_set.active_env = env;
     defer {
-        // Trace frames (ADR-0119) are a separate stack — pop any still-live
+        // Stack-trace frames are a separate stack — pop any still-live
         // flattened frames' (LIFO) on an uncaught throw out of this eval.
         while (ar.frame_top > frame_base + 1) {
             ar.frame_top -= 1;
@@ -259,8 +259,8 @@ pub fn eval(
     var handlers: [HANDLER_STACK_MAX]Handler = undefined;
     var handler_count: u16 = 0;
 
-    // The base frame: caller-owned locals + the base chunk. Its gc_frame is the 2a
-    // A1 root (operand prefix `stack[0..op_top]` + caller locals + base constants).
+    // The base frame: caller-owned locals + the base chunk. Its gc_frame roots
+    // the operand prefix `stack[0..op_top]` + caller locals + base constants.
     // GC-ROOT: A1 — the VM activation's operand stack + locals + chunk constants [ref: .dev/gc_rooting.md §A]
     const base = &ar.frames[ar.frame_top];
     base.* = .{
@@ -274,7 +274,7 @@ pub fn eval(
             .stack = &ar.stack,
             .sp = &ar.op_top,
             .locals = locals,
-            // D-251: root this chunk's literal constant pool for its whole
+            // Root this chunk's literal constant pool for its whole
             // execution — a literal is reachable only here until an `op_const`
             // loads it onto `stack`, so a pre-load collect would otherwise sweep it.
             .constants = chunk.constants,
@@ -284,32 +284,32 @@ pub fn eval(
     root_set.eval_frame_head = &base.gc_frame;
     ar.frame_top += 1;
 
-    // PERF: hoist `ip` to a loop-carried register; sync `cur.ip` only at frame transitions [refs: O-028, D-386]
-    // The active in-VM frame (base, or a flattened callee — 2b) + its `ip` are
-    // loop-carried so the hot dispatch keeps `ip` in a register (D-386 sub-step
-    // 1): `cur.ip` (arena heap) is synced only at frame transitions (flatten /
+    // PERF: hoist `ip` to a loop-carried register; sync `cur.ip` only at frame transitions [refs: O-028]
+    // The active in-VM frame (base, or a flattened callee) + its `ip` are
+    // loop-carried so the hot dispatch keeps `ip` in a register:
+    // `cur.ip` (arena heap) is synced only at frame transitions (flatten /
     // ret / catch), not per-op. `ip` is NOT a GC root (only `op_top` is, via
     // `gc_frame.sp`), so hoisting it carries zero UAF risk — unlike a hoisted
-    // `op_top` (sub-step 2). Every op reads/writes `cur`'s `chunk`/`locals`
+    // `op_top` would. Every op reads/writes `cur`'s `chunk`/`locals`
     // window; the operand stack is the shared arena (`op_top` absolute). The
     // naive form (recompute `cur` + pass `&cur.ip` per op) is the contract.
     var cur = &ar.frames[ar.frame_top - 1];
     var ip: usize = cur.ip;
     while (true) {
-        // Liveness-only back-edge safe point (ADR-0090 Alt B / D-244 #3b-step2):
-        // a worker spinning in a non-allocating loop never hits the alloc-prologue
+        // Liveness-only back-edge safe point: a worker spinning in a
+        // non-allocating loop never hits the alloc-prologue
         // park, so it must poll here to notice a pending collection and park
         // (its operand-stack frame above is published, so the collector walks it).
         // Relaxed load — correctness of the roots is fenced by `park`'s acquire;
         // this poll only needs to eventually observe the flag. One predicted-not-
-        // taken branch; inert until a Phase-B worker arms `gc_requested` (#4).
+        // taken branch; inert until a worker thread arms `gc_requested`.
         if (safepoint.gc_requested.load(.monotonic)) safepoint.park();
-        // ADR-0125: in-process eval execution budget (isolation dim (a)). One
+        // In-process eval execution budget. One
         // optional unwrap when unmetered (rt.eval_budget == null) — same cost
         // shape as the GC poll above; charges a step + (throttled) checks the
         // wall-clock deadline, raising an uncatchable error on expiry.
         if (rt.eval_budget) |*budget| try budget.tick(rt.io);
-        // GC torture (D-250): when armed via CLJW_GC_TORTURE, force a real
+        // GC torture: when armed via CLJW_GC_TORTURE, force a real
         // stop-the-world collect at this clean safe point every Nth poll, so a
         // missing root surfaces as a deterministic UAF on the next collect. The
         // operand stack + locals are published on `gc_frame` above and `env`
@@ -317,13 +317,13 @@ pub fn eval(
         // `period != 0` is the inert-path guard (one global load, predicted not
         // taken); test/validation only — production auto-collect stays gated.
         // Scope the forced collect to the MAIN (unregistered) thread: a worker's
-        // own STW collect self-deadlocks + misses the main's roots (D-244 #4, the
-        // dormant multi-thread path). On the main thread the collect parks the
-        // registered workers and walks the complete root set.
+        // own STW collect self-deadlocks + misses the main's roots. On the main
+        // thread the collect parks the registered workers and walks the
+        // complete root set.
         if (gc_torture.period != 0 and !root_set.is_registered_worker and gc_torture.tick()) {
             mark_sweep.collectStopTheWorld(&rt.gc, .{ .envs = &.{env}, .gc = &rt.gc }, false);
         }
-        // D-519 (ADR-0164): threshold-driven auto-collect at the back-edge poll —
+        // Threshold-driven auto-collect at the back-edge poll —
         // the cheap tight-loop path (a `recur` loop back-edges every iteration but
         // allocs once, so the common churn case trips here at the cleanest safe
         // point: sp/op_top settled, fabrication_depth 0 by construction). Idempotent
@@ -332,16 +332,16 @@ pub fn eval(
         rt.gc.maybeAutoCollect();
         var flatten_req: ?FlattenReq = null;
         const step_result = stepOnce(rt, env, cur.locals, cur.chunk, &ar.stack, &ar.loc, &ar.op_top, &ip, &handlers, &handler_count, &flatten_req);
-        // D-486: a flattenPush FRAMES_MAX overflow must reach the shared error arm
+        // A flattenPush FRAMES_MAX overflow must reach the shared error arm
         // below (`else |err|` — unwind + synthesise the catalog error into a
         // catchable thrown value + jump to the handler) so THIS eval's own
         // try/catch catches a deep DIRECT recursion. A bare `try flattenPush`
-        // propagated it straight OUT of `eval`, bypassing the handler (re-entry
-        // overflows reach the arm via a stepOnce error, so they already caught).
+        // would propagate it straight OUT of `eval`, bypassing the handler
+        // (re-entry overflows reach the arm via a stepOnce error, so they catch).
         const result: anyerror!?Value = if (flatten_req) |fr| res: {
-            // 2b: op_call resolved a monomorphic bytecode callee — push an in-VM
+            // op_call resolved a monomorphic bytecode callee — push an in-VM
             // frame + continue this loop (no host eval re-entry). Save the caller's
-            // advanced `ip`, then re-seat `cur`/`ip` on the callee (D-386 sub-step 1).
+            // advanced `ip`, then re-seat `cur`/`ip` on the callee.
             cur.ip = ip;
             flattenPush(rt, ar, fr) catch |e| break :res e;
             cur = &ar.frames[ar.frame_top - 1];
@@ -370,7 +370,7 @@ pub fn eval(
                 continue;
             }
         } else |err| {
-            // Bounded unwind (2b): flattened frames are handler-free, so the live
+            // Bounded unwind: flattened frames are handler-free, so the live
             // handlers all belong to the base frame. Pop the flattened frames
             // (restore trace / gc head / local_top) down to the base; the catch
             // logic below then targets `bcur` (= the base frame).
@@ -386,7 +386,7 @@ pub fn eval(
             // per-continue `ip = …` below restores the catch target).
             cur = bcur;
             var thrown_err = err;
-            // ADR-0071: a `.cleanup` handler (binding / bare-try) is a
+            // A `.cleanup` handler (binding / bare-try) is a
             // `defer`, not a `catch`. Tested BEFORE the conversion below so
             // the in-flight error is preserved unchanged: no catalog→
             // exception conversion (Kind + `info.context` survive), no
@@ -433,7 +433,7 @@ pub fn eval(
                 if (ar.op_top >= ar.stack.len)
                     return raiseInternal("vm: handler unwind overflow");
                 ar.stack[ar.op_top] = thrown;
-                // ADR-0118 cycle 2.5: the caught value has no compiled operand
+                // The caught value has no compiled operand
                 // loc; record an unknown loc so a later op_call never reads an
                 // uninitialized loc_stack slot (renderer falls back gracefully).
                 ar.loc[ar.op_top] = .{};
@@ -451,8 +451,8 @@ pub fn eval(
 /// handler stack.
 // PERF: force-inline the per-op dispatch into the `eval` loop. ReleaseSafe was
 // NOT inlining this 11-arg hot function, so each instruction paid a real call
-// boundary (v0 dispatches a 2-arg step; cljw's wide signature made the call
-// expensive). Inlining: fib_recursive 40→33 ms, tak 15→13 (D-386 step 1). The
+// boundary (the wide signature made the call expensive). Inlining:
+// fib_recursive 40→33 ms, tak 15→13. The
 // naive form is a plain `fn`; behaviour is identical (diff oracle). [refs: O-017]
 inline fn stepOnce(
     rt: *Runtime,
@@ -465,7 +465,7 @@ inline fn stepOnce(
     ip_ptr: *usize,
     handlers: *[HANDLER_STACK_MAX]Handler,
     handler_count_ptr: *u16,
-    /// ADR-0131 2b: when `op_call` resolves a monomorphic bytecode callee it sets
+    /// When `op_call` resolves a monomorphic bytecode callee it sets
     /// this (and returns `null`/cont, WITHOUT popping the callee+args) so the eval
     /// loop flattens it into an in-VM frame instead of a host `vt.callFn` re-entry.
     flatten_out: *?FlattenReq,
@@ -483,16 +483,17 @@ inline fn stepOnce(
     if (ip >= chunk.instructions.len)
         return raiseInternal("vm: ip past end of chunk");
     const instr = chunk.instructions[ip];
-    // ADR-0173 C1: per-op loc lives in the sidecar (compiler-built chunks
-    // only); AOT chunks have no sidecar and report 0:0 as before (ADR-0118).
+    // Per-op loc lives in the sidecar (compiler-built chunks only); AOT
+    // chunks have no sidecar and report 0:0.
     const instr_il: opcode_mod.InstrLoc = if (chunk.locs) |ls| ls[ip] else .{};
     ip += 1;
 
-    // ADR-0118 cycle 2.5: this instruction's compiled source loc. Each operand
-    // it pushes inherits this loc (recorded in the post-switch sweep below), so
-    // a literal `0` pushed by `op_const` carries the `0`'s column, not the
-    // enclosing call form's. `op_call` overrides its own result slot with the
-    // call-form loc explicitly (it pops before it pushes, so the sweep misses it).
+    // This instruction's compiled source loc (the ADR-0118 caret design). Each
+    // operand it pushes inherits this loc (recorded in the post-switch sweep
+    // below), so a literal `0` pushed by `op_const` carries the `0`'s column,
+    // not the enclosing call form's. `op_call` overrides its own result slot
+    // with the call-form loc explicitly (it pops before it pushes, so the
+    // sweep misses it).
     const instr_loc: SourceLocation = .{ .file = chunk.source_file, .line = instr_il.line, .column = instr_il.column };
 
     const instr_op = instr.op();
@@ -551,7 +552,7 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_var_meta => {
-            // D-563(b): stack is [.., var, meta] — pop the meta map, set it as
+            // Stack is [.., var, meta] — pop the meta map, set it as
             // the Var's meta (the merged user ^meta/:doc + :line/:column/:file
             // the analyzer minted); the var stays as def's result value.
             if (sp < 2) return raiseInternal("vm: op_var_meta needs var + meta on the stack");
@@ -594,7 +595,7 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_ns_import => {
-            // D-235: register one `(:import …)` simple->fqcn into the
+            // Register one `(:import …)` simple->fqcn into the
             // current ns. Pushes nil (the ns form's running value).
             if (instr.operand >= chunk.import_sites.len)
                 return raiseInternal("vm: op_ns_import site index out of range");
@@ -613,7 +614,8 @@ inline fn stepOnce(
             if (sp == 0) return raiseInternal("vm: op_set_var on empty stack");
             const var_ptr = chunk.constants[instr.operand].decodePtr(*Var);
             const val = stack[sp - 1]; // peek: the assigned value stays as the result
-            // ADR-0096: thread-bound-or-raise (JVM Var.set parity); never setRoot.
+            // set! requires a live thread binding (JVM Var.set parity) — it
+            // raises rather than fall back to mutating the Var's root.
             if (!env_mod.setBinding(var_ptr, val)) {
                 const full = try std.fmt.allocPrint(rt.gpa, "{s}/{s}", .{ var_ptr.ns.name, var_ptr.name });
                 defer rt.gpa.free(full);
@@ -621,7 +623,7 @@ inline fn stepOnce(
             }
         },
         .op_set_field => {
-            // ADR-0104: `(set! field v)` on a deftype mutable field. Stack:
+            // `(set! field v)` on a deftype mutable field. Stack:
             // [receiver, value]. operand = field-name String constant.
             if (instr.operand >= chunk.constants.len)
                 return raiseInternal("vm: op_set_field constant index out of range");
@@ -637,7 +639,7 @@ inline fn stepOnce(
             var wrote = false;
             for (layout) |fe| {
                 if (std.mem.eql(u8, fe.name, field_name)) {
-                    // D-444 / ADR-0152: `^:volatile-mutable` → atomic release store.
+                    // `^:volatile-mutable` → atomic release store.
                     if (fe.is_volatile) inst.setFieldVolatile(fe.index, value) else inst.setField(fe.index, value);
                     wrote = true;
                     break;
@@ -668,7 +670,7 @@ inline fn stepOnce(
                 return raiseInternal("vm: op_call underflow");
             const result_slot: u16 = sp - @as(u16, @intCast(arg_count + 1));
             const callee = stack[result_slot];
-            // ADR-0131 2b: flatten a monomorphic bytecode `.fn_val` call into an
+            // Flatten a monomorphic bytecode `.fn_val` call into an
             // in-VM frame (the eval loop pushes it). Leave `sp` UNCHANGED so the
             // callee + args stay rooted via `op_top` until `flattenPush` copies
             // the args into the locals arena. Exclude rest fns (rest-pack alloc on
@@ -698,11 +700,11 @@ inline fn stepOnce(
             const args = stack[sp + 1 .. sp + 1 + arg_count];
             const vt = rt.vtable orelse
                 return error_catalog.raiseInternal(.{}, "Runtime vtable not installed; cannot dispatch call");
-            // ADR-0118: thread the call form's source position (compiled onto
+            // Thread the call form's source position (compiled onto
             // this op + the chunk's file) into callFn, so an error raised by
             // the callee annotates the failing call site instead of `0:0`.
             const call_loc = instr_loc;
-            // ADR-0118 cycle 2.5: publish each arg's recorded loc (the parallel
+            // Publish each arg's recorded loc (the parallel
             // loc_stack slots the operand pushes filled in) so a failing
             // primitive resolves an arg-precise caret; restore on return.
             const prev_arg_sources = error_mod.swapArgSources(loc_stack[sp + 1 .. sp + 1 + arg_count]);
@@ -717,7 +719,8 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_add, .op_sub, .op_mul, .op_lt, .op_le, .op_gt, .op_ge, .op_eq, .op_mod, .op_rem, .op_quot, .op_ne => {
-            // ADR-0130: binary arith/comparison intrinsic. Fixnum fast path skips
+            // Binary arith/comparison intrinsic (ADR-0130 cache/deopt contract).
+            // Fixnum fast path skips
             // var-resolve + BuiltinFn dispatch; any other case (incl. errors)
             // defers to the cached builtin Var for full parity. `pristine` is
             // cleared by alter-var-root on a cached op (deopt → always builtin).
@@ -739,7 +742,7 @@ inline fn stepOnce(
                 const two = [2]Value{ a, b };
                 // Publish the operands' recorded locs so a builtin error
                 // (e.g. `(+ 1 "a")`) resolves an arg-precise caret, matching
-                // op_call / TreeWalk (ADR-0118). Only the fallback can error;
+                // op_call / TreeWalk. Only the fallback can error;
                 // the fixnum fast path cannot.
                 const prev_arg_sources = error_mod.swapArgSources(loc_stack[sp .. sp + 2]);
                 defer _ = error_mod.swapArgSources(prev_arg_sources);
@@ -842,7 +845,7 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_add_local_const, .op_sub_local_const, .op_mul_local_const, .op_lt_local_const, .op_le_local_const, .op_gt_local_const, .op_ge_local_const, .op_eq_local_const, .op_mod_local_const, .op_rem_local_const, .op_quot_local_const, .op_ne_local_const => {
-            // PERF: D-386 (O-018) local-const arith superinstruction — operands come
+            // PERF: local-const arith superinstruction — operands come
             // from `locals[slot]` + `constants[idx]` (packed in the operand), NOT the
             // stack, fusing op_load_local + op_const + op_<arith> into one dispatch.
             // Same fixnum-fast / builtin-deopt semantics as the op_add family; net
@@ -876,7 +879,7 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_add_locals, .op_sub_locals, .op_mul_locals, .op_lt_locals, .op_le_locals, .op_gt_locals, .op_ge_locals, .op_eq_locals, .op_mod_locals, .op_rem_locals, .op_quot_locals, .op_ne_locals => {
-            // PERF: D-386 (O-019) local-LOCAL arith superinstruction — both operands
+            // PERF: local-LOCAL arith superinstruction — both operands
             // from `locals[]` (slots packed in the operand), fusing op_load_local +
             // op_load_local + op_<arith> into one dispatch. Same fixnum-fast /
             // builtin-deopt as op_add; net stack effect +1. [refs: O-019]
@@ -907,7 +910,7 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_branch_ne_local_const, .op_branch_ge_local_const, .op_branch_gt_local_const, .op_branch_ne_locals, .op_branch_ge_locals, .op_branch_gt_locals => {
-            // PERF: D-386 (O-021) compare-and-branch superinstruction. `operand` =
+            // PERF: compare-and-branch superinstruction. `operand` =
             // the comparison's slot/const pair; the IMMEDIATELY-FOLLOWING instruction
             // is the DATA WORD carrying the i16 jump offset (the fused
             // `op_jump_if_false`, never dispatched). Compute the comparison
@@ -952,7 +955,7 @@ inline fn stepOnce(
             }
         },
         .op_recur_loop => {
-            // PERF: D-386 (O-022) fused loop back-edge. `operand` = (base << 8) | N;
+            // PERF: fused loop back-edge. `operand` = (base << 8) | N;
             // the IMMEDIATELY-FOLLOWING instruction is the DATA WORD with the i16
             // back-jump offset. Store the top N operands to `locals[base..base+N)`
             // (arg k → binding k) and jump back to the loop body — collapses
@@ -997,11 +1000,11 @@ inline fn stepOnce(
             sp -= 1;
             dispatch.last_thrown_exception = stack[sp];
             // Stamp the live call stack onto a trace-less exception so
-            // the throw carries frames like a catalog raise (ADR-0170
-            // am1) — symmetric with TreeWalk's evalThrow.
+            // the throw carries frames like a catalog raise — symmetric
+            // with TreeWalk's evalThrow.
             ex_info_mod.stampTraceIfAbsent(rt, stack[sp], error_mod.currentStack());
             // Snapshot *error-context* while the binding frame is
-            // live (ADR-0055 am2 / D-144) — symmetric with TreeWalk's
+            // live — symmetric with TreeWalk's
             // evalThrow so the two backends agree at the throw edge.
             dispatch.last_thrown_context = error_mod.snapshotContext();
             return error.ThrownValue;
@@ -1023,7 +1026,7 @@ inline fn stepOnce(
             if (template.slot_base == 0) {
                 stack[sp] = template_val;
             } else {
-                // Row 7.8 cycle 1 (ADR-0041): rebuild a transient
+                // Rebuild a transient
                 // FnNode from the template's per-method records so
                 // `allocFunctionWithBytecode` can snapshot the
                 // caller's locals + stamp per-method chunks.
@@ -1043,7 +1046,7 @@ inline fn stepOnce(
                         .has_rest = m.has_rest,
                         .params = m.params,
                         .body = m.body,
-                        .frame_slots = m.frame_slots, // ADR-0130 frame-rooting
+                        .frame_slots = m.frame_slots, // GC frame-rooting slot count
                     };
                     chunks[i] = m.bytecode;
                 }
@@ -1055,7 +1058,7 @@ inline fn stepOnce(
                         .has_rest = v.has_rest,
                         .params = v.params,
                         .body = v.body,
-                        .frame_slots = v.frame_slots, // ADR-0130 frame-rooting
+                        .frame_slots = v.frame_slots, // GC frame-rooting slot count
                     };
                     variadic_chunk = v.bytecode;
                 }
@@ -1063,7 +1066,7 @@ inline fn stepOnce(
                     .methods = ms,
                     .variadic = variadic_node,
                     .slot_base = template.slot_base,
-                    // ADR-0119: the closure instance inherits the template's name.
+                    // The closure instance inherits the template's name (stack traces).
                     .name = template.name,
                     .defining_ns = template.defining_ns,
                 };
@@ -1108,7 +1111,7 @@ inline fn stepOnce(
         },
         .op_reraise => {
             // Re-fire the error the cleanup-unwind branch stashed,
-            // unchanged (ADR-0071). The cleanup bytecode just ran (e.g.
+            // unchanged. The cleanup bytecode just ran (e.g.
             // op_pop_binding_frame); the catalog Info / thrown context
             // is still intact, so the original error propagates as it
             // would have under TreeWalk's `defer`.
@@ -1124,12 +1127,13 @@ inline fn stepOnce(
         },
         .op_push_binding_frame => {
             // Pops 2N entries [encVar0, val0, …] and installs a
-            // per-thread BindingFrame on the env threadlocal (shared
-            // with TreeWalk — assumes the single-threaded model;
-            // Phase B concurrency revisits this, so for now
-            // `Var.deref` stays backend-agnostic). The compiler wraps
-            // the body in a cleanup handler so `op_pop_binding_frame`
-            // runs on both the success and the exception edge.
+            // BindingFrame on the per-thread binding chain (the
+            // threadlocal is load-bearing: Clojure dynamic bindings
+            // are per-thread). The frame stack is shared with
+            // TreeWalk, so `Var.deref` stays backend-agnostic. The
+            // compiler wraps the body in a cleanup handler so
+            // `op_pop_binding_frame` runs on both the success and the
+            // exception edge.
             const n_pairs: usize = instr.operand;
             if (sp < n_pairs * 2)
                 return raiseInternal("vm: op_push_binding_frame stack underflow");
@@ -1146,8 +1150,8 @@ inline fn stepOnce(
                     rt.gpa.destroy(frame);
                     var name_buf: [512]u8 = undefined;
                     const qualified = std.fmt.bufPrint(&name_buf, "{s}/{s}", .{ var_ptr.ns.name, var_ptr.name }) catch var_ptr.name;
-                    // D-555: carry the instruction's compiled loc so the caret
-                    // renderer fires (tree_walk parity; was a bare `.{}`).
+                    // Carry the instruction's compiled loc so the caret
+                    // renderer fires (tree_walk parity).
                     return error_catalog.raise(.binding_target_not_dynamic, instr_loc, .{ .@"var" = qualified });
                 }
                 frame.bindings.put(rt.gpa, var_ptr, val) catch {
@@ -1158,7 +1162,7 @@ inline fn stepOnce(
             }
             sp = @intCast(base);
             env_mod.pushFrame(frame);
-            // current_ns is a materialised view of *ns* (ADR-0085):
+            // current_ns is a materialised view of *ns*:
             // refresh in case this frame rebinds *ns*.
             env.refreshCurrentNs();
         },
@@ -1200,13 +1204,11 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_in_ns => {
-            // ADR-0032 in-ns — mirror of tree_walk::evalInNs.
-            // Per ADR-0035 D9 second amendment there is NO
-            // auto-refer of rt + clojure.core here: `(in-ns 'foo)`
-            // is a naked ns switch. `.clj` heads use
-            // `(ns foo (:refer-clojure))` which compiles to
-            // `op_ns_with_refer_clojure` (= this opcode + both
-            // refers).
+            // Mirror of tree_walk's evalInNs. `(in-ns 'foo)` is a
+            // naked ns switch — NO auto-refer of clojure.core.
+            // `.clj` heads use `(ns foo (:refer-clojure))`, which
+            // compiles to `op_ns_with_refer_clojure` (= this opcode
+            // + the clojure.core refer).
             if (instr.operand >= chunk.constants.len)
                 return raiseInternal("vm: op_in_ns constant index out of range");
             const name_val = chunk.constants[instr.operand];
@@ -1216,16 +1218,15 @@ inline fn stepOnce(
             env.setCurrentNs(target_ns);
             if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
-            // Return the namespace value (clj parity, ADR-0083 / ADR-0085).
+            // Return the namespace value, not nil (clj parity).
             stack[sp] = Env.nsValue(target_ns);
             sp += 1;
         },
         .op_ns_with_refer_clojure => {
-            // ADR-0035 D9 second amendment + ADR-0036 dual-
-            // backend parity contract. Mirror of post-T3
-            // tree_walk::evalNs when `refer_clojure = true`.
-            // op_in_ns logic + referAll(clojure.core) — the single
-            // core surface per ADR-0171.
+            // Mirror of tree_walk's evalNs when `refer_clojure = true`:
+            // op_in_ns logic + referAll(clojure.core). clojure.core is
+            // the single auto-refer source (Zig builtins intern there
+            // directly).
             if (instr.operand >= chunk.constants.len)
                 return raiseInternal("vm: op_ns_with_refer_clojure constant index out of range");
             const name_val = chunk.constants[instr.operand];
@@ -1241,16 +1242,16 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_ns_with_filter => {
-            // D-098: mirror of tree_walk::evalNs's refer-clojure branch
+            // Mirror of tree_walk's evalNs refer-clojure branch
             // with the `:exclude`/`:only` filter. Enter the ns, apply the
-            // docstring meta (D-239 sibling), then refer clojure.core
+            // ns meta + docstring, then refer clojure.core
             // through referAllWithFilter (skipped when the ns form had no
             // refer-clojure step — the entry's flag).
             if (instr.operand >= chunk.ns_filters.len)
                 return raiseInternal("vm: op_ns_with_filter index out of range");
             const f = chunk.ns_filters[instr.operand];
             env.setCurrentNs(try env.findOrCreateNs(f.name));
-            // D-554: attr merge first, then the docstring (doc wins on :doc).
+            // Attr merge first, then the docstring (an explicit doc wins on :doc).
             if (f.attr_const != opcode_mod.NsFilterEntry.NO_ATTR) {
                 if (f.attr_const >= chunk.constants.len)
                     return raiseInternal("vm: op_ns_with_filter attr_const out of range");
@@ -1268,16 +1269,16 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_require => {
-            // ADR-0035 D2 — mirror of tree_walk::evalRequire.
+            // Mirror of tree_walk's evalRequire.
             if (instr.operand >= chunk.constants.len)
                 return raiseInternal("vm: op_require constant index out of range");
             const name_val = chunk.constants[instr.operand];
             if (!name_val.isString())
                 return raiseInternal("vm: op_require constant is not a String");
             const ns_name = string_mod.asString(name_val);
-            // ADR-0163 D-516: one load path (loaded_libs-keyed + bytecode-region
-            // lazy load), not the mappings.count proxy + source-only inline copy.
-            // D-555: instr_loc so a lib_not_found renders the caret (tree_walk parity).
+            // One load path for every require: loaded_libs-keyed + bytecode-region
+            // lazy load (never a "does the ns have mappings yet" guess).
+            // instr_loc so a lib_not_found renders the caret (tree_walk parity).
             _ = try loader.loadOrFindNs(rt, env, ns_name, instr_loc);
             if (sp >= stack.len)
                 return raiseInternal("vm: operand stack overflow");
@@ -1285,17 +1286,14 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_require_with_libspec => {
-            // Row 7.10 cycle 3 (D-073 sub-site d discharge,
-            // ADR-0036 first real-feature exercise) — mirror of
-            // tree_walk::evalRequire's full body. Pops the
+            // Mirror of tree_walk's evalRequire full body. Pops the
             // LibspecEntry from the chunk side-table, runs the
             // op_require prelude, then applies alias + refers.
             if (instr.operand >= chunk.libspecs.len)
                 return raiseInternal("vm: op_require_with_libspec libspec index out of range");
             const spec = chunk.libspecs[instr.operand];
-            // ADR-0163 D-516: one load path (loaded_libs-keyed + bytecode-region
-            // lazy load), not the mappings.count proxy + source-only inline copy.
-            // D-555: instr_loc so a lib_not_found renders the caret (tree_walk parity).
+            // Same single load path as op_require; instr_loc so a
+            // lib_not_found renders the caret (tree_walk parity).
             const target_ns = try loader.loadOrFindNs(rt, env, spec.ns_name, instr_loc);
             const here = env.current_ns orelse
                 return error_catalog.raise(.current_namespace_missing, .{}, .{ .sym = spec.ns_name });
@@ -1332,7 +1330,7 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_vector_literal => {
-            // Closes D-060: pop N values from top of stack, build a
+            // Pop N values from top of stack, build a
             // PersistentVector, push result.
             const n: u16 = instr.operand;
             if (sp < n) return raiseInternal("vm: op_vector_literal underflows operand stack");
@@ -1347,13 +1345,13 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_map_literal => {
-            // Closes D-059: pop N stack values (= 2 * pair_count),
+            // Pop N stack values (= 2 * pair_count),
             // assoc k/v pairs in source order into an empty
             // ArrayMap, push result.
             const n: u16 = instr.operand;
             if (sp < n) return raiseInternal("vm: op_map_literal underflows operand stack");
             const pairs = stack[sp - n .. sp];
-            // PERF: D-386 (O-026) one-alloc array-map build for the common
+            // PERF: one-alloc array-map build for the common
             // small-literal-with-simple-keys case (gc_stress: `{:a i :b … :c …}`
             // ×100k), instead of an N-deep assoc fold that copies the ArrayMap each
             // step. Guarded so the dedup keyEq is pure (no GC during the fill).
@@ -1375,7 +1373,7 @@ inline fn stepOnce(
             }
         },
         .op_set_literal => {
-            // Closes D-061: pop N values, conj-fold into an empty
+            // Pop N values, conj-fold into an empty
             // HashSet (duplicates collapse), push result.
             const n: u16 = instr.operand;
             if (sp < n) return raiseInternal("vm: op_set_literal underflows operand stack");
@@ -1389,7 +1387,7 @@ inline fn stepOnce(
             sp += 1;
         },
         .op_ctor_call => {
-            // operand = index into the ctor_sites side-table (D-233; the
+            // operand = index into the ctor_sites side-table (the
             // class name carries full width, no 8-bit name_idx packing).
             if (instr.operand >= chunk.ctor_sites.len)
                 return raiseInternal("vm: op_ctor_call site index out of range");
@@ -1400,20 +1398,19 @@ inline fn stepOnce(
             const args_slice = stack[sp - arg_count .. sp];
             // Shared resolver/dispatcher (deftype/record + java-surface
             // `<init>`) — identical to TreeWalk's evalConstructorCall so a
-            // `(java.io.File. …)` ctor works on both backends (D-196
-            // blocker 3; was a deftype-only rt.types.get path here).
+            // `(java.io.File. …)` ctor works on both backends.
             const new_val = try special_forms.constructInstance(rt, env, type_name, args_slice, .{});
             sp -= arg_count;
             stack[sp] = new_val;
             sp += 1;
         },
         .op_method_call => {
-            // operand = call_site_idx. ADR-0050 am1: the unified
-            // instance-member resolver runs field-first (deftype/record
+            // operand = call_site_idx. The unified instance-member
+            // resolver (ADR-0050) runs field-first (deftype/record
             // field_layout), then method_table; `field_only` (the
-            // `.-name` form) stops after the field attempt. This folds
-            // the retired op_field_access in, and lets native receivers
-            // (field_layout == null) reach method_table for `(.m str)`.
+            // `.-name` form) stops after the field attempt. Native
+            // receivers (field_layout == null) reach method_table for
+            // `(.m str)`.
             if (instr.operand >= chunk.call_sites.len)
                 return raiseInternal("vm: op_method_call call_site index out of range");
             const cs_entry = &chunk.call_sites[instr.operand];
@@ -1425,7 +1422,7 @@ inline fn stepOnce(
             } else if (receiver.tag() == .reified_instance) blk: {
                 break :blk receiver.decodePtr(*const td_mod.ReifiedInstance).descriptor;
             } else if (receiver.tag() == .host_instance) blk: {
-                // ADR-0106: a stateful host object carries its surface descriptor inline.
+                // A stateful host object carries its surface descriptor inline.
                 break :blk @import("../../runtime/host_instance.zig").asHostInstance(receiver).descriptor;
             } else try rt.nativeDescriptor(receiver.tag());
 
@@ -1435,7 +1432,7 @@ inline fn stepOnce(
             const field_val: ?Value = if (td.field_layout) |layout| fblk: {
                 for (layout) |fe| {
                     if (std.mem.eql(u8, fe.name, cs_entry.method_name)) {
-                        // D-444 / ADR-0152: `^:volatile-mutable` → atomic acquire read.
+                        // `^:volatile-mutable` → atomic acquire read.
                         const inst = receiver.decodePtr(*const td_mod.TypedInstance);
                         break :fblk if (fe.is_volatile) inst.getFieldVolatile(fe.index) else inst.fields()[fe.index];
                     }
@@ -1455,7 +1452,7 @@ inline fn stepOnce(
                         return error_catalog.raise(.feature_not_supported, .{}, .{ .name = "method declared but not implemented" });
                     const args_slice = stack[sp - arg_count .. sp];
                     const vt = rt.vtable orelse return error.NoVTable;
-                    // D-326: frame the user `<protocol>/<method>` so the interop form
+                    // Frame the user `<protocol>/<method>` so the interop form
                     // `(.m inst)` traces match the protocol-fn form — parity with
                     // TreeWalk's evalInstanceMember (shared helper; host methods elide).
                     const pushed = error_mod.pushUserMethodFrame(me.protocol_name, me.method_name, instr_loc);
@@ -1465,13 +1462,13 @@ inline fn stepOnce(
                     stack[sp] = result;
                     sp += 1;
                 } else if (try object_method.tryObjectMethod(rt, env, receiver, td, cs_entry.method_name, stack[sp - arg_count + 1 .. sp])) |r| {
-                    // Universal java.lang.Object method fallback (D-207):
+                    // Universal java.lang.Object method fallback:
                     // str/=/hash/class — mirrors TreeWalk's evalInstanceMember.
                     sp -= arg_count;
                     stack[sp] = r;
                     sp += 1;
                 } else if (try clojure_lang_method.tryClojureLangMethod(rt, env, receiver, cs_entry.method_name, stack[sp - arg_count + 1 .. sp], .{})) |r| {
-                    // clojure.lang read/op methods on a native collection (D-371):
+                    // clojure.lang read/op methods on a native collection:
                     // .valAt/.cons/.count/… → the clojure.core equivalent.
                     sp -= arg_count;
                     stack[sp] = r;
@@ -1486,8 +1483,8 @@ inline fn stepOnce(
             }
         },
         .op_static_method_call => {
-            // operand = call_site_idx. ADR-0050 am2 (D-130): static
-            // dispatch — the descriptor is the analyze-time pointer in
+            // operand = call_site_idx. Static dispatch — the
+            // descriptor is the analyze-time pointer in
             // the call-site (no receiver to derive it from). Raw
             // `lookupMethod` matches TreeWalk's evalStaticMethodCall
             // (no CallSite cache); arg_count is user args only.
@@ -1517,7 +1514,7 @@ inline fn stepOnce(
             sp += 1;
         },
     }
-    // ADR-0118 cycle 2.5: every operand this instruction newly pushed inherits
+    // Every operand this instruction newly pushed inherits
     // its compiled source loc, so a later `op_call` can read each arg's column.
     // (`op_call` pops before it pushes, so its result slot sits below `sp_entry`
     // and is set explicitly in its own arm — not by this sweep.)
@@ -1527,14 +1524,14 @@ inline fn stepOnce(
 }
 
 fn matchExceptionClass(class_name: []const u8, thrown: Value) bool {
-    // Row 7.11 cycle 2 (D-077): delegate to the shared host-class
-    // hierarchy table in `runtime/error/host_class.zig`. Mirror of
-    // tree_walk.catchMatches:671 — both backends share the predicate.
+    // Delegate to the shared host-class hierarchy table in
+    // `runtime/error/host_class.zig`. Mirror of
+    // tree_walk.catchMatches — both backends share the predicate.
     return host_class.matches(thrown, class_name);
 }
 
 fn matchExceptionTypeKeyword(rt: *Runtime, kw_val: Value, thrown: Value) bool {
-    // Row 14.5 (D-014b): keyword catch matches when `thrown` is an ex-info
+    // Keyword catch matches when `thrown` is an ex-info
     // whose data map's `:type` equals the catch keyword (interned
     // identity). Mirror of tree_walk.catchMatches `.type_keyword` arm.
     if (thrown.tag() != .ex_info) return false;
@@ -1577,10 +1574,10 @@ pub fn installVTable(rt: *Runtime) void {
 /// stays Layer-0-only (per `zone_deps.md`).
 ///
 /// `pub` so `driver.installVTable` can wire it into the **tree_walk**
-/// vtable too (ADR-0056 Cycle 0): a tree_walk-default runtime must
+/// vtable too (ADR-0056): a tree_walk-default runtime must
 /// dispatch bytecode-backed fns (AOT-restored bootstrap / `cljw build`)
-/// on the VM via the per-method `bytecode`/`body` hybrid
-/// (`tree_walk.zig:1004`). Inert until a bytecode fn exists in the
+/// on the VM via tree_walk's per-method `bytecode`/`body` hybrid.
+/// Inert until a bytecode fn exists in the
 /// runtime (pure-source tree_walk fns have `bytecode == null`).
 pub fn evalChunkErased(
     rt: *Runtime,
@@ -1609,7 +1606,7 @@ const Fixture = struct {
     rt: Runtime,
     env: Env,
 
-    // D-413: init in place — self-referential fixture (env.rt -> &rt,
+    // Init in place — self-referential fixture (env.rt -> &rt,
     // rt.io -> &threaded) must not be moved by value. See diff_test.zig.
     fn init(f: *Fixture, alloc: std.mem.Allocator) !void {
         f.threaded = std.Io.Threaded.init(alloc, .{});
