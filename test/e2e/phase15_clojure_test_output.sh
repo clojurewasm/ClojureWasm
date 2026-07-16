@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # test/e2e/phase15_clojure_test_output.sh — clojure.test OUTPUT fidelity (D-463).
-# The report format is clj-grounded (oracle: clj 1.12). cljw has no source
-# location on Vars and no JVM stacktrace, so `(file:line)` and the :error cause
-# trace are accepted divergences (AD-041); everything else matches clj byte-for-
-# line: `FAIL in (test-name)` via testing-vars-str, `(not (= 1 2))` actual,
+# The report format is clj-grounded (oracle: clj 1.12). The FAIL line carries
+# a ` (file:line)` suffix from the deftest VAR's source meta (D-563b) — clj
+# points at the failing `is` via its JVM stack instead (deftest-line vs
+# is-line = the narrowed AD-041); the :error cause trace stays AD-041.
+# Everything else matches clj byte-for-line: `(not (= 1 2))` actual,
 # `outer inner` context line, the `Testing <ns>` begin line, and a re-enabled
 # `*test-out*` (binding it redirects report output — was a no-JVM deferral).
 # Uses `cljw -` (stdin program: only explicit output, no per-form echo). Layer 2.
@@ -23,7 +24,7 @@ A=$("$BIN" - <<'EOF' 2>&1
 EOF
 )
 has 'A-testing'   "$A" 'Testing demo'
-has 'A-fail-in'   "$A" 'FAIL in (eqfail)'
+hasf 'A-fail-in'  "$A" 'FAIL in (eqfail) ('   # suffix present (D-563b; stdin label)
 has 'A-expected'  "$A" 'expected: (= 1 2)'
 has 'A-actual'    "$A" '  actual: (not (= 1 2))'
 has 'A-ran'       "$A" 'Ran 1 tests containing 1 assertions.'
@@ -71,6 +72,6 @@ F=$("$BIN" - <<'EOF' 2>&1
 EOF
 )
 hasf 'F-capture' "$F" 'CAP['
-hasf 'F-captured-fail' "$F" 'FAIL in (f)'
+hasf 'F-captured-fail' "$F" 'FAIL in (f) ('
 
 echo "OK — phase15_clojure_test_output (D-463) green"

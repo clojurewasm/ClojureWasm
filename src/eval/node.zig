@@ -160,6 +160,12 @@ pub const DefNode = struct {
     /// interns an UNBOUND placeholder (`internDeclare`) — it must not clobber
     /// an existing root (clj parity) and leaves `Var.bound` false for `bound?`.
     has_init: bool = true,
+    /// The Var-meta map EXPRESSION (D-563b): user `^meta` + `:doc` merged
+    /// under the analyzer-minted `:line`/`:column`/`:file` (compiler wins on
+    /// collision, clj parity). Evaluated at def time and set as `Var.meta`
+    /// by both backends (tree_walk evalDef / VM op_var_meta), so def meta
+    /// survives the AOT wire. Null only for internal defs with no location.
+    meta_expr: ?*const Node = null,
     loc: SourceLocation = .{},
 };
 

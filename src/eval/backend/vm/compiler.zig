@@ -886,6 +886,14 @@ const Compiler = struct {
         if (n.is_macro) packed_operand |= opcode_mod.DEF_FLAG_MACRO;
         if (n.is_private) packed_operand |= opcode_mod.DEF_FLAG_PRIVATE;
         try self.emit(if (n.has_init) .op_def else .op_def_unbound, packed_operand);
+        // D-563(b): def meta — the map is BUILT by ordinary ops (the wire
+        // constant pool has no map kind) on top of the Var op_def left on
+        // the stack; op_var_meta pops it and sets Var.meta. Meta thereby
+        // rides any AOT artifact.
+        if (n.meta_expr) |me| {
+            try self.compileNode(me);
+            try self.emit(.op_var_meta, 0);
+        }
     }
 
     /// Emit a jump opcode with a placeholder operand and return the

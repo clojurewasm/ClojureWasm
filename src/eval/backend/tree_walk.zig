@@ -875,6 +875,12 @@ fn evalDef(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.DefNode) !Value
     var_ptr.flags.dynamic = n.is_dynamic;
     var_ptr.flags.macro_ = n.is_macro;
     var_ptr.flags.private = n.is_private;
+    // D-563(b): the merged def-meta (user ^meta/:doc under the compiler's
+    // :line/:column/:file) is set at DEF time so it also rides the AOT wire
+    // (the VM twin is op_var_meta).
+    if (n.meta_expr) |me| {
+        var_ptr.meta = try eval(rt, env, locals, me);
+    }
     return Value.encodeHeapPtr(.var_ref, var_ptr);
 }
 

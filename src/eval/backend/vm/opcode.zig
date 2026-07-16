@@ -353,6 +353,15 @@ pub const Opcode = enum(u8) {
     /// vector index; every error case (OOB / negative / non-vector / nil, which
     /// 2-arg `nth` RAISES) defers to the cached `nth` Var for the correct error.
     op_nth2 = 0x55,
+    /// Pops a meta map; sets it as `Var.meta` of the `.var_ref` left at the
+    /// stack top (the var STAYS — def's result value). Emitted right after
+    /// `op_def` / `op_def_unbound` when the def carries meta — since D-563(b)
+    /// the analyzer mints source meta (:line/:column/:file) for every def, so
+    /// effectively always. The meta map is BUILT by ordinary ops on the stack
+    /// (the wire constant pool has no map kind), so def meta rides any AOT
+    /// artifact — fixing the pre-existing loss where a `cljw build` app's
+    /// docstrings vanished while the lazy-source bootstrap kept them.
+    op_var_meta = 0x56,
 
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
@@ -368,6 +377,7 @@ pub const Opcode = enum(u8) {
             .op_const,
             .op_load_local,
             .op_store_local,
+            .op_var_meta,
             .op_def,
             .op_def_unbound,
             .op_get_var,
@@ -462,6 +472,7 @@ pub const Opcode = enum(u8) {
         return switch (self) {
             .op_const, .op_load_local => true,
             .op_store_local,
+            .op_var_meta,
             .op_def,
             .op_def_unbound,
             .op_get_var,

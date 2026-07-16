@@ -69,10 +69,19 @@ active:
       the value; call heads fall through to analyzeCall. e2e: 6 cases on
       phase14_host_class_identity (map String/.length, Thread/new,
       StringBuilder chain, Date/new higher-order), clj-1.12-oracle-matched.
-      (b) **Var source meta** — clj vars carry :line/:file/:column from
-      the compiler; cljw def sites know their SourceLocation but drop it.
-      Adding it converges `(meta #'x)` and clojure.test's
-      ` (file:line)` FAIL-line suffix (AD-041's divergence dissolves).
+      (b) DISCHARGED 2026-07-17 — Vars carry :line/:column/:file (analyzeDef
+      mints them under user ^meta/:doc, compiler-wins on collision per clj
+      oracle) AND def meta now RIDES THE AOT WIRE: DefNode.meta_expr (the
+      merged map, wholesale-quoted = cljw's static-data meta semantics) is
+      evaluated at def time by both backends — tree_walk evalDef + the new
+      op_var_meta opcode (envelope v9). This also FIXED the pre-existing
+      user-AOT docstring loss ((:doc (meta #'f)) was nil in `cljw build`
+      artifacts while lazy-source bootstrap kept it). clojure.test's
+      ` (file:line)` suffix restored from the deftest var's meta — AD-041
+      NARROWED (deftest-line vs clj's assertion-stack-line residual).
+      e2e phase15_var_source_meta (8) + diff case + the narrowed pin.
+      Residual: defmacro's def_node has no meta_expr yet (macro vars keep
+      analyze-time meta only; small follow-up on the same channel).
       (c) **var-existence gaps mainline completion surfaced**:
       `default-data-readers` (needs reader fns exposed as vars) and
       `defstruct`/`create-struct`/`struct-map`/`accessor` (legacy

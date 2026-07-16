@@ -607,6 +607,47 @@ pub fn analyzeDef(
         const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
         var_ptr.meta = try analyzer_mod.formToValue(rt, env, try unquoteMetaValues(arena, meta_map));
     }
+    // D-563(b): the full Var-meta EXPRESSION — user `^meta` + `:doc`, with the
+    // compiler-minted `:line`/`:column`/`:file` appended AFTER them (a map
+    // literal is last-key-wins, so the source location overrides a user
+    // `^{:line …}` — clj parity). Both backends evaluate it at def time and
+    // set `Var.meta`, so def meta rides the AOT wire (the analyze-time lift
+    // above only covers the pre-eval window). Skipped for locationless
+    // internal defs (line 0 = no real source position).
+    const def_meta_expr: ?*const Node = blk: {
+        const src_loc = items[1].location;
+        if (src_loc.line == 0) break :blk null;
+        var meta_items: std.ArrayList(Form) = .empty;
+        if (items[1].meta) |mf| {
+            if (mf.data == .map) try meta_items.appendSlice(arena, mf.data.map);
+        }
+        if (doc_form) |d| {
+            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location });
+            try meta_items.append(arena, d);
+        }
+        const kws = [_]struct { name: []const u8, v: i64 }{
+            .{ .name = "line", .v = @intCast(src_loc.line) },
+            .{ .name = "column", .v = @intCast(src_loc.column) },
+        };
+        for (kws) |kv| {
+            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = kv.name } }, .location = form.location });
+            try meta_items.append(arena, .{ .data = .{ .integer = kv.v }, .location = form.location });
+        }
+        try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "file" } }, .location = form.location });
+        try meta_items.append(arena, .{ .data = .{ .string = src_loc.file }, .location = form.location });
+        const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
+        // The whole map is wrapped in (quote …): def-meta is STATIC DATA in
+        // cljw (same semantics as the formToValue lift above — defn's raw
+        // `:arglists ([s] …)` lists must never evaluate; clj's
+        // evaluate-meta-exprs nuance is out of scope, AD candidate if ever
+        // hit). The quoted map analyzes to ONE composite constant, which the
+        // AOT wire carries (quoted literals round-trip `cljw build` today).
+        const quote_items = try arena.alloc(Form, 2);
+        quote_items[0] = macro_dispatch.makeSymbol("quote", form.location);
+        quote_items[1] = try unquoteMetaValues(arena, meta_map);
+        const quoted: Form = .{ .data = .{ .list = quote_items }, .location = form.location };
+        break :blk try analyzer_mod.analyze(arena, rt, env, scope, quoted, macro_table);
+    };
     // `^:dynamic` / `^:private` on the def target set the Var flags (evalDef /
     // op_def copy DefNode flags onto the Var). Without this the metadata was
     // lifted into Var.meta but the flags stayed false, so `(def ^:dynamic *x*)`
@@ -634,6 +675,7 @@ pub fn analyzeDef(
         .is_dynamic = is_dynamic,
         .is_private = is_private,
         .has_init = init_idx != null,
+        .meta_expr = def_meta_expr,
         .loc = form.location,
     } };
     return n;

@@ -550,6 +550,19 @@ inline fn stepOnce(
             stack[sp] = Value.encodeHeapPtr(.var_ref, var_ptr);
             sp += 1;
         },
+        .op_var_meta => {
+            // D-563(b): stack is [.., var, meta] — pop the meta map, set it as
+            // the Var's meta (the merged user ^meta/:doc + :line/:column/:file
+            // the analyzer minted); the var stays as def's result value.
+            if (sp < 2) return raiseInternal("vm: op_var_meta needs var + meta on the stack");
+            sp -= 1;
+            const meta_val = stack[sp];
+            const var_val = stack[sp - 1];
+            if (var_val.tag() != .var_ref)
+                return raiseInternal("vm: op_var_meta target is not a Var");
+            const var_ptr = var_val.decodePtr(*env_mod.Var);
+            var_ptr.meta = meta_val;
+        },
         .op_def_unbound => {
             // No-init `(def x)`: intern an UNBOUND placeholder (no stack value,
             // does not clobber an existing root, Var.bound stays false).

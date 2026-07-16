@@ -76,7 +76,7 @@ const tree_walk = @import("../backend/tree_walk.zig");
 const Function = tree_walk.Function;
 
 pub const MAGIC: [4]u8 = .{ 'C', 'L', 'J', 'W' };
-pub const VERSION: u16 = 8; // v8 (ADR-0174): host-class fqcn identity unification — baked class-value constants carry JVM FQCNs ("java.util.Date", was "Date"/"cljw.java.*"), so ≤v7 artifacts are version-rejected; v7 (ADR-0173 C2'): 4B WireInstr wire + 4B-aligned instr sections + source_file/has_handlers in the chunk + interned-name constant pool (pool_ref) + headerless nested fn-method chunks; v6: rt ns merged into clojure.core (ADR-0171)
+pub const VERSION: u16 = 9; // v9 (D-563b): op_var_meta — def meta (:doc + :line/:column/:file) rides the wire, fixing the user-AOT docstring loss; v8 (ADR-0174): host-class fqcn identity unification — baked class-value constants carry JVM FQCNs ("java.util.Date", was "Date"/"cljw.java.*"), so ≤v7 artifacts are version-rejected; v7 (ADR-0173 C2'): 4B WireInstr wire + 4B-aligned instr sections + source_file/has_handlers in the chunk + interned-name constant pool (pool_ref) + headerless nested fn-method chunks; v6: rt ns merged into clojure.core (ADR-0171)
 
 pub const SerializeError = error{
     OutOfMemory,

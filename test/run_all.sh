@@ -544,6 +544,7 @@ run_step "e2e_phase14_static_member_diagnostics" "bash test/e2e/phase14_static_m
 run_step "e2e_phase14_system_members"        "bash test/e2e/phase14_system_members.sh"
 run_step "e2e_phase14_host_constants"        "bash test/e2e/phase14_host_constants.sh"
 run_step "e2e_phase15_thread_lifecycle"      "bash test/e2e/phase15_thread_lifecycle.sh"
+run_step "e2e_phase15_var_source_meta"       "bash test/e2e/phase15_var_source_meta.sh"
 run_step "e2e_phase14_self_seq_print"        "bash test/e2e/phase14_self_seq_print.sh"
 run_step "e2e_phase14_count_walk"            "bash test/e2e/phase14_count_walk.sh"
 run_step "e2e_phase14_sequential_equal"      "bash test/e2e/phase14_sequential_equal.sh"

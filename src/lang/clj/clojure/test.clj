@@ -15,10 +15,12 @@
 ;; multimethod (`=` / `thrown?` / default), a `report` multimethod keyed on
 ;; `:type`, and `*report-counters*` as a dynamic var holding an atom.
 ;;
-;; cljw adaptations (no JVM): vars carry no source location, so the FAIL/ERROR
-;; line omits clj's ` (file:line)` suffix and `report :error` cannot print a JVM
-;; cause trace — both are AD-041. Deferred: per-var lifecycle events
-;; (begin/end-test-var, end-test-ns), use-fixtures, with-test.
+;; cljw adaptations (no JVM): the FAIL/ERROR ` (file:line)` suffix reads the
+;; deftest VAR's :file/:line meta (D-563b) where clj reads the failing
+;; assertion's stack frame (deftest-line vs is-line — the narrowed AD-041);
+;; `report :error` cannot print a JVM cause trace (also AD-041). Deferred:
+;; per-var lifecycle events (begin/end-test-var, end-test-ns), use-fixtures,
+;; with-test.
 
 (ns clojure.test
   (:refer-clojure)
@@ -65,10 +67,19 @@
   `(binding [*out* *test-out*] ~@body))
 
 ;; A string naming the test(s) currently running, for a reporter's pass/fail
-;; line: the simple test name(s) in a list, e.g. "(my-test)" (clj form, minus
-;; the ` (file:line)` suffix — cljw has no source location on Vars, AD-041).
+;; line: "(my-test) (file.clj:12)". The suffix reads the deftest VAR's
+;; :file/:line source meta (D-563b); clj derives it from the failing
+;; ASSERTION's stack frame instead, so clj points at the `is` line where
+;; cljw points at the deftest line — the narrowed AD-041 residual (no JVM
+;; stack frames to read).
 (defn testing-vars-str [_m]
-  (str "(" (clojure.string/join " " (reverse (map #(:name (meta %)) *testing-vars*))) ")"))
+  (let [names (str "(" (clojure.string/join " " (reverse (map #(:name (meta %)) *testing-vars*))) ")")
+        vm (meta (first *testing-vars*))
+        file (:file vm)
+        line (:line vm)]
+    (if (and file line)
+      (str names " (" (last (clojure.string/split (str file) #"/")) ":" line ")")
+      names)))
 
 ;; A string of the active `testing` context strings (outermost first).
 (defn testing-contexts-str []

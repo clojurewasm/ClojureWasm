@@ -102,6 +102,14 @@ test "diff: D-413 unresolved symbol → clean symbol_unresolved, not a panic" {
     try testing.expectError(error.NameError, r.vm);
 }
 
+test "diff: D-563b def meta — user ^meta + compiler :line land on the Var in BOTH backends (op_var_meta ≡ evalDef meta_expr)" {
+    var f: Fixture = undefined;
+    try Fixture.init(&f, testing.allocator);
+    defer f.deinit();
+    // user key 7 + compiler-minted :line 1 → 8 (identical across backends)
+    try f.check("(def ^{:k 7} dm 1) (+ (:k (meta (var dm))) (:line (meta (var dm))))", 8);
+}
+
 test "diff: arithmetic primitive" {
     var f: Fixture = undefined;
     try Fixture.init(&f, testing.allocator);
