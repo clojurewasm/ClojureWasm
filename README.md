@@ -33,7 +33,7 @@ still use what other languages have already built.
 
 ## Features
 
-- **Small and quick to start** — one static binary of about 7.5 MB with the
+- **Small and quick to start** — one static binary of about 7.8 MB with the
   Wasm JIT engine included (for scale: babashka's native binary is ~71 MB;
   [measured comparison](docs/works/binary_size.md)), starting in ~5 ms, which
   suits short-lived, start-and-stop workloads (CLI tools, serverless, scripts).

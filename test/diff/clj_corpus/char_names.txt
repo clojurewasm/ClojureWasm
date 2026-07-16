@@ -1,0 +1,20 @@
+(Character/getName 65)
+;;=> "LATIN CAPITAL LETTER A"
+(Character/getName 0)
+;;=> "NULL"
+(Character/getName 7)
+;;=> "BEL"
+(Character/getName 19968)
+;;=> "CJK UNIFIED IDEOGRAPHS 4E00"
+(Character/getName 44032)
+;;=> "HANGUL SYLLABLES AC00"
+(Character/getName 63744)
+;;=> "CJK COMPATIBILITY IDEOGRAPH-F900"
+(Character/getName 888)
+;;=> nil
+(Character/codePointOf "LATIN SMALL LETTER B")
+;;=> 98
+(Character/codePointOf "bel")
+;;=> 7
+(Character/codePointOf "CJK UNIFIED IDEOGRAPHS 4E00")
+;;=> 19968

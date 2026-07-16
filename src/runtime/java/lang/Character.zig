@@ -15,9 +15,9 @@
 //! arg type back (`(Character/toUpperCase \a)` → `\A`,
 //! `(Character/toUpperCase 97)` → `65`). An out-of-range int codepoint
 //! is NOT an error for the classification group (JVM returns the
-//! "unassigned" answer: false / echo / 0 / -1). `Character/getName` is
-//! the one member not carried — the Unicode name table is a size-heavy
-//! generated asset (D-561).
+//! "unassigned" answer: false / echo / 0 / -1). `Character/getName` +
+//! `Character/codePointOf` ride the generated word-indexed name table
+//! (`char_name.zig`, D-561 — pre-compressed, decoded once per process).
 
 const std = @import("std");
 const host_api = @import("../_host_api.zig");
@@ -26,6 +26,7 @@ const Value = @import("../../value/value.zig").Value;
 const Runtime = @import("../../runtime.zig").Runtime;
 const Env = @import("../../env.zig").Env;
 const string_collection = @import("../../collection/string.zig");
+const char_name = @import("../../char_name.zig");
 const java_array = @import("../../collection/java_array.zig");
 const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
@@ -377,14 +378,38 @@ fn getDirectionality(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLo
     return Value.initInteger(@as(i64, charset.directionalityOf(cp)));
 }
 
-/// `(Character/getName cp)` — NOT carried: the Unicode character-name
-/// table is a size-heavy generated asset (D-561 tracks landing it as a
-/// word-indexed table).
+/// `(Character/getName cp)` — the Unicode name of the codepoint (JVM
+/// Character.getName; D-561): a stored UCD name, a control's pinned alias
+/// ("NULL"/"BEL"), an assigned-but-unnamed "<BLOCK NAME> <HEX>", or nil
+/// for an unassigned codepoint. Backed by the generated word-indexed
+/// table (`char_name.zig`), decompressed once per process.
 fn getName(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("Character/getName", args, 1, loc);
+    const cp = try argCodepoint(args[0], "Character/getName", loc);
+    const name = char_name.getName(rt.gpa, cp) catch
+        return error_catalog.raiseInternal(loc, "Character/getName: name table unavailable");
+    const n = name orelse return Value.nil_val;
+    defer rt.gpa.free(n);
+    return string_collection.alloc(rt, n);
+}
+
+/// `(Character/codePointOf name)` — the codepoint whose name matches
+/// (trimmed, case-insensitive; the exact inverse of getName's output
+/// forms — the UCD algorithmic spellings the JVM never emits are
+/// rejected). An unrecognized name raises (JVM IllegalArgumentException).
+fn codePointOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
-    _ = args;
-    return error_catalog.raise(.feature_not_supported, loc, .{ .name = "Character/getName" });
+    try error_catalog.checkArity("Character/codePointOf", args, 1, loc);
+    if (args[0].tag() != .string)
+        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "Character/codePointOf", .actual = @tagName(args[0].tag()) });
+    const s = string_collection.asString(args[0]);
+    const cp = char_name.codePointOf(s) catch
+        return error_catalog.raiseInternal(loc, "Character/codePointOf: name table unavailable");
+    const found = cp orelse
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "Character/codePointOf", .expected = "a Unicode character name", .actual = "an unrecognized name" });
+    return Value.initInteger(found);
 }
 
 /// `(Character/reverseBytes c)` — the char with its two UTF-16 bytes
@@ -533,6 +558,7 @@ fn initCharacter(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) an
         .{ "getType", &getType },
         .{ "getDirectionality", &getDirectionality },
         .{ "getName", &getName },
+        .{ "codePointOf", &codePointOf },
         .{ "forDigit", &forDigit },
         .{ "codePointAt", &codePointAt },
         .{ "codePointBefore", &codePointBefore },

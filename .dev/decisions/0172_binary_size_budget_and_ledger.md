@@ -406,6 +406,16 @@ dispositions grounded, platform binding declared, peer number measured).
 
 ## Revision history
 
+- **2026-07-17 (D-561 Unicode name table, conscious)**: `Character/getName`
+  + `codePointOf` land the full UCD 16.0.0 name table as pre-compressed
+  word-indexed blobs (40,013 names; 545 KB raw → ~280 KB stored after the
+  delta-varint index rework — the first fixed-width index cost +394 KB and
+  was reworked before landing). macOS 7,073,240 → 7,352,376 B (+279 KB);
+  Linux est. ~8.29 MB (~94% of ceiling — the NEXT size-relevant feature
+  must measure Linux first and likely needs a lever or a ceiling
+  amendment). README claim moved 7.5 → "about 7.8 MB" (covers both
+  platforms within the ±10% gate).
+
 - **2026-07-17 (ADR-0174 feature growth, conscious)**: the host-class
   identity & member-surface campaign grew the binary macOS
   6,974,584 → 7,073,240 B (+98.7 KB — Thread lifecycle worker + stdio

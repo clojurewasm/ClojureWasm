@@ -49,24 +49,6 @@ active:
       lastModified/renameTo/createNewFile set, Locale getters, Matcher
       region/replace family).
     last_reviewed: "2026-07-17"
-  - id: "D-561"
-    status: |-
-      open (2026-07-15, Character/* completion cycle). `Character/getName` is
-      the ONE java.lang.Character static not carried (explicit
-      feature_not_supported raise; every other static method + field landed
-      full-Unicode via the generated UCD tables — gen_unicode_case.py).
-      getName needs the UnicodeData col-1 NAME table: raw ~1MB for ~40K
-      non-algorithmic names; the JVM ships it word-indexed at ~90KB. DISCHARGE
-      SHAPE: extend gen_unicode_case.py with a word-dictionary encoding
-      (names → word-index sequences + algorithmic CJK/Hangul/Tangut ranges),
-      decode in a new charset helper; JVM parity incl. nil for unassigned.
-      Weigh the ~100-200KB binary cost against gap area II (Wasm/edge binary
-      size) before landing — if the cost is judged not worth it, re-classify
-      as an AD-NNN accepted divergence instead (the raise is explicit, not
-      silent).
-    category: "host-surface"
-    barrier: "none — implementable any time; the open question is the binary-size trade (gap area II), not a technical blocker"
-    last_reviewed: "2026-07-15"
   - id: "D-560"
     status: |-
       open (2026-07-13, ADR-0150 am1 accepted-cost row). The D-559 fix (the
@@ -2394,6 +2376,12 @@ standing:
     barrier: "open after the D-440 arc completes (R4 + R5 must first rewrite the bulk of 'Phase N' citations to gap-area terms). Premature adoption = ~70 dangling citations with no 1:1 redirect. Trigger: D-440 R4/R5 done + a user nod to re-architect the planning axis (it is depth-4, the project's organizing metaphor)."
     last_reviewed: "2026-06-15"
 discharged:
+  - id: "D-561"
+    status: |-
+      DISCHARGED 2026-07-17 — Character/getName + codePointOf land on the generated UCD 16.0.0 word-indexed name table (scripts/gen_unicode_names.py → unicode_names.zig, pre-compressed raw-deflate blobs + delta-varint index, decoded once per process in char_name.zig). JVM-oracle-exact semantics: stored names, pinned control aliases (scripts/data/jvm_control_names.txt), assigned-but-unnamed = "<BLOCK> <HEX>" (the JVM does NOT synthesize UCD algorithmic names), unassigned nil; codePointOf = trimmed case-insensitive inverse accepting exactly getName output forms. Corpus char_names.txt 10/10. Size: mac +279KB (7.35MB; ADR-0172 revision — README claim 7.8MB; Linux ~94% of ceiling, next size work measures Linux first).
+    category: "host-surface"
+    barrier: "none — implementable any time; the open question is the binary-size trade (gap area II), not a technical blocker"
+    last_reviewed: "2026-07-17"
   - id: "D-563"
     status: |-
       DISCHARGED 2026-07-17 (all sub-items resolved: a/a2/b/c landed, d = AD-043). ORIGINAL: open (2026-07-16, the D-562 inventory's enumerated residuals — each
@@ -6607,7 +6595,6 @@ discharged:
       decompress); varint operands + cross-region constant-pool dedup evaluated in
       the same pass (compaction shrinks with NO decompression copy). est -0.9-1.1MB.
     last_reviewed: "2026-07-16"
-
 conventions: |-
   - Structure: two top-level lists — `active:` and `discharged:`. Active entries carry id / status / category / barrier (+ optional quality_floor / last_reviewed); discharged entries carry id / discharged_at / resolution. Edit as YAML (no Markdown table to align).
   - New debt: grep `.dev/debt.yaml` for class-overlap before adding (per `.claude/rules/debt_dedup.md`).
