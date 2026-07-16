@@ -491,6 +491,49 @@ pub fn analyzeDefmacro(
         const meta_map: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
         placeholder_var.meta = try analyzer_mod.formToValue(rt, env, try unquoteMetaValues(arena, meta_map));
     }
+    // D-563(b): the wire-riding meta EXPRESSION for macro Vars — the same
+    // merged map plus the compiler-minted :line/:column/:file, wholesale-
+    // quoted to one composite constant (mirrors analyzeDef's def_meta_expr;
+    // macro docstrings now survive AOT artifacts too).
+    const macro_meta_expr: ?*const Node = blk: {
+        const src_loc = items[1].location;
+        if (src_loc.line == 0) break :blk null;
+        var meta_items: std.ArrayList(Form) = .empty;
+        if (items[1].meta) |mf| try meta_items.appendSlice(arena, mf.data.map);
+        if (attr_form) |a| try meta_items.appendSlice(arena, a.data.map);
+        if (doc_form) |d| {
+            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "doc" } }, .location = form.location });
+            try meta_items.append(arena, d);
+        }
+        const arglists_inner2 = if (multi_arity) blk2: {
+            const clauses = items[head..];
+            const av = try arena.alloc(Form, clauses.len);
+            for (clauses, 0..) |c, j| av[j] = c.data.list[0];
+            break :blk2 av;
+        } else blk2: {
+            const av = try arena.alloc(Form, 1);
+            av[0] = items[head];
+            break :blk2 av;
+        };
+        try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "arglists" } }, .location = form.location });
+        try meta_items.append(arena, .{ .data = .{ .list = arglists_inner2 }, .location = form.location });
+        const kws = [_]struct { name: []const u8, v: i64 }{
+            .{ .name = "line", .v = @intCast(src_loc.line) },
+            .{ .name = "column", .v = @intCast(src_loc.column) },
+        };
+        for (kws) |kv| {
+            try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = kv.name } }, .location = form.location });
+            try meta_items.append(arena, .{ .data = .{ .integer = kv.v }, .location = form.location });
+        }
+        try meta_items.append(arena, .{ .data = .{ .keyword = .{ .name = "file" } }, .location = form.location });
+        try meta_items.append(arena, .{ .data = .{ .string = src_loc.file }, .location = form.location });
+        const meta_map2: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
+        const quote_items = try arena.alloc(Form, 2);
+        quote_items[0] = macro_dispatch.makeSymbol("quote", form.location);
+        quote_items[1] = try unquoteMetaValues(arena, meta_map2);
+        const quoted: Form = .{ .data = .{ .list = quote_items }, .location = form.location };
+        break :blk try analyzer_mod.analyze(arena, rt, env, scope, quoted, macro_table);
+    };
 
     // Build the synthetic `fn` Form, then analyse it through the regular path
     // so multi-arity / closure / arg checks all ride existing FnNode
@@ -538,6 +581,7 @@ pub fn analyzeDefmacro(
         .value_expr = value_node,
         .is_macro = true,
         .is_private = is_private,
+        .meta_expr = macro_meta_expr,
         .loc = form.location,
     } };
     return n;

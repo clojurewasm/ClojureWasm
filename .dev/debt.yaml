@@ -80,8 +80,9 @@ active:
       ` (file:line)` suffix restored from the deftest var's meta — AD-041
       NARROWED (deftest-line vs clj's assertion-stack-line residual).
       e2e phase15_var_source_meta (8) + diff case + the narrowed pin.
-      Residual: defmacro's def_node has no meta_expr yet (macro vars keep
-      analyze-time meta only; small follow-up on the same channel).
+      Residual DISCHARGED 2026-07-17: defmacro's def_node now mints the
+      same wire-riding meta_expr (doc/arglists/line/column/file; macro
+      docstrings survive AOT artifacts — verified round-trip).
       (c) **var-existence gaps mainline completion surfaced**:
       `default-data-readers` (needs reader fns exposed as vars) and
       `defstruct`/`create-struct`/`struct-map`/`accessor` (legacy
