@@ -7,8 +7,8 @@
 
 - **HEAD**: `main` (`git log` = SSOT). Per-commit = smoke; commit
   **and** push (atomic Step 6). `build.zig.zon` `.zwasm` = tag pin
-  `v2.2.1` (binary-size release). Latest release: **v1.3.1** (2026-07-16; tap bumped +
-  brew-verified). CHANGELOG is the release-history SSOT.
+  `v2.2.1` (binary-size release). Latest release: **v1.4.0** (2026-07-16; the binary-size
+  campaign release — 6,974,584 B; tap bumped + brew-verified). CHANGELOG is the release-history SSOT.
 - **First task on resume MUST be**: self-select from the live
   `.dev/debt.yaml` `active:` list, easiest-first. Fresh well-scoped
   rows: **D-563** (a2: Clojure 1.12
