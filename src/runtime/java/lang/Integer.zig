@@ -360,6 +360,8 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 const integer_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
     .{ .name = "MAX_VALUE", .value = .{ .int = 2147483647 } },
     .{ .name = "MIN_VALUE", .value = .{ .int = -2147483648 } },
+    .{ .name = "BYTES", .value = .{ .int = 4 } },
+    .{ .name = "SIZE", .value = .{ .int = 32 } },
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{

@@ -224,6 +224,9 @@ const double_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
     // Unbiased binary exponent bounds of a normal double (int constants).
     .{ .name = "MAX_EXPONENT", .value = .{ .int = 1023 } },
     .{ .name = "MIN_EXPONENT", .value = .{ .int = -1022 } },
+    .{ .name = "MIN_NORMAL", .value = .{ .float = std.math.floatMin(f64) } },
+    .{ .name = "BYTES", .value = .{ .int = 8 } },
+    .{ .name = "SIZE", .value = .{ .int = 64 } },
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{

@@ -373,12 +373,23 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
     .init = &initFile,
 };
 
+/// Path separators (ADR-0174 D7). POSIX values — cljw ships Mac/Linux;
+/// a Windows build would flip these with the target (same source of truth
+/// as System.zig's staticProperty table).
+const file_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
+    .{ .name = "separator", .value = .{ .string = "/" } },
+    .{ .name = "separatorChar", .value = .{ .char = '/' } },
+    .{ .name = "pathSeparator", .value = .{ .string = ":" } },
+    .{ .name = "pathSeparatorChar", .value = .{ .char = ':' } },
+};
+
 var descriptor: type_descriptor.TypeDescriptor = .{
     .fqcn = "java.io.File",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},
     .method_table = &.{},
+    .static_fields = &file_static_fields,
     .parent = null,
     .meta = .nil_val,
 };

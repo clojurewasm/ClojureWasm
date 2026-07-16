@@ -612,6 +612,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 const math_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
     .{ .name = "PI", .value = .{ .float = std.math.pi } },
     .{ .name = "E", .value = .{ .float = std.math.e } },
+    .{ .name = "TAU", .value = .{ .float = std.math.tau } },
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{

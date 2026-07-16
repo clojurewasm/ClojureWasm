@@ -344,6 +344,8 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 const long_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
     .{ .name = "MAX_VALUE", .value = .{ .int = std.math.maxInt(i64) } },
     .{ .name = "MIN_VALUE", .value = .{ .int = std.math.minInt(i64) } },
+    .{ .name = "BYTES", .value = .{ .int = 8 } },
+    .{ .name = "SIZE", .value = .{ .int = 64 } },
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{

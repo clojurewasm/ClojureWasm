@@ -221,6 +221,9 @@ pub const TypeDescriptor = struct {
         float: f64,
         bool: bool, // Boolean/TRUE, Boolean/FALSE (ADR-0061 amendment)
         char: u21, // Character/MIN_VALUE, MAX_VALUE, the surrogate bounds
+        /// A comptime-const string constant (File/separator, …) — lifted to a
+        /// cljw String Value at analyze time (ADR-0174 D7).
+        string: []const u8,
         singleton: Singleton,
         /// A host-enum constant (ADR-0161 / D-510): `enum_idx` is `@intFromEnum`
         /// of `host_enum.Idx` (RoundingMode/ChronoUnit/DayOfWeek/Month), `ordinal`

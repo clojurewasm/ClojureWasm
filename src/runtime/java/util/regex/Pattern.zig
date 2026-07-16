@@ -211,12 +211,30 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
     .init = &initPattern,
 };
 
+/// The JVM Pattern flag constants (ADR-0174 D7). Values are the JVM's
+/// exact bit masks. `Pattern/compile` (2-arg) honours the inline-expressible
+/// subset {CASE_INSENSITIVE, MULTILINE, DOTALL, COMMENTS}; the others raise
+/// (cljw's regex engine has no canonical-equivalence / explicit-unicode-case
+/// modes — an honest error beats a silently-ignored flag).
+const pattern_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
+    .{ .name = "UNIX_LINES", .value = .{ .int = 0x01 } },
+    .{ .name = "CASE_INSENSITIVE", .value = .{ .int = 0x02 } },
+    .{ .name = "COMMENTS", .value = .{ .int = 0x04 } },
+    .{ .name = "MULTILINE", .value = .{ .int = 0x08 } },
+    .{ .name = "LITERAL", .value = .{ .int = 0x10 } },
+    .{ .name = "DOTALL", .value = .{ .int = 0x20 } },
+    .{ .name = "UNICODE_CASE", .value = .{ .int = 0x40 } },
+    .{ .name = "CANON_EQ", .value = .{ .int = 0x80 } },
+    .{ .name = "UNICODE_CHARACTER_CLASS", .value = .{ .int = 0x100 } },
+};
+
 var descriptor: type_descriptor.TypeDescriptor = .{
     .fqcn = "java.util.regex.Pattern",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},
     .method_table = &.{},
+    .static_fields = &pattern_static_fields,
     .parent = null,
     .meta = .nil_val,
 };
