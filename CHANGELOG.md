@@ -5,6 +5,52 @@ All notable changes to ClojureWasm are documented here. The format follows
 [SemVer](https://semver.org/). SemVer compatibility guarantees start at the
 first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
+## [1.4.0] - 2026-07-16
+
+Minor release: the binary-size campaign — the shipped binary shrinks
+**9,469,816 → 6,974,584 bytes (−26.3%, now under 7 MB)** with no feature
+loss and no safety-check loss (still ReleaseSafe), plus the envelope
+format v7 it rides on.
+
+### Changed
+
+- **Binary size: 9.5 MB → 6.97 MB** (macOS arm64; Linux similar). The
+  levers, all measured: unwind tables dropped from release builds
+  (−739 KB — a stripped binary printed no native trace anyway); the
+  AOT bootstrap gains an interned-name constant pool (42% of the blob
+  was duplicate encoding) and flate-compressed lazy namespace regions +
+  `.clj` sources (decompressed on demand); the embedded zwasm engine
+  updated to v2.2.1 (its JIT host-callback thunk collapse, −1.08 MB
+  as seen from cljw); shared sort instantiation. Full ledger:
+  `.dev/decisions/0172_binary_size_budget_and_ledger.md`, public
+  comparison: `docs/works/binary_size.md`.
+- **Bytecode envelope format v7** (`.dev/decisions/0173_*.md`): 4-byte
+  aligned wire instructions readable in place from the binary,
+  per-blob constant pool, chunk `source_file`/`has_handlers` now
+  serialized (AOT-restored fns can frame-flatten; error frames in
+  bundled namespaces keep their real file labels), headerless nested
+  fn chunks. Startup is unchanged within noise; RSS slightly lower.
+- **zwasm pinned to v2.2.1** (binary-size campaign release; no API or
+  JIT-output change).
+- Cross-language benchmark records re-measured 2026-07-16
+  (`bench/cross-lang-latest.yaml`, `bench/RELEASE_METRICS.md`: cold
+  start ~6 ms on the shipped `-Dwasm` build).
+
+### Breaking
+
+- **`cljw build` artifacts made by 1.3.x (envelope ≤ v6) are rejected
+  by a 1.4.0 runtime** with a version error — rebuild the app with the
+  new `cljw build`. (Pre-2.0 format policy: the on-disk spec is
+  archived per version in `docs/spec/formats/`; decoders are not kept.)
+
+### Added
+
+- `scripts/binary_size_report.sh` — size report / attribution tool +
+  the `size_claims` gate (README size claim and the budget ceiling are
+  now CI-enforced against the built binary).
+- Guard e2e for VM error line:col fidelity across the new instruction
+  encoding (`phase16_vm_error_loc_sidecar`).
+
 ## [1.3.1] - 2026-07-16
 
 Patch release: Clojure 1.12 method values (`(every? Character/isWhitespace
