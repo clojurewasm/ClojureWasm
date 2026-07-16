@@ -33,8 +33,10 @@ assert_not_contains() {
 err() { "$BIN" -e "$1" 2>&1 || true; }
 
 # --- call position: member miss on a resolved class ---
-got=$(err '(System/getProperties)')
-assert_contains     'call_member_msg'   "$got" "No matching static method: getProperties in class java.lang.System"
+# (System/console is a permanently-skipped member — the OPAQUE story: it
+# renders this diagnostic instead of ever being half-implemented.)
+got=$(err '(System/console)')
+assert_contains     'call_member_msg'   "$got" "No matching static method: console in class java.lang.System"
 assert_not_contains 'call_no_namespace' "$got" "No namespace"
 
 got=$(err '(java.time.Instant/nonexistent 1 2)')
