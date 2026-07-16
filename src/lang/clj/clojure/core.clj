@@ -2310,6 +2310,7 @@
   [s]
   (eval (read-string (str "(do " s "\n)"))))
 
+
 ;; `(definline name & decl)` — mainline defines an `:inline`-carrying fn (a
 ;; compiler hint cljw has no analogue for: no inline compilation pass), so
 ;; the observable surface — a callable fn Var — is exactly defn's.
@@ -2625,3 +2626,21 @@
            (when-let [rmsg (ex-message root)] {:cause rmsg})
            (when (seq root-trace) {:trace (vec root-trace)})
            (when-let [d (ex-data root)] {:data d}))))
+
+;; `default-data-readers` — the built-in tagged-literal readers as data (clj
+;; parity: values are the reader-fn VARS). cljw's reader wires #inst/#uuid
+;; natively, so this map exists for the CONSUMERS of the var (edn/reader
+;; libraries walking it, user code merging *data-readers*). requiring-resolve
+;; loads the two thin nses at the very END of core (clj's own ordering —
+;; they depend on core vars defined above; measured: sub-ms shims).
+(def default-data-readers
+  "Default map of data reader functions provided by Clojure. May be
+  overridden by binding *data-readers*."
+  ;; Values are call-time-resolving fns, not the reader VARS clj holds:
+  ;; resolving eagerly would require the shim nses during the bootstrap
+  ;; AOT (a known minefield — bundled .clj loads are strict at cache_gen)
+  ;; and cost startup. Consumers CALL the values; the fn-vs-Var class is
+  ;; the one visible nuance (D-563c note).
+  {'inst (fn [form] ((requiring-resolve 'clojure.instant/read-instant-date) form))
+   'uuid (fn [form] ((requiring-resolve 'clojure.uuid/default-uuid-reader) form))})
+

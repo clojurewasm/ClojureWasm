@@ -1,0 +1,6 @@
+(sort (map str (keys default-data-readers)))
+;;=> ("inst" "uuid")
+((get default-data-readers (quote inst)) "2024-01-01")
+;;=> #inst "2024-01-01T00:00:00.000-00:00"
+(str ((get default-data-readers (quote uuid)) "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"))
+;;=> "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"

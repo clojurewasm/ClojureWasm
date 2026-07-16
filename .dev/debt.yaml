@@ -84,10 +84,18 @@ active:
       same wire-riding meta_expr (doc/arglists/line/column/file; macro
       docstrings survive AOT artifacts — verified round-trip).
       (c) **var-existence gaps mainline completion surfaced**:
-      `default-data-readers` (needs reader fns exposed as vars) and
-      `defstruct`/`create-struct`/`struct-map`/`accessor` (legacy
-      structmaps — implement or record a Tier de-scope decision;
-      `defmacro`-as-var + `definline` landed 2026-07-16).
+      `default-data-readers` DISCHARGED 2026-07-17: the {'inst 'uuid}
+      map lands at core end (corpus data_readers.txt 3/3); VALUES are
+      call-time-resolving fns, not clj's reader VARS — eager
+      requiring-resolve at def time NameErrors inside the bootstrap AOT
+      (bundled-.clj loads are strict at cache_gen) and would cost
+      startup; consumers call the values, so the fn-vs-Var class is the
+      one nuance (revisit only if a real lib var?-checks them).
+      `defstruct`/`create-struct`/`struct-map`/`accessor` DE-SCOPED
+      2026-07-17 (decision): legacy structmaps, superseded by records
+      since clj 1.2 and absent from the verified-projects/conformance
+      corpus — implement only when a real consumer pulls them
+      (`defmacro`-as-var + `definline` landed 2026-07-16).
       (d) temporal/host-enum compare MAGNITUDES stay sign-based —
       recorded in the narrowed AD-043 (converge only if a real consumer
       diffs on them).
