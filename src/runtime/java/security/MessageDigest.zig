@@ -8,7 +8,7 @@
 //! TypeDescriptor reservation per ADR-0029 D5. The backing impl
 //! `runtime/crypto/message_digest.zig` (SHA-256 / SHA-1 / MD5 via
 //! Zig std.crypto) is unbuilt — tracked by **D-106**. The surface
-//! is reachable through `(rt.types.get "cljw.java.security.MessageDigest")`
+//! is reachable through `(rt.types.get "java.security.MessageDigest")`
 //! and the namespace exists, but the method_table is empty, so
 //! `(java.security.MessageDigest/getInstance "SHA-256")` does not
 //! yet resolve.
@@ -22,7 +22,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.security.MessageDigest",
+    .fqcn = "java.security.MessageDigest",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

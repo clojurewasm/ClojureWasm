@@ -745,7 +745,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var static_descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.lang.String",
+    .fqcn = "java.lang.String",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

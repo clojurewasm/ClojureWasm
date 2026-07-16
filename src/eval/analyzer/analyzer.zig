@@ -67,6 +67,7 @@ const regex_value = @import("../../runtime/regex/value.zig");
 const class_name = @import("../../runtime/class_name.zig");
 const host_class = @import("../../runtime/error/host_class.zig");
 const host_interface = @import("../../runtime/host_interface.zig");
+const host_class_resolve = @import("../../runtime/host_class_resolve.zig");
 const type_descriptor = @import("../../runtime/type_descriptor.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
 const error_mod = @import("../../runtime/error/info.zig");
@@ -625,6 +626,18 @@ pub fn resolveClassValue(rt: *Runtime, env: *Env, sym_ns: ?[]const u8, sym_name:
     else
         resolveClassImport(env, sym_name);
     if (try resolveDescriptorByKey(rt, cname)) |td|
+        return try type_descriptor.makeTypeDescriptorRef(rt, td);
+    // ADR-0174 D2: a Java-surface-backed class resolves as a value through
+    // the SAME host_class_resolve rules the `(Class/method)` / `(Class. …)`
+    // forms use — bare `System`/`Math`/`Thread` via the java.lang
+    // auto-import, `BigDecimal` via the java.math default, an `(:import …)`ed
+    // simple name via the ns map. The descriptor is the ONE canonical
+    // rt.types entry (statics + instance methods merged), so `=` with
+    // `(class instance)` is identity and the AOT wire round-trips.
+    // (`resolveClassImport` above already rewrote an imported bare name to
+    // its FQCN, so the exact-key step usually hits; this adds the java.lang /
+    // java.math auto-import breadth.)
+    if (host_class_resolve.resolve(rt, env.current_ns, cname)) |td|
         return try type_descriptor.makeTypeDescriptorRef(rt, td);
     // rt.types keys host-surface classes by FQCN but a USER deftype/record by its
     // SIMPLE name (AD-003: cljw class names are simple, ADR-0059). So a deftype

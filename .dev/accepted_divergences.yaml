@@ -43,13 +43,21 @@ accepted:
     derives_from: "F-011 (behavioural equivalence on VALUE, not identity); ADR-0059 (no-JVM-Class)"
     pin: "none — identity-hash dependent on the clj side (not value-comparable)"
   - id: "AD-003"
-    summary: "`(class x)` / `(type x)` return the simple name, not the Java FQCN"
-    example: '(class 5) => cljw Long / clj java.lang.Long'
+    summary: "`(class x)` / `(type x)` return the simple name for cljw-NATIVE types, not the Java FQCN (Java-surface-backed classes DO carry the FQCN per ADR-0174)"
+    example: '(class 5) => cljw Long / clj java.lang.Long; but (class (java.util.Date. 0)) => java.util.Date in BOTH'
     why: |-
-      cljw has no JVM Class hierarchy (TypeDescriptor instead). The simple
-      name is the cljw surface; the FQCN would be a JVM-specific fiction.
-    derives_from: "ADR-0059 (no-JVM rule); no_jvm_specific_assumption.md"
-    pin: "test/diff/clj_corpus/print_repr.txt + test/diff/clj_corpus/str_char.txt (class-name cases)"
+      cljw has no JVM Class hierarchy (TypeDescriptor instead). For
+      cljw-native tags, user deftypes/records, the Throwable family, and
+      interface markers, the simple name is the cljw surface; the FQCN
+      would be a JVM-specific fiction. ADR-0174 drew the line explicitly:
+      a class backed by the Java-compat surface tree (host_instance /
+      typed_instance / host-enum / host_stream — File, StringBuilder,
+      Date, Instant, RoundingMode, BufferedReader, …) has its JVM FQCN as
+      its identity, matching clj exactly there (the divergence is only
+      the native/user/exception simple-name half). `(str (class x))`
+      additionally lacks clj's "class " toString prefix in both regimes.
+    derives_from: "ADR-0059 (no-JVM rule); ADR-0174 (identity rule); no_jvm_specific_assumption.md"
+    pin: "test/diff/clj_corpus/print_repr.txt + test/diff/clj_corpus/str_char.txt (native simple names) + test/e2e/phase14_host_class_identity.sh (surface FQCNs)"
   - id: "AD-004"
     summary: "`(float x)` yields an f64; cljw has no f32 representation"
     example: "(float 1/3) => cljw 0.3333333333333333 / clj 0.33333334 (f32)"

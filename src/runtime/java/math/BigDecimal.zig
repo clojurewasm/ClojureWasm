@@ -634,7 +634,7 @@ const big_decimal_static_fields = build: {
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.math.BigDecimal",
+    .fqcn = "java.math.BigDecimal",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

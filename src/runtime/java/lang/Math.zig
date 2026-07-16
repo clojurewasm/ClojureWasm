@@ -615,7 +615,7 @@ const math_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.lang.Math",
+    .fqcn = "java.lang.Math",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

@@ -38,6 +38,7 @@
 ;;=> #inst "1970-01-01T00:00:00.000-00:00"
 (inst-ms #inst "1969-12-31T23:59:59.000Z")
 ;;=> -1000
-;; AD-003: (class) prints the simple name "Date" (no "class java.util." prefix)
+;; ADR-0174: a Java-surface-backed class prints its JVM FQCN (clj str adds a
+;; "class " prefix cljw does not — the residual AD-003 face)
 (str (class #inst "2024-01-01"))
-;;=> "Date"
+;;=> "java.util.Date"

@@ -107,7 +107,9 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "java.lang.Number", "Number" },
     .{ "java.util.regex.Pattern", "Pattern" },
     .{ "java.util.UUID", "UUID" },
-    .{ "java.util.Date", "Date" },
+    // java.util.Date is NOT here: Date values carry the canonical
+    // rt.types["java.util.Date"] descriptor (ADR-0174 merge), whose fqcn IS
+    // the FQCN — instance?/resolution match on it directly.
     .{ "clojure.lang.BigInt", "BigInt" },
     .{ "clojure.lang.Ratio", "Ratio" },
     .{ "java.math.BigDecimal", "BigDecimal" },

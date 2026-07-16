@@ -237,7 +237,8 @@ pub fn forEachClass(rt_ptr: anytype, context_ns: ?*Namespace, prefix: []const u8
             },
             .native => {},
         }
-        const display = host_class_resolve.displayName(key);
+        // Registry keys ARE the JVM-visible FQCNs (ADR-0174) — no translation.
+        const display = key;
         const simple = if (std.mem.findScalarLast(u8, display, '.')) |dot| display[dot + 1 ..] else display;
         // FQN candidate: matched by the FQN (dot-fuzzy) OR by the bare
         // short name — the built-in's short-name→FQN index (`Character`

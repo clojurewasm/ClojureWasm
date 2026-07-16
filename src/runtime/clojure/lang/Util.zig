@@ -163,7 +163,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.clojure.lang.Util",
+    .fqcn = "clojure.lang.Util",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

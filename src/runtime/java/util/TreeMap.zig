@@ -346,7 +346,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.util.TreeMap",
+    .fqcn = "java.util.TreeMap",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

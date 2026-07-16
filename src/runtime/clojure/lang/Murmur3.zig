@@ -98,7 +98,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.clojure.lang.Murmur3",
+    .fqcn = "clojure.lang.Murmur3",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

@@ -5,16 +5,17 @@
 //! `.typed_instance` (F-004 layout UNCHANGED, no NaN-box tag) carrying TWO
 //! integer fields — `seconds` (signed) + `nanos` (0..999_999_999) — NORMALIZED
 //! so the nanos fraction is non-negative and the seconds field carries the
-//! sign. A per-Runtime `.native` descriptor whose `temporal_print = .iso_duration`
-//! makes the printer emit the bare ISO-8601 duration string (`PT…`, NO `#tag`,
-//! no quotes — clj's `(str duration)` form). The PT-format itself
-//! (`formatDuration`) is self-contained here (no civil calendar). The Java
-//! `java.time.Duration` static surface (`runtime/java/time/Duration.zig`) mints
-//! these from above.
+//! sign. The ONE canonical `rt.types["java.time.Duration"]` descriptor
+//! (ADR-0174: shared with the `java/time/Duration.zig` static surface) carries
+//! `temporal_print = .iso_duration`, making the printer emit the bare ISO-8601
+//! duration string (`PT…`, NO `#tag`, no quotes — clj's `(str duration)`
+//! form). The PT-format itself (`formatDuration`) is self-contained here (no
+//! civil calendar). The Java `java.time.Duration` static surface mints these
+//! from above.
 //!
-//! Distinct from Instant/Date/Timestamp by the per-Runtime descriptor pointer
-//! (so `=` / print / `(class …)` discriminate) and by carrying the instance
-//! methods `.getSeconds` / `.getNano` / `.toMillis` / `.toMinutes`.
+//! Distinct from Instant/Date/Timestamp by the descriptor's fqcn (so `=` /
+//! print / `(class …)` discriminate) and by carrying the instance methods
+//! `.getSeconds` / `.getNano` / `.toMillis` / `.toMinutes`.
 
 const std = @import("std");
 const value = @import("../value/value.zig");
@@ -234,7 +235,7 @@ fn minusNanosFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 fn plusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("plus", args, 2, loc);
-    if (!isDuration(rt, args[1]))
+    if (!isDuration(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".plus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
     return normalize(rt, secondsOf(args[0]) + secondsOf(args[1]), @as(i128, nanosOf(args[0])) + @as(i128, nanosOf(args[1])));
 }
@@ -243,7 +244,7 @@ fn plusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
 fn minusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("minus", args, 2, loc);
-    if (!isDuration(rt, args[1]))
+    if (!isDuration(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".minus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
     return normalize(rt, secondsOf(args[0]) - secondsOf(args[1]), @as(i128, nanosOf(args[0])) - @as(i128, nanosOf(args[1])));
 }
@@ -281,40 +282,32 @@ pub fn betweenFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     try error_catalog.checkArity("between", args, 2, loc);
     const a = args[0];
     const b = args[1];
-    if (instant_value.isInstant(rt, a) and instant_value.isInstant(rt, b)) {
+    if (instant_value.isInstant(a) and instant_value.isInstant(b)) {
         const a_ns = @as(i128, instant_value.epochMsOf(a)) * 1_000_000 + instant_value.nanosOf(a);
         const b_ns = @as(i128, instant_value.epochMsOf(b)) * 1_000_000 + instant_value.nanosOf(b);
         return makeFromNanos(rt, b_ns - a_ns);
     }
-    if (local_date_time_value.isLocalDateTime(rt, a) and local_date_time_value.isLocalDateTime(rt, b)) {
+    if (local_date_time_value.isLocalDateTime(a) and local_date_time_value.isLocalDateTime(b)) {
         const a_ns = @as(i128, local_date_time_value.epochDayOf(a)) * DAY_NS + local_date_time_value.nanoOfDayOf(a);
         const b_ns = @as(i128, local_date_time_value.epochDayOf(b)) * DAY_NS + local_date_time_value.nanoOfDayOf(b);
         return makeFromNanos(rt, b_ns - a_ns);
     }
-    if (local_time_value.isLocalTime(rt, a) and local_time_value.isLocalTime(rt, b)) {
+    if (local_time_value.isLocalTime(a) and local_time_value.isLocalTime(b)) {
         return makeFromNanos(rt, @as(i128, local_time_value.nanoOfDayOf(b)) - local_time_value.nanoOfDayOf(a));
     }
     return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "between", .expected = "two temporals of the same type", .actual = @tagName(b.tag()) });
 }
 
-/// The per-Runtime canonical Duration descriptor (lazily allocated on
-/// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "Duration"` so `(class …)`
-/// prints the simple name (AD-003 / no-JVM); `temporal_print = .iso_duration`
-/// drives the bare `PT…` print form. Carries the instance methods.
-pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
-    if (rt.duration_descriptor) |d| return d;
-    const td = try rt.gc.infra.create(TypeDescriptor);
-    td.* = .{
-        .fqcn = "Duration",
-        .kind = .native,
-        .field_layout = null,
-        .protocol_impls = &.{},
-        .method_table = &.{},
-        .parent = null,
-        .meta = .nil_val,
-        .temporal_print = .iso_duration,
-    };
-    const specs = .{
+/// The JVM-visible class name — also the `rt.types` registry key
+/// (ADR-0174 D1: Java-surface-backed classes carry their JVM FQCN).
+pub const FQCN = "java.time.Duration";
+
+/// Append the Duration instance methods onto `td` (idempotent — guarded on
+/// the `getSeconds` sentinel). Called by BOTH creation orders: the surface
+/// `init` (production) and `configureDescriptor` (bare-Runtime unit tests).
+pub fn ensureInstanceMethods(td: *TypeDescriptor, gpa: std.mem.Allocator) !void {
+    if (td.lookupMethod(null, "getSeconds") != null) return;
+    try td_mod.appendMethodEntries(td, gpa, .{
         .{ "getSeconds", &getSecondsFn },
         .{ "getNano", &getNanoFn },
         .{ "toMillis", &toMillisFn },
@@ -339,18 +332,18 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .{ "minus", &minusFn },
         .{ "multipliedBy", &multipliedByFn },
         .{ "dividedBy", &dividedByFn },
-    };
-    const entries = try rt.gc.infra.alloc(TypeDescriptor.MethodEntry, specs.len);
-    inline for (specs, 0..) |spec, i| {
-        entries[i] = .{
-            .protocol_name = "",
-            .method_name = try rt.gc.infra.dupe(u8, spec[0]),
-            .method_val = Value.initBuiltinFn(spec[1]),
-        };
-    }
-    td.method_table = entries;
-    rt.duration_descriptor = td;
-    return td;
+    });
+}
+
+fn configureDescriptor(td: *TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
+    td.temporal_print = .iso_duration; // bare `PT…` print form
+    try ensureInstanceMethods(td, gpa);
+}
+
+/// The ONE canonical Duration descriptor: `rt.types["java.time.Duration"]`
+/// (ADR-0174 D2 merge — statics and instance values share it).
+pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
+    return td_mod.ensureRegistered(rt, FQCN, &configureDescriptor);
 }
 
 /// Build a Duration from already-NORMALIZED `seconds` (signed) + `nanos`
@@ -367,11 +360,12 @@ pub fn makeFromNanos(rt: *Runtime, total_ns: i128) !Value {
     return make(rt, @intCast(@divFloor(total_ns, NS_PER_SEC)), @intCast(@mod(total_ns, NS_PER_SEC)));
 }
 
-/// True when `v` is a Duration (carries the per-Runtime Duration descriptor).
-pub fn isDuration(rt: *Runtime, v: Value) bool {
+/// True when `v` is a Duration (carries the canonical Duration descriptor,
+/// recognised by fqcn — rt-free).
+pub fn isDuration(v: Value) bool {
     if (v.tag() != .typed_instance) return false;
-    const d = rt.duration_descriptor orelse return false;
-    return v.decodePtr(*const TypedInstance).descriptor == d;
+    const fq = v.decodePtr(*const TypedInstance).descriptor.fqcn orelse return false;
+    return std.mem.eql(u8, fq, FQCN);
 }
 
 /// The whole-seconds (signed) field. Caller must have checked `isDuration`.
@@ -383,17 +377,6 @@ pub fn secondsOf(v: Value) i64 {
 /// checked `isDuration`.
 pub fn nanosOf(v: Value) i32 {
     return @intCast(v.decodePtr(*const TypedInstance).fields()[1].asInteger());
-}
-
-/// Free the per-Runtime descriptor (gc.infra-allocated). Called from
-/// `Runtime.deinit`; idempotent.
-pub fn deinitDescriptor(rt: *Runtime) void {
-    if (rt.duration_descriptor) |td| {
-        for (td.method_table) |e| rt.gc.infra.free(e.method_name);
-        if (td.method_table.len > 0) rt.gc.infra.free(td.method_table);
-        rt.gc.infra.destroy(td);
-        rt.duration_descriptor = null;
-    }
 }
 
 /// Format a normalized Duration (`seconds` signed, `nanos` in 0..999_999_999)
@@ -466,11 +449,11 @@ test "Duration value: make / isDuration / accessors + temporal_print set" {
 
     const d = try make(&rt, -2, 500_000_000); // ofMillis(-1500) normalized
     try testing.expect(d.tag() == .typed_instance);
-    try testing.expect(isDuration(&rt, d));
+    try testing.expect(isDuration(d));
     try testing.expectEqual(@as(i64, -2), secondsOf(d));
     try testing.expectEqual(@as(i32, 500_000_000), nanosOf(d));
     try testing.expect(d.decodePtr(*const TypedInstance).descriptor.temporal_print == .iso_duration);
-    try testing.expect(!isDuration(&rt, Value.initInteger(5)));
+    try testing.expect(!isDuration(Value.initInteger(5)));
 }
 
 test "formatDuration: positive / negative / fraction / zero" {

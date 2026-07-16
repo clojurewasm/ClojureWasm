@@ -441,6 +441,70 @@ pub const TypeDescriptorRef = extern struct {
     }
 };
 
+/// Append host-surface method entries to `td.method_table`, growing the
+/// gpa-owned slice (an empty table from a descriptor literal is `&.{}` —
+/// not gpa-owned — and is replaced without a free). `specs` is a comptime
+/// tuple of `.{ name, fn_ptr }` pairs; names are gpa-duped per the
+/// `rt.types` deinit ownership contract. Idempotence is the CALLER's job
+/// (guard on a sentinel entry via `lookupMethod` before calling). The
+/// same-name assert is the ADR-0174 static/instance collision guard:
+/// `method_table` is flat, so a static and an instance member of one name
+/// on one descriptor would silently misdispatch — fail loudly instead
+/// (escalation path: an `is_static` MethodEntry bit, not yet needed).
+pub fn appendMethodEntries(td: *TypeDescriptor, gpa: std.mem.Allocator, comptime specs: anytype) !void {
+    const old = td.method_table;
+    const entries = try gpa.alloc(TypeDescriptor.MethodEntry, old.len + specs.len);
+    @memcpy(entries[0..old.len], old);
+    inline for (specs, 0..) |spec, i| {
+        std.debug.assert(td.lookupMethod(null, spec[0]) == null);
+        entries[old.len + i] = .{
+            .protocol_name = "",
+            .method_name = try gpa.dupe(u8, spec[0]),
+            .method_val = Value.initBuiltinFn(spec[1]),
+        };
+    }
+    if (old.len > 0) gpa.free(old);
+    td.method_table = entries;
+}
+
+/// One canonical `rt.types` descriptor per host class (ADR-0174): return
+/// the registered descriptor for `fqcn`, or mint + register it with
+/// `configure` (print flags + instance methods). Ownership mirrors
+/// `registerExtension` exactly (rt.gpa key/fqcn/method_name dups) so
+/// `Runtime.deinit`'s rt.types pass frees it. Registration order is
+/// two-way safe: in production the surface `registerExtension` runs first
+/// and its `init` appends onto the copied literal; in a bare-Runtime unit
+/// test this mints the descriptor and a later surface `init` (guarded by
+/// its own sentinel) appends its statics/`<init>` onto the SAME
+/// descriptor. Either order yields the one descriptor instances carry,
+/// class symbols resolve to, and the AOT wire round-trips through.
+pub fn ensureRegistered(
+    rt: *Runtime,
+    fqcn: []const u8,
+    configure: *const fn (td: *TypeDescriptor, gpa: std.mem.Allocator) anyerror!void,
+) !*const TypeDescriptor {
+    if (rt.types.get(fqcn)) |td| return td;
+    const gpa = rt.gpa;
+    const td = try gpa.create(TypeDescriptor);
+    errdefer gpa.destroy(td);
+    const fqcn_dup = try gpa.dupe(u8, fqcn);
+    errdefer gpa.free(fqcn_dup);
+    td.* = .{
+        .fqcn = fqcn_dup,
+        .kind = .native,
+        .field_layout = null,
+        .protocol_impls = &.{},
+        .method_table = &.{},
+        .parent = null,
+        .meta = .nil_val,
+    };
+    try configure(td, gpa);
+    const key = try gpa.dupe(u8, fqcn);
+    errdefer gpa.free(key);
+    try rt.types.put(key, td);
+    return td;
+}
+
 /// Allocate a `TypeDescriptorRef` on `rt.gc.infra` that points at
 /// the given descriptor. Returns a `.type_descriptor`-tagged Value.
 /// The ref itself is process-lifetime (rt.gc.infra-allocated); rt

@@ -149,7 +149,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.lang.Boolean",
+    .fqcn = "java.lang.Boolean",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

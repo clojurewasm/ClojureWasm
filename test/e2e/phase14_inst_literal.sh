@@ -3,7 +3,7 @@
 #
 # D-200 / clj-parity C6: `#inst "…"` reader literal → a no-slot cljw-native
 # java.util.Date (typed_instance, ADR-0079). Round-trips through the
-# canonical UTC ISO form; inst?/inst-ms/= by epoch-ms. `class`→"Date"
+# canonical UTC ISO form; inst?/inst-ms/= by epoch-ms. `class`→"java.util.Date"
 # (AD-003 simple name).
 #
 # Layer 2 (e2e CLI) per ADR-0021.
@@ -36,7 +36,7 @@ assert_eq 'inst_ne'     "$("$BIN" -e '(= #inst "2024-01-01" #inst "2024-01-02")'
 assert_eq 'inst_ne_str' "$("$BIN" -e '(= #inst "2024-01-01" "2024-01-01")')"  'false'
 
 # class prints the simple name (AD-003 no-JVM); read-string round-trips.
-assert_eq 'inst_class'  "$("$BIN" -e '(str (class #inst "2024-01-01"))')" '"Date"'
+assert_eq 'inst_class'  "$("$BIN" -e '(str (class #inst "2024-01-01"))')" '"java.util.Date"'
 assert_eq 'inst_rdstr'  "$("$BIN" -e '(inst? (read-string "#inst \"2024-01-01\""))')" 'true'
 
 # Malformed instant raises.

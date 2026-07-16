@@ -241,21 +241,22 @@ fn vecOrder(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!Orde
 /// non-temporal typed_instance (deftype/record) pair raises (clj: ClassCast).
 /// Mirrors the equal.zig per-type arms.
 fn temporalOrder(rt: *Runtime, a: Value, b: Value, loc: SourceLocation) anyerror!Order {
-    if (instant_value.isInstant(rt, a) and instant_value.isInstant(rt, b)) {
+    _ = rt;
+    if (instant_value.isInstant(a) and instant_value.isInstant(b)) {
         const o = std.math.order(instant_value.epochMsOf(a), instant_value.epochMsOf(b));
         return if (o != .eq) o else std.math.order(instant_value.nanosOf(a), instant_value.nanosOf(b));
     }
-    if (duration_value.isDuration(rt, a) and duration_value.isDuration(rt, b)) {
+    if (duration_value.isDuration(a) and duration_value.isDuration(b)) {
         const o = std.math.order(duration_value.secondsOf(a), duration_value.secondsOf(b));
         return if (o != .eq) o else std.math.order(duration_value.nanosOf(a), duration_value.nanosOf(b));
     }
-    if (local_date_value.isLocalDate(rt, a) and local_date_value.isLocalDate(rt, b)) {
+    if (local_date_value.isLocalDate(a) and local_date_value.isLocalDate(b)) {
         return std.math.order(local_date_value.epochDayOf(a), local_date_value.epochDayOf(b));
     }
-    if (local_time_value.isLocalTime(rt, a) and local_time_value.isLocalTime(rt, b)) {
+    if (local_time_value.isLocalTime(a) and local_time_value.isLocalTime(b)) {
         return std.math.order(local_time_value.nanoOfDayOf(a), local_time_value.nanoOfDayOf(b));
     }
-    if (local_date_time_value.isLocalDateTime(rt, a) and local_date_time_value.isLocalDateTime(rt, b)) {
+    if (local_date_time_value.isLocalDateTime(a) and local_date_time_value.isLocalDateTime(b)) {
         const o = std.math.order(local_date_time_value.epochDayOf(a), local_date_time_value.epochDayOf(b));
         return if (o != .eq) o else std.math.order(local_date_time_value.nanoOfDayOf(a), local_date_time_value.nanoOfDayOf(b));
     }

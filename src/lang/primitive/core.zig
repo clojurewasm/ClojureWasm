@@ -1245,7 +1245,7 @@ pub fn formatFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
                 if (i >= fmt.len) return error_catalog.raise(.format_spec_invalid, loc, .{ .spec = "%t" });
                 const sub = fmt[i];
                 i += 1;
-                const ms: i64 = if (date_mod.isDate(rt, args[src]))
+                const ms: i64 = if (date_mod.isDate(args[src]))
                     date_mod.epochMsOf(args[src])
                 else if (args[src].tag() == .integer)
                     args[src].asInteger()

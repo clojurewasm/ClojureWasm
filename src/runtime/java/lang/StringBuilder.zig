@@ -265,7 +265,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 var descriptor: type_descriptor.TypeDescriptor = .{
     // cljw-prefixed (like Math/System/Thread) so a BARE `(StringBuilder.)` resolves
     // via the always-on `cljw.java.lang.*` auto-import (resolveJavaSurface step 3).
-    .fqcn = "cljw.java.lang.StringBuilder",
+    .fqcn = "java.lang.StringBuilder",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

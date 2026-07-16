@@ -67,21 +67,18 @@ fn parse(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anye
 }
 
 fn initLocalDate(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
-    if (td.method_table.len != 0) return; // idempotent re-run
-    const specs = .{
-        .{ "of", &of },
-        .{ "now", &now },
-        .{ "parse", &parse },
-    };
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, specs.len);
-    inline for (specs, 0..) |spec, i| {
-        entries[i] = .{
-            .protocol_name = "",
-            .method_name = try gpa.dupe(u8, spec[0]),
-            .method_val = Value.initBuiltinFn(spec[1]),
-        };
+    // ADR-0174 merge: ONE descriptor carries the statics AND the instance
+    // methods (LocalDate values point at it). Sentinel-guarded appends keep
+    // both registration orders idempotent.
+    if (td.lookupMethod(null, "of") == null) {
+        try type_descriptor.appendMethodEntries(td, gpa, .{
+            .{ "of", &of },
+            .{ "now", &now },
+            .{ "parse", &parse },
+        });
     }
-    td.method_table = entries;
+    td.temporal_print = .iso_local_date;
+    try ld_value.ensureInstanceMethods(td, gpa);
 }
 
 pub const ___HOST_EXTENSION: host_api.Extension = .{
@@ -91,11 +88,12 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.time.LocalDate",
+    .fqcn = ld_value.FQCN, // "java.time.LocalDate" — the ONE canonical key (ADR-0174)
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},
     .method_table = &.{},
     .parent = null,
     .meta = .nil_val,
+    .temporal_print = .iso_local_date,
 };

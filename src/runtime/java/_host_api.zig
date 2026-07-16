@@ -176,6 +176,18 @@ fn registerExtension(env: *Env, ext: Extension) !void {
             td.fqcn = try rt.gpa.dupe(u8, fqcn_lit);
             gop.key_ptr.* = try rt.gpa.dupe(u8, fqcn_lit);
             gop.value_ptr.* = td;
+        } else {
+            // ADR-0174 merge: the impl side may have minted the canonical
+            // descriptor first (`ensureRegistered` on a bare unit-test
+            // Runtime). Carry the surface literal's comptime-const slices +
+            // print flags onto it so the merged descriptor is identical in
+            // either registration order (method entries are appended by the
+            // `init` callback below, behind its own sentinel).
+            const td = @constCast(gop.value_ptr.*);
+            if (td.static_fields.len == 0) td.static_fields = ext.descriptor.static_fields;
+            if (td.host_supertypes.len == 0) td.host_supertypes = ext.descriptor.host_supertypes;
+            if (td.print_tag == null) td.print_tag = ext.descriptor.print_tag;
+            if (td.temporal_print == .none) td.temporal_print = ext.descriptor.temporal_print;
         }
     }
     if (ext.init) |f| {
@@ -191,7 +203,7 @@ const testing = std.testing;
 
 test "Extension struct shape" {
     var td: type_descriptor.TypeDescriptor = .{
-        .fqcn = "cljw.java.util.UUID",
+        .fqcn = "java.util.UUID",
         .kind = .native,
         .field_layout = null,
         .protocol_impls = &.{},

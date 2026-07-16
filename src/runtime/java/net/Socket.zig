@@ -8,7 +8,7 @@
 //! TypeDescriptor reservation per ADR-0029 D5. The backing impl
 //! `runtime/net/socket.zig` (TCP client / server primitives) is
 //! unbuilt — tracked by **D-106**. The surface is reachable through
-//! `(rt.types.get "cljw.java.net.Socket")` and the
+//! `(rt.types.get "java.net.Socket")` and the
 //! `cljw.java.net.Socket` namespace exists, but the method_table is
 //! empty, so `(java.net.Socket. host port)` does not yet resolve.
 
@@ -21,7 +21,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.net.Socket",
+    .fqcn = "java.net.Socket",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

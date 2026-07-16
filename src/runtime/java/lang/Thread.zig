@@ -69,7 +69,7 @@ fn currentThread(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     _ = env;
     try error_catalog.checkArity("Thread/currentThread", args, 0, loc);
     if (!rt.thread_current.isNil()) return rt.thread_current;
-    const td = rt.types.get("cljw.java.lang.Thread") orelse return error.InternalError;
+    const td = rt.types.get("java.lang.Thread") orelse return error.InternalError;
     const inst = try rt.gc.infra.create(host_instance.HostInstance);
     inst.* = .{
         .header = HeapHeader.init(.host_instance),
@@ -113,7 +113,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.lang.Thread",
+    .fqcn = "java.lang.Thread",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

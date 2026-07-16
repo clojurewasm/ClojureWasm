@@ -1279,46 +1279,46 @@ fn typedInstanceEqual(rt: *Runtime, env: *Env, a: Value, b: Value) anyerror!bool
     // Date values (D-200 / ADR-0079) compare by epoch-ms — a native
     // typed_instance otherwise defaults to identity `=` (the arm below),
     // which would make two equal `#inst` allocations unequal.
-    if (date_mod.isDate(rt, a) and date_mod.isDate(rt, b)) {
+    if (date_mod.isDate(a) and date_mod.isDate(b)) {
         return date_mod.epochMsOf(a) == date_mod.epochMsOf(b);
     }
     // Timestamp values (D-382) compare by epoch-ms + nanos (the full
     // fractional second), else two equal-instant Timestamps would default to
     // identity `=`. A Timestamp is never `=` a Date here (distinct descriptor).
-    if (timestamp_mod.isTimestamp(rt, a) and timestamp_mod.isTimestamp(rt, b)) {
+    if (timestamp_mod.isTimestamp(a) and timestamp_mod.isTimestamp(b)) {
         return timestamp_mod.epochMsOf(a) == timestamp_mod.epochMsOf(b) and
             timestamp_mod.nanosOf(a) == timestamp_mod.nanosOf(b);
     }
     // Instant values (D-462) compare by second-aligned epoch-ms + nanos, else
     // two equal-instant allocations would default to identity `=`. A distinct
     // descriptor keeps an Instant from being `=` a Date/Timestamp here.
-    if (instant_value_mod.isInstant(rt, a) and instant_value_mod.isInstant(rt, b)) {
+    if (instant_value_mod.isInstant(a) and instant_value_mod.isInstant(b)) {
         return instant_value_mod.epochMsOf(a) == instant_value_mod.epochMsOf(b) and
             instant_value_mod.nanosOf(a) == instant_value_mod.nanosOf(b);
     }
     // Duration values (D-462) compare by NORMALIZED seconds + nanos, else two
     // equal-span allocations would default to identity `=`. A distinct
     // descriptor keeps a Duration from being `=` an Instant/Date/Timestamp.
-    if (duration_value_mod.isDuration(rt, a) and duration_value_mod.isDuration(rt, b)) {
+    if (duration_value_mod.isDuration(a) and duration_value_mod.isDuration(b)) {
         return duration_value_mod.secondsOf(a) == duration_value_mod.secondsOf(b) and
             duration_value_mod.nanosOf(a) == duration_value_mod.nanosOf(b);
     }
     // LocalDateTime values (D-462) compare by epoch_day + nano_of_day, else two
     // equal-datetime allocations would default to identity `=`. A distinct
     // descriptor keeps a LocalDateTime from being `=` an Instant/Duration/Date.
-    if (local_date_time_value_mod.isLocalDateTime(rt, a) and local_date_time_value_mod.isLocalDateTime(rt, b)) {
+    if (local_date_time_value_mod.isLocalDateTime(a) and local_date_time_value_mod.isLocalDateTime(b)) {
         return local_date_time_value_mod.epochDayOf(a) == local_date_time_value_mod.epochDayOf(b) and
             local_date_time_value_mod.nanoOfDayOf(a) == local_date_time_value_mod.nanoOfDayOf(b);
     }
     // LocalDate values (D-462) compare by epoch_day, else two equal-date
     // allocations would default to identity `=`. A distinct descriptor keeps a
     // LocalDate from being `=` a LocalDateTime/Instant/Duration/Date.
-    if (local_date_value_mod.isLocalDate(rt, a) and local_date_value_mod.isLocalDate(rt, b)) {
+    if (local_date_value_mod.isLocalDate(a) and local_date_value_mod.isLocalDate(b)) {
         return local_date_value_mod.epochDayOf(a) == local_date_value_mod.epochDayOf(b);
     }
     // LocalTime values (D-462) compare by nano_of_day. A distinct descriptor
     // keeps a LocalTime from being `=` any other temporal type.
-    if (local_time_value_mod.isLocalTime(rt, a) and local_time_value_mod.isLocalTime(rt, b)) {
+    if (local_time_value_mod.isLocalTime(a) and local_time_value_mod.isLocalTime(b)) {
         return local_time_value_mod.nanoOfDayOf(a) == local_time_value_mod.nanoOfDayOf(b);
     }
     // DayOfWeek / Month enum values are now interned host-enum singletons

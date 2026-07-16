@@ -184,7 +184,7 @@ const pq_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
 /// `cljw.<head>` form `resolveJavaSurface` derives from `clojure.lang.
 /// PersistentQueue`, so `clojure.lang.PersistentQueue/EMPTY` resolves.
 const descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.clojure.lang.PersistentQueue",
+    .fqcn = "clojure.lang.PersistentQueue",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

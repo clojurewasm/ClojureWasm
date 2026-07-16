@@ -4,17 +4,18 @@
 //! Mirrors the LocalDateTime model (`local_date_time_value.zig`): a no-slot
 //! cljw-native `.typed_instance` (F-004 layout UNCHANGED, no NaN-box tag)
 //! carrying ONE integer field — `epoch_day` (signed days since 1970-01-01,
-//! via the Hinnant civil algorithm in `instant.zig`) — plus a per-Runtime
-//! `.native` descriptor whose `temporal_print = .iso_local_date` makes the
-//! printer emit the bare ISO local date string (NO `#tag`, no quotes — clj's
-//! `(str ld)` form). The civil↔epoch-day conversions + the date format/parse
-//! halves are reused from `instant.zig` (F-009 neutral home); the Java
-//! `java.time.LocalDate` static surface (`runtime/java/time/LocalDate.zig`)
-//! mints these from above.
+//! via the Hinnant civil algorithm in `instant.zig`) — plus the ONE canonical
+//! `rt.types["java.time.LocalDate"]` descriptor (ADR-0174: shared with the
+//! `java/time/LocalDate.zig` static surface) whose `temporal_print =
+//! .iso_local_date` makes the printer emit the bare ISO local date string
+//! (NO `#tag`, no quotes — clj's `(str ld)` form). The civil↔epoch-day
+//! conversions + the date format/parse halves are reused from `instant.zig`
+//! (F-009 neutral home); the Java `java.time.LocalDate` static surface mints
+//! these from above.
 //!
-//! Distinct from the other temporal types by the per-Runtime descriptor
-//! pointer (so `=` / print / `(class …)` discriminate) and by carrying the
-//! instance methods getYear / getMonthValue / getDayOfMonth / plusDays.
+//! Distinct from the other temporal types by the descriptor's fqcn (so `=` /
+//! print / `(class …)` discriminate) and by carrying the instance methods
+//! getYear / getMonthValue / getDayOfMonth / plusDays.
 
 const std = @import("std");
 const value = @import("../value/value.zig");
@@ -186,27 +187,30 @@ fn lengthOfMonthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
 
 /// `(.isBefore a b)` — true when `a` is before `b` (JVM `LocalDate.isBefore`).
 fn isBeforeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("isBefore", args, 2, loc);
-    if (!isLocalDate(rt, args[1]))
+    if (!isLocalDate(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".isBefore", .expected = "LocalDate", .actual = @tagName(args[1].tag()) });
     return Value.initBoolean(epochDayOf(args[0]) < epochDayOf(args[1]));
 }
 
 /// `(.isAfter a b)` — true when `a` is after `b` (JVM `LocalDate.isAfter`).
 fn isAfterFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("isAfter", args, 2, loc);
-    if (!isLocalDate(rt, args[1]))
+    if (!isLocalDate(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".isAfter", .expected = "LocalDate", .actual = @tagName(args[1].tag()) });
     return Value.initBoolean(epochDayOf(args[0]) > epochDayOf(args[1]));
 }
 
 /// `(.isEqual a b)` — true when `a` equals `b` (JVM `LocalDate.isEqual`).
 fn isEqualFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("isEqual", args, 2, loc);
-    if (!isLocalDate(rt, args[1]))
+    if (!isLocalDate(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".isEqual", .expected = "LocalDate", .actual = @tagName(args[1].tag()) });
     return Value.initBoolean(epochDayOf(args[0]) == epochDayOf(args[1]));
 }
@@ -218,9 +222,10 @@ fn isEqualFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 /// proleptic-month*32 + day-of-month packing so day-of-month boundaries round
 /// toward zero exactly as the JVM does (Jan31→Mar1 = 1 month, not 2).
 fn untilFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("until", args, 3, loc);
-    if (!isLocalDate(rt, args[1]))
+    if (!isLocalDate(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "LocalDate", .actual = @tagName(args[1].tag()) });
     if (args[2].tag() != .host_instance)
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a ChronoUnit", .actual = @tagName(args[2].tag()) });
@@ -260,25 +265,16 @@ fn atTimeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     return local_date_time_value.make(rt, epochDayOf(args[0]), nano_of_day);
 }
 
-/// The per-Runtime canonical LocalDate descriptor (lazily allocated on
-/// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "LocalDate"` so
-/// `(class …)` prints the simple name (AD-003 / no-JVM);
-/// `temporal_print = .iso_local_date` drives the bare ISO local-date print form.
-/// Carries the instance methods.
-pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
-    if (rt.local_date_descriptor) |d| return d;
-    const td = try rt.gc.infra.create(TypeDescriptor);
-    td.* = .{
-        .fqcn = "LocalDate",
-        .kind = .native,
-        .field_layout = null,
-        .protocol_impls = &.{},
-        .method_table = &.{},
-        .parent = null,
-        .meta = .nil_val,
-        .temporal_print = .iso_local_date,
-    };
-    const specs = .{
+/// The JVM-visible class name — also the `rt.types` registry key
+/// (ADR-0174 D1: Java-surface-backed classes carry their JVM FQCN).
+pub const FQCN = "java.time.LocalDate";
+
+/// Append the LocalDate instance methods onto `td` (idempotent — guarded on
+/// the `getYear` sentinel). Called by BOTH creation orders: the surface
+/// `init` (production) and `configureDescriptor` (bare-Runtime unit tests).
+pub fn ensureInstanceMethods(td: *TypeDescriptor, gpa: std.mem.Allocator) !void {
+    if (td.lookupMethod(null, "getYear") != null) return;
+    try td_mod.appendMethodEntries(td, gpa, .{
         .{ "getYear", &getYearFn },
         .{ "getMonthValue", &getMonthValueFn },
         .{ "getDayOfMonth", &getDayOfMonthFn },
@@ -301,18 +297,18 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .{ "until", &untilFn },
         .{ "atStartOfDay", &atStartOfDayFn },
         .{ "atTime", &atTimeFn },
-    };
-    const entries = try rt.gc.infra.alloc(TypeDescriptor.MethodEntry, specs.len);
-    inline for (specs, 0..) |spec, i| {
-        entries[i] = .{
-            .protocol_name = "",
-            .method_name = try rt.gc.infra.dupe(u8, spec[0]),
-            .method_val = Value.initBuiltinFn(spec[1]),
-        };
-    }
-    td.method_table = entries;
-    rt.local_date_descriptor = td;
-    return td;
+    });
+}
+
+fn configureDescriptor(td: *TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
+    td.temporal_print = .iso_local_date; // bare ISO local-date print form
+    try ensureInstanceMethods(td, gpa);
+}
+
+/// The ONE canonical LocalDate descriptor: `rt.types["java.time.LocalDate"]`
+/// (ADR-0174 D2 merge — statics and instance values share it).
+pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
+    return td_mod.ensureRegistered(rt, FQCN, &configureDescriptor);
 }
 
 /// Build a LocalDate from `epoch_day` (signed days since 1970-01-01). One
@@ -322,27 +318,17 @@ pub fn make(rt: *Runtime, epoch_day: i64) !Value {
     return td_mod.allocInstance(rt, td, &.{Value.initInteger(epoch_day)});
 }
 
-/// True when `v` is a LocalDate (carries the per-Runtime descriptor).
-pub fn isLocalDate(rt: *Runtime, v: Value) bool {
+/// True when `v` is a LocalDate (carries the canonical LocalDate descriptor,
+/// recognised by fqcn — rt-free).
+pub fn isLocalDate(v: Value) bool {
     if (v.tag() != .typed_instance) return false;
-    const d = rt.local_date_descriptor orelse return false;
-    return v.decodePtr(*const TypedInstance).descriptor == d;
+    const fq = v.decodePtr(*const TypedInstance).descriptor.fqcn orelse return false;
+    return std.mem.eql(u8, fq, FQCN);
 }
 
 /// The `epoch_day` field. Caller must have checked `isLocalDate`.
 pub fn epochDayOf(v: Value) i64 {
     return v.decodePtr(*const TypedInstance).fields()[0].asInteger();
-}
-
-/// Free the per-Runtime descriptor (gc.infra-allocated). Called from
-/// `Runtime.deinit`; idempotent.
-pub fn deinitDescriptor(rt: *Runtime) void {
-    if (rt.local_date_descriptor) |td| {
-        for (td.method_table) |e| rt.gc.infra.free(e.method_name);
-        if (td.method_table.len > 0) rt.gc.infra.free(td.method_table);
-        rt.gc.infra.destroy(td);
-        rt.local_date_descriptor = null;
-    }
 }
 
 // --- tests ---
@@ -358,8 +344,8 @@ test "LocalDate value: make / isLocalDate / accessors + temporal_print set" {
     const epoch_day = instant.daysFromCivil(2024, 3, 9);
     const d = try make(&rt, epoch_day);
     try testing.expect(d.tag() == .typed_instance);
-    try testing.expect(isLocalDate(&rt, d));
+    try testing.expect(isLocalDate(d));
     try testing.expectEqual(epoch_day, epochDayOf(d));
     try testing.expect(d.decodePtr(*const TypedInstance).descriptor.temporal_print == .iso_local_date);
-    try testing.expect(!isLocalDate(&rt, Value.initInteger(5)));
+    try testing.expect(!isLocalDate(Value.initInteger(5)));
 }

@@ -5,18 +5,19 @@
 //! `duration_value.zig`): a no-slot cljw-native `.typed_instance` (F-004
 //! layout UNCHANGED, no NaN-box tag) carrying TWO integer fields —
 //! `epoch_day` (signed days since 1970-01-01, via the Hinnant civil algorithm
-//! in `instant.zig`) + `nano_of_day` (in [0, 86_400_000_000_000)) — plus a
-//! per-Runtime `.native` descriptor whose `temporal_print = .iso_local_date_time`
-//! makes the printer emit the bare ISO local date-time string (NO `#tag`, no
-//! quotes — clj's `(str ldt)` form). The civil↔epoch-day conversions are
-//! reused from `instant.zig` (F-009 neutral home); the Java
-//! `java.time.LocalDateTime` static surface (`runtime/java/time/LocalDateTime.zig`)
+//! in `instant.zig`) + `nano_of_day` (in [0, 86_400_000_000_000)) — plus the
+//! ONE canonical `rt.types["java.time.LocalDateTime"]` descriptor (ADR-0174:
+//! shared with the `java/time/LocalDateTime.zig` static surface) whose
+//! `temporal_print = .iso_local_date_time` makes the printer emit the bare
+//! ISO local date-time string (NO `#tag`, no quotes — clj's `(str ldt)`
+//! form). The civil↔epoch-day conversions are reused from `instant.zig`
+//! (F-009 neutral home); the Java `java.time.LocalDateTime` static surface
 //! mints these from above.
 //!
-//! Distinct from Instant/Duration/Date/Timestamp by the per-Runtime descriptor
-//! pointer (so `=` / print / `(class …)` discriminate) and by carrying the
-//! instance methods getYear / getMonthValue / getDayOfMonth / getHour /
-//! getMinute / getSecond / getNano.
+//! Distinct from Instant/Duration/Date/Timestamp by the descriptor's fqcn
+//! (so `=` / print / `(class …)` discriminate) and by carrying the instance
+//! methods getYear / getMonthValue / getDayOfMonth / getHour / getMinute /
+//! getSecond / getNano.
 
 const std = @import("std");
 const value = @import("../value/value.zig");
@@ -140,9 +141,10 @@ fn toLocalTimeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
 /// `(.isBefore a b)` — true when `a` precedes `b` (JVM `LocalDateTime.isBefore`).
 /// Compares lexicographically by (epoch-day, then nano-of-day).
 fn isBeforeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("isBefore", args, 2, loc);
-    if (!isLocalDateTime(rt, args[1]))
+    if (!isLocalDateTime(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".isBefore", .expected = "LocalDateTime", .actual = @tagName(args[1].tag()) });
     const a_day = epochDayOf(args[0]);
     const b_day = epochDayOf(args[1]);
@@ -151,9 +153,10 @@ fn isBeforeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 
 /// `(.isAfter a b)` — true when `a` follows `b` (JVM `LocalDateTime.isAfter`).
 fn isAfterFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("isAfter", args, 2, loc);
-    if (!isLocalDateTime(rt, args[1]))
+    if (!isLocalDateTime(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".isAfter", .expected = "LocalDateTime", .actual = @tagName(args[1].tag()) });
     const a_day = epochDayOf(args[0]);
     const b_day = epochDayOf(args[1]);
@@ -162,9 +165,10 @@ fn isAfterFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 
 /// `(.isEqual a b)` — true when `a` equals `b` (JVM `LocalDateTime.isEqual`).
 fn isEqualFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("isEqual", args, 2, loc);
-    if (!isLocalDateTime(rt, args[1]))
+    if (!isLocalDateTime(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".isEqual", .expected = "LocalDateTime", .actual = @tagName(args[1].tag()) });
     return Value.initBoolean(epochDayOf(args[0]) == epochDayOf(args[1]) and nanoOfDayOf(args[0]) == nanoOfDayOf(args[1]));
 }
@@ -190,7 +194,7 @@ fn makeLong(rt: *Runtime, v: i64) !Value {
 fn untilFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("until", args, 3, loc);
-    if (!isLocalDateTime(rt, args[1]))
+    if (!isLocalDateTime(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "LocalDateTime", .actual = @tagName(args[1].tag()) });
     if (args[2].tag() != .host_instance)
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a ChronoUnit", .actual = @tagName(args[2].tag()) });
@@ -423,7 +427,7 @@ const NS_PER_SEC: i128 = 1_000_000_000;
 fn plusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("plus", args, 2, loc);
-    if (!duration_value.isDuration(rt, args[1]))
+    if (!duration_value.isDuration(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".plus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
     const dur_ns = @as(i128, duration_value.secondsOf(args[1])) * NS_PER_SEC + duration_value.nanosOf(args[1]);
     const total = @as(i128, nanoOfDayOf(args[0])) + dur_ns;
@@ -436,7 +440,7 @@ fn plusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
 fn minusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("minus", args, 2, loc);
-    if (!duration_value.isDuration(rt, args[1]))
+    if (!duration_value.isDuration(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".minus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
     const dur_ns = @as(i128, duration_value.secondsOf(args[1])) * NS_PER_SEC + duration_value.nanosOf(args[1]);
     const total = @as(i128, nanoOfDayOf(args[0])) - dur_ns;
@@ -444,25 +448,16 @@ fn minusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return make(rt, new_epoch_day, @intCast(@mod(total, @as(i128, DAY_NS))));
 }
 
-/// The per-Runtime canonical LocalDateTime descriptor (lazily allocated on
-/// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "LocalDateTime"` so
-/// `(class …)` prints the simple name (AD-003 / no-JVM);
-/// `temporal_print = .iso_local_date_time` drives the bare ISO-local print form.
-/// Carries the instance methods.
-pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
-    if (rt.local_date_time_descriptor) |d| return d;
-    const td = try rt.gc.infra.create(TypeDescriptor);
-    td.* = .{
-        .fqcn = "LocalDateTime",
-        .kind = .native,
-        .field_layout = null,
-        .protocol_impls = &.{},
-        .method_table = &.{},
-        .parent = null,
-        .meta = .nil_val,
-        .temporal_print = .iso_local_date_time,
-    };
-    const specs = .{
+/// The JVM-visible class name — also the `rt.types` registry key
+/// (ADR-0174 D1: Java-surface-backed classes carry their JVM FQCN).
+pub const FQCN = "java.time.LocalDateTime";
+
+/// Append the LocalDateTime instance methods onto `td` (idempotent — guarded
+/// on the `getYear` sentinel). Called by BOTH creation orders: the surface
+/// `init` (production) and `configureDescriptor` (bare-Runtime unit tests).
+pub fn ensureInstanceMethods(td: *TypeDescriptor, gpa: std.mem.Allocator) !void {
+    if (td.lookupMethod(null, "getYear") != null) return;
+    try td_mod.appendMethodEntries(td, gpa, .{
         .{ "getYear", &getYearFn },
         .{ "getMonthValue", &getMonthValueFn },
         .{ "getDayOfMonth", &getDayOfMonthFn },
@@ -497,18 +492,19 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .{ "until", &untilFn },
         .{ "plus", &plusFn },
         .{ "minus", &minusFn },
-    };
-    const entries = try rt.gc.infra.alloc(TypeDescriptor.MethodEntry, specs.len);
-    inline for (specs, 0..) |spec, i| {
-        entries[i] = .{
-            .protocol_name = "",
-            .method_name = try rt.gc.infra.dupe(u8, spec[0]),
-            .method_val = Value.initBuiltinFn(spec[1]),
-        };
-    }
-    td.method_table = entries;
-    rt.local_date_time_descriptor = td;
-    return td;
+    });
+}
+
+fn configureDescriptor(td: *TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
+    td.temporal_print = .iso_local_date_time; // bare ISO-local print form
+    try ensureInstanceMethods(td, gpa);
+}
+
+/// The ONE canonical LocalDateTime descriptor:
+/// `rt.types["java.time.LocalDateTime"]` (ADR-0174 D2 merge — statics and
+/// instance values share it).
+pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
+    return td_mod.ensureRegistered(rt, FQCN, &configureDescriptor);
 }
 
 /// Build a LocalDateTime from `epoch_day` (signed) + `nano_of_day`
@@ -518,11 +514,12 @@ pub fn make(rt: *Runtime, epoch_day: i64, nano_of_day: i64) !Value {
     return td_mod.allocInstance(rt, td, &.{ Value.initInteger(epoch_day), Value.initInteger(nano_of_day) });
 }
 
-/// True when `v` is a LocalDateTime (carries the per-Runtime descriptor).
-pub fn isLocalDateTime(rt: *Runtime, v: Value) bool {
+/// True when `v` is a LocalDateTime (carries the canonical LocalDateTime
+/// descriptor, recognised by fqcn — rt-free).
+pub fn isLocalDateTime(v: Value) bool {
     if (v.tag() != .typed_instance) return false;
-    const d = rt.local_date_time_descriptor orelse return false;
-    return v.decodePtr(*const TypedInstance).descriptor == d;
+    const fq = v.decodePtr(*const TypedInstance).descriptor.fqcn orelse return false;
+    return std.mem.eql(u8, fq, FQCN);
 }
 
 /// The `epoch_day` field. Caller must have checked `isLocalDateTime`.
@@ -533,17 +530,6 @@ pub fn epochDayOf(v: Value) i64 {
 /// The `nano_of_day` field. Caller must have checked `isLocalDateTime`.
 pub fn nanoOfDayOf(v: Value) i64 {
     return v.decodePtr(*const TypedInstance).fields()[1].asInteger();
-}
-
-/// Free the per-Runtime descriptor (gc.infra-allocated). Called from
-/// `Runtime.deinit`; idempotent.
-pub fn deinitDescriptor(rt: *Runtime) void {
-    if (rt.local_date_time_descriptor) |td| {
-        for (td.method_table) |e| rt.gc.infra.free(e.method_name);
-        if (td.method_table.len > 0) rt.gc.infra.free(td.method_table);
-        rt.gc.infra.destroy(td);
-        rt.local_date_time_descriptor = null;
-    }
 }
 
 /// Format a LocalDateTime (`epoch_day` signed + `nano_of_day` in
@@ -575,11 +561,11 @@ test "LocalDateTime value: make / isLocalDateTime / accessors + temporal_print s
     const nod: i64 = ((14 * 60 + 5) * 60 + 45) * 1_000_000_000 + 123_456_789;
     const d = try make(&rt, epoch_day, nod);
     try testing.expect(d.tag() == .typed_instance);
-    try testing.expect(isLocalDateTime(&rt, d));
+    try testing.expect(isLocalDateTime(d));
     try testing.expectEqual(epoch_day, epochDayOf(d));
     try testing.expectEqual(nod, nanoOfDayOf(d));
     try testing.expect(d.decodePtr(*const TypedInstance).descriptor.temporal_print == .iso_local_date_time);
-    try testing.expect(!isLocalDateTime(&rt, Value.initInteger(5)));
+    try testing.expect(!isLocalDateTime(Value.initInteger(5)));
 }
 
 test "formatLocalDateTime: conditional seconds + variable fraction" {

@@ -52,7 +52,7 @@ On the java.util container surface:
   value-remove — documented in `ArrayList.zig`. Corpus uses a non-integer element
   to test the unambiguous value-remove parity.
 - `.toString` of an ArrayList/HashMap renders the cljw host-instance opaque form
-  (`#<cljw.java.util.ArrayList>`), not clj's `[1, 2]` — the uniform host-object
+  (`#<java.util.ArrayList>`), not clj's `[1, 2]` — the uniform host-object
   print. `(vec al)` / `(into {} hm)` give the clj-matching content.
 - `.keySet` / `.values` return a cljw seq, not a JVM `Set`/`Collection` view
   (AD-032); corpus sorts them since hash order differs from clj (AD-001 family).

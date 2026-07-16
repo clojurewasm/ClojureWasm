@@ -63,9 +63,10 @@ fn toEpochMilliFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
 /// `(.isBefore a b)` — true when `a` precedes `b` (JVM `Instant.isBefore`).
 /// Compares by (epoch-millis, then nanos); both args must be Instants.
 fn isBeforeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("isBefore", args, 2, loc);
-    if (!isInstant(rt, args[1]))
+    if (!isInstant(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".isBefore", .expected = "Instant", .actual = @tagName(args[1].tag()) });
     const a_ms = epochMsOf(args[0]);
     const b_ms = epochMsOf(args[1]);
@@ -74,9 +75,10 @@ fn isBeforeFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
 
 /// `(.isAfter a b)` — true when `a` follows `b` (JVM `Instant.isAfter`).
 fn isAfterFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("isAfter", args, 2, loc);
-    if (!isInstant(rt, args[1]))
+    if (!isInstant(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".isAfter", .expected = "Instant", .actual = @tagName(args[1].tag()) });
     const a_ms = epochMsOf(args[0]);
     const b_ms = epochMsOf(args[1]);
@@ -99,7 +101,7 @@ fn makeLong(rt: *Runtime, v: i64) !Value {
 fn untilFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("until", args, 3, loc);
-    if (!isInstant(rt, args[1]))
+    if (!isInstant(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "an Instant", .actual = @tagName(args[1].tag()) });
     if (args[2].tag() != .host_instance)
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".until", .expected = "a ChronoUnit", .actual = @tagName(args[2].tag()) });
@@ -193,7 +195,7 @@ fn minusNanosFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 fn plusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("plus", args, 2, loc);
-    if (!duration_value.isDuration(rt, args[1]))
+    if (!duration_value.isDuration(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".plus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
     var new_epoch_ms = epochMsOf(args[0]) + duration_value.secondsOf(args[1]) * 1000;
     const total_ns = @as(i128, nanosOf(args[0])) + duration_value.nanosOf(args[1]);
@@ -206,7 +208,7 @@ fn plusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
 fn minusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("minus", args, 2, loc);
-    if (!duration_value.isDuration(rt, args[1]))
+    if (!duration_value.isDuration(args[1]))
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = ".minus", .expected = "Duration", .actual = @tagName(args[1].tag()) });
     var new_epoch_ms = epochMsOf(args[0]) - duration_value.secondsOf(args[1]) * 1000;
     const total_ns = @as(i128, nanosOf(args[0])) - duration_value.nanosOf(args[1]);
@@ -214,25 +216,17 @@ fn minusFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     return make(rt, new_epoch_ms, @intCast(@mod(total_ns, NS_PER_SEC)));
 }
 
-/// The per-Runtime canonical Instant descriptor (lazily allocated on
-/// `gc.infra`; freed in `Runtime.deinit`). `fqcn = "Instant"` so `(class …)`
-/// prints the simple name (AD-003 / no-JVM); `temporal_print = .iso_instant` drives the
-/// bare ISO_INSTANT print form. Carries the instance methods (the Instant
-/// VALUE carries this descriptor, so instance dispatch resolves here).
-pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
-    if (rt.instant_descriptor) |d| return d;
-    const td = try rt.gc.infra.create(TypeDescriptor);
-    td.* = .{
-        .fqcn = "Instant",
-        .kind = .native,
-        .field_layout = null,
-        .protocol_impls = &.{},
-        .method_table = &.{},
-        .parent = null,
-        .meta = .nil_val,
-        .temporal_print = .iso_instant,
-    };
-    const specs = .{
+/// The JVM-visible class name — also the `rt.types` registry key
+/// (ADR-0174 D1: Java-surface-backed classes carry their JVM FQCN).
+pub const FQCN = "java.time.Instant";
+
+/// Append the Instant instance methods onto `td` (idempotent — guarded on
+/// the `getEpochSecond` sentinel). Called by BOTH creation orders: the
+/// surface `init` (production) and `configureDescriptor` (bare-Runtime
+/// unit tests).
+pub fn ensureInstanceMethods(td: *TypeDescriptor, gpa: std.mem.Allocator) !void {
+    if (td.lookupMethod(null, "getEpochSecond") != null) return;
+    try td_mod.appendMethodEntries(td, gpa, .{
         .{ "getEpochSecond", &getEpochSecondFn },
         .{ "getNano", &getNanoFn },
         .{ "toEpochMilli", &toEpochMilliFn },
@@ -247,18 +241,18 @@ pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
         .{ "minusNanos", &minusNanosFn },
         .{ "plus", &plusFn },
         .{ "minus", &minusFn },
-    };
-    const entries = try rt.gc.infra.alloc(TypeDescriptor.MethodEntry, specs.len);
-    inline for (specs, 0..) |spec, i| {
-        entries[i] = .{
-            .protocol_name = "",
-            .method_name = try rt.gc.infra.dupe(u8, spec[0]),
-            .method_val = Value.initBuiltinFn(spec[1]),
-        };
-    }
-    td.method_table = entries;
-    rt.instant_descriptor = td;
-    return td;
+    });
+}
+
+fn configureDescriptor(td: *TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
+    td.temporal_print = .iso_instant; // bare ISO_INSTANT print form
+    try ensureInstanceMethods(td, gpa);
+}
+
+/// The ONE canonical Instant descriptor: `rt.types["java.time.Instant"]`
+/// (ADR-0174 D2 merge — statics and instance values share it).
+pub fn descriptorOf(rt: *Runtime) !*const TypeDescriptor {
+    return td_mod.ensureRegistered(rt, FQCN, &configureDescriptor);
 }
 
 /// Build an Instant from second-aligned epoch-millis + the full
@@ -268,11 +262,12 @@ pub fn make(rt: *Runtime, epoch_ms: i64, nanos: i32) !Value {
     return td_mod.allocInstance(rt, td, &.{ Value.initInteger(epoch_ms), Value.initInteger(nanos) });
 }
 
-/// True when `v` is an Instant (carries the per-Runtime Instant descriptor).
-pub fn isInstant(rt: *Runtime, v: Value) bool {
+/// True when `v` is an Instant (carries the canonical Instant descriptor,
+/// recognised by fqcn — rt-free).
+pub fn isInstant(v: Value) bool {
     if (v.tag() != .typed_instance) return false;
-    const d = rt.instant_descriptor orelse return false;
-    return v.decodePtr(*const TypedInstance).descriptor == d;
+    const fq = v.decodePtr(*const TypedInstance).descriptor.fqcn orelse return false;
+    return std.mem.eql(u8, fq, FQCN);
 }
 
 /// The second-aligned epoch-millis field. Caller must have checked `isInstant`.
@@ -283,17 +278,6 @@ pub fn epochMsOf(v: Value) i64 {
 /// The fractional-second nanos field. Caller must have checked `isInstant`.
 pub fn nanosOf(v: Value) i32 {
     return @intCast(v.decodePtr(*const TypedInstance).fields()[1].asInteger());
-}
-
-/// Free the per-Runtime descriptor (gc.infra-allocated). Called from
-/// `Runtime.deinit`; idempotent.
-pub fn deinitDescriptor(rt: *Runtime) void {
-    if (rt.instant_descriptor) |td| {
-        for (td.method_table) |e| rt.gc.infra.free(e.method_name);
-        if (td.method_table.len > 0) rt.gc.infra.free(td.method_table);
-        rt.gc.infra.destroy(td);
-        rt.instant_descriptor = null;
-    }
 }
 
 // --- tests ---
@@ -309,9 +293,9 @@ test "Instant value: make / isInstant / accessors + iso_instant set" {
     // ofEpochSecond(1704067200, 500000000): epoch_ms second-aligned, nanos full.
     const i = try make(&rt, 1_704_067_200_000, 500_000_000);
     try testing.expect(i.tag() == .typed_instance);
-    try testing.expect(isInstant(&rt, i));
+    try testing.expect(isInstant(i));
     try testing.expectEqual(@as(i64, 1_704_067_200_000), epochMsOf(i));
     try testing.expectEqual(@as(i32, 500_000_000), nanosOf(i));
     try testing.expect(i.decodePtr(*const TypedInstance).descriptor.temporal_print == .iso_instant);
-    try testing.expect(!isInstant(&rt, Value.initInteger(5)));
+    try testing.expect(!isInstant(Value.initInteger(5)));
 }

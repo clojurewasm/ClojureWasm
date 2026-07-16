@@ -27,7 +27,7 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
       (class (clojure.instant/read-instant-date "2026-06-10"))])
 EOF
 )
-assert_eq 'read_instant_date' "$got" '[true Date]'
+assert_eq 'read_instant_date' "$got" '[true java.util.Date]'
 
 # read-instant-timestamp → a nanosecond-precision Timestamp (clj-exact print + class +
 # inst?/inst-ms); a Timestamp is NOT = an =-instant Date (distinct type).
@@ -39,7 +39,7 @@ got=$("$BIN" - <<'EOF' 2>/dev/null
         (= ts (clojure.instant/read-instant-date "2024-01-01T00:00:00.123Z"))]))
 EOF
 )
-assert_eq 'read_instant_timestamp' "$got" '[#inst "2024-01-01T00:00:00.123456789-00:00" Timestamp true 1704067200123 true false]'
+assert_eq 'read_instant_timestamp' "$got" '[#inst "2024-01-01T00:00:00.123456789-00:00" java.sql.Timestamp true 1704067200123 true false]'
 
 # Malformed input throws (clj parity: a bad instant string is rejected).
 got=$("$BIN" - <<'EOF' 2>/dev/null

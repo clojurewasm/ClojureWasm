@@ -5,7 +5,7 @@
 # java.lang auto-import resolution path (ADR-0050 R3 follow-up).
 #
 # Validates:
-#   - bare (Math/abs …) resolves via the cljw.java.lang.<head> auto-import
+#   - bare (Math/abs …) resolves via the java.lang.<head> auto-import
 #     (today fails "No namespace: 'Math'")
 #   - F-005 type preservation: (Math/abs -5) → Integer 5, (Math/abs -5.0)
 #     → Float 5.0 (NOT widened); min/max likewise

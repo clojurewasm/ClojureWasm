@@ -50,20 +50,22 @@ pub fn readInstantTimestamp(rt: *Runtime, env: *Env, args: []const Value, loc: S
 /// `(inst? x)` — true iff `x` is an instant. cljw's Inst values: Date AND
 /// Timestamp (clj's `Inst` protocol covers both — a Timestamp IS an instant).
 pub fn instQ(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("inst?", args, 1, loc);
     const x = args[0];
-    return if (date.isDate(rt, x) or timestamp.isTimestamp(rt, x)) Value.true_val else Value.false_val;
+    return if (date.isDate(x) or timestamp.isTimestamp(x)) Value.true_val else Value.false_val;
 }
 
 /// `(inst-ms inst)` — the instant as epoch-millis (Date or Timestamp). Errors
 /// on a non-instant.
 pub fn instMs(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = rt;
     _ = env;
     try error_catalog.checkArity("inst-ms", args, 1, loc);
     const x = args[0];
-    if (date.isDate(rt, x)) return Value.initInteger(date.epochMsOf(x));
-    if (timestamp.isTimestamp(rt, x)) return Value.initInteger(timestamp.epochMsOf(x));
+    if (date.isDate(x)) return Value.initInteger(date.epochMsOf(x));
+    if (timestamp.isTimestamp(x)) return Value.initInteger(timestamp.epochMsOf(x));
     return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "inst-ms", .expected = "inst", .actual = @tagName(x.tag()) });
 }
 

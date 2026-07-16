@@ -30,7 +30,7 @@ fn getRuntime(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     _ = env;
     try error_catalog.checkArity("Runtime/getRuntime", args, 0, loc);
     if (!rt.runtime_instance.isNil()) return rt.runtime_instance;
-    const td = rt.types.get("cljw.java.lang.Runtime") orelse return error.InternalError;
+    const td = rt.types.get("java.lang.Runtime") orelse return error.InternalError;
     const inst = try rt.gc.infra.create(host_instance.HostInstance);
     inst.* = .{
         .header = HeapHeader.init(.host_instance),
@@ -75,7 +75,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.lang.Runtime",
+    .fqcn = "java.lang.Runtime",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

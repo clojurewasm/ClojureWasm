@@ -404,55 +404,13 @@ pub const Runtime = struct {
     /// lazily built on `gc.infra` by `classDescriptor`, freed in `deinit`.
     class_descriptors: std.StringHashMapUnmanaged(*TypeDescriptor) = .empty,
 
-    /// Per-Runtime `java.util.Date` value descriptor (D-200 / ADR-0079;
-    /// `#inst` / Date is a no-slot `.typed_instance`). Lazily allocated on
-    /// `gc.infra` by `runtime/time/date.zig::descriptorOf`, freed in
-    /// `deinit`. `null` until the first Date value is built.
-    date_descriptor: ?*TypeDescriptor = null,
+    // java.util.Date's descriptor is the canonical rt.types entry
+    // (ADR-0174 merge) — no per-Runtime lazy field.
 
-    /// The per-Runtime `java.sql.Timestamp` descriptor (D-382) — a
-    /// nanosecond-precision instant, a 2-field no-slot `.typed_instance`.
-    /// Lazily allocated by `runtime/time/timestamp.zig::descriptorOf`, freed
-    /// in `deinit`. `null` until the first Timestamp value is built.
-    timestamp_descriptor: ?*TypeDescriptor = null,
-
-    /// Per-Runtime `java.time.Instant` value descriptor (D-462) — a
-    /// nanosecond-precision instant, a 2-field no-slot `.typed_instance` with
-    /// `iso_instant = true` (bare ISO_INSTANT print form). Lazily allocated on
-    /// `gc.infra` by `runtime/time/instant_value.zig::descriptorOf`, freed in
-    /// `deinit`. `null` until the first Instant value is built.
-    instant_descriptor: ?*TypeDescriptor = null,
-
-    /// Per-Runtime `java.time.Duration` value descriptor (D-462) — a signed
-    /// time span, a 2-field no-slot `.typed_instance` with `temporal_print =
-    /// .iso_duration` (bare `PT…` print form). Lazily allocated on `gc.infra`
-    /// by `runtime/time/duration_value.zig::descriptorOf`, freed in `deinit`.
-    /// `null` until the first Duration value is built.
-    duration_descriptor: ?*TypeDescriptor = null,
-
-    /// Per-Runtime `java.time.LocalDateTime` value descriptor (D-462) — a
-    /// timezone-agnostic date+time, a 2-field no-slot `.typed_instance` with
-    /// `temporal_print = .iso_local_date_time` (bare ISO-local print form).
-    /// Lazily allocated on `gc.infra` by
-    /// `runtime/time/local_date_time_value.zig::descriptorOf`, freed in
-    /// `deinit`. `null` until the first LocalDateTime value is built.
-    local_date_time_descriptor: ?*TypeDescriptor = null,
-
-    /// Per-Runtime `java.time.LocalDate` value descriptor (D-462) — a
-    /// timezone-agnostic calendar date, a 1-field no-slot `.typed_instance`
-    /// with `temporal_print = .iso_local_date` (bare `yyyy-MM-dd` print form).
-    /// Lazily allocated on `gc.infra` by
-    /// `runtime/time/local_date_value.zig::descriptorOf`, freed in `deinit`.
-    /// `null` until the first LocalDate value is built.
-    local_date_descriptor: ?*TypeDescriptor = null,
-
-    /// Per-Runtime `java.time.LocalTime` value descriptor (D-462) — a
-    /// timezone-agnostic time-of-day, a 1-field no-slot `.typed_instance` with
-    /// `temporal_print = .iso_local_time` (bare ISO local-time print form).
-    /// Lazily allocated on `gc.infra` by
-    /// `runtime/time/local_time_value.zig::descriptorOf`, freed in `deinit`.
-    /// `null` until the first LocalTime value is built.
-    local_time_descriptor: ?*TypeDescriptor = null,
+    // The java.sql.Timestamp + java.time value descriptors (Instant /
+    // Duration / LocalDateTime / LocalDate / LocalTime) are likewise
+    // canonical rt.types entries (ADR-0174 merge) — no per-Runtime lazy
+    // fields.
 
     // DayOfWeek/Month are host-enum constants (ADR-0161) — interned in the shared
     // `host_enum_consts` cache via their surface descriptors, so they need no
@@ -655,14 +613,6 @@ pub const Runtime = struct {
         @import("locale.zig").deinitSingletons(self);
         @import("host_enum.zig").deinitConsts(self);
         @import("math_context.zig").deinitSingletons(self);
-        // Free the per-Runtime Date descriptor (gc.infra — D-200/ADR-0079).
-        @import("time/date.zig").deinitDescriptor(self);
-        @import("time/timestamp.zig").deinitDescriptor(self);
-        @import("time/instant_value.zig").deinitDescriptor(self);
-        @import("time/duration_value.zig").deinitDescriptor(self);
-        @import("time/local_date_time_value.zig").deinitDescriptor(self);
-        @import("time/local_date_value.zig").deinitDescriptor(self);
-        @import("time/local_time_value.zig").deinitDescriptor(self);
 
         // User-set system properties (gpa-owned key+value dupes).
         {

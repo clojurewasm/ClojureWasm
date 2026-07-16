@@ -72,7 +72,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.clojure.lang.APersistentMap",
+    .fqcn = "clojure.lang.APersistentMap",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},

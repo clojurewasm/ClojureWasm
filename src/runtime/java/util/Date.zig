@@ -38,14 +38,17 @@ fn dateCtor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 }
 
 fn initDate(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
-    if (td.method_table.len != 0) return; // idempotent re-run
-    const entries = try gpa.alloc(type_descriptor.TypeDescriptor.MethodEntry, 1);
-    entries[0] = .{
-        .protocol_name = "",
-        .method_name = try gpa.dupe(u8, "<init>"),
-        .method_val = Value.initBuiltinFn(&dateCtor),
-    };
-    td.method_table = entries;
+    // ADR-0174 merge: ONE descriptor carries the ctor AND the instance
+    // methods (Date values point at it). Each side appends behind its own
+    // sentinel so registration order (surface-first in production,
+    // impl-first on a bare unit-test Runtime) does not matter.
+    if (td.lookupMethod(null, "<init>") == null) {
+        try type_descriptor.appendMethodEntries(td, gpa, .{
+            .{ "<init>", &dateCtor },
+        });
+    }
+    td.print_tag = "inst"; // impl-first path sets it too; assign is idempotent
+    try date_impl.ensureInstanceMethods(td, gpa);
 }
 
 const std = @import("std");
@@ -57,11 +60,12 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.util.Date",
+    .fqcn = date_impl.FQCN, // "java.util.Date" — the ONE canonical key (ADR-0174)
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},
     .method_table = &.{},
     .parent = null,
     .meta = .nil_val,
+    .print_tag = "inst",
 };

@@ -131,7 +131,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 };
 
 var descriptor: type_descriptor.TypeDescriptor = .{
-    .fqcn = "cljw.java.util.Objects",
+    .fqcn = "java.util.Objects",
     .kind = .native,
     .field_layout = null,
     .protocol_impls = &.{},
