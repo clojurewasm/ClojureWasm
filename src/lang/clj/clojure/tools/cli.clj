@@ -11,7 +11,7 @@
 ;; options (:id :default :default-desc :default-fn :parse-fn :update-fn
 ;; :assoc-fn :validate :missing), `--opt=val`, `--[no-]opt`, grouped
 ;; boolean shorts (-vvv), the `--` terminator, and the parse-opts kwargs
-;; :in-order / :no-defaults. No regex literals (bundled-bootstrap reader).
+;; :in-order / :no-defaults.
 (ns clojure.tools.cli
   (:refer-clojure)
   (:require [clojure.string :as s]))

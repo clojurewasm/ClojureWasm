@@ -50,5 +50,17 @@ EOF
 )
 assert_eq 'malformed_throws' "$got" ':threw'
 
+# Reader-quote chars are rejected before reaching read-string (the guard is a
+# regex literal in a BUNDLED ns — also locks bootstrap-reader regex support, D-383).
+got=$("$BIN" - <<'EOF' 2>/dev/null
+(require 'clojure.instant)
+(print [(try (clojure.instant/read-instant-date "2024-01-01T00:00:00\"x") :no-throw
+             (catch Exception e :threw))
+        (try (clojure.instant/read-instant-date "a\\b") :no-throw
+             (catch Exception e :threw))])
+EOF
+)
+assert_eq 'quote_chars_rejected' "$got" '[:threw :threw]'
+
 echo
 echo "clojure.instant backfill (D-273) e2e: all green."

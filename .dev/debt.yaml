@@ -641,20 +641,6 @@ active:
       (incremental flush / max-bytes). Tie to D-347 (both are wasm/run resource
       bounds). Low priority while wasm/run is demo/trusted-module scoped.
     last_reviewed: "2026-06-09"
-  - id: "D-383"
-    status: "open (2026-06-10, reader asymmetry found during the clojure.instant backfill). A regex literal `#\"…\"` LOADS + works at RUNTIME (`(re-find #\"a+\" \"baaab\")`→\"aaa\") but FAILS in a bootstrap-loaded `.clj` (anything `@embedFile`d from src/lang/clj/**): `regex literal (unsupported syntax in cycle 1) is not supported`. So a bundled namespace cannot use `#\"…\"` — clojure.instant had to guard with `(some #{\\\" \\\\} s)` instead of `(re-find #\"[\\\"\\\\]\" s)`. The bootstrap/cycle-1 reader is a narrower reader than the runtime one; regex-literal support is the gap. Also: the error renderer mis-attributes the location to `<bootstrap>` core.clj (D-058 renderer context gap), so the caret points at the wrong file. LOW priority (clean char-set/ string workaround; few bundled ns need regex), but a real definition-coverage gap (F-013): a bundled ns should reach the full reader."
-    category: "reader"
-    barrier: |-
-      Blocked-by: the bootstrap/cycle-1 reader lacks regex-literal (`#\"…\"`) support that
-      the runtime reader has. Predicate to land: a bundled `clojure/**.clj` genuinely needs
-      a regex literal (e.g. clojure.xml / a future ns), OR the cycle-1 reader is unified
-      with the runtime reader. Then teach the bootstrap reader the regex-literal token (it
-      already exists in the runtime path — likely a shared-reader wiring, not a new parser)
-      + fix the D-058 renderer file-context so the error points at the offending bundled
-      file. Workaround until then: char-set / string ops in bundled `.clj` (memory
-      `regex_literal_unsupported_bootstrap_clj`). Cross-ref D-058 (renderer context),
-      ADR-0031 / D-051 (regex engine — works at runtime), F-013, D-273 (surfacing backfill)."
-    last_reviewed: "2026-06-10"
   - id: "D-384"
     status: |-
       open (2026-06-10) — the wasm cross-runtime comparison (`bench/wasm_bench.sh`,
@@ -2372,6 +2358,20 @@ standing:
     barrier: "open after the D-440 arc completes (R4 + R5 must first rewrite the bulk of 'Phase N' citations to gap-area terms). Premature adoption = ~70 dangling citations with no 1:1 redirect. Trigger: D-440 R4/R5 done + a user nod to re-architect the planning axis (it is depth-4, the project's organizing metaphor)."
     last_reviewed: "2026-06-15"
 discharged:
+  - id: "D-383"
+    status: "DISCHARGED 2026-07-17 — the barrier had already dissolved: a regex literal in a bundled `.clj` now builds through cache_gen AND works at runtime (probe: `(re-find #\"[a-f0-9]+\" s)` appended to clojure/uuid.clj → clean build + correct result; the bootstrap path uses the unified reader). Reality-alignment landed: clojure/instant.clj guard restored to the natural `(re-find #\"[\\\"\\\\]\" s)` form (semantically identical to the char-set workaround; now also the living lock — every read-instant-date call exercises a bundled-ns regex literal, e2e quote_chars_rejected pins it); stale \"regex unsupported in bundled ns\" comments removed from pprint.clj (char walk kept — legitimate single-pass impl, no longer forced) + tools/cli.clj header. D-058 (renderer file-context mis-attribution) remains its own row."
+    category: "reader"
+    barrier: |-
+      Blocked-by: the bootstrap/cycle-1 reader lacks regex-literal (`#\"…\"`) support that
+      the runtime reader has. Predicate to land: a bundled `clojure/**.clj` genuinely needs
+      a regex literal (e.g. clojure.xml / a future ns), OR the cycle-1 reader is unified
+      with the runtime reader. Then teach the bootstrap reader the regex-literal token (it
+      already exists in the runtime path — likely a shared-reader wiring, not a new parser)
+      + fix the D-058 renderer file-context so the error points at the offending bundled
+      file. Workaround until then: char-set / string ops in bundled `.clj` (memory
+      `regex_literal_unsupported_bootstrap_clj`). Cross-ref D-058 (renderer context),
+      ADR-0031 / D-051 (regex engine — works at runtime), F-013, D-273 (surfacing backfill)."
+    last_reviewed: "2026-06-10"
   - id: "D-316"
     status: "DISCHARGED 2026-07-17 — the residual (computed def-meta) resolved on the D-563(b) meta_expr channel: the def-meta map now analyzes as a REAL expression (quotes stay data, literals embed, computed values EVALUATE at def time — clj-exact, oracle [3 (a b) \"s\"] / defn attr-map (* 2 3) → 6). Prerequisite: defn/defmacro now QUOTE their synthesized :arglists at the generator (like clj), which is what made raw-expression analysis safe. unquoteMetaValues stays only for the analyze-time static Var.meta lift (pre-eval approximation; the runtime value wins). Corpus def_meta_eval.txt; e2e computed_meta/defn_attr_computed on phase15_var_source_meta. ORIGINAL NARROWED note (2026-06-08) + original finding (2026-06-07) in git history."
     category: "scope"

@@ -18,10 +18,9 @@
   "Parse an instant string into a java.util.Date via the canonical #inst reader.
   A valid instant string is reader-quote-free; a `\"` / `\\` would let the reader
   consume a partial form, so reject those (malformed → throw), matching clj's
-  reject-bad-input contract. (Char-set guard, not a regex literal — regex literals
-  are unsupported in a bootstrap-loaded namespace.)"
+  reject-bad-input contract."
   [s]
-  (if (and (string? s) (not (some #{\" \\} s)))
+  (if (and (string? s) (not (re-find #"[\"\\]" s)))
     (read-string (str "#inst \"" s "\""))
     (throw (ex-info "Invalid instant string" {:s s}))))
 

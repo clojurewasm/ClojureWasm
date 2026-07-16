@@ -282,8 +282,7 @@
                 (recur (rest ts) gi (str acc (nth segs tk)))))))))))
 
 ;; Capitalize the first letter of each space-separated word, lowercasing the rest
-;; (the `~:(` transform). Manual char walk — a regex literal cannot live in a
-;; bundled `.clj` (cycle-1 reader limitation).
+;; (the `~:(` transform). Manual char walk (single pass, no regex needed).
 (defn cl-cap-words [s]
   (loop [cs (seq s) prev-space? true acc ""]
     (if (nil? cs)
