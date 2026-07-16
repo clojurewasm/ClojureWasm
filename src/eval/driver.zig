@@ -46,7 +46,7 @@ pub const MAX_LOCALS = tree_walk.MAX_LOCALS;
 /// embedded-run, the AOT-bootstrap restore, and lazy-`require` all route
 /// through (ADR-0056 Alt-2 — impl lives once, in Layer 1, so both
 /// `lang/bootstrap` and `app/builder` can call it).
-pub fn runEnvelope(rt: *Runtime, env: *Env, arena: std.mem.Allocator, payload: []const u8, pool: ?*const serialize.ConstPool) !void {
+pub fn runEnvelope(rt: *Runtime, env: *Env, arena: std.mem.Allocator, payload: []const u8, pool: ?*serialize.ConstPool) !void {
     var it = try serialize.EnvelopeIterator.init(payload);
     var locals: [MAX_LOCALS]Value = [_]Value{.nil_val} ** MAX_LOCALS;
     // ADR-0129 / Track D D1: arm the ambient eval Env for the envelope run — this

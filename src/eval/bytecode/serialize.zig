@@ -167,12 +167,27 @@ pub const ValueTag = enum(u8) {
 /// unchanged (ADR-0173 Decision 3); memoized slots arrive in C4'.
 pub const ConstPool = struct {
     entries: []const []const u8,
+    /// C4' (ADR-0173): memoized decode slots, same length as `entries` —
+    /// each unique pooled constant is decoded ONCE per pool lifetime
+    /// (15.9K refs / 3.3K uniques in the bootstrap blob). The pool never
+    /// solely owns a Value: a materialized slot is immediately stored into
+    /// the requesting chunk's constants array, whose analysis-persist root
+    /// keeps it alive for the session — so the slot array needs NO GC root
+    /// of its own (see .dev/gc_rooting.md § constant pool).
+    slots: []?Value = &.{},
 
     pub fn deinit(self: *ConstPool, allocator: std.mem.Allocator) void {
         allocator.free(self.entries);
+        if (self.slots.len > 0) allocator.free(self.slots);
         self.* = undefined;
     }
 };
+
+fn allocPoolSlots(allocator: std.mem.Allocator, count: usize) DeserializeError![]?Value {
+    const slots = allocator.alloc(?Value, count) catch return DeserializeError.OutOfMemory;
+    @memset(slots, null);
+    return slots;
+}
 
 /// Serialize-side pool accumulator: dedupes poolable constants by their
 /// standalone encoding. Shared across every chunk of a blob (cache_gen) or
@@ -232,7 +247,7 @@ const ReadCtx = struct {
     allocator: std.mem.Allocator,
     rt: *Runtime,
     env: *@import("../../runtime/env.zig").Env,
-    pool: ?*const ConstPool,
+    pool: ?*ConstPool,
     source_file: []const u8,
     /// C3': read instr arrays as borrowed in-place views (caller guarantees
     /// the bytes outlive every chunk — rodata blob / kept-alive payload).
@@ -481,13 +496,20 @@ fn readValue(ctx: *ReadCtx, r: *ByteReader) DeserializeError!Value {
     switch (tag) {
         .pool_ref => {
             // v7 (ADR-0173): decode the pooled standalone encoding through
-            // the SAME arms (resolution timing preserved; memoized slots are
-            // C4'). Pool entries never contain pool_refs (enforced on write).
+            // the SAME arms — the FIRST reference resolves exactly when
+            // today's inline copy would have (timing preserved); later
+            // references memoize (C4': 15.9K refs -> 3.3K decodes). The
+            // rooting story is on ConstPool.slots' doc comment.
             const id = try r.readU32();
             const cp = ctx.pool orelse return DeserializeError.PoolMissing;
             if (id >= cp.entries.len) return DeserializeError.PoolRefOutOfRange;
+            if (id < cp.slots.len) {
+                if (cp.slots[id]) |cached| return cached;
+            }
             var er: ByteReader = .{ .bytes = cp.entries[id], .pos = 0 };
-            return readValue(ctx, &er);
+            const v = try readValue(ctx, &er);
+            if (id < cp.slots.len) cp.slots[id] = v;
+            return v;
         },
         .nil => return .nil_val,
         .true_val => return .true_val,
@@ -792,7 +814,7 @@ fn writeChunkBody(ctx: *WriteCtx, w: *std.Io.Writer, chunk: BytecodeChunk) Seria
 /// allocated via `allocator`; the caller frees via `freeChunk`.
 /// Constants are heap-allocated via `rt.gc.alloc` (string / list /
 /// vector / map / set / regex paths) — they participate in GC.
-pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@import("../../runtime/env.zig").Env, bytes: []const u8, pool: ?*const ConstPool, in_place: bool) !BytecodeChunk {
+pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@import("../../runtime/env.zig").Env, bytes: []const u8, pool: ?*ConstPool, in_place: bool) !BytecodeChunk {
     if (bytes.len < 10) return DeserializeError.BytecodeTruncated;
     if (!std.mem.eql(u8, bytes[0..4], &MAGIC)) return DeserializeError.BadMagic;
     const version = std.mem.readInt(u16, bytes[4..6], .little);
@@ -1233,7 +1255,7 @@ pub fn readEnvelopePool(allocator: std.mem.Allocator, bytes: []const u8) Deseria
     errdefer allocator.free(entries);
     var j: u32 = 0;
     while (j < pool_count) : (j += 1) entries[j] = try r.readLenPrefixed();
-    return .{ .entries = entries };
+    return .{ .entries = entries, .slots = try allocPoolSlots(allocator, pool_count) };
 }
 
 /// Deserialize an envelope into owned chunks (free via `freeEnvelope`).
@@ -1454,7 +1476,7 @@ pub fn readBlobPool(allocator: std.mem.Allocator, blob: []const u8) DeserializeE
     errdefer allocator.free(entries);
     var j: u32 = 0;
     while (j < pool_count) : (j += 1) entries[j] = try pr.readLenPrefixed();
-    return .{ .entries = entries };
+    return .{ .entries = entries, .slots = try allocPoolSlots(allocator, pool_count) };
 }
 
 /// Return the envelope bytes for `ns_name` (a sub-slice into `blob`), or null if

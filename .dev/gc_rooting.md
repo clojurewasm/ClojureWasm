@@ -275,3 +275,20 @@ instead of per-hook (DA Alt B-finished-form-clean; debt **D-318**).
 - `.dev/debt.yaml` D-251 (the rooting campaign) · D-252 (the C1-C9 candidates).
 - `private/notes/gc-rooting-ssot-sweep.md` — the raw sweep (full per-site
   file:line detail).
+
+## Constant pool slots (ADR-0173 C4′) — NOT a root, by design
+
+`serialize.ConstPool.slots` memoizes decoded pooled constants
+(`pool_ref` 0x11). The slot array is **deliberately not a GC root**:
+a slot is only ever written by `readValue`'s pool_ref arm, whose
+return value the constants loop immediately (same bracket) roots via
+`root_set.pushAnalysisRoot` and stores into the requesting chunk's
+`constants` array — which the analysis-persist mechanism keeps alive
+for the session (deserialized chunks live in `rt.load_arena`). A
+pool slot is therefore always a DUPLICATE reference to a Value that
+some chunk's constants array already owns; the pool can never be the
+sole holder. Interned symbols/keywords are immune regardless. If a
+future change lets a pool outlive or precede its first referencing
+chunk's persist (e.g. cross-require session pooling), the slot array
+becomes a published root at that moment — add the `GC-ROOT:` marker
+and a row here.
