@@ -76,7 +76,7 @@ const tree_walk = @import("../backend/tree_walk.zig");
 const Function = tree_walk.Function;
 
 pub const MAGIC: [4]u8 = .{ 'C', 'L', 'J', 'W' };
-pub const VERSION: u16 = 6; // v6: rt ns merged into clojure.core (ADR-0171) — pre-v6 archives bake "rt" var_refs that no longer resolve; v5: NsFilterEntry attr_const (D-554)
+pub const VERSION: u16 = 7; // v7 (ADR-0173 C2'): 4B WireInstr wire + 4B-aligned instr sections + source_file/has_handlers in the chunk + interned-name constant pool (pool_ref) + headerless nested fn-method chunks; v6: rt ns merged into clojure.core (ADR-0171); v5: NsFilterEntry attr_const (D-554)
 
 pub const SerializeError = error{
     OutOfMemory,
@@ -114,6 +114,11 @@ pub const DeserializeError = error{
     /// the name is not a registered class). Surfaces a concrete error rather
     /// than silently substituting nil.
     TypeDescriptorUnresolved,
+    /// v7: a `pool_ref` constant was found but no pool was supplied to the
+    /// decoder (fail-closed — never guess).
+    PoolMissing,
+    /// v7: a `pool_ref` id is >= the pool's entry count.
+    PoolRefOutOfRange,
 };
 
 /// Wire-format Value classifier. **Stable enum** — the
@@ -148,6 +153,87 @@ pub const ValueTag = enum(u8) {
     /// `deftype`/`defrecord`/`defprotocol` (which `runEnvelope` runs before
     /// this chunk deserializes), so the lookup always hits.
     type_descriptor = 0x10,
+    /// v7 (ADR-0173): reference into the envelope/blob constant pool —
+    /// body is a `u32` pool id. Pool entries are standalone constant
+    /// encodings (tag + body, never themselves `pool_ref`) for the
+    /// interned-name tags (string / symbol / keyword / var_ref / regex /
+    /// type_descriptor), deduplicated per blob/payload.
+    pool_ref = 0x11,
+};
+
+/// Parsed constant pool: each entry is a standalone constant encoding
+/// (slice into the blob/payload bytes). Decoding an entry goes through the
+/// SAME `readValue` arms as an inline constant — resolution timing is
+/// unchanged (ADR-0173 Decision 3); memoized slots arrive in C4'.
+pub const ConstPool = struct {
+    entries: []const []const u8,
+
+    pub fn deinit(self: *ConstPool, allocator: std.mem.Allocator) void {
+        allocator.free(self.entries);
+        self.* = undefined;
+    }
+};
+
+/// Serialize-side pool accumulator: dedupes poolable constants by their
+/// standalone encoding. Shared across every chunk of a blob (cache_gen) or
+/// payload (`cljw build`) so duplicates collapse cross-chunk/cross-region.
+pub const PoolBuilder = struct {
+    /// entry bytes -> pool id (keys are the owned entry slices themselves).
+    map: std.StringHashMapUnmanaged(u32) = .empty,
+    entries: std.ArrayList([]const u8) = .empty,
+
+    pub fn deinit(self: *PoolBuilder, allocator: std.mem.Allocator) void {
+        for (self.entries.items) |e| allocator.free(e);
+        self.entries.deinit(allocator);
+        self.map.deinit(allocator);
+        self.* = undefined;
+    }
+
+    /// Intern `v`'s standalone encoding; returns its pool id.
+    fn intern(self: *PoolBuilder, allocator: std.mem.Allocator, v: Value) SerializeError!u32 {
+        var aw: std.Io.Writer.Allocating = .init(allocator);
+        errdefer aw.deinit();
+        var sub: WriteCtx = .{ .allocator = allocator, .base = 0, .pool = null };
+        try writeValueRaw(&sub, &aw.writer, v);
+        const bytes = try aw.toOwnedSlice();
+        if (self.map.get(bytes)) |id| {
+            allocator.free(bytes);
+            return id;
+        }
+        const id: u32 = @intCast(self.entries.items.len);
+        try self.entries.append(allocator, bytes);
+        try self.map.put(allocator, bytes, id);
+        return id;
+    }
+};
+
+/// True when `v`'s wire encoding is a pure interned-name record (no nested
+/// chunks, no collection recursion) — the poolable set (ADR-0173).
+fn isPoolable(v: Value) bool {
+    return switch (v.tag()) {
+        .string, .symbol, .keyword, .var_ref, .regex, .type_descriptor => true,
+        else => false,
+    };
+}
+
+/// Serialize-side context threaded through the value/chunk writers:
+/// `base` = absolute offset (within the final envelope bytes) of byte 0 of
+/// the CURRENT writer, so instr sections can be padded to 4B alignment;
+/// `pool` = the shared constant pool accumulator (null = inline everything).
+pub const WriteCtx = struct {
+    allocator: std.mem.Allocator,
+    base: usize,
+    pool: ?*PoolBuilder,
+};
+
+/// Deserialize-side context: `pool` resolves `pool_ref` constants;
+/// `source_file` is the OWNED label nested fn-method chunks dupe from.
+const ReadCtx = struct {
+    allocator: std.mem.Allocator,
+    rt: *Runtime,
+    env: *@import("../../runtime/env.zig").Env,
+    pool: ?*const ConstPool,
+    source_file: []const u8,
 };
 
 // --- Writer helpers (length-prefixed UTF-8) ---
@@ -213,7 +299,19 @@ const ByteReader = struct {
 
 // --- Value serialize / deserialize (recursive) ---
 
-fn writeValue(allocator: std.mem.Allocator, w: *std.Io.Writer, v: Value) SerializeError!void {
+fn writeValue(ctx: *WriteCtx, w: *std.Io.Writer, v: Value) SerializeError!void {
+    if (ctx.pool) |pb| {
+        if (isPoolable(v)) {
+            const id = try pb.intern(ctx.allocator, v);
+            try writeU8(w, @intFromEnum(ValueTag.pool_ref));
+            try writeU32(w, id);
+            return;
+        }
+    }
+    return writeValueRaw(ctx, w, v);
+}
+
+fn writeValueRaw(ctx: *WriteCtx, w: *std.Io.Writer, v: Value) SerializeError!void {
     switch (v.tag()) {
         .nil => try writeU8(w, @intFromEnum(ValueTag.nil)),
         .boolean => {
@@ -256,7 +354,7 @@ fn writeValue(allocator: std.mem.Allocator, w: *std.Io.Writer, v: Value) Seriali
             var cur = v;
             var i: u32 = 0;
             while (i < n) : (i += 1) {
-                try writeValue(allocator, w, list_mod.first(cur));
+                try writeValue(ctx, w, list_mod.first(cur));
                 cur = list_mod.rest(cur);
             }
         },
@@ -265,7 +363,7 @@ fn writeValue(allocator: std.mem.Allocator, w: *std.Io.Writer, v: Value) Seriali
             const n = vector_mod.count(v);
             try writeU32(w, n);
             var i: u32 = 0;
-            while (i < n) : (i += 1) try writeValue(allocator, w, vector_mod.nth(v, i));
+            while (i < n) : (i += 1) try writeValue(ctx, w, vector_mod.nth(v, i));
         },
         .array_map => {
             try writeU8(w, @intFromEnum(ValueTag.array_map));
@@ -273,8 +371,8 @@ fn writeValue(allocator: std.mem.Allocator, w: *std.Io.Writer, v: Value) Seriali
             try writeU32(w, am.count);
             var i: u32 = 0;
             while (i < am.count) : (i += 1) {
-                try writeValue(allocator, w, am.entries[2 * i]);
-                try writeValue(allocator, w, am.entries[2 * i + 1]);
+                try writeValue(ctx, w, am.entries[2 * i]);
+                try writeValue(ctx, w, am.entries[2 * i + 1]);
             }
         },
         .hash_map => {
@@ -291,7 +389,7 @@ fn writeValue(allocator: std.mem.Allocator, w: *std.Io.Writer, v: Value) Seriali
             const am = s.map.decodePtr(*const map_mod.ArrayMap);
             try writeU32(w, am.count);
             var i: u32 = 0;
-            while (i < am.count) : (i += 1) try writeValue(allocator, w, am.entries[2 * i]);
+            while (i < am.count) : (i += 1) try writeValue(ctx, w, am.entries[2 * i]);
         },
         .var_ref => {
             try writeU8(w, @intFromEnum(ValueTag.var_ref));
@@ -309,10 +407,10 @@ fn writeValue(allocator: std.mem.Allocator, w: *std.Io.Writer, v: Value) Seriali
             try writeU8(w, @intFromEnum(ValueTag.fn_val));
             try writeU16(w, f.slot_base);
             try writeU32(w, @intCast(f.methods.len));
-            for (f.methods) |m| try writeFnMethod(allocator, w, m);
+            for (f.methods) |m| try writeFnMethod(ctx, w, m);
             if (f.variadic) |variadic| {
                 try writeU8(w, 1);
-                try writeFnMethod(allocator, w, variadic);
+                try writeFnMethod(ctx, w, variadic);
             } else {
                 try writeU8(w, 0);
             }
@@ -352,23 +450,42 @@ fn writeValue(allocator: std.mem.Allocator, w: *std.Io.Writer, v: Value) Seriali
 /// BytecodeChunk). `has_bytecode == 0` is a reserved forward-compat slot
 /// (a method with no eager bytecode); the current compiler always emits
 /// bytecode.
-fn writeFnMethod(allocator: std.mem.Allocator, w: *std.Io.Writer, m: tree_walk.FunctionMethod) SerializeError!void {
+fn writeFnMethod(ctx: *WriteCtx, w: *std.Io.Writer, m: tree_walk.FunctionMethod) SerializeError!void {
     try writeU16(w, m.arity);
     try writeU8(w, @intFromBool(m.has_rest));
     if (m.bytecode) |chunk| {
         try writeU8(w, 1);
-        const chunk_bytes = try serializeChunk(allocator, chunk.*);
-        defer allocator.free(chunk_bytes);
-        try writeLenPrefixed(w, chunk_bytes);
+        // v7: nested fn-method chunks are HEADERLESS bodies (no repeated
+        // magic+version — the outer chunk's header covers them) with their
+        // own instr-section alignment: the nested body's byte 0 will land at
+        // ctx.base + w.end + 4 (after the u32 length prefix).
+        var aw: std.Io.Writer.Allocating = .init(ctx.allocator);
+        defer aw.deinit();
+        var sub: WriteCtx = .{ .allocator = ctx.allocator, .base = ctx.base + w.end + 4, .pool = ctx.pool };
+        try writeChunkBody(&sub, &aw.writer, chunk.*);
+        try writeLenPrefixed(w, aw.writer.buffered());
     } else {
         try writeU8(w, 0);
     }
 }
 
-fn readValue(allocator: std.mem.Allocator, r: *ByteReader, rt: *Runtime, env: *@import("../../runtime/env.zig").Env) DeserializeError!Value {
+fn readValue(ctx: *ReadCtx, r: *ByteReader) DeserializeError!Value {
+    const allocator = ctx.allocator;
+    const rt = ctx.rt;
+    const env = ctx.env;
     const tag_byte = try r.readU8();
     const tag = std.enums.fromInt(ValueTag, tag_byte) orelse return DeserializeError.UnknownValueTag;
     switch (tag) {
+        .pool_ref => {
+            // v7 (ADR-0173): decode the pooled standalone encoding through
+            // the SAME arms (resolution timing preserved; memoized slots are
+            // C4'). Pool entries never contain pool_refs (enforced on write).
+            const id = try r.readU32();
+            const cp = ctx.pool orelse return DeserializeError.PoolMissing;
+            if (id >= cp.entries.len) return DeserializeError.PoolRefOutOfRange;
+            var er: ByteReader = .{ .bytes = cp.entries[id], .pos = 0 };
+            return readValue(ctx, &er);
+        },
         .nil => return .nil_val,
         .true_val => return .true_val,
         .false_val => return .false_val,
@@ -410,7 +527,7 @@ fn readValue(allocator: std.mem.Allocator, r: *ByteReader, rt: *Runtime, env: *@
             const buf = std.heap.page_allocator.alloc(Value, n) catch return DeserializeError.OutOfMemory;
             defer std.heap.page_allocator.free(buf);
             var i: u32 = 0;
-            while (i < n) : (i += 1) buf[i] = try readValue(allocator, r, rt, env);
+            while (i < n) : (i += 1) buf[i] = try readValue(ctx, r);
             var lst: Value = .nil_val;
             i = n;
             while (i > 0) {
@@ -424,7 +541,7 @@ fn readValue(allocator: std.mem.Allocator, r: *ByteReader, rt: *Runtime, env: *@
             var out = vector_mod.empty();
             var i: u32 = 0;
             while (i < n) : (i += 1) {
-                const elt = try readValue(allocator, r, rt, env);
+                const elt = try readValue(ctx, r);
                 out = vector_mod.conj(rt, out, elt) catch return DeserializeError.OutOfMemory;
             }
             return out;
@@ -434,8 +551,8 @@ fn readValue(allocator: std.mem.Allocator, r: *ByteReader, rt: *Runtime, env: *@
             var out = map_mod.empty();
             var i: u32 = 0;
             while (i < n) : (i += 1) {
-                const k = try readValue(allocator, r, rt, env);
-                const val = try readValue(allocator, r, rt, env);
+                const k = try readValue(ctx, r);
+                const val = try readValue(ctx, r);
                 out = map_mod.assoc(rt, out, k, val) catch return DeserializeError.OutOfMemory;
             }
             return out;
@@ -445,7 +562,7 @@ fn readValue(allocator: std.mem.Allocator, r: *ByteReader, rt: *Runtime, env: *@
             var out = set_mod.empty();
             var i: u32 = 0;
             while (i < n) : (i += 1) {
-                const elt = try readValue(allocator, r, rt, env);
+                const elt = try readValue(ctx, r);
                 out = set_mod.conj(rt, out, elt) catch return DeserializeError.OutOfMemory;
             }
             return out;
@@ -514,10 +631,10 @@ fn readValue(allocator: std.mem.Allocator, r: *ByteReader, rt: *Runtime, env: *@
             const methods = allocator.alloc(tree_walk.SerializedMethod, methods_count) catch return DeserializeError.OutOfMemory;
             defer allocator.free(methods);
             var i: u32 = 0;
-            while (i < methods_count) : (i += 1) methods[i] = try readFnMethod(allocator, r, rt, env);
+            while (i < methods_count) : (i += 1) methods[i] = try readFnMethod(ctx, r);
             const has_variadic = try r.readU8();
             const variadic: ?tree_walk.SerializedMethod = if (has_variadic != 0)
-                try readFnMethod(allocator, r, rt, env)
+                try readFnMethod(ctx, r)
             else
                 null;
             return tree_walk.allocFunctionFromSerialized(rt, slot_base, methods, variadic) catch return DeserializeError.OutOfMemory;
@@ -530,16 +647,25 @@ fn readValue(allocator: std.mem.Allocator, r: *ByteReader, rt: *Runtime, env: *@
 /// owned `*BytecodeChunk`; the reconstructed Function borrows it and
 /// `freeChunk` frees it. May itself contain nested `fn_val` constants
 /// (handled by `deserializeChunk` → `readValue` recursion).
-fn readFnMethod(allocator: std.mem.Allocator, r: *ByteReader, rt: *Runtime, env: *@import("../../runtime/env.zig").Env) DeserializeError!tree_walk.SerializedMethod {
+fn readFnMethod(ctx: *ReadCtx, r: *ByteReader) DeserializeError!tree_walk.SerializedMethod {
+    const allocator = ctx.allocator;
     const arity = try r.readU16();
     const has_rest = (try r.readU8()) != 0;
     const has_bytecode = try r.readU8();
     var bytecode: ?*const BytecodeChunk = null;
     if (has_bytecode != 0) {
+        // v7: nested fn-method chunks are headerless bodies; the label is
+        // inherited from the enclosing top-level chunk (each nested chunk
+        // OWNS its dupe so freeChunk stays uniform).
         const chunk_bytes = try r.readLenPrefixed();
         const sub = allocator.create(BytecodeChunk) catch return DeserializeError.OutOfMemory;
         errdefer allocator.destroy(sub);
-        sub.* = try deserializeChunk(allocator, rt, env, chunk_bytes);
+        const sf = allocator.dupe(u8, ctx.source_file) catch return DeserializeError.OutOfMemory;
+        errdefer allocator.free(sf);
+        var br: ByteReader = .{ .bytes = chunk_bytes, .pos = 0 };
+        var chunk = try readChunkBody(ctx, &br);
+        chunk.source_file = sf;
+        sub.* = chunk;
         bytecode = sub;
     }
     return .{ .arity = arity, .has_rest = has_rest, .bytecode = bytecode };
@@ -547,19 +673,42 @@ fn readFnMethod(allocator: std.mem.Allocator, r: *ByteReader, rt: *Runtime, env:
 
 // --- Chunk serialize / deserialize ---
 
-pub fn serializeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) ![]u8 {
+/// Serialize a top-level chunk: `[magic][version][source_file][body]`.
+/// `base_offset` = the absolute offset (within the final envelope bytes)
+/// where THIS chunk's byte 0 will land — the body pads its instr section
+/// to a 4-byte boundary relative to it (ADR-0173 C2'). Standalone/test
+/// callers pass 0 (the chunk bytes themselves are then 4B-consistent).
+pub fn serializeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk, base_offset: usize, pool: ?*PoolBuilder) ![]u8 {
     var aw: std.Io.Writer.Allocating = .init(allocator);
     errdefer aw.deinit();
     const w = &aw.writer;
     try w.writeAll(&MAGIC);
     try writeU16(w, VERSION);
+    try writeLenPrefixed(w, chunk.source_file);
+    var ctx: WriteCtx = .{ .allocator = allocator, .base = base_offset, .pool = pool };
+    try writeChunkBody(&ctx, w, chunk);
+    return try aw.toOwnedSlice();
+}
+
+/// The version-covered chunk body (v7): shared by top-level chunks and
+/// headerless nested fn-method chunks.
+fn writeChunkBody(ctx: *WriteCtx, w: *std.Io.Writer, chunk: BytecodeChunk) SerializeError!void {
+    try writeU8(w, @intFromBool(chunk.has_handlers));
+    // Pad so the instr array (which follows [pad_count u8][pad][count u32])
+    // starts 4B-aligned relative to the envelope start (C3' reads it in
+    // place via bytesAsSlice).
+    const pad: u8 = @intCast((4 -% (ctx.base + w.end + 1 + 4) % 4) % 4);
+    try writeU8(w, pad);
+    var pi: u8 = 0;
+    while (pi < pad) : (pi += 1) try writeU8(w, 0);
     try writeU32(w, @intCast(chunk.instructions.len));
     for (chunk.instructions) |ins| {
         try writeU8(w, @intFromEnum(ins.opcode));
+        try writeU8(w, ins.reserved);
         try writeU16(w, ins.operand);
     }
     try writeU32(w, @intCast(chunk.constants.len));
-    for (chunk.constants) |c| try writeValue(allocator, w, c);
+    for (chunk.constants) |c| try writeValue(ctx, w, c);
     try writeU32(w, @intCast(chunk.call_sites.len));
     for (chunk.call_sites) |cs| {
         try writeLenPrefixed(w, cs.method_name);
@@ -634,20 +783,40 @@ pub fn serializeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) ![]u8 
         try writeLenPrefixed(w, ip.simple);
         try writeLenPrefixed(w, ip.fqcn);
     }
-    return try aw.toOwnedSlice();
 }
 
 /// Deserialize a full BytecodeChunk. Returned chunk holds slices
 /// allocated via `allocator`; the caller frees via `freeChunk`.
 /// Constants are heap-allocated via `rt.gc.alloc` (string / list /
 /// vector / map / set / regex paths) — they participate in GC.
-pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@import("../../runtime/env.zig").Env, bytes: []const u8) !BytecodeChunk {
+pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@import("../../runtime/env.zig").Env, bytes: []const u8, pool: ?*const ConstPool) !BytecodeChunk {
     if (bytes.len < 10) return DeserializeError.BytecodeTruncated;
     if (!std.mem.eql(u8, bytes[0..4], &MAGIC)) return DeserializeError.BadMagic;
     const version = std.mem.readInt(u16, bytes[4..6], .little);
     if (version != VERSION) return DeserializeError.UnsupportedVersion;
 
     var r: ByteReader = .{ .bytes = bytes, .pos = 6 };
+    const sf_wire = try r.readLenPrefixed();
+    const sf = allocator.dupe(u8, if (sf_wire.len == 0) "unknown" else sf_wire) catch return DeserializeError.OutOfMemory;
+    errdefer allocator.free(sf);
+    var ctx: ReadCtx = .{ .allocator = allocator, .rt = rt, .env = env, .pool = pool, .source_file = sf };
+    var chunk = try readChunkBody(&ctx, &r);
+    chunk.source_file = sf;
+    return chunk;
+}
+
+/// The version-covered chunk body reader (v7) — mirror of `writeChunkBody`;
+/// used for top-level chunks (after the magic/version/source_file header)
+/// and headerless nested fn-method chunks. The returned chunk's
+/// `source_file` is NOT set here (each caller assigns its owned label).
+fn readChunkBody(ctx: *ReadCtx, r: *ByteReader) DeserializeError!BytecodeChunk {
+    const allocator = ctx.allocator;
+    const rt = ctx.rt;
+    const env = ctx.env;
+    const has_handlers = (try r.readU8()) != 0;
+    const pad = try r.readU8();
+    try r.need(pad);
+    r.pos += pad;
     const instr_count = try r.readU32();
     const instrs = try allocator.alloc(WireInstr, instr_count);
     errdefer allocator.free(instrs);
@@ -658,6 +827,9 @@ pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@impor
         // user CLJC files) BEFORE the typed field is written — an invalid
         // enum value never materializes (ADR-0173 Decision 2).
         const op = std.enums.fromInt(Opcode, op_raw) orelse return DeserializeError.UnknownOpcode;
+        // v7: 4B wire record — the reserved byte MUST be 0 (corruption tripwire).
+        const reserved = try r.readU8();
+        if (reserved != 0) return DeserializeError.UnknownOpcode;
         const operand = try r.readU16();
         instrs[i] = .{ .opcode = op, .operand = operand };
     }
@@ -667,7 +839,7 @@ pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@impor
     errdefer allocator.free(constants);
     i = 0;
     while (i < constants_count) : (i += 1) {
-        constants[i] = try readValue(allocator, &r, rt, env);
+        constants[i] = try readValue(ctx, r);
         // D-430: `constants` is an arena slice, not a GC object — root each
         // deserialized constant on the analysis frame until the owning
         // bracket closes (constant N+1's alloc can auto-collect and would
@@ -796,6 +968,7 @@ pub fn deserializeChunk(allocator: std.mem.Allocator, rt: *Runtime, env: *@impor
         .ns_filters = ns_filters,
         .ctor_sites = ctor_sites,
         .import_sites = import_sites,
+        .has_handlers = has_handlers,
     };
 }
 
@@ -826,6 +999,10 @@ fn freeValueOwnedChunks(allocator: std.mem.Allocator, v: Value) void {
 /// `constants` (those are owned by `rt.gc`) except a deserialized
 /// `fn_val`'s method sub-chunks, which this allocator owns.
 pub fn freeChunk(allocator: std.mem.Allocator, chunk: BytecodeChunk) void {
+    // v7: every deserialized chunk (top-level AND nested fn-method) OWNS its
+    // source_file dupe — free is uniform. Compiler-built chunks never reach
+    // freeChunk (arena-owned; see the fn_val note below).
+    allocator.free(chunk.source_file);
     allocator.free(chunk.instructions);
     // ADR-0034 am2: a deserialized `fn_val` constant owns its method
     // bytecode sub-chunks via this `allocator`; free them recursively
@@ -981,11 +1158,19 @@ pub fn readEnvelopeEntry(arena: std.mem.Allocator, bytes: []const u8) !?Envelope
     return .{ .ns = ns, .args = args };
 }
 
+/// v7: `pool` = shared constant-pool accumulator (null = inline constants).
+/// `inline_pool` appends the pool section to THIS envelope (the `cljw build`
+/// payload path); blob regions pass false — their shared pool lives at the
+/// region-blob level (`serializeRegions`). The pool section trails the
+/// chunks (`[pool_count u32][(len+bytes)…]`), so chunk offsets — and the
+/// 4B instr alignment computed from them — never depend on pool size.
 pub fn serializeEnvelope(
     allocator: std.mem.Allocator,
     chunks: []const BytecodeChunk,
     entry: ?EnvelopeEntry,
     components: []const EmbeddedComponent,
+    pool: ?*PoolBuilder,
+    inline_pool: bool,
 ) ![]u8 {
     var aw: std.Io.Writer.Allocating = .init(allocator);
     errdefer aw.deinit();
@@ -994,12 +1179,38 @@ pub fn serializeEnvelope(
     try writeManifest(w, entry);
     try writeU32(w, @intCast(chunks.len));
     for (chunks) |chunk| {
-        const chunk_bytes = try serializeChunk(allocator, chunk);
+        const chunk_bytes = try serializeChunk(allocator, chunk, w.end + 4, pool);
         defer allocator.free(chunk_bytes);
         try writeU32(w, @intCast(chunk_bytes.len));
         try w.writeAll(chunk_bytes);
     }
+    if (inline_pool and pool != null) {
+        const pb = pool.?;
+        try writeU32(w, @intCast(pb.entries.items.len));
+        for (pb.entries.items) |e| try writeLenPrefixed(w, e);
+    } else {
+        try writeU32(w, 0);
+    }
     return try aw.toOwnedSlice();
+}
+
+/// Parse the trailing pool section of an envelope produced with
+/// `inline_pool = true` (the `cljw build` payload). Returns null when the
+/// envelope carries no pool (count 0). The entry slices point INTO `bytes`.
+pub fn readEnvelopePool(allocator: std.mem.Allocator, bytes: []const u8) DeserializeError!?ConstPool {
+    var r: ByteReader = .{ .bytes = bytes, .pos = 0 };
+    try skipComponentTable(&r);
+    try skipManifest(&r);
+    const n = try r.readU32();
+    var i: u32 = 0;
+    while (i < n) : (i += 1) _ = try r.readLenPrefixed(); // skip chunks
+    const pool_count = r.readU32() catch return null; // pre-v7 test fixtures: no section
+    if (pool_count == 0) return null;
+    const entries = allocator.alloc([]const u8, pool_count) catch return DeserializeError.OutOfMemory;
+    errdefer allocator.free(entries);
+    var j: u32 = 0;
+    while (j < pool_count) : (j += 1) entries[j] = try r.readLenPrefixed();
+    return .{ .entries = entries };
 }
 
 /// Deserialize an envelope into owned chunks (free via `freeEnvelope`).
@@ -1010,6 +1221,8 @@ pub fn deserializeEnvelope(
     env: *@import("../../runtime/env.zig").Env,
     bytes: []const u8,
 ) ![]BytecodeChunk {
+    var pool = try readEnvelopePool(allocator, bytes);
+    defer if (pool) |*cp| cp.deinit(allocator);
     var r: ByteReader = .{ .bytes = bytes, .pos = 0 };
     try skipComponentTable(&r);
     try skipManifest(&r);
@@ -1023,7 +1236,7 @@ pub fn deserializeEnvelope(
     while (i < n) : (i += 1) {
         const len = try r.readU32();
         try r.need(len);
-        const chunk = try deserializeChunk(allocator, rt, env, bytes[r.pos .. r.pos + len]);
+        const chunk = try deserializeChunk(allocator, rt, env, bytes[r.pos .. r.pos + len], if (pool) |*cp| cp else null);
         try chunks.append(allocator, chunk);
         r.pos += len;
     }
@@ -1159,7 +1372,7 @@ pub const Region = struct {
 
 /// Serialize `regions` into one position-independent blob (layout above). Each
 /// `region.envelope` must be a `serializeEnvelope` output; the caller owns them.
-pub fn serializeRegions(allocator: std.mem.Allocator, regions: []const Region) ![]u8 {
+pub fn serializeRegions(allocator: std.mem.Allocator, regions: []const Region, pool_entries: []const []const u8) ![]u8 {
     var index_size: usize = 4 + 4; // magic + count
     for (regions) |reg| index_size += 4 + reg.ns_name.len + 4 + 4; // name_len+name+off+len
 
@@ -1168,15 +1381,57 @@ pub fn serializeRegions(allocator: std.mem.Allocator, regions: []const Region) !
     const w = &aw.writer;
     try w.writeAll(&REGION_MAGIC);
     try writeU32(w, @intCast(regions.len));
-    var off: usize = index_size;
+    // v7: region starts are padded to 8B so every envelope-relative 4B
+    // instr alignment (writeChunkBody) is blob-absolute too (the embed
+    // wrapper aligns the whole blob to 8 — ADR-0173 Decision 2).
+    var off: usize = std.mem.alignForward(usize, index_size, 8);
     for (regions) |reg| {
         try writeLenPrefixed(w, reg.ns_name);
         try writeU32(w, @intCast(off));
         try writeU32(w, @intCast(reg.envelope.len));
-        off += reg.envelope.len;
+        off = std.mem.alignForward(usize, off + reg.envelope.len, 8);
     }
-    for (regions) |reg| try w.writeAll(reg.envelope);
+    var written: usize = index_size;
+    for (regions) |reg| {
+        while (written % 8 != 0) : (written += 1) try writeU8(w, 0);
+        try w.writeAll(reg.envelope);
+        written += reg.envelope.len;
+    }
+    // Trailing blob-level pool (shared by every region's chunks): begins
+    // right after the last region's padded end; `readBlobPool` derives the
+    // offset from the index, so no placeholder patching is needed.
+    while (written % 8 != 0) : (written += 1) try writeU8(w, 0);
+    try writeU32(w, @intCast(pool_entries.len));
+    for (pool_entries) |e| try writeLenPrefixed(w, e);
     return try aw.toOwnedSlice();
+}
+
+/// Parse the blob-level shared constant pool (v7): located at the 8B-aligned
+/// offset after the LAST region (derived from the header index). Returns
+/// null for a poolless blob. Entry slices point INTO `blob`.
+pub fn readBlobPool(allocator: std.mem.Allocator, blob: []const u8) DeserializeError!?ConstPool {
+    if (blob.len < 8 or !std.mem.eql(u8, blob[0..4], &REGION_MAGIC)) return null;
+    var r: ByteReader = .{ .bytes = blob, .pos = 4 };
+    const count = try r.readU32();
+    var end: usize = r.pos;
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        _ = try r.readLenPrefixed();
+        const off = try r.readU32();
+        const len = try r.readU32();
+        if (off + len > blob.len) return DeserializeError.BytecodeTruncated;
+        if (off + len > end) end = off + len;
+    }
+    end = std.mem.alignForward(usize, end, 8);
+    if (end + 4 > blob.len) return null;
+    var pr: ByteReader = .{ .bytes = blob, .pos = end };
+    const pool_count = try pr.readU32();
+    if (pool_count == 0) return null;
+    const entries = allocator.alloc([]const u8, pool_count) catch return DeserializeError.OutOfMemory;
+    errdefer allocator.free(entries);
+    var j: u32 = 0;
+    while (j < pool_count) : (j += 1) entries[j] = try pr.readLenPrefixed();
+    return .{ .entries = entries };
 }
 
 /// Return the envelope bytes for `ns_name` (a sub-slice into `blob`), or null if
@@ -1217,7 +1472,7 @@ test "payload envelope round-trips two chunks in order" {
     const consts_b = [_]Value{Value.initInteger(99)};
     const chunk_b: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts_b };
 
-    const bytes = try serializeEnvelope(testing.allocator, &.{ chunk_a, chunk_b }, null, &.{});
+    const bytes = try serializeEnvelope(testing.allocator, &.{ chunk_a, chunk_b }, null, &.{}, null, false);
     defer testing.allocator.free(bytes);
 
     var af_1198: root_set.AnalysisFrame = undefined;
@@ -1246,17 +1501,17 @@ test "region blob: findRegion returns each ns's envelope; absent / non-region ->
     // Two single-chunk envelopes standing in for two namespaces' regions.
     const consts_a = [_]Value{Value.initInteger(7)};
     const chunk_a: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts_a };
-    const env_a = try serializeEnvelope(testing.allocator, &.{chunk_a}, null, &.{});
+    const env_a = try serializeEnvelope(testing.allocator, &.{chunk_a}, null, &.{}, null, false);
     defer testing.allocator.free(env_a);
     const consts_b = [_]Value{Value.initInteger(42)};
     const chunk_b: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts_b };
-    const env_b = try serializeEnvelope(testing.allocator, &.{chunk_b}, null, &.{});
+    const env_b = try serializeEnvelope(testing.allocator, &.{chunk_b}, null, &.{}, null, false);
     defer testing.allocator.free(env_b);
 
     const blob = try serializeRegions(testing.allocator, &.{
         .{ .ns_name = "clojure.core", .envelope = env_a },
         .{ .ns_name = "clojure.string", .envelope = env_b },
-    });
+    }, &.{});
     defer testing.allocator.free(blob);
 
     // Each region's sub-slice equals its source envelope and deserializes to its chunk.
@@ -1295,7 +1550,7 @@ test "envelope entry manifest round-trips; chunk readers skip it (ADR-0034 am4)"
 
     // With an entry manifest: readEnvelopeEntry recovers it; the chunk readers
     // skip the manifest and still see the one chunk.
-    const bytes = try serializeEnvelope(testing.allocator, &.{chunk}, .{ .ns = "my.app", .args = &args }, &.{});
+    const bytes = try serializeEnvelope(testing.allocator, &.{chunk}, .{ .ns = "my.app", .args = &args }, &.{}, null, false);
     defer testing.allocator.free(bytes);
 
     const entry = (try readEnvelopeEntry(arena, bytes)) orelse return error.NoEntry;
@@ -1313,7 +1568,7 @@ test "envelope entry manifest round-trips; chunk readers skip it (ADR-0034 am4)"
     try testing.expectEqual(@as(i48, 5), out[0].constants[0].asInteger());
 
     // No-entry (script mode) envelope: readEnvelopeEntry returns null.
-    const bytes2 = try serializeEnvelope(testing.allocator, &.{chunk}, null, &.{});
+    const bytes2 = try serializeEnvelope(testing.allocator, &.{chunk}, null, &.{}, null, false);
     defer testing.allocator.free(bytes2);
     try testing.expect((try readEnvelopeEntry(arena, bytes2)) == null);
 }
@@ -1341,7 +1596,7 @@ test "embedded component table round-trips; chunk + entry readers skip it (ADR-0
     // A full envelope: component table + an entry manifest + one chunk. The
     // component table is the OUTERMOST section, so the entry/chunk readers must
     // skip past it and still recover the manifest + chunk unchanged.
-    const bytes = try serializeEnvelope(testing.allocator, &.{chunk}, .{ .ns = "my.app", .args = &args }, &components);
+    const bytes = try serializeEnvelope(testing.allocator, &.{chunk}, .{ .ns = "my.app", .args = &args }, &components, null, false);
     defer testing.allocator.free(bytes);
 
     const table = try readComponentTable(arena, bytes);
@@ -1372,7 +1627,7 @@ test "embedded component table round-trips; chunk + entry readers skip it (ADR-0
     try testing.expectEqual(@as(usize, 1), seen);
 
     // An empty table (n=0) still round-trips with no components.
-    const bytes_empty = try serializeEnvelope(testing.allocator, &.{chunk}, null, &.{});
+    const bytes_empty = try serializeEnvelope(testing.allocator, &.{chunk}, null, &.{}, null, false);
     defer testing.allocator.free(bytes_empty);
     try testing.expectEqual(@as(usize, 0), (try readComponentTable(arena, bytes_empty)).len);
 }
@@ -1404,7 +1659,11 @@ test "every wire ValueTag has BOTH a write and a read arm (symmetry gate)" {
 
     inline for (std.meta.fields(ValueTag)) |field| {
         const tag: ValueTag = @enumFromInt(field.value);
+        // pool_ref is a reference INTO a pool, not a standalone constant —
+        // its round-trip is covered by the dedicated pool tests below.
+        if (tag == .pool_ref) continue;
         const rep: Value = switch (tag) {
+            .pool_ref => unreachable, // continue'd above
             .nil => Value.nil_val,
             .true_val => Value.initBoolean(true),
             .false_val => Value.initBoolean(false),
@@ -1429,14 +1688,16 @@ test "every wire ValueTag has BOTH a write and a read arm (symmetry gate)" {
         };
         var sbuf: [4096]u8 = undefined;
         var sw: std.Io.Writer = .fixed(&sbuf);
-        writeValue(testing.allocator, &sw, rep) catch |e| {
+        var wctx: WriteCtx = .{ .allocator = testing.allocator, .base = 0, .pool = null };
+        writeValue(&wctx, &sw, rep) catch |e| {
             std.debug.print("writeValue has NO arm for ValueTag.{s}: {}\n", .{ @tagName(tag), e });
             return error.WriteArmMissing;
         };
         const bytes = sw.buffered();
         try testing.expectEqual(@intFromEnum(tag), bytes[0]); // write emits the right wire tag
         var rr: ByteReader = .{ .bytes = bytes, .pos = 0 };
-        _ = readValue(testing.allocator, &rr, &rt, &env) catch |e| {
+        var rctx: ReadCtx = .{ .allocator = testing.allocator, .rt = &rt, .env = &env, .pool = null, .source_file = "test" };
+        _ = readValue(&rctx, &rr) catch |e| {
             std.debug.print("readValue has NO arm for ValueTag.{s}: {}\n", .{ @tagName(tag), e });
             return error.ReadArmMissing;
         };
@@ -1464,13 +1725,13 @@ test "type_descriptor constant round-trips by name (ADR-0034 am5; D-452)" {
 
     const consts = [_]Value{ Value.initInteger(1), ref };
     const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts };
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
 
     var af_1433: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1433, testing.allocator);
     defer root_set.endAnalysis(&af_1433);
-    const out = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const out = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, out);
     try testing.expectEqual(@as(usize, 2), out.constants.len);
     try testing.expect(out.constants[1].tag() == .type_descriptor);
@@ -1480,7 +1741,7 @@ test "type_descriptor constant round-trips by name (ADR-0034 am5; D-452)" {
 
     // An UNREGISTERED class name → a concrete error, never silent nil.
     const consts2 = [_]Value{ref};
-    const bogus = try serializeChunk(testing.allocator, (BytecodeChunk{ .instructions = &.{}, .constants = &consts2 }));
+    const bogus = try serializeChunk(testing.allocator, (BytecodeChunk{ .instructions = &.{}, .constants = &consts2 }), 0, null);
     defer testing.allocator.free(bogus);
     // Overwrite the embedded name "ZipLoc" region is fragile; instead drop the
     // type and re-deserialize: a fresh runtime without the registration misses.
@@ -1491,7 +1752,7 @@ test "type_descriptor constant round-trips by name (ADR-0034 am5; D-452)" {
     var af_1451: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1451, testing.allocator);
     defer root_set.endAnalysis(&af_1451);
-    try testing.expectError(DeserializeError.TypeDescriptorUnresolved, deserializeChunk(testing.allocator, &rt2, &env2, bogus));
+    try testing.expectError(DeserializeError.TypeDescriptorUnresolved, deserializeChunk(testing.allocator, &rt2, &env2, bogus, null));
 }
 
 test "chunk completeness gate: every side-table + entry field round-trips (D-365 residual)" {
@@ -1619,12 +1880,12 @@ test "chunk completeness gate: every side-table + entry field round-trips (D-365
         .import_sites = @constCast(&import_sites),
     };
 
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1578: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1578, testing.allocator);
     defer root_set.endAnalysis(&af_1578);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
 
     // instructions + constants
@@ -1760,14 +2021,14 @@ test "header magic + version round-trips on empty chunk" {
     var env = try @import("../../runtime/env.zig").Env.init(&rt);
     defer env.deinit();
     const empty: BytecodeChunk = .{ .instructions = &.{}, .constants = &.{} };
-    const bytes = try serializeChunk(testing.allocator, empty);
+    const bytes = try serializeChunk(testing.allocator, empty, 0, null);
     defer testing.allocator.free(bytes);
     try testing.expectEqualSlices(u8, &MAGIC, bytes[0..4]);
     try testing.expectEqual(@as(u16, VERSION), std.mem.readInt(u16, bytes[4..6], .little));
     var af_1715: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1715, testing.allocator);
     defer root_set.endAnalysis(&af_1715);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 0), round.instructions.len);
     try testing.expectEqual(@as(usize, 0), round.constants.len);
@@ -1793,12 +2054,12 @@ test "round-trips ns_filters side-table (ADR-0034 am3 — require-closure embedd
     const instrs = [_]WireInstr{.from(.op_ns_with_filter, 0)};
     const chunk: BytecodeChunk = .{ .instructions = &instrs, .constants = &.{}, .ns_filters = &filters };
 
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1743: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1743, testing.allocator);
     defer root_set.endAnalysis(&af_1743);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
 
     try testing.expectEqual(@as(usize, 1), round.ns_filters.len);
@@ -1818,12 +2079,12 @@ test "round-trips ns_filters with no :only (null) — bare (ns x (:require …))
     defer env.deinit();
     var filters = [_]NsFilterEntry{.{ .name = "mylib.greet" }};
     const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &.{}, .ns_filters = &filters };
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1765: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1765, testing.allocator);
     defer root_set.endAnalysis(&af_1765);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 1), round.ns_filters.len);
     try testing.expectEqualStrings("mylib.greet", round.ns_filters[0].name);
@@ -1846,12 +2107,12 @@ test "round-trips instructions" {
         .from(.op_ret, 0),
     };
     const chunk: BytecodeChunk = .{ .instructions = &instrs, .constants = &.{} };
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1787: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1787, testing.allocator);
     defer root_set.endAnalysis(&af_1787);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 2), round.instructions.len);
     try testing.expectEqual(Opcode.op_const, round.instructions[0].op());
@@ -1874,12 +2135,12 @@ test "round-trips immediate constants (nil / bool / int / float / char)" {
         Value.initChar('A'),
     };
     const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts };
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1812: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1812, testing.allocator);
     defer root_set.endAnalysis(&af_1812);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 6), round.constants.len);
     try testing.expect(round.constants[0].tag() == .nil);
@@ -1900,12 +2161,12 @@ test "round-trips a string constant" {
     const s = try string_collection.alloc(&rt, "hello");
     const consts = [_]Value{s};
     const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts };
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1835: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1835, testing.allocator);
     defer root_set.endAnalysis(&af_1835);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqualStrings("hello", string_collection.asString(round.constants[0]));
 }
@@ -1922,12 +2183,12 @@ test "round-trips keyword + symbol with and without ns" {
     const s_bare = try symbol_mod.intern(&rt, null, "sym");
     const consts = [_]Value{ k_bare, k_ns, s_bare };
     const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts };
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1854: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1854, testing.allocator);
     defer root_set.endAnalysis(&af_1854);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqualStrings("k", keyword_mod.asKeyword(round.constants[0]).name);
     try testing.expect(keyword_mod.asKeyword(round.constants[0]).ns == null);
@@ -1953,12 +2214,12 @@ test "round-trips vector + list constants" {
     lst = try list_mod.consHeap(&rt, Value.initInteger(10), lst);
     const consts = [_]Value{ vec, lst };
     const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &consts };
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1882: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1882, testing.allocator);
     defer root_set.endAnalysis(&af_1882);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(u32, 3), vector_mod.count(round.constants[0]));
     try testing.expectEqual(@as(i64, 1), vector_mod.nth(round.constants[0], 0).asInteger());
@@ -1979,12 +2240,12 @@ test "round-trips call_sites side-table" {
         .{ .method_name = "bar-bar", .arg_count = 1 },
     };
     const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &.{}, .call_sites = @constCast(&cs) };
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1905: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1905, testing.allocator);
     defer root_set.endAnalysis(&af_1905);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 2), round.call_sites.len);
     try testing.expectEqualStrings("foo", round.call_sites[0].method_name);
@@ -2005,12 +2266,12 @@ test "round-trips libspecs side-table with alias and refers" {
         .{ .ns_name = "c.d" },
     };
     const chunk: BytecodeChunk = .{ .instructions = &.{}, .constants = &.{}, .libspecs = @constCast(&ls) };
-    const bytes = try serializeChunk(testing.allocator, chunk);
+    const bytes = try serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
     var af_1928: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1928, testing.allocator);
     defer root_set.endAnalysis(&af_1928);
-    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes);
+    const round = try deserializeChunk(testing.allocator, &rt, &env, bytes, null);
     defer freeChunk(testing.allocator, round);
     try testing.expectEqual(@as(usize, 2), round.libspecs.len);
     try testing.expectEqualStrings("a.b", round.libspecs[0].ns_name);
@@ -2031,7 +2292,7 @@ test "bad magic rejected with BadMagic" {
     var af_1946: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1946, testing.allocator);
     defer root_set.endAnalysis(&af_1946);
-    try testing.expectError(DeserializeError.BadMagic, deserializeChunk(testing.allocator, &rt, &env, &bytes));
+    try testing.expectError(DeserializeError.BadMagic, deserializeChunk(testing.allocator, &rt, &env, &bytes, null));
 }
 
 test "unsupported version rejected with UnsupportedVersion" {
@@ -2045,5 +2306,88 @@ test "unsupported version rejected with UnsupportedVersion" {
     var af_1957: root_set.AnalysisFrame = undefined;
     root_set.beginAnalysis(&af_1957, testing.allocator);
     defer root_set.endAnalysis(&af_1957);
-    try testing.expectError(DeserializeError.UnsupportedVersion, deserializeChunk(testing.allocator, &rt, &env, &bytes));
+    try testing.expectError(DeserializeError.UnsupportedVersion, deserializeChunk(testing.allocator, &rt, &env, &bytes, null));
+}
+
+test "v7 pool: duplicated interned-name constants dedupe and round-trip (blob level)" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+    var env = try @import("../../runtime/env.zig").Env.init(&rt);
+    defer env.deinit();
+
+    // Two chunks sharing the same keyword + symbol constants — poolable tags.
+    const kw = try @import("../../runtime/keyword.zig").intern(&rt, null, "shared-kw");
+    const sym = try @import("../../runtime/symbol.zig").intern(&rt, null, "shared-sym");
+    const consts = [_]Value{ kw, sym };
+    const instrs = [_]WireInstr{ .from(.op_const, 0), .from(.op_ret, 0) };
+    const chunk: BytecodeChunk = .{ .instructions = &instrs, .constants = &consts };
+
+    var pb: PoolBuilder = .{};
+    defer pb.deinit(testing.allocator);
+    const env_a = try serializeEnvelope(testing.allocator, &.{chunk}, null, &.{}, &pb, false);
+    defer testing.allocator.free(env_a);
+    const env_b = try serializeEnvelope(testing.allocator, &.{chunk}, null, &.{}, &pb, false);
+    defer testing.allocator.free(env_b);
+    // 2 chunks x 2 poolable constants -> only 2 unique pool entries.
+    try testing.expectEqual(@as(usize, 2), pb.entries.items.len);
+
+    const blob = try serializeRegions(testing.allocator, &.{
+        .{ .ns_name = "a", .envelope = env_a },
+        .{ .ns_name = "b", .envelope = env_b },
+    }, pb.entries.items);
+    defer testing.allocator.free(blob);
+
+    var pool = (try readBlobPool(testing.allocator, blob)) orelse return error.TestUnexpectedResult;
+    defer pool.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), pool.entries.len);
+
+    // Deserialize region b's chunk through the pool: constants resolve to
+    // the SAME interned keyword/symbol (interning gives identity).
+    const region_b = findRegion(blob, "b") orelse return error.TestUnexpectedResult;
+    var it = try EnvelopeIterator.init(region_b);
+    const cb = (try it.next()) orelse return error.TestUnexpectedResult;
+    var af: root_set.AnalysisFrame = undefined;
+    root_set.beginAnalysis(&af, testing.allocator);
+    defer root_set.endAnalysis(&af);
+    const out = try deserializeChunk(testing.allocator, &rt, &env, cb, &pool);
+    defer freeChunk(testing.allocator, out);
+    try testing.expectEqual(kw, out.constants[0]);
+    try testing.expectEqual(sym, out.constants[1]);
+}
+
+test "v7 alignment: every instr section sits 4B-aligned relative to the envelope" {
+    var th = std.Io.Threaded.init(testing.allocator, .{});
+    defer th.deinit();
+    var rt = Runtime.init(th.io(), testing.allocator);
+    defer rt.deinit();
+    _ = &rt;
+
+    // Odd-length source_file labels force non-trivial padding.
+    const instrs = [_]WireInstr{ .from(.op_const, 0), .from(.op_ret, 0) };
+    const consts = [_]Value{Value.nil_val};
+    const chunk_a: BytecodeChunk = .{ .instructions = &instrs, .constants = &consts, .source_file = "a.clj" };
+    const chunk_b: BytecodeChunk = .{ .instructions = &instrs, .constants = &consts, .source_file = "longer_name.clj" };
+
+    const bytes = try serializeEnvelope(testing.allocator, &.{ chunk_a, chunk_b }, null, &.{}, null, false);
+    defer testing.allocator.free(bytes);
+
+    // Walk the envelope; for each chunk, re-derive the instr-array offset
+    // (magic 4 + ver 2 + sf(4+len) + has_handlers 1 + pad_count 1 + pad +
+    // count 4) and assert it is 0 (mod 4) from the ENVELOPE start.
+    var it = try EnvelopeIterator.init(bytes);
+    while (true) {
+        const before = it.r.pos; // position of the u32 len prefix
+        const cb = (try it.next()) orelse break;
+        const chunk_base = before + 4;
+        var r: ByteReader = .{ .bytes = cb, .pos = 4 + 2 };
+        const sf = try r.readLenPrefixed();
+        _ = sf;
+        _ = try r.readU8(); // has_handlers
+        const pad = try r.readU8();
+        r.pos += pad;
+        const instr_off = chunk_base + r.pos + 4; // + count u32
+        try testing.expectEqual(@as(usize, 0), instr_off % 4);
+    }
 }

@@ -163,6 +163,20 @@ measured per-commit (protocol below), not asserted.
   `phase16_vm_error_loc_sidecar` (exact 5:6 after a peephole-elided region +
   fused compare-branch) landed with C1.
 
+- **2026-07-16 (C2′ landing — the single v7 wire cut)**: serializer+decoder
+  emit/read final v7 (4B WireInstr wire, 4B-aligned instr sections via
+  chunk-body padding + 8B-aligned region starts, `source_file` +
+  `has_handlers` serialized, headerless nested fn-method chunks,
+  `pool_ref` 0x11 + blob-level shared pool / payload-inline pool).
+  Spec archived at `docs/spec/formats/1.4.0.edn` INCLUDING the v4-v6
+  backfill (three earlier bumps had violated the ADD-ONLY archive policy —
+  caught by this arc). **Measured**: blob 698,159 → 544,909 B (−22%, pool
+  dedup alone); shipped binary 8,731,096 → 8,583,352 B (−148 KB); eager
+  `runEnvelope` 6,123 → 4,190 µs (−32%) — the pool cuts startup BEFORE
+  the C4′ memoization even lands. Consumer flip (`has_handlers` flatten)
+  remains C6′; the decoder still copies instr arrays (C3′ makes them
+  in-place).
+
 ## Measurement protocol (mandatory, per commit)
 
 - VM-hot A/B for C1 (representation change, isolated):

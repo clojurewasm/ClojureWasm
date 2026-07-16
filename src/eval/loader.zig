@@ -173,7 +173,11 @@ fn loadRegionNamespace(rt: *Runtime, env: *Env, ns_name: []const u8, region: []c
     const saved_ns = env.current_ns;
     defer if (saved_ns) |s| env.setCurrentNs(s);
 
-    try driver.runEnvelope(rt, env, rt.load_arena.allocator(), region);
+    // v7 (ADR-0173): the region's pool_refs resolve against the blob-level
+    // shared pool; parse per replay (an index walk + slice array — not hot).
+    var blob_pool: ?serialize.ConstPool = if (rt.bootstrap_region_blob) |b| try serialize.readBlobPool(gpa, b) else null;
+    defer if (blob_pool) |*cp| cp.deinit(gpa);
+    try driver.runEnvelope(rt, env, rt.load_arena.allocator(), region, if (blob_pool) |*cp| cp else null);
 
     const loaded_key = try gpa.dupe(u8, ns_name);
     errdefer gpa.free(loaded_key);

@@ -180,7 +180,9 @@ pub fn buildEnvelope(
     defer freeComponents(rt.gpa, &components);
     try harvestComponents(rt.io, rt.gpa, comp_paths.items, &components);
     logComponentEmbed(components.items);
-    return serialize.serializeEnvelope(allocator, all.items, null, components.items);
+    var pb: serialize.PoolBuilder = .{};
+    defer pb.deinit(allocator);
+    return serialize.serializeEnvelope(allocator, all.items, null, components.items, &pb, true);
 }
 
 /// AOT-compile the WHOLE eager bootstrap (`bootstrap.FILES` — clojure.core +
@@ -214,6 +216,12 @@ pub fn buildBootstrapEnvelope(
         for (regions.items) |reg| allocator.free(reg.envelope);
         regions.deinit(allocator);
     }
+    // v7 (ADR-0173): ONE constant pool shared across every region's chunks —
+    // the measured 42%-duplicate interned-name encoding collapses cross-region.
+    // Written as the blob-level trailing section by `serializeRegions`.
+    var pb: serialize.PoolBuilder = .{};
+    defer pb.deinit(allocator);
+    const pool_builder = &pb;
     var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
     // ADR-0163: pre-register so a lib's build-time `(:require other-bootstrap-lib)`
     // is a loaded_libs no-op (the dep's chunks already eval'd earlier in this loop),
@@ -255,11 +263,11 @@ pub fn buildBootstrapEnvelope(
         }
         // Serialize this file's chunks as its own region envelope (the bundled
         // bootstrap `:require`s no Wasm components, so the component table is empty).
-        const region_env = try serialize.serializeEnvelope(allocator, chunks.items, null, &.{});
+        const region_env = try serialize.serializeEnvelope(allocator, chunks.items, null, &.{}, pool_builder, false);
         errdefer allocator.free(region_env);
         try regions.append(allocator, .{ .ns_name = bootstrap.nsNameFromLabel(file.label), .envelope = region_env });
     }
-    return serialize.serializeRegions(allocator, regions.items);
+    return serialize.serializeRegions(allocator, regions.items, pool_builder.entries.items);
 }
 
 /// `cljw build -m <ns>` (ADR-0034 amendment 4 A4-D1/D2). Build-time eval of
@@ -312,7 +320,7 @@ pub fn buildMainEnvelope(
     defer freeComponents(rt.gpa, &components);
     try harvestComponents(rt.io, rt.gpa, comp_paths.items, &components);
     logComponentEmbed(components.items);
-    return serialize.serializeEnvelope(allocator, closure.chunks.items, .{ .ns = ns, .args = args }, components.items);
+    return serialize.serializeEnvelope(allocator, closure.chunks.items, .{ .ns = ns, .args = args }, components.items, null, false);
 }
 
 // === cljw build CLI core + embedded-run startup ===
@@ -445,7 +453,9 @@ pub fn tryRunEmbedded(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocat
     // user payload — advancing the D-131 built-app re-bootstrap gap.
     try bootstrap.setupCoreAot(arena, &rt, &env, &macro_table, @import("bootstrap_cache").data);
 
-    try driver.runEnvelope(&rt, &env, arena, payload);
+    var payload_pool = try serialize.readEnvelopePool(gpa, payload);
+    defer if (payload_pool) |*cp| cp.deinit(gpa);
+    try driver.runEnvelope(&rt, &env, arena, payload, if (payload_pool) |*cp| cp else null);
 
     // ADR-0034 am4 A4-D3: main mode. The payload's entry manifest (if any)
     // names `<ns>` whose `-main` is the entry point; the closure chunks just
@@ -589,7 +599,9 @@ test "aot: core.clj round-trips — build envelope, restore into a fresh env, ru
     var table = macro_dispatch.Table.init(A);
     defer table.deinit();
     try bootstrap.setupCorePrefix(&rt, &env, &table);
-    try driver.runEnvelope(&rt, &env, arena, core_bytes);
+    var core_pool = try serialize.readEnvelopePool(A, core_bytes);
+    defer if (core_pool) |*cp| cp.deinit(A);
+    try driver.runEnvelope(&rt, &env, arena, core_bytes, if (core_pool) |*cp| cp else null);
 
     // --- Verify: `comp` is core.clj-defined (NOT a primitive), so its
     //     presence proves the AOT restore ran; the restored fn is bytecode
@@ -755,6 +767,8 @@ test "deserialized fn_val executes through the VM (ADR-0034 am2)" {
     var run_arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer run_arena_state.deinit();
     const run_arena = run_arena_state.allocator();
+    var payload_pool = try serialize.readEnvelopePool(testing.allocator, bytes);
+    defer if (payload_pool) |*cp| cp.deinit(testing.allocator);
     var it = try serialize.EnvelopeIterator.init(bytes);
     var locals: [driver.MAX_LOCALS]Value = [_]Value{.nil_val} ** driver.MAX_LOCALS;
     var last: Value = .nil_val;
@@ -762,7 +776,7 @@ test "deserialized fn_val executes through the VM (ADR-0034 am2)" {
         var af2: root_set.AnalysisFrame = undefined;
         root_set.beginAnalysis(&af2, rt2.gc.infra);
         defer root_set.endAnalysis(&af2);
-        var chunk = try serialize.deserializeChunk(run_arena, &rt2, &env2, chunk_bytes);
+        var chunk = try serialize.deserializeChunk(run_arena, &rt2, &env2, chunk_bytes, if (payload_pool) |*cp| cp else null);
         last = try vm.eval(&rt2, &env2, &locals, &chunk);
     }
 

@@ -1,0 +1,82 @@
+;; ClojureWasm on-disk format archive — as of the 1.4.0 release line
+;;
+;; Decoder-permanence record (ADR-0034 D11), sibling of 0.1.0.edn (ADD-ONLY:
+;; entries are never edited or removed; a format change adds a new versioned
+;; entry). Implementation: src/eval/bytecode/serialize.zig. All integers are
+;; little-endian. Pure EDN.
+;;
+;; BACKFILL NOTE (recorded 2026-07-16, ADR-0173): chunk-format versions 4-6
+;; shipped without archive entries — a violation of this file's own ADD-ONLY
+;; policy, caught during the v7 work. Their deltas, recovered from git:
+;;   v4  (e42ffac8e, D-239): ns-filters entries gained doc (has-flag u8 +
+;;        len-prefixed bytes) + refer-clojure flag (u8).
+;;   v5  (9665b2c4e, D-554): ns-filters entries gained attr-const (u32
+;;        constants index; NO_ATTR sentinel = 0xFFFFFFFF when absent).
+;;   v6  (78c20c849, ADR-0171): no byte-layout change — semantic bump: the
+;;        rt ns merged into clojure.core, so pre-v6 payloads bake
+;;        "rt/*" var_refs that no longer resolve.
+;; v4-v6 all kept the v3 skeleton: 3-byte instructions (opcode:u8,
+;; operand:u16), no source-file/has-handlers fields, nested fn_val chunks
+;; each carrying a full magic+version header, no constant pool.
+
+{:cljw-formats-version "1.4.0"
+
+ ;; BytecodeChunk wire format v7 (ADR-0173 C2'). :version covers the opcode
+ ;; layout AND the peephole rule set (D-103), as before.
+ :chunk-format
+ {:version 7
+  :magic "CLJW"
+  :layout
+  [["magic" "4 bytes = CLJW (TOP-LEVEL chunks only; nested fn-method chunks are HEADERLESS bodies — the outer chunk's version covers them)"]
+   ["version" "u16 = 7"]
+   ["source-file" "u32 len + UTF-8 bytes (empty = unknown). Chunk-wide label; per-instruction line/column are NOT serialized (AOT chunks report 0:0 — ADR-0118)"]
+   ["body" "the version-covered chunk body, shared by top-level and nested chunks — see :chunk-body"]]}
+
+ :chunk-body
+ {:layout
+  [["has-handlers" "u8 bool — true when the chunk contains op_push_handler/op_push_cleanup (ADR-0131 frame-flatten gate; serialized since v7 so AOT fns can flatten)"]
+   ["pad-count" "u8 (0-3)"]
+   ["pad" "pad-count zero bytes, sized so the instructions array starts at an offset ≡ 0 (mod 4) from the ENVELOPE start (in-place bytesAsSlice execution — ADR-0173; region starts are 8B-aligned in the blob, the embed wrapper aligns the blob to 8)"]
+   ["instr-count" "u32"]
+   ["instructions" "instr-count × 4-byte records: opcode:u8, reserved:u8 (MUST be 0 — validated at load), operand:u16. Identical to the in-memory WireInstr extern struct, LE targets only"]
+   ["constants-count" "u32"]
+   ["constants" "constants-count values (per :value-tags of 0.1.0.edn + :pool-ref below)"]
+   ["call-sites / libspecs / ns-filters / ctor-sites / import-sites" "unchanged from v5 (see 0.1.0.edn v3 + the v4/v5 backfill note above)"]]}
+
+ ;; New value tag (v7): 0x11 pool_ref — body is a u32 id into the constant
+ ;; pool. Poolable tags (string / symbol / keyword / var_ref / regex /
+ ;; type_descriptor) are deduplicated: the standalone encoding moves to the
+ ;; pool, occurrences become 5-byte references. Pool entries are themselves
+ ;; standalone encodings and never contain pool_refs.
+ :pool-ref {:tag 17 :body "u32 pool id"}
+
+ ;; Payload envelope v7: the pool section TRAILS the chunks so chunk offsets
+ ;; (and instr alignment) never depend on pool size. A `cljw build` payload
+ ;; carries its own self-contained pool; region envelopes inside the
+ ;; bootstrap blob write pool-count 0 (they share the blob-level pool).
+ :payload-envelope
+ {:layout
+  [["component-table" "unchanged (see 0.1.0.edn)"]
+   ["manifest" "unchanged"]
+   ["chunk-count" "u32"]
+   ["chunks" "chunk-count × (u32 len + chunk bytes)"]
+   ["pool-count" "u32 (0 = none)"]
+   ["pool" "pool-count × (u32 len + standalone constant encoding)"]]}
+
+ ;; Bootstrap region blob v2 (embedded bootstrap_core.cljc; CLJR magic).
+ ;; Since v7: region starts padded to 8-byte offsets; a blob-level shared
+ ;; constant pool trails the last region (its offset is DERIVED from the
+ ;; header index — max(off+len) aligned up to 8 — so no pointer field).
+ :region-blob
+ {:magic "CLJR"
+  :layout
+  [["magic" "4 bytes = CLJR"]
+   ["region-count" "u32"]
+   ["index" "region-count × (u32 name-len + name bytes + u32 abs-offset + u32 len); offsets are 8B-aligned from blob start"]
+   ["regions" "each region = one payload-envelope (pool-count 0), zero-padded to 8B starts"]
+   ["pool-count" "u32 — the blob-level shared pool, at align8(max(off+len))"]
+   ["pool" "pool-count × (u32 len + standalone constant encoding)"]]}
+
+ ;; Artifact trailer (CLJC): unchanged from 0.1.0.edn — [runtime binary]
+ ;; [payload-envelope][u64 payload-len]["CLJC"]. The payload inside is v7.
+ }

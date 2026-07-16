@@ -1453,9 +1453,9 @@ test "aot: deserialized bytecode fn dispatches via tree_walk vtable evalChunk" {
     const node = try analyze(arena, &f.rt, &f.env, null, form, &f.table);
     const chunk = try vm_compiler.compile(&f.rt, arena, node);
 
-    const bytes = try serialize.serializeChunk(testing.allocator, chunk);
+    const bytes = try serialize.serializeChunk(testing.allocator, chunk, 0, null);
     defer testing.allocator.free(bytes);
-    const chunk2 = try serialize.deserializeChunk(arena, &f.rt, &f.env, bytes);
+    const chunk2 = try serialize.deserializeChunk(arena, &f.rt, &f.env, bytes, null);
 
     var fn_val: Value = .nil_val;
     for (chunk2.constants) |c| {

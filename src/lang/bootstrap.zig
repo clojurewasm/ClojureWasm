@@ -587,12 +587,16 @@ pub fn loadCoreAot(
         const ns_name = nsNameFromLabel(file.label);
         if (isEagerNs(ns_name)) try markOneLoaded(rt, ns_name);
     }
+    // v7 (ADR-0173): the blob-level shared constant pool — parsed once for
+    // the whole eager set; lazy requires re-parse per replay (cheap slice walk).
+    var blob_pool = try serialize.readBlobPool(rt.gpa, bootstrap_blob);
+    defer if (blob_pool) |*cp| cp.deinit(rt.gpa);
     for (FILES) |file| {
         const ns_name = nsNameFromLabel(file.label);
         if (!isEagerNs(ns_name)) continue;
         // A missing region means the embedded blob is malformed (build bug).
         const region = serialize.findRegion(bootstrap_blob, ns_name) orelse return error.MissingBootstrapRegion;
-        try driver.runEnvelope(rt, env, arena, region);
+        try driver.runEnvelope(rt, env, arena, region, if (blob_pool) |*cp| cp else null);
     }
     prof.mark("    runEnvelope");
     try finalizeUserNs(rt, env);
@@ -605,12 +609,15 @@ pub fn loadCoreAot(
 /// `var_ref` to an earlier region's `def` resolves at run time. Shared by
 /// `loadCoreAot` and the build-tool round-trip test.
 pub fn runEagerRegions(rt: *Runtime, env: *Env, arena: std.mem.Allocator, blob: []const u8, files: []const FileEntry) !void {
+    // v7 (ADR-0173): the blob-level shared constant pool, parsed once per run.
+    var blob_pool = try serialize.readBlobPool(rt.gpa, blob);
+    defer if (blob_pool) |*cp| cp.deinit(rt.gpa);
     for (files) |file| {
         const ns_name = nsNameFromLabel(file.label);
         // A missing region means the embedded blob is malformed (a build-time
         // bug, never user input) — fail loudly rather than silently skipping a ns.
         const region = serialize.findRegion(blob, ns_name) orelse return error.MissingBootstrapRegion;
-        try driver.runEnvelope(rt, env, arena, region);
+        try driver.runEnvelope(rt, env, arena, region, if (blob_pool) |*cp| cp else null);
     }
 }
 
