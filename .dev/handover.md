@@ -11,14 +11,18 @@
   host-class identity & member-surface campaign + Thread lifecycle;
   tap bumped + brew-verified). CHANGELOG is the release-history SSOT.
 - **First task on resume MUST be**: self-select from the live
-  `.dev/debt.yaml` `active:` list, easiest-first. Fresh well-scoped
-  rows: **D-563** (a2: Clojure 1.12 `Class/.instanceMethod` +
-  `Class/new` method-value forms — the ADR-0174 merged tables make
-  a2 mostly a spelling arm now; (b) Var :line/:file source meta;
-  (c) default-data-readers / defstruct), **D-564** (ADR-0174
-  residuals: Thread interrupt family, BigDecimal .toPlainString,
-  instance-method fills, Alt C class_registry SSOT), **D-561**
-  (Character codePointOf name table), D-522 comment de-pointering.
+  `.dev/debt.yaml` `active:` list, easiest-first. D-563 / D-561 /
+  D-316 / D-383 / D-522 (dedicated sweeps) are DISCHARGED since
+  v1.5.0. Next candidates: **D-058** (error-renderer bundled-file
+  context mis-attribution — probe recipe in
+  `private/notes/d316-d383-meta-and-bootstrap-regex.md`), **D-564**
+  residuals (Thread interrupt family, instance-method fills, Alt C
+  class_registry SSOT), D-513 remainder.
+- **Unreleased on main**: envelope v9 (op_var_meta — def-meta rides
+  the AOT wire), computed def-meta (D-316), deserializer GC-rooting
+  fix, Character getName/codePointOf name table (D-561),
+  default-data-readers, deftest file:line. Next release owns the
+  CHANGELOG entry.
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm`;
   bare `zig build` for a probe (use ReleaseSafe). **The FULL gate MUST
   run `--serial-e2e`, ALONE** (D-548 (a) future/promise SIGABRT + (b)
@@ -75,6 +79,13 @@ fusion→JIT (gap III)**. zwasm JIT (ADR-0200) is the cljw default;
 remaining = components-through-the-JIT (zwasm-side, D-500). Distal —
 needs a user nod; the §9.2.T public-ization sweep (easiest-first debt
 drain) is the active near-term mode.
+
+## Stopped — user requested
+
+User instruction (2026-07-17): "どこか切りの良いところが来たら（取組中の
+完遂）、pushして停止でOK". The in-flight D-383 unit was completed +
+pushed. Resume at the Resume contract's first-task rule (easiest-first
+debt drain; next candidate D-058).
 
 ## Reading order (resume)
 
