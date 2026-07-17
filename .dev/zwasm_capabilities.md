@@ -2,9 +2,10 @@
 
 > **SSOT for "what does the zwasm we embed offer, and what has cljw adopted".**
 > cljw embeds **zwasm v2** (F-001, unavoidable). The dep is a **tag pin** —
-> **v2.2.1** (see § Pin), pinned 2026-07-16 — the binary-size-campaign release; prior v2.2.0 (`cf5d20d7`, 2026-07-09) was the AOT-full-fidelity
-> release (ADR-0203; guard-page bounds elision, diff-fuzz gate, .cwasm AOT +
-> on-disk compilation cache). zwasm is itself under active
+> **v2.3.0** (see § Pin), pinned 2026-07-17 — the WASI-0.3.0-official
+> inventory-sweep release (no embedding-API/JIT-output change); prior v2.2.1
+> (2026-07-16) was the binary-size campaign, v2.2.0 (`cf5d20d7`, 2026-07-09)
+> the AOT-full-fidelity release (ADR-0203). zwasm is itself under active
 > co-development (`~/Documents/MyProducts/zwasm`) and its embedding API is
 > *growing* — notably a **JIT-backed
 > engine** (the cljw north star, ROADMAP §9.0 gap area II × III). cljw has **adopted
@@ -43,14 +44,20 @@ a cljw-side shim.
 
 ## Pin
 
-- **TAG PIN — v2.2.1, pinned 2026-07-16.** `build.zig.zon`
-  `.zwasm` = `.url = "git+…/zwasm.git#v2.2.1"` + `.hash = "zwasm-2.2.1-FT1Fv632…"`,
-  resolved from GitHub. The binary-size-campaign release (zwasm ADR-0204 /
-  D-522 stage 1): JIT host-callback thunk collapse (`api.jit_host_bridge`
-  1,311 KB → 232 KB, −82%; zwasm CLI −21%), NO API / behaviour / JIT-output
-  change — measured cljw effect: shipped binary 8,583,352 → **7,499,896 B
-  (−1,083 KB)**. Executed under the user's standing tag-watch directive
-  (engine-follow bump) + the user's mailbox nudge this session. Prior:
+- **TAG PIN — v2.3.0, pinned 2026-07-17.** `build.zig.zon`
+  `.zwasm` = `.url = "git+…/zwasm.git#v2.3.0"` + `.hash = "zwasm-2.3.0-FT1Fv8Qh…"`,
+  resolved from GitHub. The WASI-0.3.0-official inventory-sweep release:
+  docs truth-sweep vs the officially released WASI 0.3.0 (2026-06-11),
+  `wasi:clocks/system-clock` + `get-resolution` component-host support,
+  Homebrew packaging (`brew install clojurewasm/tap/zwasm`). NO
+  embedding-API / behaviour / JIT-output change — a pure engine follow
+  for cljw (the new surface is component-host-level, which cljw does not
+  use). Executed under the user's standing tag-watch directive, user-
+  directed this session. Prior: **v2.2.1** (2026-07-16), the binary-size
+  campaign (zwasm ADR-0204 / D-522 stage 1: JIT host-callback thunk
+  collapse, `api.jit_host_bridge` 1,311 KB → 232 KB, zwasm CLI −21%;
+  measured cljw effect: shipped binary 8,583,352 → **7,499,896 B
+  (−1,083 KB)**). Prior:
   **v2.2.0** (`cf5d20d7`, 2026-07-09), described below. The AOT-full-fidelity release (zwasm ADR-0203 stages
   1-5): guard-page bounds-check elision (D-507/ADR-0202), committed
   differential-fuzz gate (D-510), JIT helper de-baking (D-516), full-fidelity

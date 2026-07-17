@@ -1,6 +1,6 @@
 .{
     .name = .cljw,
-    .version = "1.5.0",
+    .version = "1.5.1",
     .fingerprint = 0x1869d207073beffa,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
@@ -10,22 +10,20 @@
         },
         // zwasm v2 embedding API (F-001 / D-037). `lazy` so the DEFAULT build +
         // gate never resolve it — only `-Dwasm` (b.lazyDependency) does.
-        // PINNED to STABLE tag **v2.2.1** (2026-07-16): the binary-size-campaign
-        // release (zwasm ADR-0204 / D-522: JIT host-callback thunk collapse,
-        // api.jit_host_bridge 1,311KB -> 232KB; zwasm CLI -21%; no API/JIT-output
-        // change — to_cljw_06). Prior v2.2.0 (cf5d20d7, 2026-07-09) was the
-        // AOT-full-fidelity release (ADR-0203 stages 1-5), bumped from v2.1.0 to
-        // pick up guard-page bounds-check elision (zwasm D-507, ADR-0202), the
-        // committed differential-fuzz gate (D-510), JIT helper de-baking into
-        // JitRuntime slots (D-516), full-fidelity .cwasm v0.5 AOT serialize/load
-        // (aot-diff 62/62), and the transparent on-disk compilation cache
-        // (--cache, D-508). cljw's embedding surface (Engine/Module/Instance via
-        // `.auto`=JIT-default, D-488) is unchanged — an engine follow; the AOT
-        // cache is opt-in on the zwasm side. lazy + flag-guard means a churning
-        // dep cannot break the default gate.
+        // PINNED to STABLE tag **v2.3.0** (2026-07-17): the WASI-0.3.0-official
+        // inventory-sweep release (docs truth-sweep + wasi:clocks/system-clock
+        // host support + Homebrew packaging). NO embedding-API or JIT-output
+        // change — a pure engine follow for cljw (the new surface is
+        // component-host-level WASI 0.3.0 clocks). Prior v2.2.1 (2026-07-16)
+        // was the binary-size-campaign release (zwasm ADR-0204 / D-522: JIT
+        // host-callback thunk collapse, zwasm CLI -21% — to_cljw_06);
+        // v2.2.0 (2026-07-09) the AOT-full-fidelity release (ADR-0203).
+        // cljw's embedding surface (Engine/Module/Instance via `.auto`
+        // =JIT-default, D-488) is unchanged. lazy + flag-guard means a
+        // churning dep cannot break the default gate.
         .zwasm = .{
-            .url = "git+https://github.com/clojurewasm/zwasm.git#v2.2.1",
-            .hash = "zwasm-2.2.1-FT1Fv632jACwwCYKyHT_M4v_nS7Dtt21R4TlW7baQU-8",
+            .url = "git+https://github.com/clojurewasm/zwasm.git#v2.3.0",
+            .hash = "zwasm-2.3.0-FT1Fv8QhjQB0rGBMyCP2GebQU-A4xxuXl-6WF0EXo-ao",
             .lazy = true,
         },
     },

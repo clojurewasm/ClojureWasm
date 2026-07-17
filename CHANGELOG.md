@@ -5,6 +5,18 @@ All notable changes to ClojureWasm are documented here. The format follows
 [SemVer](https://semver.org/). SemVer compatibility guarantees start at the
 first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
+## [1.5.1] - 2026-07-17
+
+Patch release: dependency follow.
+
+### Changed
+
+- **zwasm pinned to v2.3.0** (the WASI-0.3.0-official inventory-sweep
+  release: docs truth-sweep against the officially released WASI 0.3.0,
+  `wasi:clocks/system-clock` component-host support, Homebrew
+  packaging). No embedding-API, behaviour, or JIT-output change — a
+  pure engine follow; cljw's Wasm FFI surface is unchanged.
+
 ## [1.5.0] - 2026-07-17
 
 Minor release: the host-class identity & member-surface campaign
