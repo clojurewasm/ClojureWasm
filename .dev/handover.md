@@ -5,8 +5,11 @@
 
 ## Resume contract
 
-- **HEAD**: `main` (`git log` = SSOT). Per-commit = smoke; commit
-  **and** push (atomic Step 6). `build.zig.zon` `.zwasm` = tag pin
+- **HEAD**: `main` (`git log` = SSOT). Per-commit = smoke locally;
+  **push-to-main CI now runs the FULL gate** (ADR-0107 rev 2026-07-21 —
+  == the local full gate, all e2e), so a red push CI is the immediate
+  e2e signal, not a next-day nightly. Commit **and** push (atomic
+  Step 6). `build.zig.zon` `.zwasm` = tag pin
   `v2.3.0` (2026-07-17 engine follow, no API change). Latest release:
   **v1.5.1** (2026-07-17; zwasm-pin patch release on top of v1.5.0 =
   the ADR-0174 host-class campaign + Thread lifecycle; tap carries
@@ -20,10 +23,11 @@
   residuals (Thread interrupt family, instance-method fills, Alt C
   class_registry SSOT), D-513 remainder.
 - **Unreleased on main**: envelope v9 (op_var_meta — def-meta rides
-  the AOT wire), computed def-meta (D-316), deserializer GC-rooting
-  fix, Character getName/codePointOf name table (D-561),
-  default-data-readers, deftest file:line. Next release owns the
-  CHANGELOG entry.
+  the AOT wire), computed def-meta (D-316) — incl. `:tag` uniform-eval
+  (`^String`→Class, `^Foo`→name error; the bare-symbol workaround
+  retired), deserializer GC-rooting fix, Character getName/codePointOf
+  name table (D-561), default-data-readers, deftest file:line. Next
+  release owns the CHANGELOG entry.
 - **Forbidden this session**: bare `zig build test` WITHOUT `-Dwasm`;
   bare `zig build` for a probe (use ReleaseSafe). **The FULL gate MUST
   run `--serial-e2e`, ALONE** (D-548 (a) future/promise SIGABRT + (b)
