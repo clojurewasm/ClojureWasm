@@ -186,3 +186,30 @@ background machinery. Adopted.
 the two-tier policy is required for consistency but is **permission-blocked for
 the autonomous loop**. Surfaced to the user. The scripts + this ADR carry the
 enforceable policy in the meantime.
+
+## Revision history
+
+### 2026-07-21 — CI runs the full gate on push-to-main (not just nightly)
+
+The batched-full-gate cadence above is a *local* discipline. CI had mirrored it
+too literally: `.github/workflows/ci.yml` ran the fast CORE tier (`--smoke`, **no
+e2e**) on both PR *and* push-to-main, and the full e2e suite only on the nightly
+schedule. So a shared-code change that broke an e2e step (not the changed step's
+own smoke) passed the push CI and sat on `main` until the next nightly failed —
+observed as the D-316 `def`-meta change breaking `phase14_var_metadata.sh`, which
+failed four consecutive nightlies (2026-07-18..21) before being caught. That
+made CI the *late* detector and left "the local full gate" and "CI" inconsistent.
+
+Fix: **push-to-main now runs the FULL gate** (`CLJW_CI_FULL=1` for every event
+except `pull_request`), so every landed commit is e2e-verified by exactly the
+local full gate (`test/run_all.sh --serial-e2e`). PR stays fast CORE for
+iteration (its merge fires a push event that runs the full gate before it
+lands). The heavier non-default-backend (tree_walk) parity sweep — a second
+ReleaseSafe rebuild, **not** part of the local full gate — moved to its own
+`CLJW_CI_PARITY` flag and stays nightly/dispatch-only, so it is an extra backstop
+rather than a source of push-vs-local drift. `concurrency: cancel-in-progress`
+already collapses a rapid push burst to one completing full run, so the added
+per-push cost is bounded.
+
+Affected: `.github/workflows/ci.yml` (event→flag mapping), `scripts/ci_gate.sh`
+(the parity sweep split onto `CLJW_CI_PARITY`).
