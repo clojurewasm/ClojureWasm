@@ -36,14 +36,28 @@ assert_last() {
     [[ "$got" == "$want" ]] || fail "$name: got '$got', want '$want'"
     echo "PASS $name -> $want"
 }
+# An expression that must be REJECTED (non-zero exit) — e.g. an unresolvable
+# type-hint tag, which is a name error in cljw exactly as in clj.
+assert_error() {
+    local name="$1"; local expr="$2"
+    if "$BIN" -e "$expr" >/dev/null 2>&1; then
+        fail "$name: expected an error, but it succeeded"
+    fi
+    echo "PASS $name -> (errored as expected)"
+}
 
 # --- ^{map} on a def target → Var meta, read via (meta #'x) ---
 assert_last 'meta_doc'     '(def ^{:doc "hi"} x 5) (:doc (meta #'"'"'x))'  '"hi"'
 assert_last 'meta_map_a'   '(def ^{:a 1 :b 2} z 5) (:a (meta #'"'"'z))'    '1'
 # --- ^:kw shorthand → {:kw true} ---
 assert_last 'meta_private' '(def ^:private y 5) (:private (meta #'"'"'y))' 'true'
-# --- ^Sym shorthand → {:tag Sym} (cljw keeps the bare symbol tag) ---
-assert_last 'meta_tag'     '(def ^Foo s 1) (str (:tag (meta #'"'"'s)))'    '"Foo"'
+# --- ^Sym type-hint shorthand → {:tag <Class>}: a def-meta map analyzes as a
+# real expression (D-316), so a resolvable class symbol resolves to the Class
+# VALUE — clj parity, `(= String (:tag …))` is true in both. An unresolvable
+# tag is a name error, same as clj. (The old bare-symbol tag was a
+# pre-Class-resolution workaround, retired once class symbols became values.) ---
+assert_last 'meta_tag'         '(def ^String s 1) (= String (:tag (meta #'"'"'s)))'  'true'
+assert_error 'meta_tag_unresolvable' '(def ^Foo s 1)'
 # --- stacked metas merge, outer wins on dup keys ---
 assert_last 'meta_stack'   '(def ^:a ^:b w 5) [(:a (meta #'"'"'w)) (:b (meta #'"'"'w))]' '[true true]'
 

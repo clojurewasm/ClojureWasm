@@ -533,7 +533,8 @@ pub fn analyzeDefmacro(
         try meta_items.append(arena, .{ .data = .{ .string = src_loc.file }, .location = form.location });
         const meta_map2: Form = .{ .data = .{ .map = try arena.dupe(Form, meta_items.items) }, .location = form.location };
         // Real-expression analysis, mirroring analyzeDef (D-316): quoted
-        // arglists stay data, computed values evaluate.
+        // arglists stay data, computed values evaluate, `:tag` symbols resolve
+        // uniformly (a Class value or a name error — clj parity).
         break :blk try analyzer_mod.analyze(arena, rt, env, scope, meta_map2, macro_table);
     };
 
@@ -688,6 +689,9 @@ pub fn analyzeDef(
         // `^{:k (+ 1 2)}` EVALUATES at def time — clj's def-meta semantics
         // exactly. The static formToValue lift above remains the pre-eval
         // approximation; the runtime value set by evalDef/op_var_meta wins.
+        // A `:tag` symbol is resolved uniformly like any other value — clj
+        // parity: `^String` yields the Class value, `^Foo` (unresolvable)
+        // is a name error, matching clj exactly (no bare-symbol special case).
         break :blk try analyzer_mod.analyze(arena, rt, env, scope, meta_map, macro_table);
     };
     // `^:dynamic` / `^:private` on the def target set the Var flags (evalDef /
