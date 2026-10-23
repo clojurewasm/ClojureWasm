@@ -79,6 +79,10 @@ const tree_walk = @import("../backend/tree_walk.zig");
 const Function = tree_walk.Function;
 
 pub const MAGIC: [4]u8 = .{ 'C', 'L', 'J', 'W' };
+// v14: a fn method carries its `frame_slots` (ADR-0130). Without it a
+// deserialized method fell back to the full MAX_LOCALS window per call, so
+// every bootstrap-cache fn on a recursion path (`map`, `first`, ...) paid 256
+// slots per level. A v13 method has no such field, so v13 is rejected.
 // v13: a ctor site carries `definer_ns`, the namespace its form was analyzed
 // in, so a bare user-type name is qualified lexically instead of by the
 // caller's namespace (ADR-0198, ADR-0201). A v12 ctor site has no such field,
@@ -94,7 +98,7 @@ pub const MAGIC: [4]u8 = .{ 'C', 'L', 'J', 'W' };
 // v10: def operands capture Var constants instead of caller-relative names.
 // v9 added op_var_meta; v8 unified host-class FQCNs; v7 compacted WireInstr
 // and interned the name pool; v6 merged rt into clojure.core.
-pub const VERSION: u16 = 13;
+pub const VERSION: u16 = 14;
 
 pub const SerializeError = error{
     OutOfMemory,
@@ -534,6 +538,7 @@ fn writeEntries(ctx: *WriteCtx, w: *std.Io.Writer, coll: Value, comptime kind: e
 fn writeFnMethod(ctx: *WriteCtx, w: *std.Io.Writer, m: tree_walk.FunctionMethod) SerializeError!void {
     try writeU16(w, m.arity);
     try writeU8(w, @intFromBool(m.has_rest));
+    try writeU16(w, m.frame_slots); // v14
     if (m.bytecode) |chunk| {
         try writeU8(w, 1);
         // v7: nested fn-method chunks are HEADERLESS bodies (no repeated
@@ -607,13 +612,14 @@ fn readValue(ctx: *ReadCtx, r: *ByteReader) DeserializeError!Value {
             // nil (D-164) — fold-from-nil would otherwise lose the distinct
             // `()` for a quoted empty list baked into the AOT blob.
             if (n == 0) return list_mod.emptyList(rt) catch return DeserializeError.OutOfMemory;
-            // Read forward into a stack-allocated buffer, then cons-fold
-            // back to preserve the head-first source order. Caps at a
-            // bounded stack alloc; very-large quoted lists are rare in
-            // the constant pool — long sequences come through `list`
-            // primitive at runtime.
-            const buf = std.heap.page_allocator.alloc(Value, n) catch return DeserializeError.OutOfMemory;
-            defer std.heap.page_allocator.free(buf);
+            // Read forward into a scratch buffer, then cons-fold back to
+            // preserve the head-first source order.
+            // PERF: scratch from the reader's allocator, as `readCollection`'s
+            // is; `page_allocator` cost one mmap + munmap + page fault per
+            // quoted list, 927 of them on every cold start [refs: O-090].
+            if (n > r.bytes.len - r.pos) return DeserializeError.BytecodeTruncated;
+            const buf = ctx.allocator.alloc(Value, n) catch return DeserializeError.OutOfMemory;
+            defer ctx.allocator.free(buf);
             // Fabrication region: `buf` elements + the growing `lst` are Zig
             // locals across the nested readValue/cons allocs — a collect in
             // the window would sweep the in-progress structure (the D-563b
@@ -732,6 +738,7 @@ fn readFnMethod(ctx: *ReadCtx, r: *ByteReader) DeserializeError!tree_walk.Serial
     const allocator = ctx.allocator;
     const arity = try r.readU16();
     const has_rest = (try r.readU8()) != 0;
+    const frame_slots = try r.readU16(); // v14
     const has_bytecode = try r.readU8();
     var bytecode: ?*const BytecodeChunk = null;
     if (has_bytecode != 0) {
@@ -749,7 +756,7 @@ fn readFnMethod(ctx: *ReadCtx, r: *ByteReader) DeserializeError!tree_walk.Serial
         sub.* = chunk;
         bytecode = sub;
     }
-    return .{ .arity = arity, .has_rest = has_rest, .bytecode = bytecode };
+    return .{ .arity = arity, .has_rest = has_rest, .frame_slots = frame_slots, .bytecode = bytecode };
 }
 
 // --- Chunk serialize / deserialize ---

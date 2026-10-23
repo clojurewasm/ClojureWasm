@@ -87,12 +87,20 @@ fn backingCount(backing: Value) u32 {
 }
 
 /// `backing[i]` for a viewable backing. Callers must satisfy
-/// `i < backingCount(backing)`; the ArraySeq invariant guarantees it.
-fn elementAt(backing: Value, i: u32) Value {
+/// `i < backingCount(backing)`; the ArraySeq invariant guarantees it. Boxing a
+/// primitive array's `long` element may allocate.
+fn elementAt(rt: *Runtime, backing: Value, i: u32) !Value {
+    if (backing.tag() == .array) return java_array.get(rt, java_array.asArray(backing), i);
+    return peekAt(backing, i).?;
+}
+
+/// `elementAt` without allocating: null for the one element that needs a
+/// heap box (a primitive `long` outside the immediate range).
+fn peekAt(backing: Value, i: u32) ?Value {
     return switch (backing.tag()) {
         .vector => vector.nth(backing, i),
         .sub_vector => sub_vector.nth(backing, i),
-        .array => java_array.asArray(backing).items()[i],
+        .array => java_array.peek(java_array.asArray(backing), i),
         else => Value.nil_val,
     };
 }
@@ -129,9 +137,9 @@ pub fn indexOf(v: Value) u32 {
 }
 
 /// `(first as)` — total, by the never-empty invariant.
-pub fn first(v: Value) Value {
+pub fn first(rt: *Runtime, v: Value) !Value {
     const as = v.decodePtr(*const ArraySeq);
-    return elementAt(as.backing, as.index);
+    return elementAt(rt, as.backing, as.index);
 }
 
 /// `(count as)` — O(1): the backing's count minus the cursor. This is the
@@ -142,9 +150,24 @@ pub fn countOf(v: Value) u32 {
 }
 
 /// `(nth as i)` — O(1) into the backing, no walk.
-pub fn nth(v: Value, i: u32) Value {
+pub fn nth(rt: *Runtime, v: Value, i: u32) !Value {
     const as = v.decodePtr(*const ArraySeq);
-    return elementAt(as.backing, as.index + i);
+    return elementAt(rt, as.backing, as.index + i);
+}
+
+/// `nth` for the rt-free paths (print, key hashing): null where the element
+/// needs a heap box (see `peekAt`).
+pub fn peekNth(v: Value, i: u32) ?Value {
+    const as = v.decodePtr(*const ArraySeq);
+    return peekAt(as.backing, as.index + i);
+}
+
+/// The primitive array an ArraySeq views, or null (a vector backing or an
+/// object array).
+pub fn primitiveBacking(v: Value) ?*const java_array.JavaArray {
+    const b = v.decodePtr(*const ArraySeq).backing;
+    if (b.tag() != .array or java_array.asArray(b).kind == .object) return null;
+    return java_array.asArray(b);
 }
 
 /// `(rest as)` / `(next as)` — the same view one step along, or nil at the end.
@@ -249,15 +272,15 @@ test "make: never mints an empty view; count is backing minus cursor (O-058)" {
     const s = try make(&fix.rt, v, 0);
     try testing.expectEqual(Value.Tag.array_seq, s.tag());
     try testing.expectEqual(@as(u32, 4), countOf(s));
-    try testing.expectEqual(@as(i48, 10), first(s).asInteger());
-    try testing.expectEqual(@as(i48, 30), nth(s, 2).asInteger());
+    try testing.expectEqual(@as(i48, 10), (try first(&fix.rt, s)).asInteger());
+    try testing.expectEqual(@as(i48, 30), (try nth(&fix.rt, s, 2)).asInteger());
 
     // The cursor is subtracted from the backing count at every offset — a view
     // that reported the BACKING's count would pass at offset 0 and fail here.
     const s2 = try make(&fix.rt, v, 2);
     try testing.expectEqual(@as(u32, 2), countOf(s2));
-    try testing.expectEqual(@as(i48, 30), first(s2).asInteger());
-    try testing.expectEqual(@as(i48, 40), nth(s2, 1).asInteger());
+    try testing.expectEqual(@as(i48, 30), (try first(&fix.rt, s2)).asInteger());
+    try testing.expectEqual(@as(i48, 40), (try nth(&fix.rt, s2, 1)).asInteger());
     // The view shares the backing rather than copying it.
     try testing.expectEqual(@intFromEnum(v), @intFromEnum(backingOf(s2)));
     try testing.expectEqual(@as(u32, 2), indexOf(s2));
@@ -272,15 +295,15 @@ test "rest / drop advance the cursor and terminate at the end (O-058)" {
     const s = try make(&fix.rt, v, 0);
 
     const r1 = try rest(&fix.rt, s);
-    try testing.expectEqual(@as(i48, 2), first(r1).asInteger());
+    try testing.expectEqual(@as(i48, 2), (try first(&fix.rt, r1)).asInteger());
     const r2 = try rest(&fix.rt, r1);
-    try testing.expectEqual(@as(i48, 3), first(r2).asInteger());
+    try testing.expectEqual(@as(i48, 3), (try first(&fix.rt, r2)).asInteger());
     // One step past the last element is nil — the walk terminates exactly, and
     // `rest` never yields a count-0 view for a caller to `first`.
     try testing.expect((try rest(&fix.rt, r2)).isNil());
 
     // `drop` reaches the same place in one step as repeated `rest`.
-    try testing.expectEqual(@as(i48, 3), first(try drop(&fix.rt, s, 2)).asInteger());
+    try testing.expectEqual(@as(i48, 3), (try first(&fix.rt, try drop(&fix.rt, s, 2))).asInteger());
     try testing.expect((try drop(&fix.rt, s, 3)).isNil());
     // A saturating add, so a huge n cannot wrap into a valid-looking cursor.
     try testing.expect((try drop(&fix.rt, s, std.math.maxInt(u32))).isNil());
@@ -302,7 +325,7 @@ test "withMeta: fresh view, same backing and cursor, meta not shared (O-058)" {
     try testing.expectEqual(@intFromEnum(v), @intFromEnum(backingOf(tagged)));
     try testing.expectEqual(@as(u32, 1), indexOf(tagged));
     try testing.expectEqual(@as(u32, 2), countOf(tagged));
-    try testing.expectEqual(@as(i48, 2), first(tagged).asInteger());
+    try testing.expectEqual(@as(i48, 2), (try first(&fix.rt, tagged)).asInteger());
     // The receiver is unchanged — with-meta is not a mutation.
     try testing.expect(metaOf(s).isNil());
     // Meta does not ride along to the tail (clj's ASeq.next()).

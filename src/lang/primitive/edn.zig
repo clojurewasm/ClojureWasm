@@ -53,7 +53,7 @@ const host_stream = @import("../../runtime/io/host_stream.zig");
 /// `clojure.core/read-string` — EOF on empty input is an ERROR (clj:
 /// `RuntimeException: EOF while reading`).
 pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    return readStringImpl(rt, env, args, loc, .raise);
+    return readStringImpl(rt, env, args, loc, .raise, .clojure);
 }
 
 /// `clojure.edn/read-string` — EOF on empty input is nil, NOT an error.
@@ -61,14 +61,21 @@ pub fn readStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoc
 /// `(core/read-string "")` throws. The two readers differ on exactly this
 /// input, which is why they cannot share one entry point (D-581; D-269 was
 /// discharged against the core behaviour and made edn throw too).
+/// It reads clj's EdnReader dialect (ADR-0200 Layer B), so `` ` `` `~` `@`
+/// `#'` `#(` `#"` `#=` `#?` `#!` `::kw` `#::{}` are errors, `'a` is a
+/// symbol, and `#ns.Rec{}` resolves only through `:readers` / `:default`.
+/// A nil source reads as nil (clj: `(when s ...)`).
+/// JVM reference: clojure.edn/read-string in clojure/edn.clj, over
+/// clojure.lang.EdnReader.
 pub fn readStringEdnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    return readStringImpl(rt, env, args, loc, .nil_on_eof);
+    if (args.len >= 1 and args.len <= 2 and args[args.len - 1].tag() == .nil) return Value.nil_val;
+    return readStringImpl(rt, env, args, loc, .nil_on_eof, .edn);
 }
 
 /// What an empty / whitespace-only / comment-only source means to the caller.
 const EofPolicy = enum { raise, nil_on_eof };
 
-fn readStringImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation, eof_policy: EofPolicy) anyerror!Value {
+fn readStringImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation, eof_policy: EofPolicy, dialect: reader_mod.Dialect) anyerror!Value {
     try error_catalog.checkArityRange("read-string", args, 1, 2, loc);
     const opts: ?Value = if (args.len == 2) args[0] else null;
     // clojure.edn/read-string's single-argument overload uses a nil EOF
@@ -86,7 +93,7 @@ fn readStringImpl(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
         });
     }
     const source = string_collection.asString(str_arg);
-    return readSource(rt, env, opts, source, loc, eof_policy, null);
+    return readSource(rt, env, opts, source, loc, eof_policy, null, dialect);
 }
 
 /// Read one form and advance the reader by exactly the consumed bytes.
@@ -105,13 +112,13 @@ pub fn readEdnFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
         else => return error_catalog.raise(.edn_string_invalid, loc, .{ .reason = "options must be a map" }),
     };
     if (try text_io.remainingReader(rt, input)) |source|
-        return readSource(rt, env, opts, source, loc, .raise, input);
+        return readSource(rt, env, opts, source, loc, .raise, input, .edn);
     if (try host_stream.remainingReader(rt, input)) |source|
-        return readSource(rt, env, opts, source, loc, .raise, input);
+        return readSource(rt, env, opts, source, loc, .raise, input, .edn);
     return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "read", .expected = "a PushbackReader", .actual = @tagName(input.tag()) });
 }
 
-fn readSource(rt: *Runtime, env: *Env, opts: ?Value, source: []const u8, loc: SourceLocation, eof_policy: EofPolicy, stream: ?Value) anyerror!Value {
+fn readSource(rt: *Runtime, env: *Env, opts: ?Value, source: []const u8, loc: SourceLocation, eof_policy: EofPolicy, stream: ?Value, dialect: reader_mod.Dialect) anyerror!Value {
     // EOF (no form in `source`): clj THROWS `RuntimeException: EOF while
     // reading` UNLESS an `:eof` opt is supplied, in which case that value is
     // returned (D-269 — was a silent nil-default that masked "nothing to read").
@@ -160,13 +167,19 @@ fn readSource(rt: *Runtime, env: *Env, opts: ?Value, source: []const u8, loc: So
             if (rc == try keyword.intern(rt, null, "allow")) allow_cond = true;
         }
     }
-    var reader = reader_mod.Reader.init(arena.allocator(), source);
+    var reader = reader_mod.Reader.initDialect(arena.allocator(), source, dialect);
     reader.allow_reader_cond = allow_cond;
     // ADR-0200: every form is lifted with formToValueStrict below, which
     // checks duplicate keys by value and in source order, so the reader's
     // Form-level approximation stays off.
     reader.form_checks = false;
+    // ADR-0200 A4: a `#_` target is lifted (its tag readers run, its
+    // duplicates raise) the moment it is read, inside this binding frame,
+    // so the source-order error is the one raised, then dropped.
+    var discard: DiscardLift = .{ .rt = rt, .env = env, .dialect = dialect };
+    reader.discard_hook = .{ .ctx = &discard, .f = DiscardLift.hook };
     const form_opt = reader.read() catch |e| {
+        if (discard.err) |de| return de;
         // A specific reader diagnostic (e.g. reader_cond_not_allowed, or an
         // IllegalArgumentException such as a duplicate key) carries its own
         // catalog Info; re-raise it so the message and kind survive rather
@@ -191,8 +204,35 @@ fn readSource(rt: *Runtime, env: *Env, opts: ?Value, source: []const u8, loc: So
         if (eof_policy == .nil_on_eof and opts == null) return Value.nil_val;
         return error_catalog.raise(.eof_unexpected, loc, .{});
     };
-    return try analyzer_mod.formToValueStrict(rt, env, form);
+    return try liftData(rt, env, form, dialect);
 }
+
+/// The data lift for `dialect`: EDN never reads `#ns.Rec{}` as a record.
+fn liftData(rt: *Runtime, env: *Env, form: reader_mod.ReadForm, dialect: reader_mod.Dialect) anyerror!Value {
+    return switch (dialect) {
+        .clojure => analyzer_mod.formToValueStrict(rt, env, form),
+        .edn => analyzer_mod.formToValueEdn(rt, env, form),
+    };
+}
+
+/// Reader discard hook state. The lift can fail with errors outside the
+/// reader's error set (a user reader fn's thrown value), so the hook parks
+/// the real error here and aborts the read with a placeholder that
+/// `readSource` swaps back.
+const DiscardLift = struct {
+    rt: *Runtime,
+    env: *Env,
+    dialect: reader_mod.Dialect,
+    err: ?anyerror = null,
+
+    fn hook(ctx: *anyopaque, form: reader_mod.ReadForm) reader_mod.ReadError!void {
+        const self: *DiscardLift = @ptrCast(@alignCast(ctx));
+        _ = liftData(self.rt, self.env, form, self.dialect) catch |e| {
+            self.err = e;
+            return error.SyntaxError;
+        };
+    }
+};
 
 /// Look up `:key` in an opts map, returning the bound value or null when
 /// absent / nil. Returns null (no error) if `opts` is not a map, so a

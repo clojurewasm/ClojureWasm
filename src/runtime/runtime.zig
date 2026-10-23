@@ -292,6 +292,11 @@ pub const Runtime = struct {
     /// UNLIMITED), gc.infra-allocated host_instances lazily filled by
     /// `math_context.zig::singleton`; freed in `deinit`.
     math_contexts: [4]@import("value/value.zig").Value = @splat(.nil_val),
+    /// The interned `java.time.format.DateTimeFormatter/ISO_*` constants,
+    /// gc.infra-allocated host_instances over the engine's static programs,
+    /// lazily filled by `date_time_formatter_value.zig::isoConstant`; freed in
+    /// `deinit`.
+    iso_formatters: [@import("time/date_time_format.zig").ISO_CONSTANTS.len]@import("value/value.zig").Value = @splat(.nil_val),
 
     /// `clojure.lang.Compiler/specials` — a map `{<special-form-symbol> nil…}`
     /// whose keys are cljw's SPECIAL_FORMS (the SSOT in analyzer.zig). Unlike
@@ -731,6 +736,7 @@ pub const Runtime = struct {
         @import("locale.zig").deinitSingletons(self);
         @import("host_enum.zig").deinitConsts(self);
         @import("math_context.zig").deinitSingletons(self);
+        @import("time/date_time_formatter_value.zig").deinitIsoConstants(self);
 
         // User-set system properties (gpa-owned key+value dupes).
         {

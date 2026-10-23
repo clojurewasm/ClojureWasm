@@ -83,13 +83,11 @@ check "(char-array n ch)" '(int (aget (char-array 3 (char 120)) 1))'     '120'
 check "AD-036 (byte-array n num)" '(vec (byte-array 3 65))'              '[65 65 65]'
 check "AD-036 (char-array n int)" '(int (aget (char-array 3 65) 0))'    '65'
 
-# AD-051 pin: `bytes?` is true for ANY cljw array — arrays are type-erased
-# (AD-019), so a byte-array is runtime-indistinguishable from an int/object
-# array. The common positive guard matches clj; non-byte arrays diverge (clj
-# false, cljw true).
-check "AD-051 (bytes? byte-array)"   '(bytes? (byte-array 3))'    'true'
-check "AD-051 (bytes? int-array)"    '(bytes? (int-array 3))'     'true'
-check "AD-051 (bytes? object-array)" '(bytes? (object-array 0))'  'true'
+# `bytes?` is true only for a byte array (clj parity; arrays carry their
+# element kind since ADR-0204, which retired the over-broad AD-051).
+check "(bytes? byte-array)"   '(bytes? (byte-array 3))'    'true'
+check "(bytes? int-array)"    '(bytes? (int-array 3))'     'false'
+check "(bytes? object-array)" '(bytes? (object-array 0))'  'false'
 
 
 # --- multi-dim aget/aset (D-446 close-out): the variadic forms walk nested
@@ -98,9 +96,9 @@ check "AD-051 (bytes? object-array)" '(bytes? (object-array 0))'  'true'
 check "(aget a i j)"        '(let [a (make-array Long 2 3)] (aset a 0 1 42) (aget a 0 1))'    '42'
 check "(aset a i j k v)"    '(let [b (make-array Long 2 2 2)] (aset b 1 0 1 9) (aget b 1 0 1))' '9'
 check "(aget oob catchable)" '(let [a (make-array Long 2 3)] (try (aget a 9 0) (catch Throwable t :oob)))' ':oob'
-# AD-019 pin: the typed aset-* multidim arms store WITHOUT element-type
-# checking (arrays are type-erased; clj throws IllegalArgumentException when
-# the array is boxed, and cljw has no boxed/primitive distinction to key on).
+# AD-019 pin: make-array ignores its class argument and builds an object
+# array, and the typed aset-* multidim arms store into it (clj throws
+# IllegalArgumentException on a boxed array; cljw has no Class to key on).
 check "AD-019 (aset-long a i j v)"   '(let [b (make-array Long 2 2 2)] (aset-long b 0 1 1 5) (aget b 0 1 1))' '5'
 check "AD-019 (aset-double a i j v)" '(let [c (make-array Double 2 2)] (aset-double c 1 1 2.5) (aget c 1 1))' '2.5'
 check "AD-019 (aset-int a i j v)"    '(let [c (make-array Long 2 2)] (aset-int c 0 0 3) (aget c 0 0))' '3'

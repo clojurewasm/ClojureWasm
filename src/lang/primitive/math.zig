@@ -240,52 +240,34 @@ fn rationalize(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 /// which makes the result an integer with no ratio to reduce. Going via a float
 /// would lose precision that the BigDecimal was chosen to keep.
 fn bigDecRationalize(rt: *Runtime, v: Value, loc: SourceLocation) anyerror!Value {
+    _ = loc;
     const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
-    // Unscaled digits, sign included. The bound mirrors the float path's
-    // buffers; a wider significand than this raises rather than truncating.
-    var digitbuf: [512]u8 = undefined;
-    var dw: std.Io.Writer = .fixed(&digitbuf);
-    dw.print("{f}", .{bd.unscaled.m}) catch
-        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "rationalize", .expected = "a BigDecimal within rationalize's digit range", .actual = "too many significand digits" });
-    const digits = dw.buffered();
+    const Managed = std.math.big.int.Managed;
+    // 10^|scale| computed exactly, no digit-string round-trip and so no size
+    // ceiling (CLJW-BIGINT-STR-PLACEHOLDER sweep).
+    var pow_m = try Managed.initSet(rt.gc.infra, 10);
+    defer pow_m.deinit();
+    const mag: u32 = @intCast(@abs(@as(i64, bd.scale)));
+    try pow_m.pow(&pow_m, mag);
 
     if (bd.scale <= 0) {
-        const zeros: usize = @intCast(-@as(i64, bd.scale));
-        var intbuf: [1040]u8 = undefined;
-        if (digits.len + zeros > intbuf.len)
-            return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "rationalize", .expected = "a BigDecimal within rationalize's digit range", .actual = "too many trailing zeros" });
-        @memcpy(intbuf[0..digits.len], digits);
-        @memset(intbuf[digits.len .. digits.len + zeros], '0');
-        var int_m = try big_int_mod.parseBase10(rt, intbuf[0 .. digits.len + zeros]);
+        var int_m = try Managed.init(rt.gc.infra);
         defer int_m.deinit();
+        try int_m.mul(bd.unscaled.m, &pow_m);
         return promote.wrapManaged(rt, &int_m);
     }
 
-    var num_m = try big_int_mod.parseBase10(rt, digits);
-    defer num_m.deinit();
-    const scale: usize = @intCast(bd.scale);
-    // denominator = 10^scale, written as "1" followed by `scale` zeros.
-    var denbuf: [1040]u8 = undefined;
-    if (1 + scale > denbuf.len)
-        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "rationalize", .expected = "a BigDecimal within rationalize's scale range", .actual = "scale too large" });
-    denbuf[0] = '1';
-    @memset(denbuf[1 .. 1 + scale], '0');
-    var den_m = try big_int_mod.parseBase10(rt, denbuf[0 .. 1 + scale]);
-    defer den_m.deinit();
-
-    if (try ratio_mod.allocFromManagedPair(rt, &num_m, &den_m)) |ratio_v| return ratio_v;
+    if (try ratio_mod.allocFromManagedPair(rt, bd.unscaled.m, &pow_m)) |ratio_v| return ratio_v;
     // Null means the reduction collapsed to an integer, and the caller emits
     // it. The quotient has to be computed here: `allocFromManagedPair` takes
-    // its pair as `const`, so `num_m` is still the UNREDUCED numerator, and
-    // wrapping it answers 10 for 1.0M. A BigDecimal reaches this arm whenever
-    // its trailing digits are zeros (1.0M, 1.00M, 10.0M), where the float path
-    // above cannot: a normalised float render carries no trailing zero, so its
-    // numerator is never divisible by 10^scale.
-    var quot_m = try std.math.big.int.Managed.init(rt.gc.infra);
+    // its pair as `const`, so the numerator is still the UNREDUCED unscaled
+    // value, and wrapping it answers 10 for 1.0M. A BigDecimal reaches this
+    // arm whenever its trailing digits are zeros (1.0M, 1.00M, 10.0M).
+    var quot_m = try Managed.init(rt.gc.infra);
     defer quot_m.deinit();
-    var rem_m = try std.math.big.int.Managed.init(rt.gc.infra);
+    var rem_m = try Managed.init(rt.gc.infra);
     defer rem_m.deinit();
-    try quot_m.divTrunc(&rem_m, &num_m, &den_m);
+    try quot_m.divTrunc(&rem_m, bd.unscaled.m, &pow_m);
     return promote.wrapManaged(rt, &quot_m);
 }
 

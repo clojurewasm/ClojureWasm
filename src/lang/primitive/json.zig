@@ -43,6 +43,7 @@ const map_collection = @import("../../runtime/collection/map.zig");
 const sorted_collection = @import("../../runtime/collection/sorted.zig");
 const print = @import("../../runtime/print.zig");
 const big_int_mod = @import("../../runtime/numeric/big_int.zig");
+const decimal_text = @import("../../runtime/numeric/decimal_text.zig");
 const ratio_mod = @import("../../runtime/numeric/ratio.zig");
 const keyword_mod = @import("../../runtime/keyword.zig");
 
@@ -240,9 +241,9 @@ fn cwToJson(v: Value, w: *std.Io.Writer, opts: WriteOpts) anyerror!void {
         // formatter rather than Zig's `{d}` (D-171, sibling of D-166).
         .float => try print.printFloat(w, v.asFloat()),
         // JVM data.json writes a BigInt via `(str x)` → plain digits, NO
-        // `N` suffix. `Managed.format` (`{f}`) renders just the digits
+        // `N` suffix. `writeDecimal` renders just the digits, no size ceiling
         // (printBigInt adds the `N` for pr-str; JSON must not). (D-182)
-        .big_int => try w.print("{f}", .{big_int_mod.asManaged(v)}),
+        .big_int => try decimal_text.writeDecimal(w, big_int_mod.asManaged(v)),
         // JVM data.json writes a Ratio as `(double x)`, its `Ratio.doubleValue`
         // (1/2 → 0.5, 1/7 → 0.1428571428571429).
         .ratio => try print.printFloat(w, try ratio_mod.toF64(v)),

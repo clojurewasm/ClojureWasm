@@ -22,10 +22,37 @@ ordinary Clojure fn. No libffi, no binding generator, no rebuild of cljw.
 | `(string ptr)` | copy a NUL-terminated C string; 0 or nil gives nil |
 | `(bytes ptr n)` | copy `n` bytes into a byte array |
 
-Types: `:void` (return only), `:int` (C int), `:long` (int64), `:double`,
-`:pointer` (address as integer, nil is NULL), `:string` (a copy both ways,
-NULL is nil, a returned string is never freed), `:bytes` (argument only, a
-copy of a byte array).
+| type | C side | Clojure side |
+|---|---|---|
+| `:void` | `void` (return only) | nil |
+| `:int` | `int` | integer, truncated to 32 bits; a return is sign-extended |
+| `:long` | `int64_t` / `long` | integer |
+| `:double` | `double` | float, or an integer widened |
+| `:pointer` | `T *` | an address integer, nil (NULL), or a primitive array: its storage, no copy, C reads and writes it in place for the call |
+| `:string` | `const char *` | a copy both ways; NULL is nil; a returned string is never freed |
+| `:bytes` | `const uint8_t *` | argument only: a copy of a byte array (one memcpy), so C writes do not reach it |
+
+A primitive array is contiguous native storage of its element width, so it is
+a C array as it stands:
+
+| constructor | C element |
+|---|---|
+| `byte-array` | `int8_t` |
+| `short-array` | `int16_t` |
+| `int-array` | `int32_t` |
+| `long-array` | `int64_t` |
+| `float-array` | `float` |
+| `double-array` | `double` |
+| `char-array` | `uint32_t` (a code point) |
+| `boolean-array` | `uint8_t` (0 or 1) |
+
+```clojure
+(def dot (ffi/function lib "dot" [:pointer :pointer :long] :double))
+(dot (double-array xs) (double-array ys) (count xs))
+```
+
+`object-array`, `to-array` and `into-array` hold Clojure values and are not
+accepted as `:pointer`.
 
 Limits: at most 6 integer-class and 8 `:double` arguments, no varargs
 (`printf`), no structs by value, no `float`. Available on x86_64 and aarch64,

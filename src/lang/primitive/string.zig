@@ -30,6 +30,8 @@ const regex_replace = @import("../../runtime/regex/replace.zig");
 const regex_prim = @import("regex.zig");
 const print_mod = @import("../../runtime/print.zig");
 const char_sequence = @import("../../runtime/char_sequence.zig");
+const seqable = @import("../../runtime/seqable.zig");
+const root_set = @import("../../runtime/gc/root_set.zig");
 
 /// `(clojure.string/upper-case s)` — ASCII upper-case fold.
 /// Non-ASCII codepoints pass through unchanged; full Unicode case
@@ -571,37 +573,71 @@ pub fn splitLines(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocat
     return result;
 }
 
-/// `-join` leaf — the vector+string fast path under the public
-/// `(clojure.string/join …)` Pattern A `.clj` defn. `coll` must be a
-/// `vector` and elements must be strings; other coll/element shapes
-/// raise `feature_not_supported` (the `.clj` defn handles the general
-/// seq + `str`-coercion arms). Kept as an opt-in fast leaf.
+/// `-join` leaf: the whole of `(clojure.string/join coll)` /
+/// `(clojure.string/join sep coll)`. clj's body is a StringBuilder loop over
+/// `(seq coll)` appending `(str x)` and `(str sep)` between elements; this is
+/// that loop in Zig. `coll` is any seqable (vector, list, lazy seq, string,
+/// map, set, a custom Seqable); `sep` and every element render through
+/// `print.writeStrValue`, the same renderer `str` uses, so nil renders "" and
+/// a char / keyword / number renders as `str` would. A non-seqable `coll`
+/// raises through `seqable.seq` exactly like `(seq coll)`.
+///
+/// PERF: the old Pattern A body `(apply str (interpose sep coll))` built a
+/// lazy interpose seq (a closure call + lazy cell per element) and then an
+/// `apply` arg spill; that was 87% of bench/vs_bb string_ops. [refs: O-070]
 pub fn join(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = env;
     try error_catalog.checkArityRange("join", args, 1, 2, loc);
-    const sep: []const u8 = if (args.len == 2) blk: {
-        if (args[0].tag() != .string)
-            return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "join", .actual = @tagName(args[0].tag()) });
-        break :blk string_collection.asString(args[0]);
-    } else "";
-    const coll = if (args.len == 2) args[1] else args[0];
+    var out: std.Io.Writer.Allocating = .init(rt.gc.infra);
+    defer out.deinit();
 
-    if (coll.tag() != .vector)
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "clojure.string/join", .expected = "a seqable collection", .actual = @tagName(args[args.len - 1].tag()) });
+    // The separator is rendered once up front (clj `(str separator)` per gap
+    // gives the same text every time).
+    var sep_aw: std.Io.Writer.Allocating = .init(rt.gc.infra);
+    defer sep_aw.deinit();
+    if (args.len == 2) try print_mod.writeStrValue(rt, env, &sep_aw.writer, args[0]);
+    const sep = sep_aw.writer.buffered();
 
-    const n = vector_collection.count(coll);
-    var out: std.ArrayList(u8) = .empty;
-    defer out.deinit(rt.gc.infra);
+    // GC-ROOT: A14 — [cursor, element]. `seq`/`next` may build fresh views or
+    // realize a lazy seq, and rendering an instance's toString re-enters eval;
+    // either can collect while the cursor is held only here.
+    // [ref: .dev/gc_rooting.md §A]
+    var roots = [_]Value{ .nil_val, .nil_val };
+    var sp: u16 = roots.len;
+    var frame: root_set.EvalFrame = .{ .stack = &roots, .sp = &sp, .locals = &.{}, .parent = root_set.eval_frame_head };
+    root_set.eval_frame_head = &frame;
+    defer root_set.eval_frame_head = frame.parent;
 
-    var i: u32 = 0;
-    while (i < n) : (i += 1) {
-        const elt = vector_collection.nth(coll, i);
-        if (elt.tag() != .string)
-            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "clojure.string/join", .expected = "a printable element", .actual = "an unprintable element" });
-        if (i > 0 and sep.len > 0) try out.appendSlice(rt.gc.infra, sep);
-        try out.appendSlice(rt.gc.infra, string_collection.asString(elt));
+    const coll = args[args.len - 1];
+    switch (coll.tag()) {
+        // Indexed fast path: no seq view, no per-element cursor allocation.
+        .vector => {
+            const n = vector_collection.count(coll);
+            var i: u32 = 0;
+            while (i < n) : (i += 1) {
+                if (i > 0) try out.writer.writeAll(sep);
+                const elt = vector_collection.nth(coll, i);
+                if (elt.tag() == .string)
+                    try out.writer.writeAll(string_collection.asString(elt))
+                else
+                    try print_mod.writeStrValue(rt, env, &out.writer, elt);
+            }
+        },
+        else => {
+            roots[0] = try seqable.seq(rt, env, coll, loc);
+            var first_elt = true;
+            while (roots[0].tag() != .nil) {
+                if (!first_elt) try out.writer.writeAll(sep);
+                first_elt = false;
+                roots[1] = try seqable.first(rt, env, roots[0], loc);
+                if (roots[1].tag() == .string)
+                    try out.writer.writeAll(string_collection.asString(roots[1]))
+                else
+                    try print_mod.writeStrValue(rt, env, &out.writer, roots[1]);
+                roots[0] = try seqable.next(rt, env, roots[0], loc);
+            }
+        },
     }
-    return try string_collection.alloc(rt, out.items);
+    return try string_collection.alloc(rt, out.writer.buffered());
 }
 
 // --- registration ---

@@ -129,13 +129,35 @@ pub fn empty() Value {
     return Value.encodeHeapPtr(.vector, &EMPTY);
 }
 
+/// A fresh HamtNode holding a copy of `slots`. Writes the header and the 32
+/// slots once; `.{ .header = … }` + `@memcpy` wrote every slot twice (nil
+/// default, then the copy). PERF: [refs: O-074]
+inline fn copyHamt(rt: *Runtime, slots: *const [BRANCH_FACTOR]Value) !*HamtNode {
+    const c = try rt.gc.alloc(HamtNode);
+    c.header = HeapHeader.init(.hamt_node);
+    c._pad = .{ 0, 0, 0, 0, 0, 0 };
+    c.slots = slots.*;
+    return c;
+}
+
+/// A fresh TailNode of length `len` whose live prefix is `prefix` (len >=
+/// prefix.len). Slots past `len` stay nil so the node matches a `.{}`-built
+/// one; slots in `[prefix.len, len)` are the caller's to fill. PERF: [refs: O-074]
+inline fn newTail(rt: *Runtime, len: u32, prefix: []const Value) !*TailNode {
+    const t = try rt.gc.alloc(TailNode);
+    t.header = HeapHeader.init(.tail_node);
+    t._pad = .{ 0, 0 };
+    t.len = len;
+    @memcpy(t.slots[0..prefix.len], prefix);
+    @memset(t.slots[len..], Value.nil_val);
+    return t;
+}
+
 /// HamtNode.dupe — shallow copy with a fresh header. Used inside
 /// popTail's recursion when descending into a slot that already
 /// exists but isn't being modified at this level.
 fn dupeHamt(parent: *const HamtNode, rt: *Runtime) !*HamtNode {
-    const c = try rt.gc.alloc(HamtNode);
-    c.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&c.slots, &parent.slots);
+    const c = try copyHamt(rt, &parent.slots);
     return c;
 }
 
@@ -206,11 +228,8 @@ pub fn conj(rt: *Runtime, v: Value, x: Value) !Value {
     // Fast path: tail has space (< BRANCH_FACTOR elements).
     const tail_size = if (old.tail) |t| t.len else 0;
     if (tail_size < BRANCH_FACTOR) {
-        const new_tail = try rt.gc.alloc(TailNode);
-        new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_size + 1 };
-        if (old.tail) |t| {
-            @memcpy(new_tail.slots[0..tail_size], t.slots[0..tail_size]);
-        }
+        const prefix: []const Value = if (old.tail) |t| t.slots[0..tail_size] else &.{};
+        const new_tail = try newTail(rt, tail_size + 1, prefix);
         new_tail.slots[tail_size] = x;
         return try newVector(rt, old.count + 1, old.shift, old.root, new_tail, old.meta);
     }
@@ -218,9 +237,7 @@ pub fn conj(rt: *Runtime, v: Value, x: Value) !Value {
     // Tail-full path: promote the old tail to a leaf HamtNode under
     // root; new tail holds just `x`. The promoted leaf goes into the
     // root trie via pushTail, possibly growing the trie depth.
-    const tail_as_leaf = try rt.gc.alloc(HamtNode);
-    tail_as_leaf.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&tail_as_leaf.slots, &old.tail.?.slots);
+    const tail_as_leaf = try copyHamt(rt, &old.tail.?.slots);
 
     const old_count = old.count;
     var new_shift = old.shift;
@@ -323,9 +340,7 @@ pub fn assoc(rt: *Runtime, v: Value, i: u32, x: Value) !Value {
 
     if (i >= tailoff(old.count)) {
         const tail_size = if (old.tail) |t| t.len else 0;
-        const new_tail = try rt.gc.alloc(TailNode);
-        new_tail.* = .{ .header = HeapHeader.init(.tail_node), .len = tail_size };
-        @memcpy(new_tail.slots[0..tail_size], old.tail.?.slots[0..tail_size]);
+        const new_tail = try newTail(rt, tail_size, old.tail.?.slots[0..tail_size]);
         new_tail.slots[i - tailoff(old.count)] = x;
         return try newVector(rt, old.count, old.shift, old.root, new_tail, old.meta);
     }
@@ -339,9 +354,7 @@ pub fn assoc(rt: *Runtime, v: Value, i: u32, x: Value) !Value {
 /// duplicate the node at each level, overwrite the slot on the path
 /// to `i`, recurse until shift==0 then overwrite the leaf slot.
 fn assocInRoot(rt: *Runtime, level: u32, node: *const HamtNode, i: u32, x: Value) !*HamtNode {
-    const dup = try rt.gc.alloc(HamtNode);
-    dup.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&dup.slots, &node.slots);
+    const dup = try copyHamt(rt, &node.slots);
 
     if (level == 0) {
         dup.slots[i & MASK] = x;
@@ -410,9 +423,7 @@ pub fn fromSlice(rt: *Runtime, items: []const Value) !Value {
     defer rt.gc.infra.free(level_nodes);
     var li: u32 = 0;
     while (li < leaf_count) : (li += 1) {
-        const leaf = try rt.gc.alloc(HamtNode);
-        leaf.* = .{ .header = HeapHeader.init(.hamt_node) };
-        @memcpy(&leaf.slots, items[li * BRANCH_FACTOR ..][0..BRANCH_FACTOR]);
+        const leaf = try copyHamt(rt, items[li * BRANCH_FACTOR ..][0..BRANCH_FACTOR]);
         level_nodes[li] = leaf;
     }
 
@@ -487,9 +498,7 @@ fn pushTail(
     tail_leaf: *HamtNode,
 ) !*HamtNode {
     const sub_index = (tail_offset >> @as(u5, @intCast(level))) & MASK;
-    const new_parent = try rt.gc.alloc(HamtNode);
-    new_parent.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&new_parent.slots, &parent.slots);
+    const new_parent = try copyHamt(rt, &parent.slots);
 
     if (level == SHIFT_BITS) {
         // Parent is one above leaf level — slot it directly.
@@ -530,16 +539,12 @@ fn popTail(rt: *Runtime, level: u32, parent: *const HamtNode, new_count: u32) !?
         if (new_child == null and sub_index == 0) {
             return null; // whole subtree gone
         }
-        const new_parent = try rt.gc.alloc(HamtNode);
-        new_parent.* = .{ .header = HeapHeader.init(.hamt_node) };
-        @memcpy(&new_parent.slots, &parent.slots);
+        const new_parent = try copyHamt(rt, &parent.slots);
         new_parent.slots[sub_index] = if (new_child) |c| Value.encodeHeapPtr(.hamt_node, c) else Value.nil_val;
         return new_parent;
     }
     if (sub_index == 0) return null;
-    const new_parent = try rt.gc.alloc(HamtNode);
-    new_parent.* = .{ .header = HeapHeader.init(.hamt_node) };
-    @memcpy(&new_parent.slots, &parent.slots);
+    const new_parent = try copyHamt(rt, &parent.slots);
     new_parent.slots[sub_index] = Value.nil_val;
     return new_parent;
 }

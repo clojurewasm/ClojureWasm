@@ -127,10 +127,8 @@ pub fn allocFromManaged(rt: *Runtime, src: *const std.math.big.int.Managed, orig
     const m_ptr = try rt.gc.infra.create(std.math.big.int.Managed);
     errdefer rt.gc.infra.destroy(m_ptr);
     m_ptr.* = try src.cloneWithDifferentAllocator(rt.gc.infra);
-
-    const bi = try rt.gc.alloc(BigInt);
-    bi.* = .{ .header = HeapHeader.init(.big_int), .origin = origin, .m = m_ptr };
-    return Value.encodeHeapPtr(.big_int, bi);
+    errdefer m_ptr.deinit();
+    return wrapManaged(rt, m_ptr, origin);
 }
 
 /// Wrap an already-computed, `gc.infra`-owned `*Managed` as a GC BigInt Value
@@ -144,6 +142,8 @@ pub fn allocFromManaged(rt: *Runtime, src: *const std.math.big.int.Managed, orig
 pub fn wrapManaged(rt: *Runtime, m_ptr: *std.math.big.int.Managed, origin: IntOrigin) !Value {
     const bi = try rt.gc.alloc(BigInt);
     bi.* = .{ .header = HeapHeader.init(.big_int), .origin = origin, .m = m_ptr };
+    // CLJW-GC-HEAP-RETURN: the limbs live on infra, invisible to the trigger.
+    rt.gc.noteOwnedAlloc(ownedBytes(&bi.header));
     return Value.encodeHeapPtr(.big_int, bi);
 }
 

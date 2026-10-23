@@ -115,6 +115,7 @@ fn readByte(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
 /// stdin mode: append one blocking chunk from process stdin to `data`.
 /// A zero-byte read (or error) latches EOF. Mirrors text_io's `*in*` fill.
 fn stdinFill(rt: *Runtime, st: *StreamState) !void {
+    stdin.beforeFill(rt.gc.infra, &st.data, &st.pos, &rt.gc);
     var chunk: [4096]u8 = undefined;
     const n = stdin.readChunk(rt.io, &chunk) catch {
         st.stdin_eof = true;

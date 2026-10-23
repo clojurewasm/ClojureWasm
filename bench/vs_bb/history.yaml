@@ -1,0 +1,74 @@
+# bench/vs_bb history: one row per run of bench/vs_bb/run.sh (append-only).
+- date: "2026-10-22T17:12:15Z"
+  commit: "e1708566"
+  host: "Linux x86_64"
+  ci: false
+  load: "18.85"
+  runs: 3
+  wall_source: min-of-n
+  versions:
+    cljw: "ClojureWasm v1.15.3 (ReleaseSafe, wasm)"
+    bb: "babashka v1.13.224"
+    jvm: "clojure 1.12.4 on openjdk version 25.0.4.1 2026-08-18"
+  startup_ms:
+    cljw: 41
+    bb: 28
+    jvm: 1095
+  geomean_inproc: {cljw_over_bb: 4.80, cljw_over_jvm: 10.94}
+  workloads:
+    arrays:
+      cljw: {inproc_ms: 7436, wall_ms: 7489, rss_kb: 29408}
+      bb: {inproc_ms: 346, wall_ms: 387, rss_kb: 134180}
+      jvm: {inproc_ms: 484, wall_ms: 1654, rss_kb: 684272}
+    dot_loop_nth:
+      cljw: {inproc_ms: 747, wall_ms: 787, rss_kb: 13920}
+      bb: {inproc_ms: 374, wall_ms: 411, rss_kb: 112724}
+      jvm: {inproc_ms: 78, wall_ms: 1202, rss_kb: 135384}
+    fib_recursive:
+      cljw: {inproc_ms: 324, wall_ms: 364, rss_kb: 13488}
+      bb: {inproc_ms: 271, wall_ms: 312, rss_kb: 107028}
+      jvm: {inproc_ms: 32, wall_ms: 1105, rss_kb: 136592}
+    fn_call:
+      cljw: {inproc_ms: 743, wall_ms: 781, rss_kb: 13544}
+      bb: {inproc_ms: 485, wall_ms: 528, rss_kb: 113044}
+      jvm: {inproc_ms: 68, wall_ms: 1238, rss_kb: 195412}
+    gc_churn:
+      cljw: {inproc_ms: 1589, wall_ms: 1910, rss_kb: 388684}
+      bb: {inproc_ms: 603, wall_ms: 656, rss_kb: 184532}
+      jvm: {inproc_ms: 235, wall_ms: 1394, rss_kb: 339132}
+    into_collections:
+      cljw: {inproc_ms: 5985, wall_ms: 6133, rss_kb: 132752}
+      bb: {inproc_ms: 484, wall_ms: 529, rss_kb: 136404}
+      jvm: {inproc_ms: 372, wall_ms: 1664, rss_kb: 313268}
+    json_roundtrip:
+      cljw: {inproc_ms: 415, wall_ms: 502, rss_kb: 52216}
+      bb: {inproc_ms: 371, wall_ms: 409, rss_kb: 114860}
+      jvm: {inproc_ms: 479, wall_ms: 2358, rss_kb: 564780}
+    lazy_chain:
+      cljw: {inproc_ms: 10258, wall_ms: 10511, rss_kb: 118440}
+      bb: {inproc_ms: 548, wall_ms: 601, rss_kb: 202388}
+      jvm: {inproc_ms: 462, wall_ms: 1634, rss_kb: 528180}
+    numeric_doubles:
+      cljw: {inproc_ms: 1082, wall_ms: 1116, rss_kb: 13872}
+      bb: {inproc_ms: 565, wall_ms: 600, rss_kb: 113400}
+      jvm: {inproc_ms: 32, wall_ms: 1038, rss_kb: 137836}
+    protocol_dispatch:
+      cljw: {inproc_ms: 1568, wall_ms: 1597, rss_kb: 13920}
+      bb: {inproc_ms: 344, wall_ms: 389, rss_kb: 113396}
+      jvm: {inproc_ms: 50, wall_ms: 1052, rss_kb: 168344}
+    reduce_map:
+      cljw: {inproc_ms: 9939, wall_ms: 10368, rss_kb: 150236}
+      bb: {inproc_ms: 656, wall_ms: 707, rss_kb: 167112}
+      jvm: {inproc_ms: 740, wall_ms: 2184, rss_kb: 689760}
+    string_ops:
+      cljw: {inproc_ms: 3760, wall_ms: 3903, rss_kb: 124628}
+      bb: {inproc_ms: 403, wall_ms: 439, rss_kb: 112892}
+      jvm: {inproc_ms: 496, wall_ms: 1784, rss_kb: 445768}
+    transduce:
+      cljw: {inproc_ms: 5751, wall_ms: 5790, rss_kb: 27776}
+      bb: {inproc_ms: 358, wall_ms: 389, rss_kb: 113232}
+      jvm: {inproc_ms: 195, wall_ms: 1400, rss_kb: 359324}
+    vector_assoc:
+      cljw: {inproc_ms: 1452, wall_ms: 1563, rss_kb: 172408}
+      bb: {inproc_ms: 448, wall_ms: 500, rss_kb: 167600}
+      jvm: {inproc_ms: 450, wall_ms: 1667, rss_kb: 558992}

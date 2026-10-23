@@ -1,295 +1,164 @@
 // SPDX-License-Identifier: EPL-2.0
-//! Mark-sweep GC heap for cw v1 — `gc_alloc` layer of the 3-layer
+//! Mark-sweep GC heap for cw v1: the `gc_alloc` layer of the 3-layer
 //! allocator boundary per ADR-0028 §2 + F-006.
 //!
 //! Struct shape:
-//!   - `allocations` — side-table of live heap-object records (header
-//!     + size + alignment); see the `GcHeap` docstring for why a
-//!     side-table beats an intrusive next-pointer.
-//!   - `permanent_roots` — embedder-pinned root Values (`pin` / `unpin`).
-//!   - `free_pools` — per-(size, alignment) free pool head map, owned
-//!     by `runtime/gc/free_pool.zig`.
-//!   - `stats` — bytes_allocated / bytes_freed / alloc/collect/sweep
-//!     counts + last_live_bytes.
-//!   - `infra` — backing GPA allocator (per F-006 §2 layer 1) for the
-//!     raw heap pages this `GcHeap` operates over.
-//!   - `bytes_since_last_gc` + `threshold_bytes` — drive the adaptive
-//!     `collect()` trigger per ADR-0028 §1.
+//!   - `allocations`: side-table of live heap-object records (header + size +
+//!     alignment); see the `GcHeap` docstring for why a side-table beats an
+//!     intrusive next-pointer.
+//!   - `permanent_roots`: embedder-pinned root Values (`pin` / `unpin`).
+//!   - `pages`: the size-classed page heap small cells live in, owned by
+//!     `page_heap.zig` (empty pages go back to the OS after a collect).
+//!   - `stats`: counters, shapes in `gc_types.zig`.
+//!   - `infra`: backing GPA allocator (F-006 §2 layer 1).
+//!   - the pressure counters + `threshold_bytes`: the collect trigger, whose
+//!     policy lives in `gc_trigger.zig` (re-exposed here as methods).
 //!
-//! `alloc` (free-pool fast path → infra slow path), `pin` / `unpin`,
-//! and `deinit` (per-tag finaliser → rawFree drain) are all landed.
-//! The `collect()` orchestrator lives in `mark_sweep.zig` to keep the
-//! import graph acyclic (it reaches `root_set.zig`, which imports this
-//! file).
+//! The `collect()` orchestrator lives in `mark_sweep.zig` to keep the import
+//! graph acyclic (it reaches `root_set.zig`, which imports this file). Unit
+//! tests are in `gc_heap_test.zig`.
 //!
-//! Thread-safety (ADR-0090 §2, F-006): `gc_mutex` (a `std.Io.Mutex`,
-//! locked through the `io_default` singleton because the allocator API
-//! takes no `io` arg) serializes `alloc` / `pin` / `unpin` and the whole
-//! `collect()` cycle (the latter brackets in `mark_sweep.collect`). It is
-//! uncontended today (real threads arrive with `future` / `pmap`); the
-//! global alloc lock is the foundation the `ThreadGcContext`
-//! root-publication handshake (ADR-0090) builds on for collection safety.
-//! Not reentrant: `alloc` never calls `collect`, and `collect` never
-//! allocates, so the two lock-takers never nest.
+//! Thread-safety (ADR-0090 §2, F-006): `gc_mutex` (a `std.Io.Mutex`, locked
+//! through the `io_default` singleton because the allocator API takes no `io`
+//! arg) serializes `alloc` / `pin` / `unpin` and the whole `collect()` cycle.
+//! Not reentrant: `alloc` never calls `collect` under the lock, and `collect`
+//! never allocates through `alloc`, so the two lock-takers never nest.
 
 const std = @import("std");
-const testing = std.testing;
 
 const heap_header = @import("../value/heap_header.zig");
-const free_pool_mod = @import("free_pool.zig");
+const page_heap_mod = @import("page_heap.zig");
 const value_mod = @import("../value/value.zig");
 const io_default = @import("../concurrency/io_default.zig");
 const safepoint = @import("../concurrency/safepoint.zig");
 const root_set_mod = @import("root_set.zig");
+const gc_types = @import("gc_types.zig");
+const trigger = @import("gc_trigger.zig");
 
-/// Reentrancy guard for the alloc-driven GC torture (D-386): a torture collect
-/// must not re-enter itself if the collector's own bookkeeping reaches `alloc`.
-/// Threadlocal — each thread's torture cadence is independent. Inert (false)
-/// unless `CLJW_GC_TORTURE_ALLOC` is armed.
-threadlocal var in_alloc_torture: bool = false;
+/// Reentrancy guard for the alloc-driven GC torture (D-386) and the trigger's
+/// collects: a collect must not re-enter itself if the collector's own
+/// bookkeeping reaches `alloc`. Threadlocal: each thread's cadence is
+/// independent.
+pub threadlocal var in_alloc_torture: bool = false;
 
 // Fabrication no-collect region depth (D-244 #4, ADR-0150): the canonical
-// docs + the variable itself live in `root_set.zig` (`fabrication_depth`,
-// moved there at ADR-0150 am1 so `safepoint.park`/`enterBlocked` can assert
-// against it directly). This file's consumers: `enterFabrication`/
-// `exitFabrication` (the bracket API), the alloc-prologue park gate (D-559),
-// the alloc-torture gate, and `maybeAutoCollect`.
+// docs + the variable live in `root_set.zig` (`fabrication_depth`).
 
 const HeapHeader = heap_header.HeapHeader;
-const FreePoolMap = free_pool_mod.FreePoolMap;
+const PageHeap = page_heap_mod.PageHeap;
 const Value = value_mod.Value;
 
-/// Default GC trigger threshold (bytes since last collection), and the default
-/// floor of the per-heap adaptive threshold. Adaptive at runtime:
-/// `threshold = max(threshold_floor_bytes, last_live_bytes * 2)` per ADR-0028 §1.
-/// Raised 1MB→4MB by ADR-0164/D-519: for a churn workload `last_live≈0` so the
-/// floor IS the operative cadence; 4MB ≈ ¼ the collects (same total sweep work,
-/// fewer STW fences) at ~3MB extra peak. Tune via `CLJW_GC_THRESHOLD_MB`.
-pub const default_gc_threshold_bytes: usize = 4 * 1024 * 1024;
+pub const default_gc_threshold_bytes = trigger.default_gc_threshold_bytes;
+pub const max_threshold_floor_bytes = trigger.max_threshold_floor_bytes;
+pub const gc_time_target_percent = trigger.gc_time_target_percent;
+pub const min_retained_bytes = trigger.min_retained_bytes;
+pub const min_alloc_bytes = gc_types.min_alloc_bytes;
+pub const PersistentMark = gc_types.PersistentMark;
+pub const Stats = gc_types.Stats;
+pub const AllocRecord = gc_types.AllocRecord;
 
-/// Ceiling for the ramping floor (D-573). 64 MB is where the measured curve
-/// knees: on the Rush Hour BFS, 4 MB -> 17.7 s, 16 MB -> 9.6 s, 64 MB -> 7.6 s,
-/// 256 MB -> 7.1 s. Past 64 MB the remaining 6% costs 4x the resident heap,
-/// which is the wrong trade for a runtime whose selling point is a small
-/// footprint. `CLJW_GC_THRESHOLD_MB` still overrides the STARTING floor for a
-/// caller who knows their workload.
-pub const max_threshold_floor_bytes: usize = 64 * 1024 * 1024;
-
-/// Target share of wall clock spent collecting, as a percent (D-573).
+/// Mark-sweep GC heap. Owns a list of tracked heap objects + the page heap;
+/// the trigger threshold adapts to the last live-set measurement.
 ///
-/// The floor is steered by the MEASURED ratio rather than by a byte constant or
-/// a collection count, because that ratio is the thing anyone actually cares
-/// about, and because it is the quantity the theory is written in: for a
-/// mark-sweep collector, GC share is `mark_cost(live) / bytes_between_collects`,
-/// so raising the trigger lowers the share directly and is independent of how
-/// big the live set happens to be.
-///
-/// The JVM exposes exactly this as `-XX:GCTimeRatio`; its default asks for
-/// about 1 % in the throughput collector. 10 % is deliberately laxer: cljw's
-/// collector is non-generational, so it re-marks the whole live set every time
-/// and cannot reach 1 % without letting the heap grow far past what a small
-/// runtime should hold.
-///
-/// Measured motivation: a Rush Hour BFS with a 747 KB live set spent 10.1 s of
-/// 17.9 s collecting, because the 4 MB floor fired 755 times and each collect
-/// re-marked the same live graph.
-pub const gc_time_target_percent: u64 = 10;
-
-/// Minimum allocation size (bytes) per ADR-0028 §3: the freed payload
-/// must host the FreeNode overlay at offset 8 (8 bytes header +
-/// ≥ 8 bytes payload = 16 bytes minimum). Allocations of types
-/// smaller than 16 bytes round up; the extra bytes are unused while
-/// live but become the FreeNode region on free.
-pub const min_alloc_bytes: usize = 16;
-
-/// Comptime invariant: every `T` passed to `GcHeap.alloc` must have
-/// `HeapHeader` as its first field. The returned `*T` and the
-/// live-list `*HeapHeader` are pointer-aliases — caster relies on
-/// offset 0 holding the header so mark/sweep can read `header.tag`
-/// without knowing T. A struct with a different first field would
-/// silently misinterpret the first bytes as a tag enum value, and
-/// the mis-link would surface only under a debugger or on the
-/// downstream sweep path (where the tag's `tag_finaliser_table`
-/// entry runs against the wrong memory). The check below fires at
-/// compile time so the bug never reaches a debugger.
-fn assertHeaderAtOffsetZero(comptime T: type) void {
-    const info = @typeInfo(T);
-    if (info != .@"struct") {
-        @compileError("GcHeap.alloc requires a struct type; got " ++ @typeName(T));
-    }
-    const fields = info.@"struct".fields;
-    if (fields.len == 0) {
-        @compileError("GcHeap.alloc requires T to have at least one field; " ++ @typeName(T) ++ " has none");
-    }
-    if (fields[0].type != HeapHeader) {
-        @compileError("GcHeap.alloc requires T to have HeapHeader as its first field; " ++ @typeName(T) ++ "'s first field is " ++ @typeName(fields[0].type));
-    }
-    if (@offsetOf(T, fields[0].name) != 0) {
-        @compileError("GcHeap.alloc requires HeapHeader at offset 0 of T; " ++ @typeName(T) ++ " has it at a different offset");
-    }
-}
-
-/// A process-lifetime mark-waypoint (D-251) + the bytes it owns (D-573):
-/// the size feeds `persistent_bytes`, which sweep folds into
-/// `last_live_bytes` because these objects are re-traced every cycle.
-pub const PersistentMark = struct {
-    obj: *anyopaque,
-    size: usize,
-};
-
-/// Allocation + collection statistics.
-pub const Stats = struct {
-    bytes_allocated: usize = 0,
-    bytes_freed: usize = 0,
-    alloc_count: u64 = 0,
-    collect_count: u64 = 0,
-    sweep_count: u64 = 0,
-    last_live_bytes: usize = 0,
-    /// Diagnostic (gc_alloc_rate lever, D-450): allocs served by reusing a freed
-    /// block from the free pool (vs a fresh `rawAlloc`/malloc). pool_hits/alloc_count
-    /// = the reuse rate — a low rate means same-size churn is re-malloc'ing.
-    pool_hits: u64 = 0,
-    /// D-573: nanoseconds spent inside `collectStopTheWorld`, and the wall clock
-    /// at the first collection. Their ratio is the GC time fraction the floor
-    /// is steered by — the same quantity the JVM exposes as `-XX:GCTimeRatio`.
-    gc_ns_total: u64 = 0,
-    first_collect_ns: i64 = 0,
-};
-
-/// Per-allocation record on the GcHeap live list. Stores the type-
-/// erased `*HeapHeader` plus the original (size, alignment) so deinit
-/// / 5.3.c sweep can `rawFree` with the matching metadata back to
-/// `infra`. Without the per-record size + alignment, debug allocators
-/// trip "Invalid free" canaries because the type-erased *HeapHeader
-/// alone would imply an 8-byte destroy of a (typically larger) full
-/// allocation.
-pub const AllocRecord = struct {
-    header: *HeapHeader,
-    size: usize,
-    alignment: std.mem.Alignment,
-};
-
-/// Mark-sweep GC heap. Owns a list of tracked heap objects + per-size
-/// free pools; trigger threshold adapts based on the last live-set
-/// measurement.
-///
-/// Live-list shape (per 5.3.b.1 design decision, depth 1):
-/// **side-table** `ArrayListUnmanaged(AllocRecord)` on GcHeap rather
-/// than an intrusive `next: ?*HeapHeader` field on HeapHeader. Reason:
-/// (1) preserves ADR-0009's 8-byte HeapHeader invariant (avoiding
-/// header-grow surgery); (2) matches cw v0's path (refined per
-/// ADR-0028 audit bullet #5 — only the mark BIT goes inline per
-/// ADR-0028 §6, not the live-list link); (3) sweep walk stays
-/// sequential through ArrayList memory (cache-friendly), which is
-/// what the cw v0 perf inheritance language in ADR-0028 §3 cares
-/// about. Each record carries (size, alignment) so the deinit /
-/// sweep `rawFree` paths match what `rawAlloc` originally requested.
+/// Live-list shape (5.3.b.1, depth 1): a **side-table**
+/// `ArrayList(AllocRecord)` rather than an intrusive `next: ?*HeapHeader`
+/// field. It (1) preserves ADR-0009's 8-byte HeapHeader invariant; (2)
+/// matches cw v0 (only the mark BIT goes inline per ADR-0028 §6); (3) keeps
+/// the sweep walk sequential through ArrayList memory. Each record carries
+/// (size, alignment) so the free paths match what was allocated.
 pub const GcHeap = struct {
-    /// Backing allocator for raw heap pages. Per F-006 §2 this is the
-    /// process-lifetime GPA (`infra_alloc`).
+    /// Backing allocator for raw heap memory: the process-lifetime GPA
+    /// (`infra_alloc`, F-006 §2).
     infra: std.mem.Allocator,
     /// Side-table of live heap-object records. Append at alloc time;
-    /// swap-remove during sweep for dead objects. Per the docstring
-    /// design decision: side-table chosen over intrusive next-pointer
-    /// to preserve the 8-byte HeapHeader invariant.
-    allocations: std.ArrayList(AllocRecord) = .empty,
-    /// Embedder-pinned root Values per ADR-0028 §5 row 10. Holds
-    /// `Value` entries that the embedder (FFI / test fixture / future
-    /// `cljw -e` REPL prompt buffer) wants to keep alive across
-    /// `collect()` cycles. `pin` appends, `unpin` swap-removes the
-    /// first match. The root walker yields each entry's
-    /// `Value.heapHeader()` (skipping immediates).
+    /// swap-remove during sweep for dead objects.
+    allocations: std.ArrayList(gc_types.AllocRecord) = .empty,
+    /// Embedder-pinned root Values per ADR-0028 §5 row 10 (FFI, test
+    /// fixtures, the REPL buffer). The root walker yields each entry's
+    /// `Value.heapHeader()`, skipping immediates.
     permanent_roots: std.ArrayList(Value) = .empty,
-    /// D-556: analysis-produced Values persisted past their bracket — the
-    /// literal pool of every analyzed form whose Nodes outlive the form (fn
-    /// bodies held by `Function.body` in the heap-lifetime analyzer arena).
-    /// Appended by `root_set.endAnalysisPersist`; walked right after
-    /// `permanent_roots`. Grows with the arena — the same lifetime the
-    /// Nodes themselves already have.
+    /// D-556: analysis-produced Values persisted past their bracket (the
+    /// literal pool of every analyzed form whose Nodes outlive the form).
+    /// Appended by `root_set.endAnalysisPersist`; walked after
+    /// `permanent_roots`.
     persisted_analysis_roots: std.ArrayList(Value) = .empty,
     /// Process-lifetime mark-waypoints (D-251): headers of `trackHeap`'d
-    /// objects (`Function` / `ProtocolDescriptor` / `TypeDescriptorRef`) that
-    /// are NOT in `allocations` and so are never swept. The mark bit doubles as
-    /// the per-collect cycle/visited flag; for objects that sweep never clears,
-    /// a stale bit makes `mark()` short-circuit on the SECOND collect, so their
-    /// per-tag trace never re-runs and any GC child reachable ONLY through them
-    /// (a `Function`'s `closure_bindings`) is swept. `collect()` clears these
-    /// bits at mark-phase start so the waypoint is re-traced every cycle.
-    persistent_marks: std.ArrayList(PersistentMark) = .empty,
-    /// Total bytes registered with the persistent marks (D-573): part of every
-    /// collection's marking cost, so part of `last_live_bytes`.
+    /// objects (`Function` / `ProtocolDescriptor` / `TypeDescriptorRef`) NOT
+    /// in `allocations` and so never swept. Sweep never clears their mark
+    /// bit, so `collect()` clears it at mark-phase start; otherwise `mark()`
+    /// short-circuits from the 2nd collect on and strands their children.
+    persistent_marks: std.ArrayList(gc_types.PersistentMark) = .empty,
+    /// Total bytes registered with the persistent marks (D-573).
     persistent_bytes: usize = 0,
-    /// Per-(size, alignment) free pool heads. Sweep pushes freed blocks
-    /// here (intrusive FreeNode at offset 8); `alloc` pops them as its
-    /// fast path before falling back to `infra`.
-    free_pools: FreePoolMap = .empty,
-    /// Gray worklist for the mark phase (ADR-0028 amendment 3): `mark()`
-    /// pushes newly-bitted non-leaf headers here instead of descending
-    /// recursively, so an arbitrarily deep object graph (a 1M-long cons
-    /// chain) marks with O(1) native stack. `collect()` reserves capacity
-    /// up front (bit-set-at-push ⇒ each object enters at most once) and
-    /// `mark_sweep.drainGray` empties it. Capacity is retained across
-    /// collects; STW-only state — a future parallel marker replaces it.
+    /// Size-classed pages small cells live in (`page_heap.zig`). Sweep frees
+    /// a dead small cell onto its page; after sweep, `collect` hands empty
+    /// pages beyond `retainBytesAfterCollect` back to the OS.
+    pages: PageHeap = .{},
+    /// Bytes of live cells too large (or too aligned) for the page heap, held
+    /// on `infra`. With `pages.mappedBytes()` this is the committed cell heap.
+    large_live_bytes: usize = 0,
+    /// Bytes of non-cell payload (a String's bytes, an array's elements, a
+    /// transient vector's buffer, a BigInt's limbs) allocated on `infra` since
+    /// the last collect, charged through `noteOwnedAlloc`. Counts toward the
+    /// trigger beside `bytes_since_last_gc`: a 24 MB buffer behind a 40-byte
+    /// cell is 24 MB of pressure. Atomic: a payload is allocated outside
+    /// `gc_mutex`.
+    owned_since_last_gc: std.atomic.Value(usize) = .init(0),
+    /// Set by `requestCollect` (`System/gc`) so its collect releases empty
+    /// pages down to `min_retained_bytes`. `collect` clears it.
+    release_requested: bool = false,
+    /// Gray worklist for the mark phase (ADR-0028 amendment 3): an explicit
+    /// worklist so an arbitrarily deep graph marks with O(1) native stack.
+    /// `collect()` reserves capacity up front; retained across collects.
     mark_worklist: std.ArrayList(*HeapHeader) = .empty,
     /// Allocation + collection counters.
-    stats: Stats = .{},
-    /// Adaptive GC trigger threshold (bytes since last collect).
-    /// Recomputed at end of each `collect()` cycle.
-    threshold_bytes: usize = default_gc_threshold_bytes,
-    /// D-519 (ADR-0164): persistent floor for the adaptive `threshold_bytes`, so a
-    /// `CLJW_GC_THRESHOLD_MB` knob survives each collect's recompute (which would
-    /// otherwise reset the floor to the module default). Defaults to the module const.
-    threshold_floor_bytes: usize = default_gc_threshold_bytes,
-    /// The floor the steering may not go BELOW — the default, or whatever
-    /// CLJW_GC_THRESHOLD_MB set. Steering moves `threshold_floor_bytes`
-    /// between this and `max_threshold_floor_bytes`.
-    base_threshold_floor_bytes: usize = default_gc_threshold_bytes,
-
-    /// Bytes allocated since the last `collect()` invocation. Trips
-    /// collection when it exceeds `threshold_bytes`.
+    stats: gc_types.Stats = .{},
+    /// Adaptive GC trigger threshold (pressure bytes since last collect).
+    /// Recomputed at the end of each `collect()` (`gc_trigger.afterSweep`).
+    threshold_bytes: usize = trigger.default_gc_threshold_bytes,
+    /// D-519 (ADR-0164): persistent floor for the adaptive `threshold_bytes`,
+    /// so a `CLJW_GC_THRESHOLD_MB` knob survives each collect's recompute.
+    threshold_floor_bytes: usize = trigger.default_gc_threshold_bytes,
+    /// The floor the steering may not go BELOW (default or the env knob).
+    /// Steering moves `threshold_floor_bytes` between this and
+    /// `max_threshold_floor_bytes`.
+    base_threshold_floor_bytes: usize = trigger.default_gc_threshold_bytes,
+    /// Cell bytes allocated since the last `collect()`.
     bytes_since_last_gc: usize = 0,
-    /// True iff this heap is the `gc` field embedded in a `Runtime` — set by
-    /// `Runtime.init`. `collect()` then reaches the Runtime via
-    /// `@fieldParentPtr` to walk the descriptor registries (rt.types /
-    /// native_descriptors / class_descriptors) as roots (ADR-0184 B).
-    /// Bare `GcHeap.init` test heaps leave it false and skip that walk.
+    /// True iff this heap is the `gc` field embedded in a `Runtime` (set by
+    /// `Runtime.init`). `collect()` then reaches the Runtime via
+    /// `@fieldParentPtr` to walk the descriptor registries (ADR-0184 B).
     runtime_embedded: bool = false,
-    /// ADR-0125 / D-352 (isolation dim (b)): per-eval LIVE-heap ceiling in bytes.
-    /// When non-null, `alloc` REFUSES (never merely triggers a collect) any
-    /// allocation that would push live bytes (`bytes_allocated - bytes_freed`)
-    /// past the cap, bounding untrusted code's memory in-process. `null` (default)
-    /// = unmetered. Set by `runner.runSource` from `CLJW_EVAL_MAX_HEAP_MB`.
+    /// ADR-0125 / D-352: per-eval LIVE-heap ceiling in bytes. When non-null,
+    /// `alloc` REFUSES any allocation that would push live bytes past it.
+    /// Set by `runner.runSource` from `CLJW_EVAL_MAX_HEAP_MB`.
     heap_ceiling: ?usize = null,
     /// Installed by a higher layer (eval_budget, which may import the error
-    /// catalog — gc_heap may not, big_int→gc_heap cycle) to SET the catalog
-    /// `eval_heap_exceeded` (resource_exhausted, uncatchable) Info before the
-    /// breach surfaces. Vtable pattern (zone_deps low→high). Returns void —
-    /// `alloc` always returns `error.OutOfMemory` after it, so alloc's error set
-    /// is unchanged (a returning-`anyerror` hook would poison every caller's
-    /// inferred set). When null, the bare `error.OutOfMemory` surfaces.
+    /// catalog; gc_heap may not) to SET the catalog `eval_heap_exceeded` Info
+    /// before the breach surfaces as `error.OutOfMemory`.
     heap_exceeded_hook: ?*const fn (cap: usize) void = null,
-    /// Global heap lock (ADR-0090 §2). Serializes `alloc` / `pin` /
-    /// `unpin` and the whole `collect()` cycle so allocation is
-    /// thread-safe under F-006. Locked via the `io_default` singleton
-    /// (the allocator API has no `io` arg). Uncontended until real
-    /// threads land (`future` / `pmap`).
+    /// Global heap lock (ADR-0090 §2).
     gc_mutex: std.Io.Mutex = .init,
-    /// The heap's owning main thread (D-566, ADR-0175 Consequences): the OS
-    /// thread that ran `init`. Production builds the Runtime (and so this heap)
-    /// on the `runtime_thread.runMain` entry thread, the one unregistered
-    /// mutator the STW collect walks directly. Every other thread must be a
-    /// registered worker before it allocates; `allocSized` asserts it.
+    /// The heap's owning main thread (D-566, ADR-0175): the OS thread that ran
+    /// `init`. Every other thread must be a registered worker before it
+    /// allocates; `allocSized` asserts it.
     owner_thread_id: std.Thread.Id,
+
+    pub const noteOwnedAlloc = trigger.noteOwnedAlloc;
+    pub const pressureBytes = trigger.pressureBytes;
+    pub const chargeInfraBytes = trigger.chargeInfraBytes;
+    pub const retainBytesAfterCollect = trigger.retainBytesAfterCollect;
+    pub const maybeAutoCollect = trigger.maybeAutoCollect;
+    pub const requestCollect = trigger.requestCollect;
+    pub const collectBeforeIdle = trigger.collectBeforeIdle;
 
     pub fn init(infra: std.mem.Allocator) GcHeap {
         const owner = root_set_mod.currentThreadId();
         root_set_mod.noteHeapOwner(owner);
         var g = GcHeap{ .infra = infra, .owner_thread_id = owner };
-        g.free_pools.initMap(infra);
-        // D-519 (ADR-0164): CLJW_GC_THRESHOLD_MB tunes the auto-collect floor — the
-        // wall-clock GO gate raises it until every won fastest-script bench holds.
-        // Invalid / unset / 0 → the 4MB default. Process env is published at startup
-        // (cli.zig) before the runtime + its GcHeap are built, so the read is live.
+        // D-519 (ADR-0164): CLJW_GC_THRESHOLD_MB tunes the auto-collect floor.
+        // Invalid / unset / 0 keeps the 4MB default. Process env is published
+        // at startup (cli.zig) before the runtime is built.
         if (@import("../process_env.zig").get("CLJW_GC_THRESHOLD_MB")) |raw| {
             if (std.fmt.parseInt(usize, raw, 10) catch null) |mb| {
                 if (mb > 0) {
@@ -303,49 +172,43 @@ pub const GcHeap = struct {
     }
 
     pub fn deinit(self: *GcHeap) void {
-        // Diagnostic (gc_alloc_rate lever, D-450): CLJW_GC_STATS=1 prints the
-        // alloc/reuse/collect tallies to stderr at teardown — load-INDEPENDENT
-        // (counts, not timing), so the free-pool reuse rate is measurable even
-        // under host load. Off by default = one null-check.
+        // Diagnostic (D-450): CLJW_GC_STATS=1 prints the alloc/collect tallies
+        // at teardown. Load-independent counts. Off by default.
         if (@import("../process_env.zig").get("CLJW_GC_STATS") != null) {
             const s = self.stats;
-            std.debug.print("[gc-stats] allocs={d} pool_hits={d} mallocs={d} reuse={d}% collects={d} sweeps={d} bytes_alloc={d} last_live={d} floor_mb={d} gc_ms={d}\n", .{
-                s.alloc_count,                                                   s.pool_hits,       s.alloc_count - s.pool_hits,
-                if (s.alloc_count > 0) s.pool_hits * 100 / s.alloc_count else 0, s.collect_count,   s.sweep_count,
-                s.bytes_allocated,                                               s.last_live_bytes, self.threshold_floor_bytes / (1024 * 1024),
-                s.gc_ns_total / std.time.ns_per_ms,
+            std.debug.print("[gc-stats] allocs={d} small={d} large={d} collects={d} sweeps={d} bytes_alloc={d} last_live={d} floor_mb={d} gc_ms={d}\n", .{
+                s.alloc_count,     s.small_allocs,                             s.alloc_count - s.small_allocs,
+                s.collect_count,   s.sweep_count,                              s.bytes_allocated,
+                s.last_live_bytes, self.threshold_floor_bytes / (1024 * 1024), s.gc_ns_total / std.time.ns_per_ms,
             });
+            std.debug.print("[gc-stats] pages_now={d} pages_mapped={d} pages_released={d} large_live={d}\n", .{ self.pages.page_count, self.pages.pages_mapped_total, self.pages.pages_released_total, self.large_live_bytes });
             std.debug.print("[gc-stats] persistent_marks={d} persistent_bytes={d}\n", .{ self.persistent_marks.items.len, self.persistent_bytes });
         }
-        // Drain every live allocation back to infra. Calls the per-tag
-        // finaliser before rawFree so types that own non-GC resources
-        // (String.bytes / BigInt limbs / wasm_module references) get
-        // their cleanup chance — matches the sweep contract per
-        // ADR-0028 §4.
+        // Finalise every live allocation (types owning non-GC resources get
+        // their cleanup, the sweep contract of ADR-0028 §4), then free large
+        // cells. Small cells need no per-cell free: their pages go back whole
+        // in `pages.deinit`.
         const tag_ops = @import("tag_ops.zig");
         for (self.allocations.items) |rec| {
             if (tag_ops.tag_finaliser_table[rec.header.tag]) |finaliser| {
                 finaliser(@ptrCast(self), rec.header);
             }
-            const mem = @as([*]u8, @ptrCast(rec.header))[0..rec.size];
-            self.infra.rawFree(mem, rec.alignment, @returnAddress());
+            if (!page_heap_mod.isSmall(rec.size, rec.alignment)) {
+                const mem = @as([*]u8, @ptrCast(rec.header))[0..rec.size];
+                self.infra.rawFree(mem, rec.alignment, @returnAddress());
+            }
         }
         self.allocations.deinit(self.infra);
         self.permanent_roots.deinit(self.infra);
         self.persisted_analysis_roots.deinit(self.infra);
         self.persistent_marks.deinit(self.infra);
-        self.free_pools.deinit(self.infra);
+        self.pages.deinit();
         self.mark_worklist.deinit(self.infra);
     }
 
-    /// Register a process-lifetime mark-waypoint header (D-251). Called by
+    /// Register a process-lifetime mark-waypoint header (D-251), called by
     /// `Runtime.trackHeap` for every gpa-created, never-swept object whose
-    /// per-tag trace may reach GC-managed children (e.g. a `Function`'s
-    /// `closure_bindings`). `collect()` clears the mark bit on each before the
-    /// root walk so the waypoint is re-traced every cycle (a never-cleared bit
-    /// would short-circuit `mark()` from the 2nd collect on, stranding the
-    /// children). Best-effort: a registration OOM is swallowed — the worst case
-    /// is the pre-fix behaviour for that one object, not a crash.
+    /// trace may reach GC children. Header must be at offset 0 of `obj`.
     // GC-ROOT: D4 — process-lifetime trackHeap'd mark-waypoints (off gc.allocations); highest-risk moving-GC site [ref: .dev/gc_rooting.md §D]
     pub fn registerPersistentMark(self: *GcHeap, obj: *anyopaque, size: usize) !void {
         io_default.lockMutex(&self.gc_mutex);
@@ -354,20 +217,17 @@ pub const GcHeap = struct {
         self.persistent_bytes += size;
     }
 
-    /// Roll back the most recent `registerPersistentMark` (for `trackHeap`'s
-    /// two-list atomicity: if the `heap_objects` append fails after the mark was
-    /// registered, the dangling header must not stay in `persistent_marks`).
+    /// Roll back the most recent `registerPersistentMark` (`trackHeap`'s
+    /// two-list atomicity on a failed second append).
     pub fn unregisterLastPersistentMark(self: *GcHeap) void {
         io_default.lockMutex(&self.gc_mutex);
         defer io_default.unlockMutex(&self.gc_mutex);
         if (self.persistent_marks.pop()) |m| self.persistent_bytes -= m.size;
     }
 
-    /// Clear the mark bit on every registered process-lifetime waypoint.
-    /// `collect()` calls this at mark-phase start (D-251). The cast to
-    /// `*HeapHeader` (header-at-offset-0 per `registerPersistentMark`'s
-    /// precondition) happens here, not at registration, so a registration
-    /// never alignment-checks a non-Value pointer (e.g. a unit-test box).
+    /// Clear the mark bit on every registered process-lifetime waypoint, at
+    /// mark-phase start (D-251). The cast happens here, not at registration,
+    /// so a registration never alignment-checks a non-Value pointer.
     pub fn clearPersistentMarks(self: *GcHeap) void {
         for (self.persistent_marks.items) |m| {
             const hdr: *HeapHeader = @ptrCast(@alignCast(m.obj));
@@ -375,20 +235,15 @@ pub const GcHeap = struct {
         }
     }
 
-    /// Pin a Value so it stays alive across `collect()` cycles. Returns
-    /// after appending to `permanent_roots`. Callers (FFI / test
-    /// fixtures / future REPL prompt buffer per ADR-0028 §5 row 10)
-    /// must pair every `pin` with an `unpin` to avoid steady-state
-    /// leaks. Immediates can be pinned too — the walker filters them.
+    /// Pin a Value so it stays alive across `collect()` cycles. Every `pin`
+    /// pairs with an `unpin`. Immediates may be pinned; the walker filters.
     pub fn pin(self: *GcHeap, v: Value) !void {
         io_default.lockMutex(&self.gc_mutex);
         defer io_default.unlockMutex(&self.gc_mutex);
         try self.permanent_roots.append(self.infra, v);
     }
 
-    /// Unpin the first matching Value entry. Returns `true` on a hit,
-    /// `false` if the Value was not pinned (treated as a programming
-    /// error by callers — typically wrapped in `std.debug.assert`).
+    /// Unpin the first matching Value. `false` if it was not pinned.
     pub fn unpin(self: *GcHeap, v: Value) bool {
         io_default.lockMutex(&self.gc_mutex);
         defer io_default.unlockMutex(&self.gc_mutex);
@@ -401,134 +256,83 @@ pub const GcHeap = struct {
         return false;
     }
 
-    /// Enter a fabrication no-collect region (D-244 #4). A multi-alloc
-    /// collection builder calls this before its alloc sequence and
-    /// `exitFabrication` (via `defer`) after — see `fabrication_depth`.
-    /// Nests: a builder calling a wrapped builder balances. Cheap (one
-    /// threadlocal increment, no lock).
+    /// Enter a fabrication no-collect region (D-244 #4): a multi-alloc
+    /// builder brackets its alloc sequence with this and `exitFabrication`.
+    /// Nests. One threadlocal increment.
     pub fn enterFabrication(_: *GcHeap) void {
         root_set_mod.fabrication_depth += 1;
     }
 
-    /// Leave a fabrication no-collect region (pairs with `enterFabrication`).
+    /// Leave a fabrication no-collect region.
     pub fn exitFabrication(_: *GcHeap) void {
         root_set_mod.fabrication_depth -= 1;
     }
 
-    /// Allocate a typed heap object on the GC heap: free-pool fast path
-    /// → infra slow path, with a comptime HeapHeader-at-offset-0 check.
-    /// Caller initialises the value (HeapHeader and payload fields).
-    /// The prologue CAN collect BEFORE the new object exists: it parks for
-    /// a peer's stop-the-world, runs the alloc-driven torture collect
-    /// (D-386) and the D-519 threshold auto-collect, all outside a
-    /// fabrication bracket. So a value held only in a Zig local across an
-    /// `alloc` must be published as a root (`.dev/gc_rooting.md`).
-    ///
-    /// Allocation size is rounded up to `min_alloc_bytes = 16` per
-    /// ADR-0028 §3 so freed memory can host the FreeNode overlay at
-    /// offset 8. The extra payload bytes (for T smaller than 16) are
-    /// unused while live but become the FreeNode region on free.
-    ///
-    /// Convention: `T` must have `HeapHeader` as its first field so
-    /// the returned `*T` and `*HeapHeader` are pointer-aliases. The
-    /// caller-side existing pattern (`pub const BigInt = struct {
-    /// header: HeapHeader, ... }`) satisfies this; the comptime check
-    /// below rejects mis-typed `T` at compile time before the live-
-    /// list mis-link can land.
+    /// Allocate a typed heap object: page heap for a small cell, infra for a
+    /// large one, with a comptime HeapHeader-at-offset-0 check. The caller
+    /// initialises the value. The prologue CAN collect BEFORE the new object
+    /// exists (peer STW park, D-386 torture, D-519 auto-collect), so a value
+    /// held only in a Zig local across an `alloc` must be published as a root
+    /// (`.dev/gc_rooting.md`). Size rounds up to `min_alloc_bytes`.
     pub fn alloc(self: *GcHeap, comptime T: type) !*T {
         return self.allocSized(T, @sizeOf(T));
     }
 
-    /// ADR-0184: allocate `T` plus `tail_bytes` of trailing storage as ONE
-    /// GC cell — the pattern for a heap object whose owned arrays live
-    /// inline after the struct (Function: methods + closure_bindings), so
-    /// sweep frees a single allocation and no finaliser is needed. The
-    /// caller lays out the tail itself; `@sizeOf(T)` must be 8-aligned so
-    /// any Value/pointer-bearing tail array starts aligned.
+    /// ADR-0184: allocate `T` plus `tail_bytes` of trailing storage as ONE GC
+    /// cell (a Function's methods + closure_bindings inline after the
+    /// struct), so sweep frees a single allocation. `@sizeOf(T)` must be
+    /// 8-aligned so a Value-bearing tail starts aligned.
     pub fn allocWithTail(self: *GcHeap, comptime T: type, tail_bytes: usize) !*T {
         comptime std.debug.assert(@sizeOf(T) % 8 == 0);
         return self.allocSized(T, @sizeOf(T) + tail_bytes);
     }
 
-    /// True iff the calling thread may mutate this heap (D-566): it is a
-    /// registered GC worker, or it is the heap's owning main thread. Anything
-    /// else is an unregistered mutator, invisible to the STW rendezvous and the
-    /// root walk (the ADR-0175 corruption class).
+    /// True iff the calling thread may mutate this heap (D-566): a registered
+    /// GC worker or the heap's owning main thread.
     pub fn mutatorAllowed(self: *const GcHeap) bool {
         return root_set_mod.is_registered_worker or root_set_mod.currentThreadId() == self.owner_thread_id;
     }
 
     fn allocSized(self: *GcHeap, comptime T: type, size: usize) !*T {
-        comptime assertHeaderAtOffsetZero(T);
-        // D-566: an unregistered, non-owner allocator is a caught bug here
-        // instead of a rare GP fault in a peer's root walk.
+        comptime gc_types.assertHeaderAtOffsetZero(T);
+        // D-566: an unregistered, non-owner allocator is caught here instead
+        // of as a rare GP fault in a peer's root walk.
         std.debug.assert(self.mutatorAllowed());
-        // Worker safe point (ADR-0090 Alt B / D-244 #4): if a peer is collecting,
-        // park HERE — BEFORE contending on `gc_mutex` — so the collector counts
-        // us parked. A thread that blocked on `gc_mutex` first would never be
-        // counted (`stopWorld` would hang waiting for it). At this point our live
-        // Values are already published (operand stack / eval frames / bindings /
-        // gc_self_guard) and the about-to-be-allocated obj does not exist yet, so
-        // the collection sees this thread's roots quiescent. Runtime-inert until
-        // a collector arms `gc_requested` (#4 wires the VM-safe-point trigger).
-        //
-        // D-559 (ADR-0150 amendment 1): the park HONORS the fabrication region.
-        // Mid-bracket, this thread's in-progress builder NODES (*TailNode/
-        // *HamtNode/*Cons — raw pointers, not Values) live in unrooted Zig
-        // locals, so parking here would hand the peer's collect a stack it
-        // cannot see → the intermediate is swept → the resumed builder reads
-        // recycled memory (the D-559 `@memcpy arguments alias` crash). ADR-0150's
-        // contract ("a mid-builder STW collect is DEFERRED") previously covered
-        // only the SAME-thread torture/auto collect; this extends it to a peer's
-        // stopWorld, JVM-GCLocker-style: the bracket completes, and the thread
-        // parks at its next safepoint outside (back-edge poll / non-bracket
-        // alloc / blocking-lock / unregister — all published-roots sites). The
-        // collector just waits: no deadlock, because brackets are bounded pure
-        // builders (no eval, no locks) and their allocs only need `gc_mutex`,
-        // which `stopWorld` does not hold while it waits.
+        // Worker safe point (ADR-0090 Alt B / D-244 #4): if a peer is
+        // collecting, park HERE, before contending on `gc_mutex`, so the
+        // collector counts us parked. Our live Values are published and the
+        // new obj does not exist yet. D-559 (ADR-0150 am1): the park honors
+        // the fabrication region, since mid-bracket builder nodes live in
+        // unrooted Zig locals; the thread parks at its next safepoint outside.
         if (root_set_mod.fabrication_depth == 0 and safepoint.gc_requested.load(.acquire)) safepoint.park();
         // D-386 alloc-driven GC torture (validation only; inert unless
-        // CLJW_GC_TORTURE_ALLOC is armed → `alloc_period != 0`, one global load +
-        // predicted-not-taken branch otherwise). Force a STW collect HERE — at the
-        // mid-op alloc boundary, BEFORE contending on `gc_mutex`, and BEFORE the new
-        // obj exists (the roots are quiescent per the park comment above) — so a VM
-        // op that did not publish its operand watermark / fabrication before
-        // allocating surfaces as a deterministic UAF, not a rare crash. Scoped to
-        // the main (unregistered) thread WITH a live `active_env`; a reentrancy
-        // guard stops the collect's own bookkeeping from re-triggering.
+        // CLJW_GC_TORTURE_ALLOC is armed). Forces a STW collect at the
+        // mid-op alloc boundary so a VM op that did not publish its roots
+        // before allocating surfaces as a deterministic UAF.
         torture: {
             const gc_torture = @import("gc_torture.zig");
             if (gc_torture.alloc_period == 0) break :torture;
-            // Inside a multi-alloc builder's no-collect region (D-244 #4): an
-            // intermediate node is live-but-unrooted, so defer the collect to
-            // just after the builder. The same gate guards a future ADR-0028
-            // alloc-driven auto-collect (it would land right here).
             if (root_set_mod.fabrication_depth > 0) break :torture;
-            const root_set = @import("root_set.zig");
-            if (root_set.is_registered_worker or in_alloc_torture) break :torture;
-            const e = root_set.active_env orelse break :torture;
+            if (root_set_mod.is_registered_worker or in_alloc_torture) break :torture;
+            const e = root_set_mod.active_env orelse break :torture;
             if (!gc_torture.allocTick()) break :torture;
             const mark_sweep = @import("mark_sweep.zig");
             in_alloc_torture = true;
             defer in_alloc_torture = false;
             mark_sweep.collectStopTheWorld(self, .{ .envs = &.{e}, .gc = self }, false);
         }
-        // D-519 (ADR-0164): threshold-driven auto-collect — the completeness floor
-        // for a bulk Zig-primitive allocation that never crosses a VM back-edge (the
-        // same boundary + roots-quiescent rationale as the `heap_ceiling` check
-        // below). Idempotent with the back-edge site via `bytes_since_last_gc`. A
-        // no-op if CLJW_GC_TORTURE_ALLOC just collected (it reset the byte counter).
+        // D-519 (ADR-0164): threshold-driven auto-collect, the completeness
+        // floor for a bulk Zig-primitive allocation that never crosses a VM
+        // back-edge.
         self.maybeAutoCollect();
         io_default.lockMutex(&self.gc_mutex);
         defer io_default.unlockMutex(&self.gc_mutex);
         const align_t: std.mem.Alignment = .fromByteUnits(@alignOf(T));
-        const effective_size: usize = @max(size, min_alloc_bytes);
+        const effective_size: usize = @max(size, gc_types.min_alloc_bytes);
 
-        // D-352: per-eval LIVE-heap ceiling. One predicted-not-taken branch when
-        // unmetered (heap_ceiling == null). Checked HERE (the alloc boundary) —
-        // not the back-edge poll — because a Zig primitive (e.g. a bulk seq
-        // realization) can allocate megabytes without crossing an eval back-edge.
-        // `live = allocated - freed` stays correct if auto-collect ever lands.
+        // D-352: per-eval LIVE-heap ceiling, checked at the alloc boundary
+        // because a Zig primitive can allocate megabytes without an eval
+        // back-edge.
         if (self.heap_ceiling) |cap| {
             const live = self.stats.bytes_allocated - self.stats.bytes_freed;
             if (live + effective_size > cap) {
@@ -537,17 +341,8 @@ pub const GcHeap = struct {
             }
         }
 
-        const key = free_pool_mod.FreePoolKey{ .size = effective_size, .alignment = align_t };
-
-        const raw: [*]u8 = if (self.free_pools.pop(key)) |reused| reuse: {
-            self.stats.pool_hits += 1; // diagnostic: served from the free pool (no malloc)
-            break :reuse reused;
-        } else blk: {
-            const fresh = self.infra.rawAlloc(effective_size, align_t, @returnAddress()) orelse
-                return error.OutOfMemory;
-            break :blk fresh;
-        };
-        errdefer self.infra.rawFree(raw[0..effective_size], align_t, @returnAddress());
+        const raw = try self.cellAlloc(effective_size, align_t);
+        errdefer self.cellFree(raw, effective_size, align_t);
 
         const obj: *T = @ptrCast(@alignCast(raw));
         const hdr: *HeapHeader = @ptrCast(@alignCast(raw));
@@ -562,250 +357,33 @@ pub const GcHeap = struct {
         return obj;
     }
 
-    /// D-519 (ADR-0164): threshold-driven auto-collect during eval. Run a STW
-    /// collect when the heap has grown past `threshold_bytes` since the last GC,
-    /// at a quiescent-roots boundary. Called from BOTH the `alloc` boundary (the
-    /// completeness floor for a bulk Zig-primitive allocation that never crosses a
-    /// VM back-edge — the same boundary + rationale as the `heap_ceiling` REFUSE
-    /// check, its collecting twin) AND the VM back-edge poll (the cheap tight-loop
-    /// path: a `recur` loop back-edges every iteration but allocs once). The shared
-    /// `bytes_since_last_gc` reset (a collect sets it to 0) keeps the two sites
-    /// idempotent — no double collect. The guard set + collect ARE the
-    /// `CLJW_GC_TORTURE_ALLOC` path verbatim, gated on the byte threshold instead of
-    /// a torture period; torture stays in the gate as the stronger frequent rooting
-    /// probe (this 4MB cadence can step over a 2-alloc unrooted window for years).
-    pub fn maybeAutoCollect(self: *GcHeap) void {
-        if (self.bytes_since_last_gc <= self.threshold_bytes) return;
-        // A multi-alloc builder's intermediate node is live-but-unrooted here; defer
-        // the collect to just after the builder (the gate the torture path uses).
-        if (root_set_mod.fabrication_depth > 0) return;
-        const root_set = @import("root_set.zig");
-        if (root_set.is_registered_worker or in_alloc_torture) return;
-        const e = root_set.active_env orelse return;
-        const mark_sweep = @import("mark_sweep.zig");
-        // Reentrancy guard reuse: the collect's own bookkeeping must not re-trigger.
-        in_alloc_torture = true;
-        defer in_alloc_torture = false;
-        mark_sweep.collectStopTheWorld(self, .{ .envs = &.{e}, .gc = self }, false);
+    /// Backing memory for one cell: a page-heap slot when the cell is small,
+    /// an `infra` block otherwise. Caller holds `gc_mutex`.
+    fn cellAlloc(self: *GcHeap, size: usize, alignment: std.mem.Alignment) error{OutOfMemory}![*]u8 {
+        if (page_heap_mod.isSmall(size, alignment)) {
+            self.stats.small_allocs += 1;
+            return self.pages.alloc(size) orelse error.OutOfMemory;
+        }
+        const mem = self.infra.rawAlloc(size, alignment, @returnAddress()) orelse return error.OutOfMemory;
+        self.large_live_bytes += size;
+        return mem;
     }
 
-    /// `(System/gc)` — a user-REQUESTED collect (ADR-0174 D5). Same safety
-    /// gates as `maybeAutoCollect` but without the byte threshold: if a safe
-    /// stop-the-world collect is possible right now, run it; otherwise no-op.
-    /// The no-op arm is JVM-faithful — `System.gc()` is specified as a hint
-    /// ("suggests that the JVM expend effort"), so a skipped collect inside a
-    /// fabrication region / off-worker context is correct, not a lie.
-    pub fn requestCollect(self: *GcHeap) void {
-        if (root_set_mod.fabrication_depth > 0) return;
-        const root_set = @import("root_set.zig");
-        if (root_set.is_registered_worker or in_alloc_torture) return;
-        const e = root_set.active_env orelse return;
-        const mark_sweep = @import("mark_sweep.zig");
-        in_alloc_torture = true;
-        defer in_alloc_torture = false;
-        mark_sweep.collectStopTheWorld(self, .{ .envs = &.{e}, .gc = self }, false);
-    }
-
-    /// D-361: enforce the per-eval live-heap ceiling against a BULK `infra`
-    /// allocation that bypasses `alloc` — the transient vector's element buffer
-    /// grows via `gc.infra.realloc` and can reach hundreds of MB before the
-    /// build finishes (`persistent!`, which DOES go through `alloc`, only trips
-    /// the cap afterwards). On a memory-tight host that uncapped buffer
-    /// OS-OOM-kills the process first (the D-361 Linux symptom) instead of
-    /// surfacing the catchable `eval_heap_exceeded`. A bulk-infra site calls
-    /// this BEFORE allocating `infra_bytes`; it refuses (hook + OutOfMemory)
-    /// when that plus the current live gc bytes would exceed the cap. No-op when
-    /// unmetered. (Per-eval is single-threaded, so the read needs no gc_mutex.)
-    pub fn checkInfraCap(self: *GcHeap, infra_bytes: usize) error{OutOfMemory}!void {
-        if (self.heap_ceiling) |cap| {
-            const live = self.stats.bytes_allocated - self.stats.bytes_freed;
-            if (live + infra_bytes > cap) {
-                if (self.heap_exceeded_hook) |hook| hook(cap);
-                return error.OutOfMemory;
-            }
+    /// Give one dead cell's memory back: to its page, or to `infra`. Called by
+    /// sweep (inside the stop-the-world collect) and by `allocSized`'s errdefer.
+    pub fn cellFree(self: *GcHeap, mem: [*]u8, size: usize, alignment: std.mem.Alignment) void {
+        if (page_heap_mod.isSmall(size, alignment)) {
+            self.pages.free(mem);
+        } else {
+            self.large_live_bytes -= size;
+            self.infra.rawFree(mem[0..size], alignment, @returnAddress());
         }
     }
 
-    // The `collect()` orchestrator lives in `mark_sweep.zig` — it
-    // imports `root_set.zig` which itself imports `gc_heap.zig`, so the
-    // natural cycle-free place for the entry point is
-    // `mark_sweep.collect(gc, ctx)`. Callers reach the entry point
-    // through `mark_sweep.collect`, not through a method on this struct.
+    /// The committed cell heap: mapped pages (live cells, free slots and
+    /// retained empty pages) plus live large cells. `(.totalMemory r)` reports
+    /// it; it shrinks when a collect releases pages.
+    pub fn committedBytes(self: *const GcHeap) usize {
+        return self.pages.mappedBytes() + self.large_live_bytes;
+    }
 };
-
-// --- tests ---
-
-test "GcHeap.init / deinit on an empty heap" {
-    var gc = GcHeap.init(testing.allocator);
-    defer gc.deinit();
-
-    try testing.expectEqual(@as(usize, 0), gc.allocations.items.len);
-    try testing.expectEqual(@as(usize, 0), gc.permanent_roots.items.len);
-    try testing.expectEqual(@as(usize, 0), gc.stats.bytes_allocated);
-    try testing.expectEqual(@as(u64, 0), gc.stats.alloc_count);
-    try testing.expectEqual(@as(usize, default_gc_threshold_bytes), gc.threshold_bytes);
-}
-
-test "D-352: heap_ceiling refuses allocations past the live-byte cap" {
-    var gc = GcHeap.init(testing.allocator);
-    defer gc.deinit();
-    const Cell = extern struct { header: HeapHeader, payload: u64 = 0 };
-    gc.heap_ceiling = 200; // bytes — a handful of cells, then refuse
-    var refused = false;
-    var i: u32 = 0;
-    while (i < 1000) : (i += 1) {
-        // No hook installed in this unit test, so the bare error.OutOfMemory
-        // surfaces once live bytes would pass the cap.
-        _ = gc.alloc(Cell) catch {
-            refused = true;
-            break;
-        };
-    }
-    try testing.expect(refused);
-    // An unmetered heap (cap cleared) keeps allocating past the old ceiling.
-    gc.heap_ceiling = null;
-    _ = try gc.alloc(Cell);
-}
-
-test "GcHeap.pin appends to permanent_roots; unpin removes first match" {
-    var gc = GcHeap.init(testing.allocator);
-    defer gc.deinit();
-
-    const a = Value.initInteger(42);
-    const b = Value.initInteger(7);
-    try gc.pin(a);
-    try gc.pin(b);
-    try testing.expectEqual(@as(usize, 2), gc.permanent_roots.items.len);
-
-    try testing.expect(gc.unpin(a));
-    try testing.expectEqual(@as(usize, 1), gc.permanent_roots.items.len);
-    try testing.expect(gc.unpin(b));
-    try testing.expectEqual(@as(usize, 0), gc.permanent_roots.items.len);
-
-    try testing.expect(!gc.unpin(a)); // already removed
-}
-
-test "GcHeap.alloc tracks bytes + count + bytes_since_last_gc" {
-    // Use a HeapHeader-prefixed test type to satisfy the 5.3.b.1
-    // "HeapHeader at offset 0" convention.
-    const Cell = extern struct { header: HeapHeader, payload: u64 = 0 };
-
-    var gc = GcHeap.init(testing.allocator);
-    defer gc.deinit();
-
-    const c1 = try gc.alloc(Cell);
-    c1.* = .{ .header = HeapHeader.init(.symbol) };
-    try testing.expectEqual(@as(usize, 1), gc.allocations.items.len);
-    try testing.expectEqual(@as(usize, @sizeOf(Cell)), gc.stats.bytes_allocated);
-    try testing.expectEqual(@as(u64, 1), gc.stats.alloc_count);
-    try testing.expectEqual(@as(usize, @sizeOf(Cell)), gc.bytes_since_last_gc);
-
-    const c2 = try gc.alloc(Cell);
-    c2.* = .{ .header = HeapHeader.init(.vector) };
-    try testing.expectEqual(@as(usize, 2), gc.allocations.items.len);
-    try testing.expectEqual(@as(usize, 2 * @sizeOf(Cell)), gc.stats.bytes_allocated);
-    try testing.expectEqual(@as(u64, 2), gc.stats.alloc_count);
-}
-
-test "concurrent alloc through the global heap lock is race-free (ADR-0090 §2)" {
-    // The gc_mutex (locked via io_default) must serialize alloc across real
-    // OS threads so the `allocations` ArrayList append + `infra` rawAlloc
-    // never race. Set io_default to a THREADED io for real mutex blocking,
-    // then restore it (the singleton is process-wide; tests run serially).
-    const Cell = extern struct { header: HeapHeader, payload: u64 = 0 };
-    const per_thread = 500;
-    const n_threads = 4;
-
-    const saved_io = io_default.get();
-    var threaded = std.Io.Threaded.init(testing.allocator, .{});
-    defer threaded.deinit();
-    defer io_default.set(saved_io); // runs before threaded.deinit (LIFO)
-    io_default.set(threaded.io());
-
-    var gc = GcHeap.init(testing.allocator);
-    defer gc.deinit();
-
-    const Worker = struct {
-        fn run(g: *GcHeap) void {
-            // D-566: a non-owner thread allocates only as a registered worker.
-            var tx: ?*anyopaque = null;
-            var ctx = root_set_mod.workerContext(&tx);
-            root_set_mod.registerThread(&ctx) catch return;
-            defer root_set_mod.unregisterThread(&ctx);
-            var i: usize = 0;
-            while (i < per_thread) : (i += 1) {
-                const c = g.alloc(Cell) catch return;
-                c.* = .{ .header = HeapHeader.init(.symbol) };
-            }
-        }
-    };
-
-    var threads: [n_threads]std.Thread = undefined;
-    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, Worker.run, .{&gc});
-    for (&threads) |t| t.join();
-
-    // Every alloc landed exactly once — no lost append, no double-count.
-    try testing.expectEqual(@as(usize, n_threads * per_thread), gc.allocations.items.len);
-    try testing.expectEqual(@as(u64, n_threads * per_thread), gc.stats.alloc_count);
-}
-
-test "mutatorAllowed: the stamping thread and registered workers may alloc, a foreign unregistered thread may not (D-566)" {
-    if (@import("builtin").single_threaded) return error.SkipZigTest;
-    var gc = GcHeap.init(testing.allocator);
-    defer gc.deinit();
-    // The thread that built the heap is its owning main thread.
-    try testing.expect(gc.mutatorAllowed());
-    try testing.expect(root_set_mod.analysisMutatorAllowed());
-
-    const Probe = struct {
-        var unregistered: bool = true;
-        var unregistered_analysis: bool = true;
-        var registered: bool = false;
-        fn run(g: *const GcHeap) void {
-            unregistered = g.mutatorAllowed();
-            unregistered_analysis = root_set_mod.analysisMutatorAllowed();
-            var tx: ?*anyopaque = null;
-            var ctx = root_set_mod.workerContext(&tx);
-            root_set_mod.registerThread(&ctx) catch return;
-            defer root_set_mod.unregisterThread(&ctx);
-            registered = g.mutatorAllowed();
-        }
-    };
-    Probe.unregistered = true;
-    Probe.unregistered_analysis = true;
-    Probe.registered = false;
-    const t = try std.Thread.spawn(.{}, Probe.run, .{&gc});
-    t.join();
-    try testing.expect(!Probe.unregistered);
-    try testing.expect(!Probe.unregistered_analysis);
-    try testing.expect(Probe.registered);
-}
-
-test "GcHeap.alloc returned pointer aliases the live-list HeapHeader" {
-    // The HeapHeader-at-offset-0 convention means the returned *T and
-    // the live-list *HeapHeader are pointer-aliases (same address);
-    // 5.3.b mark / 5.3.c sweep both rely on this.
-    const Cell = extern struct { header: HeapHeader, payload: u64 = 0 };
-
-    var gc = GcHeap.init(testing.allocator);
-    defer gc.deinit();
-
-    const c = try gc.alloc(Cell);
-    c.* = .{ .header = HeapHeader.init(.list) };
-
-    const rec = gc.allocations.items[0];
-    const hdr_via_cast: *HeapHeader = @ptrCast(c);
-    try testing.expectEqual(rec.header, hdr_via_cast);
-    try testing.expectEqual(@as(u8, @intFromEnum(value_mod.HeapTag.list)), rec.header.tag);
-    try testing.expectEqual(@sizeOf(Cell), rec.size);
-}
-
-test "Stats struct shape" {
-    const s = Stats{};
-    try testing.expectEqual(@as(usize, 0), s.bytes_allocated);
-    try testing.expectEqual(@as(usize, 0), s.bytes_freed);
-    try testing.expectEqual(@as(u64, 0), s.alloc_count);
-    try testing.expectEqual(@as(u64, 0), s.collect_count);
-    try testing.expectEqual(@as(u64, 0), s.sweep_count);
-    try testing.expectEqual(@as(usize, 0), s.last_live_bytes);
-}

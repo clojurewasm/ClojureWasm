@@ -24,9 +24,9 @@
 schema_version: "2.0"
 summary:
   namespaces_required: 36
-  total: 1456
-  zig: 424
-  clj: 806
+  total: 1464
+  zig: 431
+  clj: 807
   value: 220
   unbound: 6
 vars:
@@ -69,6 +69,9 @@ vars:
   "cljw.internal/__agent-await": { impl: zig, flags: "-" }
   "cljw.internal/__agent-fail-mode?": { impl: zig, flags: "-" }
   "cljw.internal/__agent-set-fail-mode": { impl: zig, flags: "-" }
+  "cljw.internal/__array-fill": { impl: zig, flags: "-" }
+  "cljw.internal/__array-from": { impl: zig, flags: "-" }
+  "cljw.internal/__array-kind": { impl: zig, flags: "-" }
   "cljw.internal/__array-make": { impl: zig, flags: "-" }
   "cljw.internal/__assertion-error": { impl: zig, flags: "-" }
   "cljw.internal/__chunk-count": { impl: zig, flags: "-" }
@@ -83,6 +86,7 @@ vars:
   "cljw.internal/__defrecord!": { impl: zig, flags: "-" }
   "cljw.internal/__deftype!": { impl: zig, flags: "-" }
   "cljw.internal/__delay-create": { impl: zig, flags: "-" }
+  "cljw.internal/__dorun": { impl: zig, flags: "-" }
   "cljw.internal/__dump-host-classes": { impl: zig, flags: "-" }
   "cljw.internal/__dump-placement": { impl: zig, flags: "-" }
   "cljw.internal/__entry-at": { impl: zig, flags: "-" }
@@ -101,6 +105,7 @@ vars:
   "cljw.internal/__make-protocol!": { impl: zig, flags: "-" }
   "cljw.internal/__make-protocol-fn!": { impl: zig, flags: "-" }
   "cljw.internal/__map->record": { impl: zig, flags: "-" }
+  "cljw.internal/__map-step": { impl: zig, flags: "-" }
   "cljw.internal/__methods": { impl: zig, flags: "-" }
   "cljw.internal/__native-type": { impl: zig, flags: "-" }
   "cljw.internal/__open-input-stream": { impl: zig, flags: "-" }
@@ -128,6 +133,7 @@ vars:
   "cljw.internal/__string-reader": { impl: zig, flags: "-" }
   "cljw.internal/__string-writer": { impl: zig, flags: "-" }
   "cljw.internal/__subvec": { impl: zig, flags: "-" }
+  "cljw.internal/__subvec-fast": { impl: zig, flags: "-" }
   "cljw.internal/__unsupported-host-ref": { impl: zig, flags: "-" }
   "cljw.internal/__update-in": { impl: zig, flags: "-" }
   "cljw.internal/__vector-pop": { impl: zig, flags: "-" }
@@ -239,6 +245,7 @@ vars:
   "clojure.core/->>": { impl: value, flags: "macro" }
   "clojure.core/->Eduction": { impl: clj, flags: "-" }
   "clojure.core/-apply-to": { impl: value, flags: "-" }
+  "clojure.core/-array-elems": { impl: clj, flags: "private" }
   "clojure.core/-array-from": { impl: clj, flags: "private" }
   "clojure.core/-array-from2": { impl: clj, flags: "private" }
   "clojure.core/-as-transient": { impl: value, flags: "-" }
@@ -285,6 +292,7 @@ vars:
   "clojure.core/-lookup": { impl: value, flags: "-" }
   "clojure.core/-map-indexed-lazy": { impl: clj, flags: "private" }
   "clojure.core/-map-lazy": { impl: clj, flags: "-" }
+  "clojure.core/-map-n-lazy": { impl: clj, flags: "private" }
   "clojure.core/-map-n-step": { impl: clj, flags: "-" }
   "clojure.core/-merge-sorted": { impl: clj, flags: "-" }
   "clojure.core/-meta": { impl: value, flags: "-" }
@@ -310,9 +318,8 @@ vars:
   "clojure.core/-sorted-seq-from": { impl: value, flags: "-" }
   "clojure.core/-spread": { impl: clj, flags: "-" }
   "clojure.core/-sub-sequence": { impl: value, flags: "-" }
+  "clojure.core/-subvec-slow": { impl: clj, flags: "private" }
   "clojure.core/-take-eager": { impl: zig, flags: "private,zig-leaf" }
-  "clojure.core/-to-byte": { impl: clj, flags: "private" }
-  "clojure.core/-to-short": { impl: clj, flags: "private" }
   "clojure.core/-tset-contains?": { impl: value, flags: "-" }
   "clojure.core/-tx-seq-pump": { impl: clj, flags: "-" }
   "clojure.core/-tx-seq-run": { impl: clj, flags: "-" }
@@ -1482,6 +1489,7 @@ vars:
   "wasm/load": { impl: zig, flags: "-" }
   "wasm/load-component": { impl: zig, flags: "-" }
   "wasm/mem-read": { impl: zig, flags: "-" }
+  "wasm/mem-read-array": { impl: zig, flags: "-" }
   "wasm/mem-size": { impl: zig, flags: "-" }
   "wasm/mem-write!": { impl: zig, flags: "-" }
   "wasm/resource-drop": { impl: zig, flags: "-" }

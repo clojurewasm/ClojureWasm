@@ -176,7 +176,9 @@ fn toChars(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     if (cp < 0 or cp > 0x10FFFF) {
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "Character/toChars", .expected = "valid codepoint", .actual = "out-of-range int" });
     }
-    return java_array.fromSlice(rt, &.{Value.initChar(@intCast(cp))});
+    const arr = try java_array.make(rt, .char, 1);
+    java_array.asArray(arr).slice(.char)[0] = @intCast(cp);
+    return arr;
 }
 
 /// Strict codepoint from a `.char` OR an in-range `.integer` — for the
@@ -617,7 +619,7 @@ pub const ___HOST_EXTENSION: host_api.Extension = .{
 
 // Static fields (ADR-0061) — comptime-const. `Character/TYPE` (the
 // primitive Class object) is NOT carried: cljw has no primitive Class
-// values (ADR-0059 no-JVM; arrays are type-erased per AD-019).
+// values (ADR-0059 no-JVM; a class argument names no array kind, AD-019).
 const character_static_fields = [_]type_descriptor.TypeDescriptor.StaticField{
     .{ .name = "MIN_VALUE", .value = .{ .char = 0x0000 } },
     .{ .name = "MAX_VALUE", .value = .{ .char = 0xFFFF } },

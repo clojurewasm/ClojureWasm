@@ -2,15 +2,16 @@
 //! Java surface for `java.time.Instant`.
 //!
 //! Backend: impl-only
-//! Impl deps: instant
+//! Impl deps: instant, date_time_format
 //! Clojure peer: none (clojure.instant has its own parser)
 //!
 //! Java 8+ canonical time class. The static factories (now / ofEpochSecond /
 //! ofEpochMilli / parse) populate `method_table` via the `init` callback (D-462)
 //! and mint a `.typed_instance` Instant VALUE (`runtime/time/instant_value.zig`)
 //! whose per-Runtime descriptor carries the instance methods
-//! (getEpochSecond / getNano / toEpochMilli). The parse/format impl lives in the
-//! sibling `runtime/time/instant.zig` (F-009 neutral home).
+//! (getEpochSecond / getNano / toEpochMilli). The ISO print lives in the
+//! sibling `runtime/time/instant.zig` (F-009 neutral home); `parse` and `from`
+//! go through the java.time.format engine, like the JVM's `ISO_INSTANT`.
 //!
 //! method_table is populated in `initInstant` (runtime) rather than at module
 //! scope because `Value.initBuiltinFn(&fn)` calls `@intFromPtr(&fn)` which is
@@ -26,7 +27,7 @@ const SourceLocation = @import("../../error/info.zig").SourceLocation;
 const error_catalog = @import("../../error/catalog.zig");
 const instant = @import("../../time/instant.zig");
 const instant_value = @import("../../time/instant_value.zig");
-const string_collection = @import("../../collection/string.zig");
+const dtf_value = @import("../../time/date_time_formatter_value.zig");
 
 /// Mint an Instant from a whole-second epoch + a nanos fraction. Shared by
 /// `ofEpochSecond` (1- and 2-arg) and the milli/parse/now factories. Stores the
@@ -76,20 +77,21 @@ fn ofEpochMilli(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return fromSecondNanos(rt, secs, nanos);
 }
 
-/// `(java.time.Instant/parse s)` — parse an ISO-8601 instant string. Shares the
-/// `instant.parseInstantFields` grammar with `#inst` / Date (F-009). JVM throws
-/// `DateTimeParseException`; cljw raises the same `instant_string_invalid` the
-/// `#inst` reader uses.
+/// `(java.time.Instant/parse s)` — JVM `Instant.parse` = `parse(s,
+/// DateTimeFormatter/ISO_INSTANT)`: a bad string is the DateTimeParseException.
 fn parse(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("java.time.Instant/parse", args, 1, loc);
-    if (args[0].tag() != .string)
-        return error_catalog.raise(.type_arg_not_string, loc, .{ .fn_name = "java.time.Instant/parse", .actual = @tagName(args[0].tag()) });
-    const s = string_collection.asString(args[0]);
-    const fields = instant.parseInstantFields(s) catch
-        return error_catalog.raise(.inst_string_invalid, loc, .{ .s = s });
-    // `epoch_ms` folds the offset + ms; re-split to second-aligned + full nanos.
-    return instant_value.make(rt, @divFloor(fields.epoch_ms, 1000) * 1000, fields.nanos);
+    return dtf_value.parseIso(rt, .instant, args[0], "ISO_INSTANT", "java.time.Instant/parse", loc);
+}
+
+/// `(java.time.Instant/from temporal)` — JVM `Instant.from`: an Instant
+/// itself, or any TemporalAccessor carrying InstantSeconds + NanoOfSecond
+/// (a parse result with an offset).
+fn from(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("java.time.Instant/from", args, 1, loc);
+    return dtf_value.convert(rt, .instant, args[0], loc);
 }
 
 fn initInstant(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anyerror!void {
@@ -102,6 +104,7 @@ fn initInstant(td: *type_descriptor.TypeDescriptor, gpa: std.mem.Allocator) anye
             .{ "ofEpochSecond", &ofEpochSecond },
             .{ "ofEpochMilli", &ofEpochMilli },
             .{ "parse", &parse },
+            .{ "from", &from },
         });
     }
     td.temporal_print = .iso_instant;

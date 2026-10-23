@@ -152,7 +152,7 @@ accepted:
       `(name (ns-name *ns*))` are clj-faithful ("user"); only the readable
       `#object[…]` form (pr / prn / print / println) diverges.
     derives_from: "ADR-0059 (no-JVM: no class FQN); AD-002 (opaque-ref identity-hash not reproducible); ADR-0083"
-    pin: "test/e2e/phase15_namespace.sh — `(str *ns*)` => user + `(pr-str *ns*)` => #object[Namespace \"user\"] (the cljw form locked)"
+    pin: "test/clj/suites/vars_namespaces_test.clj — `(str *ns*)` => user + `(pr-str *ns*)` => #object[Namespace \"user\"] (the cljw form locked)"
   - id: "AD-012"
     summary: "A PersistentQueue prints as a readable `#queue (…)` (cljw) instead of clj's opaque `#object[clojure.lang.PersistentQueue 0x… \"…@hash\"]`"
     example: '(pr-str (conj clojure.lang.PersistentQueue/EMPTY 1 2 3)) => cljw "#queue (1 2 3)" / clj "#object[clojure.lang.PersistentQueue 0x… \"clojure.lang.PersistentQueue@…\"]"'
@@ -184,7 +184,7 @@ accepted:
       the internal algorithm divergence ADR-0090 reserved, with a pin asserting
       the observable serializability contract the retry-only engine upholds.
     derives_from: "ADR-0090 §3 (MVCC retry-only LockingTransaction) + §4 (no-barge)"
-    pin: "test/e2e/phase15_stm_dosync.sh — `dosync_concurrent_serializable` locks 4 threads × 100 `(dosync (alter c inc))` => exactly 400 (the serializable, no-lost-update result the retry-only engine produces under contention)"
+    pin: "test/clj/suites/concurrency_host_test.clj — `dosync_concurrent_serializable` locks 4 threads × 100 `(dosync (alter c inc))` => exactly 400 (the serializable, no-lost-update result the retry-only engine produces under contention)"
   - id: "AD-015"
     summary: "An ESCAPED `with-local-vars` local var, deref'd AFTER its dynamic extent, returns `nil` in cljw, where JVM returns an unreproducible `#object[clojure.lang.Var$Unbound 0x…]` opaque."
     example: '(var-get (with-local-vars [x 5] x)) => cljw nil / clj #object[Var$Unbound 0x…]'
@@ -203,7 +203,7 @@ accepted:
       local var is meaningless after its extent in both runtimes; cljw returns a safe
       `nil` instead of an unreproducible opaque.
     derives_from: "F-006 (Vars gpa-owned + GC-membrane-filtered; no Unbound sentinel) + ADR-0097 (anon local Var lifetime) + the opaque-ref non-reproducibility class"
-    pin: "test/e2e/phase15_with_local_vars.sh — `escape-nil` asserts `(var-get (with-local-vars [x 5] x))` => nil (cljw's safe divergent value, not JVM's Var$Unbound opaque)"
+    pin: "test/clj/suites/vars_namespaces_test.clj — `escape-nil` asserts `(var-get (with-local-vars [x 5] x))` => nil (cljw's safe divergent value, not JVM's Var$Unbound opaque)"
   - id: "AD-016"
     summary: "`(biginteger x)` yields cljw's BigInt — prints `5N` (clj `5`) and `(class (biginteger 5))` is `BigInt` (clj `java.math.BigInteger`). cljw has no separate BigInteger type."
     example: '(biginteger 5) => cljw 5N / clj 5 ; (class (biginteger 5)) => cljw BigInt / clj java.math.BigInteger'
@@ -268,23 +268,12 @@ accepted:
     derives_from: "F-005 (numeric tower: single internal f64, one clean float quot/rem/mod path) + AD-008 (cljw's cleaner numeric surface where clj throws)"
     pin: "test/clj/suites/numeric_tower_test.clj — the `non-finite-operands` deftest: quot_nan/rem_nan/mod_nan_d/mod_nan_v (NaN family) + quot_inf/rem_inf/mod_inf/quot_ninf (+/-Inf-dividend family) lock cljw's non-finite result (clj throws). Each assertion carries its original case name as a trailing comment."
   - id: "AD-019"
-    summary: "Java arrays are type-erased: element type hints (`^\"[B\"`, `^ints`, `^bytes`) are advisory only, and a typed-array constructor / `aset` does not coerce or type-check non-byte/short/char elements."
-    example: '(let [^"[B" b (byte-array 1)] (aset b 0 65) (aget b 0)) => 65 (a non-byte stored into a byte-typed array, no error); (class (object-array 0)) => cljw "array" / clj "[Ljava.lang.Object;"'
+    summary: "Array type arguments are advisory: `make-array` / `into-array` ignore their class argument and build an object array, type hints (`^\"[B\"`, `^ints`) are ignored, and `aset-long` / `aset-int` / `aset-double` store into an object array where clj throws. The typed constructors (`long-array`, `byte-array`, ...) DO build typed native storage (ADR-0204)."
+    example: '(let [c (make-array Long 2 2)] (aset-int c 0 0 3) (aget c 0 0)) => cljw 3 / clj IllegalArgumentException ; (class (object-array 0)) => cljw "array" / clj "[Ljava.lang.Object;"'
     why: |-
-      cljw arrays are one type-erased `[]Value` (ADR-0105): `byte-array`,
-      `int-array`, `object-array`, `make-array` all produce the same `.array`
-      shape. F-004 (uniform 8-byte Value) + F-005 (no primitive specialization)
-      delete the JVM's runtime array component-type, which on the JVM drives
-      boxing, `aset-X` coercion, and the `[Ljava.lang.Object;` class name. So a
-      `^"[B"` hint parses (reader.zig normalises it to `{:tag …}`) but is
-      ignored, and `aset` into a "typed" array never raises a type mismatch.
-      VALUE fidelity is still preserved where it is observable and value-changing
-      (F-011): per-constructor init defaults (0 / 0.0 / false / \space / nil) and
-      byte/short/char modular wrap are applied at construction / `aset-byte` —
-      those are NOT divergences. The simple class name (`array`, not the JVM
-      array-class encoding) is the AD-003 no-JVM-class surface applied to arrays.
-    derives_from: "F-004 (uniform Value) + F-005 (no primitive specialization) + ADR-0059 / AD-003 (no JVM class) + ADR-0105"
-    pin: "test/clj/suites/arrays_test.clj — type_hint_advisory (a ^\"[B\" array accepts a non-byte) + array_class_simple (class is `array`)"
+      cljw has no Class objects (ADR-0059 / AD-003), so `Long`, `Integer/TYPE` and a `^"[B"` hint carry no element kind for `make-array` / `into-array` to read. Those build object arrays, which is what `(make-array Long n)` is on the JVM too (a boxed `Long[]`). clj then refuses `aset-long` on a boxed array because `Array.setLong` wants a primitive `long[]`; cljw has no primitive-versus-boxed class to key that refusal on, so the store succeeds. The typed constructors build typed arrays (byte i8 ... double f64, ADR-0204): their values, `aset` strictness, `bytes?`, `Arrays/equals` and `Arrays/sort` match clj. The simple class name (`array`) is the AD-003 no-JVM-class surface applied to arrays.
+    derives_from: "ADR-0059 / AD-003 (no JVM Class objects, so a class argument names no element kind) + ADR-0204 (typed array storage for the typed constructors)"
+    pin: "test/e2e/phase14_arity_parity.sh — `AD-019 (aset-long a i j v)` / `AD-019 (aset-double a i j v)` / `AD-019 (aset-int a i j v)` lock the store into a make-array object array; test/clj/suites/arrays_test.clj — array_class_simple (class is `array`)"
   - id: "AD-020"
     summary: "A java.util.Random (any host_instance) prints opaquely as `#<java.util.Random>` — clj prints `#object[java.util.Random 0x… …]` with a non-reproducible identity hash."
     example: '(pr-str (java.util.Random. 0)) => cljw "#<java.util.Random>" / clj "#object[java.util.Random 0x.. java.util.Random@..]"'
@@ -327,7 +316,7 @@ accepted:
       provably-JVM-internal prefixes defer. F-011: explicit error preserved, only
       its timing diverges.
     derives_from: "ADR-0113 (deferred host-class refs) + ADR-0059 (no JVM class) + provisional_marker.md (explicit runtime error OK, silent no-op forbidden)"
-    pin: "test/e2e/phase15_deferred_host_ref.sh — defines_and_loads + raises_when_called + typo_stays_loud"
+    pin: "test/clj/suites/forms_and_literals_test.clj (p15-deferred-host-ref: defines_and_loads + typo_stays_loud) + test/e2e/phase15_deferred_host_ref.sh (raises_when_called, the uncatchable call-time raise)"
   - id: "AD-023"
     summary: "Extending a protocol TO a host_inert java interface (`(extend-protocol P java.util.Map …)`) is a LOAD-ONLY no-op in cljw: the section loads but never dispatches, because no cljw value has a java.util.Map host type (cljw maps are native PersistentArrayMap/HashMap, not java.util.Map). A map receiver falls to the protocol's Object default (or raises if none)."
     example: '(do (defprotocol P (m [x])) (extend-protocol P java.util.Map (m [x] :map) Object (m [x] :obj)) (m {:a 1})) => cljw :obj (Map impl inert, falls to Object); clj => :map (a Clojure map IS a java.util.Map).'
@@ -456,7 +445,7 @@ accepted:
       + the dangling D-232 frame-accessor reservation — D-438 / ADR-0140 are the
       real owner.)
     derives_from: "ADR-0059 (no JVM Throwable / StackTraceElement) + AD-024 (user-frames-only trace) + AD-003 (simple class name) + ADR-0140 (cljw-shaped frame seq)"
-    pin: "test/e2e/phase15_clojure_stacktrace.sh — caught_prints_user_frame + caught_no_marker lock the cljw-native per-frame format; print_cause_trace + unthrown_no_frames lock the frame-less marker + clj-faithful cause chain"
+    pin: "test/clj/suites/test_reporters_test.clj — caught_prints_user_frame + caught_no_marker lock the cljw-native per-frame format; print_cause_trace + unthrown_no_frames lock the frame-less marker + clj-faithful cause chain"
   - id: "AD-030"
     summary: "`(format \"%c\" <integer>)` is rejected by cljw for EVERY integer, where clj accepts an Integer (`(format \"%c\" (int 65))` → \"A\") but rejects a Long (`(format \"%c\" 65)` → IllegalFormatConversionException). cljw collapses int/Long into ONE integer type (F-005), so it cannot reproduce clj's Integer-accepts / Long-rejects split and chooses to reject all integers (D-267 option (b)). `%c` with an actual char (`\\A` / `(char 65)`) is clj-parity in both."
     example: '(format "%c" (int 65)) => cljw type_error / clj "A" ; (format "%c" 65) => cljw type_error / clj IllegalFormatConversionException ; (format "%c" (char 65)) => both "A"'
@@ -552,24 +541,22 @@ accepted:
     summary: "The 2-arg array ctors `(byte-array size n)` / `(short-array size n)` / `(char-array size n)` FILL with a number init; clj throws (`IllegalArgumentException`, 'Don't know how to create ISeq from: java.lang.Long') because the JVM `Numbers` overload for those element types has no number-fill branch."
     example: "(vec (byte-array 3 65)) => cljw [65 65 65] / clj THROWS ; (int (aget (char-array 3 65) 0)) => cljw 65 / clj THROWS ; matching cases agree: (vec (int-array 5 7)) => [7 7 7 7 7], (vec (byte-array 3 [1 2])) => [1 2 0]"
     why: |-
-      cljw's typed array ctors compose over ONE uniform helper (`-array-from2`):
-      a `sequential?` init is copied, any other init fills every slot with
-      `(coerce init)` — applied identically to int/long/double/float/short/byte/
-      char/boolean (F-011 single mechanism). clj's 2-arg behaviour is instead
+      Every typed constructor shares one native fill (`__array-fill`, ADR-0204): a
+      `sequential?` init is copied, any other init fills every slot, converted to
+      the element kind, identically for int/long/double/float/short/byte/char/
+      boolean (F-011 single mechanism). clj's 2-arg behaviour is instead
       per-element-type: int/long/double/float/boolean accept a number-fill, but
       byte/short/char route an unrecognised init through `RT.seq` and THROW on a
-      number (a `Numbers.java` method-overload accident keyed on the distinct JVM
-      element types). cljw arrays are TYPE-ERASED (AD-019): there is no distinct
-      byte/short/char element type, so there is no per-type overload to key the
-      throw on. Reproducing clj's throw would require re-introducing the very
-      element-type distinction AD-019 denies — so the uniform fill is the FORCED
-      consequence of AD-019, not a convenience. (Devil's-advocate fork 2026-06-18
-      confirmed: the per-type-throw mirror is the option that would contradict
-      AD-019; uniform + this AD is the finished-form-clean choice per F-002/F-011.
-      `object-array` keeps NO 2-arg form — cljw matches clj's arity error there.)
-      The matching cases (number-fill for int/long/double/float/boolean, seq-copy
-      for every type) are clj-byte-identical and corpus-pinned.
-    derives_from: "AD-019 (type-erased arrays — no distinct byte/short/char element type) + F-011 (uniform shared mechanism over per-JVM-type overload accidents). DA fork 2026-06-18 (private/notes/D446-array2arg-da-fork.md)."
+      number (a `Numbers.java` method-overload accident, not a designed contract).
+      Since ADR-0204 cljw arrays carry their element kind, so mirroring the throw is
+      possible; it is declined because it would add a per-kind branch whose only
+      purpose is reproducing that accident. (Devil's-advocate fork 2026-06-18 chose
+      uniform; re-examined 2026-10-22 when the type erasure it leaned on was
+      removed, and the overload-accident argument stands on its own.) `object-array`
+      keeps NO 2-arg form; cljw matches clj's arity error there. The matching cases
+      (number-fill for int/long/double/float/boolean, seq-copy for every kind) are
+      clj-byte-identical and corpus-pinned.
+    derives_from: "F-011 (uniform shared mechanism over per-JVM-type overload accidents): every typed constructor shares one native fill (ADR-0204), so a number init fills every kind alike. DA fork 2026-06-18 (private/notes/D446-array2arg-da-fork.md)."
     pin: "test/e2e/phase14_arity_parity.sh — `AD-036 (byte-array n num)` locks (vec (byte-array 3 65)) => [65 65 65] and `AD-036 (char-array n int)` locks (int (aget (char-array 3 65) 0)) => 65 (cljw fills where clj throws)"
   - id: "AD-037"
     summary: "`(str <lazy_seq>)` renders the realized ELEMENTS `(…)`; clj renders the LazySeq's identity-hash `toString` (`clojure.lang.LazySeq@<hash>`)."
@@ -623,7 +610,7 @@ accepted:
       `testing` context line, `Testing <ns>`, and the summary — matches clj
       byte-for-line.
     derives_from: "ADR-0059 (no-JVM: no JVM stack / class-file source positions) + F-011 (behavioural equivalence — pass/fail/error outcomes + counts match; only the unreproducible location/trace text differs)."
-    pin: "test/e2e/phase15_clojure_test_output.sh (suffix present, deftest-var-sourced) + test/e2e/phase15_var_source_meta.sh (the Var meta channel + AOT round-trip)."
+    pin: "test/clj/suites/test_reporters_test.clj (suffix present, deftest-var-sourced) + test/clj/suites/concurrency_host_test.clj (the Var meta channel) + test/e2e/phase15_var_source_meta.sh (AOT round-trip)."
   - id: "AD-042"
     summary: "`(pr-str v)` / `(str v)` print the bare ISO toString for a `java.time.*` value (Instant, Duration, …), where clj's `pr` emits the opaque `#object[java.time.X 0x.. \"ISO\"]` identity form. cljw makes both str and pr the toString; the value's `(str …)`, method results, and `=` all match clj."
     example: "(pr-str (java.time.Instant/ofEpochSecond 0)) => cljw \"1970-01-01T00:00:00Z\" / clj \"#object[java.time.Instant 0x5d3411d \\\"1970-01-01T00:00:00Z\\\"]\". (str (java.time.Duration/ofSeconds 90)) => both \"PT1M30S\"."
@@ -638,7 +625,7 @@ accepted:
       identity-hash wrapper — `(str v)`, the instance method results, and value
       `=` — matches clj exactly.
     derives_from: "ADR-0059 (no-JVM: no identity-hash `#object[…]` object form) + F-011 (behavioural equivalence — toString / method results / `=` match; only the unreproducible identity-wrapped pr form differs)."
-    pin: "test/e2e/phase15_java_time_instant.sh + test/e2e/phase15_java_time_duration.sh + test/e2e/phase15_java_time_local_date_time.sh + test/e2e/phase15_java_time_local_date.sh — lock `(str v)` = the bare ISO toString (Instant ISO_INSTANT variable fraction + `Z`; Duration `PT…`; LocalDateTime ISO-local conditional seconds + variable fraction; LocalDate `yyyy-MM-dd`; LocalTime ISO-local time) and the instance-method + value-`=` results; the absent `#object[…]` pr wrapper is the locked divergence."
+    pin: "test/clj/suites/java_time_values_test.clj — lock `(str v)` = the bare ISO toString (Instant ISO_INSTANT variable fraction + `Z`; Duration `PT…`; LocalDateTime ISO-local conditional seconds + variable fraction; LocalDate `yyyy-MM-dd`; LocalTime ISO-local time) and the instance-method + value-`=` results; the absent `#object[…]` pr wrapper is the locked divergence."
   - id: "AD-043"
     summary: "`(compare a b)` on java.time values (LocalDate/LocalDateTime …) and host enums returns the SIGN (-1/0/1) where clj returns a field-difference / ordinal-difference MAGNITUDE. The SIGN is identical, so sort order / branch behaviour match; only the non-zero magnitude differs. (Strings / chars / keywords / symbols return clj's exact Java compareTo magnitude since 2026-07-16 — `(compare \"a\" \"c\")` → -2 — so the divergence is TEMPORAL/ENUM-only.)"
     example: "(compare (java.time.LocalDate/of 2024 6 1) (java.time.LocalDate/of 2024 1 1)) => cljw 1 / clj 5. (compare java.time.DayOfWeek/MONDAY java.time.DayOfWeek/SUNDAY) => cljw -1 / clj -6 (ordinal diff). (compare (java.time.Instant/ofEpochSecond 5) (java.time.Instant/ofEpochSecond 9)) => -1 BOTH (Instant/Duration/LocalTime already match — they use a sign-returning Long/Integer.compare). (sort …) is identical either way."
@@ -657,7 +644,7 @@ accepted:
       sign-test see identical results. The D-462 temporal `compare` arms
       follow the sign-based design; this AD records that residual class.
     derives_from: "java.lang.Comparable / java.util.Comparator contract (only the SIGN of compareTo/compare is specified; magnitude is implementation-defined) + ADR-0053 (cljw compare is Order-based) + ADR-0059 (no JVM-internal magnitude reproduction)."
-    pin: "test/e2e/phase15_java_time_sort.sh — locks the TEMPORAL sign results (`(compare LocalDate-jun LocalDate-jan)` => 1, clj 5) + `(sort [LocalDate …])` ordering + the string-family MAGNITUDE parity (`string-family-magnitude`: `(compare \"a\" \"c\")` => -2). test/e2e/phase15_java_time_dow_month.sh (block `enum-compare`) locks the host-enum sign result `(compare DayOfWeek/MONDAY DayOfWeek/SUNDAY)` => -1 (clj -6) + a sort by ordinal (ADR-0161)."
+    pin: "test/clj/suites/java_time_values_test.clj — locks the TEMPORAL sign results (`(compare LocalDate-jun LocalDate-jan)` => 1, clj 5) + `(sort [LocalDate …])` ordering + the string-family MAGNITUDE parity (`string-family-magnitude`: `(compare \"a\" \"c\")` => -2). test/clj/suites/java_time_values_test.clj (block `enum-compare`) locks the host-enum sign result `(compare DayOfWeek/MONDAY DayOfWeek/SUNDAY)` => -1 (clj -6) + a sort by ordinal (ADR-0161)."
   - id: "AD-044"
     summary: "`(class x)` / `(type x)` of a callable / seq-view / reference / transient returns a STABLE clj-faithful simple class name (`Fn` / `MultiFn` / `LazySeq` / `LongRange` / `Atom` / `Ref` / `Future` / `Promise` / …); clj returns a per-fn GENERATED class (`user$eval$fn__135`, `clojure.core$_PLUS_`) for closures/builtins and a per-call REIFY class for future/promise that cljw has no analog for."
     example: '(class (fn [x] x)) => cljw "Fn" / clj "user$eval$fn__135". (class +) => cljw "Fn" / clj "clojure.core$_PLUS_". (class (future 1)) => cljw "Future" / clj "core$future_call$reify__8578". (class (map inc [1])) => cljw "LazySeq" / clj "clojure.lang.LazySeq" (this one matches).'
@@ -782,31 +769,6 @@ accepted:
       or throwing on `(/ 1.0 0.0)` too (breaking the common case) — both worse.
     derives_from: "F-005 (numeric tower = IEEE f64 semantics: float-zero divisor → ±Inf/NaN, integer-zero → throw) + ADR-0059 (no JVM Compiler — cljw has no operand-type inlining pass, so it cannot reproduce clj's inline-vs-runtime split) + F-011 (the common `(/ x 0.0)` literal path matches clj's inlined ±Inf exactly; only the rare runtime-dispatched 1-arg/apply/reduce path diverges)."
     pin: "test/e2e/phase14_float_div.sh — `ad050_recip`/`ad050_recip_n`/`ad050_apply`/`ad050_reduce` lock cljw's IEEE ±Inf form (NOT clj's throw) on the runtime paths; `pos_inf`/`int_zero` lock the clj-IDENTICAL inlined-±Inf + integer-throw surfaces."
-  - id: "AD-051"
-    summary: "`(bytes? x)` is true for ANY cljw array, where clj's `bytes?` is true only for a `byte[]`. cljw arrays are type-erased (AD-019) — `byte-array`/`int-array`/`object-array`/`make-array` share one runtime shape — so a byte-array is runtime-indistinguishable from any other array. The common positive guard `(bytes? (byte-array n))` matches clj (true); non-byte arrays diverge (clj false, cljw true)."
-    example: '(bytes? (byte-array 3)) => true in BOTH ; (bytes? (int-array 3)) => cljw true / clj false ; (bytes? (object-array 0)) => cljw true / clj false ; (bytes? "x") / (bytes? nil) / (bytes? [1 2]) => false in both'
-    why: |-
-      clj's `bytes?` is `(-> x class .getComponentType (= Byte/TYPE))` — it keys on
-      the JVM array's runtime component type. cljw deletes that component type:
-      every array (`byte-array`, `int-array`, `object-array`, `make-array`) is the
-      same type-erased `[]Value` (AD-019, derived from F-004 uniform 8-byte Value +
-      F-005 no primitive specialization). So cljw genuinely cannot tell a byte-array
-      from an int-array at runtime — the only signal available is `array?`. The
-      over-broad `(defn bytes? [x] (array? x))` is NOT a silent positive lie: in
-      cljw a byte-array IS usable as bytes (`(String. (byte-array [104 105]))` =>
-      "hi", matching clj) AND, because all arrays share one representation, an
-      int/object array routed into byte-handling behaves identically to a byte-array
-      — there is no distinct byte-path to corrupt. The alternatives are worse: an
-      always-`false` `bytes?` would deny the predicate's DEFINING case
-      (`(bytes? (byte-array n))` => false), a negative lie on a capability cljw
-      demonstrably has; an element-inspection heuristic (`every? byte-range?`) dresses
-      an unknowable distinction as knowable (an int-array of 0-255 ints reads true)
-      and is the 個別最適化 F-013 closes. A Devil's-advocate fork (2026-06-25)
-      recommended always-`false` on a "positive answers can't be honored" premise;
-      the main loop overrode it because a probe falsified that premise (byte-arrays
-      ARE byte-usable in cljw). Record: `private/notes/2026-06-25-D472-bytes-da-fork.md`.
-    derives_from: "AD-019 (type-erased arrays — no per-array component type, so byte-array is runtime-indistinguishable from any other array) + F-004 (uniform 8-byte Value) + F-005 (no primitive specialization) + F-011 (the common positive guard `(bytes? (byte-array n))` matches clj true exactly; only non-byte arrays diverge) + F-013 (no bespoke per-array type-tag mechanism added to fake a distinction the representation does not carry)."
-    pin: "test/e2e/phase14_arity_parity.sh — `AD-051 (bytes? byte-array)`/`AD-051 (bytes? int-array)`/`AD-051 (bytes? object-array)` lock cljw's over-broad `true` (incl. the int/object-array cases where clj returns false). The clj-IDENTICAL cases (byte-array→true, string/nil/vector→false) are corpus-pinned in test/diff/clj_corpus/clojure_1_11_additions.txt."
   - id: "AD-052"
     summary: "format's `%t` date/time conversions render in UTC with fixed English names (month/day/am-pm) and a fixed `+0000`/`UTC` zone; the JVM renders in the process's default TIME ZONE and LOCALE (a JST/ja machine shows shifted hours and 金曜日/2月/午後)."
     example: '(format "%tH" 0) => cljw "00" (UTC) / clj-on-JST "09" ; (format "%ta" 1234567890123) => cljw "Fri" / clj-on-ja "金"'
@@ -839,7 +801,7 @@ accepted:
       the namespace's existence; no mainline code enumerates (all-ns) expecting
       a closed set.
     derives_from: "ADR-0171 (rt merge — internals need a public qualified home for macro expansions) + ADR-0059 no-JVM (cljw owns the cljw.* namespace surface) + F-011 (every public var's home ns now MATCHES clj; only the extra internal ns is cljw-specific)."
-    pin: "test/e2e/phase15_namespace.sh — `ad053-internal-ns` locks (find-ns 'cljw.internal) present, `ad053-rt-gone` locks the old `rt` ns absent, `ad053-no-leak` locks __-internals out of clojure.core's publics."
+    pin: "test/clj/suites/vars_namespaces_test.clj — `ad053-internal-ns` locks (find-ns 'cljw.internal) present, `ad053-rt-gone` locks the old `rt` ns absent, `ad053-no-leak` locks __-internals out of clojure.core's publics."
   - id: "AD-054"
     summary: "Class-name completion (nREPL `completions` on an uppercase / dotted prefix) offers cljw's CLOSED class universe — the `rt.types` registry (host surfaces, deftypes, the java.lang/java.math default imports) — where mainline scans the whole JVM classpath and leaks internal classes (`java.lang.CharacterData00`, `sun.nio.cs.ext.Big5`, …)."
     example: "prefix \"Character\" => cljw [Character, java.lang.Character] / mainline additionally java.lang.CharacterData00…, com.sun.… (26 candidates). Every cljw candidate resolves; the mainline extras are not even loadable classes for user code."
@@ -1018,10 +980,10 @@ accepted:
     summary: |-
       `(.totalMemory r)` / `(.freeMemory r)` / `(.maxMemory r)` answer from
       cljw's own mark-sweep accounting, not from a JVM heap that does not
-      exist. `totalMemory` is the live set or the adaptive collect threshold,
-      whichever is larger (cljw keeps no reserved-but-unused pool, so the
-      threshold is the honest analogue of committed heap); `freeMemory` is the
-      headroom between them; `maxMemory` is the per-eval ceiling
+      exist. `totalMemory` is the committed cell heap (mapped GC pages plus
+      live large cells), which grows with the heap and shrinks when a collect
+      returns empty pages to the OS (CLJW-GC-HEAP-RETURN); `freeMemory` is
+      that minus the live cells; `maxMemory` is the per-eval ceiling
       `CLJW_EVAL_MAX_HEAP_MB` sets (ADR-0125), or `Long/MAX_VALUE` when the
       heap is unmetered.
       The consequence worth stating: on an unmetered cljw a used/max heap-
@@ -1032,7 +994,7 @@ accepted:
       that mean nothing.
     example: 'CLJW_EVAL_MAX_HEAP_MB unset: (.maxMemory (Runtime/getRuntime)) => 9223372036854775807 (no ceiling) / with CLJW_EVAL_MAX_HEAP_MB=64 => 67108864, and the pressure ratio becomes real.'
     derives_from: "ADR-0028 (mark-sweep + adaptive threshold) + ADR-0125 / D-352 (per-eval heap ceiling) + ADR-0059 (no JVM)."
-    pin: "test/e2e/concurrent_atomics.sh — runtime_memory_is_coherent + runtime_maxmemory_unmetered_is_exact_long."
+    pin: "test/e2e/concurrent_atomics.sh — runtime_memory_is_coherent + runtime_maxmemory_unmetered_is_exact_long; test/clj/suites/gc_heap_return_test.clj."
   - id: "AD-064"
     area: "concurrency"
     summary: |-
@@ -1193,7 +1155,7 @@ accepted:
   - id: AD-076
     area: strings
     summary: 'A string is indexed by Unicode CODE POINT, not by UTF-16 code unit. `count`, `subs`, `nth`, `get`, `seq`/`first`, `(map int s)` and the interop methods `.length`, `.charAt`, `.indexOf` and `.substring` all count a character outside the Basic Multilingual Plane (emoji, rare CJK, most historic scripts) as ONE position, where clj counts its surrogate pair as two. BMP text, including multibyte characters such as é or 世, indexes identically in both runtimes.'
-    example: '(count "🌍") => cljw 1 / clj 2. (count "ab🌍") => cljw 3 / clj 4. (.length "🌍") => cljw 1 / clj 2. (subs "a🌍b" 1 2) => cljw "🌍" / clj a lone high surrogate. (vec (map int "🌍")) => cljw [127757] / clj [55356 57101]. (str (first "🌍")) => cljw "🌍" / clj a lone high surrogate. (.indexOf "a🌍b" "b") => cljw 2 / clj 3. Measured on cljw v1.14.11; clj 1.12 column from GitHub issue #1.'
+    example: "(count \"\U0001F30D\") => cljw 1 / clj 2. (count \"ab\U0001F30D\") => cljw 3 / clj 4. (.length \"\U0001F30D\") => cljw 1 / clj 2. (subs \"a\U0001F30Db\" 1 2) => cljw \"\U0001F30D\" / clj a lone high surrogate. (vec (map int \"\U0001F30D\")) => cljw [127757] / clj [55356 57101]. (str (first \"\U0001F30D\")) => cljw \"\U0001F30D\" / clj a lone high surrogate. (.indexOf \"a\U0001F30Db\" \"b\") => cljw 2 / clj 3. Measured on cljw v1.14.11; clj 1.12 column from GitHub issue #1."
     why: |-
       UTF-16 is how the JVM happens to store a String, not part of Clojure's
       string semantics: clj's own `count` docstring says "number of items in
@@ -1218,4 +1180,4 @@ accepted:
       protocol counting UTF-16 units). docs/clojure_vs_clojurewasm.md gives
       the porting guidance.
     derives_from: 'F-011 read at the VALUE level (a string is a sequence of characters; the JVM storage encoding is not surface), plus D-217 (a String is Indexed by codepoint) and D-179 / O-060 (string seq is a UTF-8 byte-offset view over code points). No JVM, ADR-0059: there is no UTF-16 backing store to expose.'
-    pin: test/clj/suites/string_code_point_test.clj (every expression in the example, language and interop surfaces) + test/golden/cases/string_unicode.clj (count of a string holding 🌍, and (count "🌍") => 1).
+    pin: "test/clj/suites/string_code_point_test.clj (every expression in the example, language and interop surfaces) + test/golden/cases/string_unicode.clj (count of a string holding \U0001F30D, and (count \"\U0001F30D\") => 1)."

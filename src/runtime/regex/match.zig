@@ -172,6 +172,27 @@ fn scanFrom(
     return null;
 }
 
+/// A reusable leftmost-match scanner: ONE VM state for a whole multi-match
+/// walk (`split`), where `findFrom` would allocate and free the thread lists
+/// on every call. Same results as `findFrom(alloc, program, input, start)`.
+/// [refs: O-072]
+pub const Scanner = struct {
+    vm: Vm,
+    program: *const compile.Program,
+
+    pub fn init(alloc: std.mem.Allocator, program: *const compile.Program) MatchError!Scanner {
+        return .{ .vm = try Vm.init(alloc, program.insts.len, slotCount(program)), .program = program };
+    }
+
+    pub fn deinit(self: *Scanner, alloc: std.mem.Allocator) void {
+        self.vm.deinit(alloc);
+    }
+
+    pub fn findFrom(self: *Scanner, alloc: std.mem.Allocator, input: []const u8, start: u32) MatchError!?MatchResult {
+        return scanFrom(&self.vm, alloc, self.program, input, start);
+    }
+};
+
 /// Append every non-overlapping match (scanning from offset 0) to `out`, reusing
 /// ONE ThreadList pair across the whole scan — the one-pass backing for `re-seq`
 /// (O-035, ADR-0147 Stage 1b). A zero-width match advances the scan by 1 so the

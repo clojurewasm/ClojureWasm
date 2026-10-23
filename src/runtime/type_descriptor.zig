@@ -232,6 +232,9 @@ pub const TypeDescriptor = struct {
         time_local_date_epoch,
         time_local_date_time_min,
         time_local_date_time_max,
+        time_zone_offset_utc,
+        time_zone_offset_min, // -18:00
+        time_zone_offset_max, // +18:00
     };
 
     /// The shapes a static field can carry. `int` lifts via
@@ -256,6 +259,9 @@ pub const TypeDescriptor = struct {
         /// A `java.math.MathContext` standard constant (0-3 = DECIMAL32/64/128/
         /// UNLIMITED) → `math_context.zig::singleton` (D-511).
         math_context: u8,
+        /// A `java.time.format.DateTimeFormatter` ISO constant: the index into
+        /// `time/date_time_format.zig::ISO_CONSTANTS` → a fresh formatter.
+        date_time_formatter: u8,
         /// A small-integer `java.math.BigDecimal` constant (ZERO/ONE/TWO/TEN) —
         /// lifted via the BigDecimal constructor at analyze time (ADR-0174 D7),
         /// scale 0.

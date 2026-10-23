@@ -1,0 +1,45 @@
+
+cljw vs bb vs JVM  commit e1708566  runs=3 (min)  load=18.85  wall=min-of-N
+  cljw  ClojureWasm v1.15.3 (ReleaseSafe, wasm)
+  bb    babashka v1.13.224
+  jvm   clojure 1.12.4 on openjdk version "25.0.4.1" 2026-08-18
+  startup (-e nil) ms:  cljw 41  bb 28  jvm 1095   cljw/bb 1.46
+  idle peak RSS MB:  cljw 12  bb 60  jvm 108
+
+workload            cljw_in    bb_in   jvm_in |  cljw_wl    bb_wl   jvm_wl | c/bb_in c/bb_wl c/jvm_in | cljwMB   bbMB check
+arrays                 7436      346      484 |     7489      387     1654 |   21.49   19.35   15.36 |     28    131 ok
+dot_loop_nth            747      374       78 |      787      411     1202 |    2.00    1.91    9.58 |     13    110 ok
+fib_recursive           324      271       32 |      364      312     1105 |    1.20    1.17   10.12 |     13    104 ok
+fn_call                 743      485       68 |      781      528     1238 |    1.53    1.48   10.93 |     13    110 ok
+gc_churn               1589      603      235 |     1910      656     1394 |    2.64    2.91    6.76 |    379    180 ok
+into_collections       5985      484      372 |     6133      529     1664 |   12.37   11.59   16.09 |    129    133 ok
+json_roundtrip          415      371      479 |      502      409     2358 |    1.12    1.23    0.87 |     50    112 ok
+lazy_chain            10258      548      462 |    10511      601     1634 |   18.72   17.49   22.20 |    115    197 ok
+numeric_doubles        1082      565       32 |     1116      600     1038 |    1.92    1.86   33.81 |     13    110 ok
+protocol_dispatch      1568      344       50 |     1597      389     1052 |    4.56    4.11   31.36 |     13    110 ok
+reduce_map             9939      656      740 |    10368      707     2184 |   15.15   14.66   13.43 |    146    163 ok
+string_ops             3760      403      496 |     3903      439     1784 |    9.33    8.89    7.58 |    121    110 ok
+transduce              5751      358      195 |     5790      389     1400 |   16.06   14.88   29.49 |     27    110 ok
+vector_assoc           1452      448      450 |     1563      500     1667 |    3.24    3.13    3.23 |    168    163 ok
+
+geomean in-process ratio: cljw/bb 4.80   cljw/jvm 10.94   (< 1.00 means cljw is faster)
+columns: *_in = ms inside the script (INPROC_MS), *_wl = process wall ms, ratios on min values
+
+per-call probe (probe/probe2.clj, us per call, min of 7 after warmup):
+  cljw  {:version "1.12.0", :subvec-us 1.3556124999999999, :dot-1k-reduce-map-us 2169.15017, :dot-1k-loop-nth-us 279.632315, :byte-array-vec-8000-us 3095.86732}
+  bb    {:version "1.12.6-SCI", :subvec-us 0.110318, :dot-1k-reduce-map-us 97.765145, :dot-1k-loop-nth-us 246.26002, :byte-array-vec-8000-us 88.45394}
+  jvm   {:version "1.12.4", :subvec-us 0.094437, :dot-1k-reduce-map-us 79.32263, :dot-1k-loop-nth-us 7.8361350000000005, :byte-array-vec-8000-us 52.08972}
+RSS probe (probe/heap.clj; bb uses heap_bb.clj):
+  cljw:
+    start 13 MB
+    after 3M vector 44 MB
+    after drop + System/gc 44 MB
+    after 5 more 3M bursts 153 MB
+    after 200 x 20k JSON writes 149 MB
+  bb:
+    start 63 MB
+    after 3M vector 157 MB
+    after drop + System/gc 120 MB
+    after 5 more 3M bursts 174 MB
+    after 200 x 20k JSON writes 177 MB
+EXIT 0

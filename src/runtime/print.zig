@@ -55,6 +55,7 @@ const persistent_queue = @import("collection/persistent_queue.zig");
 const sorted_collection = @import("collection/sorted.zig");
 const ex_info_collection = @import("collection/ex_info.zig");
 const big_int_mod = @import("numeric/big_int.zig");
+const decimal_text = @import("numeric/decimal_text.zig");
 const ratio_mod = @import("numeric/ratio.zig");
 const big_decimal_mod = @import("numeric/big_decimal.zig");
 const regex_mod = @import("regex/value.zig");
@@ -178,7 +179,7 @@ pub fn writeStrValue(rt: *Runtime, env: *env_mod.Env, w: *Writer, v: Value) anye
         // `str`/`.toString` of a BigInt/BigDecimal drops the `N`/`M` reader
         // suffix that `pr`/`prn` keep — JVM `BigInteger`/`BigDecimal.toString`
         // emit plain digits. Ratio's `1/2` form is already suffix-free.
-        .big_int => try w.print("{f}", .{big_int_mod.asManaged(v)}),
+        .big_int => try decimal_text.writeDecimal(w, big_int_mod.asManaged(v)),
         .big_decimal => try writeBigDecimalDigits(w, v),
         // A deftype/reify `Object (toString [this] …)` impl supplies the
         // `str`/`.toString` representation — consulted like the `Seqable/-seq`
@@ -1164,19 +1165,16 @@ fn printBigInt(w: *Writer, v: Value) anyerror!void {
     // WITHOUT `N` (it is a primitive Long that merely overflowed cljw's i48
     // inline range), matching clj `(parse-long "999999999999999")`.
     const m = big_int_mod.asManaged(v);
-    if (big_int_mod.originOf(v) == .long) {
-        try w.print("{f}", .{m});
-    } else {
-        try w.print("{f}N", .{m});
-    }
+    try decimal_text.writeDecimal(w, m);
+    if (big_int_mod.originOf(v) != .long) try w.writeByte('N');
 }
 
 fn printRatio(w: *Writer, v: Value) anyerror!void {
     // Render numerator `/` denominator without a trailing `N` (small =
-    // inline i64s; big = the stored BigInt Manageds via `{f}`).
+    // inline i64s; big = the stored BigInt Manageds, no size ceiling).
     switch (ratio_mod.parts(v)) {
         .small => |s| try w.print("{d}/{d}", .{ s.n, s.d }),
-        .big => |b| try w.print("{f}/{f}", .{ b.n.m, b.d.m }),
+        .big => |b| try decimal_text.writeFraction(w, b.n.m, b.d.m),
     }
 }
 
@@ -1220,14 +1218,11 @@ fn writePlainDigits(w: *Writer, digits: []const u8, scale: i32) anyerror!void {
 /// plain arm.
 pub fn writeBigDecimalPlain(w: *Writer, v: Value) anyerror!void {
     const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
-    var buf: [1024]u8 = undefined;
-    var sw: std.Io.Writer = .fixed(&buf);
-    sw.print("{f}", .{bd.unscaled.m}) catch {
-        // Unscaled wider than the buffer — lossy digits-only fallback,
-        // mirroring writeBigDecimalDigits' stance.
-        return w.print("{f}", .{bd.unscaled.m});
-    };
-    const written = buf[0..sw.end];
+    // Stack scratch for the common width, heap past it: no size ceiling.
+    var sfa = std.heap.stackFallback(2048, bd.unscaled.m.allocator);
+    const alloc = sfa.get();
+    const written = try decimal_text.decimalAlloc(alloc, bd.unscaled.m);
+    defer alloc.free(written);
     const neg = written.len > 0 and written[0] == '-';
     const digits = if (neg) written[1..] else written;
     if (neg) try w.writeByte('-');
@@ -1240,15 +1235,12 @@ pub fn writeBigDecimalDigits(w: *Writer, v: Value) anyerror!void {
     // `(precision-1) - scale >= -6`, otherwise scientific `d.dddE±exp`.
     const bd = v.decodePtr(*const big_decimal_mod.BigDecimal);
 
-    // Render unscaled digits into a scratch buffer; split off the sign.
-    var buf: [1024]u8 = undefined;
-    var sw: std.Io.Writer = .fixed(&buf);
-    sw.print("{f}", .{bd.unscaled.m}) catch {
-        // Unscaled wider than the buffer — fall back to the lossy form
-        // (digits only; the caller appends `M` for the reader form).
-        return w.print("{f}", .{bd.unscaled.m});
-    };
-    const written = buf[0..sw.end];
+    // Render unscaled digits (no size ceiling); split off the sign.
+    // Stack scratch for the common width, heap past it: no size ceiling.
+    var sfa = std.heap.stackFallback(2048, bd.unscaled.m.allocator);
+    const alloc = sfa.get();
+    const written = try decimal_text.decimalAlloc(alloc, bd.unscaled.m);
+    defer alloc.free(written);
     const neg = written.len > 0 and written[0] == '-';
     const digits = if (neg) written[1..] else written;
     const n: i64 = @intCast(digits.len);
@@ -1600,7 +1592,14 @@ pub fn printArraySeq(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
     while (i < n) : (i += 1) {
         if (try lengthTruncated(w, @intCast(i), " ")) break;
         if (i > 0) try w.writeByte(' ');
-        try printValue(ports, w, array_seq_collection.nth(v, i));
+        if (array_seq_collection.peekNth(v, i)) |e| {
+            try printValue(ports, w, e);
+        } else {
+            // A primitive long beyond the immediate range: its digits, which
+            // is how its heap box prints.
+            const a = array_seq_collection.primitiveBacking(v).?;
+            try w.print("{d}", .{a.slice(.long)[array_seq_collection.indexOf(v) + i]});
+        }
     }
     try w.writeByte(')');
 }

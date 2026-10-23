@@ -59,3 +59,6 @@ __pycache__/
 # built on demand from jsonsum.go (docs/examples/polyglot/README.md), never
 # committed. The C, Zig and Rust guests are a few hundred bytes and are.
 docs/examples/polyglot/go/jsonsum.wasm
+
+# Per-worktree ling scratch and resume notes (never committed)
+.scratch/

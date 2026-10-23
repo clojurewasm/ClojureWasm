@@ -112,14 +112,29 @@ pub const Token = struct {
 };
 
 /// Stateful tokenizer.
+/// Which surface syntax the tokenizer accepts (ADR-0200 Layer B). `.clojure`
+/// is clj's LispReader; `.edn` is clj's EdnReader, a strict subset: no
+/// syntax-quote / unquote / deref macros (`` ` `` `~` `@` are invalid leading
+/// AND invalid constituent characters), `'` is a symbol constituent that may
+/// also start a symbol (`'a` is the symbol `'a`), no `::auto` keywords, and the
+/// only `#` dispatches are `#{` `#_` `##` `#^` `#:ns{` and `#tag`.
+pub const Dialect = enum { clojure, edn };
+
 pub const Tokenizer = struct {
     source: []const u8,
     pos: u32 = 0,
     line: u32 = 1,
     column: u16 = 0,
+    dialect: Dialect = .clojure,
 
     pub fn init(source: []const u8) Tokenizer {
         return .{ .source = source };
+    }
+
+    /// A char clj's EdnReader rejects inside a token ("Invalid constituent
+    /// character"). In `.clojure` these terminate the token instead.
+    fn isEdnBadConstituent(self: *const Tokenizer, c: u8) bool {
+        return self.dialect == .edn and (c == '@' or c == '~' or c == '`');
     }
 
     /// Return the next token; advances state. Idempotent at EOF.
@@ -132,6 +147,14 @@ pub const Tokenizer = struct {
         const start_line = self.line;
         const start_col = self.column;
         const ch = self.source[self.pos];
+
+        if (self.dialect == .edn) switch (ch) {
+            // clj EdnReader: no quote macro, `'` is a symbol constituent that
+            // can start one; `` ` `` `~` `@` are "Invalid leading character".
+            '\'' => return self.readSymbol(start, start_line, start_col),
+            '`', '~', '@' => return self.singleChar(.invalid, start, start_line, start_col),
+            else => {},
+        };
 
         switch (ch) {
             '(' => return self.singleChar(.lparen, start, start_line, start_col),
@@ -246,6 +269,10 @@ pub const Tokenizer = struct {
         if (self.pos - start <= 1) {
             return self.makeToken(.invalid, start, start_line, start_col); // bare ':'
         }
+        // clj EdnReader has no auto-resolved keywords: `::kw` is "Invalid token".
+        if (self.dialect == .edn and self.source[start + 1] == ':')
+            return self.makeToken(.invalid, start, start_line, start_col);
+        if (self.endsAtEdnBadConstituent()) return self.makeToken(.invalid, start, start_line, start_col);
         return self.makeToken(.keyword, start, start_line, start_col);
     }
 
@@ -345,9 +372,20 @@ pub const Tokenizer = struct {
 
     fn readSymbol(self: *Tokenizer, start: u32, start_line: u32, start_col: u16) Token {
         while (self.pos < self.source.len and isSymbolChar(self.source[self.pos])) self.advance();
+        if (self.endsAtEdnBadConstituent()) return self.makeToken(.invalid, start, start_line, start_col);
         // `nil` / `true` / `false` come back as plain symbol tokens;
         // the reader (next phase) re-classifies them.
         return self.makeToken(.symbol, start, start_line, start_col);
+    }
+
+    /// `.edn` only: the token just scanned stopped at `@` `~` or `` ` ``, which
+    /// clj's EdnReader rejects as an "Invalid constituent character". Consume
+    /// the rest of the run so the error names the whole token.
+    fn endsAtEdnBadConstituent(self: *Tokenizer) bool {
+        if (self.pos >= self.source.len or !self.isEdnBadConstituent(self.source[self.pos])) return false;
+        while (self.pos < self.source.len and
+            (isSymbolChar(self.source[self.pos]) or self.isEdnBadConstituent(self.source[self.pos]))) self.advance();
+        return true;
     }
 
     fn readDispatch(self: *Tokenizer, start: u32, start_line: u32, start_col: u16) Token {
@@ -356,6 +394,22 @@ pub const Tokenizer = struct {
         if (self.pos >= self.source.len) {
             return self.makeToken(.invalid, start, start_line, start_col);
         }
+
+        // clj EdnReader's dispatch table is `#{` `#_` `##` `#^` `#:` and `#tag`
+        // only; every other dispatch char is "No dispatch macro for: c", and
+        // `#::` (auto-resolved namespaced map) is an invalid token.
+        if (self.dialect == .edn) switch (self.source[self.pos]) {
+            '!', '"', '(', '\'', '?', '=', '<' => {
+                self.advance();
+                return self.makeToken(.invalid, start, start_line, start_col);
+            },
+            ':' => if (self.pos + 1 < self.source.len and self.source[self.pos + 1] == ':') {
+                self.advance();
+                self.advance();
+                return self.makeToken(.invalid, start, start_line, start_col);
+            },
+            else => {},
+        };
 
         switch (self.source[self.pos]) {
             '_' => {
@@ -754,4 +808,33 @@ test "a number token ends at a macro char, even ones a symbol keeps" {
     try testing.expectEqual(TokenKind.big_int_literal, u.next().kind);
     try testing.expectEqual(TokenKind.integer, u.next().kind);
     try testing.expectEqual(TokenKind.lparen, u.next().kind);
+}
+
+fn ednKinds(src: []const u8) TokenKind {
+    var t = Tokenizer.init(src);
+    t.dialect = .edn;
+    return t.next().kind;
+}
+
+test "edn dialect rejects the macro characters and dispatches clj's EdnReader lacks" {
+    for ([_][]const u8{ "`a", "~a", "@a", "#'a", "#(x)", "#\"r\"", "#=(x)", "#?(:clj 1)", "#!x", "::kw", "#::{}", "a@b", "a~b", "a`b", ":k@b" }) |src|
+        try testing.expectEqual(TokenKind.invalid, ednKinds(src));
+}
+
+test "edn dialect reads quote as a symbol constituent and keeps the EDN dispatches" {
+    var t = Tokenizer.init("'a #{ #_ ##Inf #:a{ #tag");
+    t.dialect = .edn;
+    const q = t.next();
+    try testing.expectEqual(TokenKind.symbol, q.kind);
+    try testing.expectEqualStrings("'a", q.text(t.source));
+    try testing.expectEqual(TokenKind.set_open, t.next().kind);
+    try testing.expectEqual(TokenKind.discard, t.next().kind);
+    try testing.expectEqual(TokenKind.symbolic, t.next().kind);
+    _ = t.next(); // Inf
+    try testing.expectEqual(TokenKind.ns_map, t.next().kind);
+    _ = t.next(); // {
+    try testing.expectEqual(TokenKind.tagged, t.next().kind);
+    // The clojure dialect is unchanged.
+    var c = Tokenizer.init("`a");
+    try testing.expectEqual(TokenKind.syntax_quote, c.next().kind);
 }

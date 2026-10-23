@@ -1054,7 +1054,10 @@ test "__extend-type! appends method_val rows + bumps protocol_generation" {
     }
 
     try testing.expectEqual(@intFromEnum(td_ref), @intFromEnum(result));
-    try testing.expectEqual(gen_before +% 1, fix.rt.protocol_generation);
+    // Two bumps: the method-table write, then addProtocolImpl's membership
+    // write (ADR-0206: the ProtocolFn cache must not memoise the state
+    // between them).
+    try testing.expectEqual(gen_before +% 2, fix.rt.protocol_generation);
     try testing.expectEqual(@as(usize, 1), td.method_table.len);
     // addProtocolImpl recorded "P" in the declared-interface list.
     try testing.expectEqual(@as(usize, 1), td.protocol_impls.len);

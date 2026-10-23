@@ -176,6 +176,36 @@ pub const Code = enum {
     future_cancel_abort,
     executor_rejected,
     stm_no_transaction,
+    // --- java.time (DateTimeException family, keyword date_time_format) ---
+    /// args: `.{ .detail = "..." }` — a java.time value or resolve step is
+    /// invalid (out-of-range offset, field value outside its range, a resolve
+    /// conflict). The engine composes the JVM-parity detail text.
+    date_time_value_invalid,
+    /// args: `.{ .text = "...", .detail = "..." }` — a DateTimeFormatter could not
+    /// parse `text`; `detail` is " at index N", ", unparsed text found at index
+    /// N" or ": <resolve failure>" (JVM DateTimeParseException wording).
+    date_time_text_unparseable,
+    /// args: `.{ .field = "YearOfEra" }` — a temporal value does not carry the
+    /// field a formatter or getter asked for.
+    temporal_field_unsupported,
+    /// args: `.{ .target = "LocalDate", .temporal = "...", .class = "..." }` —
+    /// `X/from` got a TemporalAccessor that lacks the parts X needs.
+    temporal_accessor_unconvertible,
+    /// args: `.{ .class = "java.util.Date" }` — a formatter was handed a value
+    /// that is not a TemporalAccessor at all.
+    temporal_accessor_expected,
+    /// args: `.{ .detail = "..." }` — a DateTimeFormatter pattern or builder call
+    /// is malformed (JVM IllegalArgumentException wording).
+    date_time_pattern_invalid,
+    /// args: `.{ .letter = "w" }` — a valid JVM pattern letter cljw does not
+    /// implement (week-based fields, localized zone names, padding).
+    date_time_pattern_letter_unsupported,
+    /// args: `.{ .detail = "..." }` — a DateTimeFormatterBuilder call out of
+    /// order (`optionalEnd` with no open `optionalStart`): IllegalStateException.
+    date_time_builder_state_invalid,
+    /// args: `.{ .id = "Europe/Paris" }` — a region zone id. cljw ships no
+    /// time-zone database; only fixed offsets and UTC / GMT / UT resolve.
+    zone_id_unknown,
     stm_retry_limit,
     locking_needs_object,
     locking_nest_overflow,
@@ -1092,6 +1122,53 @@ pub fn entry(comptime code: Code) Entry {
             .kind = .rejected_execution_error,
             .phase = .eval,
             .template = "executor rejected task submission ({[reason]s})",
+        },
+        .date_time_value_invalid => .{
+            .kind = .date_time_error,
+            .phase = .eval,
+            .template = "{[detail]s}",
+        },
+        .date_time_text_unparseable => .{
+            .kind = .date_time_parse_error,
+            .phase = .eval,
+            .template = "Text '{[text]s}' could not be parsed{[detail]s}",
+        },
+        .temporal_field_unsupported => .{
+            .kind = .unsupported_temporal_error,
+            .phase = .eval,
+            .template = "Unsupported field: {[field]s}",
+        },
+        .temporal_accessor_unconvertible => .{
+            .kind = .date_time_error,
+            .phase = .eval,
+            .template = "Unable to obtain {[target]s} from TemporalAccessor: {[temporal]s} of type {[class]s}",
+        },
+        .temporal_accessor_expected => .{
+            .kind = .type_error,
+            .phase = .eval,
+            .template = "Cannot cast {[class]s} to java.time.temporal.TemporalAccessor",
+        },
+        .date_time_pattern_invalid => .{
+            .kind = .value_error,
+            .phase = .eval,
+            .template = "{[detail]s}",
+        },
+        // Loud, uncatchable: a pattern using one of these letters would format
+        // wrong text if it were skipped, so the gap must surface.
+        .date_time_pattern_letter_unsupported => .{
+            .kind = .not_implemented,
+            .phase = .eval,
+            .template = "DateTimeFormatter pattern letter '{[letter]s}' is not supported by cljw",
+        },
+        .date_time_builder_state_invalid => .{
+            .kind = .state_error,
+            .phase = .eval,
+            .template = "{[detail]s}",
+        },
+        .zone_id_unknown => .{
+            .kind = .date_time_error,
+            .phase = .eval,
+            .template = "Unknown time-zone ID: {[id]s} (cljw has no time-zone database: only fixed offsets and UTC, GMT, UT resolve)",
         },
         .stm_no_transaction => .{
             // clj: IllegalStateException "No transaction running" — a STATE error

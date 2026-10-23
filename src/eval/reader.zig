@@ -32,6 +32,10 @@ const SourceLocation = error_mod.SourceLocation;
 /// just admits future kinds without churning every signature.
 pub const ReadError = error_mod.ClojureWasmError;
 
+/// Re-exported for callers that pick a reader dialect (`edn.zig`).
+pub const Dialect = tok_mod.Dialect;
+pub const ReadForm = Form;
+
 /// Process-wide counter behind the `#()` param gensyms (`p1__N#`), as clj's
 /// RT.nextID: each literal takes the next id, from any thread.
 var fn_lit_ids: std.atomic.Value(u32) = .init(1);
@@ -75,12 +79,32 @@ pub const Reader = struct {
     /// reader first, as clj's does.
     form_checks: bool = true,
 
+    /// Called with each `#_`-discarded form the moment it is read, so a DATA
+    /// read can materialize it (run its tag readers, check its duplicates)
+    /// before it is dropped, as clj's reader does (ADR-0200 A4). Null for a
+    /// code read, whose forms are never lifted here.
+    discard_hook: ?DiscardHook = null,
+
+    pub const DiscardHook = struct {
+        ctx: *anyopaque,
+        f: *const fn (ctx: *anyopaque, form: Form) ReadError!void,
+    };
+
     pub fn init(allocator: std.mem.Allocator, source: []const u8) Reader {
         return .{
             .tokenizer = Tokenizer.init(source),
             .source = source,
             .allocator = allocator,
         };
+    }
+
+    /// A reader for `dialect` (ADR-0200 Layer B). `.edn` is clj's EdnReader
+    /// surface; the tokenizer enforces it, since every EDN restriction is a
+    /// lexical one (a macro character or a dispatch character).
+    pub fn initDialect(allocator: std.mem.Allocator, source: []const u8, dialect: tok_mod.Dialect) Reader {
+        var r = init(allocator, source);
+        r.tokenizer.dialect = dialect;
+        return r;
     }
 
     /// Read one Form. Returns `null` on clean EOF.
@@ -915,8 +939,9 @@ pub const Reader = struct {
         const discard_loc = self.locOf(tok);
         // Consume the discard target (a real form; readValue skips any nested
         // no-value macros). A boundary before a target is incomplete (`[#_]`).
-        _ = (try self.readValue()) orelse
+        const target = (try self.readValue()) orelse
             return error_catalog.raise(.discard_reader_macro_incomplete, discard_loc, .{});
+        if (self.discard_hook) |h| try h.f(h.ctx, target);
         // `#_` itself contributes nothing: signal skip + return a placeholder
         // the caller (readValue) discards.
         self.skip = true;

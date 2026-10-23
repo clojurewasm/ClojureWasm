@@ -30,7 +30,7 @@ fn createOwning(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
             .expected = "a Java array",
             .actual = @tagName(args[0].tag()),
         });
-    return vector_mod.fromSlice(rt, java_array.asArray(args[0]).items());
+    return java_array.toVector(rt, java_array.asArray(args[0]));
 }
 
 /// `(clojure.lang.LazilyPersistentVector/create coll)` — a vector of `coll`'s
@@ -39,7 +39,7 @@ fn createOwning(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
 fn create(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("clojure.lang.LazilyPersistentVector/create", args, 1, loc);
     if (java_array.isArray(args[0]))
-        return vector_mod.fromSlice(rt, java_array.asArray(args[0]).items());
+        return java_array.toVector(rt, java_array.asArray(args[0]));
     const core = env.findNs("clojure.core") orelse return error.NoVTable;
     const vec_var = core.resolve("vec") orelse return error.NoVTable;
     const vt = rt.vtable orelse return error.NoVTable;

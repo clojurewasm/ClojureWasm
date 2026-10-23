@@ -30,6 +30,18 @@ own path, so results, fuel limits and traps behave the same.
 (.sum_f64 k buf 4)  ;=> 10.0
 ```
 
+`wasm/mem-write!` takes a vector, or a primitive array (`double-array`,
+`long-array`, ...). An array whose element matches the dtype (`:f64` and a
+double-array, `:i64` and a long-array, `:i32` and an int-array) is copied in
+with one memcpy; a vector is encoded one element at a time.
+`wasm/mem-read-array` is the bulk read: it answers a primitive array of the
+dtype's width (`:u16` widens to an int-array, `:u32` to a long-array).
+
+```clojure
+(wasm/mem-write! k :f64 buf (double-array [1 2 3 4]))
+(vec (wasm/mem-read-array k :f64 buf 4))  ;=> [1.0 2.0 3.0 4.0]
+```
+
 ## Run it
 
 The **released binaries** (GitHub releases, `brew install

@@ -13,6 +13,10 @@ against the committed guests, then against guests rebuilt from the recipe in
 each source header, then `hosts.cljc` on every Clojure host on PATH. What this
 page claims is what that gate checks.
 
+For Zig beyond scalars (compile-time tables, SIMD, `std.crypto`), and the
+same source as a native library through `cljw.ffi`, see
+[`../zig-native/`](../zig-native/README.md).
+
 ## Three shapes of guest
 
 | guest | source | built with | size | crosses the boundary as | cljw entry point |

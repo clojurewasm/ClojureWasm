@@ -5,13 +5,14 @@
 //! Impl deps: java_array
 //! Clojure peer: none
 //!
-//! The common static surface over cljw's `.array` tag (ADR-0105 JavaArray —
-//! Object[] semantics; Value slots): `asList` (an ArrayList host instance,
-//! the D-294 surface) / `toString` ("[e1, e2, …]") / `copyOf` (nil-padded
-//! like Java's null pad) / `sort` (in-place, natural `compare` order) /
-//! `equals` (element value equality) / `fill`. `binarySearch` / `hashCode` /
-//! the typed-primitive-array overload family are intentionally omitted until
-//! a real consumer needs them (dead-interop lesson).
+//! The common static surface over cljw's `.array` tag (ADR-0105 JavaArray,
+//! typed per ADR-0204): `asList` (an ArrayList host instance, the D-294
+//! surface) / `toString` ("[e1, e2, …]") / `copyOf` (padded with the kind's
+//! default, Java's null / 0 / false) / `sort` (in place: natural `compare`
+//! order for an object array, numeric order for a primitive one, `-0.0`
+//! before `0.0` and NaN last as `Double.compare`) / `equals` (same kind, same
+//! length, equal elements) / `fill`. `binarySearch` / `hashCode` are
+//! intentionally omitted until a real consumer needs them (dead-interop lesson).
 
 const std = @import("std");
 const value_sort = @import("../../collection/value_sort.zig");
@@ -43,7 +44,7 @@ fn expectArray(v: Value, fn_name: []const u8, loc: SourceLocation) !void {
 fn asList(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("java.util.Arrays/asList", args, 1, loc);
     try expectArray(args[0], "java.util.Arrays/asList", loc);
-    const vec = try vector_mod.fromSlice(rt, java_array.asArray(args[0]).items());
+    const vec = try java_array.toVector(rt, java_array.asArray(args[0]));
     return array_list_surface.initArrayList(rt, env, &.{vec}, loc);
 }
 
@@ -56,7 +57,9 @@ fn toStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     defer aw.deinit();
     try aw.writer.writeByte('[');
-    for (java_array.asArray(args[0]).items(), 0..) |e, i| {
+    const arr = java_array.asArray(args[0]);
+    for (0..arr.len) |i| {
+        const e = try java_array.get(rt, arr, i);
         if (i > 0) try aw.writer.writeAll(", ");
         if (e.tag() == .nil) {
             try aw.writer.writeAll("null"); // Java String.valueOf(null)
@@ -68,8 +71,9 @@ fn toStringFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     return string_mod.alloc(rt, aw.writer.buffered());
 }
 
-/// `(java.util.Arrays/copyOf arr n)` — a fresh array of length `n`: truncated
-/// or nil-padded (Java pads Object[] with null). JVM ref: Arrays#copyOf.
+/// `(java.util.Arrays/copyOf arr n)` — a fresh array of the same kind and
+/// length `n`: truncated, or padded with the kind's default (Java's null / 0 /
+/// false). JVM ref: Arrays#copyOf.
 fn copyOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("java.util.Arrays/copyOf", args, 2, loc);
@@ -78,11 +82,9 @@ fn copyOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
     if (n_i64 < 0)
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.util.Arrays/copyOf", .expected = "a non-negative length", .actual = "negative int" });
     const n: u32 = @intCast(n_i64);
-    const out = try java_array.make(rt, n, .nil_val);
-    const src = java_array.asArray(args[0]).items();
-    const dst = java_array.asArray(out).items();
-    const keep = @min(src.len, dst.len);
-    @memcpy(dst[0..keep], src[0..keep]);
+    const src = java_array.asArray(args[0]);
+    const out = try java_array.make(rt, src.kind, n);
+    java_array.copy(src, 0, java_array.asArray(out), 0, @min(src.len, n));
     return out;
 }
 
@@ -102,20 +104,55 @@ fn arrayLessThan(opaque_ctx: *anyopaque, a: Value, b: Value) bool {
     return ord == .lt;
 }
 
-/// `(java.util.Arrays/sort arr)` — IN-PLACE natural-order sort (cljw
-/// `compare`), returning nil like the void Java method. Stable block sort.
+/// `Double.compare` order: `-0.0` before `0.0`, every NaN after +Inf.
+fn floatLessThan(comptime T: type) fn (void, T, T) bool {
+    return struct {
+        fn lt(_: void, a: T, b: T) bool {
+            if (std.math.isNan(a)) return false;
+            if (std.math.isNan(b)) return true;
+            if (a == b) return std.math.signbit(a) and !std.math.signbit(b);
+            return a < b;
+        }
+    }.lt;
+}
+
+/// `(java.util.Arrays/sort arr)` — IN-PLACE sort returning nil like the void
+/// Java method. An object array sorts by cljw `compare` (stable block sort),
+/// a primitive one by element value.
 fn sortFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("java.util.Arrays/sort", args, 1, loc);
     try expectArray(args[0], "java.util.Arrays/sort", loc);
-    var ctx: SortCtx = .{ .rt = rt, .loc = loc };
-    value_sort.sort(java_array.asArray(args[0]).items(), @ptrCast(&ctx), &arrayLessThan);
-    if (ctx.err) |e| return e;
+    const arr = java_array.asArray(args[0]);
+    switch (arr.kind) {
+        .object => {
+            var ctx: SortCtx = .{ .rt = rt, .loc = loc };
+            value_sort.sort(arr.objects(), @ptrCast(&ctx), &arrayLessThan);
+            if (ctx.err) |e| return e;
+        },
+        inline .float, .double => |k| std.mem.sort(k.Elem(), arr.slice(k), {}, floatLessThan(k.Elem())),
+        inline else => |k| std.mem.sort(k.Elem(), arr.slice(k), {}, std.sort.asc(k.Elem())),
+    }
     return .nil_val;
 }
 
-/// `(java.util.Arrays/equals a b)` — same length + element value equality
-/// (nil-safe: two nils true, one nil false). JVM ref: Arrays#equals.
+/// Element equality of two primitive arrays of kind `k`; a float compares as
+/// `Double.equals` (bit equality with every NaN equal).
+fn primEqual(comptime k: java_array.Kind, a: *const java_array.JavaArray, b: *const java_array.JavaArray) bool {
+    const T = k.Elem();
+    if (comptime T == f32 or T == f64) {
+        const U = std.meta.Int(.unsigned, @bitSizeOf(T));
+        for (a.slice(k), b.slice(k)) |x, y| {
+            if (std.math.isNan(x) and std.math.isNan(y)) continue;
+            if (@as(U, @bitCast(x)) != @as(U, @bitCast(y))) return false;
+        }
+        return true;
+    } else return std.mem.eql(u8, a.bytes(), b.bytes());
+}
+
+/// `(java.util.Arrays/equals a b)` — same kind, same length, element value
+/// equality (nil-safe: two nils true, one nil false). Arrays of different
+/// kinds are unequal (no Java overload takes two). JVM ref: Arrays#equals.
 fn equalsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     try error_catalog.checkArity("java.util.Arrays/equals", args, 2, loc);
     const a = args[0];
@@ -124,11 +161,14 @@ fn equalsFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) a
     if (a.tag() == .nil or b.tag() == .nil) return .false_val;
     try expectArray(a, "java.util.Arrays/equals", loc);
     try expectArray(b, "java.util.Arrays/equals", loc);
-    const as = java_array.asArray(a).items();
-    const bs = java_array.asArray(b).items();
-    if (as.len != bs.len) return .false_val;
-    for (as, bs) |x, y| {
-        if (!try equal.valueEqual(rt, env, x, y)) return .false_val;
+    const aa = java_array.asArray(a);
+    const ba = java_array.asArray(b);
+    if (aa.kind != ba.kind or aa.len != ba.len) return .false_val;
+    switch (aa.kind) {
+        .object => for (aa.objects(), ba.objects()) |x, y| {
+            if (!try equal.valueEqual(rt, env, x, y)) return .false_val;
+        },
+        inline else => |k| if (!primEqual(k, aa, ba)) return .false_val,
     }
     return .true_val;
 }
@@ -140,7 +180,7 @@ fn fillFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
     _ = env;
     try error_catalog.checkArity("java.util.Arrays/fill", args, 2, loc);
     try expectArray(args[0], "java.util.Arrays/fill", loc);
-    @memset(java_array.asArray(args[0]).items(), args[1]);
+    try java_array.fill(java_array.asArray(args[0]), args[1], .strict, "java.util.Arrays/fill", loc);
     return .nil_val;
 }
 

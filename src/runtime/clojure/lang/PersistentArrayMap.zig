@@ -20,9 +20,9 @@ const dispatch = @import("../../dispatch.zig");
 const print_mod = @import("../../print.zig");
 
 fn expectPairArray(v: Value, fn_name: []const u8, loc: SourceLocation) ![]Value {
-    if (!java_array.isArray(v))
-        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "a Java array", .actual = @tagName(v.tag()) });
-    const items = java_array.asArray(v).items();
+    if (!java_array.isKind(v, .object))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "an object array", .actual = @tagName(v.tag()) });
+    const items = java_array.asArray(v).objects();
     if (items.len % 2 != 0)
         return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "an even-length array", .actual = "an odd-length array" });
     return items;

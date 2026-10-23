@@ -150,6 +150,19 @@ fn addressOf(v: Value) ?usize {
     return @bitCast(i);
 }
 
+/// A `:pointer` argument: an address, or a primitive array passed as the
+/// address of its storage (no copy; C reads and writes the elements in place,
+/// valid for the call). The array is an argument, so it stays rooted, and the
+/// collector never moves it.
+fn pointerArg(v: Value) ?usize {
+    if (java_array.isArray(v)) {
+        const a = java_array.asArray(v);
+        if (a.kind == .object) return null;
+        return @intFromPtr(a.data);
+    }
+    return addressOf(v);
+}
+
 // ── Leaves ──────────────────────────────────────────────────────────────────
 
 fn openFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
@@ -231,18 +244,23 @@ fn prepareFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
 }
 
 /// Scratch copies that must outlive the call and no longer: `:string` and
-/// `:bytes` arguments.
+/// `:bytes` arguments. Raw allocations: each is overwritten whole at once,
+/// so the safe-build `undefined` fill `Allocator.alloc`/`free` add would be
+/// two more passes over every byte.
 const Temps = struct {
     bufs: [abi.MAX_INT_ARGS][]u8 = undefined,
     n: usize = 0,
 
-    fn keep(t: *Temps, b: []u8) void {
-        t.bufs[t.n] = b;
+    fn alloc(t: *Temps, gpa: std.mem.Allocator, n: usize) ![]u8 {
+        const len = @max(n, 1);
+        const p = gpa.rawAlloc(len, .@"1", @returnAddress()) orelse return error.OutOfMemory;
+        t.bufs[t.n] = p[0..len];
         t.n += 1;
+        return p[0..len];
     }
 
     fn free(t: *Temps, gpa: std.mem.Allocator) void {
-        for (t.bufs[0..t.n]) |b| gpa.free(b);
+        for (t.bufs[0..t.n]) |b| gpa.rawFree(b, .@"1", @returnAddress());
     }
 };
 
@@ -257,7 +275,7 @@ fn marshal(rt: *Runtime, i: usize, t: abi.Type, v: Value, slots: *abi.Slots, tem
             const x = promote.exactI64(v) catch return failArgType(rt, i, "long");
             slots.putInt(@bitCast(x));
         },
-        .pointer => slots.putInt(addressOf(v) orelse return failArgType(rt, i, "pointer")),
+        .pointer => slots.putInt(pointerArg(v) orelse return failArgType(rt, i, "pointer")),
         .double => slots.putDouble(switch (v.tag()) {
             .float => v.asFloat(),
             .integer => @floatFromInt(v.asInteger()),
@@ -266,20 +284,18 @@ fn marshal(rt: *Runtime, i: usize, t: abi.Type, v: Value, slots: *abi.Slots, tem
         .string => {
             if (v.isNil()) return slots.putInt(0);
             if (!v.isString()) return failArgType(rt, i, "string");
-            const z = try rt.gpa.dupeZ(u8, string_mod.asString(v));
-            temps.keep(z[0 .. z.len + 1]);
+            const s = string_mod.asString(v);
+            const z = try temps.alloc(rt.gpa, s.len + 1);
+            @memcpy(z[0..s.len], s);
+            z[s.len] = 0;
             slots.putInt(@intFromPtr(z.ptr));
         },
         .bytes => {
             if (v.isNil()) return slots.putInt(0);
-            if (!java_array.isArray(v)) return failArgType(rt, i, "bytes");
-            const items = java_array.asArray(v).items();
-            const buf = try rt.gpa.alloc(u8, @max(items.len, 1));
-            temps.keep(buf);
-            for (items, 0..) |e, k| {
-                if (!e.isInt()) return failArgType(rt, i, "bytes");
-                buf[k] = @truncate(@as(u64, @bitCast(@as(i64, e.asInteger()))));
-            }
+            if (!java_array.isKind(v, .byte)) return failArgType(rt, i, "bytes");
+            const src = java_array.asArray(v).bytes();
+            const buf = try temps.alloc(rt.gpa, src.len);
+            @memcpy(buf[0..src.len], src);
             slots.putInt(@intFromPtr(buf.ptr));
         },
         .void => unreachable,
@@ -337,9 +353,7 @@ fn bytesFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     if (n < 0 or n > std.math.maxInt(u32)) return failArgType(rt, 1, "long");
     if (addr == 0) return Value.nil_val;
     const src: [*]const u8 = @ptrFromInt(addr);
-    const arr = try java_array.make(rt, @intCast(n), Value.initInteger(0));
-    for (java_array.asArray(arr).items(), 0..) |*slot, k| slot.* = Value.initInteger(@as(i8, @bitCast(src[k])));
-    return arr;
+    return java_array.fromBytes(rt, src[0..@intCast(n)]);
 }
 
 /// Create the `cljw.ffi` leaves. Called by `runtime/cljw/_host_api.zig`

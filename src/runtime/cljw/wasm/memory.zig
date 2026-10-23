@@ -22,8 +22,10 @@ const Runtime = @import("../../runtime.zig").Runtime;
 const value_mod = @import("../../value/value.zig");
 const Value = value_mod.Value;
 const promote = @import("../../numeric/promote.zig");
+const big_int = @import("../../numeric/big_int.zig");
 const vector_mod = @import("../../collection/vector.zig");
 const sub_vector_mod = @import("../../collection/sub_vector.zig");
+const java_array = @import("../../collection/java_array.zig");
 
 /// Element type of a linear-memory view. The closed set of wasm-representable
 /// numeric widths — closed because it is the wasm memory model's, not an
@@ -147,20 +149,22 @@ fn exactInt(v: Value) ElemError!i64 {
         .float => blk: {
             const f = v.asFloat();
             if (@floor(f) != f) return error.NotAnInteger;
-            if (f < @as(f64, @floatFromInt(std.math.minInt(i64))) or
-                f > @as(f64, @floatFromInt(std.math.maxInt(i64)))) return error.OutOfRange;
+            // Half-open at the top: maxInt(i64) as an f64 rounds to 2^63, so a
+            // `> maxInt` test let 2^63 through to a ReleaseSafe panic.
+            if (!(f >= -0x1p63 and f < 0x1p63)) return error.OutOfRange;
             break :blk @intFromFloat(f);
         },
         else => error.NotANumber,
     };
 }
 
-/// Read `v` as an f64. An integer widens; a float passes through. Matches
-/// `marshal.zig::toWasm`'s float arms, which accept exactly `isNumber()`.
+/// Read `v` as an f64. An integer widens (a heap Long or BigInt to its nearest
+/// double); a float passes through. Matches `marshal.zig::toWasm`'s float arms.
 fn floatOf(v: Value) ElemError!f64 {
     return switch (v.tag()) {
         .float => v.asFloat(),
         .integer => @floatFromInt(@as(i64, v.asInteger())),
+        .big_int => big_int.asManaged(v).toFloat(f64, .nearest_even)[0],
         else => error.NotANumber,
     };
 }
@@ -186,6 +190,32 @@ pub fn indexedCount(v: Value) ?u32 {
         .sub_vector => sub_vector_mod.count(v),
         else => null,
     };
+}
+
+/// The array kind `wasm/mem-read-array` answers for `dt`: the kind of the
+/// same width, or the next wider signed kind for the unsigned `:u16` / `:u32`
+/// (`:u8` reads as a byte array, the same bits).
+pub fn arrayKindOf(dt: Dtype) java_array.Kind {
+    return switch (dt) {
+        .i8, .u8 => .byte,
+        .i16 => .short,
+        .u16, .i32 => .int,
+        .u32, .i64 => .long,
+        .f32 => .float,
+        .f64 => .double,
+    };
+}
+
+/// True when the elements of primitive array `a` have exactly `dt`'s wasm
+/// layout, so a range of linear memory and the array's storage are the same
+/// bytes and cross with one memcpy (ADR-0204). Wasm memory is little-endian,
+/// so a big-endian host always takes the element-wise path. `:u8` matches a
+/// byte array (the same bits, read signed on the Clojure side); `:u16` and
+/// `:u32` have no array kind.
+pub fn sameLayout(dt: Dtype, a: *const java_array.JavaArray) bool {
+    if (@import("builtin").cpu.arch.endian() != .little) return false;
+    if (dt == .u16 or dt == .u32) return false;
+    return a.kind == arrayKindOf(dt);
 }
 
 /// Element `i` of an indexed vector. The caller has already established the

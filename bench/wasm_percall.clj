@@ -13,7 +13,10 @@
   (`-worker`, via `future`), plus `fn-call`: a plain Clojure function call in
   the same process. That last row is the platform constant, kept in its own
   datum key so a regression in cljw's call path is distinguishable from one in
-  the engine. Copies the discipline of zwasm's own bench/latency runner.
+  the engine. `big-auto | big-jit | big-interp` call a trivial export of a
+  47 KB module: a per-call cost that grows with module size shows up as the
+  gap between `big-jit` and `jit-main` ([CLJW-WASM-JIT-PERCALL-SCALES],
+  zwasm/D-585). Copies the discipline of zwasm's own bench/latency runner.
 
   Run (needs a -Dwasm ReleaseSafe binary):
     ./zig-out/bin/cljw -cp bench -m wasm-percall [--n=20000] [--trials=7] [--yaml=FILE]
@@ -23,6 +26,12 @@
   (:require [clojure.string :as str]))
 
 (def add-wasm "bench/wasm/ffi/add.wasm")
+(def three-f64-wasm "test/e2e/fixtures/wasm/three_f64.wasm")
+(def echo-component "test/e2e/fixtures/wasm/echo.component.wasm")
+
+;; 47 KB, built from bench/wasm/percall/zigcool.zig with
+;;   zig build-exe -target wasm32-freestanding -fno-entry -rdynamic -O ReleaseSmall zigcool.zig
+(def big-wasm "bench/wasm/percall/zigcool.wasm")
 
 (defn parse-args [args]
   (reduce (fn [opts arg]
@@ -39,6 +48,9 @@
 (defn burn-wasm [m n]
   (loop [i 0] (when (< i n) (wasm/call m "add" i 1) (recur (inc i)))))
 
+(defn burn-big [m n]
+  (loop [i 0] (when (< i n) (wasm/call m "popcount" i) (recur (inc i)))))
+
 (defn burn-fn [n]
   (loop [i 0] (when (< i n) (plain-add i 1) (recur (inc i)))))
 
@@ -50,18 +62,41 @@
     (long (/ (double (- (System/nanoTime) t0)) n))))
 
 (defn cells
-  "Ordered [name thunk] pairs. Each thunk runs one trial of n calls."
+  "Ordered [name thunk] pairs. Each thunk runs one trial of n calls.
+
+  Every cell owns its instance. An `:interp` instance traps once it is called
+  from a thread other than the one that first ran it (staging 2026-10-21,
+  zwasm d74e63b4; card CLJW-WASM-INTERP-THREAD-HOP). `future` may land each
+  trial on a different pool thread, so `interp-worker` instantiates on the
+  worker inside its trial; that one load, amortised over n calls, is part of
+  its number.
+
+  `core-f64x3` / `component-f64` pin [CLJW-WASM-CALL-22X]: core wasm/call
+  against component-call on an f64 shape. They measured 22x apart on v1.10.18
+  (14.2 us vs 0.65 us), before ADR-0195 moved the program off the initial
+  thread and before the per-handle exportSig cache. The cells stay so the two
+  surfaces cannot drift apart unseen."
   [n]
-  (let [auto   (wasm/load add-wasm {:fuel 0})
-        jit    (wasm/load add-wasm {:engine :jit :fuel 0})
-        interp (wasm/load add-wasm {:engine :interp :fuel 0})
-        on-worker (fn [f] #(deref (future (f))))]
-    [["auto-main"     #(burn-wasm auto n)]
-     ["auto-worker"   (on-worker #(burn-wasm auto n))]
-     ["jit-main"      #(burn-wasm jit n)]
-     ["jit-worker"    (on-worker #(burn-wasm jit n))]
-     ["interp-main"   #(burn-wasm interp n)]
-     ["interp-worker" (on-worker #(burn-wasm interp n))]
+  (let [ld (fn [opts] (wasm/load add-wasm (assoc opts :fuel 0)))
+        big (fn [opts] (wasm/load big-wasm (assoc opts :fuel 0)))
+        three  (wasm/load three-f64-wasm)
+        comp   (wasm/load-component echo-component)
+        on-worker (fn [f] #(deref (future (f))))
+        auto-m (ld {}) auto-w (ld {})
+        jit-m (ld {:engine :jit}) jit-w (ld {:engine :jit})
+        int-m (ld {:engine :interp})
+        big-auto (big {}) big-jit (big {:engine :jit}) big-interp (big {:engine :interp})]
+    [["auto-main"     #(burn-wasm auto-m n)]
+     ["auto-worker"   (on-worker #(burn-wasm auto-w n))]
+     ["jit-main"      #(burn-wasm jit-m n)]
+     ["jit-worker"    (on-worker #(burn-wasm jit-w n))]
+     ["interp-main"   #(burn-wasm int-m n)]
+     ["interp-worker" (on-worker #(burn-wasm (ld {:engine :interp}) n))]
+     ["core-f64x3"    #(loop [i 0] (when (< i n) (wasm/call three "sum3" 1.5 2.5 3.5) (recur (inc i))))]
+     ["component-f64" #(loop [i 0] (when (< i n) (wasm/component-call comp "echo-f64" 1.5) (recur (inc i))))]
+     ["big-auto"      #(burn-big big-auto n)]
+     ["big-jit"       #(burn-big big-jit n)]
+     ["big-interp"    #(burn-big big-interp n)]
      ["fn-call"       #(burn-fn n)]]))
 
 (defn stats

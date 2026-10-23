@@ -66,6 +66,62 @@ resolution inside `invoke` (zwasm/D-585) and the non-initial-thread stack
 query (zwasm/D-584), both upstream. `bench/wasm_percall.sh` is the standing
 measurement of this axis from here on.
 
+### After the zwasm/D-585 fix (measured 2026-10-22)
+
+`JitInstance` resolved every by-name invoke with `findExportFunc`, a walk of
+the section list plus an export-section decode, and the facade's `invokeJit`
+did it twice per call (signature, then invoke). zwasm `22a99bb1`
+(`fix/jit-percall` on the fork) serves the name from `CompiledWasm.exports`,
+the table compile already builds. The `big-*` cells of `bench/wasm_percall.clj`
+call a trivial export of a 47 KB module (`bench/wasm/percall/zigcool.wasm`),
+which makes a size-proportional cost visible. Median of 7 trials x 20k calls,
+ReleaseSafe `-Dwasm`, same host, load average 11-15, the before and after
+binaries run back to back:
+
+| cell              | before (d74e63b4) | after (22a99bb1) |
+|-------------------|-------------------|------------------|
+| JIT, 47 KB module | 5883              | 833              |
+| JIT, `add.wasm`   | 1031              | 882              |
+| interp, 47 KB     | 463               | 600              |
+| interp, `add.wasm`| 496               | 649              |
+
+The JIT no longer pays by module size: the 47 KB cell now equals the tiny
+one. The interpreter rows did not change in kind (its lookup was always a
+table loop); their drift is load noise. `perf` was unavailable on the host
+(`perf_event_paranoid`), so the attribution rests on the A/B: the fix changes
+only the export lookup. The JIT stays above the interpreter on a trivial
+callee; what remains is the entry thunk and zwasm/D-584's per-call stack
+query, which ADR-0195 only shrinks.
+
+### On the merged fork pin (measured 2026-10-22, zwasm `e9d74934`)
+
+The same fix as merged on the fork's `main` (fork PRs #2 and #3), full
+`bench/wasm_percall.clj`, median of 7 x 20k calls, ReleaseSafe `-Dwasm`, load
+average 16. With the interp thread-trap fix in the pin, `interp-worker` no
+longer traps, so the whole bench runs.
+
+| cell        | ns/call | | cell          | ns/call |
+|-------------|---------|-|---------------|---------|
+| big-jit     | 736     | | jit-main      | 614     |
+| big-interp  | 527     | | interp-main   | 479     |
+| big-auto    | 742     | | fn-call       | 179     |
+
+`:jit` on the 47 KB module is 1.4x `:interp` (the acceptance bound is 2x) and
+within noise of `:jit` on `add.wasm`.
+
+`perf record -g` on a loop of 400k `(wasm/call h "popcount" 255)` on the 47 KB
+module (`perf_event_paranoid` lowered to 1), stripped ReleaseSafe binaries:
+
+- v1.15.3 (zwasm `d74e63b4`), 7.2 to 9.3 us a call: 88% of samples in cljw,
+  about 65% in a single ~40-byte loop (`0x13e6910..0x13e6935`), entered from
+  two distinct call sites per `wasm/call` (7.7% and 4.9% of the hottest
+  address). That is the export-section walk, run twice per facade call
+  (signature, then invoke), as zwasm/D-585 describes.
+- this branch (zwasm `e9d74934`), 0.7 to 0.9 us a call, the same as
+  `add.wasm`: no hot loop. What remains is spread out: `pthread_getattr_np` and
+  `pthread_getaffinity_np` (zwasm/D-584's per-call stack query, about 6%) and
+  malloc/calloc/free (about 8%), none of which depends on the module.
+
 ## Two independent causes, both upstream, both already documented there
 
 zwasm ADR-0209 (`.dev/decisions/0209_percall_latency_bench.md` in the zwasm

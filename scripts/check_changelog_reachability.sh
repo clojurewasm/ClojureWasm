@@ -6,9 +6,9 @@
 # 1. A shipped release has no heading of its own. v1.14.9, v1.14.10 and
 #    v1.14.11 appended their entries under `## [1.14.8]` and nothing noticed
 #    (fixed by bba2e79f). Every `vX.Y.Z` tag reachable from HEAD, from v1.0.0
-#    on, must have a `## [X.Y.Z] - YYYY-MM-DD` heading, and the newest tag's
-#    heading must be the first one after `## [Unreleased]`, or the second when
-#    the first is the untagged release build.zig.zon names.
+#    on, must have a `## [X.Y.Z] - YYYY-MM-DD` heading, and only untagged
+#    releases between the newest tag and the version build.zig.zon names may
+#    sit between `## [Unreleased]` and the newest tag's heading.
 #
 # 2. `[Unreleased]` describes something that has already shipped. An entry
 #    that is also present in the newest tag's own `[Unreleased]` section went
@@ -55,10 +55,10 @@ newest_tag="$(printf '%s\n' "$release_tags" | sed -n 1p)"
 
 # Version of each `## [X.Y.Z] - YYYY-MM-DD` heading, in file order.
 dated_headings="$(sed -nE 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$/\1/p' "$CHANGELOG")"
-# The first `## ` heading after `## [Unreleased]`, verbatim.
-first_after_unreleased="$(awk '
+# Every `## ` heading after `## [Unreleased]`, verbatim, in file order.
+headings_after_unreleased="$(awk '
   /^## \[Unreleased\]/ { seen = 1; next }
-  seen && /^## / { print; exit }
+  seen && /^## / { print }
 ' "$CHANGELOG")"
 
 if [ -z "$newest_tag" ]; then
@@ -82,31 +82,35 @@ else
 
   newest_v="${newest_tag#v}"
 
-  # A hand-stamped MINOR/MAJOR heading precedes its tag: allowed only while
-  # build.zig.zon names that version, it is newer, and no such tag exists.
+  # A heading above the newest tag's names a release this clone has no tag
+  # for: the pending one build.zig.zon names (stamped before the release
+  # workflow tags it, which on a mirror races the CI run on the same merge),
+  # or one a mirror never tagged (clojurewasm/ClojureWasm has no v1.15.2, its
+  # release job failed first). Each must be dated, newer than the newest tag,
+  # no newer than build.zig.zon, and untagged.
   pending_v="$(sed -nE 's/^[[:space:]]*\.version = "([0-9]+\.[0-9]+\.[0-9]+)",[[:space:]]*$/\1/p' build.zig.zon 2>/dev/null | sed -n 1p)"
-  if [ -n "$pending_v" ] \
-    && ! git rev-parse -q --verify "refs/tags/v$pending_v" >/dev/null \
-    && [ "$(printf '%s\n%s\n' "$newest_v" "$pending_v" | sort -V | sed -n 2p)" = "$pending_v" ] \
-    && [ "$pending_v" != "$newest_v" ]; then
-    case "$first_after_unreleased" in
-      "## [$pending_v] - "*)
-        first_after_unreleased="$(awk '
-          /^## \[Unreleased\]/ { seen = 1; next }
-          seen && /^## / { n++; if (n == 2) { print; exit } }
-        ' "$CHANGELOG")"
-        echo "check_changelog_reachability: ok, [$pending_v] is the pending release build.zig.zon names (no v$pending_v tag yet)"
-        ;;
+  found_newest=0
+  while IFS= read -r heading; do
+    [ -n "$heading" ] || continue
+    case "$heading" in
+      "## [$newest_v] - "*) found_newest=1; break ;;
     esac
+    hv="$(sed -nE 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$/\1/p' <<<"$heading")"
+    if [ -n "$hv" ] && [ -n "$pending_v" ] \
+      && ! git rev-parse -q --verify "refs/tags/v$hv" >/dev/null \
+      && [ "$(printf '%s\n%s\n' "$newest_v" "$hv" | sort -V | sed -n 2p)" = "$hv" ] \
+      && [ "$(printf '%s\n%s\n' "$hv" "$pending_v" | sort -V | sed -n 2p)" = "$pending_v" ]; then
+      echo "check_changelog_reachability: ok, [$hv] is an untagged release between $newest_tag and build.zig.zon's $pending_v"
+      continue
+    fi
+    violation "'$heading' sits above $newest_tag's dated heading but is not an untagged release between $newest_tag and build.zig.zon's ${pending_v:-<none>}."
+    echo "  The newest release goes directly under [Unreleased]." >&2
+    found_newest=1
+    break
+  done <<< "$headings_after_unreleased"
+  if [ "$found_newest" -eq 0 ]; then
+    violation "no '## [$newest_v] - YYYY-MM-DD' heading after [Unreleased]."
   fi
-
-  case "$first_after_unreleased" in
-    "## [$newest_v] - "*) ;;
-    *)
-      violation "the first heading after [Unreleased] is '${first_after_unreleased:-<none>}', not $newest_tag's dated heading."
-      echo "  The newest release goes directly under [Unreleased]." >&2
-      ;;
-  esac
 fi
 
 # ---- 2. nothing under [Unreleased] has already shipped ----------------------

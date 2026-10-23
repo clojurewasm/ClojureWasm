@@ -185,11 +185,18 @@ fn callExport(rt: *Runtime, loaded: *engine.Loaded, name: []const u8, call_args:
     };
 
     if (out.len == 0) return Value.nil_val;
-    if (out.len == 1) return marshal.fromWasm(out[0], loc);
+    if (out.len == 1) return marshal.fromWasm(rt, out[0], loc);
 
     const items = try rt.gpa.alloc(Value, out.len);
     defer rt.gpa.free(items);
-    for (out, 0..) |r, i| items[i] = try marshal.fromWasm(r, loc);
+
+    // GC-ROOT: `items` is a gpa slice the collector does NOT trace, and an i64
+    // result outside the i48 immediate window is a HEAP Long, so a collect
+    // during a later result's alloc would sweep the ones already lifted. Same
+    // bracket as `wasmMemReadFn`. [ref: .dev/gc_rooting.md]
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
+    for (out, 0..) |r, i| items[i] = try marshal.fromWasm(rt, r, loc);
     return vector_mod.fromSlice(rt, items);
 }
 
@@ -476,7 +483,7 @@ pub fn wasmRunFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
 /// Resolve arg 0 to the module's exported linear memory. Raises when the value
 /// is not a loaded handle, or when the module exports no memory — "exports
 /// none" is a program error, distinct from "holds nothing yet".
-fn memoryArg(comptime fn_name: []const u8, arg: Value, loc: SourceLocation) anyerror!engine.Memory {
+pub fn memoryArg(comptime fn_name: []const u8, arg: Value, loc: SourceLocation) anyerror!engine.Memory {
     if (!wasm_handle.isHandle(arg))
         return error_catalog.raise(.wasm_handle_invalid, loc, .{ .fn_name = fn_name });
     return wasm_handle.unwrap(arg).memory() orelse
@@ -486,7 +493,7 @@ fn memoryArg(comptime fn_name: []const u8, arg: Value, loc: SourceLocation) anye
 /// Resolve an element-type keyword (`:f64`) to a `Dtype`. The element type is
 /// the GUEST's layout, so it is stated by the caller and never inferred from
 /// the data — `[1 2]` and `[1.0 2.0]` denote the same `:f64` buffer.
-fn dtypeArg(comptime fn_name: []const u8, arg: Value, loc: SourceLocation) anyerror!wasm_memory.Dtype {
+pub fn dtypeArg(comptime fn_name: []const u8, arg: Value, loc: SourceLocation) anyerror!wasm_memory.Dtype {
     if (arg.tag() != .keyword)
         return error_catalog.raise(.wasm_memory_dtype_invalid, loc, .{ .fn_name = fn_name });
     return wasm_memory.dtypeFromName(keyword_mod.asKeyword(arg).name) orelse
@@ -494,7 +501,7 @@ fn dtypeArg(comptime fn_name: []const u8, arg: Value, loc: SourceLocation) anyer
 }
 
 /// Resolve a byte-offset / element-count argument to an exact i64.
-fn indexArg(comptime fn_name: []const u8, arg: Value, loc: SourceLocation) anyerror!i64 {
+pub fn indexArg(comptime fn_name: []const u8, arg: Value, loc: SourceLocation) anyerror!i64 {
     return wasm_memory.indexArg(arg) orelse
         error_catalog.raise(.wasm_memory_index_invalid, loc, .{ .fn_name = fn_name });
 }
@@ -572,6 +579,7 @@ pub fn wasmMemWriteFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     const mem = try memoryArg("wasm/mem-write!", args[0], loc);
     const dt = try dtypeArg("wasm/mem-write!", args[1], loc);
     const offset = try indexArg("wasm/mem-write!", args[2], loc);
+    if (args[3].tag() == .array) return @import("memory_array.zig").writeArray(mem, dt, offset, args[3], loc);
 
     const n = wasm_memory.indexedCount(args[3]) orelse
         return error_catalog.raise(.wasm_memory_data_invalid, loc, .{ .fn_name = "wasm/mem-write!" });
@@ -623,6 +631,7 @@ pub fn register(env: *Env) !void {
     _ = try env.intern(ns, "mem-size", Value.initBuiltinFn(&wasmMemSizeFn), null);
     _ = try env.intern(ns, "mem-read", Value.initBuiltinFn(&wasmMemReadFn), null);
     _ = try env.intern(ns, "mem-write!", Value.initBuiltinFn(&wasmMemWriteFn), null);
+    try @import("memory_array.zig").register(env, ns);
     // EXPERIMENT (D-404 / ADR-0135, push-suppressed): component introspection +
     // typed invoke probes — the require-a-component substrate.
     const component = @import("component.zig");

@@ -327,7 +327,8 @@ fn exit(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyer
 
 /// Implements `(java.lang.System/arraycopy src srcPos dest destPos length)`.
 /// Spec: copies `length` elements from `src[srcPos..]` into `dest[destPos..]`.
-/// Both are cljw Java arrays (ADR-0105 type-erased []Value). A same-array
+/// Both are cljw Java arrays of the same element kind (ADR-0204; a kind
+/// mismatch is JVM ArrayStoreException, here `arg_value_invalid`). A same-array
 /// overlapping copy is correct (JVM semantics: as if through a temp — @memmove).
 /// Out-of-range positions/length raise an index error (JVM throws
 /// ArrayIndexOutOfBoundsException; cljw's Kind differs per AD-007).
@@ -353,8 +354,9 @@ fn arraycopy(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     if (length < 0 or src_pos < 0 or dst_pos < 0 or
         src_pos + length > src.len or dst_pos + length > dst.len)
         return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.System/arraycopy" });
-    const n: usize = @intCast(length);
-    @memmove(dst.items_ptr[@intCast(dst_pos)..][0..n], src.items_ptr[@intCast(src_pos)..][0..n]);
+    if (src.kind != dst.kind)
+        return error_catalog.raise(.arg_value_invalid, loc, .{ .fn_name = "java.lang.System/arraycopy", .expected = "two arrays of the same element kind", .actual = @tagName(dst.kind) });
+    java_array.copy(src, @intCast(src_pos), dst, @intCast(dst_pos), @intCast(length));
     return Value.nil_val;
 }
 

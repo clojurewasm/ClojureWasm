@@ -98,7 +98,10 @@ fn elemsOf(rt: *Runtime, v: Value, fn_name: []const u8, loc: SourceLocation) !El
         while (i < n) : (i += 1) buf[i] = vector_mod.nth(v, i);
         return .{ .items = buf, .owned = buf };
     }
-    if (java_array.isArray(v)) return .{ .items = java_array.asArray(v).items() };
+    if (java_array.isArray(v)) {
+        const buf = try java_array.boxAll(rt, java_array.asArray(v), rt.gpa);
+        return .{ .items = buf, .owned = buf };
+    }
     if (array_list_surface.isArrayList(v)) return .{ .items = array_list_surface.itemsOf(v) };
     return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "a vector, Java array, or ArrayList", .actual = @tagName(v.tag()) });
 }

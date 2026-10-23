@@ -120,6 +120,10 @@ pub const ENTRIES = [_]Entry{
     .{ .name = "IndexOutOfBoundsException", .parent = "RuntimeException" },
     .{ .name = "NullPointerException", .parent = "RuntimeException" },
     .{ .name = "UnsupportedOperationException", .parent = "RuntimeException" },
+    // java.time: DateTimeException and its two thrown subclasses.
+    .{ .name = "DateTimeException", .parent = "RuntimeException" },
+    .{ .name = "DateTimeParseException", .parent = "DateTimeException" },
+    .{ .name = "UnsupportedTemporalTypeException", .parent = "DateTimeException" },
     .{ .name = "ExceptionInfo", .parent = "RuntimeException" },
 };
 
@@ -158,6 +162,9 @@ const FQCN_MAP = std.StaticStringMap([]const u8).initComptime(.{
     .{ "java.lang.ReflectiveOperationException", "ReflectiveOperationException" },
     .{ "java.lang.ClassNotFoundException", "ClassNotFoundException" },
     .{ "java.lang.NoSuchMethodException", "NoSuchMethodException" },
+    .{ "java.time.DateTimeException", "DateTimeException" },
+    .{ "java.time.format.DateTimeParseException", "DateTimeParseException" },
+    .{ "java.time.temporal.UnsupportedTemporalTypeException", "UnsupportedTemporalTypeException" },
     .{ "clojure.lang.ExceptionInfo", "ExceptionInfo" },
 });
 
@@ -333,6 +340,9 @@ pub fn kindToHostClass(kind: Kind) ?[]const u8 {
         .state_error => "IllegalStateException",
         .cancellation_error => "CancellationException",
         .rejected_execution_error => "RejectedExecutionException",
+        .date_time_error => "DateTimeException",
+        .date_time_parse_error => "DateTimeParseException",
+        .unsupported_temporal_error => "UnsupportedTemporalTypeException",
         .arity_error => "ArityException",
         .number_error => "NumberFormatException",
         .name_error, .syntax_error, .string_error => "RuntimeException",
@@ -443,6 +453,14 @@ test "normalizeClassName: simple name passes through unchanged" {
 test "normalizeClassName: unknown FQCN passes through unchanged (caller decides)" {
     try testing.expectEqualStrings("foo.bar.Quux", normalizeClassName("foo.bar.Quux"));
     try testing.expectEqualStrings("", normalizeClassName(""));
+}
+
+test "java.time exception family: both leaves ⊂ DateTimeException ⊂ RuntimeException" {
+    try testing.expect(isSubclassOf("java.time.format.DateTimeParseException", "java.time.DateTimeException"));
+    try testing.expect(isSubclassOf("UnsupportedTemporalTypeException", "DateTimeException"));
+    try testing.expect(isSubclassOf("DateTimeException", "RuntimeException"));
+    try testing.expect(!isSubclassOf("DateTimeException", "IllegalArgumentException"));
+    try testing.expectEqualStrings("DateTimeParseException", kindToHostClass(.date_time_parse_error).?);
 }
 
 test "CancellationException hierarchy (D-442): ⊂ IllegalStateException ⊂ RuntimeException, ≠ IllegalArgumentException" {

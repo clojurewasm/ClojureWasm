@@ -69,12 +69,27 @@ pub fn substring(s: []const u8, start: usize, end: usize) Utf8Error![]const u8 {
     return s[byte_start..byte_end];
 }
 
+/// True when every byte is < 0x80 (vectorised by the optimiser).
+fn isAllAscii(s: []const u8) bool {
+    var acc: u8 = 0;
+    for (s) |c| acc |= c;
+    return acc < 0x80;
+}
+
 /// Allocate the FULL-Unicode uppercase of `s` (JVM String.toUpperCase
 /// semantics, D-057): SpecialCasing 1:n expansions (ß→SS, ﬁ→FI, ŉ→ʼN)
 /// then the simple map, via the generated `unicode_case` tables. The
 /// result may be LONGER than the input (1:n), so it grows an ArrayList.
 /// Caller owns the returned slice.
 pub fn upperCaseAlloc(alloc: std.mem.Allocator, s: []const u8) ![]u8 {
+    // PERF: an all-ASCII input folds byte-for-byte (every ASCII codepoint's
+    // full Unicode mapping is its ASCII fold, one byte to one byte), so skip
+    // the per-codepoint table walk. [refs: O-071]
+    if (isAllAscii(s)) {
+        const buf = try alloc.alloc(u8, s.len);
+        for (s, buf) |c, *o| o.* = std.ascii.toUpper(c);
+        return buf;
+    }
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
     var iter = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };
@@ -94,6 +109,12 @@ pub fn upperCaseAlloc(alloc: std.mem.Allocator, s: []const u8) ![]u8 {
 /// the table's has-a-mapping approximation (full General_Category data is
 /// not carried — covers Greek/Latin, the rule's real population).
 pub fn lowerCaseAlloc(alloc: std.mem.Allocator, s: []const u8) ![]u8 {
+    // PERF: all-ASCII fast path; no Σ can occur in ASCII. [refs: O-071]
+    if (isAllAscii(s)) {
+        const buf = try alloc.alloc(u8, s.len);
+        for (s, buf) |c, *o| o.* = std.ascii.toLower(c);
+        return buf;
+    }
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
     var iter = std.unicode.Utf8Iterator{ .bytes = s, .i = 0 };

@@ -125,7 +125,7 @@ pub fn allocFromManagedScale(
 
 /// Parse a plain/scientific decimal string (`"-1.50"`, `"1.0E10"`) into a
 /// BigDecimal, or `null` when the text is not a finite decimal numeral
-/// (empty, double dot, non-digit, pathologically wide, or |scale| > i32).
+/// (empty, double dot, non-digit, or |scale| > i32).
 /// The scale is `frac_digits - exponent`. Shared by `clojure.core/bigdec`
 /// (string + float arms) and `BigDecimal/valueOf` (the float arm formats
 /// via `printFloat` first). Lives here — with the BigDecimal representation
@@ -149,7 +149,9 @@ pub fn allocFromDecimalString(rt: *Runtime, s: []const u8) !?Value {
     if (mant.len == 0) return null;
 
     // Collect mantissa digits (drop the dot); count fractional digits.
-    var digits: [512]u8 = undefined;
+    // Sized to the mantissa, so the significand has no width ceiling.
+    const digits = try rt.gc.infra.alloc(u8, mant.len);
+    defer rt.gc.infra.free(digits);
     var dlen: usize = 0;
     var frac: i64 = 0;
     var seen_dot = false;
@@ -161,7 +163,6 @@ pub fn allocFromDecimalString(rt: *Runtime, s: []const u8) !?Value {
             continue;
         }
         if (c < '0' or c > '9') return null;
-        if (dlen >= digits.len) return null; // pathologically wide — defer
         digits[dlen] = c;
         dlen += 1;
         any_digit = true;

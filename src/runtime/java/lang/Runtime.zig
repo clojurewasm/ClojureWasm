@@ -18,12 +18,12 @@
 //! that reads a made-up denominator is worse than one that cannot read at all.
 //! The mapping onto the JVM's vocabulary (divergence AD-063):
 //!
-//!   - `.totalMemory` — the heap cljw currently commits to, i.e. the live set
-//!     or the adaptive collect threshold, whichever is larger. cljw keeps no
-//!     reserved-but-unused pool, so the threshold is the honest analogue of
-//!     "heap the collector will let you grow into".
-//!   - `.freeMemory` — `totalMemory` minus the live set: headroom before the
-//!     next collection, which is what the JVM reading also means.
+//!   - `.totalMemory`: the cell heap cljw currently commits: the mapped GC
+//!     pages (live cells, free slots, retained empty pages) plus live large
+//!     cells (`GcHeap.committedBytes`). It grows with the heap and shrinks
+//!     when a collect hands empty pages back to the OS, as the JVM's does.
+//!   - `.freeMemory`: `totalMemory` minus the live cells: committed space
+//!     the next allocations fill before the heap has to grow.
 //!   - `.maxMemory` — `gc.heap_ceiling` (set by `CLJW_EVAL_MAX_HEAP_MB`,
 //!     ADR-0125), or `Long/MAX_VALUE` when the heap is unmetered. An unmetered
 //!     cljw genuinely has no ceiling, so a used/max pressure ratio reads ~0.
@@ -94,7 +94,7 @@ fn asLong(rt: *Runtime, n: usize) !Value {
 fn totalMemory(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     try error_catalog.checkArity("Runtime/totalMemory", args, 1, loc);
-    return asLong(rt, @max(liveBytes(rt), rt.gc.threshold_bytes));
+    return asLong(rt, @max(liveBytes(rt), rt.gc.committedBytes()));
 }
 
 /// `(.freeMemory r)` — headroom inside `totalMemory` before the next collect.
@@ -102,7 +102,7 @@ fn freeMemory(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
     _ = env;
     try error_catalog.checkArity("Runtime/freeMemory", args, 1, loc);
     const live = liveBytes(rt);
-    return asLong(rt, @max(live, rt.gc.threshold_bytes) - live);
+    return asLong(rt, @max(live, rt.gc.committedBytes()) - live);
 }
 
 /// `(.maxMemory r)` — the per-eval heap ceiling, or `Long/MAX_VALUE` when the

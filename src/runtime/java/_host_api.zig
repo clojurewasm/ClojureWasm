@@ -108,6 +108,11 @@ const java_surfaces = [_]type{
     @import("time/LocalDateTime.zig"),
     @import("time/LocalTime.zig"),
     @import("time/Duration.zig"),
+    @import("time/ZoneId.zig"), // fixed-offset zones only (no tz database)
+    @import("time/ZoneOffset.zig"),
+    @import("time/temporal/ChronoField.zig"), // host-enum (ADR-0161 registry)
+    @import("time/format/DateTimeFormatter.zig"),
+    @import("time/format/DateTimeFormatterBuilder.zig"),
     // ZonedDateTime backing impl under runtime/time/ is unbuilt
     // (method_table empty) — D-105.
     @import("time/ZonedDateTime.zig"),

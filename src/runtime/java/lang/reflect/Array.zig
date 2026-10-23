@@ -30,7 +30,7 @@ fn newInstance(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
             .expected = "a non-negative length",
             .actual = "a negative length",
         });
-    return java_array.make(rt, @intCast(len), .nil_val);
+    return java_array.make(rt, .object, @intCast(len));
 }
 
 /// `(java.lang.reflect.Array/getLength arr)` — the array's slot count.

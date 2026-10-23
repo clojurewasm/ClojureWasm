@@ -400,7 +400,7 @@ tiers:
           impl: runtime/time/instant.zig
         # D-425: ctor (java.util.Date. [ms]) + .getTime landed; setTime/toString/
         # toInstant are a follow-up (NOT listed — anti-overclaim, D-177).
-        methods: [after, before, getTime, toInstant]
+        methods: [after, before, from, getTime, toInstant]
         clojure_peer_vars: [clojure.core/inst-ms]
       - fqn: java.util.Random
         cljw_ns: cljw.java.util.Random
@@ -474,11 +474,11 @@ tiers:
           # Value-wrap layer (F-009 wrap slot, G3-exempt): wraps instant.zig's
           # epoch data into a .typed_instance Value.
           wrap: runtime/time/instant_value.zig
-        methods: [getEpochSecond, getNano, isAfter, isBefore, minus, minusMillis, minusNanos, minusSeconds, now, ofEpochMilli, ofEpochSecond, parse, plus, plusMillis, plusNanos, plusSeconds, toEpochMilli, until]
+        methods: [from, getEpochSecond, getNano, isAfter, isBefore, minus, minusMillis, minusNanos, minusSeconds, now, ofEpochMilli, ofEpochSecond, parse, plus, plusMillis, plusNanos, plusSeconds, toEpochMilli, until]
         static_fields: ["EPOCH"]
         opaque_members: [MIN, MAX]
         clojure_peer_vars: []
-        status: "WIRED (D-462) - statics now/ofEpochSecond([secs] | [secs nanos])/ofEpochMilli/parse mint a `.typed_instance` Instant VALUE (instant_value.zig, per-Runtime descriptor); instance methods getEpochSecond/getNano/toEpochMilli + value `=` + `(str i)` = ISO_INSTANT (variable fraction + Z) all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/e2e/phase15_java_time_instant.sh. Arithmetic methods (plusSeconds/minus*/isBefore/…) are NOT implemented (would be a follow-up unit, not listed above per anti-D-177). Cross-type ops plus/minus (Duration arg, with sub-second carry) ARE implemented + reachable (pinned by test/e2e/phase15_java_time_duration_between.sh). Sibling java.time reservations (ZonedDateTime) remain UNWIRED."
+        status: "WIRED (D-462) - statics now/ofEpochSecond([secs] | [secs nanos])/ofEpochMilli/parse mint a `.typed_instance` Instant VALUE (instant_value.zig, per-Runtime descriptor); instance methods getEpochSecond/getNano/toEpochMilli + value `=` + `(str i)` = ISO_INSTANT (variable fraction + Z) all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/clj/suites/java_time_values_test.clj. Arithmetic methods (plusSeconds/minus*/isBefore/…) are NOT implemented (would be a follow-up unit, not listed above per anti-D-177). Cross-type ops plus/minus (Duration arg, with sub-second carry) ARE implemented + reachable (pinned by test/clj/suites/java_time_values_test.clj). Sibling java.time reservations (ZonedDateTime) remain UNWIRED."
       - fqn: java.time.LocalDate
         cljw_ns: cljw.java.time.LocalDate
         keyword: local_date
@@ -489,10 +489,10 @@ tiers:
           # Value-wrap layer (F-009 wrap slot, G3-exempt): mints the
           # .typed_instance LocalDate Value (1 field [epoch_day]).
           wrap: runtime/time/local_date_value.zig
-        methods: [atStartOfDay, atTime, getDayOfMonth, getDayOfWeek, getDayOfYear, getMonth, getMonthValue, getYear, isAfter, isBefore, isEqual, isLeapYear, lengthOfMonth, minusDays, minusMonths, minusWeeks, minusYears, now, of, ofEpochDay, parse, plusDays, plusMonths, plusWeeks, plusYears, until]
+        methods: [atStartOfDay, atTime, format, from, getDayOfMonth, getDayOfWeek, getDayOfYear, getMonth, getMonthValue, getYear, isAfter, isBefore, isEqual, isLeapYear, lengthOfMonth, minusDays, minusMonths, minusWeeks, minusYears, now, of, ofEpochDay, parse, plusDays, plusMonths, plusWeeks, plusYears, until]
         static_fields: ["EPOCH", "MAX", "MIN"]
         clojure_peer_vars: []
-        status: "WIRED (D-462) - statics of(y m d)/now/parse mint a `.typed_instance` LocalDate VALUE (local_date_value.zig, per-Runtime descriptor) carrying [epoch_day] (signed days since 1970-01-01 via the Hinnant civil algorithm reused from instant.zig); instance methods getYear/getMonthValue/getDayOfMonth/plusDays + value `=` + `(str d)` = ISO `yyyy-MM-dd` (4-digit zero-padded year, e.g. LocalDate.of(1 1 1) → \"0001-01-01\") all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/e2e/phase15_java_time_local_date.sh. `now` is UTC-based (cljw has no zone DB). getDayOfWeek/getMonth return the DayOfWeek/Month enum VALUE types (`(str …)` = enum NAME, getValue = ISO ordinal); getDayOfYear returns an int 1..366 — pinned by test/e2e/phase15_java_time_dow_month.sh."
+        status: "WIRED (D-462) - statics of(y m d)/now/parse mint a `.typed_instance` LocalDate VALUE (local_date_value.zig, per-Runtime descriptor) carrying [epoch_day] (signed days since 1970-01-01 via the Hinnant civil algorithm reused from instant.zig); instance methods getYear/getMonthValue/getDayOfMonth/plusDays + value `=` + `(str d)` = ISO `yyyy-MM-dd` (4-digit zero-padded year, e.g. LocalDate.of(1 1 1) → \"0001-01-01\") all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/clj/suites/java_time_values_test.clj. `now` is UTC-based (cljw has no zone DB). getDayOfWeek/getMonth return the DayOfWeek/Month enum VALUE types (`(str …)` = enum NAME, getValue = ISO ordinal); getDayOfYear returns an int 1..366 — pinned by test/clj/suites/java_time_values_test.clj."
       - fqn: java.time.LocalTime
         cljw_ns: cljw.java.time.LocalTime
         keyword: local_time
@@ -503,10 +503,10 @@ tiers:
           # Value-wrap layer (F-009 wrap slot, G3-exempt): mints the
           # .typed_instance LocalTime Value (1 field [nano_of_day]).
           wrap: runtime/time/local_time_value.zig
-        methods: [getHour, getMinute, getNano, getSecond, isAfter, isBefore, minusHours, minusMinutes, minusNanos, minusSeconds, now, of, ofNanoOfDay, ofSecondOfDay, parse, plusHours, plusMinutes, plusNanos, plusSeconds]
+        methods: [format, from, getHour, getMinute, getNano, getSecond, isAfter, isBefore, minusHours, minusMinutes, minusNanos, minusSeconds, now, of, ofNanoOfDay, ofSecondOfDay, parse, plusHours, plusMinutes, plusNanos, plusSeconds]
         static_fields: ["MAX", "MIDNIGHT", "MIN", "NOON"]
         clojure_peer_vars: []
-        status: "WIRED (D-462) - statics of(h mi [s [n]] arity 2-4)/now/parse mint a `.typed_instance` LocalTime VALUE (local_time_value.zig, per-Runtime descriptor) carrying [nano_of_day] (i64 in [0, 86_400_000_000_000)); instance methods getHour/getMinute/getSecond/getNano + value `=` + `(str t)` = ISO local time (conditional :ss omitted when sec=nano=0, variable fraction, e.g. \"12:30\" / \"12:30:45.500\") all reachable. The date/time format+parse halves are shared with LocalDate/LocalDateTime via instant.zig (F-009 neutral home). pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/e2e/phase15_java_time_local_date.sh. `now` is UTC-based (cljw has no zone DB)."
+        status: "WIRED (D-462) - statics of(h mi [s [n]] arity 2-4)/now/parse mint a `.typed_instance` LocalTime VALUE (local_time_value.zig, per-Runtime descriptor) carrying [nano_of_day] (i64 in [0, 86_400_000_000_000)); instance methods getHour/getMinute/getSecond/getNano + value `=` + `(str t)` = ISO local time (conditional :ss omitted when sec=nano=0, variable fraction, e.g. \"12:30\" / \"12:30:45.500\") all reachable. The date/time format+parse halves are shared with LocalDate/LocalDateTime via instant.zig (F-009 neutral home). pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/clj/suites/java_time_values_test.clj. `now` is UTC-based (cljw has no zone DB)."
       - fqn: java.time.LocalDateTime
         cljw_ns: cljw.java.time.LocalDateTime
         keyword: local_date_time
@@ -517,10 +517,10 @@ tiers:
           # Value-wrap layer (F-009 wrap slot, G3-exempt): mints the
           # .typed_instance LocalDateTime Value + the ISO-local formatter.
           wrap: runtime/time/local_date_time_value.zig
-        methods: [getDayOfMonth, getDayOfWeek, getDayOfYear, getHour, getMinute, getMonth, getMonthValue, getNano, getSecond, getYear, isAfter, isBefore, isEqual, minus, minusDays, minusHours, minusMinutes, minusMonths, minusNanos, minusSeconds, minusWeeks, minusYears, now, of, parse, plus, plusDays, plusHours, plusMinutes, plusMonths, plusNanos, plusSeconds, plusWeeks, plusYears, toLocalDate, toLocalTime, until]
+        methods: [format, from, getDayOfMonth, getDayOfWeek, getDayOfYear, getHour, getMinute, getMonth, getMonthValue, getNano, getSecond, getYear, isAfter, isBefore, isEqual, minus, minusDays, minusHours, minusMinutes, minusMonths, minusNanos, minusSeconds, minusWeeks, minusYears, now, of, parse, plus, plusDays, plusHours, plusMinutes, plusMonths, plusNanos, plusSeconds, plusWeeks, plusYears, toLocalDate, toLocalTime, until]
         static_fields: ["MAX", "MIN"]
         clojure_peer_vars: []
-        status: "WIRED (D-462) - statics of(y m d h mi [s [n]] arity 5-7)/now/parse mint a `.typed_instance` LocalDateTime VALUE (local_date_time_value.zig, per-Runtime descriptor) carrying [epoch_day, nano_of_day] (epoch_day via the Hinnant civil algorithm reused from instant.zig); instance methods getYear/getMonthValue/getDayOfMonth/getHour/getMinute/getSecond/getNano + toLocalDate/toLocalTime (return the sibling LocalDate/LocalTime VALUE types) + value `=` + `(str d)` = ISO local date-time (conditional :ss omitted when sec=nano=0, variable fraction; the date/time halves are shared with LocalDate/LocalTime via instant.zig) all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/e2e/phase15_java_time_local_date_time.sh + toLocalDate/toLocalTime by test/e2e/phase15_java_time_local_date.sh. Arithmetic plusDays/minusDays/plusWeeks/minusWeeks (epoch_day) + plusHours/minusHours/plusMinutes/minusMinutes/plusSeconds/minusSeconds/plusNanos/minusNanos (nano_of_day with midnight carry/borrow into epoch_day) are implemented + reachable (pinned by test/e2e/phase15_java_time_ldt_arith.sh). Cross-type ops plus/minus (Duration arg, with midnight carry/borrow into epoch_day) ARE implemented + reachable (pinned by test/e2e/phase15_java_time_duration_between.sh). Calendar arithmetic plusMonths/minusMonths/plusYears/minusYears (civil month/year shift on the DATE part with JVM day-clamping, time-of-day kept; shares instant.zig's addMonthsToEpochDay/addYearsToEpochDay with LocalDate) ARE implemented + reachable (pinned by test/e2e/phase15_java_time_ldt_calendar.sh). `now` is UTC-based (cljw has no zone DB). getDayOfWeek/getMonth return the DayOfWeek/Month enum VALUE types (`(str …)` = enum NAME, getValue = ISO ordinal); getDayOfYear returns an int 1..366 — pinned by test/e2e/phase15_java_time_dow_month.sh."
+        status: "WIRED (D-462) - statics of(y m d h mi [s [n]] arity 5-7)/now/parse mint a `.typed_instance` LocalDateTime VALUE (local_date_time_value.zig, per-Runtime descriptor) carrying [epoch_day, nano_of_day] (epoch_day via the Hinnant civil algorithm reused from instant.zig); instance methods getYear/getMonthValue/getDayOfMonth/getHour/getMinute/getSecond/getNano + toLocalDate/toLocalTime (return the sibling LocalDate/LocalTime VALUE types) + value `=` + `(str d)` = ISO local date-time (conditional :ss omitted when sec=nano=0, variable fraction; the date/time halves are shared with LocalDate/LocalTime via instant.zig) all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/clj/suites/java_time_values_test.clj + toLocalDate/toLocalTime by test/clj/suites/java_time_values_test.clj. Arithmetic plusDays/minusDays/plusWeeks/minusWeeks (epoch_day) + plusHours/minusHours/plusMinutes/minusMinutes/plusSeconds/minusSeconds/plusNanos/minusNanos (nano_of_day with midnight carry/borrow into epoch_day) are implemented + reachable (pinned by test/clj/suites/java_time_values_test.clj). Cross-type ops plus/minus (Duration arg, with midnight carry/borrow into epoch_day) ARE implemented + reachable (pinned by test/clj/suites/java_time_values_test.clj). Calendar arithmetic plusMonths/minusMonths/plusYears/minusYears (civil month/year shift on the DATE part with JVM day-clamping, time-of-day kept; shares instant.zig's addMonthsToEpochDay/addYearsToEpochDay with LocalDate) ARE implemented + reachable (pinned by test/clj/suites/java_time_values_test.clj). `now` is UTC-based (cljw has no zone DB). getDayOfWeek/getMonth return the DayOfWeek/Month enum VALUE types (`(str …)` = enum NAME, getValue = ISO ordinal); getDayOfYear returns an int 1..366 — pinned by test/clj/suites/java_time_values_test.clj."
       - fqn: java.time.DayOfWeek
         cljw_ns: cljw.java.time.DayOfWeek
         keyword: host_enum
@@ -532,7 +532,7 @@ tiers:
         methods: [getValue, name, of, valueOf, values]
         static_fields: ["FRIDAY", "MONDAY", "SATURDAY", "SUNDAY", "THURSDAY", "TUESDAY", "WEDNESDAY"]
         clojure_peer_vars: []
-        status: "WIRED (ADR-0161, folds D-462) — host-enum singleton (.host_instance, ordinal in state[0]). Static field DayOfWeek/MONDAY..SUNDAY resolves; LocalDate/LocalDateTime.getDayOfWeek returns the SAME interned singleton (identical? parity). (str)/.name = enum NAME, getValue = 1-7 (ISO Mon=1), value `=` by identity, compare by ordinal (sign, AD-043). Pinned by test/e2e/phase15_java_time_dow_month.sh."
+        status: "WIRED (ADR-0161, folds D-462) — host-enum singleton (.host_instance, ordinal in state[0]). Static field DayOfWeek/MONDAY..SUNDAY resolves; LocalDate/LocalDateTime.getDayOfWeek returns the SAME interned singleton (identical? parity). (str)/.name = enum NAME, getValue = 1-7 (ISO Mon=1), value `=` by identity, compare by ordinal (sign, AD-043). Pinned by test/clj/suites/java_time_values_test.clj."
       - fqn: java.time.Month
         cljw_ns: cljw.java.time.Month
         keyword: host_enum
@@ -544,7 +544,7 @@ tiers:
         methods: [getValue, name, of, valueOf, values]
         static_fields: ["APRIL", "AUGUST", "DECEMBER", "FEBRUARY", "JANUARY", "JULY", "JUNE", "MARCH", "MAY", "NOVEMBER", "OCTOBER", "SEPTEMBER"]
         clojure_peer_vars: []
-        status: "WIRED (ADR-0161, folds D-462) — host-enum singleton (.host_instance, ordinal in state[0]). Static field Month/JANUARY..DECEMBER resolves; LocalDate/LocalDateTime.getMonth returns the SAME interned singleton (identical? parity). (str)/.name = enum NAME, getValue = 1-12, value `=` by identity, compare by ordinal (sign, AD-043). Pinned by test/e2e/phase15_java_time_dow_month.sh."
+        status: "WIRED (ADR-0161, folds D-462) — host-enum singleton (.host_instance, ordinal in state[0]). Static field Month/JANUARY..DECEMBER resolves; LocalDate/LocalDateTime.getMonth returns the SAME interned singleton (identical? parity). (str)/.name = enum NAME, getValue = 1-12, value `=` by identity, compare by ordinal (sign, AD-043). Pinned by test/clj/suites/java_time_values_test.clj."
       - fqn: java.time.Duration
         cljw_ns: cljw.java.time.Duration
         keyword: duration
@@ -558,7 +558,7 @@ tiers:
         methods: [abs, between, dividedBy, getNano, getSeconds, isNegative, isZero, minus, minusDays, minusHours, minusMillis, minusMinutes, minusNanos, minusSeconds, multipliedBy, negated, of, ofDays, ofHours, ofMillis, ofMinutes, ofNanos, ofSeconds, parse, plus, plusDays, plusHours, plusMillis, plusMinutes, plusNanos, plusSeconds, toMillis, toMinutes]
         static_fields: ["ZERO"]
         clojure_peer_vars: []
-        status: "WIRED (D-462) - statics ofSeconds([secs] | [secs nanoAdj])/ofMillis/ofNanos/ofMinutes/ofHours/ofDays mint a NORMALIZED (nanos∈[0,1e9), seconds carries sign) `.typed_instance` Duration VALUE (duration_value.zig, per-Runtime descriptor); instance methods getSeconds/getNano/toMillis/toMinutes + value `=` + `(str d)` = ISO-8601 `PT…` (the exact JDK Duration.toString) all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/e2e/phase15_java_time_duration.sh. The static factory `between(a b)` mints the elapsed Duration `b - a`, dispatching on the temporal type of BOTH args (Instant/LocalDateTime/LocalTime; mismatched/non-temporal pair → type_arg_invalid) — pinned by test/e2e/phase15_java_time_duration_between.sh. Remaining arithmetic methods (toNanos/…) are NOT implemented (would be a follow-up unit, not listed above per anti-D-177)."
+        status: "WIRED (D-462) - statics ofSeconds([secs] | [secs nanoAdj])/ofMillis/ofNanos/ofMinutes/ofHours/ofDays mint a NORMALIZED (nanos∈[0,1e9), seconds carries sign) `.typed_instance` Duration VALUE (duration_value.zig, per-Runtime descriptor); instance methods getSeconds/getNano/toMillis/toMinutes + value `=` + `(str d)` = ISO-8601 `PT…` (the exact JDK Duration.toString) all reachable. pr-str divergence = AD-042 (no JVM `#object[…]` identity form). Pinned by test/clj/suites/java_time_values_test.clj. The static factory `between(a b)` mints the elapsed Duration `b - a`, dispatching on the temporal type of BOTH args (Instant/LocalDateTime/LocalTime; mismatched/non-temporal pair → type_arg_invalid) — pinned by test/clj/suites/java_time_values_test.clj. Remaining arithmetic methods (toNanos/…) are NOT implemented (would be a follow-up unit, not listed above per anti-D-177)."
       - fqn: java.time.ZonedDateTime
         cljw_ns: cljw.java.time.ZonedDateTime
         keyword: zoned_date_time
@@ -569,7 +569,30 @@ tiers:
         methods: []
         clojure_peer_vars: []
         status: "reservation - DEFERRED (D-462): blocked on a timezone database. ZonedDateTime's headline use is named zones (ZoneId/of \"Asia/Tokyo\" -> offset+DST resolution), which needs a bundled IANA tzdata cljw does not ship (binary-size + update-cadence scope decision, user/ADR-owned, not autonomous). A fixed-offset-only subset (ZoneOffset) would just be OffsetDateTime and miss the point. Instant/LocalDateTime/LocalDate/LocalTime/Duration ARE wired (D-462); ZonedDateTime waits for a tz-DB decision."
-      - {fqn: "java.time.ZoneId", native_ns: "cljw.host.java.time.ZoneId", phase: 6}
+      - fqn: java.time.ZoneId
+        cljw_ns: cljw.java.time.ZoneId
+        keyword: zone_offset
+        tier: A
+        phase: 15
+        files:
+          surface: runtime/java/time/ZoneId.zig
+          impl: runtime/time/zone_offset.zig
+        methods: [of, systemDefault]
+        clojure_peer_vars: []
+        status: "WIRED (fixed offsets only) - ZoneId/of resolves an offset id (Z, +hh[:mm[:ss]]) to a ZoneOffset and UTC / GMT / UT (optionally +offset) to an offset-backed ZoneRegion; a region id such as Europe/Paris raises zone_id_unknown (DateTimeException) because cljw ships no tz database (the ZonedDateTime row records that decision). systemDefault is the UTC region, matching the UTC-based now factories. Instances list java.time.ZoneId as host supertype. Pinned by test/clj/suites/java_time_format_test.clj."
+        opaque_members: [getAvailableZoneIds, getRules, ofOffset]
+      - fqn: java.time.ZoneOffset
+        cljw_ns: cljw.java.time.ZoneOffset
+        keyword: zone_offset
+        tier: A
+        phase: 15
+        files:
+          surface: runtime/java/time/ZoneOffset.zig
+          impl: runtime/time/zone_offset.zig
+        methods: [getId, getTotalSeconds, normalized, of, ofHours, ofHoursMinutes, ofHoursMinutesSeconds, ofTotalSeconds]
+        static_fields: ["MAX", "MIN", "UTC"]
+        clojure_peer_vars: []
+        status: "WIRED - a .typed_instance [total-seconds, prefix] value; = and hash by value; (str z) = the id (Z, +02:00). Factories validate with the JVM DateTimeException texts (hours -18..18, sign agreement, the +-18:00 bound). Pinned by test/clj/suites/java_time_format_test.clj."
       # java.net
       - {fqn: "java.net.URL", native_ns: "cljw.host.java.net.URL", phase: 14}
       # java.net.URI / URLEncoder — minimal host surfaces unblocking hiccup
@@ -666,6 +689,45 @@ tiers:
         methods: [name, valueOf, values]
         static_fields: ["CENTURIES", "DAYS", "DECADES", "ERAS", "FOREVER", "HALF_DAYS", "HOURS", "MICROS", "MILLENNIA", "MILLIS", "MINUTES", "MONTHS", "NANOS", "SECONDS", "WEEKS", "YEARS"]
         clojure_peer_vars: []
+      - fqn: java.time.temporal.ChronoField
+        cljw_ns: cljw.java.time.temporal.ChronoField
+        keyword: host_enum
+        tier: A
+        phase: 15
+        files:
+          surface: runtime/java/time/temporal/ChronoField.zig
+          impl: runtime/host_enum.zig
+        methods: [name, valueOf, values]
+        static_fields: ["ALIGNED_DAY_OF_WEEK_IN_MONTH", "ALIGNED_DAY_OF_WEEK_IN_YEAR", "ALIGNED_WEEK_OF_MONTH", "ALIGNED_WEEK_OF_YEAR", "AMPM_OF_DAY", "CLOCK_HOUR_OF_AMPM", "CLOCK_HOUR_OF_DAY", "DAY_OF_MONTH", "DAY_OF_WEEK", "DAY_OF_YEAR", "EPOCH_DAY", "ERA", "HOUR_OF_AMPM", "HOUR_OF_DAY", "INSTANT_SECONDS", "MICRO_OF_DAY", "MICRO_OF_SECOND", "MILLI_OF_DAY", "MILLI_OF_SECOND", "MINUTE_OF_DAY", "MINUTE_OF_HOUR", "MONTH_OF_YEAR", "NANO_OF_DAY", "NANO_OF_SECOND", "OFFSET_SECONDS", "PROLEPTIC_MONTH", "SECOND_OF_DAY", "SECOND_OF_MINUTE", "YEAR", "YEAR_OF_ERA"]
+        clojure_peer_vars: []
+        status: "WIRED - the 30 enum constants as host-enum singletons (ADR-0161 registry); (str f) = display name (HourOfDay), (.name f) = enum name. The field argument of DateTimeFormatterBuilder and Parsed.getLong / isSupported; ranges and semantics live in runtime/time/date_time_format.zig::Field. Pinned by test/clj/suites/java_time_format_test.clj."
+      - fqn: java.time.format.DateTimeFormatter
+        cljw_ns: cljw.java.time.format.DateTimeFormatter
+        keyword: date_time_format
+        tier: A
+        phase: 15
+        files:
+          surface: runtime/java/time/format/DateTimeFormatter.zig
+          impl: runtime/time/date_time_format.zig
+          wrap: runtime/time/date_time_formatter_value.zig
+        methods: [format, getZone, ofPattern, parse, withLocale, withZone]
+        static_fields: ["BASIC_ISO_DATE", "ISO_DATE", "ISO_DATE_TIME", "ISO_INSTANT", "ISO_LOCAL_DATE", "ISO_LOCAL_DATE_TIME", "ISO_LOCAL_TIME", "ISO_OFFSET_DATE", "ISO_OFFSET_DATE_TIME", "ISO_OFFSET_TIME", "ISO_ORDINAL_DATE", "ISO_TIME"]
+        clojure_peer_vars: []
+        status: "WIRED - the JDK 25 printer-parser model one to one: pattern letters G u y M L d D F E a h K k H m s S n A N V X x Z O, quoted literals, [optional] sections, adjacent value parsing, the SMART (ofPattern / builder) and STRICT (ISO constants) resolvers, toString in the JVM form, English text. format reads LocalDate / LocalTime / LocalDateTime / Instant / Parsed (withZone re-projects an Instant); parse returns a Parsed TemporalAccessor. Refused loudly (not_implemented): the week-based, quarter, zone-name, day-period, Julian and padding letters (Y w W e c Q q z v B g p); region zones need the absent tz database. Drives malli.transform string<->date. Pinned by test/clj/suites/java_time_format_test.clj."
+        opaque_members: [ISO_WEEK_DATE, ISO_ZONED_DATE_TIME, RFC_1123_DATE_TIME, getLocale, getResolverStyle, ofLocalizedDate, ofLocalizedDateTime, ofLocalizedTime, withResolverStyle]
+      - fqn: java.time.format.DateTimeFormatterBuilder
+        cljw_ns: cljw.java.time.format.DateTimeFormatterBuilder
+        keyword: date_time_format
+        tier: A
+        phase: 15
+        files:
+          surface: runtime/java/time/format/DateTimeFormatterBuilder.zig
+          impl: runtime/time/date_time_format.zig
+          wrap: runtime/time/date_time_formatter_value.zig
+        methods: [append, appendFraction, appendInstant, appendLiteral, appendOffset, appendOffsetId, appendOptional, appendPattern, appendText, appendValue, appendZoneId, optionalEnd, optionalStart, parseCaseInsensitive, parseCaseSensitive, parseDefaulting, parseLenient, parseStrict, toFormatter]
+        clojure_peer_vars: []
+        status: "WIRED - a mutable host builder; each call mutates it and returns it, toFormatter freezes a SMART formatter. appendValue takes (field) or (field width); the SignStyle / TextStyle overloads are absent because those enums are not surfaced. Pinned by test/clj/suites/java_time_format_test.clj."
+        opaque_members: [appendChronologyId, appendLocalized, appendLocalizedOffset, appendValueReduced, appendZoneOrOffsetId, appendZoneRegionId, padNext]
       # java.security
       - fqn: java.security.MessageDigest
         cljw_ns: cljw.java.security.MessageDigest
@@ -743,7 +805,7 @@ tiers:
       # directory (verified)" claim is stale and superseded. Tier letter stays
       # B (a status-truth fix, not a tier change — tier_classification.md).
       clojure.math: {status: "implemented (clojure/math.clj; loaded by bootstrap.zig; corpus clojure_math.txt + math_doc_claims.txt)"}
-      clojure.spec.alpha: {status: "implemented (clojure/spec/alpha.clj, 2019-line port; loaded by bootstrap.zig; e2e phase15_spec.sh + corpus spec.txt; D-475). Generative subset (s/gen, s/exercise) throws at call time — clojure.test.check not bundled"}
+      clojure.spec.alpha: {status: "implemented (clojure/spec/alpha.clj, 2019-line port; loaded by bootstrap.zig; e2e test/clj/suites/test_reporters_test.clj + corpus spec.txt; D-475). Generative subset (s/gen, s/exercise) throws at call time — clojure.test.check not bundled"}
       clojure.spec.gen.alpha: {status: "implemented (clojure/spec/gen/alpha.clj; loaded by bootstrap.zig). Combinators/prims dynaload clojure.test.check.* at call time; unbundled so they throw when forced"}
   C:
     description: "Thin reflective implementation via TypeDescriptor walk."

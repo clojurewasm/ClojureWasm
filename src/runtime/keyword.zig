@@ -81,6 +81,13 @@ pub const KeywordInterner = struct {
     /// already hold the lock or are running in a known-single-threaded
     /// path (tests, fixed-input bootstrap).
     pub fn internUnlocked(self: *KeywordInterner, ns: ?[]const u8, name_: []const u8) !Value {
+        // PERF: probe with a stack-built key first; the hit path (re-interning
+        // an existing keyword, e.g. `(keyword (str "k" i))` in a loop) then
+        // allocates nothing. [refs: O-076]
+        var kbuf: [128]u8 = undefined;
+        if (stackKey(&kbuf, ns, name_)) |probe| {
+            if (self.table.get(probe)) |existing| return Value.encodeHeapPtr(.keyword, existing);
+        }
         const key = try formatKey(self.alloc, ns, name_);
 
         if (self.table.get(key)) |existing| {
@@ -103,6 +110,10 @@ pub const KeywordInterner = struct {
     /// Low-level lookup — does not lock. See `internUnlocked` for
     /// when to prefer this over the rt-aware top-level `find`.
     pub fn findUnlocked(self: *KeywordInterner, ns: ?[]const u8, name_: []const u8) ?Value {
+        var kbuf: [128]u8 = undefined;
+        if (stackKey(&kbuf, ns, name_)) |probe| {
+            return if (self.table.get(probe)) |kw| Value.encodeHeapPtr(.keyword, kw) else null;
+        }
         const key = formatKey(self.alloc, ns, name_) catch return null;
         defer self.alloc.free(key);
 
@@ -135,6 +146,20 @@ pub fn asKeyword(val: Value) *const Keyword {
 }
 
 // --- internal helpers ---
+
+/// `formatKey` into a caller buffer; null when the key does not fit.
+fn stackKey(buf: []u8, ns: ?[]const u8, name_: []const u8) ?[]const u8 {
+    if (ns) |n| {
+        const len = n.len + 1 + name_.len;
+        if (len > buf.len) return null;
+        @memcpy(buf[0..n.len], n);
+        buf[n.len] = '/';
+        @memcpy(buf[n.len + 1 ..][0..name_.len], name_);
+        return buf[0..len];
+    }
+    // No ns: the key IS the name; no copy needed.
+    return name_;
+}
 
 fn formatKey(alloc: std.mem.Allocator, ns: ?[]const u8, name_: []const u8) ![]u8 {
     if (ns) |n| {

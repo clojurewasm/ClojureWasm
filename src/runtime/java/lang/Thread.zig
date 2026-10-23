@@ -189,7 +189,7 @@ fn getStackTraceFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLoca
     _ = env;
     try error_catalog.checkArity(".getStackTrace", args, 1, loc);
     try expectThread(args, ".getStackTrace", loc);
-    return java_array.make(rt, 0, Value.nil_val);
+    return java_array.make(rt, .object, 0);
 }
 
 /// `(Thread/yield)` — a scheduling hint (JVM-exact semantics: a hint).

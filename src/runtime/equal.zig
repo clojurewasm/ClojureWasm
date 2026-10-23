@@ -58,6 +58,7 @@ const local_date_time_value_mod = @import("time/local_date_time_value.zig");
 const local_date_value_mod = @import("time/local_date_value.zig");
 const local_time_value_mod = @import("time/local_time_value.zig");
 const instant_mod = @import("time/instant.zig");
+const zone_offset_mod = @import("time/zone_offset.zig");
 const dispatch_mod = @import("dispatch.zig");
 const root_set = @import("gc/root_set.zig");
 const ClojureWasmError = @import("error/info.zig").ClojureWasmError;
@@ -193,7 +194,7 @@ const Cursor = union(enum) {
             },
             .aseq => |*s| {
                 if (s.i >= s.n) return null;
-                const e = array_seq.nth(s.v, s.i);
+                const e = try array_seq.nth(rt, s.v, s.i);
                 s.i += 1;
                 return e;
             },
@@ -740,6 +741,7 @@ const temporal_kinds = [_]TemporalKind{
     .{ .is = local_date_time_value_mod.isLocalDateTime, .eq = temporalEq.localDateTime, .hash = temporalHash.localDateTime },
     .{ .is = local_date_value_mod.isLocalDate, .eq = temporalEq.localDate, .hash = temporalHash.localDate },
     .{ .is = local_time_value_mod.isLocalTime, .eq = temporalEq.localTime, .hash = temporalHash.localTime },
+    .{ .is = zone_offset_mod.isZone, .eq = temporalEq.zone, .hash = temporalHash.zone },
 };
 
 /// The `temporal_kinds` row for `v`, or null. Only a `.native` (host)
@@ -783,6 +785,10 @@ const temporalEq = struct {
     fn localTime(a: Value, b: Value) bool {
         return local_time_value_mod.nanoOfDayOf(a) == local_time_value_mod.nanoOfDayOf(b);
     }
+    // ZoneOffset / ZoneRegion: equal by id, so the class (prefix) must match too.
+    fn zone(a: Value, b: Value) bool {
+        return std.meta.eql(zone_offset_mod.zoneOf(a), zone_offset_mod.zoneOf(b));
+    }
 };
 
 /// The JDK hashCode formulas, one per type (java.util.Date, java.sql.Timestamp,
@@ -824,6 +830,15 @@ const temporalHash = struct {
     // LocalTime: `Long.hashCode(toNanoOfDay())`.
     fn localTime(v: Value) u32 {
         return long(local_time_value_mod.nanoOfDayOf(v));
+    }
+    // ZoneOffset: `totalSeconds`; ZoneRegion: `String.hashCode` of its id.
+    fn zone(v: Value) u32 {
+        const z = zone_offset_mod.zoneOf(v);
+        if (!z.isRegion()) return @bitCast(z.seconds);
+        var buf: [24]u8 = undefined;
+        var h: u32 = 0;
+        for (zone_offset_mod.formatId(&buf, z)) |c| h = h *% 31 +% c;
+        return h;
     }
     // LocalDateTime: `date.hashCode() ^ time.hashCode()`.
     fn localDateTime(v: Value) u32 {
@@ -1088,7 +1103,12 @@ const SeqKeyCursor = struct {
             },
             .aseq => |*s| {
                 if (s.i >= s.n) return null;
-                const e = array_seq.nth(s.v, s.i);
+                const e = array_seq.peekNth(s.v, s.i) orelse {
+                    // A primitive long that needs a heap box: not realizable
+                    // rt-free, so the key falls back to identity.
+                    self.truncated = true;
+                    return null;
+                };
                 s.i += 1;
                 return e;
             },

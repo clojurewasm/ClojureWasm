@@ -56,6 +56,19 @@ want "u32 [4294967295] i32 [-1]"
 want "unaligned [7.25]"
 echo "PASS wasm-memory-dtypes -> signedness + unaligned access"
 
+# (5b) Primitive arrays cross in bulk (ADR-0204), every array kind through
+#      its dtype, unsigned widening, and a cross-kind element-wise convert.
+want "arr-wrote 4"
+want "arr-newsum 20.0"
+want "arr-f64 [2.0 4.0 6.0 8.0] true"
+for dt in i8 i16 i32 i64 f32 f64; do want "arr-rt :$dt true"; done
+want "arr-unsigned [65535] [4294967295]"
+want "arr-convert [5.0 6.0]"
+want "arr-object wasm/mem-write!: the data argument must be a vector of numbers"
+want "arr-range wasm/mem-write!: element 1 is outside this element type's range"
+want "arr-oob wasm/mem-read-array: 1 element(s) at byte offset 65530"
+echo "PASS wasm-memory-arrays -> primitive arrays cross as one memcpy per kind"
+
 # (6) Every failure is CATCHABLE and names the fn the user wrote. A NOT-CAUGHT
 #     means the error escaped (catch …); an uncatchable one would have exited
 #     70 above and never reached here.

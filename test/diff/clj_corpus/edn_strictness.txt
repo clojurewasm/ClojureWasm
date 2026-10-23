@@ -1,0 +1,118 @@
+(clojure.edn/read-string "`a")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "~a")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "~@a")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "@a")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#'a")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#(inc %)")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#\"re\"")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#=(+ 1 2)")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "::kw")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "::a/b")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#::{:a 1}")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#:a{:b 1}")
+;;=> #:a{:b 1}
+(clojure.edn/read-string "#:a{:_/b 1}")
+;;=> {:b 1}
+(clojure.edn/read-string "#?(:clj 1)")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#?@(:clj [1])")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#foo 1")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#foo/bar 1")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "'a")
+;;=> 'a
+(clojure.edn/read-string "'(1)")
+;;=> '
+(clojure.edn/read-string "[a'b]")
+;;=> [a'b]
+(clojure.edn/read-string "#user.R{:a 1}")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#!x\n3")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#_ 1 2")
+;;=> 2
+(clojure.edn/read-string "[#_ ^:m x 1]")
+;;=> [1]
+(clojure.edn/read-string "^:m [1]")
+;;=> [1]
+(meta (clojure.edn/read-string "^:m [1]"))
+;;=> {:m true}
+(clojure.edn/read-string "#_ #foo 1")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#_ `a 3")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#_ #(x) 3")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "#_ ::k 3")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "[1 #_ #inst \"bad\" 2]")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "[#_ {:a 1 :a 2} 1]")
+;;=> <clj-error> IllegalArgumentException
+(clojure.edn/read-string "a@b")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "a~b")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "a`b")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "[a@b]")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "[:k@b]")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string "x#")
+;;=> x#
+(clojure.edn/read-string "%1")
+;;=> %1
+(clojure.edn/read-string "#_#_ 1 2 3")
+;;=> 3
+(clojure.edn/read-string "#{#_ 1}")
+;;=> #{}
+(clojure.edn/read-string nil)
+;;=> nil
+(clojure.edn/read-string {} nil)
+;;=> nil
+(clojure.edn/read-string {:readers {'foo (fn [x] [:foo x])}} "#foo 1")
+;;=> [:foo 1]
+(clojure.edn/read-string {:default (fn [t v] [t v])} "#foo 1")
+;;=> [foo 1]
+(clojure.edn/read-string {:default (fn [t v] [t v])} "#user.R{:a 1}")
+;;=> [user.R {:a 1}]
+(clojure.edn/read-string {:readers {'inst (fn [x] [:i x])}} "#inst \"x\"")
+;;=> [:i "x"]
+(clojure.edn/read-string {:eof :E} "")
+;;=> :E
+(clojure.edn/read-string {} ";x\n")
+;;=> <clj-error> RuntimeException
+(clojure.edn/read-string {:readers {'my/boom (fn [_] (throw (ex-info "boom" {})))}} "[#_ #my/boom 0 42]")
+;;=> <clj-error> ExceptionInfo
+(clojure.edn/read-string {:default (fn [t v] (throw (ex-info "dflt" {})))} "[#_ #foo 1 2]")
+;;=> <clj-error> ExceptionInfo
+(clojure.edn/read-string {:readers {'my/t vector}} "[#_ #my/t 1 2]")
+;;=> [2]
+(clojure.edn/read-string "[#_ #foo 1 {:a 1 :a 2}]")
+;;=> <clj-error> RuntimeException
+(read-string "#_ #foo 1")
+;;=> <clj-error> RuntimeException
+(read-string "[#_ {:a 1 :a 2} 1]")
+;;=> <clj-error> IllegalArgumentException
+(read-string "'a")
+;;=> (quote a)
+(read-string "::kw")
+;;=> :user/kw
+(clojure.edn/read (java.io.PushbackReader. (java.io.StringReader. "@a")))
+;;=> <clj-error> RuntimeException
+(clojure.edn/read (java.io.PushbackReader. (java.io.StringReader. "'a 1")))
+;;=> 'a

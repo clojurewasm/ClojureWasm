@@ -32,7 +32,7 @@ const host_instance = @import("../host_instance.zig");
 
 const Managed = std.math.big.int.Managed;
 
-fn inI48(x: i64) bool {
+pub fn inI48(x: i64) bool {
     return x >= nb.NB_I48_MIN and x <= nb.NB_I48_MAX;
 }
 

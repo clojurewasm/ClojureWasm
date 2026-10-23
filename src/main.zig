@@ -104,8 +104,13 @@ test {
     _ = @import("runtime/gc/arena.zig");
     _ = @import("runtime/gc/tag_ops.zig");
     _ = @import("runtime/gc/gc_heap.zig");
+    _ = @import("runtime/gc/gc_heap_test.zig");
     _ = @import("runtime/gc/mark_sweep.zig");
-    _ = @import("runtime/gc/free_pool.zig");
+    _ = @import("runtime/gc/mark_sweep_test.zig");
+    _ = @import("runtime/gc/gc_trigger.zig");
+    _ = @import("runtime/gc/gc_types.zig");
+    _ = @import("runtime/gc/conservative_scan.zig");
+    _ = @import("runtime/gc/page_heap.zig");
     _ = @import("runtime/gc/root_set.zig");
     _ = @import("runtime/gc/gc_torture.zig");
     _ = @import("runtime/concurrency/io_default.zig");
@@ -126,6 +131,7 @@ test {
     _ = @import("runtime/collection/map.zig");
     _ = @import("runtime/collection/set.zig");
     _ = @import("runtime/collection/chunked_cons.zig");
+    _ = @import("runtime/collection/chunked_seq.zig");
     _ = @import("runtime/collection/range.zig");
     _ = @import("runtime/collection/persistent_queue.zig");
     _ = @import("runtime/collection/transient/transient_vector.zig");

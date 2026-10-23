@@ -20,6 +20,9 @@ GitHub wiki.
 - [`examples/ffi/`](./examples/ffi/README.md): `cljw.ffi`, calling a native
   shared library (C, Go c-shared, Rust cdylib, Zig) directly, with the hive C
   ABI as the worked example.
+- [`examples/zig-native/`](./examples/zig-native/README.md): one Zig source
+  (comptime tables, `@Vector` SIMD, bit builtins, `std.crypto`) called as a
+  wasm guest and as a native library, with the per-call costs of each route.
 - [`works/ladder.md`](./works/ladder.md) — which real-world Clojure libraries
   load and run today.
 

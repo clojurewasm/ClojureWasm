@@ -112,7 +112,7 @@ pub fn first(rt: *Runtime, env: *Env, v: Value, loc: SourceLocation) anyerror!Va
         // PERF: O(1) head (start), no chunk materialised for just first [refs: O-001]
         .range => try range.first(rt, v),
         // PERF: O(1) reads through the views [refs: O-058, D-179]
-        .array_seq => array_seq.first(v),
+        .array_seq => try array_seq.first(rt, v),
         .string_seq => string_seq.first(v),
         // PERF: indexed collections answer without a view.
         .vector => if (vector.count(v) > 0) vector.nth(v, 0) else .nil_val,

@@ -1,0 +1,36 @@
+(count (str (reduce *' (range 1N 1000N))))
+;;=> 2565
+(subs (str (reduce *' (range 1N 1000N))) 0 30)
+;;=> "402387260077093773543702433923"
+(count (str (reduce *' (range 1N 3501N))))
+;;=> 10887
+(subs (str (reduce *' (range 1N 3501N))) 0 30)
+;;=> "239112819947764952509538749369"
+(reduce + (map #(- (int %) 48) (str (reduce *' (range 1N 3501N)))))
+;;=> 45387
+(count (re-find #"0+$" (str (reduce *' (range 1N 3501N)))))
+;;=> 874
+(count (pr-str (reduce *' (range 1N 3501N))))
+;;=> 10888
+(last (pr-str (reduce *' (range 1N 3501N))))
+;;=> \N
+(= (str (reduce *' (range 1N 3501N))) (.toString (reduce *' (range 1N 3501N))))
+;;=> true
+(= (str (reduce *' (range 1N 3501N))) (format "%s" (reduce *' (range 1N 3501N))))
+;;=> true
+(format "%s %s" 1N 1.5M)
+;;=> "1 1.5"
+(count (pr-str (/ 1 (reduce *' (range 1N 3501N)))))
+;;=> 10889
+(count (str (bigdec (str (reduce *' (range 1N 3501N))))))
+;;=> 10887
+(subs (str (bigdec (str (reduce *' (range 1N 3501N)) "E-5000"))) 0 12)
+;;=> "239112819947"
+(count (.toPlainString (bigdec (str (reduce *' (range 1N 3501N)) "E-5000"))))
+;;=> 10888
+(count (str (rationalize (bigdec "1E-1200"))))
+;;=> 1203
+(count (str (rationalize (bigdec "7E+1500"))))
+;;=> 1501
+(= (reduce *' (range 1N 3501N)) (rationalize (bigdec (str (reduce *' (range 1N 3501N))))))
+;;=> true

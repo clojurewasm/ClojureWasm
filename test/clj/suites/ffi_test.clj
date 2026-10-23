@@ -90,6 +90,40 @@
   (testing "sym answers the address function uses"
     (is (pos? (ffi/sym @lib "add_i")))))
 
+(deftest primitive-arrays-cross-as-contiguous-storage
+  (testing ":pointer passes a primitive array's storage, no copy"
+    (let [a (double-array [1 2 3])
+          b (double-array [4 5 6])]
+      (is (= 32.0 ((f "dot" [:pointer :pointer :long] :double) a b 3))))
+    (is (= -6 ((f "sum_i32" [:pointer :long] :long) (int-array [1 -2 3 -8]) 4)))
+    (is (= 3.75 ((f "sum_f32" [:pointer :long] :double) (float-array [1.5 2.25]) 2))))
+  (testing "C writes a :pointer array in place"
+    (let [l (long-array 3)]
+      ((f "fill_i64" [:pointer :long :long] :void) l 3 9000000000)
+      (is (= [9000000000 9000000001 9000000002] (vec l)))))
+  (testing ":bytes passes a copy, so C writes do not reach the array"
+    (let [b (byte-array [1 2 3])]
+      ((f "bump_bytes" [:bytes :long] :void) b 3)
+      (is (= [1 2 3] (vec b)))
+      ((f "bump_bytes" [:pointer :long] :void) b 3)
+      (is (= [2 3 4] (vec b)))))
+  (testing "a large byte array crosses whole"
+    (let [b (byte-array 65536 1)]
+      (is (= 65536 ((f "sum_bytes" [:bytes :long] :long) b 65536)))
+      (is (= 65536 ((f "sum_bytes" [:pointer :long] :long) b 65536)))))
+  (testing "bytes copies out into a byte array"
+    (let [b (byte-array [7 8 9])
+          p ((f "dup_upper" [:string] :pointer) "xyz")]
+      (is (= [88 89 90] (vec (ffi/bytes p 3))))
+      (is (bytes? (ffi/bytes p 3)))
+      ((f "fixture_free" [:pointer] :void) p)
+      (is (= [7 8 9] (vec b)))))
+  (testing "only a byte array is :bytes, only a primitive array is a :pointer"
+    (is (= {:ffi/error :arg-type :index 0 :type :bytes}
+           (ffi-error #((f "sum_bytes" [:bytes :long] :long) (int-array 2) 2))))
+    (is (= {:ffi/error :arg-type :index 0 :type :pointer}
+           (ffi-error #((f "sum_bytes" [:pointer :long] :long) (object-array 2) 2))))))
+
 (deftest ordinary-clojure-fns
   (let [add (f "add_i" [:int :int] :int)]
     (is (fn? add))

@@ -52,3 +52,30 @@ double eight_doubles(double a, double b, double c, double d, double e, double f,
 }
 
 int is_null(const char *s) { return s == NULL; }
+
+// Primitive arrays passed as :pointer (ADR-0204): contiguous native storage.
+double dot(const double *a, const double *b, long n) {
+    double s = 0;
+    for (long i = 0; i < n; i++) s += a[i] * b[i];
+    return s;
+}
+
+long sum_i32(const int *p, long n) {
+    long s = 0;
+    for (long i = 0; i < n; i++) s += p[i];
+    return s;
+}
+
+double sum_f32(const float *p, long n) {
+    double s = 0;
+    for (long i = 0; i < n; i++) s += p[i];
+    return s;
+}
+
+void fill_i64(long *p, long n, long v) {
+    for (long i = 0; i < n; i++) p[i] = v + i;
+}
+
+void bump_bytes(unsigned char *p, long n) {
+    for (long i = 0; i < n; i++) p[i]++;
+}

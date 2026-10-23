@@ -74,6 +74,63 @@ const gc_heap_mod = @import("../../runtime/gc/gc_heap.zig");
 /// frame-size known at analyse time.
 pub const MAX_LOCALS: u16 = 256;
 
+/// A stack scratch array the caller writes before it reads. Plain `undefined`
+/// costs a 0xAA memset in ReleaseSafe, not only in Debug: for a
+/// `[MAX_LOCALS]Value` window that is 2 KB written on EVERY fn call, measured
+/// at 19% of all instructions in `(reduce + (map * xs xs))`. Each user reads
+/// only a prefix it has just written (a frame's `locals[0..fs]`, a published
+/// args prefix), so the poison catches nothing there. Debug keeps it: safety
+/// is switched off outside Debug and only inside this fn, so the caller's own
+/// checks are untouched.
+// PERF: skip the safe-mode 0xAA fill of the per-call frame/arg windows [refs: O-064]
+pub fn uninitScratch(comptime T: type) T {
+    @setRuntimeSafety(@import("builtin").mode == .Debug);
+    return undefined;
+}
+
+/// Per-thread scratch for the per-call windows that used to be native-stack
+/// arrays: a fn activation's locals window (`callMethodImpl`) and a call's
+/// evaluated args + their source locs (`evalCall` & co.). Each borrower takes
+/// a window at the watermark and restores it on return (normal or error), the
+/// same discipline as vm.zig's `VmArena`. Off the native stack because these
+/// frames are paid once per native `eval` re-entry, and a HOF recursing
+/// through Zig (chunked `map`, `reduce`) re-enters per level: the budget
+/// ADR-0195 meters is native bytes, so a 2 KB window per frame was a 2 KB
+/// slice of every level of user recursion. Threadlocal static (tbss): nothing
+/// to allocate or free.
+const TwScratch = struct {
+    vals: [TW_SCRATCH_VALS]Value = undefined,
+    val_top: u32 = 0,
+    locs: [TW_SCRATCH_LOCS]SourceLocation = undefined,
+    loc_top: u32 = 0,
+};
+const TW_SCRATCH_VALS: usize = 32 * 1024;
+const TW_SCRATCH_LOCS: usize = 8 * 1024;
+threadlocal var tw_scratch: TwScratch = .{};
+
+/// Static TLS this file adds; vm.zig asserts it together with `VmArena`
+/// against the ADR-0195 reserve.
+pub const TLS_BYTES: usize = @sizeOf(TwScratch);
+
+/// Borrow `n` Values at the scratch watermark; the caller restores
+/// `tw_scratch.val_top` to the returned base on exit. Exhaustion is deep
+/// recursion: a catchable StackOverflowError, like the native guard.
+fn borrowVals(n: usize, loc: SourceLocation) ![]Value {
+    const base = tw_scratch.val_top;
+    if (@as(usize, base) + n > TW_SCRATCH_VALS)
+        return error_catalog.raise(.stack_overflow, loc, .{ .max = TW_SCRATCH_VALS });
+    tw_scratch.val_top = base + @as(u32, @intCast(n));
+    return tw_scratch.vals[base..][0..n];
+}
+
+fn borrowLocs(n: usize, loc: SourceLocation) ![]SourceLocation {
+    const base = tw_scratch.loc_top;
+    if (@as(usize, base) + n > TW_SCRATCH_LOCS)
+        return error_catalog.raise(.stack_overflow, loc, .{ .max = TW_SCRATCH_LOCS });
+    tw_scratch.loc_top = base + @as(u32, @intCast(n));
+    return tw_scratch.locs[base..][0..n];
+}
+
 /// TreeWalk error surface. Aliases `error_mod.ClojureWasmError` so
 /// calls to `error_catalog.raise(.code, loc, args)` type-check; the
 /// backend still only **emits** `error.TypeError` (non-callable
@@ -380,6 +437,8 @@ const deserialized_fn_body: Node = .{ .constant = .{ .value = .nil_val } };
 pub const SerializedMethod = struct {
     arity: u16,
     has_rest: bool,
+    /// The method's exact frame high-water (ADR-0130); 0 = full MAX_LOCALS.
+    frame_slots: u16 = 0,
     bytecode: ?*const BytecodeChunk,
 };
 
@@ -404,6 +463,7 @@ pub fn allocFunctionFromSerialized(
             .params = &.{},
             .body = &deserialized_fn_body,
             .bytecode = m.bytecode,
+            .frame_slots = m.frame_slots,
         };
     }
     var variadic_method: ?FunctionMethod = null;
@@ -413,6 +473,7 @@ pub fn allocFunctionFromSerialized(
         .params = &.{},
         .body = &deserialized_fn_body,
         .bytecode = vm.bytecode,
+        .frame_slots = vm.frame_slots,
     };
 
     cell.f.* = .{
@@ -711,12 +772,14 @@ fn evalConstructorCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.Int
     // (special_forms.constructInstance) so TreeWalk + VM construct
     // identically — incl. the java-surface `<init>` path `(java.io.File.
     // "path")` rides (ADR-0036 dual-backend parity; D-196 blocker 3).
-    var buf: [MAX_LOCALS]Value = undefined;
     if (n.args.len > MAX_LOCALS)
         return error_catalog.raise(.call_args_exceed_max_locals, n.loc, .{ .got = n.args.len, .max = MAX_LOCALS });
+    const scratch_base = tw_scratch.val_top;
+    defer tw_scratch.val_top = scratch_base;
+    const buf = try borrowVals(n.args.len, n.loc);
     // GC-ROOT: A6b — progressive arg publication (see ArgsFrame).
     var af: ArgsFrame = undefined;
-    af.push(&buf);
+    af.push(buf.ptr);
     defer af.pop();
     for (n.args, 0..) |arg_node, i| {
         buf[i] = try eval(rt, env, locals, &arg_node);
@@ -1036,9 +1099,11 @@ fn evalRecur(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.RecurNode) an
     //
     // GC-ROOT: A6b — already-evaluated recur values are reachable only
     // through this buffer while a LATER arg's eval allocates (D-556).
-    var local_buf: [MAX_LOCALS]Value = undefined;
+    const scratch_base = tw_scratch.val_top;
+    defer tw_scratch.val_top = scratch_base;
+    const local_buf = try borrowVals(n.args.len, n.loc);
     var af: ArgsFrame = undefined;
-    af.push(&local_buf);
+    af.push(local_buf.ptr);
     defer af.pop();
     for (n.args, 0..) |*a, i| {
         local_buf[i] = try eval(rt, env, locals, a);
@@ -1176,15 +1241,21 @@ const ArgsFrame = struct {
 fn evalCall(rt: *Runtime, env: *Env, locals: []Value, n: node_mod.CallNode) !Value {
     const callee = try eval(rt, env, locals, n.callee);
     // Slot 0 carries the callee; args fill 1..; the frame publishes each.
-    var args_buf: [MAX_LOCALS + 1]Value = undefined;
     if (n.args.len > MAX_LOCALS)
         return error_catalog.raise(.call_args_exceed_max_locals, n.loc, .{ .got = n.args.len, .max = MAX_LOCALS });
+    const val_base = tw_scratch.val_top;
+    const loc_base = tw_scratch.loc_top;
+    defer {
+        tw_scratch.val_top = val_base;
+        tw_scratch.loc_top = loc_base;
+    }
+    const args_buf = try borrowVals(n.args.len + 1, n.loc);
+    const arg_locs = try borrowLocs(n.args.len, n.loc);
     args_buf[0] = callee;
     var af: ArgsFrame = undefined;
-    af.push(&args_buf);
+    af.push(args_buf.ptr);
     defer af.pop();
     af.publish(1);
-    var arg_locs: [MAX_LOCALS]SourceLocation = undefined;
     for (n.args, 0..) |*a, i| {
         args_buf[1 + i] = try eval(rt, env, locals, a);
         af.publish(2 + i);
@@ -1303,17 +1374,22 @@ pub fn treeWalkCall(
         // clojure.lang.IFn `-invoke` is callable as `(inst args…)`. `-invoke`
         // receives (this, …args). Falls through to value_not_callable when the
         // instance does not implement IFn. Shared treeWalkCall = both backends.
-        .typed_instance, .reified_instance => blk: {
-            var cs: dispatch.CallSite = .{};
-            const inv_args = try rt.gpa.alloc(Value, args.len + 1);
-            defer rt.gpa.free(inv_args);
-            inv_args[0] = callee;
-            @memcpy(inv_args[1..], args);
-            if (try dispatch.dispatchOrNull(rt, env, &cs, callee, "IFn", "-invoke", inv_args, loc)) |v| break :blk v;
-            break :blk error_catalog.raise(.value_not_callable, loc, .{ .actual = @tagName(callee.tag()) });
-        },
+        .typed_instance, .reified_instance => callIFnInstance(rt, env, callee, args, loc),
         else => |t| error_catalog.raise(.value_not_callable, loc, .{ .actual = @tagName(t) }),
     };
+}
+
+/// `(inst args…)` on an IFn deftype/reify. Out of line (`noinline`) so its
+/// CallSite + arg copy are not part of `treeWalkCall`'s frame, which every
+/// call of every backend pays (ADR-0195 native budget).
+noinline fn callIFnInstance(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
+    var cs: dispatch.CallSite = .{};
+    const inv_args = try rt.gpa.alloc(Value, args.len + 1);
+    defer rt.gpa.free(inv_args);
+    inv_args[0] = callee;
+    @memcpy(inv_args[1..], args);
+    if (try dispatch.dispatchOrNull(rt, env, &cs, callee, "IFn", "-invoke", inv_args, loc)) |v| return v;
+    return error_catalog.raise(.value_not_callable, loc, .{ .actual = @tagName(callee.tag()) });
 }
 
 /// Dispatch `(m receiver args...)` where `m` is a `.protocol_fn`
@@ -1327,22 +1403,21 @@ pub fn treeWalkCall(
 /// `op_method_call`; this protocol-fn path keeps a per-call CallSite,
 /// so every invocation pays one method_table linear scan — small N,
 /// Clojure protocols typically ≤ 8 methods.)
-pub fn callProtocolFn(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
+pub noinline fn callProtocolFn(rt: *Runtime, env: *Env, callee: Value, args: []const Value, loc: SourceLocation) anyerror!Value {
     if (args.len < 1)
         return error_catalog.raise(.arity_below_min, loc, .{ .fn_name = "protocol-fn", .got = args.len, .min = 1 });
     const pfn = protocol_mod.asProtocolFn(callee);
     const receiver = args[0];
     // D-314 / ADR-0144: `:extend-via-metadata true` protocols dispatch via the
     // receiver's metadata (per-VALUE) ahead of the per-type impl. It MUST run
-    // before `dispatch.dispatch` (which owns the per-TYPE CallSite cache), so a
+    // before `dispatch.dispatchCached` (which owns the per-TYPE ProtocolFn cache), so a
     // meta hit never poisons the type cache. Gated on the flag → other protocols
     // pay nothing. Both backends share this entry (VM wires callFn=treeWalkCall).
     if (try meta_mod.metaDispatch(rt, env, pfn.descriptor, receiver, pfn.methodName(), args, loc)) |v| return v;
-    var cs: method_table.CallSite = .{};
-    return dispatch.dispatch(
+    return dispatch.dispatchCached(
         rt,
         env,
-        &cs,
+        pfn.cache(),
         receiver,
         pfn.descriptor.fqcn(),
         pfn.methodName(),
@@ -1387,28 +1462,34 @@ pub fn callFunctionBindingRest(rt: *Runtime, env: *Env, fn_val: Value, args: []c
 /// (the §9.2.S perf-parity work flattening `op_call`) reuses this exact
 /// binder rather than re-deriving the closure/arg/rest layout, so the two
 /// activation paths cannot drift.
+/// The exact slot window a call of method `m` binds and runs in: `fs`.
+// PERF: init + GC-root only the slots this method actually uses, not all 256
+// — cuts the ~2 KB per-call nil-init on the hottest path [refs: O-015]
+// ADR-0130 frame-rooting: m.frame_slots is the analyzer's exact per-method
+// high-water (≥ arg_region by construction; the @max defends a runtime/compile
+// slot_base skew). Sentinel 0 (a no-arg/no-local/no-capture body, or a
+// non-analyzer FnMethod) falls back to the full MAX_LOCALS. A too-low fs is a
+// GC UAF / slot_out_of_range (the O-005 failure modes) — locked by the
+// CLJW_GC_TORTURE `nested_deep` e2e.
+pub fn frameSlots(f: *const Function, m: *const FunctionMethod, loc: SourceLocation) !usize {
+    const arg_region: usize = @as(usize, f.slot_base) + m.arity + @intFromBool(m.has_rest);
+    const fs: usize = if (m.frame_slots == 0) MAX_LOCALS else @max(@as(usize, m.frame_slots), arg_region);
+    if (fs > MAX_LOCALS)
+        return error_catalog.raise(.fn_frame_exceeds_max_locals, loc, .{ .base = f.slot_base, .arity = m.arity, .max = MAX_LOCALS });
+    return fs;
+}
+
 pub fn bindCallFrame(
     rt: *Runtime,
     f: *const Function,
     m: *const FunctionMethod,
     args: []const Value,
-    locals: *[MAX_LOCALS]Value,
+    locals: []Value,
     rest_mode: RestMode,
     loc: SourceLocation,
 ) !usize {
-    const arg_region: usize = @as(usize, f.slot_base) + m.arity + @intFromBool(m.has_rest);
-    // PERF: init + GC-root only the slots this method actually uses, not all 256
-    // — cuts the ~2 KB per-call nil-init on the hottest path [refs: O-015]
-    // ADR-0130 frame-rooting: m.frame_slots is the analyzer's exact per-method
-    // high-water (≥ arg_region by construction; the @max defends a runtime/compile
-    // slot_base skew). Sentinel 0 (a no-arg/no-local/no-capture body, or a
-    // non-analyzer FnMethod) falls back to the full MAX_LOCALS. A too-low fs is a
-    // GC UAF / slot_out_of_range (the O-005 failure modes) — locked by the
-    // CLJW_GC_TORTURE `nested_deep` e2e.
-    const fs: usize = if (m.frame_slots == 0) MAX_LOCALS else @max(@as(usize, m.frame_slots), arg_region);
-    if (fs > MAX_LOCALS)
-        return error_catalog.raise(.fn_frame_exceeds_max_locals, loc, .{ .base = f.slot_base, .arity = m.arity, .max = MAX_LOCALS });
-
+    const fs = try frameSlots(f, m, loc);
+    std.debug.assert(locals.len >= fs);
     @memset(locals[0..fs], .nil_val);
     if (f.closure_bindings) |snap| {
         @memcpy(locals[0..snap.len], snap);
@@ -1439,6 +1520,14 @@ pub fn bindCallFrame(
 }
 
 fn callMethodImpl(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation, rest_mode: RestMode) !Value {
+    // PERF: no per-call locals buffer on the native stack: callMethodBody
+    // borrows an exact-size window from `tw_scratch`, which neither
+    // 0xaa-fills in ReleaseSafe (O-080's original goal) nor costs native stack
+    // per re-entry (PR #80 recursion depth) [refs: O-064, O-080]
+    return callMethodBody(rt, env, fn_val, args, loc, rest_mode);
+}
+
+fn callMethodBody(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, loc: SourceLocation, rest_mode: RestMode) !Value {
     const f = fn_val.decodePtr(*Function);
     // Row 7.8 cycle 1 (ADR-0041): linear scan over `methods`, fixed-
     // arity wins on exact match; fall through to `variadic` when
@@ -1462,7 +1551,11 @@ fn callMethodImpl(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, l
     // a raw `*Function` (ADR-0184 A, DA gap 1) — the callee slot must
     // already be live then; the locals window starts empty and is widened
     // to the bound slots after the binder returns. [ref: .dev/gc_rooting.md §A]
-    var locals: [MAX_LOCALS]Value = undefined;
+    // The window comes from `tw_scratch`, not the native stack, sized to the
+    // method's exact frame (`frameSlots`, the binder's own computation).
+    const scratch_base = tw_scratch.val_top;
+    defer tw_scratch.val_top = scratch_base;
+    const locals = try borrowVals(try frameSlots(f, m, loc), loc);
     var gc_stack: [1]Value = .{.nil_val};
     var gc_sp: u16 = 0;
     var gc_frame: root_set.EvalFrame = .{
@@ -1475,7 +1568,7 @@ fn callMethodImpl(rt: *Runtime, env: *Env, fn_val: Value, args: []const Value, l
     root_set.eval_frame_head = &gc_frame;
     defer root_set.eval_frame_head = gc_frame.parent;
 
-    const fs = try bindCallFrame(rt, f, m, args, &locals, rest_mode, loc);
+    const fs = try bindCallFrame(rt, f, m, args, locals, rest_mode, loc);
     gc_frame.locals = locals[0..fs];
     // VM backend hook: when this method carries compiled bytecode and
     // the vtable has the `evalChunk` slot wired (vm.installVTable), run
@@ -1535,7 +1628,9 @@ pub fn selectMethod(f: *const Function, n: usize) ?*const FunctionMethod {
     return null;
 }
 
-fn raiseArityNotMatched(f: *const Function, got: usize, loc: SourceLocation) anyerror {
+// `noinline`: its 256-byte message buffer must not land in callMethodImpl's
+// frame, which every native eval re-entry pays (ADR-0195 budget).
+noinline fn raiseArityNotMatched(f: *const Function, got: usize, loc: SourceLocation) anyerror {
     // For single-arity fixed fns, preserve the existing
     // arity_not_expected / arity_below_min diagnostics so existing
     // user-visible error text stays stable.

@@ -517,19 +517,15 @@ fn toCharArray(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation
 }
 
 /// Implements `(.getBytes s)` / `(.getBytes s charset)` — the UTF-8 bytes of `s`
-/// as a byte array (cljw `.array` of SIGNED-byte ints, matching clj's `byte[]`:
-/// a byte > 127 is negative, e.g. "é" → (-61 -87)). cljw is UTF-8-only, so a
+/// as a byte array (signed, matching clj's `byte[]`: a byte > 127 reads
+/// negative, e.g. "é" → (-61 -87)). cljw is UTF-8-only, so a
 /// charset arg (a name String — or any object) is accepted and the encoding is
 /// always UTF-8 (documented limitation; the common `(.getBytes s "UTF-8")` works).
 fn getBytes(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = env;
     if (args.len < 1 or args.len > 2)
         return error_catalog.raise(.arity_out_of_range, loc, .{ .fn_name = ".getBytes", .got = args.len, .min = 1, .max = 2 });
-    const s = string_collection.asString(args[0]);
-    const buf = try rt.gpa.alloc(Value, s.len);
-    defer rt.gpa.free(buf);
-    for (s, 0..) |b, i| buf[i] = Value.initInteger(@as(i8, @bitCast(b))); // signed byte (clj byte[])
-    return java_array.fromSlice(rt, buf);
+    return java_array.fromBytes(rt, string_collection.asString(args[0]));
 }
 
 /// `(.intern s)` → the canonical interned instance. cw v1 has no string pool
@@ -603,7 +599,7 @@ fn valueOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
     // Java String.valueOf(char[]) / (char[], offset, count) — the char-array
     // overloads build the string FROM the characters, not a render of the
     // array object (D-526; was falling into the generic "#<array>" arm).
-    if (java_array.isArray(args[0])) return charsToString(rt, args, "String/valueOf", loc);
+    if (java_array.isKind(args[0], .char)) return charsToString(rt, args, "String/valueOf", loc);
     try error_catalog.checkArity("String/valueOf", args, 1, loc);
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     defer aw.deinit();
@@ -613,10 +609,12 @@ fn valueOf(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) an
 
 /// Shared body of the char-array string builders: `(f arr)` uses the whole
 /// array, `(f arr offset count)` a validated window (JVM
-/// StringIndexOutOfBounds → cljw bounds error). Non-char elements raise a
-/// type error (a Java char[] cannot hold anything else).
+/// StringIndexOutOfBounds → cljw bounds error). Any array but a char array
+/// raises a type error.
 fn charsToString(rt: *Runtime, args: []const Value, comptime fn_name: []const u8, loc: SourceLocation) anyerror!Value {
-    const items = java_array.asArray(args[0]).items();
+    if (!java_array.isKind(args[0], .char))
+        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "a char array", .actual = @tagName(java_array.asArray(args[0]).kind) });
+    const items = java_array.asArray(args[0]).slice(.char);
     var start: usize = 0;
     var count: usize = items.len;
     if (args.len == 3) {
@@ -629,11 +627,9 @@ fn charsToString(rt: *Runtime, args: []const Value, comptime fn_name: []const u8
     }
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     defer aw.deinit();
-    for (items[start .. start + count]) |e| {
-        if (e.tag() != .char)
-            return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = fn_name, .expected = "a char array", .actual = @tagName(e.tag()) });
+    for (items[start .. start + count]) |cp| {
         var buf: [4]u8 = undefined;
-        const n = std.unicode.utf8Encode(e.asChar(), &buf) catch 0;
+        const n = std.unicode.utf8Encode(@intCast(cp), &buf) catch 0;
         try aw.writer.writeAll(buf[0..n]);
     }
     return string_collection.alloc(rt, aw.writer.buffered());
@@ -728,32 +724,24 @@ fn stringCtor(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation)
             start = @intCast(off);
             count = @intCast(len_i);
         }
-        const elems = arr.items()[start .. start + count];
         // A CHAR array → the chars' codepoints, UTF-8 encoded (clj `(String.
-        // char[])`); a BYTE/INT array → each element's low 8 bits as a byte (the
-        // `.getBytes` inverse). The first element of the window selects the path;
-        // an empty window takes the byte path and yields "".
-        if (elems.len > 0 and elems[0].tag() == .char) {
-            var buf: std.ArrayList(u8) = .empty;
-            defer buf.deinit(rt.gpa);
-            for (elems) |v| {
-                if (v.tag() != .char)
-                    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "char array", .actual = @tagName(v.tag()) });
-                var cbuf: [4]u8 = undefined;
-                const n = std.unicode.utf8Encode(v.asChar(), &cbuf) catch
-                    return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "valid char", .actual = "unencodable codepoint" });
-                try buf.appendSlice(rt.gpa, cbuf[0..n]);
-            }
-            return string_collection.alloc(rt, buf.items);
+        // char[])`); a BYTE array → its bytes as UTF-8, one memcpy (the
+        // `.getBytes` inverse). Any other kind has no String constructor.
+        switch (arr.kind) {
+            .byte => return string_collection.alloc(rt, arr.bytes()[start .. start + count]),
+            .char => {
+                var buf: std.ArrayList(u8) = .empty;
+                defer buf.deinit(rt.gpa);
+                for (arr.slice(.char)[start .. start + count]) |cp| {
+                    var cbuf: [4]u8 = undefined;
+                    const n = std.unicode.utf8Encode(@intCast(cp), &cbuf) catch
+                        return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "valid char", .actual = "unencodable codepoint" });
+                    try buf.appendSlice(rt.gpa, cbuf[0..n]);
+                }
+                return string_collection.alloc(rt, buf.items);
+            },
+            else => return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "a byte or char array", .actual = @tagName(arr.kind) }),
         }
-        const buf = try rt.gpa.alloc(u8, elems.len);
-        defer rt.gpa.free(buf);
-        for (elems, 0..) |v, i| {
-            if (v.tag() != .integer)
-                return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "byte array", .actual = @tagName(v.tag()) });
-            buf[i] = @intCast(v.asInteger() & 0xFF); // low 8 bits → byte (signed or unsigned in)
-        }
-        return string_collection.alloc(rt, buf);
     }
     return error_catalog.raise(.type_arg_invalid, loc, .{ .fn_name = "java.lang.String.", .expected = "string or byte array", .actual = @tagName(a.tag()) });
 }

@@ -1,0 +1,138 @@
+# bench-vs-bb: cljw vs babashka vs JVM Clojure on bench/vs_bb/workloads.
+#
+# Kanban 20261022012233-420c9fea, step 0 of decision 20261022012219-31249feb
+# (make cljw faster than bb): every perf step is judged by this table.
+#
+# This is a REPORT, not a gate. CI has exactly ONE gate configuration
+# (ci.yml -> scripts/ci_gate.sh -> test/cljw-test --only full, enforced by
+# scripts/check_gate_parity.sh); this workflow adds no tier to it. It never
+# fails a PR on a ratio: the job is continue-on-error and run.sh exits 0 on a
+# slow or mismatching workload. Its output is the step summary (the table plus
+# the YAML history row for this sha), so the ratio for any commit is on its
+# run page. A hosted runner is a noisy, shared machine: compare ratios
+# (cljw/bb on the same runner, same minute), not absolute milliseconds.
+#
+# Linux x86_64 only: the ratio is the signal, one host is enough, and the mac
+# leg would double the cost of a report.
+
+name: bench-vs-bb
+
+on:
+  pull_request:
+    paths-ignore: ['**/*.md', '.dev/**']
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md', '.dev/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-vs-bb-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    name: cljw vs bb vs JVM (report, non-blocking)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Cache Zig 0.16.0
+        id: cache-zig
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/zig-0.16.0
+          key: zig-0.16.0-x86_64-linux
+
+      - name: Install Zig 0.16.0
+        if: steps.cache-zig.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/versions.lock
+          mkdir -p ~/.local
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-0.16.0.tar.xz" -o /tmp/zig.tar.xz
+          rm -rf "$HOME/.local/zig-x86_64-linux-0.16.0" "$HOME/.local/zig-0.16.0"
+          tar -xJf /tmp/zig.tar.xz -C ~/.local
+          mv "$HOME/.local/zig-x86_64-linux-0.16.0" "$HOME/.local/zig-0.16.0"
+
+      - name: Add Zig to PATH
+        shell: bash
+        run: |
+          echo "$HOME/.local/zig-0.16.0" >> "$GITHUB_PATH"
+          echo "ZIG_GLOBAL_CACHE_DIR=$HOME/.cache/zig" >> "$GITHUB_ENV"
+
+      # Read-only restore of the gate's Linux build cache (ci.yml saves it).
+      # Content-addressed, so a stale restore can only cost a rebuild.
+      - name: Restore Zig deps + build (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/zig
+            .zig-cache
+          key: x86_64-linux-zigbuild-${{ hashFiles('build.zig.zon', 'build.zig') }}-${{ github.run_id }}
+          restore-keys: |
+            x86_64-linux-zigbuild-${{ hashFiles('build.zig.zon', 'build.zig') }}-
+            x86_64-linux-zigbuild-
+
+      - name: Install Babashka (pinned, checksummed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/versions.lock
+          archive="/tmp/babashka-${BABASHKA_VERSION}.tar.gz"
+          curl -fsSL "https://github.com/babashka/babashka/releases/download/v${BABASHKA_VERSION}/babashka-${BABASHKA_VERSION}-linux-amd64.tar.gz" -o "$archive"
+          actual=$(sha256sum "$archive" | awk '{print $1}')
+          [ "$actual" = "$BABASHKA_LINUX_AMD64_SHA256" ] || { echo "::error::Babashka checksum mismatch"; exit 1; }
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$archive" -C "$HOME/.local/bin" bb
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # JVM column without the clojure CLI: the runner image ships a JDK, the
+      # jars come straight from Maven Central.
+      - name: Fetch JVM Clojure jars
+        shell: bash
+        run: |
+          set -euo pipefail
+          m=https://repo1.maven.org/maven2/org/clojure
+          d="$HOME/.cache/vs_bb_jars"; mkdir -p "$d"
+          for j in clojure/1.12.4/clojure-1.12.4 spec.alpha/0.5.238/spec.alpha-0.5.238 \
+                   core.specs.alpha/0.4.74/core.specs.alpha-0.4.74 data.json/2.5.1/data.json-2.5.1; do
+            curl -fsSL "$m/$j.jar" -o "$d/$(basename "$j").jar"
+          done
+          echo "CLJW_BENCH_JVM_CP=$(ls "$d"/*.jar | paste -sd:)" >> "$GITHUB_ENV"
+          java -version
+
+      - name: Build cljw ReleaseSafe -Dwasm
+        shell: bash
+        run: zig build -Dwasm -Doptimize=ReleaseSafe -p "$RUNNER_TEMP/cljw-bench"
+
+      - name: Run bench/vs_bb
+        shell: bash
+        run: |
+          set -uo pipefail
+          hist="$RUNNER_TEMP/vs_bb_row.yaml"
+          bash bench/vs_bb/run.sh --cljw "$RUNNER_TEMP/cljw-bench/bin/cljw" -n 3 --history "$hist" | tee "$RUNNER_TEMP/vs_bb_table.txt"
+          {
+            echo "## cljw vs bb vs JVM (${GITHUB_SHA::8})"
+            echo
+            echo "Non-blocking report. Ratios < 1.00 mean cljw is faster. Hosted runner: compare ratios, not ms."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/vs_bb_table.txt"
+            echo '```'
+            echo
+            echo "<details><summary>YAML history row (append to bench/vs_bb/history.yaml)</summary>"
+            echo
+            echo '```yaml'
+            cat "$hist"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"

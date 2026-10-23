@@ -29,8 +29,10 @@
 //! `tag_ops.tag_trace_table` from the owning module — `tree_walk.zig`
 //! / `lazy_seq.zig` / `type_descriptor.zig`) and reach via the
 //! transitive trace, not via root enumeration. Sources 5 / 9 yield
-//! nothing in cw v1 by construction (ProtocolFn caches don't exist;
-//! CallSite holds namespace-owned pointers, not GC edges). Source 6
+//! nothing in cw v1 by construction (a ProtocolFn's dispatch cache
+//! is a memo of a value its descriptor's method_table already roots, read
+//! only under a matching generation, ADR-0206; CallSite holds
+//! namespace-owned pointers, not GC edges). Source 6
 //! (`refer` borrows) is closed-at-construction at `env.zig:229`'s
 //! `referAll` (the dupe lifts the borrowed name onto `infra_alloc`),
 //! so no GC walker is needed. The RootIterator's enum slot for each

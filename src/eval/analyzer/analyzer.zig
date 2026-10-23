@@ -64,6 +64,7 @@ const map_collection = @import("../../runtime/collection/map.zig");
 const set_collection = @import("../../runtime/collection/set.zig");
 const literal = @import("../../runtime/collection/literal.zig");
 const big_int = @import("../../runtime/numeric/big_int.zig");
+const decimal_text = @import("../../runtime/numeric/decimal_text.zig");
 const promote = @import("../../runtime/numeric/promote.zig");
 const big_decimal = @import("../../runtime/numeric/big_decimal.zig");
 const ratio_mod = @import("../../runtime/numeric/ratio.zig");
@@ -435,9 +436,13 @@ fn staticFieldValue(rt: *Runtime, sf: *const @import("../../runtime/type_descrip
             .time_local_date_epoch => @import("../../runtime/time/local_date_value.zig").make(rt, 0) catch |e| return coerceConstErr(e),
             .time_local_date_time_min => @import("../../runtime/time/local_date_time_value.zig").make(rt, MIN_EPOCH_DAY, 0) catch |e| return coerceConstErr(e),
             .time_local_date_time_max => @import("../../runtime/time/local_date_time_value.zig").make(rt, MAX_EPOCH_DAY, 86_399_999_999_999) catch |e| return coerceConstErr(e),
+            .time_zone_offset_utc => @import("../../runtime/time/zone_offset.zig").make(rt, .{ .seconds = 0 }) catch |e| return coerceConstErr(e),
+            .time_zone_offset_min => @import("../../runtime/time/zone_offset.zig").make(rt, .{ .seconds = -18 * 3600 }) catch |e| return coerceConstErr(e),
+            .time_zone_offset_max => @import("../../runtime/time/zone_offset.zig").make(rt, .{ .seconds = 18 * 3600 }) catch |e| return coerceConstErr(e),
         },
         .host_enum => |he| try @import("../../runtime/host_enum.zig").singleton(rt, @enumFromInt(he.enum_idx), he.ordinal),
         .math_context => |which| try @import("../../runtime/math_context.zig").singleton(rt, which),
+        .date_time_formatter => |idx| @import("../../runtime/time/date_time_formatter_value.zig").isoConstant(rt, idx) catch |e| return coerceConstErr(e),
         // BigDecimal ZERO/ONE/TWO/TEN (ADR-0174 D7): a scale-0 BigDecimal
         // lifted via the constructor at analyze time.
         .big_decimal => |i| @import("../../runtime/numeric/big_decimal.zig").allocFromI64Scale(rt, i, 0) catch |e| return coerceConstErr(e),
@@ -1430,7 +1435,18 @@ const try_form = @import("try_form.zig");
 /// the first error in the text is the one raised. Every other lift (quote,
 /// macro arguments, metadata) is `.lenient`: code was already checked as it
 /// was read.
-const LiftChecks = enum { lenient, strict };
+/// `.edn` is `.strict` for `clojure.edn` reads (ADR-0200 Layer B): a
+/// `#ns.Record{...}` tag is NOT a record constructor there, clj's EdnReader
+/// resolves every tag through `:readers` / `:default` only.
+const LiftChecks = enum {
+    lenient,
+    strict,
+    edn,
+
+    fn checksDuplicates(self: LiftChecks) bool {
+        return self != .lenient;
+    }
+};
 
 /// Form atom → Value lift. Handles nil / bool / int / float / char /
 /// string / keyword / symbol and the collection literals, interning
@@ -1445,6 +1461,13 @@ pub fn formToValue(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
 /// it also raises on a duplicate map key or set element, in source order.
 pub fn formToValueStrict(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
     return lift(rt, env, form, .strict);
+}
+
+/// `formToValueStrict` for a `clojure.edn` read: additionally, a
+/// `#ns.Name{...}` tag is resolved only through `*data-readers*` /
+/// `*default-data-reader-fn*`, never as a record literal (clj EdnReader).
+pub fn formToValueEdn(rt: *Runtime, env: *Env, form: Form) AnalyzeError!Value {
+    return lift(rt, env, form, .edn);
 }
 
 /// D-186: honour a reader `^meta` map on a literal. The reader (readMeta)
@@ -1559,7 +1582,7 @@ fn liftTagged(rt: *Runtime, env: *Env, t: TaggedForm, loc: SourceLocation, check
     // by simple name and then re-check `defining_ns`, which silently
     // rejected a legitimate `#aaa.Point{…}` as soon as some other namespace
     // defined a record also called `Point` and displaced the entry.
-    if (t.tag.ns == null) {
+    if (t.tag.ns == null and checks != .edn) {
         if (std.mem.findScalar(u8, t.tag.name, '.') != null) {
             if (rt.types.get(t.tag.name)) |td| {
                 const map_arg = inner.tag() == .array_map or inner.tag() == .hash_map;
@@ -1656,7 +1679,7 @@ fn mapFormToValue(rt: *Runtime, env: *Env, entries: []const Form, loc: SourceLoc
             else => |e| return e,
         };
         roots[0] = out;
-        if (checks == .strict and duplicate == null) {
+        if (checks.checksDuplicates() and duplicate == null) {
             if (map_collection.count(out) == before) {
                 duplicate = entries[i];
             } else if (repeatedReaderConstantNan(entries[0..i], entries[i], 2)) {
@@ -1691,7 +1714,7 @@ fn setFormToValue(rt: *Runtime, env: *Env, items: []const Form, checks: LiftChec
             else => |e| return e,
         };
         roots[0] = out;
-        if (checks == .strict and duplicate == null) {
+        if (checks.checksDuplicates() and duplicate == null) {
             if (set_collection.count(out) == before) {
                 duplicate = item;
             } else if (repeatedReaderConstantNan(items[0..idx], item, 1)) {
@@ -1738,7 +1761,7 @@ fn listFormToValue(rt: *Runtime, env: *Env, items: []const Form, checks: LiftChe
     // The chain is consed from the end. A strict (data) lift must still
     // LIFT left to right, so the first error in the text is the one raised,
     // as clj reads it: it lifts into a vector first.
-    const lifted: ?Value = if (checks == .strict) try vectorFormToValue(rt, env, items, checks) else null;
+    const lifted: ?Value = if (checks.checksDuplicates()) try vectorFormToValue(rt, env, items, checks) else null;
     if (lifted) |v| roots[2] = v;
     while (i > 0) {
         i -= 1;
@@ -1800,7 +1823,7 @@ pub fn valueToForm(
         .ratio => blk: {
             const lit = switch (ratio_mod.parts(v)) {
                 .small => |s| try std.fmt.allocPrint(arena, "{d}/{d}", .{ s.n, s.d }),
-                .big => |b| try std.fmt.allocPrint(arena, "{f}/{f}", .{ b.n.m, b.d.m }),
+                .big => |b| try decimal_text.fractionAlloc(arena, b.n.m, b.d.m),
             };
             break :blk .{ .data = .{ .ratio_literal = lit }, .location = call_loc };
         },
@@ -1810,9 +1833,9 @@ pub fn valueToForm(
         // back as a BigInt literal and break downstream i64-only ops
         // (unsigned-bit-shift-right et al.).
         .big_int => if (big_int.originOf(v) == .long) blk: {
-            const n = promote.exactI64(v) catch break :blk Form{ .data = .{ .big_int_literal = try std.fmt.allocPrint(arena, "{f}", .{big_int.asManaged(v)}) }, .location = call_loc };
+            const n = promote.exactI64(v) catch break :blk Form{ .data = .{ .big_int_literal = try decimal_text.decimalAlloc(arena, big_int.asManaged(v)) }, .location = call_loc };
             break :blk Form{ .data = .{ .integer = n }, .location = call_loc };
-        } else .{ .data = .{ .big_int_literal = try std.fmt.allocPrint(arena, "{f}", .{big_int.asManaged(v)}) }, .location = call_loc },
+        } else .{ .data = .{ .big_int_literal = try decimal_text.decimalAlloc(arena, big_int.asManaged(v)) }, .location = call_loc },
         .big_decimal => blk: {
             var aw: std.Io.Writer.Allocating = .init(arena);
             print_mod.writeBigDecimalDigits(&aw.writer, v) catch return error.OutOfMemory;

@@ -84,7 +84,7 @@ the JVM's `hashCode`/`hasheq` split.
 | `hash` / `.hashCode` values                                      | JVM/Murmur3 values                               | cljw-native values (intra-cljw consistent)                        | AD-009 |
 | `APersistentMap/mapHash` vs `/mapHasheq`                         | distinct (additive `hashCode` vs murmur)         | both = the single `(hash m)` content hash                         | AD-028 |
 | `ns-interns`/`ns-publics` of `clojure.core`                      | includes `reduce`, `+`, …                       | omits the `rt`-referred primitives (`ns-map` includes them)       | AD-011 |
-| `(class (object-array 0))` + typed arrays                        | `[Ljava.lang.Object;`, `aset` type-checks        | `array`; type-erased `[]Value`, `^"[B"` hints advisory            | AD-019 |
+| `(class (object-array 0))`, `make-array` / `into-array` type     | `[Ljava.lang.Object;`; the class picks the kind  | `array`; the class arg is ignored (object array), hints advisory  | AD-019 |
 | Unresolved `clojure.lang.*` / `.asm.*` ref                       | resolves to the JVM class                        | namespace LOADS; the ref errors only if evaluated (call-time)     | AD-022 |
 | `(extend-protocol P java.util.Map …)`                           | covers all clj maps (a map IS a `java.util.Map`) | LOAD-ONLY no-op; a map receiver falls to `Object`                 | AD-023 |
 | `java.util.Map` methods under a `clojure.lang.*` deftype section | dispatch (the interfaces extend the java ones)   | accepted-and-dropped; a later `(.iterator x)` is method-not-found | AD-027 |
@@ -205,7 +205,8 @@ bridge to the JVM are not part of the runtime (Tier C/D):
 
 cljw provides its own host-class surface (a curated set, see
 [`data/compat_tiers.yaml`](../data/compat_tiers.yaml)) rather than open JVM interop.
-Note that Java *arrays* are implemented (type-erased — see AD-019), as is
+Note that Java *arrays* are implemented (typed native storage for the typed
+constructors, ADR-0204; see AD-019 for the class argument), as is
 `with-local-vars` (AD-015); they are no longer in this list.
 
 ## How to read this page

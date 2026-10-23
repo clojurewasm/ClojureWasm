@@ -56,6 +56,7 @@ pub const String = extern struct {
 pub fn alloc(rt: *Runtime, byte_view: []const u8) !Value {
     const owned = try rt.gc.infra.dupe(u8, byte_view);
     errdefer rt.gc.infra.free(owned);
+    rt.gc.noteOwnedAlloc(owned.len);
     const s = try rt.gc.alloc(String);
     s.* = .{
         .header = HeapHeader.init(.string),

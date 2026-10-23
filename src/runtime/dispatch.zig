@@ -130,21 +130,75 @@ pub fn dispatch(
     args: []const Value,
     loc: SourceLocation,
 ) anyerror!Value {
-    if (try dispatchOrNull(rt, env, cs, receiver, protocol_name, method_name, args, loc)) |v| return v;
+    const td = try resolveDescriptor(rt, receiver);
+    const mv = try resolveProtocolMethod(rt, cs, receiver, td, protocol_name, method_name, loc);
+    const vt = rt.vtable orelse return error.NoVTable;
+    return try vt.callFn(rt, env, mv, args, loc);
+}
+
+/// `dispatch` through a per-`ProtocolFn` `DispatchCache` (ADR-0206). The
+/// cache memoises the WHOLE `resolveProtocolMethod` chain per receiver
+/// descriptor, so a hit skips every table scan and string compare. The
+/// result is a pure function of `(td, protocol_generation)`; every input to
+/// it bumps the generation when it changes, so a hit is always current.
+pub fn dispatchCached(
+    rt: *Runtime,
+    env: *Env,
+    cache: *method_table.DispatchCache,
+    receiver: Value,
+    protocol_name: []const u8,
+    method_name: []const u8,
+    args: []const Value,
+    loc: SourceLocation,
+) anyerror!Value {
+    const td = try resolveDescriptor(rt, receiver);
+    const gen = rt.protocol_generation;
+    // PERF: per-protocol-fn (td, generation) -> method memo; naive form is
+    // `dispatch` with a fresh CallSite per call, which re-ran the method-table
+    // scan + fallback chain on every protocol call [refs: O-081]
+    const mv = cache.lookup(td, gen) orelse blk: {
+        var cs: CallSite = .{};
+        const resolved = try resolveProtocolMethod(rt, &cs, receiver, td, protocol_name, method_name, loc);
+        cache.fill(td, gen, resolved);
+        break :blk resolved;
+    };
+    const vt = rt.vtable orelse return error.NoVTable;
+    return try vt.callFn(rt, env, mv, args, loc);
+}
+
+/// Resolve the method Value a protocol call on `receiver` (descriptor `td`)
+/// runs, in clj's precedence order, or raise `protocol_no_satisfies`. Pure in
+/// `(td, rt.protocol_generation)`: it reads only `td`'s method tables, the
+/// ADR-0187 side table and the IRecord / Object class descriptors, and every
+/// writer of those bumps the generation. `receiver` is consulted only for its
+/// tag and its descriptor's kind, both functions of `td`.
+pub fn resolveProtocolMethod(
+    rt: *Runtime,
+    cs: *CallSite,
+    receiver: Value,
+    td: *const td_mod.TypeDescriptor,
+    protocol_name: []const u8,
+    method_name: []const u8,
+    loc: SourceLocation,
+) anyerror!Value {
+    if (cs.lookupWithCache(td, protocol_name, method_name, rt.protocol_generation)) |me| {
+        if (me.method_val.tag() == .nil) return error_catalog.raise(.feature_not_supported, loc, .{
+            .name = "protocol method with nil method_val (declare-only)",
+        });
+        return me.method_val;
+    }
     // ADR-0187: `(extend-protocol P some.ns.Q …)` where Q is a PROTOCOL means
     // "every type satisfying Q". Consulted BEFORE the Object default because on
     // the JVM an interface impl is a real per-type impl and outranks an Object
     // fallback. Membership is answered from the receiver's descriptor
     // (`protocol_impls` is the SSOT, D-190), so no receiver value is needed.
     if (rt.protocol_target_exts.get(protocol_name)) |exts| {
-        const rtd = try resolveDescriptor(rt, receiver);
         for (exts) |ext| {
-            if (!protocol_mod.satisfiesName(ext.target_proto, rtd)) continue;
+            if (!protocol_mod.satisfiesName(ext.target_proto, td)) continue;
             for (ext.impls) |me| {
                 if (!std.mem.eql(u8, me.method_name, method_name)) continue;
                 if (me.method_val.tag() == .nil) break;
-                const vt = rt.vtable orelse return error.NoVTable;
-                return try vt.callFn(rt, env, me.method_val, args, loc);
+                return me.method_val;
             }
         }
     }
@@ -152,15 +206,10 @@ pub fn dispatch(
     // `(extend-protocol P clojure.lang.IRecord …)` impl (registered on the
     // IRecord class descriptor) serves any record with no impl of its own.
     // Like an interface impl on the JVM it outranks the Object default.
-    if (receiver.tag() == .typed_instance and
-        receiver.decodePtr(*const td_mod.TypedInstance).descriptor.kind == .defrecord)
-    {
+    if (receiver.tag() == .typed_instance and td.kind == .defrecord) {
         if (rt.class_descriptors.get("IRecord")) |rec_td| {
             if (rec_td.lookupMethod(protocol_name, method_name)) |me| {
-                if (me.method_val.tag() != .nil) {
-                    const vt = rt.vtable orelse return error.NoVTable;
-                    return try vt.callFn(rt, env, me.method_val, args, loc);
-                }
+                if (me.method_val.tag() != .nil) return me.method_val;
             }
         }
     }
@@ -172,14 +221,10 @@ pub fn dispatch(
     if (receiver.tag() != .nil) {
         if (rt.class_descriptors.get("Object")) |obj_td| {
             if (obj_td.lookupMethod(protocol_name, method_name)) |me| {
-                if (me.method_val.tag() != .nil) {
-                    const vt = rt.vtable orelse return error.NoVTable;
-                    return try vt.callFn(rt, env, me.method_val, args, loc);
-                }
+                if (me.method_val.tag() != .nil) return me.method_val;
             }
         }
     }
-    const td = try resolveDescriptor(rt, receiver);
     return error_catalog.raise(.protocol_no_satisfies, loc, .{
         .protocol = protocol_name,
         .method = method_name,

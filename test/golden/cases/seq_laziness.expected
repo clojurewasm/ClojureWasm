@@ -3,8 +3,8 @@
 --- stdout ---
 defined
 realising 1
-first 1
 realising 2
 realising 3
+first 1
 all (1 4 9)
 --- stderr ---

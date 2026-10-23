@@ -505,9 +505,9 @@ pub fn getFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
         .array => blk: {
             if (k.tag() != .integer) break :blk default;
             const idx = k.asInteger();
-            const items = java_array.asArray(coll).items();
-            if (idx < 0 or idx >= items.len) break :blk default;
-            break :blk items[@intCast(idx)];
+            const arr = java_array.asArray(coll);
+            if (idx < 0 or idx >= arr.len) break :blk default;
+            break :blk try java_array.get(rt, arr, @intCast(idx));
         },
         // A String is index-gettable (clj `(get "abc" 1)` → \b): return the
         // codepoint char, else default (OOR / non-integer key). D-217.
@@ -652,7 +652,7 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
                 if (has_default) break :blk default;
                 break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
             }
-            break :blk array_seq.nth(coll, @intCast(idx));
+            break :blk try array_seq.nth(rt, coll, @intCast(idx));
         },
         // `nth` into UTF-8 is a forward walk by nature, so this arm is O(idx)
         // rather than the vector view's O(1). The bounds check rides on that
@@ -688,7 +688,7 @@ pub fn nthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
                 if (has_default) break :blk default;
                 break :blk error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "nth" });
             }
-            break :blk try java_array.aget(coll, idx, "nth", loc);
+            break :blk try java_array.aget(rt, coll, idx, "nth", loc);
         },
         // A live transient vector is Indexed (clj parity, D-199) — same
         // index discipline as a persistent vector.
@@ -1291,6 +1291,28 @@ pub fn subvecFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     return sub_vector.make(rt, v, start, end);
 }
 
+/// `(__subvec-fast v start end)` — the common `subvec` call answered in one
+/// native step: `v` a vector (or subvec view), `start`/`end` immediate
+/// integers with `0 <= start <= end <= (count v)` → the O(1) view. Any other
+/// shape (nil, a non-vector, a float / ratio / non-number index, an
+/// out-of-bounds range) answers nil, and `clojure.core/subvec` falls through
+/// to its full coercion + throwing path. A real subvec is never nil, so nil
+/// is an unambiguous "not handled".
+/// PERF: the wrapper otherwise allocated an `->idx` closure and ran ~10
+/// interpreted checks per call (bench/vs_bb vector_assoc). [refs: O-073]
+pub fn subvecFastFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
+    _ = env;
+    try error_catalog.checkArity("__subvec-fast", args, 3, loc);
+    const v = args[0];
+    if (v.tag() != .vector and v.tag() != .sub_vector) return .nil_val;
+    if (!args[1].isInt() or !args[2].isInt()) return .nil_val;
+    const start = args[1].asInteger();
+    const end = args[2].asInteger();
+    const c: i64 = if (v.tag() == .vector) vector.count(v) else sub_vector.count(v);
+    if (start < 0 or end < start or c < end) return .nil_val;
+    return sub_vector.make(rt, v, @intCast(start), @intCast(end));
+}
+
 /// `#queue (e1 e2 …)` data-reader (ADR-0087): build a queue by conj-ing the
 /// form's elements in order. cljw extension (clj has no `#queue` reader); makes
 /// the cljw print form reader-round-trippable.
@@ -1366,6 +1388,7 @@ const ENTRIES = [_]Entry{
     .{ .name = "__queue-pop", .f = &queuePopFn },
     .{ .name = "__vector-pop", .f = &vectorPopFn },
     .{ .name = "__subvec", .f = &subvecFn },
+    .{ .name = "__subvec-fast", .f = &subvecFastFn },
     .{ .name = "disj", .f = &disjFn },
     .{ .name = "contains?", .f = &containsQFn },
     .{ .name = "get", .f = &getFn },

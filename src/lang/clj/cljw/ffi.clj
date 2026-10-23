@@ -8,7 +8,8 @@
 ;;   (:require #?(:cljw [cljw.ffi :as ffi] :rust [clojure.rust.ffi :as ffi]))
 ;;
 ;; Types: :void (return only) :int :long :double :pointer :string :bytes
-;; (argument only). At most 6 integer-class and 8 :double arguments; no
+;; (argument only). A :pointer argument also takes a primitive array (its
+;; storage, no copy); :bytes copies a byte array. At most 6 integer-class and 8 :double arguments; no
 ;; varargs, no structs by value, no float. Failures are ex-info with
 ;; {:ffi/error :open|:symbol|:signature|:arity|:arg-type|:closed ...}.
 ;; Require-on-demand, and present only on x86_64 / aarch64 Linux and macOS.

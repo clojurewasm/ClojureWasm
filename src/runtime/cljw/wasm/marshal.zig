@@ -6,6 +6,13 @@
 //! wasm type. i32 / i64 / f32 / f64 are covered; v128 / ref are out of P1
 //! scope (Phase-16, when wasm refs become first-class cljw Values per F-004).
 //!
+//! An integer is a cljw immediate only inside the i48 NaN-box window; past it
+//! (about +/-2^47) it is a heap Long (tag `.big_int`). Both directions go
+//! through the numeric tower, as `cljw.ffi`'s `:long` does: `big_int.toInt`
+//! reads an arg exactly (the generic form of `promote.exactI64`), and
+//! `promote.wrapI64` builds a result. `Value.initInteger` would demote a result past the window to a
+//! lossy Double, and `isNumber` / `isInt` see only the immediate.
+//!
 //! Backend: impl-only
 //! Impl deps: none
 //! Clojure peer: wasm/load, wasm/call
@@ -15,6 +22,9 @@ const ValType = engine.ValType;
 const ZValue = engine.Value;
 const value_mod = @import("../../value/value.zig");
 const Value = value_mod.Value;
+const Runtime = @import("../../runtime.zig").Runtime;
+const promote = @import("../../numeric/promote.zig");
+const big_int = @import("../../numeric/big_int.zig");
 const error_catalog = @import("../../error/catalog.zig");
 const ClojureWasmError = error_catalog.ClojureWasmError;
 const SourceLocation = @import("../../error/info.zig").SourceLocation;
@@ -25,24 +35,25 @@ pub fn toWasm(arg: Value, vt: ValType, loc: SourceLocation) ClojureWasmError!ZVa
         .i32 => return ZValue.fromI32(try coerceInt(arg, i32, loc)),
         .i64 => return ZValue.fromI64(try coerceInt(arg, i64, loc)),
         .f32 => {
-            if (!arg.isNumber()) return badArg(loc);
-            const f: f32 = @floatCast(floatOf(arg));
+            const f: f32 = @floatCast(try floatOf(arg, loc));
             return ZValue.fromF32Bits(@bitCast(f));
         },
-        .f64 => {
-            if (!arg.isNumber()) return badArg(loc);
-            return ZValue.fromF64Bits(@bitCast(floatOf(arg)));
-        },
+        .f64 => return ZValue.fromF64Bits(@bitCast(try floatOf(arg, loc))),
         .v128 => return error_catalog.raise(.wasm_value_type_unsupported, loc, .{ .what = "v128 arguments" }),
         .ref => return error_catalog.raise(.wasm_value_type_unsupported, loc, .{ .what = "reference-typed arguments" }),
     }
 }
 
-/// Decode one `zwasm.Value` result back to a cljw `Value`.
-pub fn fromWasm(res: ZValue, loc: SourceLocation) ClojureWasmError!Value {
+/// Decode one `zwasm.Value` result back to a cljw `Value`. An i64 is exact
+/// over its whole range: `promote.wrapI64` keeps it an immediate inside the
+/// i48 window and makes it a heap Long outside it. wasm i64 is signless, so a
+/// guest's u64 with the top bit set reads as the negative Long with the same
+/// bits (JVM semantics, as `cljw.ffi`'s `:long`). An i64 result may allocate,
+/// so a caller lifting several results brackets them in a no-collect region.
+pub fn fromWasm(rt: *Runtime, res: ZValue, loc: SourceLocation) anyerror!Value {
     switch (res) {
         .i32 => |v| return Value.initInteger(v),
-        .i64 => |v| return Value.initInteger(v),
+        .i64 => |v| return promote.wrapI64(rt, v),
         .f32 => |bits| return Value.initFloat(@as(f32, @bitCast(bits))),
         .f64 => |bits| return Value.initFloat(@bitCast(bits)),
         .v128 => return error_catalog.raise(.wasm_value_type_unsupported, loc, .{ .what = "v128 results" }),
@@ -64,24 +75,42 @@ pub fn fromWasm(res: ZValue, loc: SourceLocation) ClojureWasmError!Value {
 ///   - float with a fraction → error (1.5 is not an integer arg; 2.0 is allowed);
 ///   - integer value outside [minInt(T), maxInt(T)] → error;
 /// otherwise return the in-range value.
+///
+/// A heap Long (outside the i48 immediate window) and a BigInt are integers
+/// too: `big_int.toInt(T)` reads them exactly, so a WIT `u64` above
+/// Long/MAX_VALUE lowers from a BigInt and anything outside `T` is refused.
 pub fn coerceInt(arg: Value, comptime T: type, loc: SourceLocation) ClojureWasmError!T {
-    if (!arg.isNumber()) return badArg(loc);
-    const i: i64 = if (arg.isInt()) arg.asInteger() else blk: {
-        const f = arg.asFloat();
-        if (@floor(f) != f) return error_catalog.raise(.wasm_arg_not_integer, loc, .{});
-        // The float is integral; widen-range check before the i64 cast.
-        if (f < @as(f64, @floatFromInt(std.math.minInt(i64))) or f > @as(f64, @floatFromInt(std.math.maxInt(i64))))
-            return error_catalog.raise(.wasm_arg_out_of_range, loc, .{});
-        break :blk @intFromFloat(f);
-    };
-    if (i < std.math.minInt(T) or i > std.math.maxInt(T))
-        return error_catalog.raise(.wasm_arg_out_of_range, loc, .{});
-    return @intCast(i);
+    switch (arg.tag()) {
+        .integer => return std.math.cast(T, @as(i64, arg.asInteger())) orelse outOfRange(loc),
+        .big_int => return big_int.asManaged(arg).toInt(T) catch outOfRange(loc),
+        .float => {
+            const f = arg.asFloat();
+            if (@floor(f) != f) return error_catalog.raise(.wasm_arg_not_integer, loc, .{});
+            // The float is integral; range-check before the cast. The bounds
+            // are the exact powers of two, half-open at the top: maxInt(i64)
+            // as an f64 ROUNDS to 2^63, so a `> maxInt` test let 2^63 itself
+            // through to `@intFromFloat`, a ReleaseSafe panic on caller data.
+            if (!(f >= -0x1p63 and f < 0x1p63)) return outOfRange(loc);
+            const i: i64 = @intFromFloat(f);
+            return std.math.cast(T, i) orelse outOfRange(loc);
+        },
+        else => return badArg(loc),
+    }
 }
 
-/// cljw number → f64 (a float passes through; an int widens).
-fn floatOf(v: Value) f64 {
-    return if (v.isFloat()) v.asFloat() else @floatFromInt(v.asInteger());
+/// cljw number to f64: a float passes through, an integer widens (a heap Long
+/// or BigInt to its nearest double, as `double` does).
+fn floatOf(v: Value, loc: SourceLocation) ClojureWasmError!f64 {
+    return switch (v.tag()) {
+        .float => v.asFloat(),
+        .integer => @floatFromInt(@as(i64, v.asInteger())),
+        .big_int => big_int.asManaged(v).toFloat(f64, .nearest_even)[0],
+        else => badArg(loc),
+    };
+}
+
+fn outOfRange(loc: SourceLocation) ClojureWasmError {
+    return error_catalog.raise(.wasm_arg_out_of_range, loc, .{});
 }
 
 fn badArg(loc: SourceLocation) ClojureWasmError {
