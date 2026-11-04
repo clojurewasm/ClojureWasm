@@ -110,9 +110,22 @@ jobs:
           echo "CLJW_BENCH_JVM_CP=$(ls "$d"/*.jar | paste -sd:)" >> "$GITHUB_ENV"
           java -version
 
+      # A restored `.zig-cache` can hold a WriteFiles manifest whose output dir
+      # is gone, and Zig then errors instead of rebuilding:
+      #   error: failed to check cache: '.zig-cache/o/<hash>/bootstrap_sources_stub.zig'
+      #          file_hash FileNotFound
+      # Seen 2026-10-24 on a cache saved by a green gate run, so the save-side
+      # guard in ci.yml (never save a cancelled job) does not cover it. This
+      # job only reads the cache, so drop it and build cold once on failure.
       - name: Build cljw ReleaseSafe -Dwasm
         shell: bash
-        run: zig build -Dwasm -Doptimize=ReleaseSafe -p "$RUNNER_TEMP/cljw-bench"
+        run: |
+          build() { zig build -Dwasm -Doptimize=ReleaseSafe -p "$RUNNER_TEMP/cljw-bench"; }
+          if ! build; then
+            echo "::warning::build failed on the restored .zig-cache; retrying cold"
+            rm -rf .zig-cache
+            build
+          fi
 
       - name: Run bench/vs_bb
         shell: bash

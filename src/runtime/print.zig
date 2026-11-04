@@ -968,7 +968,7 @@ fn mapCommonNs(v: Value) ?[]const u8 {
     var common: ?[]const u8 = null;
     var i: u32 = 0;
     while (i < am.count) : (i += 1) {
-        const key = am.entries[2 * i];
+        const key = am.entries()[2 * i];
         const kns: ?[]const u8 = switch (key.tag()) {
             .keyword => keyword.asKeyword(key).ns,
             .symbol => symbol.asSymbol(key).ns,
@@ -1695,9 +1695,9 @@ pub fn printMap(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
         while (i < am.count) : (i += 1) {
             if (try lengthTruncated(w, @intCast(i), ", ")) break;
             if (i > 0) try w.writeAll(", ");
-            try printMapKey(ports, w, am.entries[2 * i], strip);
+            try printMapKey(ports, w, am.entries()[2 * i], strip);
             try w.writeByte(' ');
-            try printValue(ports, w, am.entries[2 * i + 1]);
+            try printValue(ports, w, am.entries()[2 * i + 1]);
         }
     } else {
         const phm = v.decodePtr(*const map_collection.PersistentHashMap); // repr-decode-ok: printer dual-path, hash_map arm
@@ -1724,7 +1724,7 @@ pub fn printSet(ports: ?Ports, w: *Writer, v: Value) anyerror!void {
         while (i < am.count) : (i += 1) {
             if (try lengthTruncated(w, @intCast(i), " ")) break;
             if (i > 0) try w.writeByte(' ');
-            try printValue(ports, w, am.entries[2 * i]);
+            try printValue(ports, w, am.entries()[2 * i]);
         }
     } else {
         // hash_map-backed set (> 8 elements): walk the backing map's HAMT

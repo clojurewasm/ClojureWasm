@@ -109,6 +109,13 @@ fn connectFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
             return error_catalog.raise(.net_connect_failed, loc, .{ .host = host, .port = port_i });
     };
 
+    return wrapStream(rt, stream);
+}
+
+/// A socket Value over the connected `stream`, in a fresh `SocketBox`. The
+/// box's buffers are charged to the collect trigger, since the only cell
+/// standing for them is a few words. Closes `stream` if the box cannot be made.
+fn wrapStream(rt: *Runtime, stream: std.Io.net.Stream) !Value {
     const box = rt.gpa.create(SocketBox) catch |e| {
         stream.close(rt.io);
         return e;
@@ -124,6 +131,7 @@ fn connectFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) 
     };
     box.reader = box.stream.reader(box.io, &box.rbuf);
     box.writer = box.stream.writer(box.io, &box.wbuf);
+    rt.gc.noteOwnedAlloc(@sizeOf(SocketBox));
 
     return host_instance.alloc(rt, &descriptor, .{ @intFromPtr(box), 0, 0, 0 });
 }
@@ -313,23 +321,7 @@ fn acceptMethod(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocatio
     const stream = safepoint.blocking(std.Io.net.Server.accept, .{ &box.server, box.io }) catch
         return error_catalog.raise(.net_io_failed, loc, .{ .op = "accept" });
 
-    const sock = rt.gpa.create(SocketBox) catch |e| {
-        stream.close(rt.io);
-        return e;
-    };
-    sock.* = .{
-        .io = rt.io,
-        .stream = stream,
-        .reader = undefined,
-        .writer = undefined,
-        .closed = false,
-        .rbuf = undefined,
-        .wbuf = undefined,
-    };
-    sock.reader = sock.stream.reader(sock.io, &sock.rbuf);
-    sock.writer = sock.stream.writer(sock.io, &sock.wbuf);
-
-    return host_instance.alloc(rt, &descriptor, .{ @intFromPtr(sock), 0, 0, 0 });
+    return wrapStream(rt, stream);
 }
 
 /// `(.port srv)` — the BOUND port. `listen` with 0 resolves an ephemeral port
@@ -433,23 +425,7 @@ fn connectUnixFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     const stream = safepoint.blocking(std.Io.net.UnixAddress.connect, .{ &ua, rt.io }) catch
         return error_catalog.raise(.net_unix_connect_failed, loc, .{ .path = path });
 
-    const box = rt.gpa.create(SocketBox) catch |e| {
-        stream.close(rt.io);
-        return e;
-    };
-    box.* = .{
-        .io = rt.io,
-        .stream = stream,
-        .reader = undefined,
-        .writer = undefined,
-        .closed = false,
-        .rbuf = undefined,
-        .wbuf = undefined,
-    };
-    box.reader = box.stream.reader(box.io, &box.rbuf);
-    box.writer = box.stream.writer(box.io, &box.wbuf);
-
-    return host_instance.alloc(rt, &descriptor, .{ @intFromPtr(box), 0, 0, 0 });
+    return wrapStream(rt, stream);
 }
 
 /// `(cljw.net/listen-unix path)` — bind and listen on a UNIX domain socket.

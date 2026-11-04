@@ -10,6 +10,7 @@ const gc_heap_mod = @import("gc_heap.zig");
 const page_heap_mod = @import("page_heap.zig");
 const heap_header = @import("../value/heap_header.zig");
 const mark_sweep = @import("mark_sweep.zig");
+const gc_trigger_mod = @import("gc_trigger.zig");
 
 const GcHeap = gc_heap_mod.GcHeap;
 const HeapHeader = heap_header.HeapHeader;
@@ -213,7 +214,16 @@ test "collect: a registered worker's transaction roots survive (#4a' worker-tx)"
     try testing.expect(found); // survived via the registered worker's tx rooting
 }
 
-test "collect: adaptive threshold = max(default, last_live_bytes * 2)" {
+test "adaptiveThreshold: the heap grows by one live set between collects (CLJW-PERF-GC-RETAIN)" {
+    const floor = gc_heap_mod.default_gc_threshold_bytes;
+    try testing.expectEqual(floor, gc_trigger_mod.adaptiveThreshold(floor, 0));
+    try testing.expectEqual(floor, gc_trigger_mod.adaptiveThreshold(floor, floor - 1));
+    // Past the floor the threshold is the live set itself, not twice it: peak
+    // committed heap is about live + threshold, so 2x live meant ~3x RSS.
+    try testing.expectEqual(@as(usize, 100 * 1024 * 1024), gc_trigger_mod.adaptiveThreshold(floor, 100 * 1024 * 1024));
+}
+
+test "collect: adaptive threshold = max(default, last_live_bytes)" {
     var gc = GcHeap.init(testing.allocator);
     defer gc.deinit();
 
@@ -222,7 +232,7 @@ test "collect: adaptive threshold = max(default, last_live_bytes * 2)" {
     try testing.expectEqual(gc_heap_mod.default_gc_threshold_bytes, gc.threshold_bytes);
 
     // Pin a heap Value so it survives the cycle. last_live_bytes = sizeOf(Cell);
-    // since 2 * sizeOf(Cell) is far below default, threshold still stays at default.
+    // since sizeOf(Cell) is far below default, threshold still stays at default.
     const cell = try gc.alloc(Cell);
     cell.* = .{ .header = HeapHeader.init(.list) };
     const value_mod_test = @import("../value/value.zig");

@@ -413,6 +413,21 @@ const Compiler = struct {
                 return;
             }
         }
+        // PERF: `(inc x)` / `(dec x)` → op_inc/op_dec instead of op_get_var +
+        // op_call into the builtin, which re-entered `plus` through a slice
+        // (~600 instructions a call). No fused local form: the arg's own loc
+        // must reach the loc_stack for an arg-precise caret [refs: O-102]
+        if (n.args.len == 1 and n.callee.* == .var_ref) {
+            if (intrinsic.recognizeUnary(self.rt, n.callee.var_ref.var_ptr)) |uop| {
+                try self.compileNode(&n.args[0]);
+                if (n.loc.line != 0) {
+                    self.current_line = n.loc.line;
+                    self.current_column = n.loc.column;
+                }
+                try self.emit(if (uop == .inc) .op_inc else .op_dec, 0);
+                return;
+            }
+        }
         // PERF: collection-accessor intrinsics (ADR-0130 extended; O-043). `(get
         // coll k)` (2-arg) → op_get; `(nth coll i default)` (3-arg) → op_nth.
         // Same Var-pointer gate + runtime `core_coll_pristine` deopt as the arith

@@ -89,6 +89,9 @@ const ARENA_SLOTS: usize = 1 << 14; // 16384; keeps `op_top` within u16
 /// `VmFrame`; exceeding this → catchable `StackOverflow` (matches clj). The
 /// operand arena (~8 slots/fib-frame) caps comparable depth, so the two align.
 const FRAMES_MAX: usize = 2048;
+/// Handler-arena capacity: the live handlers of every nested `eval` on the
+/// thread together. A window that cannot open a slot raises stack_overflow.
+const HANDLER_ARENA_SLOTS: usize = 8192;
 /// The thread's reusable VM arenas: the operand stack + its parallel loc stack +
 /// the flattened-call-frame locals arena + the in-VM frame stack, as inline
 /// arrays so the storage is threadlocal STATIC (BSS, demand-paged) — nothing to
@@ -105,6 +108,13 @@ const VmArena = struct {
     local_top: u16 = 0,
     frames: [FRAMES_MAX]VmFrame = undefined,
     frame_top: u16 = 0,
+    /// try/catch + cleanup handlers. Each `eval` borrows a window of up to
+    /// `HANDLER_STACK_MAX` starting at `handler_top`, publishing
+    /// `handler_top = its base + its live count` on every handler push so a nested
+    /// eval borrows above the live ones. Off the native stack: the window was a
+    /// 768-byte `eval` local paid by every re-entry (ADR-0195 budget).
+    handlers: [HANDLER_ARENA_SLOTS]Handler = undefined,
+    handler_top: u16 = 0,
 };
 threadlocal var vm_arena: VmArena = .{};
 
@@ -121,9 +131,10 @@ threadlocal var stack_base: usize = 0;
 const STACK_BUDGET_BYTES = runtime_thread.STACK_BUDGET_BYTES;
 
 comptime {
-    // The threadlocal arena is static TLS, carved out of the runtime stack
-    // under glibc pthreads; it must fit the reserve the margin accounts for.
-    runtime_thread.assertTlsFits(@sizeOf(VmArena));
+    // The threadlocal arenas (this VmArena + tree_walk's per-call scratch) are
+    // static TLS, carved out of the runtime stack under glibc pthreads; together
+    // they must fit the reserve the margin accounts for.
+    runtime_thread.assertTlsFits(@sizeOf(VmArena) + tree_walk.TLS_BYTES);
 }
 
 /// An in-VM call frame. A flattened `op_call` pushes one + continues
@@ -242,6 +253,7 @@ pub fn eval(
     const op_base = ar.op_top;
     const local_base_entry = ar.local_top;
     const frame_base = ar.frame_top;
+    const handler_base = ar.handler_top;
     const head_entry = root_set.eval_frame_head;
     // Publish this eval's env for the alloc-driven GC torture mode: a collect
     // forced from inside `gc.alloc` has no `env`, so it reads this threadlocal.
@@ -258,13 +270,14 @@ pub fn eval(
         ar.frame_top = frame_base;
         ar.op_top = op_base;
         ar.local_top = local_base_entry;
+        ar.handler_top = handler_base;
         root_set.eval_frame_head = head_entry;
         root_set.active_env = active_env_entry;
     }
     if (ar.frame_top >= FRAMES_MAX)
         return error_catalog.raise(.stack_overflow, .{}, .{ .max = FRAMES_MAX });
 
-    var handlers = tree_walk.uninitScratch([HANDLER_STACK_MAX]Handler);
+    const handlers: []Handler = ar.handlers[handler_base..@min(@as(usize, handler_base) + HANDLER_STACK_MAX, HANDLER_ARENA_SLOTS)];
     var handler_count: u16 = 0;
 
     // The base frame: caller-owned locals + the base chunk. Its gc_frame roots
@@ -348,8 +361,11 @@ pub fn eval(
         // with the alloc-boundary site via the shared `bytes_since_last_gc` reset;
         // one predicted-not-taken compare per op when the threshold is not yet crossed.
         rt.gc.maybeAutoCollect();
+        // `ar.handler_top` (where a nested eval borrows its handler window) is
+        // published by the push-handler ops, not here per op: a top left high
+        // after a pop only wastes slots, it never overlaps a live handler.
         var flatten_req: ?FlattenReq = null;
-        const step_result = stepOnce(rt, env, cur.locals, cur.chunk, &ar.stack, &ar.loc, &ar.op_top, &ip, &handlers, &handler_count, &flatten_req);
+        const step_result = stepOnce(true, rt, env, cur.locals, cur.chunk, &ar.stack, &ar.loc, &ar.op_top, &ip, handlers, &handler_count, &flatten_req);
         // A flattenPush FRAMES_MAX overflow must reach the shared error arm
         // below (`else |err|` — unwind + synthesise the catalog error into a
         // catchable thrown value + jump to the handler) so THIS eval's own
@@ -473,6 +489,11 @@ pub fn eval(
 // fib_recursive 40→33 ms, tak 15→13. The
 // naive form is a plain `fn`; behaviour is identical (diff oracle). [refs: O-017]
 inline fn stepOnce(
+    /// `true` for the copy inlined into `eval`'s loop: the cold opcodes
+    /// (prongs that call `toCold`) leave it for the out-of-line `stepCold` copy, so their
+    /// scratch (fmt buffers, the make-fn stackFallback, literal builders) is
+    /// not part of the frame every `eval` re-entry pays (ADR-0195 budget).
+    comptime hot: bool,
     rt: *Runtime,
     env: *Env,
     locals: []Value,
@@ -481,7 +502,7 @@ inline fn stepOnce(
     loc_stack: []SourceLocation,
     sp_ptr: *u16,
     ip_ptr: *usize,
-    handlers: *[HANDLER_STACK_MAX]Handler,
+    handlers: []Handler,
     handler_count_ptr: *u16,
     /// When `op_call` resolves a monomorphic bytecode callee it sets
     /// this (and returns `null`/cont, WITHOUT popping the callee+args) so the eval
@@ -548,7 +569,7 @@ inline fn stepOnce(
             const count: u16 = instr.operand >> 8;
             tree_walk.patchLetfnClosures(locals, base, count);
         },
-        .op_def, .op_def_unbound => {
+        .op_def, .op_def_unbound => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             const var_idx = instr.operand & opcode_mod.DEF_VAR_IDX_MASK;
             if (var_idx >= chunk.constants.len)
                 return raiseInternal("vm: def Var index out of range");
@@ -570,7 +591,7 @@ inline fn stepOnce(
             stack[sp] = Value.encodeHeapPtr(.var_ref, var_ptr);
             sp += 1;
         },
-        .op_var_meta => {
+        .op_var_meta => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // Stack is [.., var, meta] — pop the meta map, set it as
             // the Var's meta (the merged user ^meta/:doc + :line/:column/:file
             // the analyzer minted); the var stays as def's result value.
@@ -593,7 +614,7 @@ inline fn stepOnce(
             stack[sp] = var_ptr.deref();
             sp += 1;
         },
-        .op_ns_import => {
+        .op_ns_import => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // Register one `(:import …)` simple->fqcn into the
             // current ns. Pushes nil (the ns form's running value).
             if (instr.operand >= chunk.import_sites.len)
@@ -607,7 +628,7 @@ inline fn stepOnce(
             stack[sp] = Value.nil_val;
             sp += 1;
         },
-        .op_set_var => {
+        .op_set_var => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             if (instr.operand >= chunk.constants.len)
                 return raiseInternal("vm: op_set_var constant index out of range");
             if (sp == 0) return raiseInternal("vm: op_set_var on empty stack");
@@ -621,7 +642,7 @@ inline fn stepOnce(
                 return error_catalog.raise(.var_set_not_bound, instr_loc, .{ .@"var" = full });
             }
         },
-        .op_set_field => {
+        .op_set_field => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // `(set! field v)` on a deftype mutable field. Stack:
             // [receiver, value]. operand = field-name String constant.
             if (instr.operand >= chunk.constants.len)
@@ -676,7 +697,9 @@ inline fn stepOnce(
             // the slow binder) and handler-bearing chunks (the bounded throw-unwind
             // assumes flattened frames are handler-free). Anything else falls
             // through to the slow `vt.callFn` path — the F-012 oracle seam.
-            if (callee.tag() == .fn_val) {
+            // PERF: always_inline; the stepCold copy pushed `tag` out of line
+            // here (one call per executed op_call) [refs: O-100]
+            if (@call(.always_inline, Value.tag, .{callee}) == .fn_val) {
                 const f = callee.decodePtr(*Function);
                 if (tree_walk.selectMethod(f, arg_count)) |m| {
                     if (m.bytecode) |bc| {
@@ -727,7 +750,7 @@ inline fn stepOnce(
         },
         .op_add, .op_sub, .op_mul, .op_lt, .op_le, .op_gt, .op_ge, .op_eq, .op_mod, .op_rem, .op_quot, .op_ne => {
             // Binary arith/comparison intrinsic (ADR-0130 cache/deopt contract).
-            // Fixnum fast path skips
+            // Fixnum/float fast path skips
             // var-resolve + BuiltinFn dispatch; any other case (incl. errors)
             // defers to the cached builtin Var for full parity. `pristine` is
             // cleared by alter-var-root on a cached op (deopt → always builtin).
@@ -735,9 +758,9 @@ inline fn stepOnce(
             sp -= 2;
             const a = stack[sp];
             const b = stack[sp + 1];
-            const aop = intrinsic.fromOpcode(instr_op).?;
+            const aop = @call(.always_inline, intrinsic.fromOpcode, .{instr_op}).?;
             const fast: ?Value = if (rt.core_arith_pristine)
-                try intrinsic.fastBinaryFixnum(rt, aop, a, b)
+                try intrinsic.fastBinaryNumber(rt, aop, a, b)
             else
                 null;
             const result = fast orelse blk: {
@@ -851,6 +874,30 @@ inline fn stepOnce(
             stack[sp] = result;
             sp += 1;
         },
+        .op_inc, .op_dec => {
+            // PERF: unary inc/dec intrinsic; replaces its operand in place.
+            // Fixnum/float fast path, else the cached (maybe redefined) Var,
+            // same deopt contract as the binary family. [refs: O-102]
+            const uop = @call(.always_inline, intrinsic.fromUnaryOpcode, .{instr_op}).?;
+            if (sp < 1) return raiseInternal("vm: unary intrinsic underflow");
+            sp -= 1;
+            const a = stack[sp];
+            const fast: ?Value = if (rt.core_arith_pristine) intrinsic.fastUnary(uop, a) else null;
+            const result = fast orelse blk: {
+                const vt = rt.vtable orelse
+                    return error_catalog.raiseInternal(.{}, "Runtime vtable not installed; cannot dispatch unary intrinsic");
+                const pv = rt.unary_vars[@intFromEnum(uop)] orelse
+                    return raiseInternal("vm: unary intrinsic emitted without a cached Var");
+                const op_var: *const env_mod.Var = @ptrCast(@alignCast(pv));
+                const one = [1]Value{a};
+                const prev_arg_sources = error_mod.swapArgSources(loc_stack[sp .. sp + 1]);
+                defer _ = error_mod.swapArgSources(prev_arg_sources);
+                break :blk try vt.callFn(rt, env, op_var.deref(), &one, instr_loc);
+            };
+            loc_stack[sp] = instr_loc;
+            stack[sp] = result;
+            sp += 1;
+        },
         .op_add_local_const, .op_sub_local_const, .op_mul_local_const, .op_lt_local_const, .op_le_local_const, .op_gt_local_const, .op_ge_local_const, .op_eq_local_const, .op_mod_local_const, .op_rem_local_const, .op_quot_local_const, .op_ne_local_const => {
             // PERF: local-const arith superinstruction — operands come
             // from `locals[slot]` + `constants[idx]` (packed in the operand), NOT the
@@ -867,7 +914,7 @@ inline fn stepOnce(
             const b = chunk.constants[cidx];
             const aop = intrinsic.fromLocalConstOpcode(instr_op).?;
             const fast: ?Value = if (rt.core_arith_pristine)
-                try intrinsic.fastBinaryFixnum(rt, aop, a, b)
+                try intrinsic.fastBinaryNumber(rt, aop, a, b)
             else
                 null;
             const result = fast orelse blk: {
@@ -898,7 +945,7 @@ inline fn stepOnce(
             const b = locals[sb];
             const aop = intrinsic.fromLocalsOpcode(instr_op).?;
             const fast: ?Value = if (rt.core_arith_pristine)
-                try intrinsic.fastBinaryFixnum(rt, aop, a, b)
+                try intrinsic.fastBinaryNumber(rt, aop, a, b)
             else
                 null;
             const result = fast orelse blk: {
@@ -943,7 +990,7 @@ inline fn stepOnce(
                 break :bblk locals[sb];
             };
             const fast: ?Value = if (rt.core_arith_pristine)
-                try intrinsic.fastBinaryFixnum(rt, info.cmp, a, b)
+                try intrinsic.fastBinaryNumber(rt, info.cmp, a, b)
             else
                 null;
             const cmp_result = fast orelse blk: {
@@ -1002,7 +1049,7 @@ inline fn stepOnce(
             stack[sp] = stack[sp - 1];
             sp += 1;
         },
-        .op_throw => {
+        .op_throw => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             if (sp == 0) return raiseInternal("vm: op_throw on empty stack");
             sp -= 1;
             dispatch.last_thrown_exception = stack[sp];
@@ -1016,7 +1063,7 @@ inline fn stepOnce(
             dispatch.last_thrown_context = error_mod.snapshotContext();
             return error.ThrownValue;
         },
-        .op_make_fn => {
+        .op_make_fn => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // The compiler stashes either a final closure-less
             // Function (slot_base == 0) or a template Function
             // (slot_base > 0, closure_bindings still null) in the
@@ -1090,7 +1137,7 @@ inline fn stepOnce(
             if (sp < instr.operand)
                 return raiseInternal("vm: op_recur underflow");
         },
-        .op_invoke_builtin => {
+        .op_invoke_builtin => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // Reserved for analyzer-resolved direct builtin calls;
             // the compiler does not emit this (every call routes
             // through `op_call` + vtable). Per
@@ -1102,19 +1149,19 @@ inline fn stepOnce(
             const offset: i16 = @bitCast(instr.operand);
             const catch_ip = applyJump(ip, offset) orelse
                 return raiseInternal("vm: op_push_handler target out of range");
-            if (handler_count >= HANDLER_STACK_MAX)
-                return raiseInternal("vm: handler stack overflow");
+            if (handler_count >= handlers.len) return handlerOverflow(handlers.len, instr_loc);
             handlers[handler_count] = .{ .catch_ip = catch_ip, .saved_sp = sp, .kind = .catch_clause };
             handler_count += 1;
+            publishHandlerTop(handlers, handler_count);
         },
         .op_push_cleanup => {
             const offset: i16 = @bitCast(instr.operand);
             const cleanup_ip = applyJump(ip, offset) orelse
                 return raiseInternal("vm: op_push_cleanup target out of range");
-            if (handler_count >= HANDLER_STACK_MAX)
-                return raiseInternal("vm: handler stack overflow");
+            if (handler_count >= handlers.len) return handlerOverflow(handlers.len, instr_loc);
             handlers[handler_count] = .{ .catch_ip = cleanup_ip, .saved_sp = sp, .kind = .cleanup };
             handler_count += 1;
+            publishHandlerTop(handlers, handler_count);
         },
         .op_reraise => {
             // Re-fire the error the cleanup-unwind branch stashed,
@@ -1132,7 +1179,7 @@ inline fn stepOnce(
                 return raiseInternal("vm: op_pop_handler on empty handler stack");
             handler_count -= 1;
         },
-        .op_push_binding_frame => {
+        .op_push_binding_frame => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // Pops 2N entries [encVar0, val0, …] and installs a
             // BindingFrame on the per-thread binding chain (the
             // threadlocal is load-bearing: Clojure dynamic bindings
@@ -1173,7 +1220,7 @@ inline fn stepOnce(
             // refresh in case this frame rebinds *ns*.
             env.refreshCurrentNs();
         },
-        .op_pop_binding_frame => {
+        .op_pop_binding_frame => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             const f = env_mod.current_frame orelse
                 return raiseInternal("vm: op_pop_binding_frame on empty frame stack");
             env_mod.popFrame();
@@ -1182,7 +1229,7 @@ inline fn stepOnce(
             // Restore current_ns to the outer *ns* after the frame pops.
             env.refreshCurrentNs();
         },
-        .op_match_class => {
+        .op_match_class => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             if (sp == 0)
                 return raiseInternal("vm: op_match_class on empty stack");
             if (instr.operand >= chunk.constants.len)
@@ -1197,7 +1244,7 @@ inline fn stepOnce(
             stack[sp] = if (matches) Value.true_val else Value.false_val;
             sp += 1;
         },
-        .op_match_type_keyword => {
+        .op_match_type_keyword => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             if (sp == 0)
                 return raiseInternal("vm: op_match_type_keyword on empty stack");
             if (instr.operand >= chunk.constants.len)
@@ -1210,7 +1257,7 @@ inline fn stepOnce(
             stack[sp] = if (matches) Value.true_val else Value.false_val;
             sp += 1;
         },
-        .op_in_ns => {
+        .op_in_ns => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // Mirror of tree_walk's evalInNs. `(in-ns 'foo)` is a
             // naked ns switch — NO auto-refer of clojure.core.
             // `.clj` heads use `(ns foo (:refer-clojure))`, which
@@ -1229,7 +1276,7 @@ inline fn stepOnce(
             stack[sp] = Env.nsValue(target_ns);
             sp += 1;
         },
-        .op_ns_with_refer_clojure => {
+        .op_ns_with_refer_clojure => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // Mirror of tree_walk's evalNs when `refer_clojure = true`:
             // op_in_ns logic + referAll(clojure.core). clojure.core is
             // the single auto-refer source (Zig builtins intern there
@@ -1248,7 +1295,7 @@ inline fn stepOnce(
             stack[sp] = Value.nil_val;
             sp += 1;
         },
-        .op_ns_with_filter => {
+        .op_ns_with_filter => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // Mirror of tree_walk's evalNs refer-clojure branch
             // with the `:exclude`/`:only` filter. Enter the ns, apply the
             // ns meta + docstring, then refer clojure.core
@@ -1275,7 +1322,7 @@ inline fn stepOnce(
             stack[sp] = Value.nil_val;
             sp += 1;
         },
-        .op_require => {
+        .op_require => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // Mirror of tree_walk's evalRequire.
             if (instr.operand >= chunk.constants.len)
                 return raiseInternal("vm: op_require constant index out of range");
@@ -1292,7 +1339,7 @@ inline fn stepOnce(
             stack[sp] = Value.nil_val;
             sp += 1;
         },
-        .op_require_with_libspec => {
+        .op_require_with_libspec => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // Mirror of tree_walk's evalRequire full body. Pops the
             // LibspecEntry from the chunk side-table, runs the
             // op_require prelude, then applies alias + refers.
@@ -1342,7 +1389,7 @@ inline fn stepOnce(
         // past `compiler.literal_step` elements the literal is built in steps,
         // each `op_*_extend` appending one step to the collection below it, so
         // the operand stack never holds more than one step (D-346).
-        inline .op_vector_literal, .op_map_literal, .op_set_literal => |op| {
+        inline .op_vector_literal, .op_map_literal, .op_set_literal => |op| if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             const n: u16 = instr.operand;
             if (sp < n) return raiseInternal("vm: collection literal underflows operand stack");
             if (op == .op_map_literal and n % 2 != 0) return raiseInternal("vm: odd map literal");
@@ -1351,7 +1398,7 @@ inline fn stepOnce(
             stack[sp] = coll;
             sp += 1;
         },
-        inline .op_vector_extend, .op_map_extend, .op_set_extend => |op| {
+        inline .op_vector_extend, .op_map_extend, .op_set_extend => |op| if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // The collection under construction stays in its (rooted) stack
             // slot while each append allocates.
             const n: u16 = instr.operand;
@@ -1360,7 +1407,7 @@ inline fn stepOnce(
             try literal.extend(rt, comptime literalKind(op), &stack[sp - n - 1], stack[sp - n .. sp]);
             sp -= n;
         },
-        .op_ctor_call => {
+        .op_ctor_call => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // operand = index into the ctor_sites side-table (the
             // class name carries full width, no 8-bit name_idx packing).
             if (instr.operand >= chunk.ctor_sites.len)
@@ -1378,7 +1425,7 @@ inline fn stepOnce(
             stack[sp] = new_val;
             sp += 1;
         },
-        .op_method_call => {
+        .op_method_call => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // operand = call_site_idx. The unified instance-member
             // resolver (ADR-0050) runs field-first (deftype/record
             // field_layout), then method_table; `field_only` (the
@@ -1463,7 +1510,7 @@ inline fn stepOnce(
                 }
             }
         },
-        .op_static_method_call => {
+        .op_static_method_call => if (hot) return toCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out, &sp, &ip, &handler_count) else {
             // operand = call_site_idx. Static dispatch — the
             // descriptor is the analyze-time pointer in
             // the call-site (no receiver to derive it from). Raw
@@ -1504,6 +1551,56 @@ inline fn stepOnce(
     return null;
 }
 
+/// The out-of-line copy of `stepOnce` for the cold opcodes. `noinline` is the
+/// point: its frame exists only while a cold op runs, never across the
+/// `vt.callFn` re-entries the hot copy makes.
+noinline fn stepCold(
+    rt: *Runtime,
+    env: *Env,
+    locals: []Value,
+    chunk: *const BytecodeChunk,
+    stack: []Value,
+    loc_stack: []SourceLocation,
+    sp_ptr: *u16,
+    ip_ptr: *usize,
+    handlers: []Handler,
+    handler_count_ptr: *u16,
+    flatten_out: *?FlattenReq,
+) anyerror!?Value {
+    return stepOnce(false, rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out);
+}
+
+/// A cold opcode's prong in the hot `stepOnce`: hand the instruction to
+/// `stepCold` and adopt the state it wrote back. `sp_ptr`/`ip_ptr` still hold
+/// the pre-step values (the hot copy publishes its locals only in its
+/// `defer`), so `stepCold` re-fetches the same instruction; refreshing the hot
+/// locals from the pointers keeps that `defer` from undoing its work.
+/// Dispatching from inside the switch costs the hot opcodes nothing; a
+/// pre-dispatch "is this op cold?" test cost every executed op [refs: O-100].
+inline fn toCold(
+    rt: *Runtime,
+    env: *Env,
+    locals: []Value,
+    chunk: *const BytecodeChunk,
+    stack: []Value,
+    loc_stack: []SourceLocation,
+    sp_ptr: *u16,
+    ip_ptr: *usize,
+    handlers: []Handler,
+    handler_count_ptr: *u16,
+    flatten_out: *?FlattenReq,
+    sp: *u16,
+    ip: *usize,
+    handler_count: *u16,
+) anyerror!?Value {
+    @branchHint(.unlikely);
+    const r = stepCold(rt, env, locals, chunk, stack, loc_stack, sp_ptr, ip_ptr, handlers, handler_count_ptr, flatten_out);
+    sp.* = sp_ptr.*;
+    ip.* = ip_ptr.*;
+    handler_count.* = handler_count_ptr.*;
+    return r;
+}
+
 fn matchExceptionClass(class_name: []const u8, thrown: Value) bool {
     // Delegate to the shared host-class hierarchy table in
     // `runtime/error/host_class.zig`. Mirror of
@@ -1520,6 +1617,21 @@ fn matchExceptionTypeKeyword(rt: *Runtime, kw_val: Value, thrown: Value) bool {
     const type_kw = keyword_mod.intern(rt, null, "type") catch return false;
     const got = map_mod.get(data_v, type_kw) catch return false;
     return @intFromEnum(got) == @intFromEnum(kw_val);
+}
+
+/// Publish this eval's live handler top so a nested eval borrows its window
+/// above it. Run on every push (rare op) rather than once per executed op.
+inline fn publishHandlerTop(handlers: []Handler, count: u16) void {
+    const base = (@intFromPtr(handlers.ptr) - @intFromPtr(&vm_arena.handlers)) / @sizeOf(Handler);
+    vm_arena.handler_top = @intCast(base + count);
+}
+
+/// No handler slot left. A full `HANDLER_STACK_MAX` window is one eval's
+/// try nesting (internal limit); a short one means the thread's handler
+/// arena is spent by nested evals, i.e. deep recursion: StackOverflowError.
+fn handlerOverflow(window: usize, loc: SourceLocation) anyerror {
+    if (window >= HANDLER_STACK_MAX) return raiseInternal("vm: handler stack overflow");
+    return error_catalog.raise(.stack_overflow, loc, .{ .max = HANDLER_ARENA_SLOTS });
 }
 
 fn raiseInternal(comptime detail: []const u8) anyerror {

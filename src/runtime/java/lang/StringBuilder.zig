@@ -50,7 +50,15 @@ fn appendStr(rt: *Runtime, env: *Env, lp: *ByteList, v: Value) !void {
     var aw: std.Io.Writer.Allocating = .init(rt.gpa);
     defer aw.deinit();
     try print_mod.writeStrValue(rt, env, &aw.writer, v);
-    try lp.appendSlice(rt.gc.infra, aw.writer.buffered());
+    try appendCharged(rt, lp, aw.writer.buffered());
+}
+
+/// Append `bytes` to `lp`, charging any buffer growth to the collect trigger:
+/// the builder's cell is a few words however large the buffer gets.
+fn appendCharged(rt: *Runtime, lp: *ByteList, bytes: []const u8) !void {
+    const before = lp.capacity;
+    try lp.appendSlice(rt.gc.infra, bytes);
+    if (lp.capacity > before) rt.gc.noteOwnedAlloc(lp.capacity - before);
 }
 
 /// `(StringBuilder.)` / `(StringBuilder. "seed")` / `(StringBuilder. n)` —
@@ -90,7 +98,7 @@ fn append(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) any
     const to = byteOffsetOfCodepoint(s, to_i);
     if (from_i < 0 or to_i < from_i or from == null or to == null)
         return error_catalog.raise(.index_out_of_range, loc, .{ .fn_name = "java.lang.StringBuilder/append" });
-    try listOf(args[0]).appendSlice(rt.gc.infra, s[from.?..to.?]);
+    try appendCharged(rt, listOf(args[0]), s[from.?..to.?]);
     return args[0];
 }
 

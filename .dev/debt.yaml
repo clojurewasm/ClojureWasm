@@ -1619,6 +1619,12 @@ active:
     barrier: |-
       tractable now; M-sized survey-first. Value rises with D-528 (real deps.edn corpus).
     last_reviewed: "2026-07-02"
+  - id: "D-588"
+    status: |-
+      open (2026-10-22, ADR-0205 DA fork point 4). clj exposes chunk-first (returns the current chunk as an IChunk, counted and indexable) and chunk-next; cljw has chunked-seq?, chunk-rest, chunk-buffer, chunk-append, chunk-cons but no chunk-first / chunk-next, so library code written against the IChunkedSeq API (chunked doseq/for expansions in user macros) fails to resolve. The boundary they would read now exists (runtime/collection/chunked_seq.zig).
+    category: clj-parity
+    barrier: |-
+      tractable now; needs a chunk value shape (an ArrayChunk view over the current chunk: count, nth, drop-first, reduce) for chunk-first to return.
   - id: "D-589"
     status: |-
       open (2026-10-22, java.time.format DA review). The java.time.format engine (runtime/time/date_time_format.zig) landed beside three structural leftovers its devil-s-advocate fork named. (1) Two ISO printers: (str ld) / (str instant) go through instant.zig formatLocalDate / formatLocalTime / formatIsoInstant while (.format x ISO_*) goes through the engine; fold the str path onto the interned ISO programs and delete the instant.zig printers (F-011). (2) zone_offset.zig holds both the pure Zone arithmetic the engine borrows and the Value layer; split it into time/zone.zig + zone_value.zig like the formatter pair. (3) date_time_formatter_value.zig temporalOf / Target are an if-chain over the four temporal types; a temporal_view hook on TypeDescriptor (sibling of temporal_print) would let OffsetDateTime / ZonedDateTime join without editing the bridge. Also the SignStyle / TextStyle / ResolverStyle enums are not surfaced, so appendValue(f,min,max,SignStyle), appendText(f,TextStyle), withResolverStyle stay opaque_members.

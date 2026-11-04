@@ -233,15 +233,16 @@ pub const Opcode = enum(u8) {
     /// ADR-0130: `(+ a b)` arithmetic intrinsic — emitted by the compiler when
     /// the callee resolves (by Var pointer identity) to canonical `clojure.core/+`
     /// with exactly 2 args. No operand. Stack on entry: `[…, a, b]`; pops both,
-    /// pushes the sum. Dispatch: if `rt.core_arith_pristine` and both operands are
-    /// inline fixnums → `intrinsic.fastBinaryFixnum(.add)` (= `promote.addPromoting`,
-    /// F-005 overflow→bigint); else `vt.callFn` the cached `+` builtin Var (full
+    /// pushes the sum. Dispatch: if `rt.core_arith_pristine` and the operands are
+    /// two inline fixnums or a float with a float/fixnum →
+    /// `intrinsic.fastBinaryNumber(.add)` (= `promote.addPromoting`, F-005
+    /// overflow→bigint by deferring); else `vt.callFn` the cached `+` builtin Var (full
     /// numeric-tower + arg-precise error parity). Net stack effect −1 (not a pure
     /// push). First cut of the intrinsic family (op_sub/op_mul/op_lt… follow).
     op_add = 0x28,
     /// ADR-0130 + am1: the rest of the binary arith/comparison intrinsic family,
-    /// same shape as op_add (no operand; pop a,b; fixnum fast path via
-    /// `intrinsic.fastBinaryFixnum`, else defer to the cached builtin Var). `=`
+    /// same shape as op_add (no operand; pop a,b; fixnum/float fast path via
+    /// `intrinsic.fastBinaryNumber`, else defer to the cached builtin Var). `=`
     /// (op_eq) is fixnum-only — any non-(fixnum,fixnum) pair defers to the builtin
     /// `=` for full value-equality semantics.
     op_sub = 0x29,
@@ -310,7 +311,7 @@ pub const Opcode = enum(u8) {
 
     /// O-030 (ADR-0146 redirect / 9.2.S): fixnum `mod`/`rem`/`quot` intrinsics,
     /// same shape as the op_add family (no operand; pop a,b; fixnum fast path via
-    /// `intrinsic.fastBinaryFixnum` — `@mod`/`@rem`/`@divTrunc` — else defer to the
+    /// `intrinsic.fastBinaryNumber` — `@mod`/`@rem`/`@divTrunc` — else defer to the
     /// cached builtin Var for the full numeric tower / divide-by-zero raise). Net
     /// stack effect −1.
     op_mod = 0x47,
@@ -367,6 +368,13 @@ pub const Opcode = enum(u8) {
     op_vector_extend = 0x57,
     op_map_extend = 0x58,
     op_set_extend = 0x59,
+
+    /// O-102: unary `(inc x)` / `(dec x)` intrinsics for canonical
+    /// `clojure.core/inc`/`dec` (Var pointer identity, `core_arith_pristine`
+    /// deopt). Pop x, push the result (net 0). `intrinsic.fastUnary` handles
+    /// an i48 fixnum or a float; anything else calls the cached Var.
+    op_inc = 0x5A,
+    op_dec = 0x5B,
 
     /// True when this opcode carries a **signed-i16 instruction-position
     /// offset** in `operand`, relative to the instruction after itself
@@ -464,6 +472,8 @@ pub const Opcode = enum(u8) {
             .op_get,
             .op_nth,
             .op_nth2,
+            .op_inc,
+            .op_dec,
             => false,
         };
     }
@@ -566,6 +576,8 @@ pub const Opcode = enum(u8) {
             .op_get,
             .op_nth,
             .op_nth2,
+            .op_inc,
+            .op_dec,
             => false,
         };
     }

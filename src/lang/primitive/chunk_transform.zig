@@ -27,6 +27,7 @@ const error_mod = @import("../../runtime/error/info.zig");
 const error_catalog = @import("../../runtime/error/catalog.zig");
 const SourceLocation = error_mod.SourceLocation;
 const chunked_cons = @import("../../runtime/collection/chunked_cons.zig");
+const chunked_seq = @import("../../runtime/collection/chunked_seq.zig");
 const root_set = @import("../../runtime/gc/root_set.zig");
 const invokeCallable = @import("higher_order.zig").invokeCallable;
 const seqable = @import("../../runtime/seqable.zig");
@@ -38,7 +39,7 @@ pub fn chunkMapStepFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
     try error_catalog.checkArity("__chunk-map-step", args, 2, loc);
     const f = args[0];
     const s = args[1];
-    const cnt = chunked_cons.currentChunkCount(s);
+    const cnt = chunked_seq.chunkCount(s);
 
     // GC-ROOT: O-032 — reentrant-primitive frame [f, s, buf] (mirrors reduceFn,
     // ADR-0094) [ref: .dev/gc_rooting.md]. Push BEFORE the buf alloc (slot 2 nil)
@@ -56,7 +57,7 @@ pub fn chunkMapStepFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceL
 
     var i: u32 = 0;
     while (i < cnt) : (i += 1) {
-        const elt = chunked_cons.currentChunkNth(s, i);
+        const elt = chunked_seq.chunkNth(s, i);
         const mapped = try invokeCallable(rt, env, f, &.{elt}, loc);
         // chunkAppend is non-allocating + runs AFTER the call returns, so `mapped`
         // is never live-across-collect unrooted.
@@ -100,7 +101,7 @@ pub fn chunkFilterStepFn(rt: *Runtime, env: *Env, args: []const Value, loc: Sour
     try error_catalog.checkArity("__chunk-filter-step", args, 2, loc);
     const pred = args[0];
     const s = args[1];
-    const cnt = chunked_cons.currentChunkCount(s);
+    const cnt = chunked_seq.chunkCount(s);
 
     // GC-ROOT: O-032 — frame [pred, s, buf]; same discipline as chunkMapStepFn.
     var gc_roots: [3]Value = .{ pred, s, .nil_val };
@@ -114,7 +115,7 @@ pub fn chunkFilterStepFn(rt: *Runtime, env: *Env, args: []const Value, loc: Sour
 
     var i: u32 = 0;
     while (i < cnt) : (i += 1) {
-        const elt = chunked_cons.currentChunkNth(s, i);
+        const elt = chunked_seq.chunkNth(s, i);
         if ((try invokeCallable(rt, env, pred, &.{elt}, loc)).isTruthy()) {
             _ = chunked_cons.chunkAppend(buf, elt);
         }

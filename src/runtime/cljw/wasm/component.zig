@@ -43,6 +43,7 @@ const ctypes = zwasm.feature.component.types;
 const ComponentValue = comp.ComponentValue;
 const WitType = comp.WitType;
 const WasiHost = zwasm.wasi.host.Host;
+const SigCache = @import("component_sig_cache.zig").SigCache;
 
 /// Read + FS-jail-resolve a component path argument.
 fn readComponentBytes(rt: *Runtime, path_val: Value, loc: SourceLocation) anyerror![]const u8 {
@@ -646,12 +647,10 @@ fn witTypeHoldsResource(ty: WitType) bool {
 /// resolveFuncSig → `invokeWithSig`, on an already-open `Opened`. The
 /// `component-call` entry point; the one-shot resolves the signature itself
 /// because it decides the component's lifetime from it.
-fn invokeOnOpened(rt: *Runtime, opened: *comp.Opened, fname: []const u8, call_args: []const Value, loc: SourceLocation, component_handle: Value) anyerror!Value {
-    var arena = std.heap.ArenaAllocator.init(rt.gpa);
-    defer arena.deinit();
-    const sig = (opened.resolveFuncSig(arena.allocator(), fname) catch null) orelse
+fn invokeOnOpened(rt: *Runtime, box: *ComponentLoaded, fname: []const u8, call_args: []const Value, loc: SourceLocation, component_handle: Value) anyerror!Value {
+    const sig = (try box.funcSig(fname)) orelse
         return error_catalog.raise(.wasm_export_not_found, loc, .{ .name = fname });
-    return invokeWithSig(rt, opened, sig, fname, call_args, loc, component_handle);
+    return invokeWithSig(rt, &box.opened, sig, fname, call_args, loc, component_handle);
 }
 
 /// lower args → invokeTyped → lift result, against an already-resolved signature.
@@ -660,13 +659,17 @@ fn invokeOnOpened(rt: *Runtime, opened: *comp.Opened, fname: []const u8, call_ar
 /// already belong to it. `nil` means the component is anonymous (a one-shot whose
 /// result holds no resource) — then no resource argument can be valid either.
 fn invokeWithSig(rt: *Runtime, opened: *comp.Opened, sig: anytype, fname: []const u8, call_args: []const Value, loc: SourceLocation, component_handle: Value) anyerror!Value {
-    var arena = std.heap.ArenaAllocator.init(rt.gpa);
-    defer arena.deinit();
     if (call_args.len != sig.params.len)
         return error_catalog.raise(.wasm_arity_mismatch, loc, .{ .name = fname, .expected = sig.params.len, .actual = call_args.len });
+    var arena = std.heap.ArenaAllocator.init(rt.gpa);
+    defer arena.deinit();
+    // Scalar-sized calls lower entirely on the stack; only a large payload
+    // (long string / list) reaches the arena's heap.
+    var sfa = std.heap.stackFallback(512, arena.allocator());
+    const scratch = sfa.get();
 
-    const in = try arena.allocator().alloc(ComponentValue, call_args.len);
-    for (call_args, sig.params, 0..) |a, p, i| in[i] = try lower(rt, arena.allocator(), a, p.ty, loc, component_handle);
+    const in = try scratch.alloc(ComponentValue, call_args.len);
+    for (call_args, sig.params, 0..) |a, p, i| in[i] = try lower(rt, scratch, a, p.ty, loc, component_handle);
 
     const out = opened.invokeTyped(fname, in, rt.gpa) catch |e| switch (e) {
         error.OutOfFuel => return error_catalog.raise(.wasm_component_fuel_exhausted, loc, .{}),
@@ -702,6 +705,13 @@ const ComponentLoaded = struct {
     engine: *zwasm.Engine,
     host: *WasiHost,
     opened: comp.Opened,
+    /// Export name -> resolved `FuncSig`, per handle (CLJW-COMPONENT-CALL-CACHE).
+    /// Borrows names from `opened`'s TypeInfo, so it is torn down first.
+    sigs: SigCache,
+
+    fn funcSig(self: *ComponentLoaded, name: []const u8) std.mem.Allocator.Error!?comp.FuncSig {
+        return self.sigs.get(&self.opened, name);
+    }
 };
 
 /// `.host_instance` finaliser for a component handle: state[0] is the
@@ -729,7 +739,7 @@ fn openComponentBoxed(rt: *Runtime, bytes: []const u8, opts: comp.InstantiateOpt
     errdefer opened.deinit();
 
     const box = try rt.gpa.create(ComponentLoaded);
-    box.* = .{ .engine = engine, .host = host, .opened = opened };
+    box.* = .{ .engine = engine, .host = host, .opened = opened, .sigs = SigCache.init(rt.gpa) };
     return box;
 }
 
@@ -746,6 +756,7 @@ fn freeComponentBox(rt: *Runtime, box: *ComponentLoaded) void {
 
 fn componentFinalise(infra: std.mem.Allocator, state: *[host_instance.STATE_WORDS]u64) void {
     const box: *ComponentLoaded = @ptrFromInt(state[0]);
+    box.sigs.deinit();
     box.opened.deinit();
     box.host.deinit();
     box.engine.deinit();
@@ -822,7 +833,7 @@ pub fn componentCallFn(rt: *Runtime, env: *Env, args: []const Value, loc: Source
     const box: *ComponentLoaded = @ptrFromInt(host_instance.asHostInstance(comp_handle).state[0]);
     // Pass the component handle so an `own` result wraps into a GC-resource that
     // roots THIS component (ADR-0159).
-    return invokeOnOpened(rt, &box.opened, string_mod.asString(args[1]), args[2..], loc, comp_handle);
+    return invokeOnOpened(rt, box, string_mod.asString(args[1]), args[2..], loc, comp_handle);
 }
 
 const testing = std.testing;

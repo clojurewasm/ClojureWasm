@@ -7,7 +7,142 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+### Changed
+
+- Transient maps and sets now edit owned HAMT paths in place during `into`,
+  cloning only shared nodes; `persistent!` freezes ownership so later transients
+  cannot mutate published maps. The `into_collections` workload drops from
+  18.215B to 17.111B user instructions (-6.1%); isolated 20k-entry map `into`
+  drops from 2.599B to 2.016B (-22.4%) on one pinned core.
+
 ### Fixed
+
+- The non-blocking bench-vs-bb CI job no longer fails on a restored
+  `.zig-cache` whose WriteFiles output is missing (`file_hash FileNotFound`
+  on `bootstrap_sources_stub.zig`). The job only reads the cache, so on a
+  failed build it drops `.zig-cache` and builds cold once.
+
+### Changed
+
+- Allocating a small GC cell is cheaper: the page heap's free-slot and bump
+  path is now inlined into each typed allocation site, with the size class
+  and the small/large choice folded at compile time, and the live-list
+  record is stored in place when the list has room. On a pinned core (user
+  instructions): lazy_chain 9.07 G to 8.27 G (-8.8 %), gc_churn 8.05 G to
+  7.75 G (-3.7 %), about 85 fewer instructions per allocation. Peak RSS is
+  unchanged.
+- `(inc x)` and `(dec x)` on canonical `clojure.core/inc`/`dec` now compile to
+  VM intrinsics (`op_inc` / `op_dec`) instead of a generic call into the
+  builtin. Fixnums and floats are computed inline; any other operand, an i48
+  overflow and a redefined `inc`/`dec` (`alter-var-root`) still go through the
+  builtin. The VM no longer runs a per-op cold-opcode test or publishes the
+  handler top on every op, and the arith fast path is inlined. The empty
+  `(loop [i 0 s 0] (if (< i n) (recur (inc i) (+ s 1)) s))` costs about 833
+  user instructions per iteration, down from 1585 (pinned core,
+  `instructions:u`); `(loop [i 0] (if (< i n) (recur (inc i)) i))` 601, down
+  from 1307. Bytecode format v15 (v14 artifacts are rejected).
+- A string of up to about 4 KB now keeps its bytes inside its own GC cell
+  instead of in a separate malloc block freed by a finaliser: one allocation
+  per string instead of two. Measured on a pinned core (user instructions, a
+  noisy host made wall time unreliable): `(count (str i))` in a loop costs 2300
+  instructions per iteration over the empty loop, down from 2790; bench/vs_bb
+  string_ops 5959M -> 5219M (-12%), gc_churn 8369M -> 8011M (-4%). Wall time
+  at load ~40: string_ops 2.02x -> 1.49x bb, probe str_ms 321-439 -> 245-439
+  ms (bb 71-122).
+
+- A small vector's tail and an array map's entries are now sized to their
+  element count inside one GC cell, not a fixed 32-slot tail (272 bytes) and
+  a fixed 16-slot entry array (152 bytes). 200k retained `{:id i :v [i (inc i)]}`
+  hold 29.6 MB live instead of 97.2 MB (148 bytes per entry, was 486), and
+  `bench/vs_bb/workloads/gc_churn.clj` allocates 175 MB instead of 497 MB.
+
+- **Double arithmetic and comparison stay inline in the VM (O-065).** A double
+  paired with a double or a long computes `+ - * < <= > >=` in f64 without the
+  builtin var call. Instruction counts: dot product over 1k doubles -12%,
+  over 100k -11%, a float `loop`/`recur` -26%.
+
+- **Lazy `map`, `filter`, `take` and `iterate` realize their nodes natively
+  (O-110).** A lazy chain no longer re-enters the evaluator per element to
+  step a `lazy-seq` thunk. `bench/vs_bb` lazy_chain went from 13.75x bb to
+  2.28x bb (1315 ms vs bb 576 ms in-process), with peak RSS 117 MB vs bb 198.
+
+- **The collect trigger grows the heap by one live set, not two
+  (CLJW-PERF-GC-RETAIN).** The threshold is now `max(floor, last_live)`
+  instead of `max(floor, 2 * last_live)`; peak heap is about live plus one
+  threshold, so a large live set no longer peaks near 3x itself. Peak RSS:
+  1M retained maps plus churn 1729 MB to 1153 MB (-33%), `bench/vs_bb`
+  gc_churn 352 MB to 242 MB (-31%), for +1.8% instructions on gc_churn and
+  +4.5% on the large-live probe; a small-live high-churn loop is unchanged.
+
+## [1.15.4] - 2026-10-23
+
+### Added
+
+- **`java.time.format`: `DateTimeFormatter`, `DateTimeFormatterBuilder`,
+  `ChronoField`, `ZoneId` and `ZoneOffset`.** Pattern letters
+  `G u y M L d D F E a h K k H m s S n A N V X x Z O`, optional sections,
+  SMART and STRICT resolvers and the 12 `ISO_*` constants. Letters cljw does
+  not implement raise `not_implemented` instead of formatting wrong text. This
+  was the last blocker for `malli.transform`.
+- **Primitive arrays cross `cljw.ffi` and wasm memory at memcpy speed
+  (ADR-0204).** `byte`/`short`/`int`/`long`/`float`/`double`/`char`/`boolean`
+  arrays hold raw native elements. A `:pointer` argument passes the array's
+  storage with no copy, `:bytes` is one memcpy, `wasm/mem-write!` accepts a
+  primitive array and the new `wasm/mem-read-array` returns one. `bytes?` is
+  true only for a byte array.
+- **`bench/vs_bb`:** 14 workloads that compare cljw with bb and JVM Clojure,
+  with a non-blocking CI report.
+- **`docs/examples/zig-native`:** one Zig source used both as a wasm guest and
+  as a `cljw.ffi` library.
+
+### Changed
+
+- **Core sequence functions are much faster (ADR-0205).** The seq of a vector
+  is now chunked by leaf, as clj's `PersistentVector$ChunkedSeq` is, and
+  `map`, `filter`, `into`, `mapv` and `reduce` go through one chunked-seq
+  boundary and the Zig `reduce`. On an 8000-element vector,
+  `(reduce + (map inc v))` went from 19271 us to 718 us and
+  `(count (filter even? v))` from 19646 us to 490 us. `(first (map f v))` now
+  realizes 32 elements, as clj does.
+- **Protocol calls hit a per-function dispatch cache (ADR-0206).** Each
+  protocol function remembers the method it resolved for the last receiver
+  type; every `extend`, `extend-type`, `extend-protocol` and type redefinition
+  invalidates it.
+- **A Clojure fn call no longer memsets its scratch buffers.** ReleaseSafe
+  filled about 2 KB of locals with 0xAA on every call. Skipping it cuts 18%
+  of instructions from `seq_dot`, 38% from `lazy_chain`, 35% from multimethod
+  dispatch and 10% from startup.
+- **String and vector hot paths:** `clojure.string/join`, `upper-case`,
+  `lower-case` and `split`, `subvec`, `str`, keyword interning and
+  `dorun`/`doall` take native fast paths. The `string_ops` bench went from
+  9.3x bb to 2.3x bb.
+- **Cold start does less work.** Deserializing the core image no longer maps
+  a page per quoted list. `cljw -e nil` takes 27.3 ms of CPU, against 38.8 ms
+  before and 29.1 ms for bb.
+- **The GC returns freed memory and reuses it.** Small cells live in 64 KiB
+  pages that are unmapped once empty, and String, array, transient-vector and
+  BigInt payload bytes now count toward the collect trigger, so long-lived
+  processes no longer hold their high-water mark.
+
+### Fixed
+
+- **`clojure.edn` reads the EDN dialect.** It used the permissive Clojure
+  reader and accepted EDN-invalid input; it now matches JVM Clojure's
+  `EdnReader` on 59 of 59 cases.
+- **wasm `i64` arguments and results cross exactly over the full range.**
+  Values past 2^47 came back as a lossy Double or were refused, and an
+  integral float of 2^63 crashed the host.
+- **A BigInt, Ratio or BigDecimal past about 1233 digits prints its digits.**
+  It printed the literal `(BigInt)`.
+- **A long-running server that reads stdin now gives memory back.** The
+  `*in*` and `System/in` readers kept every byte they had ever read; they now
+  drop what has been consumed. While the main thread waits on stdin, each idle
+  second runs a collect (when at least 1 MiB was allocated since the last one)
+  and returns freed memory to the OS, so garbage left by `future`s and worker
+  threads no longer waits for the next request. Socket and `StringBuilder`
+  buffers now count toward the collect trigger. A bb-mcp-shaped probe (20
+  `future`s each building 4 MB of JSON, then idle) settles at 129 MB instead
+  of holding 955 MB.
 
 - **A `wasm/call` on the JIT no longer costs time proportional to the
   module.** zwasm resolved the export by re-parsing the module on every call;

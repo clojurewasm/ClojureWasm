@@ -174,6 +174,7 @@ const ReaderState = struct {
 /// TTY is the correct clj-parity behaviour (read-line waits for input).
 fn fillFromStdin(rt: *Runtime, st: *ReaderState) bool {
     if (st.stdin_eof) return false;
+    stdin.beforeFill(rt.gc.infra, &st.data, &st.pos, &rt.gc);
     var chunk: [4096]u8 = undefined;
     const n = stdin.readChunk(rt.io, &chunk) catch {
         st.stdin_eof = true;

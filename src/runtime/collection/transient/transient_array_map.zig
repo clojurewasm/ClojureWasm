@@ -56,6 +56,7 @@ const mark_sweep = @import("../../gc/mark_sweep.zig");
 
 const root_set = @import("../../gc/root_set.zig");
 const map_mod = @import("../map.zig");
+const editable_hamt = @import("editable_hamt.zig");
 const vector_mod = @import("../vector.zig");
 const sub_vector_mod = @import("../sub_vector.zig");
 const map_entry_mod = @import("../map_entry.zig");
@@ -90,6 +91,8 @@ fn keyEq(a: Value, b: Value) bool {
 /// `map.assoc` is copy-on-write, so the source is never mutated).
 /// `.nil` produces an empty transient.
 pub fn fromMap(rt: *Runtime, source: Value) !Value {
+    rt.gc.enterFabrication();
+    defer rt.gc.exitFabrication();
     const tm = try rt.gc.alloc(TransientArrayMap);
     tm.* = .{ .header = HeapHeader.init(.transient_map) };
 
@@ -101,14 +104,20 @@ pub fn fromMap(rt: *Runtime, source: Value) !Value {
             tm.count = am.count;
             var i: u32 = 0;
             while (i < 2 * am.count) : (i += 1) {
-                tm.entries[i] = am.entries[i];
+                tm.entries[i] = am.entries()[i];
             }
             tm.meta = am.meta;
         },
         .hash_map => {
-            tm.overflow = source;
-            tm.count = map_mod.count(source);
-            tm.meta = map_mod.metaOf(source);
+            // The wrapper is mutable while transient, but its trie is shared
+            // until the first owner-checked edit. Never mutate the source map.
+            const src = source.decodePtr(*const map_mod.PersistentHashMap);
+            const copy = try rt.gc.alloc(map_mod.PersistentHashMap);
+            copy.* = src.*;
+            copy.header = HeapHeader.init(.hash_map);
+            tm.overflow = Value.encodeHeapPtr(.hash_map, copy);
+            tm.count = src.count;
+            tm.meta = src.meta;
         },
         else => unreachable, // caller (primitive layer) gates the tag set
     }
@@ -132,6 +141,7 @@ pub fn toPersistent(rt: *Runtime, tm_val: Value, loc: SourceLocation) !Value {
             out = try map_mod.assoc(rt, out, tm.entries[2 * i], tm.entries[2 * i + 1]);
         }
     } else {
+        editable_hamt.freeze(tm.overflow, @intFromPtr(tm));
         out = tm.overflow; // already a persistent .hash_map
     }
     if (tm.meta.isNil()) return out;
@@ -145,7 +155,7 @@ pub fn assoc(rt: *Runtime, tm_val: Value, k: Value, v: Value, loc: SourceLocatio
     // Hash mode: delegate to the persistent HAMT (dedups + promotes for
     // free; the result equals the persistent-conj path byte-for-byte).
     if (!tm.overflow.isNil()) {
-        tm.overflow = try map_mod.assoc(rt, tm.overflow, k, v);
+        try editable_hamt.assoc(rt, tm.overflow, k, v, @intFromPtr(tm));
         tm.count = map_mod.count(tm.overflow);
         return tm_val;
     }
@@ -216,6 +226,7 @@ pub fn dissoc(rt: *Runtime, tm_val: Value, k: Value, loc: SourceLocation) !Value
     // Hash mode: delegate to persistent dissoc. Stays in hash mode even
     // if count drops ≤ 8 (matches the persistent side's no demotion).
     if (!tm.overflow.isNil()) {
+        editable_hamt.freeze(tm.overflow, @intFromPtr(tm));
         tm.overflow = try map_mod.dissoc(rt, tm.overflow, k);
         tm.count = map_mod.count(tm.overflow);
         return tm_val;

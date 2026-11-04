@@ -158,16 +158,17 @@
 ;; `map` stamps the descriptor on the outer node reduce sees. [refs: O-023]
 (def -map-lazy
   (fn* [f coll]
-    ;; PERF: chunked source → transform a whole 32-chunk per thunk (O-004).
-    (lazy-seq
-      (let [s (seq coll)]
-        (if s
-          (if (chunked-seq? s)
-            ;; PERF: O-032 in-Zig chunk drain — the per-element `.clj` loop moved
-            ;; into `cljw.internal/__chunk-map-step` (producer analogue of reduceFn's O-004 drain).
-            (chunk-cons (cljw.internal/__chunk-map-step f s) (-map-lazy f (chunk-rest s)))
-            (cons (f (first s)) (-map-lazy f (rest s))))
-          nil)))))
+    ;; PERF: O-110 the node body runs in Zig (`__map-lazy`, lazy_step.zig):
+    ;; (lazy-seq (when-let [s (seq coll)] (if (chunked-seq? s) (chunk-cons
+    ;; <f over the chunk, O-032> (-map-lazy f (chunk-rest s))) (cons (f (first
+    ;; s)) (-map-lazy f (rest s)))))) with no closure or eval re-entry per node.
+    (cljw.internal/__map-lazy f coll)))
+;; PERF: O-062 internal lazy body for 2/3-coll `map`: one lazy node per element
+;; (clj's multi-coll map is unchunked), whose body is the Zig `__map-step`
+;; (seq all, f on the firsts, recur on the rests). Passes itself as `self`.
+(def ^:private -map-n-lazy
+  (fn* ([f c1 c2] (lazy-seq (cljw.internal/__map-step f -map-n-lazy c1 c2)))
+       ([f c1 c2 c3] (lazy-seq (cljw.internal/__map-step f -map-n-lazy c1 c2 c3)))))
 ;; Forward-declared so map's n-ary arm resolves it at def time (D-446).
 (declare -map-n-step)
 (def map
@@ -186,19 +187,10 @@
         ;; PERF: O-023 stamp the fusion descriptor on the outer node so `reduce`
         ;; fuses; the lazy body (`-map-lazy`) is unchanged → seq ops identical.
         (-lazy-set-fuse (-map-lazy f coll) (-fuse-descriptor (map f) coll)))
-       ([f c1 c2]
-        (lazy-seq
-          (let [s1 (seq c1) s2 (seq c2)]
-            (if (and s1 s2)
-              (cons (f (first s1) (first s2)) (map f (rest s1) (rest s2)))
-              nil))))
-       ([f c1 c2 c3]
-        (lazy-seq
-          (let [s1 (seq c1) s2 (seq c2) s3 (seq c3)]
-            (if (and s1 s2 s3)
-              (cons (f (first s1) (first s2) (first s3))
-                    (map f (rest s1) (rest s2) (rest s3)))
-              nil))))
+       ;; PERF: O-062 the 2/3-coll step body runs in Zig (`__map-step`): same
+       ;; unchunked one-f-per-node shape as clj, the lazy node stays here.
+       ([f c1 c2] (-map-n-lazy f c1 c2))
+       ([f c1 c2 c3] (-map-n-lazy f c1 c2 c3))
        ;; n-ary: zip 4+ colls, stopping at the shortest (clj parity).
        ([f c1 c2 c3 & colls]
         (map (fn* [args] (apply f args)) (-map-n-step (conj colls c3 c2 c1))))))
@@ -215,18 +207,11 @@
 ;; PERF: O-023 internal lazy body for `filter` — recurses on itself, no stamp.
 (def -filter-lazy
   (fn* [pred coll]
-    (lazy-seq
-      (let [s (seq coll)]
-        (if s
-          (if (chunked-seq? s)
-            ;; PERF: O-032 in-Zig chunk drain — the per-element `.clj` loop moved
-            ;; into `cljw.internal/__chunk-filter-step` (survivors-only partial chunk).
-            (chunk-cons (cljw.internal/__chunk-filter-step pred s) (-filter-lazy pred (chunk-rest s)))
-            (let [v (first s)]
-              (if (pred v)
-                (cons v (-filter-lazy pred (rest s)))
-                (-filter-lazy pred (rest s)))))
-          nil)))))
+    ;; PERF: O-110 the node body runs in Zig (`__filter-lazy`, lazy_step.zig):
+    ;; a chunked source keeps chunk-of-32 survivors (O-032), an unchunked one
+    ;; conses each survivor onto (-filter-lazy pred (rest s)); a non-match
+    ;; continues in the same realization, as clj's recursive body does.
+    (cljw.internal/__filter-lazy pred coll)))
 (def filter
   (fn* ([pred]
         ;; transducer arity
@@ -250,13 +235,18 @@
                         result (if (> m 0) (rf result input) result)]
                     (if (not (> nm 0)) (ensure-reduced result) result)))))))
        ([n coll]
-        (lazy-seq
-          (if (pos? n)
-            (let [s (seq coll)]
-              (if s
-                (cons (first s) (take (dec n) (rest s)))
-                nil))
-            nil)))))
+        ;; PERF: O-110 a fixed-precision n takes native lazy nodes
+        ;; (`__take-lazy`, lazy_step.zig) with this exact body; any other n
+        ;; (a double, a ratio) keeps the interpreted one.
+        (if (int? n)
+          (cljw.internal/__take-lazy n coll)
+          (lazy-seq
+            (if (pos? n)
+              (let [s (seq coll)]
+                (if s
+                  (cons (first s) (take (dec n) (rest s)))
+                  nil))
+              nil))))))
 (def drop
   (fn* ([n]
         ;; transducer arity: stateful (skips the first n inputs)
@@ -1029,7 +1019,8 @@
 
 ;; `(mapv f coll)` — eager `map` returning a vector. Single-coll form.
 (def mapv
-  (fn* ([f coll] (reduce (fn* [acc x] (conj acc (f x))) [] coll))
+  ;; PERF: single-coll form builds through a transient, clj's own shape (O(n) persistent! over a flat buffer vs N persistent conjs) [refs: O-003, D-180]
+  (fn* ([f coll] (persistent! (reduce (fn* [v o] (conj! v (f o))) (transient []) coll)))
        ([f c1 c2] (vec (map f c1 c2)))
        ([f c1 c2 c3] (vec (map f c1 c2 c3)))
        ([f c1 c2 c3 & colls] (vec (apply map f c1 c2 c3 colls)))))
@@ -1576,7 +1567,10 @@
 ;; a fn body's free symbols at analysis time, so a forward ref to a Var
 ;; def'd later in the file fails to resolve.
 (def iterate
-  (fn* [f x] (lazy-seq (cons x (iterate f (f x))))))
+  ;; PERF: O-110 native lazy nodes (`__iterate-lazy`, lazy_step.zig). As clj's
+  ;; Iterate, `f` runs only when the element after x is realized, never for
+  ;; (first (iterate f x)).
+  (fn* [f x] (cljw.internal/__iterate-lazy f x)))
 
 ;; `(range)` → infinite lazy 0,1,2,…; `(range n)` → 0..n-1;
 ;; `(range start end)` → start..end-1; `(range start end step)` → stepped.

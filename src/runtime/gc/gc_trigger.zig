@@ -17,6 +17,7 @@
 //! so callers write `rt.gc.noteOwnedAlloc(n)`.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const gc_heap_mod = @import("gc_heap.zig");
 const root_set_mod = @import("root_set.zig");
 
@@ -24,7 +25,8 @@ const GcHeap = gc_heap_mod.GcHeap;
 
 /// Default GC trigger threshold (bytes since last collection), and the default
 /// floor of the per-heap adaptive threshold. Adaptive at runtime:
-/// `threshold = max(threshold_floor_bytes, last_live_bytes * 2)` per ADR-0028 §1.
+/// `threshold = max(threshold_floor_bytes, last_live_bytes)` (ADR-0028 §1,
+/// growth factor amended 2x to 1x by CLJW-PERF-GC-RETAIN, see `afterSweep`).
 /// Raised 1MB to 4MB by ADR-0164/D-519: for a churn workload `last_live` is
 /// about 0, so the floor IS the operative cadence; 4MB is a quarter of the
 /// collects (same total sweep work, fewer STW fences) at ~3MB extra peak. Tune
@@ -107,6 +109,18 @@ pub fn retainBytesAfterCollect(gc: *const GcHeap, requested: bool) usize {
     return @max(min_retained_bytes, gc.threshold_bytes);
 }
 
+/// The trigger for the next cycle: `max(floor, last_live)`, so the heap may
+/// grow by one live set between collects (Go's `GOGC=100`). Peak committed
+/// heap is about `live + threshold`, so the growth factor is the RSS lever:
+/// at the former `2 * live`, a 482 MB live set peaked at 1.73 GB RSS; at
+/// `1 * live` it peaks at 1.15 GB for 4 % more instructions. A smaller
+/// share of the threshold RETAINED changes nothing (measured: the next cycle
+/// maps the released pages again), because the peak is the fresh space the
+/// cycle allocates, not the empty pages it keeps.
+pub fn adaptiveThreshold(floor: usize, live: usize) usize {
+    return @max(floor, live);
+}
+
 /// D-519 (ADR-0164): threshold-driven auto-collect during eval. Runs a STW
 /// collect when pressure has passed `threshold_bytes`, at a quiescent-roots
 /// boundary. Called from BOTH the `alloc` boundary (the completeness floor for
@@ -132,6 +146,28 @@ pub fn requestCollect(gc: *GcHeap) void {
     collectIfSafe(gc);
 }
 
+/// Allocation pressure below which `collectBeforeIdle` does nothing, so an
+/// idle loop that allocates little pays no mark.
+pub const idle_collect_min_bytes: usize = 1024 * 1024;
+
+/// Collect while the mutator waits for input (a server between requests),
+/// then hand freed malloc memory back to the OS. A no-op below
+/// `idle_collect_min_bytes` of pressure. Same safety gates and page
+/// release as `requestCollect`.
+pub fn collectBeforeIdle(gc: *GcHeap) void {
+    if (pressureBytes(gc) < idle_collect_min_bytes) return;
+    requestCollect(gc);
+    trimProcessHeap();
+}
+
+extern "c" fn malloc_trim(pad: usize) c_int;
+
+/// Return glibc's free arena memory to the OS. Other allocators unmap large
+/// frees themselves, so this is a no-op off glibc.
+fn trimProcessHeap() void {
+    if (comptime builtin.link_libc and builtin.target.abi.isGnu()) _ = malloc_trim(0);
+}
+
 /// True iff a stop-the-world collect may run on this thread right now: no
 /// multi-alloc builder is mid-bracket (its intermediate nodes are
 /// live-but-unrooted), this is not a registered worker, the collector is not
@@ -142,7 +178,10 @@ fn collectSafeHere() bool {
     return root_set_mod.active_env != null;
 }
 
-fn collectIfSafe(gc: *GcHeap) void {
+// `noinline`: maybeAutoCollect is inlined into the VM's per-op loop, and an
+// inlined collect would put its whole frame on every `eval` re-entry's native
+// stack (ADR-0195 budget). The call happens only past the threshold.
+noinline fn collectIfSafe(gc: *GcHeap) void {
     if (!collectSafeHere()) return;
     const e = root_set_mod.active_env.?;
     const mark_sweep = @import("mark_sweep.zig");
@@ -157,16 +196,17 @@ fn collectIfSafe(gc: *GcHeap) void {
 /// retention budget (after the recompute, since the budget is one threshold's
 /// worth).
 ///
-/// The threshold is `max(threshold_floor_bytes, last_live * 2)`. The floor is
-/// the per-heap value (default, or `CLJW_GC_THRESHOLD_MB`) so the knob
-/// survives this recompute; `steerFloor` moves it between collects. For a
-/// churn workload `last_live` is about 0 and the floor governs (ADR-0164);
-/// once the live set grows past half the floor, the adaptive arm takes over.
+/// The threshold is `adaptiveThreshold`, `max(threshold_floor_bytes,
+/// last_live)`. The floor is the per-heap value (default, or
+/// `CLJW_GC_THRESHOLD_MB`) so the knob survives this recompute; `steerFloor`
+/// moves it between collects. For a churn workload `last_live` is about 0 and
+/// the floor governs (ADR-0164); once the live set grows past the floor, the
+/// adaptive arm takes over.
 /// Measured on a Rush Hour BFS (3.17 GB over 26.2M allocations): 4 MB floor
 /// 755 collections 17.7 s, 64 MB floor 47 collections 7.6 s, about 13 ms of
 /// fixed cost per collect paid to reclaim a heap that was nearly all garbage.
 pub fn afterSweep(gc: *GcHeap) void {
-    gc.threshold_bytes = @max(gc.threshold_floor_bytes, gc.stats.last_live_bytes *| 2);
+    gc.threshold_bytes = adaptiveThreshold(gc.threshold_floor_bytes, gc.stats.last_live_bytes);
     gc.bytes_since_last_gc = 0;
     gc.owned_since_last_gc.store(0, .monotonic);
     gc.stats.collect_count += 1;

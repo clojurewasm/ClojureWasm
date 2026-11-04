@@ -1,0 +1,4 @@
+name: "Byte Array From Seq"
+category: collection
+expected_output: "160000"
+description: "(byte-array (repeat 8000 1)) x20 — building a primitive array from a lazy seq"

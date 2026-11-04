@@ -3,16 +3,19 @@
 //!
 //! The bytecode VM and the TreeWalk backend both route a 2-arg call to a
 //! canonical `clojure.core` arithmetic/comparison Var through
-//! `fastBinaryFixnum` BEFORE the generic builtin dispatch. Sharing this single
+//! `fastBinaryNumber` BEFORE the generic builtin dispatch. Sharing this single
 //! function makes dual-backend parity (ADR-0036 / F-012) STRUCTURAL — there is
 //! exactly one fast path, so the differential oracle cannot catch a
 //! fast-path-vs-builtin divergence.
 //!
-//! `fastBinaryFixnum` fires ONLY when both operands are inline fixnums
-//! (`.integer`); anything else (float / ratio / bigint / heap-Long / non-number)
-//! returns `null`, and the caller falls back to the cached builtin Var via
-//! `vt.callFn` — identical to the generic path, including the builtin's
-//! arg-precise error translation (F-011). add/sub/mul compute the result inline
+//! `fastBinaryNumber` fires ONLY for two inline fixnums (`.integer`), or a
+//! `.float` paired with a float or fixnum; anything else (ratio / bigint /
+//! big-decimal / heap-Long / non-number) returns `null`, and the caller falls
+//! back to the cached builtin Var via `vt.callFn` — identical to the generic
+//! path, including the builtin's arg-precise error translation (F-011). The
+//! float arm computes exactly what the builtins do once either operand is a
+//! double: `promote.{add,sub,mul}Promoting` and `math.pairwise` both convert
+//! to f64 and apply the IEEE op (O-065). add/sub/mul compute the result inline
 //! (`@add/sub/mulWithOverflow` on i64); a result outside the i48 fixnum window
 //! (i64 overflow OR > i48) returns `null` so the slow builtin path produces the
 //! heap-Long / BigInt per F-005 — never a silent wrap, never a float.
@@ -123,7 +126,7 @@ pub fn localConstVariant(op: Opcode) ?Opcode {
 }
 
 /// D-386 (O-018): the `ArithOp` a `*_local_const` opcode computes (the VM
-/// dispatch arm reuses `fastBinaryFixnum`). `null` for a non-fused opcode.
+/// dispatch arm reuses `fastBinaryNumber`). `null` for a non-fused opcode.
 pub fn fromLocalConstOpcode(op: Opcode) ?ArithOp {
     return switch (op) {
         .op_add_local_const => .add,
@@ -225,6 +228,56 @@ pub fn recognize(rt: *const Runtime, var_ptr: *const env_mod.Var) ?Opcode {
     return null;
 }
 
+// --- Unary inc/dec intrinsics (O-102) ---
+//
+// `(inc x)` / `(dec x)` were a generic op_get_var + op_call into the `inc`
+// builtin, which re-enters `plus` with a 2-element slice: ~600 instructions
+// per call against ~0 for the fused `(+ x 1)`. op_inc / op_dec run
+// `fastUnary`; anything it declines defers to the cached Var, so the numeric
+// tower, overflow promotion and errors stay the builtin's. Gated on
+// `core_arith_pristine` like the binary family.
+
+/// Index order MUST match `Runtime.unary_vars` (0=inc, 1=dec).
+pub const UnaryOp = enum { inc, dec };
+
+pub fn unaryCoreName(op: UnaryOp) []const u8 {
+    return switch (op) {
+        .inc => "inc",
+        .dec => "dec",
+    };
+}
+
+/// Compile-time recogniser for `inc`/`dec` (canonical Var pointer identity).
+pub fn recognizeUnary(rt: *const Runtime, var_ptr: *const env_mod.Var) ?UnaryOp {
+    for (rt.unary_vars, 0..) |cached, i| {
+        const pv = cached orelse continue;
+        if (@intFromPtr(pv) == @intFromPtr(var_ptr)) return @enumFromInt(i);
+    }
+    return null;
+}
+
+pub fn fromUnaryOpcode(op: Opcode) ?UnaryOp {
+    return switch (op) {
+        .op_inc => .inc,
+        .op_dec => .dec,
+        else => null,
+    };
+}
+
+/// `(inc x)` / `(dec x)` fast path: an inline fixnum whose result stays in the
+/// i48 window, or a float. `null` for everything else (heap Long, BigInt,
+/// Ratio, BigDecimal, non-numbers, i48 edge) so the builtin handles it.
+pub inline fn fastUnary(op: UnaryOp, a: Value) ?Value {
+    const d: i64 = if (op == .inc) 1 else -1;
+    if (a.tag() == .integer) {
+        const res = @as(i64, a.asInteger()) + d;
+        if (res < nb.NB_I48_MIN or res > nb.NB_I48_MAX) return null;
+        return Value.initInteger(res);
+    }
+    if (a.tag() == .float) return Value.initFloat(a.asFloat() + @as(f64, @floatFromInt(d)));
+    return null;
+}
+
 // --- Collection-accessor intrinsics (ADR-0130 extended; O-043) ---
 //
 // `op_get` (2-arg `(get coll k)`) and `op_nth` (3-arg `(nth coll i default)`)
@@ -315,12 +368,49 @@ pub fn fastNth2(coll: Value, i_val: Value) ?Value {
     return if (is_sub) sub_vector_mod.nth(coll, @intCast(idx)) else vector_mod.nth(coll, @intCast(idx));
 }
 
-/// Fixnum fast path. Returns `null` unless BOTH operands are inline fixnums, so
-/// the caller defers every other case (incl. all error cases) to the builtin.
-pub fn fastBinaryFixnum(_: *Runtime, op: ArithOp, a: Value, b: Value) !?Value {
-    if (a.tag() != .integer or b.tag() != .integer) return null;
-    const ai: i64 = a.asInteger();
-    const bi: i64 = b.asInteger();
+/// Binary arith/comparison fast path. Returns `null` unless the operands are
+/// two inline fixnums or a float with a float/fixnum, so the caller defers
+/// every other case (incl. all error cases) to the builtin.
+// PERF: inline so the fixnum test and op switch fold into each VM arm; an
+// out-of-line call (frame, canary, ?Value via memory) was ~20% of a loop [refs: O-101]
+pub inline fn fastBinaryNumber(_: *Runtime, op: ArithOp, a: Value, b: Value) !?Value {
+    if (a.tag() != .integer or b.tag() != .integer) return fastNonFixnum(op, a, b);
+    return fastFixnum(op, a.asInteger(), b.asInteger());
+}
+
+/// Out of line so the fixnum dispatch in the VM's `stepOnce` keeps the shape it
+/// had before the float arm existed.
+// PERF: double arithmetic inline instead of the `+`/`*`/`<` builtin call (one is a float here) [refs: O-065]
+noinline fn fastNonFixnum(op: ArithOp, a: Value, b: Value) ?Value {
+    const at = a.tag();
+    const bt = b.tag();
+    if ((at == .float or at == .integer) and (bt == .float or bt == .integer)) return fastFloat(op, asF64(a), asF64(b));
+    return null;
+}
+
+/// An inline fixnum or float as f64 (`promote.toF64` for these two tags).
+fn asF64(v: Value) f64 {
+    return if (v.tag() == .float) v.asFloat() else @floatFromInt(@as(i64, v.asInteger()));
+}
+
+/// The double arm: `initFloat` canonicalises a NaN result the way the builtins'
+/// `initFloat` does. `=`/`not=` defer: clj `=` is false across categories
+/// (`(= 1 1.0)`) and the builtin owns that rule. `mod`/`rem`/`quot` defer: their
+/// float semantics (sign of zero, truncation) live in the builtin.
+fn fastFloat(op: ArithOp, x: f64, y: f64) ?Value {
+    return switch (op) {
+        .add => Value.initFloat(x + y),
+        .sub => Value.initFloat(x - y),
+        .mul => Value.initFloat(x * y),
+        .lt => Value.initBoolean(x < y),
+        .le => Value.initBoolean(x <= y),
+        .gt => Value.initBoolean(x > y),
+        .ge => Value.initBoolean(x >= y),
+        .eq, .ne, .mod, .rem, .quot => null,
+    };
+}
+
+fn fastFixnum(op: ArithOp, ai: i64, bi: i64) ?Value {
     const res: i64, const ov: u1 = switch (op) {
         .add => @addWithOverflow(ai, bi),
         .sub => @subWithOverflow(ai, bi),
@@ -381,17 +471,17 @@ const Fixture = struct {
     }
 };
 
-test "fastBinaryFixnum add/sub/mul on two fixnums" {
+test "fastBinaryNumber add/sub/mul on two fixnums" {
     var fix = Fixture.init();
     defer fix.deinit();
     const a = Value.initInteger(7);
     const b = Value.initInteger(5);
-    try testing.expectEqual(@as(i48, 12), (try fastBinaryFixnum(&fix.rt, .add, a, b)).?.asInteger());
-    try testing.expectEqual(@as(i48, 2), (try fastBinaryFixnum(&fix.rt, .sub, a, b)).?.asInteger());
-    try testing.expectEqual(@as(i48, 35), (try fastBinaryFixnum(&fix.rt, .mul, a, b)).?.asInteger());
+    try testing.expectEqual(@as(i48, 12), (try fastBinaryNumber(&fix.rt, .add, a, b)).?.asInteger());
+    try testing.expectEqual(@as(i48, 2), (try fastBinaryNumber(&fix.rt, .sub, a, b)).?.asInteger());
+    try testing.expectEqual(@as(i48, 35), (try fastBinaryNumber(&fix.rt, .mul, a, b)).?.asInteger());
 }
 
-test "fastBinaryFixnum mul overflowing i48 defers (null) — slow path promotes" {
+test "fastBinaryNumber mul overflowing i48 defers (null) — slow path promotes" {
     var fix = Fixture.init();
     defer fix.deinit();
     const a = Value.initInteger((1 << 47) - 1); // i48 max
@@ -399,34 +489,62 @@ test "fastBinaryFixnum mul overflowing i48 defers (null) — slow path promotes"
     // it returns null so the slow builtin path produces the heap-Long / BigInt
     // (F-005). Observable `(* i48max 2)` → heap-Long is locked by the VM e2e +
     // diff oracle (TreeWalk already routes overflow through the builtin).
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .mul, a, Value.initInteger(2))) == null);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .mul, a, Value.initInteger(2))) == null);
 }
 
-test "fastBinaryFixnum comparisons are exact" {
+test "fastBinaryNumber comparisons are exact" {
     var fix = Fixture.init();
     defer fix.deinit();
     const one = Value.initInteger(1);
     const two = Value.initInteger(2);
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .lt, one, two)).? == Value.true_val);
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .gt, one, two)).? == Value.false_val);
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .le, two, two)).? == Value.true_val);
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .ge, one, two)).? == Value.false_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .lt, one, two)).? == Value.true_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .gt, one, two)).? == Value.false_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .le, two, two)).? == Value.true_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .ge, one, two)).? == Value.false_val);
     // O-031: `=` / `not=` are mirror fixnum fast paths.
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .eq, two, two)).? == Value.true_val);
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .ne, two, two)).? == Value.false_val);
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .ne, one, two)).? == Value.true_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .eq, two, two)).? == Value.true_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .ne, two, two)).? == Value.false_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .ne, one, two)).? == Value.true_val);
 }
 
-test "fastBinaryFixnum defers (null) when an operand is not an inline fixnum" {
+test "fastBinaryNumber float arm: a double with a double or fixnum computes in f64 (O-065)" {
     var fix = Fixture.init();
     defer fix.deinit();
     const i = Value.initInteger(3);
     const f = Value.initFloat(1.5);
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .add, i, f)) == null);
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .add, f, i)) == null);
+    // clj: (+ 3 1.5)=4.5 (- 1.5 3)=-1.5 (* 1.5 3)=4.5 (* 1.5 1.5)=2.25
+    try testing.expectEqual(@as(f64, 4.5), (try fastBinaryNumber(&fix.rt, .add, i, f)).?.asFloat());
+    try testing.expectEqual(@as(f64, -1.5), (try fastBinaryNumber(&fix.rt, .sub, f, i)).?.asFloat());
+    try testing.expectEqual(@as(f64, 4.5), (try fastBinaryNumber(&fix.rt, .mul, f, i)).?.asFloat());
+    try testing.expectEqual(@as(f64, 2.25), (try fastBinaryNumber(&fix.rt, .mul, f, f)).?.asFloat());
+    // A double result stays a double even when integral: (+ 1.5 1.5)=3.0.
+    try testing.expect((try fastBinaryNumber(&fix.rt, .add, f, f)).?.isFloat());
+    // clj: (< 1.5 3)=true (>= 1.5 3)=false (<= 3 3.0)=true
+    try testing.expect((try fastBinaryNumber(&fix.rt, .lt, f, i)).? == Value.true_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .ge, f, i)).? == Value.false_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .le, i, Value.initFloat(3.0))).? == Value.true_val);
+    // NaN: every ordering is false, arithmetic yields the canonical NaN.
+    const nan = Value.initFloat(std.math.nan(f64));
+    try testing.expect((try fastBinaryNumber(&fix.rt, .lt, nan, i)).? == Value.false_val);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .ge, nan, i)).? == Value.false_val);
+    try testing.expect(std.math.isNan((try fastBinaryNumber(&fix.rt, .add, nan, f)).?.asFloat()));
 }
 
-test "fastBinaryFixnum mod/rem/quot positive-divisor fast path matches clj" {
+test "fastBinaryNumber defers (null) for equality, division family and non-numbers" {
+    var fix = Fixture.init();
+    defer fix.deinit();
+    const i = Value.initInteger(3);
+    const f = Value.initFloat(3.0);
+    // (= 3 3.0) is false in clj; the builtin owns cross-category equality.
+    try testing.expect((try fastBinaryNumber(&fix.rt, .eq, i, f)) == null);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .ne, f, f)) == null);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .quot, f, i)) == null);
+    // A non-number operand defers so the builtin raises its arg-precise error.
+    try testing.expect((try fastBinaryNumber(&fix.rt, .add, f, Value.nil_val)) == null);
+    try testing.expect((try fastBinaryNumber(&fix.rt, .lt, Value.true_val, i)) == null);
+}
+
+test "fastBinaryNumber mod/rem/quot positive-divisor fast path matches clj" {
     var fix = Fixture.init();
     defer fix.deinit();
     const Case = struct { a: i48, b: i48, mod: i48, rem: i48, quot: i48 };
@@ -441,24 +559,24 @@ test "fastBinaryFixnum mod/rem/quot positive-divisor fast path matches clj" {
     for (cases) |c| {
         const a = Value.initInteger(c.a);
         const b = Value.initInteger(c.b);
-        try testing.expectEqual(c.mod, (try fastBinaryFixnum(&fix.rt, .mod, a, b)).?.asInteger());
-        try testing.expectEqual(c.rem, (try fastBinaryFixnum(&fix.rt, .rem, a, b)).?.asInteger());
-        try testing.expectEqual(c.quot, (try fastBinaryFixnum(&fix.rt, .quot, a, b)).?.asInteger());
+        try testing.expectEqual(c.mod, (try fastBinaryNumber(&fix.rt, .mod, a, b)).?.asInteger());
+        try testing.expectEqual(c.rem, (try fastBinaryNumber(&fix.rt, .rem, a, b)).?.asInteger());
+        try testing.expectEqual(c.quot, (try fastBinaryNumber(&fix.rt, .quot, a, b)).?.asInteger());
     }
 }
 
-test "fastBinaryFixnum mod/rem/quot defer (null) on non-positive divisor + non-fixnum" {
+test "fastBinaryNumber mod/rem/quot defer (null) on non-positive divisor + non-fixnum" {
     var fix = Fixture.init();
     defer fix.deinit();
     const seven = Value.initInteger(7);
     // divide-by-zero → null (builtin raises divide_by_zero with the arg caret)
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .mod, seven, Value.initInteger(0)) == null));
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .rem, seven, Value.initInteger(0)) == null));
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .quot, seven, Value.initInteger(0)) == null));
+    try testing.expect((try fastBinaryNumber(&fix.rt, .mod, seven, Value.initInteger(0)) == null));
+    try testing.expect((try fastBinaryNumber(&fix.rt, .rem, seven, Value.initInteger(0)) == null));
+    try testing.expect((try fastBinaryNumber(&fix.rt, .quot, seven, Value.initInteger(0)) == null));
     // negative divisor → null (builtin computes the correct sign; avoids the
     // @divTrunc(i48min,-1) i64-overflow corner + Zig negative-denominator semantics)
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .mod, seven, Value.initInteger(-3)) == null));
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .quot, Value.initInteger((-1) << 47), Value.initInteger(-1)) == null));
+    try testing.expect((try fastBinaryNumber(&fix.rt, .mod, seven, Value.initInteger(-3)) == null));
+    try testing.expect((try fastBinaryNumber(&fix.rt, .quot, Value.initInteger((-1) << 47), Value.initInteger(-1)) == null));
     // non-fixnum operand → null
-    try testing.expect((try fastBinaryFixnum(&fix.rt, .mod, seven, Value.initFloat(2.0)) == null));
+    try testing.expect((try fastBinaryNumber(&fix.rt, .mod, seven, Value.initFloat(2.0)) == null));
 }

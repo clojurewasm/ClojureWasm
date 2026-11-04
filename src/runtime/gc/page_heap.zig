@@ -93,7 +93,7 @@ const small_lookup = blk: {
 
 /// The class serving `size` bytes, or null when `size` is above
 /// `max_small_bytes`.
-pub fn classOf(size: usize) ?u8 {
+pub inline fn classOf(size: usize) ?u8 {
     if (size <= 512) return small_lookup[(size + 7) / 8];
     if (size > max_small_bytes) return null;
     var c: usize = small_lookup[512 / 8];
@@ -162,8 +162,34 @@ pub const PageHeap = struct {
 
     /// Allocate one slot for a cell of `size` bytes (`isSmall` must hold).
     /// Returns null only when the OS refuses a new page.
-    pub fn alloc(self: *PageHeap, size: usize) ?[*]u8 {
+    ///
+    /// Inline fast path (CLJW-PERF-ALLOC-FASTPATH): the head page of the
+    /// class has a freed slot or unbumped space, which is nearly every call.
+    /// Everything else (a full head page, an empty class, a new page) is
+    /// `allocSlow`, kept out of line so the fast path stays a handful of
+    /// instructions inside `GcHeap.allocSized`. The counters use wrapping
+    /// arithmetic: `used <= capacity` and `bump + slot_size < 2 * page_bytes`
+    /// bound them far below overflow, so ReleaseSafe's checks bought nothing.
+    pub inline fn alloc(self: *PageHeap, size: usize) ?[*]u8 {
         const c = classOf(size).?;
+        if (self.avail[c]) |page| {
+            if (page.free) |slot| {
+                page.free = slot.next;
+                page.used +%= 1;
+                return @as([*]u8, @ptrCast(slot)) - 8;
+            }
+            const next = page.bump +% page.slot_size;
+            if (next <= page_bytes) {
+                const p = page.base() + page.bump;
+                page.bump = next;
+                page.used +%= 1;
+                return p;
+            }
+        }
+        return self.allocSlow(c);
+    }
+
+    noinline fn allocSlow(self: *PageHeap, c: u8) ?[*]u8 {
         while (true) {
             const page = self.avail[c] orelse self.newPage(c) orelse return null;
             if (page.free) |slot| {

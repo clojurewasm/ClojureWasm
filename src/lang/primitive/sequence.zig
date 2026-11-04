@@ -48,6 +48,7 @@ const sorted = @import("../../runtime/collection/sorted.zig");
 const set = @import("../../runtime/collection/set.zig");
 const string_collection = @import("../../runtime/collection/string.zig");
 const chunked_cons = @import("../../runtime/collection/chunked_cons.zig");
+const chunked_seq = @import("../../runtime/collection/chunked_seq.zig");
 const chunk_transform = @import("chunk_transform.zig");
 const range = @import("../../runtime/collection/range.zig");
 const array_seq = @import("../../runtime/collection/array_seq.zig");
@@ -523,28 +524,27 @@ fn chunkedSeqQFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocati
     _ = rt;
     _ = env;
     try error_catalog.checkArity("chunked-seq?", args, 1, loc);
-    return if (chunked_cons.isChunked(args[0])) Value.true_val else Value.false_val;
+    return if (chunked_seq.isChunked(args[0])) Value.true_val else Value.false_val;
 }
 
 fn chunkCountFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("__chunk-count", args, 1, loc);
-    return Value.initInteger(@intCast(chunked_cons.currentChunkCount(args[0])));
+    return Value.initInteger(@intCast(chunked_seq.chunkCount(args[0])));
 }
 
 fn chunkNthFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
     _ = rt;
     _ = env;
     try error_catalog.checkArity("__chunk-nth", args, 2, loc);
-    return chunked_cons.currentChunkNth(args[0], @intCast(args[1].asInteger()));
+    return chunked_seq.chunkNth(args[0], @intCast(args[1].asInteger()));
 }
 
 fn chunkRestFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {
-    _ = rt;
     _ = env;
     try error_catalog.checkArity("chunk-rest", args, 1, loc);
-    return chunked_cons.chunkRest(args[0]);
+    return try chunked_seq.chunkRest(rt, args[0]);
 }
 
 fn chunkBufferFn(rt: *Runtime, env: *Env, args: []const Value, loc: SourceLocation) anyerror!Value {

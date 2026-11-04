@@ -72,3 +72,30 @@
       cljw: {inproc_ms: 1452, wall_ms: 1563, rss_kb: 172408}
       bb: {inproc_ms: 448, wall_ms: 500, rss_kb: 167600}
       jvm: {inproc_ms: 450, wall_ms: 1667, rss_kb: 558992}
+- date: "2026-10-23T22:51:12Z"
+  commit: "8cae4fc8"
+  host: "Linux x86_64"
+  ci: false
+  load: "12.64"
+  runs: 3
+  wall_source: min-of-n
+  versions:
+    cljw: "ClojureWasm v1.15.4 (ReleaseSafe, wasm)"
+    bb: "babashka v1.13.224"
+  startup_ms:
+    cljw: 22
+    bb: 36
+  geomean_inproc: {cljw_over_bb: 4.48, cljw_over_jvm: -}
+  workloads:
+    gc_churn:
+      cljw: {inproc_ms: 1338, wall_ms: 1454, rss_kb: 361188}
+      bb: {inproc_ms: 595, wall_ms: 650, rss_kb: 187248}
+    lazy_chain:
+      cljw: {inproc_ms: 1315, wall_ms: 1428, rss_kb: 119996}
+      bb: {inproc_ms: 576, wall_ms: 654, rss_kb: 203296}
+    reduce_map:
+      cljw: {inproc_ms: 4948, wall_ms: 5034, rss_kb: 119504}
+      bb: {inproc_ms: 641, wall_ms: 695, rss_kb: 172836}
+    transduce:
+      cljw: {inproc_ms: 3446, wall_ms: 3469, rss_kb: 18784}
+      bb: {inproc_ms: 340, wall_ms: 374, rss_kb: 113948}

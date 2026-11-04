@@ -313,7 +313,10 @@ pub fn argLoc(i: usize, fallback: SourceLocation) SourceLocation {
 
 /// Set the threadlocal error payload and return the matching Zig error.
 /// On message overflow the buffer is truncated with a trailing "...".
-pub fn setErrorFmt(
+/// `noinline`: every instance is an error path, and an inlined one puts its
+/// formatter temporaries in the caller's frame. In `vm.eval` and
+/// `treeWalkCall` that frame is paid per native eval re-entry (ADR-0195).
+pub noinline fn setErrorFmt(
     phase: Phase,
     kind: Kind,
     location: SourceLocation,

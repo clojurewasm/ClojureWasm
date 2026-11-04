@@ -215,7 +215,7 @@ fn rebuildArrayMap(
         // Hand the walk fn a real map ENTRY, as clj does — it used to get a plain
         // 2-vector, so `(postwalk #(do (key %) %) {:a 1})` threw once key/val
         // began requiring an entry.
-        const entry = try map_entry_collection.make(rt, am.entries[2 * i], am.entries[2 * i + 1]);
+        const entry = try map_entry_collection.make(rt, am.entries()[2 * i], am.entries()[2 * i + 1]);
         gc_roots[1] = result;
         gc_roots[2] = entry;
         const transformed = try transform_child(rt, env, ctx, entry, loc);

@@ -577,6 +577,12 @@ pub fn cacheArithIntrinsics(rt: *Runtime, env: *Env) void {
         const v: ?*env_mod.Var = if (core) |c| c.resolve(name) else null;
         if (v) |p| rt.arith_vars[@intFromEnum(op)] = p;
     }
+    // Unary inc/dec intrinsics share the arith pristine flag.
+    inline for (std.meta.tags(intrinsic.UnaryOp)) |op| {
+        const name = intrinsic.unaryCoreName(op);
+        const v: ?*env_mod.Var = if (core) |c| c.resolve(name) else null;
+        if (v) |p| rt.unary_vars[@intFromEnum(op)] = p;
+    }
     rt.core_arith_pristine = true;
 
     // Collection-accessor intrinsics (op_get / op_nth; ADR-0130 extended, O-043).

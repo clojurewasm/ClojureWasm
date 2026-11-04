@@ -210,6 +210,11 @@ pub const Runtime = struct {
     /// cannot import the Layer-1 intrinsic module).
     arith_vars: [12]?*anyopaque = .{ null, null, null, null, null, null, null, null, null, null, null, null },
     core_arith_pristine: bool = true,
+    /// Cached canonical `clojure.core/inc` + `dec` Vars for the unary intrinsics
+    /// (op_inc / op_dec). Index = `intrinsic.UnaryOp`
+    /// (0=inc, 1=dec). They share `core_arith_pristine`: an `alter-var-root` on
+    /// either clears it, so the VM defers to the redefined root.
+    unary_vars: [2]?*anyopaque = .{ null, null },
 
     /// Cached canonical `clojure.core/get` + `nth` Vars for the collection-accessor
     /// intrinsics (op_get / op_nth; ADR-0130 extended, O-043). Same lifecycle as
