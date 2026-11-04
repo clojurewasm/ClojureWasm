@@ -71,10 +71,15 @@ const string = @import("string.zig");
 /// StringSeq (A13) — `backing` viewed from `offset` to its end.
 pub const StringSeq = extern struct {
     header: HeapHeader,
-    _pad: [2]u8 = .{ 0, 0 },
     /// Read cursor in BYTES. Invariants: on a codepoint boundary, and
     /// `offset < backingBytes(backing).len`.
     offset: u32 = 0,
+    /// Codepoints remaining from `offset`, or `COUNT_UNKNOWN` until first
+    /// asked. A memo, not state: the backing is immutable, so once known it
+    /// is exact forever, and `rest`/`drop` hand the successor `count - k` so
+    /// a walk never rescans. Occupies the bytes the old `_pad` + alignment
+    /// gap held, so the cell is still 32 bytes. [refs: CLJW-STRING-SEQ]
+    cached_count: u32 = COUNT_UNKNOWN,
     /// The viewed string — a `.string`.
     backing: Value = Value.nil_val,
     /// Optional metadata map. A seq is IObj on the JVM (`ASeq` implements it),
@@ -87,6 +92,10 @@ pub const StringSeq = extern struct {
         std.debug.assert(@offsetOf(StringSeq, "header") == 0);
     }
 };
+
+/// `cached_count` sentinel: not yet scanned. A view can never hold this many
+/// codepoints — `offset` is a u32, so the backing is < 4 GiB of bytes.
+pub const COUNT_UNKNOWN: u32 = std.math.maxInt(u32);
 
 /// One decoded codepoint and the byte width it occupied.
 pub const Step = struct { cp: u21, len: u32 };
@@ -133,11 +142,18 @@ pub fn viewable(backing: Value) bool {
 /// View `backing` from byte `offset`. nil when the view would be empty — a
 /// StringSeq is never empty (see the header invariant).
 pub fn make(rt: *Runtime, backing: Value, offset: u32) !Value {
+    return makeCounted(rt, backing, offset, COUNT_UNKNOWN);
+}
+
+/// `make` with the remaining codepoint count already known (or
+/// `COUNT_UNKNOWN`) — how `rest`/`drop` carry the memo forward.
+fn makeCounted(rt: *Runtime, backing: Value, offset: u32, count: u32) !Value {
     if (offset >= backingBytes(backing).len) return Value.nil_val;
     const ss = try rt.gc.alloc(StringSeq);
     ss.* = .{
         .header = HeapHeader.init(.string_seq),
         .offset = offset,
+        .cached_count = count,
         .backing = backing,
     };
     return Value.encodeHeapPtr(.string_seq, ss);
@@ -165,11 +181,20 @@ pub fn first(v: Value) Value {
     return Value.initChar(@intCast(decodeAt(bytes, ss.offset).cp));
 }
 
-/// `(count ss)` — codepoints remaining. O(remaining bytes); see the header on
-/// why this one cannot be a subtraction. ASCII (the overwhelming case for the
-/// strings that made this matter) costs one length read.
+/// `(count ss)` — codepoints remaining. The first ask on a chain scans the
+/// remaining bytes (see the header on why it cannot be a subtraction); the
+/// answer is memoised in the cell and inherited by `rest`/`drop`, so every
+/// later ask on this view or any successor is O(1). Without the memo a
+/// count-guarded walk (`(> (count s) 1)` per step) is O(n^2).
 pub fn countOf(v: Value) u32 {
-    const rest_bytes = remainingBytes(v);
+    const ss = v.decodePtr(*StringSeq);
+    if (ss.cached_count != COUNT_UNKNOWN) return ss.cached_count;
+    const n = scanCount(remainingBytes(v));
+    ss.cached_count = n;
+    return n;
+}
+
+fn scanCount(rest_bytes: []const u8) u32 {
     var n: u32 = 0;
     var i: usize = 0;
     while (i < rest_bytes.len) {
@@ -192,7 +217,9 @@ pub fn rest(rt: *Runtime, v: Value) !Value {
     const ss = v.decodePtr(*const StringSeq);
     const bytes = backingBytes(ss.backing);
     const step = decodeAt(bytes, ss.offset);
-    return try make(rt, ss.backing, ss.offset + step.len);
+    // Carry the count memo: one codepoint fewer, if it was known.
+    const c = if (ss.cached_count == COUNT_UNKNOWN) COUNT_UNKNOWN else ss.cached_count - 1;
+    return try makeCounted(rt, ss.backing, ss.offset + step.len, c);
 }
 
 /// Byte offset `n` codepoints past `from`, clamped to the end of `bytes`.
@@ -222,7 +249,8 @@ pub fn nth(v: Value, i: u32) Value {
 pub fn drop(rt: *Runtime, v: Value, n: u32) !Value {
     const ss = v.decodePtr(*const StringSeq);
     const bytes = backingBytes(ss.backing);
-    return try make(rt, ss.backing, advance(bytes, ss.offset, n));
+    const c = if (ss.cached_count == COUNT_UNKNOWN) COUNT_UNKNOWN else ss.cached_count -| n;
+    return try makeCounted(rt, ss.backing, advance(bytes, ss.offset, n), c);
 }
 
 pub fn metaOf(v: Value) Value {
@@ -239,6 +267,7 @@ pub fn withMeta(rt: *Runtime, v: Value, m: Value) !Value {
     ss.* = .{
         .header = HeapHeader.init(.string_seq),
         .offset = src.offset,
+        .cached_count = src.cached_count,
         .backing = src.backing,
         .meta = m,
     };
@@ -261,6 +290,10 @@ pub fn registerGcHooks() void {
 // --- tests ---
 
 const testing = std.testing;
+
+test {
+    _ = @import("string_seq_count_test.zig");
+}
 
 const RuntimeFixture = struct {
     threaded: std.Io.Threaded,
