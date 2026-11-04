@@ -17,6 +17,13 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ### Fixed
 
+- `derive` rejects a bad tag or parent with clj's own `AssertionError`
+  (`Assert failed: (namespace parent)` and the rest, in clj's order), and a
+  redundant or cyclic edge with a plain `Exception`, where it raised
+  `ex-info` with cljw-only wording.
+- `(ancestors C)` for a class includes `Object`, in the global hierarchy and
+  in a passed-in one, as clj's superclass walk does; `(ancestors Object)` and
+  an interface stay without it.
 - The non-blocking bench-vs-bb CI job no longer fails on a restored
   `.zig-cache` whose WriteFiles output is missing (`file_hash FileNotFound`
   on `bootstrap_sources_stub.zig`). The job only reads the cache, so on a
