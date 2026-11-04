@@ -17,6 +17,11 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ### Fixed
 
+- On glibc, cljw now pins malloc's mmap threshold at 128 KiB at startup
+  (unless `GLIBC_TUNABLES` is set), so long-lived servers that churn
+  64-256 KiB buffers, such as bb-mcp, no longer creep in RSS as glibc raises
+  the threshold and fragments its per-thread arenas. Other libcs are untouched.
+
 - The non-blocking bench-vs-bb CI job no longer fails on a restored
   `.zig-cache` whose WriteFiles output is missing (`file_hash FileNotFound`
   on `bootstrap_sources_stub.zig`). The job only reads the cache, so on a

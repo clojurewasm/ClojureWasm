@@ -25,8 +25,12 @@ const cli = @import("app/cli.zig");
 const error_render = @import("app/error_render.zig");
 const io_default = @import("runtime/concurrency/io_default.zig");
 const runtime_thread = @import("runtime/concurrency/runtime_thread.zig");
+const glibc_policy = @import("runtime/gc/glibc_policy.zig");
 
 pub fn main(init: std.process.Init) !void {
+    // Pin glibc's mmap threshold before any worker thread or large buffer
+    // exists, unless the user tunes malloc via GLIBC_TUNABLES (no-op off glibc).
+    glibc_policy.pinMmapThreshold(init.environ_map.get("GLIBC_TUNABLES") != null);
     // Upgrade the process-wide `io_default` singleton from its lazy
     // single-threaded default to the real process io BEFORE any runtime work,
     // so Phase-B concurrency sync (`std.Io.Mutex`/`Io.Condition` reached by
@@ -108,6 +112,7 @@ test {
     _ = @import("runtime/gc/mark_sweep.zig");
     _ = @import("runtime/gc/mark_sweep_test.zig");
     _ = @import("runtime/gc/gc_trigger.zig");
+    _ = @import("runtime/gc/glibc_policy.zig");
     _ = @import("runtime/gc/gc_types.zig");
     _ = @import("runtime/gc/conservative_scan.zig");
     _ = @import("runtime/gc/page_heap.zig");
