@@ -1,11 +1,17 @@
 ;; Run from the repository root: zig-out/bin/cljw docs/examples/fractal/bench.clj
 ;; Render timing excludes framebuffer transfer, checksum and PPM encoding.
+;; CLJW_FRACTAL_CI=1 selects small correctness cases for the e2e gate.
 (ns fractal.bench (:require [clojure.java.io :as io]))
 
 (def root "docs/examples/fractal/")
-(def views [{:name "full" :cx -0.5 :cy 0.0 :scale (/ 3.5 512) :w 512 :h 512 :iter 256}
-            {:name "seahorse" :cx -0.743643887037151 :cy 0.13182590420533 :scale 1.0e-6 :w 128 :h 128 :iter 2000}
-            {:name "odd-tail" :cx -0.5 :cy 0.0 :scale 0.1 :w 31 :h 29 :iter 80}])
+(def views
+  (if (= "1" (System/getenv "CLJW_FRACTAL_CI"))
+    [{:name "full" :cx -0.5 :cy 0.0 :scale (/ 3.5 32) :w 32 :h 32 :iter 64}
+     {:name "seahorse" :cx -0.743643887037151 :cy 0.13182590420533 :scale 1.0e-6 :w 16 :h 16 :iter 160}
+     {:name "odd-tail" :cx -0.5 :cy 0.0 :scale 0.1 :w 31 :h 29 :iter 80}]
+    [{:name "full" :cx -0.5 :cy 0.0 :scale (/ 3.5 512) :w 512 :h 512 :iter 256}
+     {:name "seahorse" :cx -0.743643887037151 :cy 0.13182590420533 :scale 1.0e-6 :w 128 :h 128 :iter 2000}
+     {:name "odd-tail" :cx -0.5 :cy 0.0 :scale 0.1 :w 31 :h 29 :iter 80}]))
 
 (defn checksum [pixels]
   (reduce (fn [acc b] (mod (+ (* acc 31) (bit-and 255 b)) 2147483647)) 1 pixels))
