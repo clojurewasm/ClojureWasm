@@ -126,7 +126,7 @@ fi
 #      at their end, so running them serially in the registration pass —
 #      before the flush — leaves the pool a correct, stable binary.
 # These run serially BEFORE the parallel flush, on a quiet machine.
-SERIAL_STEPS="e2e_phase8_exit_smoke,e2e_phase4_cli,e2e_phase4_exit,e2e_phase4_exit_codes,e2e_phase16_http_server,e2e_phase16_http_client"
+SERIAL_STEPS="e2e_phase8_exit_smoke,e2e_phase4_cli,e2e_phase4_exit,e2e_phase4_exit_codes,e2e_phase16_http_server,e2e_phase16_http_client,e2e_phase16_fractal_server"
 declare -a E2E_QUEUE=()
 
 # Steps that MUST run on every pass, even under --resume. These are
@@ -706,6 +706,10 @@ run_step "e2e_phase16_wasm_polyglot"        "bash test/e2e/phase16_wasm_polyglot
 # docs/examples/zig-native: one Zig source as a wasm guest and as a native
 # library through cljw.ffi, committed wasm AND rebuilt from the header recipe.
 run_step "e2e_phase16_zig_native"           "bash test/e2e/phase16_zig_native.sh"
+# Fractal example: committed scalar/SIMD parity and reproducible header recipes.
+run_step "e2e_phase16_fractal_kernel"       "bash test/e2e/phase16_fractal_kernel.sh"
+# Fractal example server: routes, verbatim wasm bytes, tiles on every engine.
+run_step "e2e_phase16_fractal_server"       "bash test/e2e/phase16_fractal_server.sh"
 # The reswap coverage moved to suites/wasm-require-component-reswap-test: it
 # asserts values, not the process boundary, so it runs in-process now.
 run_step "e2e_phase15_deferred_host_ref"    "bash test/e2e/phase15_deferred_host_ref.sh"

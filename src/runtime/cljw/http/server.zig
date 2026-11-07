@@ -6,9 +6,11 @@
 //! becomes a Ring request map `{:request-method :get :uri "/path" :query-string
 //! "…" :headers {…} :body "…"}` passed to the handler (invoked via
 //! `rt.vtable.callFn`), whose response map `{:status N :body "…"}` (or a bare
-//! string body) is written back. Header names are lowercased (Ring); `:body` is
-//! nil when the client declared none (read only on Content-Length/chunked,
-//! capped at `max_body_bytes`).
+//! string body) is written back. A response `:body` may also be a primitive
+//! byte-array (`byte-array`, e.g. from `wasm/mem-read-array`): its bytes are
+//! copied verbatim. Header names are lowercased (Ring);
+//! `:body` is nil when the client declared none (read only on
+//! Content-Length/chunked, capped at `max_body_bytes`).
 //!
 //! Follow-ons (D-257 remainder): per-connection threading + a non-blocking stop
 //! handle (so keep-alive can be re-enabled), and per-request GC rooting of the
@@ -30,6 +32,7 @@ const safepoint = @import("../../concurrency/safepoint.zig");
 const string_mod = @import("../../collection/string.zig");
 const map_mod = @import("../../collection/map.zig");
 const client = @import("client.zig");
+const java_array = @import("../../collection/java_array.zig");
 
 /// `:request-method` keyword for an HTTP method (lowercase, Ring convention).
 fn methodKeyword(rt: *Runtime, m: std.http.Method) !Value {
@@ -206,6 +209,8 @@ fn collectResponse(arena: std.mem.Allocator, resp: Value, kw_status: Value, kw_b
     var body: []const u8 = "";
     const b = map_mod.get(resp, kw_body) catch Value.nil_val;
     if (b.tag() == .string) body = try arena.dupe(u8, string_mod.asString(b));
+    // byte-array body: verbatim copy
+    if (b.tag() == .array and java_array.isKind(b, .byte)) body = try arena.dupe(u8, java_array.asArray(b).bytes());
 
     var headers: std.ArrayList(std.http.Header) = .empty;
     const h = map_mod.get(resp, kw_headers) catch Value.nil_val;
