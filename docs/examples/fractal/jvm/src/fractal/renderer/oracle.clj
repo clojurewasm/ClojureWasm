@@ -14,22 +14,25 @@
       [n (+ (* zr zr) (* zi zi))])))
 
 (defn fill!
-  "Fill field for tile t with escape; returns field."
-  [t {:keys [^ints counts ^doubles mag2] :as field}]
-  (let [{:keys [w h iter]} t]
-    (dotimes [y h]
-      (dotimes [x w]
-        (let [[cr ci] (tile/point t x y)
-              [n m] (escape cr ci iter)
-              p (+ (* y w) x)]
-          (aset counts p (int n))
-          (aset mag2 p (double m)))))
-    field))
+  "Fill field for tile t with the escape rule esc (default `escape`); returns field."
+  ([t field] (fill! escape t field))
+  ([esc t {:keys [^ints counts ^doubles mag2] :as field}]
+   (let [{:keys [w h iter]} t]
+     (dotimes [y h]
+       (dotimes [x w]
+         (let [[cr ci] (tile/point t x y)
+               [n m] (esc cr ci iter)
+               p (+ (* y w) x)]
+           (aset counts p (int n))
+           (aset mag2 p (double m)))))
+     field)))
 
-(defrecord Oracle []
+;; esc is the escape rule as a value: the reference passes `escape`, the
+;; mutation suite passes deliberately broken rules.
+(defrecord Oracle [rid esc]
   r/IRenderer
-  (id [_] "clojure-jvm")
-  (describe [_] {:parity? true :what "plain Clojure on the JVM, one thread, the reference"})
-  (escape! [_ t field] (fill! t field)))
+  (id [_] rid)
+  (describe [_] {:parity? true :heavy? false :what "plain Clojure on the JVM, one thread, the reference"})
+  (escape! [_ t field] (fill! esc t field)))
 
-(defn renderer [] (->Oracle))
+(defn renderer [] (->Oracle "clojure-jvm" escape))

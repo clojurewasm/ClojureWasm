@@ -9,8 +9,9 @@
 
 (defprotocol IRenderer
   (id [r] "Engine name as the page and the bench show it.")
-  (describe [r] "{:parity? bool :what str}: :parity? false for renderers whose
-                 arithmetic differs (fp32), excluded from golden checks.")
+  (describe [r] "{:parity? bool :heavy? bool :what str}. :parity? false for
+                 renderers whose arithmetic differs (fp32), excluded from golden
+                 checks; :heavy? true when billion-iteration views are practical.")
   (escape! [r t field] "Fill the EscapeField `field` for Tile t."))
 
 (defn frame

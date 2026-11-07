@@ -65,7 +65,7 @@
 (defrecord RasterSimd [steps]
   r/IRenderer
   (id [_] "raster-simd")
-  (describe [_] {:parity? true :what "raster par/map on Vector API lanes, one pass per iteration"})
+  (describe [_] {:parity? true :heavy? false :what "raster par/map on Vector API lanes, one pass per iteration"})
   (escape! [_ t field] (escape-tile! steps t field)))
 
 (defn renderer [] (->RasterSimd (compile-steps)))

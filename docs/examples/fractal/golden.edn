@@ -3,11 +3,19 @@
 ;; (reduce (fn [acc b] (mod (+ (* acc 31) (bit-and 255 b)) 2147483647)) 1 pixels).
 ;; Measured once on cljw (Zig, C, Rust wasm on zwasm jit and interp, plain
 ;; Clojure); every other engine must reproduce them exactly (fp64, no FMA).
-;; :ci marks the small views the e2e gate runs.
+;; :ci marks the small views the e2e gate runs. :heavy views (billions of
+;; iterations) run only where asked (HEAVY=1 on cljw); "deep" was measured on
+;; the JVM oracle and confirmed by raster-jvm and cuda-f64.
 {:views
  [{:name "full" :cx -0.5 :cy 0.0 :scale 0.0068359375 :w 512 :h 512 :iter 256
    :iters 9284549 :checksum 1665484798}
   {:name "seahorse" :cx -0.743643887037151 :cy 0.13182590420533 :scale 1.0e-6 :w 128 :h 128 :iter 2000
    :iters 2152075 :checksum 2115401538}
   {:name "odd-tail" :cx -0.5 :cy 0.0 :scale 0.1 :w 31 :h 29 :iter 80
-   :iters 15979 :checksum 59081420 :ci true}]}
+   :iters 15979 :checksum 59081420 :ci true}
+  ;; Pixel (4, 4) is exactly c = -2: z = 0, -2, 2, 2, ... sits ON |z|^2 = 4, so
+  ;; only this view tells the bailout `<= 4` from `< 4` (mutation suite).
+  {:name "tip" :cx -2.0 :cy 0.0 :scale 0.25 :w 8 :h 8 :iter 50
+   :iters 317 :checksum 2086288669 :ci true}
+  {:name "deep" :cx -0.743643887037151 :cy 0.13182590420533 :scale 2.0e-9 :w 1024 :h 768 :iter 4096
+   :iters 2391873304 :checksum 1958721964 :heavy true}]}

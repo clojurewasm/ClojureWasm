@@ -39,7 +39,7 @@
   "-arch=sm_XY for device dev, from its compute capability."
   [dev]
   (let [{:keys [compute-capability-major compute-capability-minor]}
-        (cc/info dev [:compute-capability-major :compute-capability-minor])]
+        (cc/info dev)]
     (str "-arch=sm_" compute-capability-major compute-capability-minor)))
 
 (defn- open-gpu
@@ -53,7 +53,7 @@
                             ["--fmad=false" (sm-arch dev)])
           m (cu/module (cubin prog))]
       {:ctx ctx
-       :device (str (cc/info dev :name))
+       :device (:name (cc/info dev))
        :kernels {:f64 (cu/function m "escape_f64") :f32 (cu/function m "escape_f32")}})))
 
 (defn- escape-on-gpu!
@@ -77,12 +77,12 @@
 (defrecord Cuda [rid precision gpu worker]
   r/IRenderer
   (id [_] rid)
-  (describe [_] {:parity? (= precision :f64)
+  (describe [_] {:parity? (= precision :f64) :heavy? true
                  :what (str "CUDA " (name precision) " on " (:device gpu))})
   (escape! [_ t field]
     (on-gpu worker #(escape-on-gpu! (get-in gpu [:kernels precision]) t field))))
 
-(defonce ^:private shared (delay
+(def ^:private shared (delay
                             (let [worker (Executors/newSingleThreadExecutor
                                           (reify ThreadFactory
                                             (newThread [_ run]

@@ -46,7 +46,7 @@
 (defrecord Raster [rid threads]
   r/IRenderer
   (id [_] rid)
-  (describe [_] {:parity? true
+  (describe [_] {:parity? true :heavy? (nil? threads)
                  :what (str "raster deftm escape loop, "
                             (if threads (str threads " thread") "all cores"))})
   (escape! [_ t field] (escape-tile! threads t field)))
