@@ -1,65 +1,48 @@
 ;; Fractal zoom: the server half.
 ;; Usage: cljw docs/examples/fractal/server.clj [port]        (default 8080)
-;;        KERNEL=/path/to/kernel.wasm cljw server.clj         (override module)
+;;        KERNEL=/path/to/kernel.wasm cljw server.clj         (override the zig module)
 ;;
-;; Native cljw serves the page and renders tiles server-side with zwasm; the
-;; browser ALSO runs the identical kernel.wasm locally and compares live.
+;; Native cljw serves the page and renders tiles server-side. Every kernel
+;; (Zig, Zig simd128, C, Rust) answers one ABI, see README.md "The kernel ABI",
+;; so the same render-tile drives all of them. cljw-raster renders with plain
+;; Clojure (raster.clj) and no wasm, the CPU raster baseline.
 ;;
-;; kernel.wasm ABI (fixed): no imports; exports `memory`, `fb_ptr() -> i32`,
-;; `fb_cap() -> i32`, `set_view(cx f64, cy f64, scale f64) -> i32` (0 finite,
-;; -1 nonfinite), and `render(w i32, h i32, max_iter i32) -> i64` writing w*h
-;; RGBA8 row-major pixels at fb_ptr and returning total iterations.
-;; `render_simd` (same 3 args) ships only in a sibling kernel_simd.wasm; the
-;; zwasm interpreter cannot run SIMD, so the interp instance always uses the
-;; scalar render. The view lives in the instance, so set_view + render is
-;; atomic per instance: every instance is held behind a lock.
+;; Engines (the /tile `engine` parameter) are "<kernel>-<runtime>":
+;;   zig-jit zig-interp c-jit c-interp rust-jit rust-interp zig-simd-jit
+;;   cljw-raster
+;; The old names jit, interp and jit-simd stay as aliases of the zig ones.
+;; GET /engines answers {"engines":[...],"kernels":[...]}; every kernel listed
+;; is fetchable by the browser at GET /kernel.wasm?k=<id>.
 ;;
-;; Engines (the /tile `engine` parameter):
-;;   jit       kernel.wasm on zwasm's JIT
-;;   jit-simd  kernel_simd.wasm on the JIT (only when that file exists)
-;;   interp    kernel.wasm on zwasm's interpreter
-;; GET /engines answers which of these exist, e.g. {"engines":["jit","interp"]}.
-;;
-;; Binary bodies: cljw.http.server accepts a primitive byte-array :body and
-;; copies it verbatim, so tiles and the wasm module itself cross as raw bytes
-;; (a String cannot carry arbitrary binary: its producers normalise to UTF-8).
+;; The view lives in the wasm instance, so set_view + render is atomic per
+;; instance: every instance is held behind a lock.
 
 (ns fractal.server
   (:require [cljw.http.server :as http]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.string :as str]))
 
 (def dir (.getParent (io/file *file*)))
-(def kernel-path (or (System/getenv "KERNEL") (str dir "/kernel.wasm")))
-(def simd-path (str dir "/kernel_simd.wasm"))
+(load-file (str dir "/mandel.clj"))
+(def public (str dir "/web/public"))
 
 (def port (if (seq *command-line-args*)
             (Long/parseLong (first *command-line-args*))
             8080))
 
-;; --- one instance per engine, each behind its own lock -----------------------
-;; [handle lock]; the lock makes the set_view + render pair atomic per
-;; request: the view is instance state and the accept loop may thread later.
-(defn engine [path eng simd?]
-  [(wasm/load path {:engine eng :fuel 0})
-   (Object.)
-   (if simd? "render_simd" "render")])
+;; --- kernels ------------------------------------------------------------------
+;; :jit-only marks simd128 modules: zwasm's interpreter has no v128.
+(def kernel-specs
+  [{:id "zig" :path (or (System/getenv "KERNEL") (str dir "/kernel.wasm")) :export "render"}
+   {:id "zig-simd" :path (str dir "/kernel_simd.wasm") :export "render_simd" :jit-only true}
+   {:id "c" :path (str dir "/kernel_c.wasm") :export "render"}
+   {:id "rust" :path (str dir "/kernel_rust.wasm") :export "render"}])
 
-(def jit (engine kernel-path :jit false))
-(def interp (engine kernel-path :interp false))
-(def jit-simd
-  (when (.exists (io/file simd-path))
-    (engine simd-path :jit true)))
-
-(def engines
-  (cond-> ["jit" "interp"]
-    (some? jit-simd) (conj "jit-simd")))
-
-(def cap (.fb_cap (first jit)))
+(def kernels (filterv #(.exists (io/file (:path %))) kernel-specs))
 
 ;; --- file bytes ---------------------------------------------------------------
-;; Read a whole file as a primitive byte-array. cljw's InputStream surface
-;; today is the 1-arg .read (one byte per call, 0..255, -1 at EOF); there is
-;; no readAllBytes / .read(buf) arm, so drain into a pre-sized array.
+;; cljw's InputStream surface is the 1-arg .read (one byte per call), so drain
+;; into a pre-sized array.
 (defn file->bytes [path]
   (let [size (.length (io/file path))]
     (with-open [in (io/input-stream (io/file path))]
@@ -71,7 +54,27 @@
             (aset arr i (unchecked-byte b))))
         arr))))
 
-(def kernel-bytes (file->bytes kernel-path))
+(def kernel-bytes (into {} (map (fn [k] [(:id k) (file->bytes (:path k))])) kernels))
+
+;; --- engines --------------------------------------------------------------------
+;; An engine is {:inst :lock :export} for wasm, or {:raster true :lock}.
+(defn wasm-engine [k runtime]
+  {:inst (wasm/load (:path k) {:engine runtime :fuel 0})
+   :lock (Object.)
+   :export (:export k)})
+
+(def engines
+  (into (array-map)
+        (concat
+         (for [k kernels
+               runtime [:jit :interp]
+               :when (not (and (:jit-only k) (= runtime :interp)))]
+           [(str (:id k) "-" (name runtime)) (wasm-engine k runtime)])
+         [["cljw-clj" {:clj true :lock (Object.)}]])))
+
+(def aliases {"jit" "zig-jit" "interp" "zig-interp" "jit-simd" "zig-simd-jit"})
+
+(def cap (.fb_cap (:inst (get engines "zig-jit"))))
 
 ;; --- query parsing ------------------------------------------------------------
 (defn parse-query [qs]
@@ -93,70 +96,89 @@
     (if (nil? v) d (Long/parseLong v))))
 
 ;; --- tile rendering -----------------------------------------------------------
-;; `eng` is an engine triple. set_view validates the view (0) before render;
-;; the pair is locked per instance. The framebuffer is read back in one bulk
-;; memcpy as a byte-array, which is also the response body verbatim.
+;; The wasm framebuffer is read back in one bulk copy as a byte-array, which is
+;; also the response body verbatim.
 (defn render-tile [eng cx cy scale w h iter]
   (when (> (* w h) cap)
     (throw (ex-info "tile exceeds framebuffer capacity" {:cap cap :got (* w h)})))
-  (let [[inst lock f] eng]
-    (locking lock
-      (let [rc (.set_view inst cx cy scale)]
+  (locking (:lock eng)
+    (if (:clj eng)
+      (let [fb (byte-array (* w h 4))
+            t0 (System/nanoTime)
+            iters (fractal.mandel/render fb cx cy scale w h iter)]
+        {:ms (/ (double (- (System/nanoTime) t0)) 1.0e6) :iters iters :bytes fb})
+      (let [inst (:inst eng)
+            rc (.set_view inst cx cy scale)]
         (when (neg? rc)
-          (throw (ex-info "set_view rejected a non-finite coordinate" {:cx cx :cy cy :scale scale}))))
-      (let [t0 (System/nanoTime)
-            iters (if (= f "render_simd")
-                    (.render_simd inst w h iter)
-                    (.render inst w h iter))
-            ms (/ (double (- (System/nanoTime) t0)) 1.0e6)
-            arr (wasm/mem-read-array inst :u8 (.fb_ptr inst) (* w h 4))]
-        {:ms ms :iters iters :bytes arr}))))
+          (throw (ex-info "set_view rejected a non-finite coordinate" {:cx cx :cy cy :scale scale})))
+        (let [t0 (System/nanoTime)
+              iters (wasm/call inst (:export eng) w h iter)
+              ms (/ (double (- (System/nanoTime) t0)) 1.0e6)]
+          {:ms ms :iters iters
+           :bytes (wasm/mem-read-array inst :u8 (.fb_ptr inst) (* w h 4))})))))
+
+;; --- static files ---------------------------------------------------------------
+;; The compiled frontend: /js/** from web/public/js. No path may climb out.
+(def content-types {"js" "text/javascript" "map" "application/json" "css" "text/css"})
+
+(defn static [uri]
+  (let [f (io/file (str public uri))
+        ext (subs uri (inc (.lastIndexOf uri ".")))]
+    (if (and (.startsWith uri "/js/") (not (.contains uri "..")) (.isFile f))
+      {:status 200
+       :headers {"content-type" (get content-types ext "application/octet-stream")
+                 "cache-control" "no-cache"}
+       :body (file->bytes (.getPath f))}
+      {:status 404 :body "not found\n"})))
 
 ;; --- handler ------------------------------------------------------------------
+(defn json-strings [xs]
+  (str "[" (str/join "," (map #(str "\"" % "\"") xs)) "]"))
+
 (defn handler [req]
-  (case (:uri req)
-    "/" {:status 200
-         :headers {"content-type" "text/html; charset=utf-8"}
-         :body (slurp (str dir "/index.html"))}
+  (let [q (parse-query (:query-string req))]
+    (case (:uri req)
+      "/" {:status 200
+           :headers {"content-type" "text/html; charset=utf-8"}
+           :body (slurp (str public "/index.html"))}
 
-    "/kernel.wasm" {:status 200
-                    :headers {"content-type" "application/wasm"
-                              "cache-control" "no-cache"}
-                    :body kernel-bytes}
+      "/kernel.wasm"
+      (if-let [bytes (get kernel-bytes (get q "k" "zig"))]
+        {:status 200
+         :headers {"content-type" "application/wasm" "cache-control" "no-cache"}
+         :body bytes}
+        {:status 404 :body "unknown kernel\n"})
 
-    "/engines" {:status 200
-                :headers {"content-type" "application/json"}
-                :body (str "{\"engines\":[" (clojure.string/join "," (map #(str "\"" % "\"") engines)) "]}")}
+      "/engines" {:status 200
+                  :headers {"content-type" "application/json"}
+                  :body (str "{\"engines\":" (json-strings (keys engines))
+                             ",\"kernels\":" (json-strings (map :id kernels)) "}")}
 
-    "/tile"
-    (try
-      (let [q (parse-query (:query-string req))
-            cx (num q "cx" -0.6)
-            cy (num q "cy" 0.0)
-            scale (num q "scale" 0.004)
-            w (lng q "w" 640)
-            h (lng q "h" 480)
-            iter (lng q "iter" 256)
-            eng (case (get q "engine" "jit")
-                  "jit" jit
-                  "jit-simd" jit-simd
-                  "interp" interp
-                  nil)]
-        (if (nil? eng)
-          {:status 400 :body (str "engine must be one of " engines)}
-          (let [{:keys [ms iters bytes]} (render-tile eng cx cy scale w h iter)]
-            {:status 200
-             :headers {"content-type" "application/octet-stream"
-                       "cache-control" "no-store"
-                       "x-render-ms" (format "%.3f" ms)
-                       "x-iters" (str iters)}
-             :body bytes})))
-      (catch Throwable e
-        {:status 400 :body (str "tile error: " (.getMessage e))}))
+      "/tile"
+      (try
+        (let [cx (num q "cx" -0.6)
+              cy (num q "cy" 0.0)
+              scale (num q "scale" 0.004)
+              w (lng q "w" 640)
+              h (lng q "h" 480)
+              iter (lng q "iter" 256)
+              id (get q "engine" "zig-jit")
+              eng (get engines (get aliases id id))]
+          (if (nil? eng)
+            {:status 400 :body (str "engine must be one of " (vec (keys engines)))}
+            (let [{:keys [ms iters bytes]} (render-tile eng cx cy scale w h iter)]
+              {:status 200
+               :headers {"content-type" "application/octet-stream"
+                         "cache-control" "no-store"
+                         "x-render-ms" (format "%.3f" ms)
+                         "x-iters" (str iters)}
+               :body bytes})))
+        (catch Throwable e
+          {:status 400 :body (str "tile error: " (.getMessage e))}))
 
-    {:status 404 :body "not found\n"}))
+      (static (:uri req)))))
 
 (println (str "fractal server on http://localhost:" port
-              "  kernel=" kernel-path
-              "  engines=" engines))
+              "  kernels=" (mapv :id kernels)
+              "  engines=" (vec (keys engines))))
 (http/run-server handler {:port port})

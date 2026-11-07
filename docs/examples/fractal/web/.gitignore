@@ -1,0 +1,4 @@
+node_modules/
+.shadow-cljs/
+public/js/cljs-runtime/
+public/js/manifest.edn
