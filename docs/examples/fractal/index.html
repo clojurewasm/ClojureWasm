@@ -299,7 +299,7 @@ const VIEWS = [
 ];
 async function bench() {
   const out = document.getElementById("benchout");
-  out.textContent = "benching...";
+  out.textContent = "benching";
   const engines = ENGINES();
   const w = Math.min(canvas.width, 512), h = Math.min(canvas.height, 384);
   const rows = [["view".padEnd(16), ...engines.map(e => e.padStart(22))].join("")];

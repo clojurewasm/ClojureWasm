@@ -21,12 +21,12 @@
 ;; GET /engines answers which of these exist, e.g. {"engines":["jit","interp"]}.
 ;;
 ;; Binary bodies: cljw.http.server accepts a primitive byte-array :body and
-;; copies it verbatim, so tiles and the wasm module itself cross as raw bytes
-;; (a String cannot carry arbitrary binary: its producers normalise to UTF-8).
+;; copies it verbatim, so tiles and the wasm module itself cross as raw bytes.
 
 (ns fractal.server
   (:require [cljw.http.server :as http]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.string :as str]))
 
 (def dir (.getParent (io/file *file*)))
 (def kernel-path (or (System/getenv "KERNEL") (str dir "/kernel.wasm")))
@@ -126,7 +126,7 @@
 
     "/engines" {:status 200
                 :headers {"content-type" "application/json"}
-                :body (str "{\"engines\":[" (clojure.string/join "," (map #(str "\"" % "\"") engines)) "]}")}
+                :body (str "{\"engines\":[" (str/join "," (map #(str "\"" % "\"") engines)) "]}")}
 
     "/tile"
     (try
