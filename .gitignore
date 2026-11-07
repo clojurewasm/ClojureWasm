@@ -62,3 +62,6 @@ docs/examples/polyglot/go/jsonsum.wasm
 
 # Per-worktree ling scratch and resume notes (never committed)
 .scratch/
+
+# Generated fractal demo frame
+docs/examples/fractal/out.ppm
