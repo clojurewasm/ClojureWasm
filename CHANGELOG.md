@@ -7,6 +7,21 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+### Added
+
+- `cljw.http.server` accepts a primitive byte-array `:body` (for example the
+  result of `wasm/mem-read-array`) and writes its bytes verbatim. Binary
+  responses were impossible before: a String body is UTF-8, so a 640x480 RGBA
+  frame came back as 1,748,379 bytes instead of 1,228,800, and a byte-array
+  body was sent empty. Covered by a 256-byte case in `phase16_http_server`.
+- `docs/examples/fractal/`: a Mandelbrot zoom where one Zig `kernel.wasm` runs
+  on cljw's zwasm (JIT, interpreter, and a simd128 build on the JIT) behind
+  `cljw.http.server`, and in the browser on the same bytes. `bench.clj` checks
+  iteration and framebuffer parity across engines. Two e2e gates,
+  `phase16_fractal_kernel` (parity, and both artifacts rebuilt byte-identical
+  from the header recipes) and `phase16_fractal_server` (routes and tiles over
+  real HTTP), keep the committed artifacts honest.
+
 ## [1.15.5] - 2026-10-29
 
 ### Changed
