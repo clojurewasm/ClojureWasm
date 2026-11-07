@@ -7,6 +7,8 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+## [1.15.5] - 2026-10-29
+
 ### Changed
 
 - Transient maps and sets now edit owned HAMT paths in place during `into`,
