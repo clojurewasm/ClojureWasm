@@ -63,6 +63,14 @@
   (check 100 (prop/for-all [v gen-view iter (gen/choose 1 4096)]
                (= (view/->hash v iter) (view/->hash v iter view/default-fractal)))))
 
+(deftest a-frame-under-the-timer-resolution-has-no-rate
+  (is (nil? (view/mits 1000 0)))
+  (is (nil? (view/mits 1000 -1)))
+  (is (nil? (view/mits 1000 js/NaN)))
+  (check 200 (prop/for-all [iters (gen/choose 0 100000000)
+                            ms (gen/double* {:min 0.001 :max 1e5 :NaN? false :infinite? false})]
+               (close? (/ iters ms 1000) (view/mits iters ms) 1e-12))))
+
 (deftest hash-ignores-garbage
   (is (= {:view {}} (view/<-hash "#cx=abc&scale=-1&iter=")))
   (is (= {:view {}} (view/<-hash nil))))

@@ -27,7 +27,12 @@ DEMO="docs/examples/fractal"
 PORT=8159
 URL="http://127.0.0.1:$PORT"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/cljw_fractal_srv_XXXXXX")"
-run_bounded 120 "$BIN" "$DEMO/server.clj" "$PORT" >"$scratch/server.log" 2>&1 &
+# A backgrounded function runs in a subshell, so $! would be that subshell and
+# a kill would leave the server holding the port. Exec makes $! the server's
+# own bounding process.
+(if command -v timeout >/dev/null 2>&1; then exec timeout 120 "$BIN" "$DEMO/server.clj" "$PORT"
+ elif command -v gtimeout >/dev/null 2>&1; then exec gtimeout 120 "$BIN" "$DEMO/server.clj" "$PORT"
+ else exec "$BIN" "$DEMO/server.clj" "$PORT"; fi) >"$scratch/server.log" 2>&1 &
 SRV=$!
 trap 'kill "$SRV" 2>/dev/null || true; rm -rf "$scratch"' EXIT
 

@@ -659,27 +659,11 @@ run_step "e2e_macro_throw_catchable"        "bash test/e2e/macro_throw_catchable
 run_step "e2e_temporal_hash_eq"          "bash test/e2e/temporal_hash_eq.sh"
 run_step "e2e_phase15_require_fs"           "bash test/e2e/phase15_require_fs.sh"
 run_step "e2e_phase15_system_property"      "bash test/e2e/phase15_system_property.sh"
-run_step "e2e_phase16_locking"              "bash test/e2e/phase16_locking.sh"
-run_step "e2e_phase16_agent"                "bash test/e2e/phase16_agent.sh"
-run_step "e2e_phase16_concurrency_stress"   "bash test/e2e/phase16_concurrency_stress.sh"
 run_step "e2e_phase16_http_server"          "bash test/e2e/phase16_http_server.sh"
 run_step "e2e_phase16_http_client"          "bash test/e2e/phase16_http_client.sh"
 run_step "e2e_phase16_eval_budget"          "bash test/e2e/phase16_eval_budget.sh"
-run_step "e2e_phase16_file_io_errors"       "bash test/e2e/phase16_file_io_errors.sh"
-run_step "e2e_phase16_special_file_read"    "bash test/e2e/phase16_special_file_read.sh"
 run_step "e2e_phase16_repl_classpath"       "bash test/e2e/phase16_repl_classpath.sh"
-run_step "e2e_phase16_extend_via_metadata"  "bash test/e2e/phase16_extend_via_metadata.sh"
-run_step "e2e_phase16_fs_jail"              "bash test/e2e/phase16_fs_jail.sh"
-run_step "e2e_phase16_java_io_file"         "bash test/e2e/phase16_java_io_file.sh"
-run_step "e2e_phase16_clojure_java_io"      "bash test/e2e/phase16_clojure_java_io.sh"
-run_step "e2e_phase16_host_stream"          "bash test/e2e/phase16_host_stream.sh"
 run_step "e2e_phase16_stdin_read_line"      "bash test/e2e/phase16_stdin_read_line.sh"
-run_step "e2e_phase16_clojure_java_io_streams" "bash test/e2e/phase16_clojure_java_io_streams.sh"
-run_step "e2e_phase16_clojure_repl" "bash test/e2e/phase16_clojure_repl.sh"
-run_step "e2e_phase16_clojure_core_reducers" "bash test/e2e/phase16_clojure_core_reducers.sh"
-run_step "e2e_phase16_clojure_java_io_copy" "bash test/e2e/phase16_clojure_java_io_copy.sh"
-run_step "e2e_phase16_cljw_json_fs"         "bash test/e2e/phase16_cljw_json_fs.sh"
-run_step "e2e_phase16_tokenizer_long_input" "bash test/e2e/phase16_tokenizer_long_input.sh"
 run_step "e2e_bulk_literal"                 "bash test/e2e/bulk_literal.sh"
 # Wasm-FFI execution e2e — now part of the DEFAULT full gate (F-001 amended
 # 2026-06-12: zwasm v2 is complete, so the gate builds `-Dwasm` throughout and
@@ -687,18 +671,14 @@ run_step "e2e_bulk_literal"                 "bash test/e2e/bulk_literal.sh"
 # (CLJW_SKIP_BUILD), so no per-step rebuild. On a host where `zig build -Dwasm`
 # cannot resolve zwasm, build_cljw fails first — wasm is a gate prerequisite now.
 run_step "e2e_phase16_wasm_ffi"             "bash test/e2e/phase16_wasm_ffi.sh"
-run_step "e2e_phase16_wasm_memory"          "bash test/e2e/phase16_wasm_memory.sh"
-run_step "e2e_phase16_wasm_engine_select"   "bash test/e2e/phase16_wasm_engine_select.sh"
 run_step "e2e_phase16_wasm_run"             "bash test/e2e/phase16_wasm_run.sh"
 # D-349: the third budget axis. Fuel bounds instructions; how many bytes an
 # instruction writes is the guest's choice, so only a capture cap bounds host
 # memory. Measured pre-fix: 64 MB per 1e6 fuel, ~6.4 GB RSS at 1e8.
 run_step "e2e_phase16_wasm_run_output_cap" "bash test/e2e/phase16_wasm_run_output_cap.sh"
-run_step "e2e_phase16_wasm_component"       "bash test/e2e/phase16_wasm_component.sh"
 run_step "e2e_phase16_wasm_require_component" "bash test/e2e/phase16_wasm_require_component.sh"
 # Caller-set :fuel / :max-memory-pages on wasm/load-component, and the fuel
 # diagnostic on both call paths (a budget kill must not read as a guest trap).
-run_step "e2e_phase16_wasm_component_budget" "bash test/e2e/phase16_wasm_component_budget.sh"
 # docs/examples/polyglot: the C / Zig / Rust / Go guests the README shows, run
 # as committed AND rebuilt from their source headers (each toolchain on PATH),
 # plus hosts.cljc on every Clojure host present. A README claim with a gate.
@@ -716,7 +696,6 @@ run_step "e2e_phase15_deferred_host_ref"    "bash test/e2e/phase15_deferred_host
 run_step "e2e_phase16_vm_error_loc_sidecar" "bash test/e2e/phase16_vm_error_loc_sidecar.sh"
 run_step "e2e_phase16_gc_torture"           "bash test/e2e/phase16_gc_torture.sh"
 run_step "e2e_phase16_load_file_source"     "bash test/e2e/phase16_load_file_source.sh"
-run_step "e2e_phase16_bfs_queue_gc"         "bash test/e2e/phase16_bfs_queue_gc.sh"
 run_step "e2e_phase14_cljw_build"            "bash test/e2e/phase14_cljw_build.sh"
 run_step "e2e_phase14_print_family"          "bash test/e2e/phase14_print_family.sh"
 run_step "e2e_phase14_var_special"           "bash test/e2e/phase14_var_special.sh"
@@ -765,7 +744,6 @@ run_step "e2e_phase14_extend_abstract_base"  "bash test/e2e/phase14_extend_abstr
 run_step "e2e_phase14_deftype_imeta"         "bash test/e2e/phase14_deftype_imeta.sh"
 run_step "e2e_phase14_core_surface_protocols" "bash test/e2e/phase14_core_surface_protocols.sh"
 run_step "e2e_phase14_file_var"              "bash test/e2e/phase14_file_var.sh"
-run_step "e2e_phase16_wasm_component_multiexport" "bash test/e2e/phase16_wasm_component_multiexport.sh"
 run_step "e2e_phase14_deftype_iseq"          "bash test/e2e/phase14_deftype_iseq.sh"
 run_step "e2e_phase14_deftype_overload_arity" "bash test/e2e/phase14_deftype_overload_arity.sh"
 run_step "e2e_phase14_deftype_indexed"       "bash test/e2e/phase14_deftype_indexed.sh"

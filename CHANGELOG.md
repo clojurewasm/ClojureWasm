@@ -7,6 +7,26 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
 
 ## [Unreleased]
 
+### Fixed
+
+- The fractal example page no longer hides its header controls: a bare
+  `canvas` rule positioned the rolling ms/frame chart over the top of the
+  page. The rule is scoped to the fractal view and the chart is a block of
+  the stats panel. A frame faster than the timer resolution shows `-`
+  Miter/s (HUD, live table and bench) instead of `Infinity`. The `phase16_fractal_server` gate now stops its server for real
+  on exit, instead of leaving it holding port 8159 for up to 120 s.
+- `derive` rejects a bad tag or parent with clj's own `AssertionError`
+  (`Assert failed: (namespace parent)` and the rest, in clj's order), and a
+  redundant or cyclic edge with a plain `Exception`, where it raised
+  `ex-info` with cljw-only wording.
+- `(ancestors C)` for a class includes `Object`, in the global hierarchy and
+  in a passed-in one, as clj's superclass walk does; `(ancestors Object)` and
+  an interface stay without it.
+- On glibc, cljw now pins malloc's mmap threshold at 128 KiB at startup
+  (unless `GLIBC_TUNABLES` is set), so long-lived servers that churn
+  64-256 KiB buffers, such as bb-mcp, no longer creep in RSS as glibc raises
+  the threshold and fragments its per-thread arenas. Other libcs are untouched.
+
 ## [1.15.6] - 2026-11-08
 
 ### Added
@@ -35,11 +55,6 @@ first stable `1.0.0` tag; pre-1.0 `alpha` / `rc` tags may still change surfaces.
   drops from 2.599B to 2.016B (-22.4%) on one pinned core.
 
 ### Fixed
-
-- On glibc, cljw now pins malloc's mmap threshold at 128 KiB at startup
-  (unless `GLIBC_TUNABLES` is set), so long-lived servers that churn
-  64-256 KiB buffers, such as bb-mcp, no longer creep in RSS as glibc raises
-  the threshold and fragments its per-thread arenas. Other libcs are untouched.
 
 - The non-blocking bench-vs-bb CI job no longer fails on a restored
   `.zig-cache` whose WriteFiles output is missing (`file_hash FileNotFound`

@@ -1,0 +1,46 @@
+(try (derive (make-hierarchy) :user/a String) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (instance? clojure.lang.Named parent)"
+(try (derive (make-hierarchy) :user/a 1) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (instance? clojure.lang.Named parent)"
+(try (derive (make-hierarchy) 1 :user/a) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (or (class? tag) (instance? clojure.lang.Named tag))"
+(try (derive (make-hierarchy) :a :a) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (not= tag parent)"
+(try (derive (make-hierarchy) "s" :a) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (or (class? tag) (instance? clojure.lang.Named tag))"
+(try (derive :user/a :b) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (namespace parent)"
+(try (derive :a :user/b) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (or (class? tag) (and (instance? clojure.lang.Named tag) (namespace tag)))"
+(try (derive 1 :user/b) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (or (class? tag) (and (instance? clojure.lang.Named tag) (namespace tag)))"
+(try (derive :user/q :user/q) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (not= tag parent)"
+(try (derive 'user/a :b) (catch AssertionError e (ex-message e)))
+;;=> "Assert failed: (namespace parent)"
+(try (derive :user/a String) (catch ClassCastException e :cce))
+;;=> :cce
+(try (derive (derive (make-hierarchy) :user/g6-a :user/g6-b) :user/g6-b :user/g6-a) (catch Exception e [(instance? clojure.lang.ExceptionInfo e) (ex-message e)]))
+;;=> [false "Cyclic derivation: :user/g6-a has :user/g6-b as ancestor"]
+(try (-> (make-hierarchy) (derive :a :b) (derive :b :c) (derive :a :c)) (catch Exception e [(instance? clojure.lang.ExceptionInfo e) (ex-message e)]))
+;;=> [false ":a already has :c as ancestor"]
+(contains? (ancestors clojure.lang.PersistentHashSet) Object)
+;;=> true
+(contains? (ancestors clojure.lang.PersistentVector) Object)
+;;=> true
+(contains? (ancestors Long) Object)
+;;=> true
+(contains? (ancestors java.util.Date) Object)
+;;=> true
+(contains? (ancestors (derive (make-hierarchy) clojure.lang.PersistentHashSet :user/o) clojure.lang.PersistentHashSet) Object)
+;;=> true
+(contains? (ancestors (make-hierarchy) Long) Object)
+;;=> true
+(contains? (ancestors Exception) Object)
+;;=> true
+(ancestors Object)
+;;=> nil
+(ancestors Comparable)
+;;=> nil
+(ancestors :user/none)
+;;=> nil

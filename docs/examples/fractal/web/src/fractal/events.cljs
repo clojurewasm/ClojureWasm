@@ -243,7 +243,7 @@
                                        (.then (fn [{:keys [pixels ms iters]}]
                                                 {:view name :engine e :ms ms :iters iters
                                                  :exact? (engines/exact-engine? e)
-                                                 :mits (/ iters ms 1000) :checksum (engines/checksum pixels)}))
+                                                 :mits (view/mits iters ms) :checksum (engines/checksum pixels)}))
                                        (.catch (fn [err] {:view name :engine e :error (.-message err)})))
                                    (js/Promise.resolve {:view name :engine e :skipped true}))
                                  (.then (fn [row] (rf/dispatch [::bench-row row]) (conj rows row)))))))

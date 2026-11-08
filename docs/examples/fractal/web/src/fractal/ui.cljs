@@ -16,6 +16,12 @@
 
 (defn- fmt [n d] (.toFixed n d))
 
+(defn- fmt-rate
+  "Miter/s of iters over ms to d places, or - for a frame under the timer
+  resolution."
+  [iters ms d]
+  (if-let [m (view/mits iters ms)] (fmt m d) "-"))
+
 ;; --- header -----------------------------------------------------------------------
 (defn- engine-select
   "Every engine, the ones that cannot draw the current fractal disabled."
@@ -140,7 +146,7 @@
 (defn- hud-text [{:keys [engine ms iters w h error]} v iter {:keys [formula julia]}]
   (if error
     (str engine ": " error)
-    (str engine "  " (fmt ms 1) " ms  " (fmt (/ iters ms 1000) 1) " Miter/s\n"
+    (str engine "  " (fmt ms 1) " ms  " (fmt-rate iters ms 1) " Miter/s\n"
          formula (when julia (str " Julia k=" (.toPrecision (first julia) 6) "," (.toPrecision (second julia) 6))) "\n"
          "x " (.toPrecision (:cx v) 15) "\ny " (.toPrecision (:cy v) 15) "\n"
          "scale " (.toExponential (:scale v) 3) "  zoom " (.toExponential (view/zoom-level v) 2) "x\n"
@@ -200,7 +206,7 @@
       [:tbody
        (for [e engines :let [[ms iters frames] (get totals e)] :when frames]
          ^{:key e} [:tr [:td [swatch engines e] e] [:td (fmt (/ ms frames) 1)]
-                    [:td (fmt (/ iters ms 1000) 2)] [:td frames]])]]
+                    [:td (fmt-rate iters ms 2)] [:td frames]])]]
      [chart samples engines]
      [:p.note "Wheel or " [:kbd "+"] "/" [:kbd "-"] " zoom at the cursor, drag or arrows/" [:kbd "WASD"]
       " slide x and y, double-click zooms in (shift: out), two fingers pinch. " [:kbd "j"]
@@ -234,7 +240,7 @@
                      :else [:span {:title (str "iters " (:iters r) " checksum " (:checksum r))}
                             (fmt (:ms r) 1) " ms "
                             [:span {:class (if (and (= (:iters ref) (:iters r)) (= (:checksum ref) (:checksum r))) "ok" "bad")}
-                             (fmt (:mits r) 1) " Mi/s"]])])])]])]))
+                             (if (:mits r) (fmt (:mits r) 1) "-") " Mi/s"]])])])]])]))
 
 (defn root []
   [:<>

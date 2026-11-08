@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: asserts the line:col and source window in the CLI's rendered stderr for an uncaught error
 # test/e2e/phase16_vm_error_loc_sidecar.sh
 #
 # ADR-0173 C1 guard: the per-instruction source loc moved from the

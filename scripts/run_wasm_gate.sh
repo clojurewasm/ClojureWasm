@@ -4,7 +4,7 @@
 # Since F-001 was amended 2026-06-12 (zwasm v2 complete), the DEFAULT
 # `test/run_all.sh` gate ALSO covers the wasm e2e (builds `-Dwasm` throughout,
 # ADR-0133) — so this is no longer the *only* wasm coverage. Keep it as a fast
-# wasm-only path: build `-Dwasm` + run just the two wasm e2e, without the full
+# wasm-only path: build `-Dwasm` + run just the wasm e2e and wasm suites, without the full
 # ~250s gate, when iterating on the wasm surface.
 #
 # It builds the `-Dwasm` ReleaseSafe binary ONCE (ADR-0132: never a bare
@@ -40,7 +40,7 @@ zig-out/bin/cljw --version | grep -q 'wasm' || {
 
 export CLJW_SKIP_BUILD=1 CLJW_OPT=ReleaseSafe
 rc=0
-for s in phase16_wasm_ffi phase16_wasm_memory phase16_wasm_run; do
+for s in phase16_wasm_ffi phase16_wasm_run; do
     echo "==> $s"
     if bash "test/e2e/$s.sh"; then
         echo "    [pass] $s"
@@ -49,6 +49,18 @@ for s in phase16_wasm_ffi phase16_wasm_memory phase16_wasm_run; do
         rc=1
     fi
 done
+
+# The in-process wasm surface is deftests (test/clj/suites/wasm_*_test.clj);
+# run just those namespaces against the same binary.
+wasm_suites=$(cd test/clj/suites && ls wasm_*_test.clj | sed 's/_test\.clj$/-test/; s/_/-/g; s/^/suites./')
+echo "==> wasm suites"
+# shellcheck disable=SC2086
+if zig-out/bin/cljw -cp test/clj -M test/clj/run_suites.clj $wasm_suites; then
+    echo "    [pass] wasm suites"
+else
+    echo "    [FAIL] wasm suites" >&2
+    rc=1
+fi
 
 if [ "$rc" -eq 0 ]; then
     echo "WASM GATE: all green"
