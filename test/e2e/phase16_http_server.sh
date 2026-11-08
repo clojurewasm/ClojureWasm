@@ -57,6 +57,16 @@ body=$(curl -s "http://127.0.0.1:$PORT/html" 2>&1)
 [[ "$body" == "<h1>hi</h1>" ]] || fail "GET /html body: got '$body'"
 echo "PASS http-html-body -> $body"
 
+# A primitive byte-array :body is served verbatim: 256 bytes, one of each
+# value 0..255. A UTF-8 path would expand bytes >= 0x80 and grow the body.
+BLEN=$(curl -s "http://127.0.0.1:$PORT/bytes" | wc -c | tr -d ' ')
+[[ "$BLEN" == "256" ]] || fail "GET /bytes length: got $BLEN, want 256"
+BOD=$(curl -s "http://127.0.0.1:$PORT/bytes" | od -An -tu1 | tr -s ' ')
+EXP=""
+for i in $(seq 0 255); do EXP="$EXP $i"; done
+[[ "$(echo $BOD)" == "$(echo $EXP)" ]] || fail "GET /bytes content mismatch"
+echo "PASS http-bytes-body -> 256 verbatim bytes"
+
 # NINE response headers — a >8-entry :headers map promotes to hash_map
 # (Discussion #12 bug class) and used to be dropped wholesale.
 hdrs=$(curl -s -D - -o /dev/null "http://127.0.0.1:$PORT/many-headers" 2>&1)
@@ -120,4 +130,4 @@ else
   echo "SKIP http-slowloris (bash /dev/tcp unavailable)"
 fi
 
-echo "OK — phase16_http_server (13 cases) green"
+echo "OK — phase16_http_server (14 cases) green"
