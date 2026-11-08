@@ -10,7 +10,7 @@
               "#ff7b72" "#a5d6ff" "#7ee787" "#e3b341" "#ffa198" "#d2a8ff"])
 
 (defn color-of [engines e]
-  (nth palette (mod (max 0 (.indexOf (clj->js engines) e)) (count palette))))
+  (nth palette (mod (max 0 (.indexOf (vec engines) e)) (count palette))))
 
 (defn- swatch [engines e] [:span {:style {:color (color-of engines e)}} "▬ "])
 
@@ -85,7 +85,7 @@
                          (let [[x y] (canvas-point c e)]
                            (rf/dispatch [::ev/zoom-at x y (if (.-shiftKey e) 0.5 2)]))))
     (.addEventListener c "pointerdown"
-                       (fn [e] (.setPointerCapture c (.-pointerId e))
+                       (fn [e] (try (.setPointerCapture c (.-pointerId e)) (catch :default _ nil))
                          (swap! pointers assoc (.-pointerId e) (canvas-point c e))
                          (rf/dispatch [::ev/stop-tour])))
     (.addEventListener c "pointermove"
@@ -141,8 +141,8 @@
         [:div#wrap
          [:canvas#view {:ref mount-canvas!}]
          [:div#divider {:style {:display (if split? "block" "none")}}]
-         [:div.hud#hudL (when-let [p (:L panes)] (hud-text p v iter))]
-         [:div.hud#hudR {:style {:display (if split? "block" "none")}}
+         [:div#hudL.hud (when-let [p (:L panes)] (hud-text p v iter))]
+         [:div#hudR.hud {:style {:display (if split? "block" "none")}}
           (when-let [p (:R panes)] (hud-text p v iter))]]))}))
 
 ;; --- stats --------------------------------------------------------------------------

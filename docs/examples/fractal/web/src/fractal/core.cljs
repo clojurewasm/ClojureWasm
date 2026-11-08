@@ -1,6 +1,7 @@
 (ns fractal.core
   "Entry point: mounts the reagent root, wires the keyboard and the URL hash,
-  and exposes window.fractal, the surface the hive-cljs scenarios drive."
+  and exposes window.fractalApi, the surface the hive-cljs scenarios drive.
+  Not window.fractal: that global is the root of the fractal.* namespaces."
   (:require [reagent.dom.client :as rdc]
             [re-frame.core :as rf]
             [re-frame.db :as db]
@@ -52,15 +53,15 @@
 
 (defn ^:dev/after-load reload []
   (rf/clear-subscription-cache!)
-  (.render @root (r-root)))
+  (rdc/render @root (r-root)))
 
 (defn init []
   (rf/dispatch-sync [::ev/init])
   (apply-hash!)
-  (set! js/window.fractal (test-surface))
+  (set! js/window.fractalApi (test-surface))
   (js/window.addEventListener "keydown" on-key)
   (js/window.addEventListener "hashchange" apply-hash!)
   (reset! root (rdc/create-root (js/document.getElementById "app")))
-  (.render @root (r-root))
+  (rdc/render @root (r-root))
   (-> (engines/load!)
       (.then #(rf/dispatch [::ev/engines-loaded %]))))

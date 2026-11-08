@@ -1,9 +1,9 @@
 /* Mandelbrot RGBA8 kernel in C, freestanding with no imports.
  * Same ABI and pixel math as kernel.zig; see README.md "The kernel ABI".
- * Build from the repository root (clang 21):
- * clang --target=wasm32 -O3 -nostdlib -fno-builtin -Wl,--no-entry -Wl,--strip-all -o docs/examples/fractal/kernel_c.wasm docs/examples/fractal/kernel.c
- * log2 is computed locally (no libm in freestanding wasm), so palette bytes may
- * differ from kernel.zig by one level; iteration totals are exact. */
+ * Build from the repository root (zig cc bundles clang and wasm-ld):
+ * zig cc -target wasm32-freestanding -O3 -nostdlib -fno-builtin -Wl,--no-entry -Wl,--strip-all -o docs/examples/fractal/kernel_c.wasm docs/examples/fractal/kernel.c
+ * log2 is computed locally (no libm in freestanding wasm); the golden views
+ * show it paints the same bytes as kernel.zig. */
 
 #include <stdint.h>
 

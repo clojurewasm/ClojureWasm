@@ -1,9 +1,10 @@
 ;; Frontend of the fractal demo: re-frame + reagent, compiled to public/js.
 ;; The cljw server (../server.clj) serves public/ and the tiles, so `watch`
 ;; needs no dev-http: open http://localhost:8080 with server.clj running.
-{:source-paths ["src"]
+{:source-paths ["src" "test"]
  :dependencies [[reagent/reagent "2.0.1"]
-                [re-frame/re-frame "1.4.7"]]
+                [re-frame/re-frame "1.4.7"]
+                [org.clojure/test.check "1.1.1"]]
  :nrepl {:port 7893}
  :http {:port 9632}
  :builds
@@ -11,4 +12,8 @@
         :output-dir "public/js"
         :asset-path "/js"
         :modules {:main {:init-fn fractal.core/init}}
-        :devtools {:after-load fractal.core/reload}}}}
+        :devtools {:after-load fractal.core/reload}}
+  ;; npx shadow-cljs compile test && node target/test.js
+  :test {:target :node-test
+         :output-to "target/test.js"
+         :ns-regexp "-test$"}}}

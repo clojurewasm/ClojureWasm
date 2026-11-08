@@ -1,58 +1,34 @@
 (ns fractal.engines
-  "Render engines. Every engine answers render-on with a promise of
-  {:pixels Uint8ClampedArray(w*h*4 RGBA) :ms render-ms :iters total}.
+  "Renderers for the page: an open set behind one port. Every renderer answers
+  `render` with a promise of {:pixels Uint8ClampedArray(w*h*4) :ms :iters}.
+    browser-<kernel>  that kernel's .wasm instantiated in this tab (WasmKernel)
+    browser-js        the same pixel math in plain JavaScript (JsRaster)
+    server-<engine>   cljw renders natively, zwasm or plain Clojure (RemoteTiles)
+    <jvm engine>      the JVM server (jvm/): raster, CUDA (RemoteTiles)
+  Discovery (Collect) fills `registry`; nothing parses an engine name.")
 
-  browser-<kernel>  that kernel's .wasm instantiated in this tab
-  browser-js        the same pixel math in plain JavaScript, no wasm
-  server-<engine>   native cljw renders (zwasm jit/interp, or cljw-raster)")
+;; --- the port -----------------------------------------------------------------
+(defprotocol IRenderer
+  (id [r])
+  (exact? [r] "True when held to golden.edn: fp64, kernel operation order. False for fp32.")
+  (render [r tile iter] "Promise of {:pixels :ms :iters}; tile is {:cx :cy :scale :w :h}."))
 
-(defonce kernels (atom {}))
+(defn- now [] (js/performance.now))
 
-(def raster-url
-  "The raster engine's tile server (replikativ/raster on the JVM, ../raster).
-  Default: port 8081 on this host; ?raster=<url> overrides."
-  (or (.get (js/URLSearchParams. js/location.search) "raster")
-      (str js/location.protocol "//" js/location.hostname ":8081")))
-
-(defn- probe-raster
-  "Resolves to [\"raster-jvm\"] when the raster server answers, else []."
-  []
-  (let [ctl (js/AbortController.)]
-    (js/setTimeout #(.abort ctl) 1500)
-    (-> (js/fetch (str raster-url "/engines") #js {:signal (.-signal ctl)})
-        (.then #(if (.-ok %) ["raster-jvm"] []))
-        (.catch (constantly [])))))
-
-(defn- fetch-json [url]
-  (-> (js/fetch url) (.then #(.json %))))
-
-(defn load!
-  "Fetch the server's engine list and instantiate every kernel this browser
-  validates. Resolves to {:server [...] :kernels [...]}."
-  []
-  (-> (fetch-json "/engines")
-      (.catch (fn [_] #js {:engines #js [] :kernels #js ["zig"]}))
-      (.then
-       (fn [^js data]
-         (let [server (vec (.-engines data))
-               ids (vec (.-kernels data))]
-           (-> (js/Promise.all
-                (clj->js
-                 (for [k ids]
-                   (-> (js/fetch (str "/kernel.wasm?k=" k))
-                       (.then #(.arrayBuffer %))
-                       (.then (fn [bytes]
-                                (when (js/WebAssembly.validate bytes)
-                                  (.then (js/WebAssembly.instantiate bytes #js {})
-                                         #(swap! kernels assoc k (.. % -instance -exports))))))
-                       (.catch #(js/console.warn "kernel" k %))))))
-               (.then (fn [_] (probe-raster)))
-               (.then (fn [raster] {:server server :raster raster :kernels (filterv @kernels ids)}))))))))
-
-(defn names
-  "Engine names in display order."
-  [{:keys [server kernels raster]}]
-  (vec (concat (map #(str "browser-" %) kernels) ["browser-js"] (map #(str "server-" %) server) raster)))
+;; --- adapters -----------------------------------------------------------------
+(defrecord WasmKernel [rid ^js exports simd?]
+  IRenderer
+  (id [_] rid)
+  (exact? [_] true)
+  (render [_ {:keys [cx cy scale w h]} iter]
+    (let [f (if simd? (.-render_simd exports) (.-render exports))
+          t0 (now)
+          _ (.set_view exports cx cy scale)
+          iters (js/Number (f w h iter))
+          ms (- (now) t0)]
+      (js/Promise.resolve
+       {:pixels (js/Uint8ClampedArray. (.. exports -memory -buffer) (.fb_ptr exports) (* w h 4))
+        :ms ms :iters iters}))))
 
 (defonce ^:private js-fb (atom (js/Uint8ClampedArray. 0)))
 
@@ -89,48 +65,103 @@
                     (color! fb (* 4 (+ (* y w) x)) n limit (+ (* zr zr) (* zi zi))))))))))
     {:pixels (.subarray fb 0 (* w h 4)) :iters @total}))
 
-(defn- now [] (js/performance.now))
-
-(defn render-on
-  "Render one w x h tile of view (cx, cy, scale) on engine. Server ms is the
-  guest render time from X-Render-Ms, so network time is excluded."
-  [engine {:keys [cx cy scale w h]} iter]
-  (cond
-    (= engine "browser-js")
+(defrecord JsRaster []
+  IRenderer
+  (id [_] "browser-js")
+  (exact? [_] true)
+  (render [_ {:keys [cx cy scale w h]} iter]
     (let [t0 (now) r (js-raster cx cy scale w h iter)]
-      (js/Promise.resolve (assoc r :ms (- (now) t0))))
+      (js/Promise.resolve (assoc r :ms (- (now) t0))))))
 
-    (.startsWith engine "browser-")
-    (let [k (subs engine 8)
-          ^js ex (get @kernels k)
-          f (if (= k "zig-simd") (.-render_simd ex) (.-render ex))
-          t0 (now)
-          _ (.set_view ex cx cy scale)
-          iters (js/Number (f w h iter))
-          ms (- (now) t0)]
-      (js/Promise.resolve
-       {:pixels (js/Uint8ClampedArray. (.. ex -memory -buffer) (.fb_ptr ex) (* w h 4))
-        :ms ms :iters iters}))
-
-    :else
-    (let [q (js/URLSearchParams. #js {:cx cx :cy cy :scale scale :w w :h h :iter iter
-                                      :engine (if (= engine "raster-jvm") engine (subs engine 7))})
-          base (if (= engine "raster-jvm") raster-url "")
+;; A tile server speaking the shared protocol: X-Render-Ms is the guest render
+;; time, so network time is excluded from :ms.
+(defrecord RemoteTiles [rid base engine exact]
+  IRenderer
+  (id [_] rid)
+  (exact? [_] exact)
+  (render [_ {:keys [cx cy scale w h]} iter]
+    (let [q (js/URLSearchParams. #js {:cx cx :cy cy :scale scale :w w :h h :iter iter :engine engine})
           t0 (now)]
       (-> (js/fetch (str base "/tile?" q))
           (.then (fn [^js resp]
                    (if (.-ok resp)
                      (.then (.arrayBuffer resp)
                             (fn [buf]
-                              (let [total (- (now) t0)
-                                    rms (js/parseFloat (or (.get (.-headers resp) "X-Render-Ms") "NaN"))]
+                              (let [rms (js/parseFloat (or (.get (.-headers resp) "X-Render-Ms") "NaN"))]
                                 {:pixels (js/Uint8ClampedArray. buf)
-                                 :ms (if (js/Number.isFinite rms) rms total)
+                                 :ms (if (js/Number.isFinite rms) rms (- (now) t0))
                                  :iters (js/Number (or (.get (.-headers resp) "X-Iters") "0"))})))
                      (.then (.text resp) #(throw (js/Error. (str "tile: HTTP " (.-status resp) " " %)))))))))))
 
+;; --- Collect: discovery ----------------------------------------------------------
+(def jvm-url
+  "The JVM engines' server (jvm/, raster and CUDA). Default: port 8081 on this
+  host; ?jvm=<url> overrides."
+  (or (.get (js/URLSearchParams. js/location.search) "jvm")
+      (str js/location.protocol "//" js/location.hostname ":8081")))
+
+(defn- fetch-engines
+  "Promise of the server at base's {:engines [...] :kernels [...]}, or empty
+  when it does not answer within ms."
+  [base ms]
+  (let [ctl (js/AbortController.)]
+    (js/setTimeout #(.abort ctl) ms)
+    (-> (js/fetch (str base "/engines") #js {:signal (.-signal ctl)})
+        (.then #(.json %))
+        (.then (fn [^js d] {:engines (vec (.-engines d))
+                            :kernels (vec (or (.-kernels d) #js []))
+                            :inexact (set (or (.-inexact d) #js []))}))
+        (.catch (constantly {:engines [] :kernels [] :inexact #{}})))))
+
+(defn- wasm-kernel
+  "Promise of a WasmKernel for kernel k, or nil when this browser cannot run it."
+  [k]
+  (-> (js/fetch (str "/kernel.wasm?k=" k))
+      (.then #(.arrayBuffer %))
+      (.then (fn [bytes]
+               (when (js/WebAssembly.validate bytes)
+                 (.then (js/WebAssembly.instantiate bytes #js {})
+                        #(->WasmKernel (str "browser-" k) (.. % -instance -exports) (= k "zig-simd"))))))
+      (.catch (fn [e] (js/console.warn "kernel" k e) nil))))
+
+(defn discover
+  "Promise of every renderer this page can reach, in display order."
+  []
+  (-> (js/Promise.all #js [(fetch-engines "" 5000) (fetch-engines jvm-url 1500)])
+      (.then (fn [[cljw jvm]]
+               (.then (js/Promise.all (clj->js (map wasm-kernel (:kernels cljw))))
+                      (fn [kernels]
+                        (vec (concat (remove nil? kernels)
+                                     [(->JsRaster)]
+                                     (for [e (:engines cljw)]
+                                       (->RemoteTiles (str "server-" e) "" e (not ((:inexact cljw) e))))
+                                     (for [e (:engines jvm)]
+                                       (->RemoteTiles e jvm-url e (not ((:inexact jvm) e))))))))))))
+
+;; --- the registry the page renders through ----------------------------------------
+(defonce registry (atom (array-map)))
+
+(defn load!
+  "Discover and register every renderer; resolves to their ids in order."
+  []
+  (.then (discover)
+         (fn [rs]
+           (reset! registry (into (array-map) (map (juxt id identity)) rs))
+           (mapv id rs))))
+
+(defn names [ids] (vec ids))
+
+(defn exact-engine? [engine] (boolean (some-> (get @registry engine) exact?)))
+
+(defn render-on
+  "Render a tile on the registered renderer named engine."
+  [engine tile iter]
+  (if-let [r (get @registry engine)]
+    (render r tile iter)
+    (js/Promise.reject (js/Error. (str "unknown engine " engine)))))
+
 (defn checksum
-  "The bench's framebuffer checksum, identical to bench.clj's."
+  "The golden checksum, identical to golden.edn's."
   [px]
   (let [n (.-length px)]
     (loop [i 0 c 1]

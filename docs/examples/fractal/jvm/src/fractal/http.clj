@@ -22,8 +22,12 @@
 
 (defn- json-strings [xs] (str "[" (str/join "," (map #(str "\"" % "\"") xs)) "]"))
 
-(defn engines-json [registry unavailable]
+(defn engines-json
+  "Engines, the inexact ones among them (not held to golden.edn, e.g. fp32),
+  and the unavailable ones."
+  [registry unavailable]
   (str "{\"engines\":" (json-strings (keys registry))
+       ",\"inexact\":" (json-strings (for [[k rr] registry :when (not (:parity? (r/describe rr)))] k))
        ",\"unavailable\":" (json-strings (map :id unavailable)) "}"))
 
 (defn respond

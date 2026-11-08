@@ -149,10 +149,12 @@
    ["spiral" -0.10109636384562 0.95628651080914 (/ 0.0005 256) 1024]
    ["deep pinch" -1.768778833 0.001738996 (/ 1e-6 256) 1024]])
 
-(defn parity? [rows views]
+(defn parity?
+  "Every exact engine gave the same iteration total and checksum on each view."
+  [rows views]
   (every? (fn [[name]]
-            (let [its (keep #(when (and (= name (:view %)) (not (:error %))) (:iters %)) rows)]
-              (and (seq its) (apply = its))))
+            (let [rs (filter #(and (= name (:view %)) (:exact? %) (not (:error %))) rows)]
+              (and (seq rs) (apply = (map (juxt :iters :checksum) rs)))))
           views))
 
 (defn run-bench!
@@ -166,6 +168,7 @@
                              (-> (engines/render-on e pv it)
                                  (.then (fn [{:keys [pixels ms iters]}]
                                           {:view name :engine e :ms ms :iters iters
+                                           :exact? (engines/exact-engine? e)
                                            :mits (/ iters ms 1000) :checksum (engines/checksum pixels)}))
                                  (.catch (fn [err] {:view name :engine e :error (.-message err)}))
                                  (.then (fn [row] (rf/dispatch [::bench-row row]) (conj rows row)))))))
