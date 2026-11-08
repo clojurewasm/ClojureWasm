@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: CLJW_GC_TORTURE is read at startup and forces a collect at every back-edge for the whole process, so each case needs a fresh cljw
 # test/e2e/phase16_gc_torture.sh — GC torture regression guard (D-250 / D-251).
 #
 # Runs representative programs under CLJW_GC_TORTURE=1 (force a stop-the-world

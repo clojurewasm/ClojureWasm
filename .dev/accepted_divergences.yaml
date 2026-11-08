@@ -680,7 +680,7 @@ accepted:
       `release-pending-sends` are implemented for real; only the executor surface
       diverges, because it presupposes a subsystem cljw deliberately lacks.
     derives_from: "ADR-0093 (per-agent worker, no shared pool) + ADR-0155 (D-442 classification) + the no-`java.util.concurrent`-executor model + provisional_marker.md permanent-no-op-forbidden."
-    pin: "test/e2e/phase16_agent.sh — agent_send_via_raises / agent_set_executor_raises / agent_set_off_executor_raises (all three raise the no-configurable-executor message)."
+    pin: "test/clj/suites/agent_test.clj, deftest agent-executor-fns-raise — agent_send_via_raises / agent_set_executor_raises / agent_set_off_executor_raises (all three raise the no-configurable-executor message)."
   - id: "AD-046"
     summary: "After `(shutdown-agents)`, a dropped `send` does NOT fire an agent's `:error-handler` — cljw silently drops the action; clj routes the swallowed `RejectedExecutionException` to the handler if one is set. The COMMON case (no handler) MATCHES clj exactly: send returns the agent, no throw, action never runs."
     example: '(do (shutdown-agents) (let [a (agent 0 :error-handler h)] (send a inc))) => cljw drops, h NOT called / clj drops, h called with a RejectedExecutionException. Without a handler both runtimes drop silently (identical).'
@@ -706,7 +706,7 @@ accepted:
       Kind differs, AD-007 covers it" claim was FACTUALLY WRONG (it assumed clj
       throws to the caller; the oracle shows it does not) and is corrected here.
     derives_from: "F-011 (clj-parity authoritative; the no-handler path matches exactly) + ADR-0093 (per-agent worker, no java.util.concurrent executor / no RejectedExecutionException type) + ADR-0155 (D-442 shutdown-agents classification) + provisional_marker.md permanent-no-op-forbidden (the silent drop is the clj-faithful terminal no-op, audited)."
-    pin: "test/e2e/phase16_agent.sh — shutdown_agents_send_returns_agent (send returns the agent, no throw), shutdown_agents_action_dropped (state unchanged), shutdown_agents_no_handler_fire (cljw does NOT fire the :error-handler on the dropped send: log stays empty)."
+    pin: "test/clj/suites/agent_test.clj, deftest shutdown-agents-is-process-global (each case in a child cljw, since shutdown-agents is process-global) — shutdown_agents_send_returns_agent (send returns the agent, no throw), shutdown_agents_action_dropped (state unchanged), shutdown_agents_no_handler_fire (cljw does NOT fire the :error-handler on the dropped send: log stays empty)."
   - id: "AD-047"
     summary: "A host java.util collection's `str`/`.toString` renders in CLOJURE content form (`[1 2]`, `{:a 1, :b 2}`, `#{1 2}`), not JVM toString form (`[1, 2]`, `{:b=2, :a=1}` with `=` pairs + JVM iteration order). The `pr`/`pr-str`/REPL form MATCHES clj exactly (`[1 2]` / `#{1 2}` / `{:a 1}`) — D-468; only the str-form (Java toString) diverges."
     example: '(str (doto (java.util.HashMap.) (.put :a 1) (.put :b 2))) => cljw "{:a 1, :b 2}" / clj "{:b=2, :a=1}"; (str (java.util.ArrayList. [1 2])) => cljw "[1 2]" / clj "[1, 2]"'
@@ -892,7 +892,7 @@ accepted:
       has shipped the sequential shape for a decade. The seam is two functions
       (`foldvec`, `Cat`'s `coll-fold`), so a later parallelisation is local.
     derives_from: "ADR-0093 (no ForkJoinPool / java.util.concurrent executor surface) + ADR-0059 (no-JVM) + the ClojureScript precedent (clojure/core/reducers.cljs ships the same sequential fold)."
-    pin: "test/e2e/phase16_clojure_core_reducers.sh — `fold-value-on-a-large-vector` (a 10,000-element vector, well past any plausible cutoff n) and `fold-with-a-distinct-combiner` (the 4-arity arm, where a combiner that is not the reducef must still be honoured). Both assert the VALUE, so a later parallelisation cannot change it. Plus test/diff/clj_corpus/reducers.txt, whose fold rows are golden pairs against real clj."
+    pin: "test/clj/suites/core_libs_phase16_test.clj, deftest reducers-ns — `fold-value-on-a-large-vector` (a 10,000-element vector, well past any plausible cutoff n) and `fold-with-a-distinct-combiner` (the 4-arity arm, where a combiner that is not the reducef must still be honoured). Both assert the VALUE, so a later parallelisation cannot change it. Plus test/diff/clj_corpus/reducers.txt, whose fold rows are golden pairs against real clj."
   - id: "AD-059"
     area: "clojure.set"
     summary: |-

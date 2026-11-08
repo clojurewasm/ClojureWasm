@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: exercises the three REPL entry points (argv, subcommand, CLJW_PATH) over piped stdin
 # test/e2e/phase16_repl_classpath.sh — the interactive REPL is classpath-aware:
 # `(require 'my.lib)` at a REPL prompt resolves `my/lib.clj` off the classpath,
 # for all THREE REPL entry paths (D-322): `cljw -cp DIR` (flags-but-no-source),

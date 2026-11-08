@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: starts cljw's HTTP server as a separate background process on a fixed port and drives it from a second cljw
 # test/e2e/phase16_http_client.sh — cljw's outbound HTTP client (D-257 discharged).
 # Hermetic localhost round-trip: start cljw's OWN HTTP server (http_server_demo)
 # as a bg process, then drive it with cljw's OWN http client (cljw.http.client) and

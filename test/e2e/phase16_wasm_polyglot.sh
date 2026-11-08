@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# e2e-process-boundary: runs zig cc / rustc / go to rebuild the guests and compares against other Clojure hosts on PATH
 # test/e2e/phase16_wasm_polyglot.sh — the polyglot demo (docs/examples/polyglot)
 # is a gated claim, not prose. Two legs:
 #
