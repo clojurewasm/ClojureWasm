@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # e2e-process-boundary: docs/examples/fractal/server.clj over real HTTP.
 # Starts the demo server on a fixed port, then checks the routes the page
-# depends on: /engines, /kernel.wasm (bytes equal to the committed file) and
-# /tile on every engine (exactly w*h*4 bytes, X-Render-Ms and X-Iters set,
-# identical pixels and iteration totals across engines). Serial: fixed port.
-# Correctness only, no timing thresholds.
+# depends on: / (the page), /engines, /kernel.wasm?k=<id> (bytes equal to the
+# committed file) and /tile on every engine (exactly w*h*4 bytes, X-Render-Ms
+# and X-Iters set, identical pixels and iteration totals across engines), plus
+# the 400 refusals of an unknown engine and of a formula cljw does not render.
+# Serial: fixed port. Correctness only, no timing thresholds.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 BIN="${CLJW_BIN:-zig-out/bin/cljw}"
@@ -24,6 +25,7 @@ fi
 
 DEMO="docs/examples/fractal"
 PORT=8159
+URL="http://127.0.0.1:$PORT"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/cljw_fractal_srv_XXXXXX")"
 run_bounded 120 "$BIN" "$DEMO/server.clj" "$PORT" >"$scratch/server.log" 2>&1 &
 SRV=$!
@@ -31,25 +33,37 @@ trap 'kill "$SRV" 2>/dev/null || true; rm -rf "$scratch"' EXIT
 
 up=0
 for _ in $(seq 1 100); do
-  if curl -s -o /dev/null "http://127.0.0.1:$PORT/engines" 2>/dev/null; then up=1; break; fi
+  if curl -s -o /dev/null "$URL/engines" 2>/dev/null; then up=1; break; fi
   sleep 0.1
 done
 [[ "$up" == 1 ]] || fail "server did not come up on :$PORT
 $(cat "$scratch/server.log")"
 
-engines="$(curl -s "http://127.0.0.1:$PORT/engines")"
-[[ "$engines" == '{"engines":["jit","interp","jit-simd"]}' ]] || fail "/engines: got '$engines'"
+ENGINES="zig-jit zig-interp zig-simd-jit c-jit c-interp rust-jit rust-interp cljw-clj"
+KERNELS="zig zig-simd c rust"
+want='{"engines":["zig-jit","zig-interp","zig-simd-jit","c-jit","c-interp","rust-jit","rust-interp","cljw-clj"],"kernels":["zig","zig-simd","c","rust"]}'
+engines="$(curl -s "$URL/engines")"
+[[ "$engines" == "$want" ]] || fail "/engines: got '$engines'"
 echo "PASS fractal-server-engines -> $engines"
 
-curl -s -o "$scratch/kernel.wasm" "http://127.0.0.1:$PORT/kernel.wasm"
-cmp -s "$scratch/kernel.wasm" "$DEMO/kernel.wasm" || fail "/kernel.wasm differs from the committed file"
-echo "PASS fractal-server-kernel -> $(wc -c <"$DEMO/kernel.wasm" | tr -d ' ') bytes, identical"
+code=$(curl -s -o "$scratch/index.html" -w "%{http_code}" "$URL/")
+[[ "$code" == "200" ]] && grep -q 'js/main.js' "$scratch/index.html" || fail "/: status $code, or no js/main.js"
+echo "PASS fractal-server-page -> /"
+
+for k in $KERNELS; do
+  file="$DEMO/kernel.wasm"
+  [[ "$k" == zig ]] || file="$DEMO/kernel_${k//-/_}.wasm"
+  [[ "$k" == zig-simd ]] && file="$DEMO/kernel_simd.wasm"
+  curl -s -o "$scratch/k.$k" "$URL/kernel.wasm?k=$k"
+  cmp -s "$scratch/k.$k" "$file" || fail "/kernel.wasm?k=$k differs from $file"
+done
+echo "PASS fractal-server-kernels -> $KERNELS, identical to the committed files"
 
 W=64; H=48
 ref_sum=""; ref_iters=""
-for e in jit interp jit-simd; do
+for e in $ENGINES; do
   curl -s -D "$scratch/h.$e" -o "$scratch/t.$e" \
-    "http://127.0.0.1:$PORT/tile?cx=-0.5&cy=0&scale=0.05&w=$W&h=$H&iter=128&engine=$e"
+    "$URL/tile?cx=-0.5&cy=0&scale=0.05&w=$W&h=$H&iter=128&engine=$e"
   len=$(wc -c <"$scratch/t.$e" | tr -d ' ')
   [[ "$len" == $((W * H * 4)) ]] || fail "/tile $e: $len bytes, want $((W * H * 4))"
   grep -qi '^x-render-ms:' "$scratch/h.$e" || fail "/tile $e: no X-Render-Ms header"
@@ -58,12 +72,14 @@ for e in jit interp jit-simd; do
   sum=$(cksum <"$scratch/t.$e" | awk '{print $1}')
   if [[ -z "$ref_sum" ]]; then ref_sum="$sum"; ref_iters="$iters"
   else
-    [[ "$sum" == "$ref_sum" ]] || fail "/tile $e pixels differ from jit"
-    [[ "$iters" == "$ref_iters" ]] || fail "/tile $e X-Iters $iters, jit had $ref_iters"
+    [[ "$sum" == "$ref_sum" ]] || fail "/tile $e pixels differ from zig-jit"
+    [[ "$iters" == "$ref_iters" ]] || fail "/tile $e X-Iters $iters, zig-jit had $ref_iters"
   fi
 done
-echo "PASS fractal-server-tiles -> ${W}x${H} RGBA on jit, interp, jit-simd, identical (X-Iters $ref_iters)"
+echo "PASS fractal-server-tiles -> ${W}x${H} RGBA on 8 engines, identical (X-Iters $ref_iters)"
 
-code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/tile?engine=nope")
+code=$(curl -s -o /dev/null -w "%{http_code}" "$URL/tile?engine=nope")
 [[ "$code" == "400" ]] || fail "/tile unknown engine: status $code, want 400"
-echo "PASS fractal-server-bad-engine -> 400"
+code=$(curl -s -o /dev/null -w "%{http_code}" "$URL/tile?engine=zig-jit&formula=tricorn")
+[[ "$code" == "400" ]] || fail "/tile tricorn on zig-jit: status $code, want 400"
+echo "PASS fractal-server-refusals -> 400 for an unknown engine and an unrendered formula"

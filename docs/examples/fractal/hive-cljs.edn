@@ -1,0 +1,157 @@
+;; hive-cljs manifest for the fractal demo page.
+;;
+;; The page under test is what the cljw server serves: web/public with the
+;; shadow-cljs build in web/public/js. Start the servers first; the suite does
+;; not start them:
+;;
+;;   (cd web && npx shadow-cljs release app)
+;;   zig-out/bin/cljw docs/examples/fractal/server.clj 8080
+;;   (cd raster && clojure -M:serve 8081)          ; only for :raster scenarios
+;;   code {command: "cljs e2e run", directory: "<this dir>", tags: "fractal"}
+;;
+;; Scenarios talk to the page through window.fractalApi (fractal.core/test-surface)
+;; and real DOM input events, so they exercise the re-frame events the UI uses.
+{:project-id "ClojureWasm"
+ :hive.cljs/toolchain :browser
+ :hive.cljs/builds {:app {:http-port 8080}}
+
+ :hive.cljs/e2e
+ {:base-url   "http://localhost:8080"
+  :browser    :chromium
+  :headless   true
+  :timeout-ms 60000
+  :scenarios
+  [{:id    :boot
+    :tags  [:fractal :smoke]
+    :doc   "The page boots, lists every kernel in the browser and on the cljw
+            server, and paints a first frame."
+    :steps [[:goto "/"]
+            [:wait-for "#view"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "['browser-zig','browser-c','browser-rust','browser-js','server-zig-jit','server-zig-interp','server-c-jit','server-rust-jit','server-cljw-clj'].every(function(e){return window.fractalApi.engines().indexOf(e)>=0;})"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var p=window.fractalApi.panes();if(p.L&&p.L.iters>0){clearInterval(t);ok(true);}},100);})"]]}
+
+   {:id    :parity
+    :tags  [:fractal :parity]
+    :doc   "One view rendered on every engine the page knows gives the same
+            iteration total and the same framebuffer checksum: Zig, C and Rust
+            wasm in the browser and on cljw's zwasm, plain JS, plain Clojure on
+            cljw, and raster on the JVM when its server is up."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "Promise.all(window.fractalApi.engines().filter(function(e){return e!=='cuda-f32';}).map(function(e){return window.fractalApi.render(e,-0.743643887037151,0.13182590420533,1e-6,48,32,400);})).then(function(rs){return rs.length>8&&rs.every(function(r){return r.iters===rs[0].iters&&r.checksum===rs[0].checksum&&r.iters>0;});})"]]}
+
+   {:id    :golden
+    :tags  [:fractal :parity :golden]
+    :doc   "The page reproduces golden.edn's tip view (the pixel on c = -2) on
+            every exact engine it can reach: the same numbers cljw and the JVM
+            suites assert."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "Promise.all(window.fractalApi.engines().filter(function(e){return e!=='cuda-f32';}).map(function(e){return window.fractalApi.render(e,-2.0,0.0,0.25,8,8,50);})).then(function(rs){return rs.every(function(r){return r.iters===317&&r.checksum===2086288669;});})"]]}
+
+   {:id    :zoom
+    :tags  [:fractal :interaction]
+    :doc   "The + button doubles the zoom around the centre, and a wheel event
+            over the right half of the canvas zooms in at the cursor."
+    :steps [[:goto "/#cx=-0.6&cy=0&scale=0.00375&iter=256"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:click "#zin"]
+            [:wait-ms 200]
+            [:expect-js "Math.abs(window.fractalApi.view().scale-0.001875)<1e-12 && Math.abs(window.fractalApi.view().cx+0.6)<1e-12"]
+            [:expect-js "(function(){var c=document.getElementById('view'),r=c.getBoundingClientRect(),s=window.fractalApi.view().scale;c.dispatchEvent(new WheelEvent('wheel',{deltaY:-300,clientX:r.left+r.width*0.75,clientY:r.top+r.height/2,bubbles:true,cancelable:true}));return new Promise(function(ok){setTimeout(function(){var v=window.fractalApi.view();ok(v.scale<s&&v.cx>-0.6);},200);});})()"]]}
+
+   {:id    :pan
+    :tags  [:fractal :interaction]
+    :doc   "Arrow keys and WASD slide x and y by a tenth of the canvas; a drag
+            slides the plane with the pointer."
+    :steps [[:goto "/#cx=0&cy=0&scale=0.01&iter=128"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "(function(){var w=document.getElementById('view').width;window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight'}));window.dispatchEvent(new KeyboardEvent('keydown',{key:'s'}));return new Promise(function(ok){setTimeout(function(){var v=window.fractalApi.view();ok(Math.abs(v.cx-w/10*0.01)<1e-9&&Math.abs(v.cy-w/10*0.01)<1e-9);},200);});})()"]
+            [:expect-js "(function(){var c=document.getElementById('view'),r=c.getBoundingClientRect(),x=r.left+100,y=r.top+100,v0=window.fractalApi.view();function ev(t,dx){c.dispatchEvent(new PointerEvent(t,{pointerId:7,clientX:x+dx,clientY:y,bubbles:true}));}ev('pointerdown',0);ev('pointermove',50);ev('pointerup',50);return new Promise(function(ok){setTimeout(function(){ok(window.fractalApi.view().cx<v0.cx);},200);});})()"]]}
+
+   {:id    :hash-roundtrip
+    :tags  [:fractal :interaction]
+    :doc   "The URL hash holds the view: a deep link lands on that view, and a
+            view change rewrites the hash."
+    :steps [[:goto "/#cx=-1.768778833&cy=0.001738996&scale=1e-8&iter=1024"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "window.fractalApi.view().cx===-1.768778833 && window.fractalApi.view().scale===1e-8 && window.fractalApi.view().iter===1024"]
+            [:expect-js "(window.fractalApi.setView({cx:0.25}), new URLSearchParams(location.hash.slice(1)).get('cx')==='0.25')"]]}
+
+   {:id    :split
+    :tags  [:fractal :interaction]
+    :doc   "Split renders the right pane on a second engine, same view."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:click "#split"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var p=window.fractalApi.panes();if(p.R&&p.R.iters>0&&p.L.engine!==p.R.engine){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "getComputedStyle(document.getElementById('divider')).display==='block'"]]}
+
+   {:id    :bench
+    :tags  [:fractal :bench]
+    :doc   "The bench renders the view list on every engine and reports parity."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "window.fractalApi.bench({w:64,h:48}).then(function(r){return r.parity===true && r.rows.length===r.views.length*window.fractalApi.engines().length && r.rows.every(function(x){return !x.error;});})"]
+            [:wait-for "#benchtab"]]}
+
+   {:id    :jvm-engines
+    :tags  [:fractal :jvm]
+    :doc   "With the JVM server up (jvm/, port 8081) the page lists raster and
+            CUDA engines; raster-jvm and cuda-f64 paint the zig kernel's bytes,
+            cuda-f32 renders but is not held to them."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "['raster-jvm','raster-simd','cuda-f64','cuda-f32'].every(function(e){return window.fractalApi.engines().indexOf(e)>=0;})"]
+            [:expect-js "Promise.all(['raster-jvm','cuda-f64','browser-zig','cuda-f32'].map(function(e){return window.fractalApi.render(e,-0.6,0,0.01,64,48,256);})).then(function(rs){return rs[0].iters===rs[2].iters&&rs[0].checksum===rs[2].checksum&&rs[1].iters===rs[2].iters&&rs[1].checksum===rs[2].checksum&&rs[3].iters>0;})"]]}
+
+   {:id    :split-gpu
+    :tags  [:fractal :jvm :interaction]
+    :doc   "Split view with the browser kernel on the left and the GPU on the
+            right, deep in seahorse valley."
+    :steps [[:goto "/#cx=-0.743643887037151&cy=0.13182590420533&scale=2e-9&iter=2048"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "(function(){var s=document.getElementById('engR');s.value='cuda-f64';s.dispatchEvent(new Event('change',{bubbles:true}));return true;})()"]
+            [:click "#split"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var p=window.fractalApi.panes();if(p.R&&p.R.engine==='cuda-f64'&&p.R.iters>0){clearInterval(t);ok(true);}},100);})"]]}
+
+   {:id    :mandelbrot-only-engines-refuse
+    :tags  [:fractal :formula]
+    :doc   "An engine whose caps name only Mandelbrot refuses another formula
+            and a Julia seed, in the page, before any request is made."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "Promise.all([window.fractalApi.render('browser-zig',-0.45,-0.5,0.03,8,8,50,'burning-ship').then(function(){return false;},function(){return true;}), window.fractalApi.render('browser-js',0,0,0.034,8,8,50,'mandelbrot',-0.8,0.156).then(function(){return false;},function(){return true;})]).then(function(rs){return rs[0]&&rs[1];})"]]}
+
+   {:id    :formula-golden
+    :tags  [:fractal :jvm :formula :golden]
+    :doc   "Through the page, every exact engine that renders a formula
+            reproduces golden.edn's burning-ship and multibrot3-julia views:
+            raster on the CPU, CUDA fp64 on the GPU, the plain-Clojure oracle."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "Promise.all(['raster-jvm','cuda-f64','clojure-jvm'].map(function(e){return window.fractalApi.render(e,-0.45,-0.5,0.03,96,72,300,'burning-ship');})).then(function(rs){return rs.every(function(r){return r.iters===630142&&r.checksum===31342209;});})"]
+            [:expect-js "Promise.all(['raster-jvm','cuda-f64','clojure-jvm'].map(function(e){return window.fractalApi.render(e,0,0,0.034,96,72,300,'multibrot3',-0.2,0.75);})).then(function(rs){return rs.every(function(r){return r.iters===370534&&r.checksum===823951201;});})"]]}
+
+   {:id    :formula-switch
+    :tags  [:fractal :jvm :formula :interaction]
+    :doc   "Picking a formula frames it at home, moves the panes to engines
+            that render it (the browser kernels are disabled), and writes it
+            into the URL hash."
+    :steps [[:goto "/"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){if(window.fractalApi&&window.fractalApi.ready()){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "window.fractalApi.formulas().indexOf('tricorn')>=0"]
+            [:expect-js "(function(){var s=document.getElementById('formula');s.value='tricorn';s.dispatchEvent(new Event('change',{bubbles:true}));return true;})()"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var p=window.fractalApi.panes();if(window.fractalApi.fractal().formula==='tricorn'&&p.L&&p.L.iters>0&&window.fractalApi.usable().indexOf(p.L.engine)>=0){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "window.fractalApi.usable().indexOf('browser-zig')<0 && document.querySelector('#engL option[value=\"browser-zig\"]').disabled && new URLSearchParams(location.hash.slice(1)).get('formula')==='tricorn'"]]}
+
+   {:id    :julia-at-cursor
+    :tags  [:fractal :jvm :formula :interaction]
+    :doc   "j opens the Julia set of the point under the cursor; the deep
+            link carries k, and reloading it lands on the same Julia set."
+    :steps [[:goto "/#cx=-0.45&cy=-0.5&scale=0.0055&iter=256&formula=burning-ship"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var p=window.fractalApi.panes();if(window.fractalApi.ready()&&p.L&&p.L.iters>0){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "(function(){var c=document.getElementById('view'),r=c.getBoundingClientRect();c.dispatchEvent(new PointerEvent('pointermove',{pointerId:3,clientX:r.left+r.width*0.25,clientY:r.top+r.height*0.5,bubbles:true}));window.dispatchEvent(new KeyboardEvent('keydown',{key:'j'}));return true;})()"]
+            [:expect-js "new Promise(function(ok){var t=setInterval(function(){var f=window.fractalApi.fractal(),p=window.fractalApi.panes();if(f.julia&&f.formula==='burning-ship'&&p.L&&p.L.iters>0&&!p.L.error){clearInterval(t);ok(true);}},100);})"]
+            [:expect-js "(function(){var q=new URLSearchParams(location.hash.slice(1));return q.get('formula')==='burning-ship'&&q.has('jr')&&q.has('ji')&&Number(q.get('jr'))<-0.45;})()"]]}]}}
